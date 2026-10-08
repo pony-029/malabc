@@ -362,8 +362,9 @@ def _loop_fix_source(directory, prefix, lang, provider, config_path=None):
 
 
 def run_flow_loop(directory, config_path=None, max_turns=3, lang=None,
-                  provider=None, agent_plan=None, use_memory=False):
-    """P0-1：受控自校验 Agent Loop（验证门控 + 回退重试 + 人工检查点 + 跨运行记忆）。
+                  provider=None, agent_plan=None, use_memory=False,
+                  review_gate=False, review_dir=None, draft_pr=False):
+    """P0-1：受控自校验 Agent Loop（验证门控 + 回退重试 + 人工检查点 + 跨运行记忆 + 复核门）。
 
     区别于 run_flow 的线性单次管线：本函数把修复放进 agent_loop.run_fix_loop，
     应用后确定性重扫验证；未通过则回退并换策略重试，穷尽 max_turns 仍未通过则
@@ -371,8 +372,12 @@ def run_flow_loop(directory, config_path=None, max_turns=3, lang=None,
 
     use_memory：开启项目记忆（.codebuddy/analyzer/memory.json）——分析时抑制已知误报，
         且闭环收敛后把已验证修复记入 learned_fixes，下次同分布告警可被检索复用。
+    review_gate（--review-gate）：验证通过后不自动落地，回退工作副本并改出审查产物，
+        交人工复核后再落地（exit 3 = 已验证但待复核）。
+    draft_pr（--draft-pr）：tier-2 检查点 / 复核产物额外尝试经 gh 开 Draft PR；
+        gh 缺失或非 GitHub 远程时优雅降级为本地产物。
     agent_plan：若给定路径，额外把结构化闭环计划（每轮决策 + 终止原因 + 分层
-        退出 + 记忆状态）写 JSON，供 AI Agent 程序化消费；传 "-" 则打印到 stdout。
+        退出 + 记忆状态 + 复核状态）写 JSON，供 AI Agent 程序化消费；传 "-" 则打印到 stdout。
     """
     # 惰性导入，避免与 agent_loop 的 `from matlabc_flow import ...` 形成循环依赖
     from agent_loop import run_fix_loop as _run_loop, summarize_loop
@@ -380,8 +385,9 @@ def run_flow_loop(directory, config_path=None, max_turns=3, lang=None,
     print("=" * 64)
     print("[matlabc flow --auto-apply-loop] 工程：%s"
           % os.path.abspath(directory))
-    print("[matlabc flow --auto-apply-loop] max_turns=%d  use_memory=%s"
-          % (max_turns, use_memory))
+    print("[matlabc flow --auto-apply-loop] max_turns=%d  use_memory=%s  "
+          "review_gate=%s  draft_pr=%s"
+          % (max_turns, use_memory, review_gate, draft_pr))
     print("=" * 64)
 
     pf = tempfile.NamedTemporaryFile(prefix="mc_loop_patch_", delete=False)
@@ -393,7 +399,9 @@ def run_flow_loop(directory, config_path=None, max_turns=3, lang=None,
     result = _run_loop(directory, fix_source, max_turns=max_turns,
                        lang=lang, state_path=state_path,
                        project_root=os.path.abspath(directory),
-                       use_memory=use_memory)
+                       use_memory=use_memory,
+                       review_gate=review_gate, review_dir=review_dir,
+                       draft_pr=draft_pr)
     print(summarize_loop(result))
     # 注意：checkpoint / final_total 嵌套在 result["result"] 下
     _res = result.get("result", {})
@@ -401,6 +409,15 @@ def run_flow_loop(directory, config_path=None, max_turns=3, lang=None,
         cp = _res["checkpoint"]
         print("[checkpoint] %s" % cp["message"])
         print("[checkpoint] 候选补丁字节数：%s" % cp.get("candidate_patch_bytes"))
+        art = cp.get("artifact") or {}
+        if art.get("patch_path"):
+            print("[checkpoint] 审查产物：%s" % art["patch_path"])
+        dpr = cp.get("draft_pr")
+        if dpr:
+            print("[Draft PR] %s：%s" % (dpr.get("ok"), dpr.get("message")))
+    elif _res.get("review_pending"):
+        print("[matlabc flow --auto-apply-loop] 终态告警：%d（已验证，待人工复核）"
+              % _res.get("final_total", result.get("baseline", {}).get("total", 0)))
     else:
         print("[matlabc flow --auto-apply-loop] 终态告警：%d（已保留修复）"
               % _res.get("final_total", result.get("baseline", {}).get("total", 0)))
@@ -415,7 +432,7 @@ def run_flow_loop(directory, config_path=None, max_turns=3, lang=None,
         print("\n[agent plan JSON]\n" + json.dumps(result, ensure_ascii=False,
                                                    indent=2, sort_keys=True))
 
-    # 0 = 接受并保留修复；2 = 未通过自证(已回退基线，供 CI 区分)
+    # 0 = 接受并保留修复；2 = 未通过自证(已回退基线)；3 = 已验证但待人工复核(未落地)
     return result.get("exit_code", 0 if _res.get("accepted") else 2)
 
 
@@ -442,6 +459,12 @@ def main(argv=None):
     ap.add_argument("--auto-apply-loop", action="store_true",
                     help="受控自校验修复环（验证门控+回退重试+人工检查点），"
                          "区别于 --auto-apply 的线性单次管线")
+    ap.add_argument("--review-gate", action="store_true",
+                    help="仅与 --auto-apply-loop 联用：验证通过后不自动落地，"
+                         "回退工作副本并改出审查产物（patch+json+md），交人工复核后再落地（exit 3）")
+    ap.add_argument("--draft-pr", action="store_true",
+                    help="仅与 --auto-apply-loop 联用：tier-2 检查点/复核产物额外尝试经 gh 开 Draft PR；"
+                         "gh 缺失或非 GitHub 远程时优雅降级为本地产物")
     ap.add_argument("--max-turns", type=int, default=3,
                     help="修复环最大尝试轮数（分层终止上限，默认 3）")
     ap.add_argument("--agent-plan", default=None, metavar="PATH",
@@ -458,7 +481,9 @@ def main(argv=None):
                                 max_turns=args.max_turns, lang=args.lang,
                                 provider=args.provider,
                                 agent_plan=args.agent_plan,
-                                use_memory=args.memory)
+                                use_memory=args.memory,
+                                review_gate=args.review_gate,
+                                draft_pr=args.draft_pr)
         except Exception as e:
             sys.stderr.write("[matlabc flow --auto-apply-loop] 失败：%s\n" % e)
             return 1

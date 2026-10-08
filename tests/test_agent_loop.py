@@ -260,6 +260,97 @@ class TestAgentLoop(unittest.TestCase):
         self.assertFalse(res["result"]["learned_fix_recorded"])
         self.assertEqual(am.learned_fix_count(proj), 0)
 
+    def test_review_gate_pending(self):
+        # P1-B：--review-gate 下，验证通过的修复不落地，改出审查产物 + exit 3
+        import os
+        import tempfile
+
+        proj = tempfile.mkdtemp()
+        _install_mocks({"uninit": 3}, 3, {"uninit": 1}, 1)  # 3 → 1 收敛
+        res = agent_loop.run_fix_loop(
+            proj,
+            lambda a, f: "--- a/x.m\n+++ b/x.m\n@@ -1 +1 @@\n- old\n+ new\n",
+            max_turns=3, project_root=proj, review_gate=True)
+        self.assertTrue(res["result"]["accepted"])
+        self.assertTrue(res["result"]["review_pending"])
+        self.assertEqual(res["exit_code"], 3)
+        cp = res["result"]["checkpoint"]
+        self.assertTrue(cp["has_candidate"])
+        self.assertTrue(cp["artifact"]["ok"])
+        self.assertTrue(os.path.exists(cp["artifact"]["patch_path"]))
+        self.assertTrue(os.path.exists(cp["artifact"]["json_path"]))
+        self.assertTrue(os.path.exists(cp["artifact"]["md_path"]))
+
+    def test_checkpoint_artifact_on_tier2(self):
+        # P1-B：验证失败(tier 2) 也落盘候选补丁审查产物
+        import os
+        import tempfile
+
+        proj = tempfile.mkdtemp()
+        _install_mocks({"uninit": 3}, 3, {"uninit": 3}, 3)  # 无进展 → 回退 tier2
+        res = agent_loop.run_fix_loop(
+            proj,
+            lambda a, f: "--- a/x.m\n+++ b/x.m\n@@ -1 +1 @@\n- old\n+ new\n",
+            max_turns=1, project_root=proj)
+        self.assertFalse(res["result"]["accepted"])
+        self.assertEqual(res["result"]["tier"], 2)
+        self.assertEqual(res["exit_code"], 2)
+        cp = res["result"]["checkpoint"]
+        self.assertTrue(cp["has_candidate"])
+        self.assertTrue(os.path.exists(cp["artifact"]["patch_path"]))
+
+    def test_draft_pr_degraded_when_gh_missing(self):
+        # P1-B：gh 不可用时，Draft PR 优雅降级（ok=False），但仍保留本地审查产物
+        import tempfile
+
+        proj = tempfile.mkdtemp()
+        orig_gh = agent_loop._run_gh
+        _install_mocks({"uninit": 3}, 3, {"uninit": 3}, 3)
+        try:
+            agent_loop._run_gh = lambda args: (127, "gh 不可用")
+            res = agent_loop.run_fix_loop(
+                proj,
+                lambda a, f: "--- a/x.m\n+++ b/x.m\n@@ -1 +1 @@\n- old\n+ new\n",
+                max_turns=1, project_root=proj, draft_pr=True)
+            dpr = res["result"]["checkpoint"]["draft_pr"]
+            self.assertFalse(dpr["ok"])
+            self.assertIn("gh", dpr["message"])
+            self.assertTrue(res["result"]["checkpoint"]["artifact"]["ok"])
+        finally:
+            agent_loop._run_gh = orig_gh
+
+    def test_draft_pr_success(self):
+        # P1-B：gh 可用 + GitHub 远程时，Draft PR 发布成功（url 透出）
+        import tempfile
+
+        proj = tempfile.mkdtemp()
+        orig_gh, orig_git = agent_loop._run_gh, agent_loop._run_git
+        _install_mocks({"uninit": 3}, 3, {"uninit": 3}, 3)
+        try:
+            def fake_gh(args):
+                if args and args[0] == "--version":
+                    return (0, "gh version 2.0")
+                if args and args[0] == "pr":
+                    return (0, "https://github.com/o/r/pull/1 created")
+                return (0, "")
+
+            def fake_git(directory, args):
+                if len(args) >= 2 and args[:2] == ["remote", "get-url"]:
+                    return (0, "git@github.com:o/r.git")
+                return (0, "")
+
+            agent_loop._run_gh = fake_gh
+            agent_loop._run_git = fake_git
+            res = agent_loop.run_fix_loop(
+                proj,
+                lambda a, f: "--- a/x.m\n+++ b/x.m\n@@ -1 +1 @@\n- old\n+ new\n",
+                max_turns=1, project_root=proj, draft_pr=True)
+            dpr = res["result"]["checkpoint"]["draft_pr"]
+            self.assertTrue(dpr["ok"])
+            self.assertIn("github.com", dpr["message"])
+        finally:
+            agent_loop._run_gh, agent_loop._run_git = orig_gh, orig_git
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

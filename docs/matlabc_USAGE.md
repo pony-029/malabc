@@ -185,6 +185,31 @@ matlabc flow ./myproj --auto-apply-loop --memory
 > 记忆文件位于工程本地 `.codebuddy/`（已是项目数据目录，非临时缓存），可随仓库提交共享给团队；
 > 也可手动编辑 `suppressions` 把确认无误报的告警排除出闭环视野。
 
+### 2.2.4 人工复核门 + 检查点出 Draft PR（P1-B：可信安全出口）
+
+闭环对「不可自证」或「改动大 / LLM 生成」的修复需要一条安全落地通道，而非盲目自动提交。两个开关（仅与 `--auto-apply-loop` 联用）：
+
+```bash
+# 验证通过后不自动落地：回退工作副本，改出审查产物（patch+json+md），交人工复核后再落地
+matlabc flow ./myproj --auto-apply-loop --review-gate
+
+# tier-2 检查点 / 复核产物额外尝试经 gh 开 Draft PR（gh 缺失或非 GitHub 远程则降级为本地产物）
+matlabc flow ./myproj --auto-apply-loop --draft-pr
+```
+
+契约与退出码：
+
+- **`--review-gate`（人工复核门）**：即使修复通过验证（tier 1/0），也**不自动落地**——
+  回退工作副本（git apply -R 或进程内快照），改出审查产物 `REVIEW_<ts>.{patch,json,md}`
+  到 `.codebuddy/analyzer/review/`，退出码 **3（已验证但待人工复核）**。给人一个「先看清再合并」的闸。
+- **`--draft-pr`**：对 tier-2 检查点（未通过自证，已回退基线）或 `--review-gate` 的复核产物，
+  额外尝试经 `gh` 把候选补丁开成 **Draft PR**（建分支 → apply → 提交 → 推送 → `gh pr create --draft`）。
+  `gh` 缺失 / 当前仓库无 GitHub 远程 / 网络或权限失败，**一律优雅降级**为本地产物并继续，不阻塞闭环。
+- **退出码语义**：`0`=接受并落地；`2`=未通过自证（已回退基线，出检查点）；`3`=已验证但待人工复核（未落地）。
+
+> 审查产物里的 `.md` 含基线/终态告警、受影响文件与「`git apply REVIEW_*.patch`」落地指引；
+> `--agent-plan -` 的 JSON 也会带 `result.review_pending` / `result.checkpoint.artifact` / `checkpoint.draft_pr`。
+
 ---
 
 ## 3. 配置参数总表（按功能分组）

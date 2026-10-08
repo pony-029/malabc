@@ -21,6 +21,7 @@ from __future__ import absolute_import, division, print_function
 import io
 import json
 import os
+import re
 import subprocess
 import tempfile
 
@@ -132,8 +133,195 @@ def _now_iso():
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
+# ---------------------------------------------------------------------------
+# P1-B：人工复核门 / 检查点出 Draft PR（可信安全出口）
+# ---------------------------------------------------------------------------
+
+def _run_git(directory, args):
+    """运行 git 子命令，返回 (rc, out)。git 缺失/异常一律优雅降级。"""
+    try:
+        r = subprocess.run(["git"] + list(args), cwd=directory,
+                           capture_output=True, text=True)
+        return r.returncode, (r.stdout or "") + (r.stderr or "")
+    except (OSError, subprocess.SubprocessError):
+        return 127, "git 不可用"
+
+
+def _run_gh(args):
+    """运行 gh CLI，返回 (rc, out)。gh 缺失/异常优雅降级。"""
+    try:
+        r = subprocess.run(["gh"] + list(args), capture_output=True, text=True)
+        return r.returncode, (r.stdout or "") + (r.stderr or "")
+    except (OSError, subprocess.SubprocessError):
+        return 127, "gh 不可用"
+
+
+def _has_github_remote(directory):
+    rc, out = _run_git(directory, ["remote", "get-url", "origin"])
+    return rc == 0 and "github" in out.lower()
+
+
+def _current_branch(directory):
+    rc, out = _run_git(directory, ["rev-parse", "--abbrev-ref", "HEAD"])
+    return out.strip() if rc == 0 else ""
+
+
+def _clip(s, n=400):
+    s = (s or "").strip()
+    return s if len(s) <= n else s[:n] + " ..."
+
+
+def _first_url(s):
+    m = re.search(r"https?://github\.com/\S+", s or "")
+    return m.group(0) if m else None
+
+
+def _write_temp_patch(patch_text):
+    pf = tempfile.NamedTemporaryFile(prefix="agent_loop_rev_",
+                                     suffix=".patch", delete=False,
+                                     mode="w", encoding="utf-8")
+    try:
+        pf.write(patch_text)
+        pf.close()
+        return pf.name
+    except (OSError, IOError):
+        return None
+
+
+def _review_md(result, candidate_patch, patch_path):
+    r = result.get("result", {})
+    base = result.get("baseline", {})
+    lines = [
+        "# matlabc 修复审查产物（待人工复核）",
+        "",
+        "- 生成时间：%s" % _now_iso(),
+        "- 工程：%s" % result.get("project"),
+        "- 模式：%s  git=%s  max_turns=%d"
+        % (result.get("mode"), result.get("used_git"),
+           result.get("max_turns")),
+        "- 基线告警：%d  %s" % (base.get("total", 0), _fmt(base.get("by_rule", {}))),
+        "- 终态告警：%d  %s  tier=%d"
+        % (r.get("final_total"), _fmt(r.get("final_by_rule", {})), r.get("tier", -1)),
+        "- 状态：%s" % ("PASS（已验证，待人工落地）"
+                        if r.get("review_pending")
+                        else "FAIL（未通过自证，已回退基线）"),
+        "- 受影响文件：%s" % ", ".join(_patch_targets(candidate_patch)) or "(无)",
+        "",
+        "## 如何落地",
+        "",
+        "    git apply %s" % os.path.basename(patch_path),
+        "",
+        "或按下方 diff 手动修改。",
+        "",
+        "## 候选补丁",
+        "",
+        "```diff",
+        candidate_patch.rstrip("\n"),
+        "```",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def write_review_artifact(project_root, result, candidate_patch, review_dir=None):
+    """把候选修复物化为可人工复核的产物（patch + json + md）。
+
+    默认落在 <project_root>/.codebuddy/analyzer/review/，离线可用；
+    返回 {ok, patch_path, json_path, md_path, review_dir} 或 {ok:False, reason}。"""
+    if not candidate_patch:
+        return {"ok": False, "reason": "no_candidate_patch"}
+    root = project_root or "."
+    rdir = review_dir or os.path.join(root, ".codebuddy", "analyzer", "review")
+    try:
+        os.makedirs(rdir, exist_ok=True)
+    except OSError:
+        return {"ok": False, "reason": "mkdir_failed"}
+    ts = _now_iso().replace(":", "-")
+    base = os.path.join(rdir, "REVIEW_" + ts)
+    patch_path, json_path, md_path = base + ".patch", base + ".json", base + ".md"
+    try:
+        with io.open(patch_path, "w", encoding="utf-8") as fh:
+            fh.write(candidate_patch)
+        meta = {
+            "tool": "matlabc_flow",
+            "ts": _now_iso(),
+            "project": result.get("project"),
+            "baseline": result.get("baseline"),
+            "termination": result.get("termination"),
+            "result": result.get("result"),
+            "files": _patch_targets(candidate_patch),
+            "patch_path": patch_path,
+        }
+        with io.open(json_path, "w", encoding="utf-8") as fh:
+            json.dump(meta, fh, ensure_ascii=False, indent=2, sort_keys=True)
+        with io.open(md_path, "w", encoding="utf-8") as fh:
+            fh.write(_review_md(result, candidate_patch, patch_path))
+        return {"ok": True, "patch_path": patch_path, "json_path": json_path,
+                "md_path": md_path, "review_dir": rdir}
+    except (IOError, OSError, TypeError):
+        return {"ok": False, "reason": "write_failed"}
+
+
+def publish_draft_pr(directory, patch_text, title, body, base="main"):
+    """尝试用 gh 把候选补丁开成 Draft PR（可信安全出口）。
+
+    流程：建临时分支 → apply 补丁 → 提交 → 推送 → gh pr create --draft。
+    任何一步失败（gh 缺失 / 非 GitHub 远程 / 网络 / 权限）都优雅降级，
+    返回 (ok, message)；成功返回 (True, pr_url)。失败时尽力回退分支状态。"""
+    rc, _ = _run_gh(["--version"])
+    if rc != 0:
+        return (False, "gh CLI 不可用（已保留本地审查产物）。")
+    if not _has_github_remote(directory):
+        return (False, "当前仓库无 GitHub 远程（已保留本地审查产物）。")
+    ts = _now_iso().replace(":", "-")
+    branch = "matlabc/review-" + ts
+    orig = _current_branch(directory)
+    pf = _write_temp_patch(patch_text)
+    success = False
+    try:
+        rc, out = _run_git(directory, ["checkout", "-b", branch])
+        if rc != 0:
+            return (False, "创建分支失败：%s" % _clip(out))
+        if pf:
+            rc, out = _run_git(directory, ["apply", pf])
+        else:
+            rc, out = 1, "写临时补丁失败"
+        if rc != 0:
+            return (False, "应用补丁失败：%s" % _clip(out))
+        rc, out = _run_git(directory, ["add", "-A"])
+        if rc != 0:
+            return (False, "git add 失败：%s" % _clip(out))
+        rc, out = _run_git(directory, ["commit", "-m", title])
+        if rc != 0:
+            return (False, "提交失败：%s" % _clip(out))
+        rc, out = _run_git(directory, ["push", "-u", "origin", branch])
+        if rc != 0:
+            return (False, "推送失败：%s" % _clip(out))
+        rc, out = _run_gh(["pr", "create", "--draft", "--title", title,
+                           "--body", body, "--base", base])
+        if rc != 0:
+            return (False, "gh pr create 失败：%s" % _clip(out))
+        success = True
+        return (True, _first_url(out) or "(见 GitHub)")
+    except Exception as e:  # noqa: BLE001 - 任何异常都降级为本地产物
+        return (False, "Draft PR 异常：%s" % e)
+    finally:
+        if pf and os.path.exists(pf):
+            try:
+                os.remove(pf)
+            except OSError:
+                pass
+        if not success:  # 仅失败时清理临时分支，避免污染工作区
+            try:
+                if orig:
+                    _run_git(directory, ["checkout", orig])
+                _run_git(directory, ["branch", "-D", branch])
+            except Exception:
+                pass
+
+
 def run_fix_loop(directory, fix_source, max_turns=3, lang=None,
-                 state_path=None, project_root=None, use_memory=False):
+                 state_path=None, project_root=None, use_memory=False,
+                 review_gate=False, review_dir=None, draft_pr=False):
     """受控自校验修复环。返回结构化结果 dict（含 turns / termination / result）。
 
     接口约定（供 matlabc_flow.run_flow_loop 调用）：
@@ -171,6 +359,8 @@ def run_fix_loop(directory, fix_source, max_turns=3, lang=None,
     last_candidate = None
     termination = None
     learned_recorded = False
+    needs_review = False
+    last_accepted_patch = None
 
     # 基线已干净：直接收敛，无需任何轮次
     if total_before == 0:
@@ -242,6 +432,16 @@ def run_fix_loop(directory, fix_source, max_turns=3, lang=None,
                 final_total = total_after
                 final_by = dict(by_after)
                 termination = {"reason": "converged", "turns_used": attempt + 1}
+                # 人工复核门：验证通过但按 --dry-run 要求不自动落地，回退工作副本，
+                # 改为出审查产物，交人工复核后再落地（可信安全出口）。
+                if review_gate:
+                    if use_git:
+                        _revert_with_git(patch, directory)
+                    else:
+                        _revert_internal(snapshot, directory)
+                    last_accepted_patch = patch
+                    needs_review = True
+                    break
                 # 跨运行记忆：把已验证修复记入项目记忆，供后续同分布告警复用
                 if use_memory:
                     try:
@@ -281,18 +481,9 @@ def run_fix_loop(directory, fix_source, max_turns=3, lang=None,
 
     if accepted:
         tier = 0 if final_total == 0 else 1
-        checkpoint = None
         exit_code = 0
     else:
         tier = 2
-        checkpoint = {
-            "message": ("未通过自证（%s）：修复后仍有新增 / 未减少告警，"
-                         "已回退基线，请人工复核候选补丁。"
-                         % termination["reason"]),
-            "candidate_patch_bytes": (len(last_candidate.encode("utf-8"))
-                                      if last_candidate else 0),
-            "has_candidate": last_candidate is not None,
-        }
         exit_code = 2
 
     result = {
@@ -312,12 +503,47 @@ def run_fix_loop(directory, fix_source, max_turns=3, lang=None,
             "final_total": final_total,
             "final_by_rule": final_by,
             "tier": tier,
-            "checkpoint": checkpoint,
+            "checkpoint": None,
             "learned_fix_available": learned_available,
             "learned_fix_recorded": learned_recorded,
+            "review_pending": needs_review,
         },
         "exit_code": exit_code,
     }
+
+    # P1-B：人工复核门 / 检查点出审查产物（+ 可选 Draft PR）
+    candidate = last_accepted_patch if needs_review else last_candidate
+    if (needs_review or tier == 2) and candidate:
+        art = write_review_artifact(root, result, candidate, review_dir)
+        cp = {
+            "candidate_patch_bytes": len(candidate.encode("utf-8")),
+            "has_candidate": True,
+            "artifact": art,
+        }
+        if needs_review:
+            cp["message"] = ("已通过自证，但按 --dry-run 人工复核门要求暂不落地，"
+                             "请人工复核后手动应用审查产物（%s）。"
+                             % (art.get("patch_path") or "本地"))
+            result["result"]["review_pending"] = True
+            result["exit_code"] = 3  # 3 = 已验证但待人工复核（未落地）
+        else:
+            cp["message"] = ("未通过自证（%s）：修复后仍有新增 / 未减少告警，"
+                             "已回退基线，请人工复核候选补丁（%s）。"
+                             % (termination["reason"],
+                                art.get("patch_path") or "本地"))
+        if draft_pr:
+            title = "matlabc 自动修复候选（待复核）"
+            body = _review_md(result, candidate, art.get("patch_path") or "REVIEW.patch")
+            ok, msg = publish_draft_pr(directory, candidate, title, body)
+            cp["draft_pr"] = {"ok": ok, "message": msg}
+        result["result"]["checkpoint"] = cp
+    elif tier == 2:
+        result["result"]["checkpoint"] = {
+            "message": ("未通过自证（%s）：无可用候选补丁（修复源无策略或轮次用尽），"
+                        "请人工介入。" % termination["reason"]),
+            "candidate_patch_bytes": 0,
+            "has_candidate": False,
+        }
     if state_path:
         try:
             with io.open(state_path, "w", encoding="utf-8") as fh:
@@ -362,12 +588,23 @@ def summarize_loop(result):
                  % (r.get("final_total"), r.get("tier", -1),
                     _fmt(r.get("final_by_rule", {}))))
     if r.get("accepted"):
-        lines.append("[agent loop] 自证：通过(PASS)，修复已保留。")
+        if r.get("review_pending"):
+            lines.append("[agent loop] 自证：通过(PASS)，但按人工复核门未落地（exit 3）。")
+        else:
+            lines.append("[agent loop] 自证：通过(PASS)，修复已保留。")
     else:
         cp = r.get("checkpoint") or {}
         lines.append("[agent loop] 自证：不通过(FAIL)，已回退基线。")
         if cp.get("message"):
             lines.append("[checkpoint] %s" % cp["message"])
+    if r.get("review_pending") or (r.get("checkpoint") or {}).get("has_candidate"):
+        cp = r.get("checkpoint") or {}
+        art = cp.get("artifact") or {}
+        if art.get("patch_path"):
+            lines.append("[审查产物] %s" % art["patch_path"])
+        dpr = cp.get("draft_pr")
+        if dpr:
+            lines.append("[Draft PR] %s：%s" % (dpr.get("ok"), dpr.get("message")))
     if r.get("learned_fix_available"):
         lines.append("[记忆] 当前基线存在同分布的「已学习修复」，可复用历史补丁。")
     if r.get("learned_fix_recorded"):
