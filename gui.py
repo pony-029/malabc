@@ -1,22 +1,50 @@
 # -*- coding: utf-8 -*-
-"""MATLAB 分析器 · 图形界面启动器（P225-G）。
+"""MATLAB 分析器 · 图形界面启动器。
 
-零依赖桌面 GUI（基于标准库 tkinter，跨 Windows / Linux / macOS）。
-把庞大的命令行参数收敛为一个友好、易用的表单：选工程目录、勾选输出、
-选择 AI 引入时机（P225-F）、**加载/保存 JSON 配置**，一键分析并在浏览器打开结果。
+为什么要有它：matlabc 的命令行有几十个开关，第一次用的人不知道该勾哪几个。
+GUI 把这些开关收敛成一张表单 —— 选目录、勾输出、选 AI 时机 —— 一键分析，
+结束后自动在浏览器打开结果。**表单能做的事，命令行全能做**；GUI 只是入口。
 
-设计要点：
-- build_cli_args(form) 为纯函数，负责把表单映射为 matlabc.py 的 CLI 参数，
-  便于无界面单元测试；GUI 只负责收集表单与展示。
-- 配置 JSON：`--config` 作为基础配置传给分析器（CLI 显式参数优先）；同时支持把当前
-  表单另存为配置、或从配置回填表单，方便复用同一套参数。
-- 运行分析时通过子进程调用 matlabc.py，实时把 stdout/stderr 流式显示到日志框，
-  不阻塞界面。
-- 打开结果用各平台原生方式（Windows startfile / macOS open / Linux xdg-open）。
+它怎么跑：
+
+    ┌────────────────┐   点「开始分析」   ┌──────────────────────┐
+    │  表单（tkinter）│──────────────────▶│ build_cli_args(form) │  ← 纯函数，可单测
+    │ 目录/输出/AI    │                   └──────────┬───────────┘
+    └────────────────┘                              │ 拼成
+            ▲                                       ▼
+            │ 回填（从配置文件）            python matlabc.py <目录> --browse ...
+            │                                       │
+    ┌───────┴────────┐                   ┌──────────▼───────────┐
+    │ 配置 JSON 文件  │                   │ 子进程（流式读输出）  │
+    │ 存/取同一张表单 │                   │ 日志框实时滚动，不卡界面│
+    └────────────────┘                   └──────────┬───────────┘
+                                                    ▼
+                                          分析完成后用系统原生方式打开结果
+                                          （Windows startfile / macOS open / Linux xdg-open）
 
 用法：
-    py -3 gui.py                 # 启动图形界面
-    py -3 gui.py --selftest      # 无界面自检（构造表单并校验 CLI 参数映射）
+    python gui.py                 # 启动图形界面
+    python gui.py --selftest      # 无界面自检：构造表单并校验 CLI 参数映射
+    python gui.py --help          # 就是我，你现在看到的这些
+
+设计要点（也是为什么它好改）：
+  * build_cli_args(form) 是**纯函数**，负责「表单 → 命令行参数」的映射，
+    不开窗口也能单测；GUI 只做收集与展示。所以 --selftest 能覆盖真正的风险点。
+  * 配置 JSON 双向：`--config` 传给分析器当基础配置（CLI 显式参数优先），
+    同时支持把当前表单另存为配置、或从配置回填表单，方便复用同一套参数。
+  * 分析是**子进程 + 流式输出**，界面不会被长时间任务冻住；可随时点「停止」
+    （按进程树终止，不留孤儿）。
+
+退出码：
+    0  = 正常（关窗、--selftest 通过、--help 打印完 都算）
+    1  = 启动期异常（极少数环境缺 tkinter；stderr 会给原因）
+
+诚实边界：
+  * 需要系统自带 tkinter。极简发行版可能没装（Debian/Ubuntu 上装 python3-tk）。
+  * 单例守卫：已经在跑时再开一个只会弹一句「已在运行」然后退出 —— 这是设计，
+    不是启动失败（与分析器的「多实例」病根同类）。
+  * 日志框显示的是**子进程原始输出**，不做美化。要结构化结果请看输出目录里的
+    HTML / JSON / SARIF / Markdown。
 """
 import json
 import os
@@ -26,6 +54,80 @@ import tempfile
 
 APP_TITLE = "matlabc"
 APP_VERSION = "1.1.0"
+
+# ---------------------------------------------------------------------------
+# `--help` 文本。刻意放在模块级常量里、并在 main() 的**最前面**处理：
+# 早先 `python gui.py --help` 会直接走到「启动 GUI」分支（或撞上单例守卫），
+# 于是「问帮助」变成「开窗口」或「静默退出」—— 对命令行用户是纯粹的意外。
+# 帮助必须在任何副作用（单例锁、tkinter、子进程）之前返回。
+# ---------------------------------------------------------------------------
+HELP_TEXT = """\
+matlabc GUI —— 把命令行开关收敛成一张表单，一键分析并打开结果。
+
+用法：
+    python gui.py                 # 启动图形界面
+    python gui.py --selftest      # 无界面自检（校验「表单 -> 命令行参数」映射）
+    python gui.py --help          # 显示本帮助
+
+表单做什么（每一格都对应 matlabc.py 的真实参数）：
+
+    ┌────────────────┬────────────────────────────────────────────┐
+    │ 工程目录       │ 等价于 `python matlabc.py <目录>`            │
+    │ 输出目录       │ 报告与站点落在哪                            │
+    │ 静态检查       │ 勾选规则名，等价于 --checks uninit,taint     │
+    │ 输出格式       │ 浏览站点 / HTML / JSON / SARIF / Markdown    │
+    │ 可复现         │ 省略时间戳，便于 diff，等价于 --reproducible │
+    │ 递归深度       │ 限制扫描深度；留空=不限                      │
+    │ 调用图节点上限 │ 大工程防爆图，等价于 --max-nodes             │
+    │ AI 引入时机    │ off / prompts / ask / auto，等价于 --ai-mode │
+    │ 在线 AI        │ 等价于 --provider                            │
+    │ 语言           │ auto / matlab / c / py / js，等价于 --lang   │
+    │ CI 与增量      │ --git-diff / --gate / --max-warnings /       │
+    │                │ --sarif-base（只分析本次变更、或按阈值卡口） │
+    └────────────────┴────────────────────────────────────────────┘
+
+配置文件（可加载/可另存）：把上面这张表单存成 JSON，下次直接回填。
+    加载：界面「加载配置」→ 选 JSON → 表单被填好
+    另存：界面「保存配置」→ 生成 JSON（即 matlabc.py 的 --config 格式）
+    命令行：python matlabc.py <目录> --config my.json --browse
+
+退出码：
+    0  = 正常（关窗 / --selftest 通过 / --help 打印完）
+    1  = 启动期异常（极少数环境缺 tkinter；stderr 会给原因）
+
+提示：
+  * 已经在运行时再启动一个，只会提示「已在运行」然后退出（单例守卫，设计如此）。
+  * 分析在子进程里跑，日志框实时滚动，可随时「停止」，不会留孤儿进程。
+  * 想要可复现的自动化，直接用命令行；GUI 面向手工探索。
+"""
+
+
+def _write_help(text):
+    """把帮助文本写到 stdout，强制 UTF-8。
+
+    被管道/CI 调用时 Python 会退回 locale 编码（中文 Windows 是 GBK），
+    与 matlabc.py 的处理保持一致：先 reconfigure，失败再退回写 buffer。
+    """
+    for _s in (sys.stdout, sys.stderr):
+        if _s is not None and hasattr(_s, "reconfigure"):
+            try:
+                _s.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+    try:
+        sys.stdout.write(text)
+        sys.stdout.flush()
+        return True
+    except Exception:
+        buf = getattr(sys.stdout, "buffer", None)
+        if buf is None:
+            return False
+        try:
+            buf.write(text.encode("utf-8", "replace"))
+            buf.flush()
+            return True
+        except Exception:
+            return False
 
 
 def build_cli_args(form):
@@ -700,6 +802,10 @@ def _launch_gui():
             _env["PYTHONIOENCODING"] = "utf-8"
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                # R62-R31e：切 stdin。分析器由 GUI 启动，不该看到 GUI 的输入句柄；
+                # 这里**故意不给 timeout** —— 它是长跑流式进程，由用户点「停止」终止，
+                # 加超时会把「大工程分析得久」误判成失败。（护栏对此有显式登记）
+                stdin=subprocess.DEVNULL,
                 universal_newlines=True, encoding="utf-8", errors="replace",
                 bufsize=1, cwd=workdir, env=_env, **_spawn)
             run._proc = proc
@@ -990,6 +1096,11 @@ def _launch_gui():
 
 def main(argv=None):
     argv = argv if argv is not None else sys.argv[1:]
+    # --help 必须在**任何副作用之前**返回：早先它会一路走到「启动 GUI」，
+    # 对命令行用户来说「问帮助却弹窗」是纯粹的意外（且 CI 里会挂住）。
+    if "--help" in argv or "-h" in argv:
+        _write_help(HELP_TEXT)
+        return 0
     if "--selftest" in argv:
         # 无界面自检：构造一份表单并校验 CLI 映射
         sample = {

@@ -4,7 +4,7 @@
 
 # malabc
 
-**Static analysis and deterministic auto-fix engine for MATLAB / Simulink (`matlabc`)**
+**Static analysis and deterministic auto-fix engine — MATLAB / Simulink, C·C++ (subset), Python and JavaScript, plus PE / ELF / Mach-O binaries and the CUDA · ROCm · Vulkan GPU content embedded in them**
 
 Turn "reading code" into a "workbench": it does not just map call relationships, it
 tells you **where the risks are, how severe they are, how to fix them, and whether a
@@ -16,6 +16,8 @@ conclusion into a **CI quality gate**.
 ![Python](https://img.shields.io/badge/Python-3.6.5%2B-3776AB?logo=python&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-0%20(stdlib%20only)-brightgreen)
 ![Languages](https://img.shields.io/badge/languages-MATLAB%20%7C%20C%20%7C%20Python%20%7C%20JS-blue)
+![Binaries](https://img.shields.io/badge/binaries-PE%20%7C%20ELF%20%7C%20Mach--O-blueviolet)
+![GPU](https://img.shields.io/badge/GPU-CUDA%20%7C%20ROCm%20%7C%20Vulkan-orange)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 ![Offline](https://img.shields.io/badge/offline-first-yes-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -23,7 +25,8 @@ conclusion into a **CI quality gate**.
 ![Version](https://img.shields.io/badge/version-1.16.67-informational)
 
 [Quick Start](#quick-start) · [Core Capabilities](#core-capabilities) · [Architecture](#architecture)
-· [Command Cheatsheet](#command-cheatsheet) · [CI Gate](#ci-quality-gate) · [中文文档](README_CN.md)
+· [Binary & GPU](#binary--gpu-analysis---binary) · [Command Cheatsheet](#command-cheatsheet)
+· [CI Gate](#ci-quality-gate) · [Quality Gates](#quality-gates-self-verifying) · [中文文档](README_CN.md)
 · [License](#license)
 
 </div>
@@ -39,6 +42,7 @@ conclusion into a **CI quality gate**.
 | "Any hidden risks in this code?" | Run MATLAB to find out | Uninitialized / type mismatch / dead code / shape mismatch / taint, all statically |
 | "How do I change it safely?" | Edit by hand and risk new bugs | `--gen-apply-patch` generates a deterministic, self-verified patch |
 | "How do we stop the rot?" | Rely on reviewers' diligence | SARIF + exit code + trend baseline, enforced in CI |
+| "This call resolves to nothing — is it our bug or a library's?" | Guess, or grep the disk | `--binary` + `--binary-symbols`: every unresolved name is attributed to a library, a GPU kernel, or `missing` |
 
 > **Zero dependencies, no MATLAB needed, offline by default**: only the Python standard
 > library is used; MATLAB / Octave is not required, and no network requests are made
@@ -82,6 +86,14 @@ mindmap
       Exit-code gate
       Trend/baseline comparison
       One-click CI templates
+    Binary & GPU
+      PE / ELF / Mach-O containers
+      Import table / DT_NEEDED
+      Export symbols (dynsym)
+      CUDA fatbin → cubin kernel names
+      AMD HSA code object
+      Vulkan SPIR-V entry points
+      Source-side attribution
 ```
 
 ### Multi-Language Support
@@ -95,6 +107,84 @@ mindmap
 | **Mixed (MEX bridge)** | `--mixed` | MATLAB ↔ C cross-language call edges |
 
 **Language boundary (explicit, not silent).** `--lang` covers MATLAB / C·C++ / Python / JavaScript only. TypeScript, Rust, Go, Java, Kotlin, C#, Swift, Scala, Ruby and PHP have **no frontend**: when such files exist but the requested language finds none, the CLI prints a `[warn]` line to stderr naming the language and the files it skipped, instead of quietly reporting `0 files / 0 functions`. A cross-language operator label is only listed in the operator catalog if some code path actually emits it; operators that are deliberately not implemented are registered in `_UNIMPLEMENTED_KINDS` with a stated reason, and `tools/check_operator_impl.py` fails the build if the two ever diverge.
+
+### Binary & GPU Analysis (`--binary`)
+
+Source-side analysis can tell you *that* a call is unresolved. It cannot tell you *why*.
+`--binary` closes that loop: point it at the libraries your code actually links against, and
+every unresolved name gets an owner.
+
+```mermaid
+flowchart LR
+    subgraph SRC["Source side"]
+        S1["matlabc --json out.json<br/>unresolved call sites"]
+    end
+    subgraph BIN["Binary side"]
+        B1["libfoo.so / bar.dll<br/>PE · ELF · Mach-O"]
+        B2["dynamic dependencies<br/>DT_NEEDED / import table"]
+        B3["export symbols<br/>dynsym / export directory"]
+        B4["embedded GPU content<br/>CUDA fatbin · HSA code object · SPIR-V"]
+    end
+    S1 --> AT["attribution engine<br/>binfmt/attribute.py"]
+    B2 --> AT
+    B3 --> AT
+    B4 --> AT
+    B1 --> B2
+    B1 --> B3
+    B1 --> B4
+    AT --> R1["library<br/>explained by libfoo.so"]
+    AT --> R2["gpu_kernel<br/>it is a CUDA / AMD kernel"]
+    AT --> R3["missing<br/>genuinely unresolved"]
+```
+
+```bash
+# What does this library depend on, and what does it export?
+python matlabc.py --binary libfoo.so
+
+# Ask the source side and the binary side the same question
+python matlabc.py myproj/ --json out.json                    # 1) find unresolved calls
+python matlabc.py --binary libcublas.so.12 --binary-symbols out.json   # 2) attribute them
+
+# Machine-readable, for wiring into your own pipeline
+python matlabc.py --binary a.dll,b.so --binary-json -
+```
+
+| Backend | Where it hides | How it is found | What comes out |
+| --- | --- | --- | --- |
+| **CUDA** | PE `.nv_fatb` · ELF `.nv_fatbin` · PE/ELF `.nvFatBi` / `.nvFatBin` | fatbin magic `0xba55ed50`; cubin located through the `.text._Z…` section-name table | kernel names + demangled forms, SM targets, code-object counts |
+| **ROCm / HIP** | PE/ELF `.hip_fat` / `.hipFatBin` | HSA code object header (`e_ident[7]` = 64, `e_machine` = 224) | trusted code-object count (names are **not** guessed) |
+| **Vulkan** | **no dedicated section** — SPIR-V sits in `.rdata` | raw magic scan for `0x03022307` (`OpEntryPoint` decoding) | entry-point names, module count |
+| **PTX** | inside the same fatbin segment | `.entry <name>(` with the parenthesis required | *usually nothing* — see the honest limits below |
+
+> **Field note — the 8-byte trap.** PE section names are hard-truncated to eight bytes. The very
+> same CUDA section is `.nv_fatbin` in an ELF but `.nv_fatb` in a PE; `.nvFatBin` becomes
+> `.nvFatBi`; AMD's `.hip_fatbin` becomes `.hip_fat`. A matcher that only knows the full spelling
+> reports **zero** GPU content in every Windows binary — silently, and with no error. Both
+> spellings are matched.
+
+> **Field note — cubins are not standard ELF.** A cubin sets `e_type = 0x8000`,
+> `e_machine = 0x100`, and parks a `0xCAFE…` sentinel in `e_shoff`. The only trustworthy
+> discriminators are `e_ident[7]` (`ELFOSABI_CUDA` = 51) and `e_ident[8]`. Counting `\x7fELF`
+> occurrences is a *cheap* signal and is reported under a different field name
+> (`suspect_code_objects`) than the strict one (`confidence_code_objects`), so the two can never
+> be confused.
+
+**Honest limits (measured, not guessed).**
+
+- **PTX barely yields kernel names.** Requiring `.entry <name>(` on a 692 MB real driver
+  distribution leaves ~2 usable names; the rest of the `.entry ` hits are binary metadata. The
+  CUDA kernel-name path that actually works is the `.text._Z…` **section-name table** inside each
+  cubin — measured **171** distinct kernel names in one vendor BLAS library and **59** in another,
+  100% demangle-able.
+- **Mach-O is implemented but unvalidated.** No Mach-O sample exists on the development machine;
+  the parser says so in the report's `notes` instead of pretending.
+- **"Unparseable" is a first-class state.** A GPU blob with no extractable content is reported as
+  `NOT-PARSEABLE` **with a written reason** — never as a silent `0 kernels`.
+- **Truncation is always visible.** `--binfmt-scan-cap` (default 64 MiB) bounds the scan; when it
+  bites, the report prints `[TRUNCATED]`.
+- **Run-time binding is out of scope.** `dlopen` / `LoadLibrary` / `dlsym` / `LD_PRELOAD` are not
+  traced, and `Makefile` / `CMakeLists.txt` link intent is not parsed (`-lfoo` is only used as a
+  candidate-name hint).
 
 ### Static Check Rules
 
@@ -173,6 +263,18 @@ malabc/
 ├─ matlabc_ask.py      # Q&A code understanding (BM25 retrieval + intent recognition + LLM)
 ├─ matlabc_flow.py     # AI fix-loop orchestrator review→fix→apply→verify→report
 ├─ matlabc_mcp.py      # MCP server (exposes matlabc as tools to AI agents)
+├─ binfmt/             # Binary & GPU container analysis (zero-dependency)
+│  ├─ model.py         #   unified IR: Section / Symbol / Dependency / GpuBlob / BinaryReport
+│  ├─ pe.py  elf.py    #   PE32+ and ELF64/32 streaming parsers (incl. CUDA/AMDGPU classification)
+│  ├─ macho.py         #   Mach-O (⚠ implemented, unvalidated — no sample on the dev machine)
+│  ├─ gpu.py           #   CUDA fatbin/cubin · HSA code object · SPIR-V entry points
+│  ├─ attribute.py     #   attribution: unresolved name → library / gpu_kernel / missing
+│  ├─ buildsys.py      #   Makefile / CMakeLists.txt link-intent hints
+│  └─ report.py        #   text report (never hides a negative state)
+├─ tools/              # Self-verifying static gates (see "Quality Gates")
+│  ├─ check_all.py     #   one-shot runner: runs every check_*.py + its own --selftest
+│  └─ check_*.py       #   doc-flags · operator-impl · patch-ops · py36-clean ·
+│                      #   help-contract · binfmt-fixtures · subprocess-hygiene
 ├─ ai_cli.py           # Multi-vendor LLM access (offline echo / online answer, graceful degradation)
 ├─ gui.py              # Zero-dependency tkinter desktop GUI
 ├─ renderers/          # Report and visualization renderers (report/callgraph/hotspot/sarif/snapshot...)
@@ -274,6 +376,7 @@ timing → one-click analyze with streaming logs.
 | Technical debt / trend | `--debt` / `--trend` / `--gate` | Quality metrics and trend gates |
 | Fix loop | `--gen-pr` / `--gen-apply-patch` / `--gen-tests-risk` | Fix landing, test-stub skeleton |
 | Duplicate-code governance | `--dup-*` (baseline / patch / self-verify / gate) | Copy-paste code-smell governance |
+| Binary / GPU report | `--binary` (+`--binary-symbols` / `--binary-json` / `--binfmt-scan-cap`) | Dynamic dependencies, exports, CUDA/ROCm/Vulkan content, and source-side attribution |
 | Diff report | `--diff` / `--diff-html` | Full-dimension comparison of two snapshots |
 
 ---
@@ -312,6 +415,13 @@ python matlabc.py myproj/ --checks all --sarif report.sarif \
 
 # Cross-file taint scan
 python matlabc.py myproj/ --checks tainted_sink
+
+# Binary analysis: dependencies, exports, GPU content
+python matlabc.py --binary libfoo.so
+
+# Attribute unresolved calls: source side ↔ binary side
+python matlabc.py myproj/ --json out.json
+python matlabc.py --binary libcublas.so.12 --binary-symbols out.json
 
 # Generate a deterministic self-verified fix patch
 python matlabc flow myproj --auto-apply --gen-apply-patch
@@ -358,6 +468,67 @@ Agent call example (pseudocode):
 
 ---
 
+## Quality Gates (self-verifying)
+
+The project's own claims are enforced by executable gates. One command runs them all:
+
+```bash
+python tools/check_all.py        # runs every tools/check_*.py AND its --selftest
+```
+
+| Gate | What it stops |
+| --- | --- |
+| `check_doc_flags.py` | Documentation **or a help screen** advertising a CLI flag that does not exist (this really happened: the README said `--check tainted_sink`, which argparse rejects as an **ambiguous prefix**) |
+| `check_operator_impl.py` | "Phantom operators": a check rule listed in the catalog that no code path ever emits |
+| `check_patch_ops.py` | Patch operators that overwrite a target line instead of inserting before it (which would silently delete source) |
+| `check_binfmt_fixtures.py` | Binary / GPU parsers regressing — synthetic PE/ELF fixtures plus contract assertions C1–C6 |
+| `check_py36_clean.py` | The repo breaking **its own** Python 3.6.5 promise (it already had: `list[str]` and `from __future__ import annotations` had shipped) |
+| `check_subprocess_hygiene.py` | Any subprocess that captures output while inheriting stdin, or that can hang forever |
+| `check_help_contract.py` | An exit code that exists in the code but not in `--help`, or in `--help` but never returned; plus help that lost its usage example, diagram, or exit-code section |
+
+Two disciplines make these gates trustworthy rather than decorative:
+
+1. **Every gate proves itself in both directions.** `--selftest` builds *bad* samples that must go
+   red **and** *good* samples that must stay green, then prints a machine-readable line
+   (`SELFTEST COUNTS {"bad": N, "good": M}`) that the regression tests assert against — using
+   **lower bounds**, so silently shrinking the sample set fails the build.
+2. **A gate that hangs is worse than no gate.** `check_all.py` gives every child a wall-clock
+   timeout and treats a timeout as **red**. This came from a real defect: a gate spawned
+   `<script> --help` with its output captured while *inheriting stdin*; the last of the four
+   scripts is a stdio MCP server that reads stdin, so it blocked until its own 180 s timeout
+   fired — the gate took ~181 s and was killed by the surrounding `timeout 90`, looking like an
+   inexplicable freeze. Cutting stdin took the same gate to **3.4 s**, and
+   `check_subprocess_hygiene.py` now enforces that lesson repo-wide.
+
+Two of these gates map a claim to an executable counter-party rather than to a style rule:
+`check_py36_clean.py` feeds this repository's own sources to this repository's own 3.6.5 gate,
+and `check_help_contract.py` cross-checks the documented exit codes against the codes the
+source can actually return. Both are **two-way**: a stale registry entry fails just as loudly
+as a missing one, because a registry that only ever grows stops meaning anything.
+
+---
+
+## Built-in help (illustrated, one story per entry point)
+
+Each entry script's module docstring **is** its `--help` text, and all of them follow the same
+skeleton: *what pain it removes → a flow diagram → copy-pasteable examples → exit codes →
+honest limits*. `--help` returns immediately and has no side effects — it never opens a window,
+never starts an analysis, never hangs.
+
+```bash
+python matlabc.py --help          # the analyzer: task-oriented command table + pipeline + limits
+python matlabc_flow.py --help     # repair loop: five-station pipeline + five recipes
+python matlabc_ask.py --help      # grounded Q&A: how facts become an answer
+python matlabc_mcp.py --help      # MCP server: the five tools + why stdin must be cut
+python gui.py --help              # GUI: which CLI flag each form field maps to
+python tools/check_all.py --help  # gates: what each of the 7 gates stops
+```
+
+This is not a verbal promise — `check_help_contract.py` and `check_doc_flags.py` watch it:
+every flag in an example must really exist, and every documented exit code must match the source.
+
+---
+
 ## Documents
 
 - [docs/matlabc_USAGE.md](docs/matlabc_USAGE.md) — full command-line usage reference
@@ -366,6 +537,9 @@ Agent call example (pseudocode):
 - [docs/matlabc_DELIVERY_REPORT.md](docs/matlabc_DELIVERY_REPORT.md) — delivery / packaging notes
 - [docs/matlabc_STRUCTURE.md](docs/matlabc_STRUCTURE.md) — code structure overview
 - [docs/matlabc_AI_ROADMAP.md](docs/matlabc_AI_ROADMAP.md) — AI roadmap
+- [docs/analysis/](docs/analysis/) — deep-analysis reports (six-hats reviews, design comparisons)
+- [docs/SUPERPOWER_REVIEW_R31.md](docs/SUPERPOWER_REVIEW_R31.md) — round-by-round review: binary/GPU integration, subprocess hygiene, and the gate that hung
+- [docs/GITHUB_REPO_ABOUT.md](docs/GITHUB_REPO_ABOUT.md) — paste-ready repository About panel text (description / website / topics)
 
 ---
 

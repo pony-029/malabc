@@ -1,37 +1,123 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-matlabc.py — MATLAB 代码结构梳理与分析工具（纯 Python，零依赖）
+matlabc — 代码结构梳理与静态分析工具（纯 Python，零依赖，无需安装 MATLAB）
 
-功能：
-  1. 递归扫描目录下所有 .m 文件，生成目录结构树
-  2. 解析 MATLAB 语法：function / classdef / 局部函数 / 脚本
-  3. 提取函数签名（输入/输出参数）与位置（文件、行号）
-  4. 分析函数、类方法之间的调用关系，生成依赖图
-  5. 输出：Markdown 报告 / Mermaid 图 / DOT 图 / HTML 报告 / JSON
-  6. --browse 生成可点击跳转的交互式源码浏览站点（函数定义跳转、双向调用跳转）
+一句话：给它一棵源码树（或一个二进制文件），它回你一份**可以点得动、
+可以对得上、可以被机器消费**的结构报告。
 
-用法：
-  python matlabc.py <MATLAB目录> [-o report.md]
-  python matlabc.py <MATLAB目录> --mermaid deps.mmd --html report.html
-  python matlabc.py <MATLAB目录> --file-graph -o report.md
-  python matlabc.py <MATLAB目录> --browse <输出目录> [--json 结果.json]
-  python matlabc.py <MATLAB目录> --encoding gb18030   # 强制按指定编码读取
-  python matlabc.py --config analyzer_config.json     # 从 JSON 配置读取全部参数
-  python matlabc.py <MATLAB目录> --config analyzer_config.json -o out.md  # 配置 + CLI 覆盖
+────────────────────────────────────────────────────────────────────────
+它到底做了什么（一条流水线，五步）
+────────────────────────────────────────────────────────────────────────
 
-JSON 配置（--config）说明：
-  - 所有命令行参数都可用同名字段在 JSON 中指定（如 dir / output / mermaid / dot / html /
-    browse / json / encoding / exclude / file_graph / recursive / title）。
-  - CLI 显式给出的参数优先于配置文件；配置文件仅用于"未显式指定的参数"。
-  - 示例见同目录的 analyzer_config.example.json。
+     ┌────────────┐
+     │ 源码目录    │  matlab(.m) / c(.c .h .cc .cpp .cxx .hpp .hh .hxx)
+     │ 或二进制    │  py(.py)    / js(.js)
+     └─────┬──────┘  二进制：PE(.exe .dll) / ELF(.so) / Mach-O
+           │
+     ┌─────▼──────────────────────────────────────────────┐
+     │ ① 收集   扩展名清单是**单一事实源**（_C_SOURCE_EXTS）│
+     └─────┬──────────────────────────────────────────────┘
+           │
+     ┌─────▼──────────────────────────────────────────────┐
+     │ ② 解析   各语言前端 → 统一中间表示                  │
+     │          .m/C/Py/JS 为行锚定正则；Python 走 ast      │
+     └─────┬──────────────────────────────────────────────┘
+           │
+     ┌─────▼──────────────────────────────────────────────┐
+     │ ③ 分析   调用图 · 跨语言算子 · 确定性补丁            │
+     └─────┬──────────────────────────────────────────────┘
+           │
+     ┌─────▼──────────────────────────────────────────────┐
+     │ ④ 归因   （可选）二进制/GPU 内容 → 源码侧未解析调用的 │
+     │           归属证据：这是某个库导出？还是真漏了？      │
+     └─────┬──────────────────────────────────────────────┘
+           │
+     ┌─────▼──────────────────────────────────────────────┐
+     │ ⑤ 输出   Markdown / Mermaid / DOT / HTML /         │
+     │          交互式浏览站点 / JSON / SARIF 2.1.0        │
+     └────────────────────────────────────────────────────┘
 
-中文与编码说明：
-  - 目录名、文件名、源码注释中的中文均可正常处理（Python 内部为 Unicode）。
-  - .m 文件编码自动识别：UTF-8（含 BOM）→ GB18030 → GBK → Latin-1，无需手动指定。
-  - 输出文件一律 UTF-8 编码；Windows 控制台显示中文异常时可执行 chcp 65001。
+────────────────────────────────────────────────────────────────────────
+我该用哪条命令？（按你手上的活儿挑一行）
+────────────────────────────────────────────────────────────────────────
 
-仅依赖 Python 标准库，无需安装 MATLAB。
+  我想……                       用这条
+  ────────────────────────────  ────────────────────────────────────────
+  快速看一眼结构                python matlabc.py 我的目录/
+  出一份能贴进文档的报告        python matlabc.py 我的目录/ -o report.md
+  要能点击跳转的源码浏览器      python matlabc.py 我的目录/ --browse site/
+  喂给别的工具/脚本            python matlabc.py 我的目录/ --json out.json
+  接进 GitHub 代码扫描          python matlabc.py 我的目录/ --sarif out.sarif
+  看 C / Python / JS 代码       python matlabc.py 我的目录/ --lang c
+                                （--lang 可选 matlab(默认) / c / cpp / py / js）
+  MATLAB 调了 C               python matlabc.py 我的目录/ --mixed
+  查一个 .so/.dll 的依赖与导出  python matlabc.py --binary libfoo.so
+  查 GPU 算子（CUDA/AMD/Vulkan）python matlabc.py --binary libcublas.so.12
+  「这个没解析出来的调用是谁？」python matlabc.py --binary libfoo.so \\
+                                        --binary-symbols out.json
+  参数太多，写成配置文件        python matlabc.py --config analyzer_config.json
+
+────────────────────────────────────────────────────────────────────────
+诚实的边界（这些事它**不做**，别期待落空）
+────────────────────────────────────────────────────────────────────────
+
+  * 语言：TypeScript / Rust / Go / Java 等**没有前端**。扫到这些文件时它会
+    打出 [warn] 点名语言与文件，**不会静默返回 0 结果**。
+  * C++：`--lang cpp` 是 `--lang c` 的**别名**，按 C 子集解析。
+    模板、类、命名空间、重载**不保证**识别 —— 这是已披露的降级，不是 bug。
+  * 前端实现：.m / C / Python / JS 目前是**行锚定正则**（Python 另有 ast 路径），
+    不是完整 AST。函数名与 `) {` 不在同一行、宏拼出来的签名，可能漏掉。
+  * 预处理：**无 `#if 0` 感知** —— 被预处理屏蔽掉的代码同样会被分析。
+  * 动态库：不解析 `dlopen`/`LoadLibrary`/`dlsym`/`LD_PRELOAD` 的**运行期**绑定；
+    也不解析 Makefile/CMakeLists 的链接意图（`-lfoo` 只作为候选名提示）。
+  * GPU：CUDA kernel 名从 cubin 的 `.text._Z` 节名表提取；**PTX 路径基本提不出
+    kernel 名**（真 entry 极少）。提不到时报告会写明原因，不静默给 0。
+  * Mach-O：解析器已实现，但**本机无 Mach-O 真实语料**，未经实测验证。
+
+────────────────────────────────────────────────────────────────────────
+质量门（改代码前先看这里）
+────────────────────────────────────────────────────────────────────────
+
+  python tools/check_all.py     # 一次跑完 7 道登记制护栏，各自还会跑 --selftest
+
+  每道护栏都要求**两向自证**：坏样本必须变红、好样本必须放行，并打印
+  机器可读的 `SELFTEST COUNTS {"bad": N, "good": M}`。只会在好天气下变绿的
+  门等于没有门；会**永远挂住**的门比没有门更糟 —— 所以每个子进程都带
+  `stdin=DEVNULL` 与墙钟超时。
+
+────────────────────────────────────────────────────────────────────────
+退出码（写进 CI 的契约）
+────────────────────────────────────────────────────────────────────────
+
+  0  = 正常完成
+  1  = 质量门禁未通过（--gate / --max-warnings / 契约问题 / 往返校验差异）
+  2  = 参数或配置文件错误；或影响门禁失败（--operator-impact-gate-fail）
+
+  说明：`--binary` / `--benchmark` 这两条分支会把自己的返回码直接透传出去
+  （0=成功 1=失败 2=参数/文件问题），与本表一致；`--binary` 指向不存在的文件
+  时**必须是非 0** —— 有回归测试盯着这一条。
+
+────────────────────────────────────────────────────────────────────────
+配置文件（--config）
+────────────────────────────────────────────────────────────────────────
+
+  所有命令行参数都可用**同名字段**写进 JSON（dir / output / mermaid / dot /
+  html / browse / json / lang / binary / encoding / exclude / file_graph …）。
+  **CLI 显式给出的值优先**，配置文件只补「你没显式指定」的那些 —— 所以
+  「配置文件当基线 + 命令行做本次覆盖」是受支持的主用法。
+  可照抄的样例：`analyzer_config.example.json`。
+
+────────────────────────────────────────────────────────────────────────
+中文与编码
+────────────────────────────────────────────────────────────────────────
+
+  * 目录名、文件名、注释中的中文均可正常处理（内部一律 Unicode）。
+  * .m 文件编码自动识别：UTF-8（含 BOM）→ GB18030 → GBK → Latin-1。
+  * 输出文件一律 UTF-8；Windows 控制台中文异常时执行 `chcp 65001`。
+
+仅依赖 Python 标准库。配套：matlabc_flow.py（流程编排）、matlabc_ask.py
+（问答式理解）、matlabc_mcp.py（MCP 服务，供 AI 宿主调用）。
 """
 
 import argparse
@@ -3937,6 +4023,15 @@ _PY36_RULES = (
     ("dataclass", "dataclasses 标准库", "3.7", "error",
      r"(?:^|\n)\s*(?:import\s+dataclasses|from\s+dataclasses\s+import)",
      "dataclasses 为 Python 3.7 标准库，3.6 需第三方 backport"),
+    # R62-R31f 补充：这条规则是**检查器自己的盲区**。实测本仓 tools/check_*.py
+    # 五个护栏文件都写了 `from __future__ import annotations`，而全仓门却报「通过」
+    # —— 因为原规则表里没有这一条。加进来之后它们会立刻变红并被逐个修掉。
+    # （Python 3.6 对未知 future 特性直接 SyntaxError，所以是 error 而非 warning。
+    #  规则只认顶格的 future 导入，避免把文档/字符串里的示例也算进来。）
+    ("future_annotations", "延迟注解求值", "3.7", "error",
+     r"(?:^|\n)\s*from\s+__future__\s+import\s+[^\n]*annotations",
+     "from __future__ import annotations 为 Python 3.7 语法；"
+     "3.6 报 SyntaxError: future feature annotations is not defined"),
     ("math_comb", "math.comb/prod/perm", "3.8", "error",
      r"math\.(?:comb|prod|perm)\s*\(",
      "math.comb/prod/perm 为 Python 3.8 新增；3.6 调用抛 AttributeError"),
@@ -14400,7 +14495,10 @@ def _get_git_diff_files(root, base="HEAD", staged=False):
             _cmd.insert(3, "--cached")
         if base:
             _cmd.append(base)
+        # R62-R31e：切 stdin（不继承调用方的管道，避免子进程读到无关字节 /
+        # 在永不 EOF 的管道上阻塞）+ 墙钟超时（git 不该挂，挂住就是红）。
         _p = subprocess.run(_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             stdin=subprocess.DEVNULL, timeout=60,
                              universal_newlines=True)
         if _p.returncode != 0:
             # 非 git 仓库（exit 128）或非法 base → 交回退逻辑
@@ -14483,6 +14581,116 @@ def _synthesize_big_repo(n, dst):
             fh.write("".join(_parts))
         _written += 1
     return _written
+
+
+def _load_binfmt():
+    """惰性导入 binfmt 包（与 matlabc.py 同级的独立子包）。
+
+    惰性导入的两个理由：
+      1) binfmt 只被 --binary 用到，不应增加主分析流水线的启动开销；
+      2) 若某个部署只拷贝了单文件 matlabc.py，也不会在 import 期崩溃 ——
+         只在真正使用 --binary 时才报错，且给出可操作的提示。
+    """
+    try:
+        import binfmt
+        return binfmt
+    except ImportError:
+        pass
+    _here = os.path.dirname(os.path.abspath(__file__))
+    if _here not in sys.path:
+        sys.path.insert(0, _here)
+    try:
+        import binfmt
+        return binfmt
+    except ImportError as e:
+        print("[ERROR] 无法导入 binfmt 包：%s" % e)
+        print("        --binary 需要仓库根目录下的 binfmt/ 子包与 matlabc.py 同级")
+        return None
+
+
+def _run_binary_analysis(args):
+    """R62-R31d：--binary 主流程，返回退出码。
+
+    退出码约定（与项目其它门一致）：0 成功；2 缺输入/不可读（不是 1，
+    以便与"分析出问题"区分开）。
+    """
+    binfmt = _load_binfmt()
+    if binfmt is None:
+        return 2
+    paths = [p.strip() for p in str(args.binary).split(",") if p.strip()]
+    if not paths:
+        print("[ERROR] --binary 需要至少一个文件路径")
+        return 2
+    cap_mib = getattr(args, "binfmt_scan_cap", 64)
+    scan_cap = None if not cap_mib or cap_mib < 0 else cap_mib * 1024 * 1024
+
+    reports = []
+    for p in paths:
+        if not os.path.isfile(p):
+            print("[ERROR] --binary 指向的文件不存在：%s" % p)
+            return 2
+        try:
+            rep = binfmt.parse(p, scan_cap=scan_cap)
+        except OSError as e:
+            print("[ERROR] 读取失败 %s：%s" % (p, e))
+            return 2
+        reports.append(rep)
+
+    for rep in reports:
+        print(binfmt.to_text(rep))
+
+    # R62-R31e：归属分析 —— 这是 binfmt 在本项目里的目的本身
+    if len(reports) > 1:
+        conf = binfmt.attribute.conflicts(reports)
+        print("")
+        print("=" * 78)
+        print("跨库符号冲突（同一导出名被多个二进制定义）：%d" % len(conf))
+        for c in conf[:20]:
+            print("  %-40s %s" % (c["name"][:40],
+                                  ", ".join(os.path.basename(o) for o in c["origins"])))
+        if len(conf) > 20:
+            print("  ... 另有 %d 条" % (len(conf) - 20))
+        md = binfmt.attribute.missing_dependencies(reports)
+        print("")
+        print("被引用但未在本次提供的依赖（提示你还想加哪些库）：%d" % len(md))
+        seen = set()
+        for m in md[:20]:
+            key = m["needs"].lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            print("  %-40s <- %s" % (m["needs"][:40],
+                                     os.path.basename(m["from"])))
+
+    sym_file = getattr(args, "binary_symbols", None)
+    if sym_file:
+        try:
+            names = binfmt.attribute.load_names_from(sym_file)
+        except (OSError, ValueError) as e:
+            print("[ERROR] --binary-symbols 读取失败：%s" % e)
+            return 2
+        if not names:
+            print("[WARN] --binary-symbols 里没有取到任何名字 —— "
+                  "空列表不等于「没有未解析」，请检查输入格式")
+        rows = binfmt.attribute.attribute_names(names, reports)
+        print("")
+        print("=" * 78)
+        print("未解析调用归属（待归因 %d 个名字）" % len(names))
+        print(binfmt.attribute.render_attribution_table(rows))
+
+    out = getattr(args, "binary_json", None)
+    if out:
+        import json as _json
+        payload = [r.to_dict() for r in reports]
+        # sort_keys=True：与 --reproducible 的纪律一致，跨进程逐字节可复现
+        txt = _json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
+        if out == "-":
+            print(txt)
+        else:
+            with io.open(out, "w", encoding="utf-8", newline="") as fh:
+                fh.write(txt)
+            print("[OK] JSON 已写入 %s" % out)
+    return 0
 
 
 def _run_benchmark(args):
@@ -28481,6 +28689,9 @@ def maybe_run_ai_cli(outdir, files, model, stats, checks_for_sarif, ai_mode):
              "--prompt-file", str(_md), "--task", "review",
              "--output", str(_resp)],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            # R62-R31e：切 stdin。紧邻上方刚用过 input() 读用户回答，
+            # ai_cli 子进程绝不能继承同一个输入句柄（会与交互提示抢字节）。
+            stdin=subprocess.DEVNULL,
             universal_newlines=True, timeout=900)
         if _r.returncode == 0:
             print("[OK] AI 审查完成，响应已写入：%s" % _resp)
@@ -28524,7 +28735,9 @@ def main(argv=None):
 
     ap = argparse.ArgumentParser(
         prog="matlabc.py",
-        description="MATLAB 代码结构梳理与分析工具（纯 Python，零依赖）",
+        description="代码结构梳理与静态分析（MATLAB / C / C++ 子集 / Python / "
+                    "JavaScript）+ 二进制与 GPU 内容分析（PE / ELF / Mach-O；"
+                    "CUDA / AMD HIP / Vulkan SPIR-V）。纯 Python，零依赖。",
         formatter_class=_SafeHelpFormatter,
         epilog=__doc__,
     )
@@ -28633,6 +28846,30 @@ def main(argv=None):
                          "py（Python 前端，P93）/ js（JavaScript 前端，P93）。"
                          "TypeScript / Rust / Go 等暂无前端：扫描到时会显式告警，"
                          "不会静默返回 0 结果")
+    ap.add_argument("--binary", metavar="FILE[,FILE...]",
+                    default=cfg.get("binary"),
+                    help="分析二进制文件（可逗号分隔多个），分析完即退出。"
+                         "能读：容器（PE .exe/.dll、ELF .so、Mach-O）、"
+                         "动态依赖（DT_NEEDED / 导入表）、导出符号、"
+                         "以及嵌在里面的 GPU 内容（CUDA fatbin/cubin、"
+                         "AMD HSA code object、Vulkan SPIR-V）。"
+                         "典型用途：源码侧有调用解析不出来时，拿库文件对一下 —— "
+                         "那是某个现成库的导出，还是我们真漏了？"
+                         "例：python matlabc.py --binary libfoo.so,bar.dll")
+    ap.add_argument("--binary-symbols", metavar="FILE",
+                    default=cfg.get("binary_symbols"),
+                    help="要和二进制对账的名字清单。可直接给纯文本（每行一个或"
+                         "逗号分隔），也可直接给 matlabc --json 的输出文件"
+                         "（自动取出其中的 unresolved 调用）。"
+                         "配合 --binary：逐个报出它归到哪个库 / 哪个 GPU kernel，"
+                         "或标记 missing（= 确实没有来源）。")
+    ap.add_argument("--binary-json", metavar="FILE", default=cfg.get("binary_json"),
+                    help="把 --binary 的结果写成 JSON；FILE 写 - 表示输出到 stdout")
+    ap.add_argument("--binfmt-scan-cap", type=int,
+                    default=cfg.get("binfmt_scan_cap", 64),
+                    help="单个文件里 GPU 内容的扫描上限（单位 MiB，0=不限，默认 64）。"
+                         "真实的 GPU 库动辄几百 MB，设上限避免命令行卡很久。"
+                         "一旦被截断，报告里会显式标注 [TRUNCATED]，不会假装扫全了")
     ap.add_argument("--mixed", action="store_true", default=cfg.get("mixed", False),
                     help="混合分析：同时分析 .m 与 .c/.h，MATLAB 外部调用命中 C 函数时"
                          "建立跨语言 MEX 桥接（P87）")
@@ -28982,6 +29219,12 @@ def main(argv=None):
     # 在此归一化，使后续所有 `args.lang in (...)` 分支无需再各处加 cpp。
     if getattr(args, "lang", None) == "cpp":
         args.lang = "c"
+
+    # R62-R31d：--binary 二进制分析短路。与 --benchmark 同属「单次任务」型开关：
+    # 不进源码分析流水线，直接产出报告后退出。
+    if getattr(args, "binary", None):
+        _rc = _run_binary_analysis(args)
+        sys.exit(_rc)
 
     # P210-2：--benchmark 大仓库性能基准短路——合成仓库 + 完整渲染 + 计时断言，
     # 验证 P203 --max-nodes 截断确实生效且构建时延在 CI 安全上限内，随后退出。

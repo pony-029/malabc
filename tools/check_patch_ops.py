@@ -10,21 +10,41 @@
 本护栏把「修复点」变成可静态求值的判据，共三条：
     G1 生产侧发出的算子集合 ⊆ {del, ins_before}；显式禁止遗留 "ins"。
     G2 渲染侧对 `_new[_idx]` 的赋值只允许 `None`（del 标记），
-      不得出现任何「覆盖为字符串/表达式」的形式。
+       不得出现任何「覆盖为字符串/表达式」的形式。
     G3 渲染侧必须存在对未知算子的**显式失败**分支（raise），
        否则未知算子会被静默忽略或静默覆盖。
+
+一图看懂（一次真实事故的完整链条）：
+
+    生产侧 _build_apply_patch
+        │  发出算子
+        ├── "del"        → 删掉死代码行              ✓ 安全
+        ├── "ins_before" → 在目标行**之前插入**       ✓ 安全
+        └── "ins"        → 渲染侧 _new[_idx] = payload
+                           └─ **覆盖目标行**   ✗ 整条源码语句被删除！
+                                  │
+                                  ▼
+                           verify 门只比对告警条数（1 → 0）
+                                  │
+                                  ▼
+                               报 PASS —— 源码被删而无人知
+
+    G1 拦「发得出"ins"」；G2 拦「把覆盖写成别的样子」；G3 拦「未知算子被静默吞掉」。
+    三道一起，才能把这个缺陷锁死，只拦一道会从旁边绕过去。
 
 用法：
     python tools/check_patch_ops.py            # 检查仓库，0=干净 1=有违规 2=缺输入
     python tools/check_patch_ops.py --selftest # 两向自证
 """
-from __future__ import annotations
-
 import argparse
 import io
 import os
 import re
 import sys
+# R62-R31f：本文件此前用了 `list[str]` 标注 —— 那是 **Python 3.9** 语法
+# （3.6 能解析、运行期 TypeError），撞上本仓自己的 3.6.5 兼容门。
+# 统一改用 typing 的 List，3.6 起都可用。
+from typing import List
 
 PROD_RE = re.compile(
     r"_edits\.setdefault\([^)]*\)\.append\(\s*\(\s*[\"']([A-Za-z_]+)[\"']")
@@ -47,9 +67,9 @@ def extract_function(src: str, name: str) -> str:
     return src[m.start():nxt.start() if nxt else len(src)]
 
 
-def audit_source(src: str) -> list[str]:
+def audit_source(src: str) -> List[str]:
     """返回问题列表（空 = 干净）。纯函数，便于自证与夹具注入。"""
-    probs: list[str] = []
+    probs = []  # type: List[str]
     body = extract_function(src, "_build_apply_patch")
     if not body:
         return ["G0 找不到 _build_apply_patch（缺输入，不得视为通过）"]

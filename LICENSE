@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 pony-029
+Copyright (c) 2026 pony-029 (malabc / matlabc — https://github.com/pony-029/malabc)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +19,59 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+================================================================================
+Appendix — notices specific to this project
+Informational only. This appendix does NOT modify the MIT terms above, and it
+grants no rights and imposes no conditions beyond them. It exists so that the
+scope of the grant, and what this repository does and does not contain, are
+stated in the same file as the licence itself.
+================================================================================
+
+1. SCOPE OF THE GRANT
+   The MIT terms above apply to every file in this repository authored by the
+   copyright holder, including but not limited to:
+     matlabc.py, matlabc_boot.py, matlabc_ask.py, matlabc_flow.py, matlabc_mcp.py,
+     ai_cli.py, gui.py, the binfmt/ package, the renderers/ package, the tools/
+     check_*.py gates, the tests/ suite, the docs/ tree and the ci-examples/
+     templates — unless a file or directory carries its own licence header, in
+     which case that header governs for that file.
+
+   Two files describe the same grant:
+     * LICENSE     — English original. The only legally binding text.
+     * LICENSE_CN  — unofficial Chinese translation, provided for convenience.
+   Wherever the two disagree, the English text controls.
+
+2. NO BUNDLED THIRD-PARTY RUNTIME DEPENDENCIES
+   This project is deliberately standard-library-only: it vendors, embeds and
+   requires no third-party package at runtime. There is consequently no bundled
+   dependency whose licence needs to be reconciled here. Optional integrations
+   are executed as separate, user-initiated processes using the user's own
+   credentials and network access (for example, directing ai_cli.py at an LLM
+   provider, or running git / gh for the patch and PR workflow); no vendor code
+   is redistributed by this repository.
+
+3. TEST CORPORA ARE NOT REDISTRIBUTED
+   The binary and GPU parsers under binfmt/ are validated against real-world
+   artefacts — vendor BLAS libraries, HIP/ROCm runtime libraries and Vulkan
+   drivers, in PE, ELF and container forms. Those files were used locally and
+   read-only, purely as *test input*; they are NOT part of this repository and
+   are NOT covered by the grant above. Re-running those checks requires
+   obtaining such artefacts under your own vendor terms. Every fixture that IS
+   shipped with this repository is synthetic and generated at test time by
+   tools/check_binfmt_fixtures.py.
+
+4. UPSTREAM PROJECTS REFERENCED, NOT VENDORED
+   * morluto/rea (MIT) is studied as a design reference for agent/MCP
+     federation. No code from it is included here, and its licence neither
+     extends to nor is affected by this repository.
+   * MATLAB, Simulink, CUDA, ROCm/HIP and Vulkan are trademarks of their
+     respective owners. This project reads *files produced by* those toolchains.
+     It contains no vendor code and claims no rights in them.
+
+5. NO WARRANTY FOR ANALYSIS RESULTS
+   The analysis performed by this software is heuristic. Its findings are
+   evidence intended for human review, not a certification of correctness,
+   safety or fitness for any purpose. The specific, measured boundaries of what
+   each capability can and cannot detect are documented in the "honest limits"
+   sections of README.md and in the reports under docs/analysis/.

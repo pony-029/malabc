@@ -4,7 +4,7 @@
 
 # malabc
 
-**MATLAB / Simulink 静态分析与确定性自动修复引擎（`matlabc`）**
+**静态分析与确定性自动修复引擎 —— MATLAB / Simulink、C·C++（子集）、Python、JavaScript，以及 PE / ELF / Mach-O 二进制与其中内嵌的 CUDA · ROCm · Vulkan GPU 内容**
 
 把"读代码"变成"工作台"：它不只是梳理调用关系，更告诉你**风险在哪、有多严重、怎么改，
 以及能否一键生成修复补丁 / 测试桩 / PR 草稿**，并把每一项结论都接进 **CI 质量门禁**。
@@ -14,13 +14,15 @@
 ![Python](https://img.shields.io/badge/Python-3.6.5%2B-3776AB?logo=python&logoColor=white)
 ![依赖](https://img.shields.io/badge/dependencies-0%20(stdlib%20only)-brightgreen)
 ![语言](https://img.shields.io/badge/languages-MATLAB%20%7C%20C%20%7C%20Python%20%7C%20JS-blue)
+![二进制](https://img.shields.io/badge/binaries-PE%20%7C%20ELF%20%7C%20Mach--O-blueviolet)
+![GPU](https://img.shields.io/badge/GPU-CUDA%20%7C%20ROCm%20%7C%20Vulkan-orange)
 ![平台](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 ![离线](https://img.shields.io/badge/offline-first-yes-orange)
 ![许可](https://img.shields.io/badge/license-MIT-green)
 ![CI](https://github.com/pony-029/malabc/actions/workflows/ci.yml/badge.svg)
 ![版本](https://img.shields.io/badge/version-1.16.67-informational)
 
-[快速开始](#快速开始) · [核心能力](#核心能力) · [架构](#架构) · [命令速查](#命令速查) · [CI 门禁](#ci-质量门禁) · [English](README.md) · [许可证](#许可证)
+[快速开始](#快速开始) · [核心能力](#核心能力) · [架构](#架构) · [二进制与 GPU](#二进制与-gpu-分析---binary) · [命令速查](#命令速查) · [CI 门禁](#ci-质量门禁) · [自验证质量门](#自验证质量门quality-gates) · [English](README.md) · [许可证](#许可证)
 
 </div>
 
@@ -35,6 +37,7 @@
 | "这代码里有没有隐藏风险？" | 跑 MATLAB 才能发现 | 未初始化 / 类型不匹配 / 死代码 / 维度不匹配 / 污点，全部静态可得 |
 | "怎么改才安全？" | 手改，容易引入新 bug | `--gen-apply-patch` 生成确定性、自校验补丁 |
 | "怎么阻止腐烂？" | 靠评审自觉 | SARIF + 退出码 + 趋势基线，CI 强制卡点 |
+| "这个调用解析不出来 —— 是我们写错了，还是它本就是库函数？" | 靠猜，或手动翻磁盘 | `--binary` + `--binary-symbols`：每个未解析名字都被归到某个库、某个 GPU kernel，或标记 `missing` |
 
 > **零依赖、无需 MATLAB、默认离线**：只用 Python 标准库；不依赖 MATLAB / Octave，不发起任何网络请求
 > （离线优先，产物中不含 CDN 引用）——完全可在内网使用。
@@ -77,6 +80,14 @@ mindmap
       退出码门禁
       趋势/基线比对
       一键 CI 模板
+    二进制与 GPU
+      PE / ELF / Mach-O 容器
+      导入表 / DT_NEEDED
+      导出符号（dynsym）
+      CUDA fatbin → cubin 算子名
+      AMD HSA code object
+      Vulkan SPIR-V entry point
+      源码侧归因
 ```
 
 ### 多语言支持
@@ -90,6 +101,79 @@ mindmap
 | **混合（MEX 桥接）** | `--mixed` | MATLAB ↔ C 跨语言调用边 |
 
 **语言支持边界（显式，不静默）**：`--lang` 只覆盖 MATLAB / C·C++ / Python / JavaScript。TypeScript、Rust、Go、Java、Kotlin、C#、Swift、Scala、Ruby、PHP **没有前端**：当目录里存在这些文件、而本次请求的语言一个源文件都没找到时，CLI 会向 stderr 打印 `[warn]` 行，点名语言与被跳过的文件，而不是悄悄给出「0 文件 / 0 函数」。跨语言算子只有在**确有代码路径会产出**时才会出现在算子目录里；刻意不实现的算子登记在 `_UNIMPLEMENTED_KINDS` 并写明原因，`tools/check_operator_impl.py` 会在两者不一致时让构建失败。
+
+### 二进制与 GPU 分析（`--binary`）
+
+源码侧分析能告诉你**有个调用没解析出来**，却告诉你**为什么**。`--binary` 补上这一环：
+把它指向你代码实际链接的那些库，每个没解析出来的名字都会得到归属。
+
+```mermaid
+flowchart LR
+    subgraph SRC["源码侧"]
+        S1["matlabc --json out.json<br/>未解析调用点"]
+    end
+    subgraph BIN["二进制侧"]
+        B1["libfoo.so / bar.dll<br/>PE · ELF · Mach-O"]
+        B2["动态依赖<br/>DT_NEEDED / 导入表"]
+        B3["导出符号<br/>dynsym / 导出目录"]
+        B4["内嵌 GPU 内容<br/>CUDA fatbin · HSA code object · SPIR-V"]
+    end
+    S1 --> AT["归因引擎<br/>binfmt/attribute.py"]
+    B2 --> AT
+    B3 --> AT
+    B4 --> AT
+    B1 --> B2
+    B1 --> B3
+    B1 --> B4
+    AT --> R1["library<br/>由 libfoo.so 解释"]
+    AT --> R2["gpu_kernel<br/>它是 CUDA / AMD 算子"]
+    AT --> R3["missing<br/>确实没有来源"]
+```
+
+```bash
+# 这个库依赖什么、导出了什么？
+python matlabc.py --binary libfoo.so
+
+# 让源码侧和二进制侧回答同一个问题
+python matlabc.py myproj/ --json out.json                              # ① 找出未解析调用
+python matlabc.py --binary libcublas.so.12 --binary-symbols out.json   # ② 给它们归属
+
+# 机器可读，便于接进你自己的流水线
+python matlabc.py --binary a.dll,b.so --binary-json -
+```
+
+| 后端 | 它藏在哪 | 怎么找 | 能提出什么 |
+| --- | --- | --- | --- |
+| **CUDA** | PE `.nv_fatb` · ELF `.nv_fatbin` · PE/ELF `.nvFatBi` / `.nvFatBin` | fatbin 魔数 `0xba55ed50`；再经 cubin 的 `.text._Z…` **节名表**定位 | kernel 名 + 可反解（demangle）形式、SM 目标、code object 计数 |
+| **ROCm / HIP** | PE/ELF `.hip_fat` / `.hipFatBin` | HSA code object 头（`e_ident[7]` = 64、`e_machine` = 224） | 可信 code object 计数（kernel 名**不猜**） |
+| **Vulkan** | **没有专用段** —— SPIR-V 躲在 `.rdata` 里 | 裸魔数扫描 `0x03022307`（解 `OpEntryPoint`） | entry point 名、模块数 |
+| **PTX** | 同一个 fatbin 段内 | `.entry <名字>(`，**必须**后随左括号 | **通常提不到东西** —— 见下方「诚实的边界」 |
+
+> **实测记录 —— 8 字节陷阱。** PE 的段名被硬截断到 8 字节。同一个 CUDA 段在 ELF 里叫
+> `.nv_fatbin`，在 PE 里叫 `.nv_fatb`；`.nvFatBin` 变成 `.nvFatBi`；AMD 的 `.hip_fatbin`
+> 变成 `.hip_fat`。只认完整拼写的匹配器，会在**每一个** Windows 二进制上报告「零个 GPU
+> 内容」—— 静默地、不报错地。现在两种拼写都匹配。
+
+> **实测记录 —— cubin 不是标准 ELF。** cubin 的 `e_type = 0x8000`、`e_machine = 0x100`，
+> `e_shoff` 落在 `0xCAFE…` 哨兵值上。唯一可信的判别字段是 `e_ident[7]`
+> （`ELFOSABI_CUDA` = 51）与 `e_ident[8]`。数 `\x7fELF` 出现次数只是**便宜**信号，
+> 它与**严格**信号被放在**不同字段**里（`suspect_code_objects` 与 `confidence_code_objects`），
+> 二者不可能被混淆。
+
+**诚实的边界（都是实测出来的，不是猜的）。**
+
+- **PTX 基本提不出 kernel 名。** 要求 `.entry <名字>(` 后随左括号，在一份 692 MB 的真实驱动
+  发行包上只剩约 2 个可用名字；其余 `.entry ` 命中都是二进制元数据。真正有效的是 cubin 里的
+  **`.text._Z…` 节名表** —— 实测在一个厂商 BLAS 库里提出 **171** 个独立 kernel 名、另一个
+  库 **59** 个，且 100% 可反解。
+- **Mach-O 已实现但未经实测。** 开发机上没有 Mach-O 样本；解析器会把这件事写进报告的
+  `notes`，而不是假装验证过。
+- **「不可解析」是一等状态。** 提不出内容的 GPU 段会报成 `NOT-PARSEABLE` **并附书面原因**，
+  绝不静默给 0 个 kernel。
+- **截断一定可见。** `--binfmt-scan-cap`（默认 64 MiB）限制扫描量；一旦截断，报告打印
+  `[TRUNCATED]`。
+- **运行期绑定不在范围内。** 不追踪 `dlopen` / `LoadLibrary` / `dlsym` / `LD_PRELOAD`，
+  也不解析 `Makefile` / `CMakeLists.txt` 的链接意图（`-lfoo` 只作为候选名提示）。
 
 ### 静态检查规则
 
@@ -168,6 +252,18 @@ malabc/
 ├─ matlabc_ask.py      # 问答式代码理解（BM25 检索 + 意图识别 + 大模型）
 ├─ matlabc_flow.py     # AI 修复闭环编排 review→fix→apply→verify→report
 ├─ matlabc_mcp.py      # MCP 服务器（把 matlabc 作为工具暴露给 AI Agent）
+├─ binfmt/             # 二进制与 GPU 容器分析（零依赖）
+│  ├─ model.py         #   统一 IR：Section / Symbol / Dependency / GpuBlob / BinaryReport
+│  ├─ pe.py  elf.py    #   PE32+ 与 ELF64/32 流式解析（含 CUDA/AMDGPU 判别）
+│  ├─ macho.py         #   Mach-O（⚠ 已实现但未经实测 —— 开发机无样本）
+│  ├─ gpu.py           #   CUDA fatbin/cubin · HSA code object · SPIR-V entry point
+│  ├─ attribute.py     #   归因：未解析名字 → library / gpu_kernel / missing
+│  ├─ buildsys.py      #   Makefile / CMakeLists.txt 链接意图提示
+│  └─ report.py        #   文本报告（绝不隐藏负面状态）
+├─ tools/              # 自验证静态护栏（见「自验证质量门」一节）
+│  ├─ check_all.py     #   一键跑完全部 check_*.py 及各自的 --selftest
+│  └─ check_*.py       #   文档开关 · 算子实装 · 补丁算子 · 3.6 兼容 ·
+│                      #   帮助契约 · binfmt 夹具 · 子进程卫生
 ├─ ai_cli.py           # 多厂商大模型接入（离线回显 / 在线回答，优雅降级）
 ├─ gui.py              # 零依赖 tkinter 桌面 GUI
 ├─ renderers/          # 报告与可视化渲染器（report/callgraph/hotspot/sarif/snapshot...）
@@ -267,6 +363,7 @@ python gui.py --selftest # 无头自测
 | 技术债 / 趋势 | `--debt` / `--trend` / `--gate` | 质量度量与趋势门禁 |
 | 修复闭环 | `--gen-pr` / `--gen-apply-patch` / `--gen-tests-risk` | 修复落地、测试桩骨架 |
 | 重复代码治理 | `--dup-*`（baseline / patch / self-verify / gate） | 复制粘贴代码异味治理 |
+| 二进制 / GPU 报告 | `--binary`（+`--binary-symbols` / `--binary-json` / `--binfmt-scan-cap`） | 动态依赖、导出符号、CUDA/ROCm/Vulkan 内容，以及源码侧归因 |
 | 差异报告 | `--diff` / `--diff-html` | 两份快照的全维度对比 |
 
 ---
@@ -305,6 +402,13 @@ python matlabc.py myproj/ --checks all --sarif report.sarif \
 
 # 跨文件污点扫描
 python matlabc.py myproj/ --checks tainted_sink
+
+# 二进制分析：动态依赖、导出符号、GPU 内容
+python matlabc.py --binary libfoo.so
+
+# 未解析调用的归因：源码侧 ↔ 二进制侧
+python matlabc.py myproj/ --json out.json
+python matlabc.py --binary libcublas.so.12 --binary-symbols out.json
 
 # 生成确定性、自校验修复补丁
 python matlabc flow myproj --auto-apply --gen-apply-patch
@@ -350,6 +454,64 @@ Agent 调用示例（伪代码）：
 
 ---
 
+## 自验证质量门（Quality Gates）
+
+项目对自己能力的每一项宣称，都由**可执行的护栏**兜底。一条命令全跑：
+
+```bash
+python tools/check_all.py        # 跑完 tools/check_*.py 全部护栏 + 各自的 --selftest
+```
+
+| 护栏 | 它拦住什么 |
+| --- | --- |
+| `check_doc_flags.py` | 文档**或帮助正文**里宣传了一个**其实不存在**的命令行开关（真发生过：README 写过 `--check tainted_sink`，而 argparse 会以**歧义前缀**拒绝它） |
+| `check_operator_impl.py` | 「幻影算子」：出现在算子目录里、却没有任何代码路径会产出的检查规则 |
+| `check_patch_ops.py` | 会**覆盖**目标行（而不是插在其前）的补丁算子 —— 那等于静默删源码 |
+| `check_binfmt_fixtures.py` | 二进制 / GPU 解析器回归 —— 合成 PE/ELF 夹具 + 契约断言 C1–C6 |
+| `check_py36_clean.py` | 本仓违背**自己**的 Python 3.6.5 承诺（已经发生过：`list[str]` 与 `from __future__ import annotations` 都曾提交进来） |
+| `check_subprocess_hygiene.py` | 任何「捕获输出却继承 stdin」或「可能永远挂住」的子进程调用 |
+| `check_help_contract.py` | 代码里有、`--help` 里没有的退出码（或反之）；以及帮助丢了用法示例 / 图示 / 退出码段 |
+
+让这些门可信而不是装饰的，是两条纪律：
+
+1. **每道门都要**两向**自证。** `--selftest` 会造出**必须变红**的坏样本，也造出**必须保持
+   绿**的好样本，然后打印一行机器可读的 `SELFTEST COUNTS {"bad": N, "good": M}`，由回归
+   测试用**下界**断言 —— 悄悄把样本集缩小，构建就会失败。
+2. **会挂死的门比没有门更糟。** `check_all.py` 给每个子进程都设墙钟超时，**超时即判红**。
+   这条来自一个真缺陷：某道护栏以「捕获输出 + **继承 stdin**」的方式跑 `<脚本> --help`，
+   而四个脚本里最后一个正是**读 stdin 的 stdio MCP 服务**，于是它一直阻塞到自己的 180 秒
+   内建超时才返回 —— 护栏实测耗时约 181 秒，被外层 `timeout 90` 杀掉，表现出来就是
+   「无缘无故卡住」。把 stdin 切断后，同一道护栏降到 **3.4 秒**，并由
+   `check_subprocess_hygiene.py` 把这条教训在全仓固化下来。
+
+其中两道门把「宣称」接到了一个**可执行的对手方**，而不是接到风格规则上：
+`check_py36_clean.py` 拿本仓源码去喂本仓自己的 3.6.5 门；
+`check_help_contract.py` 把帮助里写的退出码与源码**真能返回**的退出码互相核对。
+两者都是**双向**的：一条陈旧的登记和一条缺失的登记会同样响亮地失败 ——
+因为只会增长的登记表等于没有登记表。
+
+---
+
+## 内置帮助（每个入口都图文并茂）
+
+每个入口脚本的模块 docstring 就是它 `--help` 的正文，都按同一套骨架写：
+**先说它解决什么痛点 → 一张流程/时序图 → 可直接复制的示例 → 退出码 → 诚实边界**。
+`--help` 立即返回，不做任何副作用（不会开窗口、不会跑分析、不会挂住）。
+
+```bash
+python matlabc.py --help          # 主分析器：任务导向命令表 + 流水线图 + 诚实的边界
+python matlabc_flow.py --help     # 修复闭环：五站点流水线图 + 五条可复制配方
+python matlabc_ask.py --help      # 问答式理解：事实底座如何装配成答案
+python matlabc_mcp.py --help      # MCP 服务：五个工具 + 「为什么 stdin 必须切断」
+python gui.py --help              # 图形界面：表单每一格等价于哪个命令行开关
+python tools/check_all.py --help  # 护栏总纲：7 道门各自拦什么
+```
+
+这三条不是口头承诺，而是被 `check_help_contract.py` 与 `check_doc_flags.py`
+同时盯着的：示例里的开关必须真实存在，退出码必须与源码一致。
+
+---
+
 ## 文档
 
 - [docs/matlabc_USAGE.md](docs/matlabc_USAGE.md) — 完整命令行用法参考
@@ -358,6 +520,9 @@ Agent 调用示例（伪代码）：
 - [docs/matlabc_DELIVERY_REPORT.md](docs/matlabc_DELIVERY_REPORT.md) — 交付 / 打包说明
 - [docs/matlabc_STRUCTURE.md](docs/matlabc_STRUCTURE.md) — 代码结构总览
 - [docs/matlabc_AI_ROADMAP.md](docs/matlabc_AI_ROADMAP.md) — AI 演进路线图
+- [docs/analysis/](docs/analysis/) — 深度分析报告（六顶思考帽复盘、方案对比）
+- [docs/SUPERPOWER_REVIEW_R31.md](docs/SUPERPOWER_REVIEW_R31.md) — 逐轮复盘：二进制/GPU 接入、子进程卫生、以及那道会挂死的门
+- [docs/GITHUB_REPO_ABOUT.md](docs/GITHUB_REPO_ABOUT.md) — 可直接粘贴的 GitHub 仓库 About 面板文案（简介 / 网站 / 主题标签）
 
 ---
 

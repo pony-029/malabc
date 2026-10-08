@@ -15672,3 +15672,239 @@ def test_r30b_check_all_selftest_is_two_way():
         assert bad == 0 and good >= 5, (bad, good)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+# ======================================================================
+# superpower 31 轮回归：二进制/GPU 接入 · 子进程卫生 · 护栏不许挂死
+# （R62-R31a..R31e；每一条都对应一个**实测抓到的真缺陷**或一个新能力）
+# ======================================================================
+
+_R31_TOOLS = os.path.join(ROOT, "tools")
+
+
+def _r31_run(argv, timeout=180):
+    """跑子进程：**必须**切 stdin + 带超时 —— 这两个参数就是本轮教训本身。"""
+    return subprocess.run([_PY] + list(argv), cwd=ROOT,
+                          stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                          stderr=subprocess.STDOUT, timeout=timeout)
+
+
+def test_r31_doc_flags_guard_returns_promptly():
+    """R62-R31e 真缺陷回归：文档开关护栏**不许挂死**。
+
+    旧实现用 `subprocess.run(capture_output=True)` 让 `matlabc_mcp.py --help`
+    在继承来的、永不 EOF 的 stdin 上等满它 180s 的内建超时；护栏总耗时约
+    181s，被外部 `timeout 90` 杀掉（rc=124），看起来像「无缘无故卡住」。
+    切断 stdin 后实测 3.4s。这里用墙钟上界锁死（60s ≈ 实测的 17 倍余量）：
+    一旦回归立刻变红，而不是把 CI 拖成永远等。
+    """
+    import time as _t
+    t0 = _t.time()
+    r = _r31_run([os.path.join("tools", "check_doc_flags.py")], timeout=120)
+    dt = _t.time() - t0
+    assert r.returncode == 0, r.stdout.decode("utf-8", "replace")[:600]
+    assert dt < 60.0, ("护栏耗时 %.1fs（上界 60s）—— stdin 继承或缺超时回归" % dt)
+
+
+def test_r31_stdio_server_help_needs_devnull_stdin():
+    """`matlabc_mcp.py` 是 stdio JSON-RPC server：`--help` 要切断 stdin 才返回。
+
+    它也是 `NO_HELP_SCRIPTS` 登记表里唯一的成员 —— 登记必须**可证伪**
+    （rc=0 且输出为空），否则这张表就是「脚本坏掉也照样洗白」的后门。
+    """
+    import time as _t
+    p = os.path.join(ROOT, "matlabc_mcp.py")
+    t0 = _t.time()
+    r = subprocess.run([_PY, p, "--help"], stdin=subprocess.DEVNULL,
+                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                       timeout=60)
+    assert r.returncode == 0, r.stdout.decode("utf-8", "replace")[:400]
+    assert _t.time() - t0 < 30.0
+    sys.path.insert(0, _R31_TOOLS)
+    import check_doc_flags as _cdf
+    assert "matlabc_mcp.py" in _cdf.NO_HELP_SCRIPTS
+    assert _cdf._blanks(p) is True, "登记失效：它不是「rc=0 且无输出」"
+    assert _cdf._help_options(p) is None, "它不该有可解析 usage"
+
+
+def test_r31_subprocess_hygiene_guard_two_way():
+    """子进程卫生护栏：本仓全绿 + 自证双向（坏样本红、好样本过）。"""
+    guard = os.path.join("tools", "check_subprocess_hygiene.py")
+    r = _r31_run([guard])
+    assert r.returncode == 0, r.stdout.decode("utf-8", "replace")[:800]
+    s = _r31_run([guard, "--selftest"])
+    out = s.stdout.decode("utf-8", "replace")
+    assert s.returncode == 0, out[:800]
+    m = re.search(r'SELFTEST COUNTS \{"bad": (\d+), "good": (\d+)\}', out)
+    assert m, ("自证计数必须机器可读，实际输出：%s" % out[:500])
+    assert int(m.group(1)) >= 6, "反例数退化（下界 6）：%s" % m.group(1)
+    assert int(m.group(2)) >= 3, "正例数退化（下界 3）：%s" % m.group(2)
+    assert "PASSED" in out, out[:400]
+
+
+def test_r31_no_capture_without_stdin_independent_recheck():
+    """独立复核（不调用护栏实现）：运行时脚本里不许「捕获输出却继承 stdin」。
+
+    与护栏用**两套代码**看同一件事 —— 护栏自己被改错时，
+    这条测试仍能发现「静默继承 stdin」回来了。
+    """
+    import ast as _ast
+    offenders = []
+    for fn in ("matlabc.py", "matlabc_flow.py", "matlabc_ask.py",
+               "matlabc_mcp.py", "agent_loop.py", "gui.py"):
+        p = os.path.join(ROOT, fn)
+        if not os.path.exists(p):
+            continue
+        with open(p, "r", encoding="utf-8", errors="replace") as fh:
+            tree = _ast.parse(fh.read())
+        for n in _ast.walk(tree):
+            if not isinstance(n, _ast.Call):
+                continue
+            f = n.func
+            if not (isinstance(f, _ast.Attribute)
+                    and isinstance(f.value, _ast.Name)
+                    and f.value.id == "subprocess"):
+                continue
+            kw = {k.arg: k.value for k in n.keywords if k.arg}
+            cap = any("PIPE" in _ast.unparse(kw[k])
+                      for k in ("stdout", "stderr") if k in kw)
+            if cap and "stdin" not in kw and not any(
+                    k.arg is None for k in n.keywords):
+                offenders.append("%s:%d subprocess.%s" % (fn, n.lineno, f.attr))
+    assert not offenders, "捕获输出却继承 stdin：%s" % offenders
+
+
+def test_r31_binary_cli_end_to_end_and_attribution():
+    """ 端到端：能跑通、导出/依赖可见、归因表能区分 library 与 missing。"""
+    import importlib
+    sys.path.insert(0, _R31_TOOLS)
+    fx = importlib.import_module("check_binfmt_fixtures")
+    tmp = tempfile.mkdtemp(prefix="_t_r31bin_")
+    try:
+        lib = os.path.join(tmp, "libprobe.dll")
+        fx._make_pe(lib, sections=[(".text", bytes(64))],
+                    imports=["kernel32.dll"],
+                    exports=["cublasSgemm", "my_helper"])
+        r = _r31_run(["matlabc.py", "--binary", lib])
+        out = r.stdout.decode("utf-8", "replace")
+        assert r.returncode == 0, out[:600]
+        assert "cublasSgemm" in out and "kernel32.dll" in out, out[:600]
+
+        names = os.path.join(tmp, "names.txt")
+        with open(names, "w", encoding="utf-8") as fh:
+            # 两个名字：一个能对上库导出，一个故意不存在（考验 missing 判据）。
+            # 用三引号写，避免在测试源码里出现转义序列。
+            fh.write("""cublasSgemm
+nope_missing
+""")
+        r2 = _r31_run(["matlabc.py", "--binary", lib,
+                       "--binary-symbols", names])
+        o2 = r2.stdout.decode("utf-8", "replace")
+        assert r2.returncode == 0, o2[:600]
+        assert "library" in o2 and "missing" in o2, o2[:600]
+        assert "attribution summary" in o2, o2[:600]
+
+        jp = os.path.join(tmp, "b.json")
+        r3 = _r31_run(["matlabc.py", "--binary", lib, "--binary-json", jp])
+        assert r3.returncode == 0, r3.stdout.decode("utf-8", "replace")[:600]
+        with open(jp, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        assert isinstance(data, list) and data, data
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r31_binary_cli_missing_file_is_red():
+    """缺输入必须能红：`--binary` 指向不存在的文件 → rc=2（不是 0）。"""
+    r = _r31_run(["matlabc.py", "--binary",
+                  os.path.join(ROOT, "no_such_lib_xyz.so")])
+    assert r.returncode == 2, "缺文件竟返回 rc=%s" % r.returncode
+    assert b"does not exist" in r.stdout or b"--binary" in r.stdout, r.stdout[:400]
+
+
+# ===========================================================================
+# R32：帮助的人性化/图文并茂 + 「帮助不许说谎」装置化
+#
+# 三条回归各自对应本轮修掉/建立的一个事实：
+#   1. `gui.py --help` 过去会走「启动 GUI」分支（rc=0 且零输出）；
+#   2. `check_all.py --help` 过去会真的跑完全套护栏（≈30s）；
+#   3. 新增的退出码契约护栏必须两向自证 —— 而它首版正反例写反过。
+# ===========================================================================
+def test_r32_entry_help_returns_promptly_without_side_effects():
+    """每个入口的 `--help` 都必须**立即返回**且给出可读输出（不做副作用）。
+
+    真缺陷背景：`gui.py --help` 过去落到「启动 GUI」路径 —— rc=0、stdout **为空**，
+    等于「问帮助得到沉默」；`tools/check_all.py --help` 则会把整套护栏跑一遍（≈30s）。
+    两者都在这条测试的墙钟上界与输出非空断言下无处藏身。
+    """
+    expect = ("matlabc.py", "matlabc_flow.py", "matlabc_ask.py", "gui.py")
+    for name in expect:
+        r = _r31_run([name, "--help"], timeout=60)
+        out = r.stdout.decode("utf-8", "replace")
+        assert r.returncode == 0, "%s --help rc=%s\n%s" % (name, r.returncode,
+                                                           out[:400])
+        assert len(out.strip()) > 200, \
+            "%s --help 只输出 %d 字节（帮助为空 = 静默失败）" % (name, len(out))
+        assert "--help" in out or "usage:" in out, out[:300]
+
+    # check_all.py 的 --help 必须**不跑护栏**：它的输出里不应出现任何护栏的 OK 行。
+    r = _r31_run(["tools/check_all.py", "--help"], timeout=60)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[:400]
+    assert "check_doc_flags: OK" not in out and "check_py36_clean: OK" not in out, \
+        "check_all.py --help 竟然把护栏跑了一遍（问帮助不该有副作用）：\n%s" % out[:600]
+
+
+def test_r32_help_contract_guard_is_two_way():
+    """退出码契约护栏必须两向自证：坏样本要红、好样本要过，并给出计数行。
+
+    这道护栏把「帮助里写的退出码」与「源码真能返回的退出码」互相核对。
+    它首版 `_selftest` 把「条件成立」当成了「判据抓到」，正反例整片颠倒 ——
+    所以这里同时断言**计数下界**，让「样本被悄悄删掉」也会红。
+    """
+    r = _r31_run(["tools/check_help_contract.py"], timeout=120)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, "真实仓库应一致，实际 rc=%s\n%s" % (r.returncode,
+                                                                  out[:600])
+
+    r = _r31_run(["tools/check_help_contract.py", "--selftest"], timeout=180)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, "自证未通过：\n%s" % out[-1200:]
+    assert "SELFTEST PASSED" in out, out[-600:]
+    m = re.search(r'SELFTEST COUNTS \{"bad":\s*(\d+),\s*"good":\s*(\d+)\}', out)
+    assert m, "没有机器可读计数行：\n%s" % out[-600:]
+    bad, good = int(m.group(1)), int(m.group(2))
+    # 下界断言：删样本会让这里红，而不是让护栏悄悄变宽松。
+    assert bad >= 6, "反例样本被删到只剩 %d 个（应 ≥6）" % bad
+    assert good >= 11, "正例样本被删到只剩 %d 个（应 ≥11）" % good
+
+
+def test_r32_docstring_help_is_audited_like_docs():
+    """入口脚本的模块 docstring 就是 `--help` 正文 ⇒ 必须与 README 同受审计。
+
+    用一个**伪造的**「帮助正文写了不存在的开关」来证明这道覆盖面真实生效：
+    审计函数必须报错，否则「帮助正文说谎」这条路是敞开的。
+    """
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    try:
+        import check_doc_flags as cdf
+    finally:
+        sys.path.pop(0)
+
+    # 正面：真实仓库的 3 份文档 + 6 个入口 docstring 必须全部干净。
+    opts = cdf._load_script_opts(ROOT)
+    assert set(cdf.SCRIPTS) <= set(opts), \
+        "拿不到这些脚本的 --help 选项：%s" % (set(cdf.SCRIPTS) - set(opts))
+    audited = cdf._iter_audited_docs(ROOT)
+    names = [n for n, _t in audited]
+    for s in cdf.SELF_DOCS:
+        assert ("%s::__doc__" % s) in names, \
+            "%s 的模块 docstring 没有被纳入审计" % s
+    for name, text in audited:
+        assert not cdf.audit_doc(text, opts, name), \
+            "%s 的开关与 --help 不一致（帮助正文说谎）" % name
+
+    # 反面：把一条假开关塞进「帮助正文」场景，必须被抓到。
+    fake = "用法：\n    python matlabc.py myproj --definitely-not-a-flag\n"
+    assert cdf.audit_doc(fake, opts, "<fake>"), \
+        "帮助正文里的假开关竟然没被抓到"
+

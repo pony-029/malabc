@@ -1,22 +1,58 @@
 # -*- coding: utf-8 -*-
-"""matlabc flow —— AI 修复闭环编排器（P1）。
+"""matlabc flow —— AI 修复闭环编排器：把「改代码」变成一条可自证、可回退的流水线。
 
-把 ai_config.schema.json 里「已声明但未驱动」的 flow.steps 真正串起来：
-  review → fix → apply → verify → report
+它解决三个痛点：
+  1. 改完**不知道好没好** —— 每一步都有机器判据，不靠感觉；
+  2. 改坏**不知道坏在哪** —— 未通过就回退到基线，绝不留半截改动；
+  3. AI 改的代码**没人敢合** —— 落盘前先过「语句保持不变量」门，删了源码就拒绝应用。
 
-设计：
-  * fix 步骤复用 matlabc 的【确定性】补丁引擎（--gen-apply-patch → 真实 git-apply
-    补丁：未初始化 high / 死代码 / 形状不匹配 / 重复代码重构脚手架），安全且可自证。
-  * apply 步骤默认【不落盘】（auto_apply=false），仅 --auto-apply 才进程内应用
-    （严格语义校验，原子性，任一 hunk 不符即拒绝）。
-  * verify 步骤：应用后重扫，以「各规则告警数不增加（且应减少）」为自证标准。
-  * review 步骤：调用 ai_cli task=review（离线回显提示词，在线给审查意见）。
+一条流水线，五个站点（默认依次全走）：
 
-用法：
-  matlabc flow ./myproj                         # 仅生成补丁 + 报告（不应用）
-  matlabc flow ./myproj --auto-apply            # 应用确定性补丁并自证
-  matlabc flow ./myproj --steps review,fix,report
-  matlabc flow ./myproj --config ai_config.json --provider deepseek
+    ┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐
+    │ review  │──▶│   fix   │──▶│  apply  │──▶│ verify  │──▶│ report  │
+    │ AI 审查 │   │ 生成补丁│   │ 应用补丁│   │ 重扫自证│   │ 汇总结论│
+    └─────────┘   └─────────┘   └─────────┘   └─────────┘   └─────────┘
+         │             │             │             │
+         │             │             │             └─ 各规则告警数不得增加，且总量应下降
+         │             │             └─ 默认「不落盘」；--auto-apply 才真应用
+         │             └─ 只做确定性修复：未初始化 high / 死代码 /
+         │                形状不匹配 / 重复代码重构脚手架
+         └─ 离线回显提示词，在线给中文审查意见
+
+安全底线（为什么可以放心让它动你的代码）：
+  确定性补丁引擎只允许两种编辑算子 —— `del`（删行）与 `ins_before`（在某行前插入）。
+  由此推出一条恒等式：**补丁删除的行数 == 报告里 dead_code 的条数**。
+  一旦不等（历史上「插入」曾被实现成「覆盖目标行」，会悄悄吞掉源码语句），
+  门就在**落盘之前**判红并拒绝应用，详情见本文件的 check_patch_preserves_source。
+
+最小可跑示例（可直接复制）：
+    python matlabc_flow.py ./myproj                       # 只出补丁与报告，不动你的代码
+    python matlabc_flow.py ./myproj --dry-run             # 同上；配置里写了 auto_apply 也不落地
+    python matlabc_flow.py ./myproj --auto-apply          # 真应用，并立刻重扫自证
+    python matlabc_flow.py ./myproj --steps review,fix,report
+    python matlabc_flow.py ./myproj --lang c --provider deepseek
+    python matlabc_flow.py ./myproj --config ai_config.json --memory
+
+进阶：让它自己迭代到收敛：
+    python matlabc_flow.py ./myproj --auto-apply-loop --max-turns 3
+    python matlabc_flow.py ./myproj --auto-apply-loop --review-gate
+    python matlabc_flow.py ./myproj --auto-apply-loop --draft-pr
+    python matlabc_flow.py ./myproj --auto-apply-loop --agent-plan -
+
+  --auto-apply-loop 与 --auto-apply 的区别：前者是「修复→应用→验证→回退」的循环，
+  带验证门控与回退重试；后者是线性单次管线。
+
+退出码（写进 CI 的契约）：
+    0  = 正常完成（含「只产出补丁、未落盘」）
+    1  = 步骤执行中出错（stderr 会打 `[matlabc flow] 失败：...`）
+    2  = 未通过自证 / 前置条件不满足 → 已回退，产出人工检查点（绝不自动提交）
+    3  = 已通过自证，但 --review-gate 要求人工复核 → 未落地（产出审查产物给你看）
+
+诚实边界：
+  * fix 只做确定性修复。需要理解语义的改动（重命名、抽函数）它不做，只给草稿。
+  * 闭环用 git 回退（无 git 时退回进程内快照）。**工作副本必须干净**，
+    否则回退会把你的未提交改动一起带走。
+  * review 步骤是否真出意见取决于 AI 配置；离线时只回显提示词，不会假装审查过。
 """
 import argparse
 import io
@@ -112,8 +148,10 @@ def _run(cmd, quiet=True):
     env = dict(os.environ)
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
+    # R62-R31e 子进程卫生：切 stdin + 墙钟超时（子进程是本仓 matlabc.py）。
     r = subprocess.run(cmd, stdout=subprocess.PIPE if quiet else None,
                        stderr=subprocess.STDOUT if quiet else None,
+                       stdin=subprocess.DEVNULL, timeout=900,
                        universal_newlines=True, encoding="utf-8", errors="replace",
                        env=env)
     return r
@@ -277,12 +315,15 @@ def run_flow(directory, config_path=None, auto_apply=False, dry_run=False,
                 patch_file.write(patch_text)
                 patch_file.close()
                 try:
+                    # R62-R31e：git 子进程同样切 stdin + 超时。
                     g = subprocess.run(["git", "apply", "--check", patch_file.name],
-                                       cwd=directory, capture_output=True, text=True)
+                                       cwd=directory, capture_output=True, text=True,
+                                       stdin=subprocess.DEVNULL, timeout=60)
                     if g.returncode == 0:
                         subprocess.run(["git", "apply", patch_file.name],
                                        cwd=directory, check=True,
-                                       capture_output=True, text=True)
+                                       capture_output=True, text=True,
+                                       stdin=subprocess.DEVNULL, timeout=60)
                         applied = True
                         print("[apply] 已通过 git apply 应用补丁。")
                     else:

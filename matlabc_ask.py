@@ -1,16 +1,57 @@
 # -*- coding: utf-8 -*-
-"""matlabc ask —— 基于静态分析结果的「问答式代码理解」（P0 检索/grounding 底座）。
+"""matlabc ask —— 拿静态分析结果当「事实底座」的问答式代码理解。
 
-设计（零依赖、复用 ai_cli）：
-  * 输入：已有 matlabc --json 报告（--json），或某工程目录（--dir，自动跑一次分析）。
-  * 把报告归一化为「函数文档 + 调用图 + 告警/优先级」三类可检索对象。
-  * BM25 检索 + 意图识别（谁调用 X / X 调用谁 / 风险热点 / 解释 X）。
-  * 组装提示词，交给 ai_cli（离线则回显提示词，在线则给出中文回答）。
+和直接问 AI「这个函数干什么的」最大的区别：**它的答案有据可查**。
+先把工程扫成结构化事实（函数清单 / 调用图 / 告警优先级），再用 BM25 检索出
+真正相关的片段喂给模型 —— 检索不到就回答「报告里没有」，而不是编一段。
 
-用法：
-  matlabc ask -q "main 被谁调用" --dir ./myproj
-  matlabc ask -q "哪里风险最高" --json report.json --provider deepseek
-  matlabc ask "helper 是做什么的" --dir ./myproj --lang matlab
+它内部长这样：
+
+    你的问题（自然语言）
+        │
+        ▼
+    ┌──────────────────────────────────────────────┐
+    │ ① 取得事实底座   --json report.json（已有报告）│
+    │                  或 --dir ./myproj（现扫一次） │
+    └──────────────────────────────────────────────┘
+        │
+        ▼  normalize()：把各语言各路径的报告揉成同一套东西
+    ┌──────────────────────────────────────────────┐
+    │ 函数文档  |  调用图(outgoing/incoming)  |  告警│
+    └──────────────────────────────────────────────┘
+        │
+        ▼  意图识别 + BM25 检索（取最相关的 --topk 条）
+    ┌──────────────────────────────────────────────┐
+    │ 「谁调用 X」「X 调用谁」「哪里风险最高」「解释 X」│
+    └──────────────────────────────────────────────┘
+        │
+        ▼  组装提示词 → ai_cli
+    ┌──────────────────────────────────────────────┐
+    │ 离线（没配 provider）：把提示词回显给你看      │
+    │ 在线（--provider xx）：给出中文回答            │
+    └──────────────────────────────────────────────┘
+
+最小可跑示例（可直接复制）：
+    python matlabc_ask.py "main 被谁调用" --dir ./myproj
+    python matlabc_ask.py "哪里风险最高" --json report.json
+    python matlabc_ask.py "helper 是做什么的" --dir ./myproj --lang matlab
+    python matlabc_ask.py "谁调用了 parse_config" --dir ./myproj --provider deepseek
+    python matlabc_ask.py "解释 compute_flow" --json r.json --topk 10 --output answer.md
+
+两个入口二选一，都不给就是错：
+    --dir   给工程目录，它自己先跑一次分析（慢，但省事）
+    --json  给现成的 matlabc --json 报告（快，推荐在 CI 里用）
+
+退出码：
+    0  = 正常（离线回显也算成功，但请读输出判断是不是真答案）
+    1  = 载入或生成报告失败（stderr 会打 `[matlabc ask] 载入/生成报告失败：...`）
+    2  = 参数不全：既没给 --dir 也没给 --json
+
+诚实边界：
+  * 检索是**词法**的（BM25），不是向量检索。问法里用函数名/文件名等
+    「报告里真出现过的词」，命中率远高于泛泛的描述性提问。
+  * 离线模式**不会**产生任何「智能回答」，它只把将要发给模型的提示词回显出来。
+    这是设计而非缺陷 —— 便于在没有网络/密钥的机器上检查提示词质量。
 """
 import argparse
 import io
@@ -340,7 +381,10 @@ def _gen_report_from_dir(directory, lang):
     env = dict(os.environ)
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
+    # R62-R31e 子进程卫生：切 stdin（不继承调用方的管道）+ 墙钟超时。
+    # 这里的子进程是本仓的 matlabc.py，正常 1–30s；900s 是给大工程留的余量。
     r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                       stdin=subprocess.DEVNULL, timeout=900,
                        universal_newlines=True, encoding="utf-8", errors="replace",
                        env=env)
     if r.returncode != 0:

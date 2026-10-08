@@ -1,20 +1,58 @@
 # -*- coding: utf-8 -*-
-"""agent_loop —— 受控自校验 Agent Loop（P0：matlabc_flow 自主修复闭环核心）。
+"""agent_loop —— 受控自校验的修复循环（matlabc_flow 自主修复的内核）。
 
-把「修复 → 应用 → 验证 → 回退」放进一个带门控与终止条件的自主循环：
+这不是「让 AI 一直改到它说好了」。它是一个**带门控、带回退、有终止条件**的循环：
+改完必须自己证明变好了，证明不了就退回基线 —— 宁可没进展，也不能留半截改动。
 
-  * 修复源(fix_source)：callable(attempt, feedback) -> patch_text | None
-      - attempt：第几轮（从 0 起）；feedback：上一轮验证失败的原因摘要。
-      - 返回 unified diff 文本；返回 None 表示已无新策略 → 循环终止。
-  * 验证门控(verifier)：应用后确定性重扫，要求「各规则告警数不增加（安全）」
-        且「总量下降（有进展）」，二者皆满足才接受本轮修复。
-  * 回退：验证不通过则按 git apply -R（有 git）或进程内快照（无 git）回滚，
-        工作副本回到基线，绝不留下半截改动。
-  * 终止条件：accepted（收敛）| max_turns 用尽 | 修复源返回 None（无策略）。
-  * 分层退出(tier)：
-      - 0：接受且终态 0 告警（完全干净）；
-      - 1：接受但仍有残留告警（安全降级，部分改善）；
-      - 2：未通过自证 → 产出人工检查点（绝不自动提交 / 无限循环）。
+一圈里发生什么：
+
+    ┌────────────────────────── 第 N 轮（N 从 0 起）──────────────────────────┐
+    │                                                                        │
+    │   fix_source(attempt=N, feedback=上一轮为何被拒)                        │
+    │        │                                                               │
+    │        ├── 返回补丁文本 ──▶ 应用（git apply / 进程内严格校验）           │
+    │        │                        │                                      │
+    │        │                        ▼                                      │
+    │        │                 verifier：重扫并比对                          │
+    │        │                  ① 各规则告警数不得增加   ② 总量必须下降      │
+    │        │                        │                                      │
+    │        │              ┌─────────┴─────────┐                            │
+    │        │           两者皆满足            任一不满足                     │
+    │        │              │                     │                          │
+    │        │        接受本轮（进下一轮）    回退（git apply -R / 快照还原）  │
+    │        │                                 │ 并把原因写进 feedback          │
+    │        └── 返回 None ──▶ 终止：已无新策略 ─┘                            │
+    └────────────────────────────────────────────────────────────────────────┘
+
+三种终止原因（result.termination.reason）：
+    accepted        自证通过并收敛（终态告警数达到预期）
+    max_turns       轮数用尽仍未收敛
+    no_strategy     修复源返回 None —— 已无新策略可试
+
+分层退出（tier，让自动化知道「能不能直接合」）：
+    tier 0 → exit 0   通过且终态 0 告警（完全干净，可直接合）
+    tier 1 → exit 0   通过但仍有残留告警（安全降级，部分改善）
+    tier 2 → exit 2   未通过自证 → 已回退，产出人工检查点（**绝不自动提交**）
+    另有 exit 3       已通过自证，但 --review-gate 要求人工复核，未落地
+
+退出码：
+    0  = 自证通过（tier 0 完全干净 / tier 1 仍有残留但安全降级）
+    2  = 未通过自证 → 已回退，产出人工检查点
+    3  = 已通过自证但要求人工复核，未落地
+
+  （注意：本模块是库，退出码由 result["exit_code"] 交给调用方
+    matlabc_flow.py 去 sys.exit —— 所以 1 不在本模块的契约里。）
+
+怎么用（本模块是库，命令行入口在 matlabc_flow.py）：
+    python matlabc_flow.py ./myproj --auto-apply-loop --max-turns 3
+    python matlabc_flow.py ./myproj --auto-apply-loop --agent-plan -   # 计划打成 JSON
+
+设计要点与代价：
+  * fix_source 是**注入**的 callable（attempt, feedback）-> patch_text | None，
+    所以「谁来出补丁」与「循环怎么收敛」互不耦合，可分别测试。
+  * 回退依赖 git；不是 git 仓库时退回进程内快照。**工作副本必须干净**，
+    否则回退会带走你的未提交改动。
+  * 终止条件是硬上限：max_turns + no_strategy 双闸，不会无限自转。
 """
 from __future__ import absolute_import, division, print_function
 
@@ -52,12 +90,15 @@ def _apply_with_git(patch_text, directory):
     try:
         pf.write(patch_text)
         pf.close()
+        # R62-R31e：切 stdin + 超时（同 `_run_git` 的理由）。
         chk = subprocess.run(["git", "apply", "--check", pf.name],
-                             cwd=directory, capture_output=True, text=True)
+                             cwd=directory, capture_output=True, text=True,
+                             stdin=subprocess.DEVNULL, timeout=60)
         if chk.returncode != 0:
             return False
         ap = subprocess.run(["git", "apply", pf.name], cwd=directory,
-                            capture_output=True, text=True)
+                            capture_output=True, text=True,
+                            stdin=subprocess.DEVNULL, timeout=60)
         return ap.returncode == 0
     except (OSError, subprocess.SubprocessError):
         return False
@@ -76,7 +117,8 @@ def _revert_with_git(patch_text, directory):
         pf.write(patch_text)
         pf.close()
         subprocess.run(["git", "apply", "-R", pf.name], cwd=directory,
-                       capture_output=True, text=True)
+                       capture_output=True, text=True,
+                       stdin=subprocess.DEVNULL, timeout=60)
     except (OSError, subprocess.SubprocessError):
         pass
     finally:
@@ -140,8 +182,11 @@ def _now_iso():
 def _run_git(directory, args):
     """运行 git 子命令，返回 (rc, out)。git 缺失/异常一律优雅降级。"""
     try:
+        # R62-R31e：切 stdin + 超时。旧实现不设 stdin，git 若走到需要输入的
+        # 分支（凭据提示/编辑器）会继承调用方的 stdin 并永久阻塞整条 agent 循环。
         r = subprocess.run(["git"] + list(args), cwd=directory,
-                           capture_output=True, text=True)
+                           capture_output=True, text=True,
+                           stdin=subprocess.DEVNULL, timeout=120)
         return r.returncode, (r.stdout or "") + (r.stderr or "")
     except (OSError, subprocess.SubprocessError):
         return 127, "git 不可用"
@@ -150,7 +195,10 @@ def _run_git(directory, args):
 def _run_gh(args):
     """运行 gh CLI，返回 (rc, out)。gh 缺失/异常优雅降级。"""
     try:
-        r = subprocess.run(["gh"] + list(args), capture_output=True, text=True)
+        # R62-R31e：`gh` 是**交互式**的 —— 未认证/需确认时会读 stdin 提问。
+        # 不切 stdin 会攥住调用方的输入句柄并挂住；不给超时则会卡在网络重试上。
+        r = subprocess.run(["gh"] + list(args), capture_output=True, text=True,
+                           stdin=subprocess.DEVNULL, timeout=180)
         return r.returncode, (r.stdout or "") + (r.stderr or "")
     except (OSError, subprocess.SubprocessError):
         return 127, "gh 不可用"

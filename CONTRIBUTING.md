@@ -19,9 +19,36 @@ python tests/test_matlabc.py
 
 # 3) 对示例做静态分析，确认主流程无回归
 python matlabc.py tests/sample_m -o demo.md --html demo.html --browse --offline
+
+# 4) 登记制护栏（5 道，各自还会跑 --selftest）
+python tools/check_all.py
 ```
 
-> 以上三步等价于仓库的 GitHub Actions（` .github/workflows/ci.yml`）。
+> 以上等价于仓库的 GitHub Actions（`.github/workflows/ci.yml`）。
+> 第 4 步**必须也能红**：任何一道护栏加进来却不带 `--selftest`，
+> `check_all.py` 与 `test_r30_static_guards_all_clean` 都会判失败 ——
+> 一道只会变绿的门等于没有门，一道会**永远挂住**的门比没有门更糟。
+
+## 改动落盘的三条硬规则（都来自真实事故，不是假想）
+
+1. **探针与一次性脚本一律放仓库外**（例如 `E:\matlabc\_r31\`）。
+   它们不进 git 工作区，也不会被误当成产品代码。
+
+2. **落盘任何代码块之前，先写成纯文本文件并用 `ast.parse` 自检**，通过后再写入。
+   **禁止**用 shell 内联字符串（`python -c "..."`）传递含**反引号**或**转义序列**
+   （`\n` / `\x90` / `\{`）的内容 —— shell 会先做命令替换与转义解释：
+   - 反引号被当作**命令替换**执行 ⇒ 文档里的 `` `--help` ``、`` `matlabc_mcp.py` `` 直接消失；
+   - `\x90` 被当作 Unicode 转义 ⇒ 落盘成 U+0090 的 UTF-8 编码（字节 `C2 90`），
+     含非 ASCII 字面量的 `bytes` 随即被 `ast` 拒绝。
+
+3. **读写往返必须显式指定换行模式。** 本仓 blob 全为 **CRLF**：
+   `open(p, encoding="utf-8")` 读入会把 CRLF 归一成 LF，若再以 `newline=""` 写出，
+   **整份文件的行尾都会被改写**，git diff 表现为「全文件重写」，真实改动被淹没。
+   改完必须自查 `bare_LF == 0`，并用 `git diff --numstat` 确认只有预期的增删行数。
+
+> **关于测量的第四条：测量工具自身的 bug 会伪造出被测对象的 bug。**
+> 真实案例：探针里一个未标注的 `limit=5` 截断，把「扫描到 348 个」误报成「只有 5 个」，
+> 差点让一次误读被写进结论。**当新结论与上一次不同时，先重跑对照，再下判断。**
 
 ## 提交约定
 

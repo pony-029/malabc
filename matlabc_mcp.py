@@ -2,15 +2,59 @@
 # -*- coding: utf-8 -*-
 """matlabc MCP server（纯标准库实现，零第三方依赖）。
 
-让任意支持 Model Context Protocol (MCP) 的 AI Agent（CodeBuddy / Cursor /
-Claude 等）把 matlabc 当作「代码理解 + 静态检查 + 确定性补丁」工具即插即用。
+一句话：让任何支持 Model Context Protocol 的 AI Agent（CodeBuddy / Codex /
+Cursor / Claude 等）把 matlabc 当成「代码理解 + 静态检查 + 确定性补丁」工具，
+即插即用，不用教它怎么敲命令行。
 
-协议：MCP over stdio，使用 LSP 风格的分包帧（Content-Length + body），
-与官方 MCP SDK 兼容。传输层用 subprocess 复用 matlabc 现有 CLI，保证
-行为一致与进程隔离（Agent 调用不会污染 matlabc 自身进程状态）。
+装上之后，Agent 拿到五个工具：
 
-启动方式（交给 Agent 的 MCP client 自动拉起）：
+    matlabc_analyze     扫一个工程，产出结构化报告（函数 / 调用图 / 告警）
+    matlabc_check       只跑静态检查，返回告警清单（可指定 checks）
+    matlabc_ask         拿报告当事实底座做问答（谁调用 X / 哪里风险最高）
+    matlabc_gen_patch   产出**确定性**修复补丁（未初始化 / 死代码 / 形状不匹配）
+    matlabc_version     报版本，用于 Agent 自检握手是否成功
+
+它是怎么接进 Agent 的：
+
+    ┌──────────────┐   MCP over stdio（LSP 风格分包帧）   ┌──────────────────┐
+    │  AI Agent    │  Content-Length: 123\\r\\n\\r\\n{json}   │ matlabc_mcp.py   │
+    │ (MCP client) │◀────────────────────────────────────▶│  (本文件)        │
+    └──────────────┘                                      └────────┬─────────┘
+                                                                   │ 每次调用起一个
+                                                                   │ 独立子进程
+                                                                   ▼
+                                                          ┌──────────────────┐
+                                                          │ matlabc.py CLI   │
+                                                          └──────────────────┘
+
+设计取舍（为什么这么写）：
+  * **传输层复用 CLI，不 import**：Agent 的调用因此与命令行行为逐字节一致，
+    且进程隔离 —— Agent 中途崩溃、超时、被 kill，都不会污染 matlabc 自身状态。
+  * **stdin 必须切断**：本进程的 stdin 上跑的是 JSON-RPC 协议流。拉起的子进程
+    若继承 stdin，会**偷走协议字节**导致静默协议损坏。这不是洁癖，是正确性。
+  * **子进程全部登记收尸**：`_CHILDREN` + `atexit` 兜底；退出或超时按进程树
+    杀掉（Windows 用 taskkill /T，POSIX 用 killpg），不留孤儿。
+
+怎么启动：交给 Agent 的 MCP client 自动拉起，通常你不需要手敲。若要手测：
+
     python matlabc_mcp.py
+
+  它是长驻的 stdio 服务：**正确行为是一直等输入**（不是卡死）。按 Ctrl-C 退出；
+  或从 stdin 送 EOF，它收到即退出 —— 所以 `python matlabc_mcp.py --help`
+  既没有 usage 也不打印任何东西（这不是坏了，是它的设计）。
+
+诚实边界：
+  * 只实现 JSON-RPC 的 initialize / tools/list / tools/call 与若干通知；
+    不是 MCP 全量实现（没有 resources / prompts / sampling）。
+  * 依赖子进程跑 CLI，所以「单次调用 = 一次进程启动」。大工程请用
+    matlabc_analyze 一次拿全量报告，而不是反复调用。
+
+退出码：
+    0  = 从 stdin 收到 EOF，正常收工退出（宿主关闭连接时的标准路径）
+    1  = 未捕获异常（由解释器给出；本文件不捕获顶层异常）
+
+  （工具调用本身的失败**不**体现在退出码上 —— 它按 JSON-RPC 协议以
+    isError 的响应回给宿主，进程继续存活。这是 MCP 的约定。）
 """
 from __future__ import absolute_import, division, print_function
 
@@ -33,10 +77,15 @@ def _kill_tree(proc):
     if proc.poll() is not None:
         return
     if os.name == "nt":
-        subprocess.run(
-            ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        )
+        try:
+            subprocess.run(
+                ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+                stdin=subprocess.DEVNULL,      # R62-R31e：不许继承 MCP 宿主的 stdin
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                timeout=30,
+            )
+        except (OSError, subprocess.SubprocessError):
+            pass                               # 收尸路径不许再抛异常
     else:
         try:
             os.killpg(os.getpgid(proc.pid), 9)
@@ -205,6 +254,14 @@ def _run(argv, timeout=600):
     kwargs = {
         "stdout": subprocess.PIPE,
         "stderr": subprocess.STDOUT,
+        # R62-R31e（真缺陷）：本进程是 stdio JSON-RPC server，stdin 上跑的是
+        # MCP 协议。旧实现不设 stdin ⇒ 子进程 matlabc.py 直接继承这条管道：
+        # ① 子进程若读一次 stdin，就会**偷走**本该给 server 的协议字节
+        #    （静默的协议损坏，比崩溃更难查）；
+        # ② 该管道永不 EOF，任何读到它的子进程都会永久阻塞。
+        # 实测同源证据：`matlabc_mcp.py --help` 在 stdin 继承时 >30s 不返回，
+        # 切断后 0.5s 返回（探针 probe_r26b_pipe，含重跑对照）。
+        "stdin": subprocess.DEVNULL,
     }
     if os.name != "nt":
         kwargs["start_new_session"] = True  # POSIX：便于 killpg 整树清理
@@ -214,7 +271,12 @@ def _run(argv, timeout=600):
         out, _ = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
         _kill_tree(proc)
-        out, _ = proc.communicate()
+        # 收尸 drain 也必须带超时：Windows 上子进程若留下继承管道的孙进程，
+        # 无超时的 communicate() 会永久阻塞，把这里变成新的挂死点。
+        try:
+            out, _ = proc.communicate(timeout=30)
+        except subprocess.TimeoutExpired:
+            out = b""
     # D-P0-3：**同时**回传退出码。旧实现只回传 stdout，于是 CLI 的 argparse
     # 报错（rc=2）被当作成功结果返回给 Agent（isError=false）——「没有门」被
     # 伪装成「有门」。缺输入 / 失败必须能红。
