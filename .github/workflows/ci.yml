@@ -1,0 +1,44 @@
+name: matlabc CI
+
+# Dogfooding：让 matlabc 先分析/守护自己。
+# 流程：① Python 3.6 语法兼容门禁（任意解释器运行均可校验代码 3.6.5 兼容性）
+#       ② 运行核心测试套件
+#       ③ 用 matlabc 对自身做全量静态分析，产物作为 artifact 留存（不卡门禁，仅展示能力）
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build-and-analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Python 3.6 syntax gate (P114)
+        # matlabc 自身须可被 3.6.5 运行；此门禁用 ast+正则扫描所有 *.py 检出 3.7+ 语法
+        run: python matlabc.py . --check-py36 --max-warnings 0 --json ci_py36.json
+
+      - name: Run core test suite
+        run: python tests/test_matlabc.py
+
+      - name: Self analysis showcase
+        run: |
+          python matlabc.py . -o self_analysis.md --html self_analysis.html \
+            --browse --offline --checks all --reproducible
+
+      - name: Upload self-analysis artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: self-analysis
+          path: |
+            self_analysis.md
+            self_analysis.html
+            ci_py36.json

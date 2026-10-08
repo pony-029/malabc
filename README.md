@@ -18,6 +18,7 @@
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 ![Offline](https://img.shields.io/badge/offline-first-yes-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
+![CI](https://github.com/pony-029/malabc/actions/workflows/ci.yml/badge.svg)
 ![Version](https://img.shields.io/badge/version-1.16.67-informational)
 
 [快速开始](#-快速开始) · [核心能力](#-核心能力) · [架构](#-架构) · [命令速查](#-命令速查) · [CI 门禁](#-ci-质量门禁) · [English](#english-overview) · [许可证](#-许可证)
