@@ -103,7 +103,7 @@
    依赖 `tests/sample_m/`（真实 MATLAB 夹具）与 `ci-examples/merge_sarif.py`。
 5. **质量评测闭环**（pony-agent 内 `tests/eval_ai_fix.py`）：度量「门禁 + 告警对账 + 确定性补丁引擎」，
    指标含 fix_success_rate / bad_fix_caught_rate / alarm_net_reduction / auto_fix_engine_ok / ai_provider_smoke。
-   （注：该评测文件当前在 pony-agent 仓库，未随 malabc 首版移植；如需在 malabc 演进，建议一并迁入。）
+   （已随首版后补迁移进 malabc：`tests/eval_ai_fix.py` + `tests/test_eval_ai_fix.py` + `tests/sample_ai_eval/`（clean_a.m / clean_b.m 基线夹具）+ 根 `ai_cli.py`（provider 冒烟在线路径依赖，仅标准库、自包含）。在 malabc 中 `python -m pytest tests/test_eval_ai_fix.py` 已验证通过。）
 6. **CI 参考**：`ci-examples/` 含 GitHub Actions（static-analysis / sarif-merge / incremental / frontend-gate）、
    GitLab CI、`pre-commit`、`merge_sarif.py`（SARIF 聚合）。
 
