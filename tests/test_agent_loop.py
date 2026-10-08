@@ -167,6 +167,64 @@ class TestAgentLoop(unittest.TestCase):
         self.assertEqual(res["turns"][0]["verdict"], "revert")
         self.assertEqual(res["turns"][1]["verdict"], "accept")
 
+    def test_feedback_injects_rejected_patch_on_apply_rejected(self):
+        # P1-A：首轮 LLM 补丁被应用拒绝 → 反馈含被拒补丁 + 原因 → 次轮 LLM 收到
+        matlabc_flow.analyze = lambda d, lang=None: "/tmp/_fake_report.json"
+        seq = [({"uninit": 5}, 5), ({"uninit": 5}, 5), ({"uninit": 2}, 2)]
+        it = {"i": 0}
+
+        def fake_count(path):
+            by, tot = seq[min(it["i"], len(seq) - 1)]
+            it["i"] += 1
+            return by, tot
+
+        matlabc_flow.count_alerts = fake_count
+        agent_loop._is_git_repo = lambda d: True  # 走 git apply 路径以触发 apply_rejected
+        agent_loop._apply_with_git = lambda p, d: False  # 始终拒绝应用
+        agent_loop._revert_with_git = lambda p, d: None
+        agent_loop._apply_internal = lambda p, d: {}
+        agent_loop._revert_internal = lambda s, d: None
+        matlabc_flow.gen_patch = lambda d, prefix, lang=None: ""
+        captured = {"calls": []}
+
+        def fake_llm(directory, feedback, provider, lang=None, config_path=None):
+            captured["calls"].append(feedback)
+            return "--- a/x.m\n+++ b/x.m\n@@ -1 +1 @@\n- old\n+ new\n"
+
+        matlabc_flow.gen_llm_patch = fake_llm
+        fix_source = matlabc_flow._loop_fix_source(
+            "/tmp/fp2", "/tmp/fp", None, "deepseek", None)
+        agent_loop.run_fix_loop("/tmp/fake_proj", fix_source, max_turns=3)
+        self.assertGreaterEqual(len(captured["calls"]), 2)
+        fb = captured["calls"][1]  # 第二次 LLM 调用应携带首轮被拒反馈
+        self.assertEqual(fb["reason"], "apply_rejected")
+        self.assertIn("rejected_patch", fb)
+        self.assertTrue(fb["rejected_patch"])  # 被拒补丁全文被回灌
+
+    def test_feedback_on_verify_failure_injects_reason_and_patch(self):
+        # P1-A：验证失败（告警反增）回退 → 反馈含 verification_failed + 被拒补丁
+        _install_mocks({"uninit": 5}, 5, {"uninit": 7}, 7)
+        agent_loop._apply_with_git = lambda p, d: True
+        agent_loop._revert_with_git = lambda p, d: None
+        agent_loop._apply_internal = lambda p, d: {}
+        agent_loop._revert_internal = lambda s, d: None
+        matlabc_flow.gen_patch = lambda d, prefix, lang=None: ""
+        captured = {"calls": []}
+
+        def fake_llm(directory, feedback, provider, lang=None, config_path=None):
+            captured["calls"].append(feedback)
+            return "--- a/x.m\n+++ b/x.m\n@@ -1 +1 @@\n- old\n+ new\n"
+
+        matlabc_flow.gen_llm_patch = fake_llm
+        fix_source = matlabc_flow._loop_fix_source(
+            "/tmp/fp3", "/tmp/fp", None, "deepseek", None)
+        agent_loop.run_fix_loop("/tmp/fake_proj", fix_source, max_turns=2)
+        self.assertGreaterEqual(len(captured["calls"]), 2)
+        fb = captured["calls"][1]
+        self.assertEqual(fb["reason"], "verification_failed")
+        self.assertFalse(fb["no_new_alerts"])
+        self.assertIn("rejected_patch", fb)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

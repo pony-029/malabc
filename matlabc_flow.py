@@ -256,18 +256,36 @@ def run_flow(directory, config_path=None, auto_apply=False, dry_run=False,
 
 
 def _feedback_suffix(feedback):
-    """把验证反馈渲染成追加到 LLM 提示词的引导（聚焦剩余 / 新增告警）。"""
-    by = (feedback or {}).get("by_after") or {}
-    delta = (feedback or {}).get("delta") or {}
+    """把验证反馈渲染成追加到 LLM 提示词的引导（含被拒补丁 + 具体拒绝原因）。"""
+    fb = feedback or {}
+    by = fb.get("by_after") or {}
+    delta = fb.get("delta") or {}
     parts = ["# 修复反馈（上一轮自证结果）"]
-    parts.append("上一轮应用补丁后终态告警 %d 条，各规则：%s"
-                 % ((feedback or {}).get("total_after", 0), _fmt_rules(by)))
-    if delta:
-        parts.append("相对基线增量（正=新增）：%s" % _fmt_rules(delta))
-    parts.append("自证判定：no_new_alerts=%s, progress=%s"
-                 % ((feedback or {}).get("no_new_alerts"),
-                    (feedback or {}).get("progress")))
-    parts.append("请仅针对「仍未消除（或被新增）」的告警生成最小化 unified diff 修复，"
+    reason = fb.get("reason")
+    detail = fb.get("detail")
+    if reason == "apply_failed":
+        parts.append("上一轮补丁应用失败（无法安全落盘）：%s" % (detail or ""))
+    elif reason == "apply_rejected":
+        parts.append("上一轮补丁被工作副本拒绝（hunk 上下文不匹配 / 无法应用）：%s"
+                     % (detail or ""))
+    elif reason == "verification_failed":
+        parts.append("上一轮补丁应用后自证未通过：")
+        if not fb.get("no_new_alerts"):
+            bad = {k: v for k, v in delta.items() if v > 0}
+            parts.append("  · 新增 / 上升告警：%s" % (_fmt_rules(bad) if bad else "无"))
+        if not fb.get("progress"):
+            parts.append("  · 告警总量未下降（基线 %s → 终态 %s）"
+                         % (fb.get("total_before"), fb.get("total_after")))
+        if by:
+            parts.append("  · 终态各规则：%s" % _fmt_rules(by))
+    else:
+        parts.append("上一轮终态告警 %d 条，各规则：%s"
+                     % (fb.get("total_after", 0), _fmt_rules(by)))
+    rejected = fb.get("rejected_patch")
+    if rejected:
+        parts.append("\n# 上一轮被拒补丁（请勿重复同样错误，针对上述问题修正）\n"
+                     "```diff\n%s\n```" % rejected)
+    parts.append("\n请仅针对「仍未消除（或被新增）」的告警生成最小化 unified diff 修复，"
                  "不要改动无关代码；用 ```diff ... ``` 包裹输出。")
     return "\n".join(parts)
 

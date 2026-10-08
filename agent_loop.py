@@ -164,7 +164,12 @@ def run_fix_loop(directory, fix_source, max_turns=3, lang=None,
                     "verdict": "apply_failed",
                     "feedback": "apply_failed: %s" % e,
                 })
-                feedback = "apply_failed: %s" % e
+                # 结构化反馈（含被拒补丁与具体原因），供 LLM 下一轮修正
+                feedback = {
+                    "reason": "apply_failed",
+                    "detail": "apply_failed: %s" % e,
+                    "rejected_patch": patch,
+                }
                 continue
 
             if not applied_ok:
@@ -174,7 +179,11 @@ def run_fix_loop(directory, fix_source, max_turns=3, lang=None,
                     "verdict": "apply_rejected",
                     "feedback": "patch_not_applicable_to_working_tree",
                 })
-                feedback = "patch_not_applicable_to_working_tree"
+                feedback = {
+                    "reason": "apply_rejected",
+                    "detail": "patch_not_applicable_to_working_tree",
+                    "rejected_patch": patch,
+                }
                 continue
 
             # 验证：应用后确定性重扫
@@ -204,15 +213,17 @@ def run_fix_loop(directory, fix_source, max_turns=3, lang=None,
                 _revert_with_git(patch, directory)
             else:
                 _revert_internal(snapshot, directory)
-            # 结构化反馈，供「带 feedback 的 LLM 修复」聚焦剩余 / 新增告警
+            # 结构化反馈（含被拒补丁与具体拒绝原因），供 LLM 下一轮聚焦修正
             feedback = {
                 "reason": "verification_failed",
                 "no_new_alerts": no_new,
                 "progress": progress,
                 "delta": d,
+                "total_before": total_before,
                 "total_after": total_after,
                 "by_after": by_after,
                 "report_path": rep_after,
+                "rejected_patch": patch,
             }
 
         if termination is None:
