@@ -1,0 +1,61 @@
+# =============================================================================
+# P205-5 · MATLAB 静态分析器 CI 矩阵门禁 + SARIF 上传示例（GitLab CI）
+# -----------------------------------------------------------------------------
+# 演示用法：把本文件放到仓库根目录 .gitlab-ci.yml（或 include 之）
+#
+# 关键能力（对应 P203 / P204）：
+#   --gate-max-uninit-folder 0        每目录未初始化变量上限
+#   --gate-folder-report fmt.sarif    生成 SARIF 2.1.0（GitLab 安全面板可消费）
+#   --max-nodes N                      超大全仓库时限制统一画布节点数
+# =============================================================================
+stages:
+  - analyze
+  - report
+
+# 用 parallel:matrix 对多个顶层目录并行门禁
+.gate_job:
+  stage: analyze
+  image: python:3.11
+  script:
+    - python matlab_analyzer.py "matlab_src/$DIR"
+        --gate trend-$DIR.json
+        --gate-max-uninit-folder 0
+        --gate-folder-report gate-$DIR.sarif
+        --gate-folder-report-format sarif
+        --max-nodes 200
+      # 门禁 FAIL 时非零退出；用 allow_failure + artifacts 保证 SARIF 仍上传
+    - echo "gate done for $DIR"
+  artifacts:
+    when: always
+    reports:
+      # GitLab 15.11+：SARIF 直接接入安全面板
+      sast: gate-$DIR.sarif
+    paths:
+      - gate-$DIR.sarif
+  allow_failure: true
+
+gate-module-a:
+  extends: .gate_job
+  variables:
+    DIR: module_a
+
+gate-module-b:
+  extends: .gate_job
+  variables:
+    DIR: module_b
+
+# 整体报告（统一画布 + 全局状态图）
+report:
+  stage: report
+  image: python:3.11
+  script:
+    - python matlab_analyzer.py matlab_src
+        --browse site --max-nodes 300
+        --global-state global_state.html
+  artifacts:
+    paths:
+      - site/
+      - global_state.html
+  needs:
+    - gate-module-a
+    - gate-module-b

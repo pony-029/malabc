@@ -1,0 +1,96 @@
+# =============================================================================
+# P205-5 · MATLAB 静态分析器 CI 矩阵门禁 + SARIF 上传示例（GitHub Actions）
+# -----------------------------------------------------------------------------
+# 演示用法：
+#   1) 把本文件放到仓库 .github/workflows/static-analysis.yml
+#   2) 每次 push/PR 自动对「每个一级源码目录」并行跑 --gate 门禁
+#   3) 门禁 FAIL（未初始化变量超阈值）时，SARIF 仍落盘并上传到 Code Scanning
+#
+# 关键能力（对应 P203 / P204）：
+#   --gate-max-uninit-folder 0        每目录未初始化变量上限
+#   --gate-folder-report fmt.sarif    生成 SARIF 2.1.0（GitHub 可直接消费）
+#   --max-nodes N                      超大全仓库时限制统一画布节点数
+# =============================================================================
+name: static-analysis
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  # 第一步：发现需要分析的源码目录（这里以顶层子目录为例，可按需调整 glob）
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      dirs: ${{ steps.gen.outputs.dirs }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: gen
+        run: |
+          DIRS=$(find matlab_src -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | jq -R -s -c 'split("\n")[:-1]')
+          echo "dirs=$DIRS" >> "$GITHUB_OUTPUT"
+
+  # 第二步：矩阵并行——每个目录独立门禁，互不阻塞
+  gate:
+    needs: discover
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ${{ fromJson(needs.discover.outputs.dirs) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: 运行门禁（SARIF 输出）
+        # 注意：门禁 FAIL 会非零退出，但 SARIF 已落盘；用 continue-on-error 保证上传
+        continue-on-error: true
+        run: |
+          python matlab_analyzer.py "matlab_src/${{ matrix.dir }}" \
+            --gate trend-${{ matrix.dir }}.json \
+            --gate-max-uninit-folder 0 \
+            --gate-folder-report gate-${{ matrix.dir }}.sarif \
+            --gate-folder-report-format sarif \
+            --max-nodes 200
+      - name: 上传 SARIF 到 Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gate-${{ matrix.dir }}.sarif
+          category: matlab-analyzer-${{ matrix.dir }}
+
+  # 第三步：整体报告（统一画布 + 全局状态图，供人工查看）
+  report:
+    needs: gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: |
+          python matlab_analyzer.py matlab_src \
+            --browse site --max-nodes 300 \
+            --global-state global_state.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: analysis-site
+          path: |
+            site/
+            global_state.html
+
+  # 第四步：AI 修复质量离线评测闭环（P0-2，零依赖、纯离线）
+  # 度量 pony-agent 自己掌控的「可证明补丁」壁垒：
+  #   好补丁必须恢复基线、坏补丁必须被门禁捕获、确定性引擎必须端到端修掉注入缺陷。
+  # 指标任一回退即非零退出 → CI 红，拦截对"重扫自证告警不增"壁垒的削弱。
+  ai-fix-eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: 运行 P0-2 离线 AI 修复质量评测
+        run: |
+          python -m pytest tests/test_eval_ai_fix.py -q

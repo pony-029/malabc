@@ -1,0 +1,13 @@
+# 字节码缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# 测试 / 分析产生的临时产物
+*.json.tmp
+mc_flow_*.json
+eval_ai_fix_report.json
+
+# 操作系统
+.DS_Store
+Thumbs.db

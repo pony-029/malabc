@@ -1,0 +1,64 @@
+# =============================================================================
+# P206-4 · MATLAB 静态分析器 CI 增量门禁示例（GitHub Actions）
+# -----------------------------------------------------------------------------
+# 仅在「发生变更的源码目录」上跑 --gate 门禁，未变更目录直接跳过，
+# 配合 --incremental 复用未变文件的解析缓存，PR 场景下大幅提速。
+#
+# 关键参数（对应 P71/P133 增量分析 + P203/P204 门禁）：
+#   --incremental              复用 .matlab_analyzer_cache.pkl，仅重分析变更文件
+#   --gate-max-uninit-folder   每目录未初始化变量上限
+#   --gate-folder-report sarif SARIF 2.1.0 上传到 Code Scanning
+# =============================================================================
+name: static-analysis-incremental
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+jobs:
+  incremental-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 需要完整历史以计算与上一次成功构建的差异
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # 计算相对默认分支变更的文件所属的一级源码目录
+      - name: 计算变更目录
+        id: diff
+        run: |
+          BASE=${{ github.event.pull_request.base.sha || 'origin/main' }}
+          DIRS=$(git diff --name-only "$BASE"...HEAD -- 'matlab_src/*' \
+                 | xargs -n1 dirname 2>/dev/null \
+                 | sed 's#^matlab_src/##;s#/.*##' \
+                 | sort -u | grep -v '^$' | jq -R -s -c 'split("\n")[:-1]')
+          echo "dirs=$DIRS" >> "$GITHUB_OUTPUT"
+      - name: 增量门禁（仅变更目录）
+        continue-on-error: true
+        run: |
+          DIRS='${{ steps.diff.outputs.dirs }}'
+          echo "$DIRS" | jq -r '.[]' | while read -r d; do
+            [ -z "$d" ] && continue
+            python matlab_analyzer.py "matlab_src/$d" \
+              --incremental \
+              --gate trend-$d.json \
+              --gate-max-uninit-folder 0 \
+              --gate-folder-report gate-$d.sarif \
+              --gate-folder-report-format sarif \
+              --max-nodes 200
+          done
+      - name: 上传 SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gate-*.sarif
+          category: matlab-analyzer-incremental
+      - name: 缓存增量解析结果
+        uses: actions/cache@v4
+        with:
+          path: matlab_src/.matlab_analyzer_cache.pkl
+          key: incr-${{ hashFiles('matlab_src/**/*.m') }}

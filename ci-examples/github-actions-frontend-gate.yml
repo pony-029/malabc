@@ -1,0 +1,19 @@
+# =============================================================================
+# 前端产物质量门禁 —— 正式版已落地，请直接使用下面这个路径：
+#
+#     .github/workflows/frontend-gate.yml
+#
+# 该文件已在本仓库启用（push/PR 自动触发），无需再手工复制。
+#
+# 本文件保留为指针，避免同一份工作流出现两份副本而逐渐漂移。
+#
+# 快速上手：
+#   1) 按需修改 .github/workflows/frontend-gate.yml 顶部的 env.FE_SRC
+#      （默认 tests/sample_m，仓库自带样例，任何 checkout 都能跑通）
+#   2) 本地先跑一遍，与 CI 完全一致：
+#        python fe_audit.py tests/sample_m _fe_out
+#        python fe_audit.py tests/sample_m _fe_out --offline --enforce-offline
+#        python matlab_analyzer.py tests/sample_m --browse site-offline --offline
+#   3) 可选：npm install --no-save jsdom 以启用 S11 真实 DOM 交互检查
+#      （缺失时降级为 WARN，不阻断）
+# =============================================================================

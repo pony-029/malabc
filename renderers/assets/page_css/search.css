@@ -1,0 +1,224 @@
+.gs-wrap{max-width:1100px;margin:0 auto;padding:18px 22px}
+        h2{margin:6px 0 2px}
+        .gs-meta{color:#64748b;font-size:13px;margin-bottom:12px}
+        .gs-tabs{margin:10px 0}
+        .gs-tabs button{margin-right:6px;padding:6px 12px;border:1px solid #cbd5e1;
+          background:#fff;border-radius:6px;cursor:pointer;font-size:13px}
+        .gs-tabs button.on{background:#2563eb;color:#fff;border-color:#2563eb}
+        .gs-theme-btn{margin-left:auto;background:#fff;border:1px solid #cbd5e1;border-radius:6px;
+          cursor:pointer;font-size:15px;padding:4px 10px;line-height:1;color:#475569}
+        .gs-theme-btn:hover{background:#f1f5f9}
+        table{border-collapse:collapse;width:100%%;font-size:13px;margin-top:8px}
+        th,td{border:1px solid #e2e8f0;padding:5px 8px;text-align:left;vertical-align:top}
+        th{background:#f1f5f9;cursor:pointer;user-select:none}
+        tr.conflict td{background:#fef2f2}
+        .tag-conf{color:#dc2626;font-weight:600}
+        .tag-ok{color:#16a34a}
+        .decl{color:#475569;font-size:12px}
+        /* P219：dup ↔ 冲突变量交叉高亮联动 */
+        .dup-var{display:inline-block;background:#fef9c3;border:1px solid #fde047;
+          border-radius:4px;padding:0 5px;margin:1px 2px;cursor:pointer;font-family:monospace}
+        .dup-var:hover{background:#fde047}
+        .dup-vars{margin-top:4px;font-size:12px;color:#64748b}
+        .g-var[data-var]:hover{background:#e0f2fe;cursor:pointer;padding:0 3px;border-radius:3px}
+        .gs-linked{background:#f87171 !important;color:#fff !important;
+          box-shadow:0 0 0 2px #ef4444;font-weight:700;border-radius:3px;padding:0 4px}
+        tr.gs-linked-row td{background:#fee2e2 !important}
+        .p-var[data-var]:hover{background:#e0f2fe;cursor:pointer;padding:0 3px;border-radius:3px}
+        .hidden{display:none}
+        tr.conflict{cursor:pointer}
+        .drill{background:#fff7f7}
+        .drill ul{margin:4px 0 4px 18px;padding:0}
+        .drill li{font-size:12px;color:#475569;margin:2px 0}
+        .drill .cf{color:#dc2626;font-weight:600}
+        .drill .cf2{color:#2563eb;font-weight:600;margin-top:6px}
+        .drill .cf3{color:#7c3aed;font-weight:600;margin-top:6px}
+        .gs-jump{color:#0969da;text-decoration:none;font-weight:600}
+        .gs-jump:hover{text-decoration:underline}
+        .gs-coupling{margin:14px 0;border:1px solid #dbeafe;background:#f0f7ff;border-radius:8px;padding:10px 14px}
+        .gs-coupling h3{margin:2px 0 4px;font-size:14px;color:#1e40af}
+        .gs-couple-note{font-size:12px;color:#64748b;margin:0 0 8px}
+        .gs-couple-empty{color:#94a3b8;font-size:13px}
+        .gs-couple-ctrl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 8px}
+        .gs-couple-ctrl select,.gs-couple-ctrl button{font-size:12px;padding:4px 8px;border:1px solid #cbd5e1;
+          border-radius:6px;background:#fff;cursor:pointer}
+        .gs-couple-ctrl .lbl{font-size:12px;color:#475569}
+        .gs-couple-ctrl .zoomval{font-size:12px;color:#64748b;min-width:42px;text-align:center}
+        .gs-couple-svg{max-width:920px;overflow:hidden;border:1px solid #e2e8f0;border-radius:6px;background:#fff;cursor:grab}
+        .gs-couple-svg:active{cursor:grabbing}
+        .gs-edge{stroke:#94a3b8;stroke-width:1.2;stroke-dasharray:3 2}
+        .gs-node-v{fill:#fee2e2;stroke:#dc2626}
+        .gs-node-v.sev-high{fill:#fecaca;stroke:#b91c1c;stroke-width:1.8}
+        .gs-node-v.sev-mid{fill:#fed7aa;stroke:#c2410c}
+        .gs-node-v.sev-low{fill:#fee2e2;stroke:#dc2626}
+        .gs-node-f{fill:#dbeafe;stroke:#2563eb}
+        .gs-t{font:600 12px ui-monospace,Consolas,monospace;fill:#1f2328}
+        .gs-sub{font-weight:400;fill:#9a3412}
+        .gs-legend{font-size:11px;color:#64748b;margin:4px 0 0}
+        .gs-legend b{color:#b91c1c} .gs-legend i{color:#c2410c;font-style:normal} .gs-legend u{color:#dc2626;text-decoration:none}
+        /* P217 重复代码看板（现代交互化：卡片/工具栏/响应式） */
+        .dup-card{border:1px solid #e2e8f0;border-radius:10px;background:#fff;
+          box-shadow:0 1px 2px rgba(15,23,42,.04);margin:12px 0;overflow:hidden}
+        .dup-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+          padding:10px 12px;border-bottom:1px solid #eef2f7;background:#f8fafc;
+          position:sticky;top:0;z-index:5}
+        .dup-toolbar input[type=search]{padding:6px 10px;border:1px solid #cbd5e1;
+          border-radius:7px;font-size:13px;min-width:200px;flex:1 1 200px;background:#fff}
+        .dup-toolbar select{padding:6px 8px;border:1px solid #cbd5e1;border-radius:7px;
+          font-size:13px;background:#fff;cursor:pointer}
+        .dup-toolbar .cnt{font-size:12px;color:#64748b;margin-left:auto;white-space:nowrap}
+        .dup-toolbar .chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;
+          color:#475569;background:#fff;border:1px solid #cbd5e1;border-radius:20px;padding:3px 10px;cursor:pointer}
+        .dup-toolbar .chip.on{background:#0e7490;color:#fff;border-color:#0e7490}
+        #t-d{width:100%;border-collapse:collapse;font-size:13px}
+        #t-d th{background:#0e7490;color:#fff;text-align:left;padding:7px 10px;cursor:pointer;
+          user-select:none;white-space:nowrap;position:sticky;top:41px}
+        #t-d th[data-sort]:hover{background:#0891b2}
+        #t-d th .ar{opacity:.5;font-size:10px;margin-left:3px}
+        #t-d th.asc .ar,#t-d th.desc .ar{opacity:1;color:#fde047}
+        #t-d td{padding:6px 10px;border-bottom:1px solid #e2e8f0;vertical-align:top}
+        .dup-row:hover{background:#ecfeff}
+        .dup-sim{font-weight:700;color:#0e7490;font-variant-numeric:tabular-nums}
+        /* P217d：行内嵌并排 diff */
+        .dup-expand{border:1px solid #cbd5e1;background:#fff;border-radius:5px;cursor:pointer;
+          width:22px;height:22px;line-height:1;font-size:13px;color:#2563eb;padding:0;margin-left:2px}
+        .dup-expand:hover{background:#eff6ff}
+        .dup-stats{font-size:11px;color:#64748b;font-variant-numeric:tabular-nums}
+        .dup-diff-row td{padding:0}
+        .dup-diff-wrap{border:1px solid #e2e8f0;border-radius:8px;margin:4px 0 10px;
+          background:#f8fafc;overflow:auto;max-height:420px}
+        .dup-diff-head{padding:8px 12px;background:#eef2f7;border-bottom:1px solid #e2e8f0;
+          font-size:12px;color:#334155;position:sticky;top:0;display:flex;align-items:center;
+          gap:8px;flex-wrap:wrap}
+        .dup-scaffold-btn{margin-left:auto;border:1px solid #0e7490;background:#0e7490;color:#fff;
+          border-radius:6px;cursor:pointer;font-size:12px;padding:3px 10px;font-weight:600}
+        .dup-scaffold-btn:hover{background:#155e75}
+        .dup-src-link{text-decoration:none;color:#0e7490;font-size:12px;cursor:pointer;
+          border:1px solid #cbd5e1;border-radius:4px;padding:0 4px;margin-left:2px}
+        .dup-src-link:hover{background:#e0f2fe}
+        .dup-batch-btn{border:1px solid #0e7490;background:#0e7490;color:#fff;border-radius:6px;
+          cursor:pointer;font-size:12px;padding:3px 10px;font-weight:600;white-space:nowrap}
+        .dup-batch-btn:hover{background:#155e75}
+        /* P217i：共享函数脚手架弹窗 */
+        .dup-modal{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;
+          align-items:center;justify-content:center;z-index:80}
+        .dup-modal-box{background:#fff;border-radius:12px;max-width:680px;width:92%;max-height:84vh;
+          display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.3)}
+        .dup-modal-h{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;
+          border-bottom:1px solid #e2e8f0;font-weight:700;color:#0e7490}
+        .dup-modal-x{border:none;background:none;font-size:16px;cursor:pointer;color:#64748b}
+        .dup-modal-pre{margin:0;padding:14px 16px;overflow:auto;font-family:ui-monospace,Menlo,Consolas,monospace;
+          font-size:12px;line-height:1.55;white-space:pre-wrap;word-break:break-all;color:#1e293b;
+          background:#f8fafc;flex:1}
+        .dup-modal-calls{padding:10px 16px;font-size:12px;color:#475569;white-space:pre-wrap;
+          border-top:1px dashed #e2e8f0;background:#f1f5f9}
+        .dup-modal-actions{display:flex;gap:8px;padding:12px 16px;border-top:1px solid #e2e8f0}
+        .dup-modal-actions button{border:1px solid #0e7490;background:#0e7490;color:#fff;border-radius:6px;
+          cursor:pointer;font-size:13px;padding:6px 14px}
+        .dup-modal-actions button:hover{background:#155e75}
+        .dup-modal-pre-html{font-family:inherit;font-size:13px;color:#334155}
+        .trend-drill h4{margin:0 0 8px;color:#0e7490;font-size:14px}
+        .trend-drill .td-sec{margin-bottom:10px}
+        .trend-drill .td-sec>b{display:block;margin-bottom:4px;color:#334155}
+        .trend-drill .td-row{padding:3px 6px;border-radius:5px;background:#f1f5f9;margin-bottom:3px;font-size:12px}
+        .trend-drill code{background:none;color:#0e7490;font-weight:600}
+        .trend-drill .td-sim{float:right;color:#64748b;font-variant-numeric:tabular-nums}
+        .trend-drill .tag-xl{font-size:10px;color:#b45309;background:#fef3c7;border:1px solid #fde68a;border-radius:4px;padding:0 4px}
+        :root[data-theme="dark"] .dup-modal-pre-html{color:#c9d1d9}
+        :root[data-theme="dark"] .trend-drill h4{color:#56d4dd}
+        :root[data-theme="dark"] .trend-drill .td-sec>b{color:#c9d1d9}
+        :root[data-theme="dark"] .trend-drill .td-row{background:#161b22}
+        :root[data-theme="dark"] .trend-drill code{color:#56d4dd}
+        :root[data-theme="dark"] .trend-drill .td-sim{color:#8b949e}
+        .dup-diff-grid{display:grid;grid-template-columns:1fr 1fr}
+        .dup-diff-col{margin:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.5}
+        .dup-diff-col:first-child{border-right:1px solid #e2e8f0}
+        .dd-eq{color:#334155}
+        .dd-rep{background:#fef3c7;color:#92400e}
+        .dd-del{background:#fee2e2;color:#b91c1c}
+        .dd-ins{background:#dcfce7;color:#166534}
+        .dd-no{display:inline-block;width:34px;text-align:right;color:#94a3b8;
+          padding-right:6px;user-select:none;font-size:11px}
+        .dd-tx{white-space:pre-wrap;word-break:break-all}
+        @media(max-width:680px){.dup-diff-grid{grid-template-columns:1fr}}
+        /* P227：惯用法误报灰显标记 */
+        .tag-idiom{font-size:11px;color:#64748b;border:1px solid #cbd5e1;
+          border-radius:4px;padding:0 4px;margin-left:4px;font-weight:600}
+        .tag-org{font-size:11px;color:#b45309;background:#fef3c7;border:1px solid #fde68a;
+          border-radius:4px;padding:0 4px;margin-left:4px;font-weight:600}
+        .dup-frag{font-size:11px;color:#fff;background:#0891b2;padding:1px 6px;border-radius:4px}
+        /* P228：跨语言重复对标记 */
+        .dup-xlang{font-size:11px;color:#fff;background:#7c3aed;padding:1px 6px;border-radius:4px}
+        .dup-pager{display:flex;gap:6px;align-items:center;justify-content:center;
+          padding:10px;font-size:13px;color:#475569}
+        .dup-pager button{border:1px solid #cbd5e1;background:#fff;border-radius:6px;
+          padding:4px 10px;cursor:pointer;font-size:13px}
+        .dup-pager button:disabled{opacity:.45;cursor:default}
+        .dup-pager .pg{font-variant-numeric:tabular-nums}
+        #t-d code{background:#f1f5f9;padding:1px 6px;border-radius:4px;color:#0e7490}
+        .dup-empty{padding:26px;text-align:center;color:#94a3b8;font-size:14px}
+        /* 趋势图内嵌 tab */
+        .trend-wrap{border:1px solid #e2e8f0;border-radius:10px;background:#fff;
+          padding:14px 16px;margin:12px 0}
+        .trend-wrap h4{margin:0 0 8px;font-size:15px;color:#0e7490}
+        .trend-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#475569;margin-top:8px}
+        .trend-legend .lg{display:inline-flex;align-items:center;gap:6px;cursor:pointer;
+          padding:2px 8px;border-radius:20px;border:1px solid #e2e8f0;background:#fff;user-select:none}
+        .trend-legend .lg.off{opacity:.4;text-decoration:line-through}
+        .trend-legend .sw{width:12px;height:12px;border-radius:3px;display:inline-block}
+        .trend-tip{position:fixed;display:none;pointer-events:none;background:rgba(15,23,42,.95);
+          color:#fff;padding:7px 10px;border-radius:7px;font-size:12px;line-height:1.5;z-index:60;
+          box-shadow:0 4px 14px rgba(0,0,0,.3);max-width:260px}
+        .trend-empty{color:#94a3b8;font-size:13px;padding:8px 0}
+        @media (max-width:640px){
+          .dup-toolbar input[type=search]{min-width:100%}
+          #t-d th:nth-child(4),#t-d td:nth-child(4){display:none}
+        }
+        /* P217c：暗色主题轻量覆盖（GitHub Dark 语义） */
+        :root[data-theme="dark"] .gs-wrap{color:#c9d1d9}
+        :root[data-theme="dark"] .gs-meta{color:#8b949e}
+        :root[data-theme="dark"] .gs-tabs button{background:#21262d;color:#c9d1d9;border-color:#30363d}
+        :root[data-theme="dark"] .gs-tabs button.on{background:#1f6feb;border-color:#1f6feb;color:#fff}
+        :root[data-theme="dark"] .gs-theme-btn{background:#21262d;color:#c9d1d9;border-color:#30363d}
+        :root[data-theme="dark"] table{background:#161b22}
+        :root[data-theme="dark"] th{background:#21262d;color:#c9d1d9}
+        :root[data-theme="dark"] td{border-color:#30363d}
+        :root[data-theme="dark"] tr.conflict td{background:#3d1418}
+        :root[data-theme="dark"] .dup-var{background:#3a2e15;border-color:#d29922;color:#e3b341}
+        :root[data-theme="dark"] .decl{color:#8b949e}
+        :root[data-theme="dark"] .dup-row:hover{background:#1c2128}
+        :root[data-theme="dark"] .dup-sim{color:#56d4dd}
+        :root[data-theme="dark"] #t-d code{background:#21262d;color:#56d4dd}
+        :root[data-theme="dark"] .tag-idiom{color:#8b949e;border-color:#30363d}
+        :root[data-theme="dark"] .tag-org{color:#d29922;background:#161b22;border-color:#30363d}
+        :root[data-theme="dark"] .dup-pager{color:#8b949e}
+        :root[data-theme="dark"] .dup-pager button{background:#21262d;color:#c9d1d9;border-color:#30363d}
+        :root[data-theme="dark"] .dup-expand{background:#21262d;color:#58a6ff;border-color:#30363d}
+        :root[data-theme="dark"] .dup-diff-wrap{background:#0d1117;border-color:#30363d}
+        :root[data-theme="dark"] .dup-diff-head{background:#161b22;border-color:#30363d;color:#c9d1d9}
+        :root[data-theme="dark"] .dup-scaffold-btn{background:#1f6feb;border-color:#1f6feb;color:#fff}
+        :root[data-theme="dark"] .dup-src-link{color:#58a6ff;border-color:#30363d}
+        :root[data-theme="dark"] .dup-src-link:hover{background:#161b22}
+        :root[data-theme="dark"] .dup-batch-btn{background:#1f6feb;border-color:#1f6feb;color:#fff}
+        :root[data-theme="dark"] .dup-modal-box{background:#161b22;color:#c9d1d9}
+        :root[data-theme="dark"] .dup-modal-h{border-color:#30363d;color:#56d4dd}
+        :root[data-theme="dark"] .dup-modal-pre{background:#0d1117;color:#c9d1d9}
+        :root[data-theme="dark"] .dup-modal-calls{background:#161b22;color:#8b949e;border-color:#30363d}
+        :root[data-theme="dark"] .dup-modal-actions{background:#161b22;border-color:#30363d}
+        :root[data-theme="dark"] .dup-modal-actions button{background:#1f6feb;border-color:#1f6feb;color:#fff}
+        :root[data-theme="dark"] .dup-modal-x{color:#8b949e}
+        :root[data-theme="dark"] .dup-diff-col:first-child{border-right-color:#30363d}
+        :root[data-theme="dark"] .dd-eq{color:#c9d1d9}
+        :root[data-theme="dark"] .dd-rep{background:#3a2e15;color:#e3b341}
+        :root[data-theme="dark"] .dd-del{background:#3d1418;color:#ff7b72}
+        :root[data-theme="dark"] .dd-ins{background:#122d1c;color:#7ee787}
+        :root[data-theme="dark"] .dd-no{color:#6e7681}
+        :root[data-theme="dark"] .dup-stats{color:#8b949e}
+        :root[data-theme="dark"] .trend-wrap{background:#161b22;border-color:#30363d}
+        :root[data-theme="dark"] .trend-wrap h4{color:#56d4dd}
+        :root[data-theme="dark"] .trend-legend{color:#8b949e}
+        :root[data-theme="dark"] .trend-legend .lg{background:#21262d;border-color:#30363d;color:#c9d1d9}
+        :root[data-theme="dark"] .dup-toolbar input[type=search],
+        :root[data-theme="dark"] .dup-toolbar select{background:#21262d;color:#c9d1d9;border-color:#30363d}
+        :root[data-theme="dark"] .dup-chip{background:#21262d;color:#c9d1d9;border-color:#30363d}
+        :root[data-theme="dark"] .dup-chip.on{background:#1f6feb;border-color:#1f6feb;color:#fff}

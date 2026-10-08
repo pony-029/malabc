@@ -1,0 +1,30 @@
+/* P225-B 模块调度统计视图（schedule.html）专用样式 */
+.sc-stats { display: flex; flex-wrap: wrap; gap: 12px; margin: 10px 0 16px; }
+.sc-stat { font-size: 13px; color: var(--muted, #6b7280); }
+.sc-stat b { color: var(--fg, #1f2933); font-size: 16px; margin-right: 2px; }
+.sc-block { margin: 0 0 24px; }
+.sc-block > h2 { font-size: 16px; margin: 4px 0 4px; }
+.sc-block > p.muted { margin: 0 0 8px; font-size: 12.5px; }
+.sc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sc-table th { text-align: left; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .03em; color: var(--muted, #6b7280); padding: 5px 8px;
+  border-bottom: 1px solid var(--border, #d0d7de); }
+.sc-table td { padding: 5px 8px; border-bottom: 1px solid var(--border, #eef1f4);
+  vertical-align: top; }
+.sc-table tr:hover td { background: var(--hover, #f6f8fa); }
+.sc-fname { color: var(--link, #2563eb); text-decoration: none;
+  font-family: var(--mono, ui-monospace, Consolas, monospace); }
+.sc-fname:hover { text-decoration: underline; }
+.sc-lines { font-family: var(--mono, ui-monospace, Consolas, monospace);
+  font-size: 12px; color: var(--muted, #6b7280); }
+.sc-tabs { display: flex; gap: 8px; margin: 0 0 8px; }
+.sc-tabs button { padding: 5px 12px; font-size: 12.5px; cursor: pointer;
+  border: 1px solid var(--border, #d0d7de); border-radius: 8px;
+  background: var(--card, #fff); color: var(--fg, #1f2933); }
+.sc-tabs button.on { background: var(--link, #2563eb); color: #fff;
+  border-color: var(--link, #2563eb); }
+@media (prefers-color-scheme: dark) {
+  .sc-table td { border-bottom-color: #2b3542; }
+  .sc-table tr:hover td { background: #1b2530; }
+  .sc-tabs button { background: #1f2933; border-color: #374151; color: #e5e7eb; }
+}

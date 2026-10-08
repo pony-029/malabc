@@ -1,0 +1,18 @@
+#ug-toolbar{position:sticky;top:0;z-index:10;background:#fff;border-bottom:1px solid #e0e0e0;
+          padding:10px 16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+        #ug-toolbar input{padding:6px 10px;border:1px solid #ccc;border-radius:6px;min-width:240px}
+        .ug-t-on,.ug-t-off{padding:5px 10px;border-radius:14px;border:1px solid #ccc;cursor:pointer;font-size:12px}
+        .ug-t-on{background:#1565c0;color:#fff;border-color:#1565c0}
+        .ug-t-off{background:#f3f3f3;color:#888}
+        .ug-btn{padding:5px 10px;border:1px solid #ccc;border-radius:6px;background:#fafafa;cursor:pointer}
+        #ug-count{margin-left:auto;color:#666;font-size:12px}
+        #ug-canvas{flex:1;overflow:hidden;background:#fbfbfb;min-height:calc(100vh - 120px)}
+        .ug-hint{font-size:12px;color:#888;padding:6px 16px}
+        .ug-banner{margin:8px 16px;padding:8px 12px;border-radius:6px;font-size:13px;
+          background:#fff4e5;border:1px solid #ffd8a8;color:#9a6700}
+        .ug-banner b{color:#7a4f00}
+        .ug-tv-label{margin-left:6px;font-weight:600}
+        .ug-tv{display:inline-block;margin:2px 3px;padding:2px 8px;border-radius:12px;
+          background:#fff;border:1px solid #ffd8a8;color:#9a6700;font-size:12px;cursor:pointer;
+          text-decoration:none}
+        .ug-tv:hover{background:#ffe8cc;border-color:#ff922b}

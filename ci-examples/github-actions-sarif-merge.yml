@@ -1,0 +1,59 @@
+# P207-4: 多 SARIF 合并 CI 模板（GitHub Actions）
+#
+# 场景：大型代码库按模块/目录分多次运行静态分析，每次产出独立 SARIF，
+#       再合并为单一 SARIF 上报 GitHub code scanning，避免互相覆盖。
+#
+# 合并脚本（Python，兼容 3.6.5）：读取 SARIF 2.1.0，将各文件的 results 汇聚到
+# 同一 tool/driver 下，并保留每个文件的 originalUriBaseIds（若有）。
+
+name: matlab-static-analysis-merged
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # 按子目录并行扫描，最后合并
+        module: [core, io, gui]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.8'
+      - name: Install analyzer
+        run: pip install -e .
+      - name: Scan module ${{ matrix.module }}
+        run: |
+          matlab_analyzer . --gate --gate-fail-on uninit --gate-folder-report-format sarif \
+            --out-dir _scan/${{ matrix.module }} --module-filter ${{ matrix.module }}
+          mv _scan/${{ matrix.module }}/gate_report.sarif _scan/${{ matrix.module }}.sarif
+      - name: Upload partial SARIF
+        uses: actions/upload-artifact@v4
+        with:
+          name: sarif-${{ matrix.module }}
+          path: _scan/${{ matrix.module }}.sarif
+
+  merge-and-report:
+    needs: analyze
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.8'
+      - name: Download all SARIFs
+        uses: actions/download-artifact@v4
+        with:
+          path: _scan_parts
+      - name: Merge SARIF
+        run: python ci-examples/merge_sarif.py _scan_parts _scan_merged.sarif
+      - name: Upload merged SARIF to code scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: _scan_merged.sarif

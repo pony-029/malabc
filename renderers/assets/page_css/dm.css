@@ -1,0 +1,30 @@
+.dm-wrap{overflow-x:auto;margin:12px 0 18px;border:1px solid #d0d7de;border-radius:8px;background:#fff;}
+#dm-table{border-collapse:collapse;font-size:12px;white-space:nowrap;}
+#dm-table th,#dm-table td{border:1px solid #e4e8ee;padding:4px 8px;text-align:center;}
+#dm-table th{background:#f6f8fa;position:sticky;top:0;z-index:1;}
+#dm-table td.dm-dir{text-align:left;font-weight:600;background:#f6f8fa;}
+#dm-table td.dm-stat{background:#fbfcfe;color:#57606a;}
+#dm-table tr.dm-cycle td.dm-dir{box-shadow:inset 3px 0 0 #cf222e;}
+#dm-table th.dm-cycle-col{box-shadow:inset 0 -3px 0 #cf222e;color:#cf222e;}
+#dm-table td.dm-cell{cursor:pointer;color:#0d1117;}
+#dm-table td.dm-cell:hover{outline:2px solid #0969da;outline-offset:-2px;}
+.dm-toolbar{margin:10px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.dm-toolbar input{padding:4px 8px;border:1px solid #d0d7de;border-radius:6px;font-size:13px;width:220px;}
+.dm-toolbar label{font-size:13px;color:#57606a;display:flex;align-items:center;gap:4px;}
+.dm-toolbar button{padding:4px 10px;border:1px solid #d0d7de;border-radius:6px;background:#f6f8fa;cursor:pointer;font-size:13px;}
+.dm-toolbar button:hover{background:#eaeef2;}
+.dm-toolbar .dm-count{font-size:12px;color:#57606a;}
+.dm-cycles{margin:10px 0;padding:10px 12px;border:1px solid #ffcecb;border-radius:8px;background:#fff5f5;}
+.dm-cycles b{color:#cf222e;}
+#dm-detail{margin:14px 0;padding:12px 14px;border:1px solid #d0d7de;border-radius:8px;background:#f6f8fa;min-height:24px;}
+#dm-detail h3{margin:0 0 8px;font-size:14px;}
+#dm-detail ol{margin:0;padding-left:20px;font-size:13px;line-height:1.9;}
+.dm-legend{display:flex;align-items:center;gap:10px;margin:6px 0 2px;font-size:12px;color:#57606a;}
+.dm-legend .sw{display:inline-block;width:16px;height:16px;border:1px solid #d0d7de;border-radius:3px;}
+:root[data-theme="dark"] #dm-table th{background:#161b22;}
+:root[data-theme="dark"] #dm-table td.dm-dir{background:#161b22;}
+:root[data-theme="dark"] #dm-table td.dm-stat{background:#0d1117;color:#8b949e;}
+:root[data-theme="dark"] #dm-table th,#dm-table td{border-color:#30363d;}
+:root[data-theme="dark"] .dm-wrap{background:#0d1117;border-color:#30363d;}
+:root[data-theme="dark"] #dm-detail{background:#161b22;border-color:#30363d;}
+:root[data-theme="dark"] #dm-table td.dm-cell{color:#c9d1d9;}

@@ -1,0 +1,1 @@
+[["nested.m", 4, "uninitialized", "变量 v 在函数 nested 中未初始化（读前无写）"], ["nested.m", 4, "uninitialized", "变量 z 在函数 nested 中未初始化（读前无写）"], ["varargs.m", 4, "uninitialized", "变量 k 在函数 varargs 中未初始化（读前无写）"], ["中文测试.m", 4, "tainted_sink", "污点数据在函数 <script> 中流入危险输出点（fprintf），传播级别 1"]]

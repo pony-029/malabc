@@ -1,0 +1,35 @@
+.stats-cards{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0;}
+.stat-card{flex:1;min-width:120px;border:1px solid #d0d7de;border-radius:8px;
+  padding:10px 14px;background:#f6f8fa;}
+.stat-card .num{font-size:22px;font-weight:600;}
+.stat-card.hot{border-color:#d1242f;background:#fff5f5;}
+::root[data-theme="dark"] .stat-card{background:#161b22;border-color:#30363d;}
+.filters{margin:10px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.filters button{border:1px solid #d0d7de;background:#f6f8fa;border-radius:16px;
+  padding:4px 12px;cursor:pointer;}
+.filters button.active{background:#0969da;color:#fff;border-color:#0969da;}
+.filters input{border:1px solid #d0d7de;border-radius:6px;padding:5px 10px;}
+#todo-table{border-collapse:collapse;font-size:12px;width:100%;}
+#todo-table th,#todo-table td{border:1px solid #d0d7de;padding:6px 8px;
+  text-align:left;vertical-align:top;}
+#todo-table th{cursor:pointer;background:#f6f8fa;user-select:none;}
+.prio{display:inline-block;min-width:46px;text-align:center;border-radius:10px;
+  padding:1px 8px;font-weight:600;color:#fff;}
+.p-critical{background:#800000;}
+.p-high{background:#d1242f;}
+.p-medium{background:#bf8700;}
+.p-low{background:#57606a;}
+.miss{font-size:11px;color:#57606a;}
+.score{font-weight:600;}
+.tag-tainted{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;
+  background:#ffd33d;color:#4b3400;font-size:10px;font-weight:600;}
+.btn-sugg{margin-top:4px;border:1px solid #d0d7de;background:#f6f8fa;
+  border-radius:10px;padding:2px 8px;font-size:11px;cursor:pointer;}
+.sugg{display:none;margin-top:6px;white-space:pre-wrap;font-size:11px;
+  background:#f6f8fa;border-left:3px solid #0969da;padding:6px 8px;
+  border-radius:0 6px 6px 0;line-height:1.6;}
+tr.expanded .sugg{display:block;}
+::root[data-theme="dark"] #todo-table th{background:#161b22;}
+::root[data-theme="dark"] .miss{color:#8b949e;}
+:root[data-theme="dark"] .sugg{background:#161b22;border-left-color:#58a6ff;}
+:root[data-theme="dark"] .btn-sugg{background:#21262d;color:#c9d1d9;border-color:#30363d;}

@@ -1,0 +1,21 @@
+#!/bin/sh
+# ci-examples/pre-commit —— 图↔文档 一致性门禁（防止再次漂移）
+# 安装：copy ci-examples/pre-commit .git/hooks/pre-commit
+# 作用：任何对 gen_ssb_pro.py / 伴读 md / 索引 md 的提交前，先跑
+#       verify_diagram_docs_sync.py；不一致则阻止提交。
+set -e
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$ROOT" || exit 1
+if [ -f verify_diagram_docs_sync.py ]; then
+    python verify_diagram_docs_sync.py
+else
+    echo "[pre-commit] 未找到 verify_diagram_docs_sync.py，跳过一致性门禁"
+    exit 0
+fi
+# EXAMPLE 数值自洽校验（防止示例被手抖写错）
+if [ -f backfill_examples.py ]; then
+    python backfill_examples.py
+else
+    echo "[pre-commit] 未找到 backfill_examples.py，跳过示例自检"
+    exit 0
+fi
