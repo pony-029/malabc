@@ -356,6 +356,41 @@ python tests/test_eval_ai_fix.py    # AI 修复闭环评测
 
 ---
 
+## AI Agent 集成（MCP）
+
+`malabc` 可作为 **Model Context Protocol (MCP)** 工具服务器，被任意支持 MCP 的 AI Agent
+（CodeBuddy / Cursor / Claude 等）即插即用地调用，把「代码理解 + 静态检查 + 确定性补丁」
+能力接入 Agent 的自主工作流。这是 malabc 从「单体脚本式 AI 能力」迈向 **agent-native 节点** 的关键一步。
+
+启动（由 Agent 的 MCP client 自动拉起，纯标准库、零第三方依赖）：
+
+```bash
+python matlabc_mcp.py
+```
+
+协议为 MCP over stdio（LSP 分包帧，兼容官方 MCP SDK）。暴露的工具：
+
+| 工具 | 作用 |
+| --- | --- |
+| `matlabc_analyze` | 静态分析 + 结构梳理，生成调用关系 / 风险热点 / 技术债报告 |
+| `matlabc_check` | 门禁式静态检查（`uninitialized` / `type_mismatch` / `dead_code` / `shape_mismatch` / `tainted_sink`） |
+| `matlabc_ask` | 自然语言问答式代码理解（谁调用 X / 风险热点 / 解释 X） |
+| `matlabc_gen_patch` | 运行 AI 修复闭环，生成 / 应用确定性修复补丁 |
+| `matlabc_version` | 返回引擎版本与能力清单，供 Agent 做能力协商 |
+
+> **设计要点**：server 通过 `subprocess` 复用 `matlabc` 现有 CLI（进程隔离、行为一致）；
+> 拉起的子进程**整棵进程树**在 server 退出 / 超时时被强制回收（Windows `taskkill /T`、
+> POSIX `killpg`），避免孤儿进程跑飞。所有工具返回带 `isError` 标记，便于 Agent 做错误分支。
+
+Agent 调用示例（伪代码）：
+
+```json
+{"method":"tools/call","params":{"name":"matlabc_check",
+ "arguments":{"target":"src/","check":"uninitialized","max_warnings":0}}}
+```
+
+---
+
 ## English Overview
 
 `malabc` ships **`matlabc`**, a static analysis and deterministic auto-fix engine for
