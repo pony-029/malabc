@@ -7,6 +7,7 @@
 
 | 日期 | 主题 | 文件 | 结论摘要 |
 | --- | --- | --- | --- |
+| 2026-10-08 | README 双语化与 banner 视觉修正 | [ANALYSIS_2026-10-08_MALABC_DOCS_BILINGUAL_BANNER.md](ANALYSIS_2026-10-08_MALABC_DOCS_BILINGUAL_BANNER.md) | 单文件中英混排→纯英/纯中双语；banner 去等距倾斜与 AI 水印（PIL 自绘水平正视）；修正 4 处 404 文档链接 |
 | 2026-10-08 | malabc 与 AI Agent 深度融合（superpower×brainstorming） | [ANALYSIS_2026-10-08_MALABC_AI_AGENT_FUSION.md](ANALYSIS_2026-10-08_MALABC_AI_AGENT_FUSION.md) | 最大缺口=无标准协议暴露；落地 stdlib MCP server(matlabc_mcp.py) 让 agent 即插即用；附孤儿进程跑飞根因与进程树回收修复 |
 | 2026-10-08 | malabc 演进治理（superpower×brainstorming） | [ANALYSIS_2026-10-08_MALABC_EVOLUTION_GOVERNANCE.md](ANALYSIS_2026-10-08_MALABC_EVOLUTION_GOVERNANCE.md) | 能力局部领先，差距在"工程化+生态"结构性缺失；Top 落地=启用自身 CI + 补 .gitignore + CONTRIBUTING |
 
