@@ -15072,10 +15072,22 @@ def test_readme_doc_sync_partial():
 
 
 def test_readme_doc_sync_flags():
-    """收尾回归（R10）：matlabc_README.md 须与代码旗标同步（防文档再次滞后）。"""
+    """收尾回归（R10）：matlabc_README.md 须与代码旗标同步（防文档再次滞后）。
+
+    R62-R30 修复：该文档已从仓库根移入 docs/，本测试仍在根目录找它，于是
+    在**未改动基线**上就因 FileNotFoundError 常红 —— 一道长期失效的门。
+    改为「按候选路径解析 + 找不到必须红」，保持原意（文档滞后要被抓到）
+    而不放宽判据。"""
     import io
-    head = io.open(os.path.join(ROOT, "matlabc_README.md"),
-                   encoding="utf-8").read()
+    cands = [os.path.join(ROOT, "matlabc_README.md"),
+             os.path.join(ROOT, "docs", "matlabc_README.md")]
+    head = None
+    for c in cands:
+        if os.path.isfile(c):
+            head = io.open(c, encoding="utf-8").read()
+            break
+    assert head is not None, \
+        "未找到 matlabc_README.md（候选：%s）—— 文档缺失同样必须红" % cands
     assert "--init-header" in head, "README 缺 --init-header 说明"
     assert "--check-py36" in head, "README 缺 --check-py36 说明"
 
@@ -15139,3 +15151,524 @@ def test_p271_no_inline_event_handlers():
     # 负向后查：onclick= 不得紧跟在 . 或字母/数字/下划线之前（即排除 b.onclick= 这类 JS 属性赋值）
     handlers = re.findall(r"(?<![.\w])on(?:click|load|submit|change|input|mouseover|mouseout)\s*=", src)
     assert not handlers, "源码仍存在内联事件处理器属性（应改为 data-act + 事件委托）：%r" % handlers
+
+
+# ===========================================================================
+# R30 轮（superpower-probe-loop）：以下守卫对应本轮实测挖出的真实缺陷。
+# 全部走**真实 API**（CLI / 模块函数），断言落在可复现的结果上。
+# ===========================================================================
+
+def test_r30_patch_engine_inserts_instead_of_overwriting():
+    """D-P0-1 回归守卫：确定性补丁必须**纯插入** `<var> = [];`，不得覆盖读取行。
+
+    真实缺陷（实测）：渲染侧把编辑算子 "ins" 实现为 `_new[_idx] = payload`，
+    于是 `q = [];` **顶掉**了 `y = q + n;` —— 整条源码语句被删除，而 verify
+    自证门只比对告警条数（1→0）仍然报 PASS，直接违反「安全、不丢数据」承诺。
+    """
+    d = tempfile.mkdtemp(prefix="r30_patch_")
+    try:
+        io.open(os.path.join(d, "demo.m"), "w", encoding="utf-8").write(
+            "function y = demo(n)\ny = q + n;\nend\n")
+        prefix = os.path.join(d, "fix")
+        rc, _out, err = _run([d, "--gen-apply-patch", prefix, "--checks", "all"],
+                             d)
+        assert rc == 0, err
+        patch = _read_text(prefix + ".git.patch")
+        removed = [l for l in patch.splitlines()
+                   if l.startswith("-") and not l.startswith("---")]
+        assert not removed, "补丁出现删除行（插入被实现为覆盖）：%r" % removed
+        assert "+q = [];" in patch, "未插入 q = []; 初始化：\n%s" % patch
+        touched = ma._apply_unified_patch_text(patch, d)
+        assert touched, "补丁未改动任何文件"
+        after = _read_text(os.path.join(d, "demo.m"))
+        assert "y = q + n;" in after, "源码语句被补丁删除：\n%s" % after
+        assert "q = [];" in after
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_r30_patch_safety_invariant_two_way():
+    """自证门的「语句保持不变量」必须能说「不」，也能放行。
+
+    恒等式：补丁删除行数 == 报告里 dead_code 条数（唯一被允许的删除来源）。
+    """
+    sys.path.insert(0, ROOT)
+    import matlabc_flow as cf
+    # 负对照：覆盖式插入（删除 1 行、报告声明 0 条）→ 必须不安全
+    bad = ("--- a/demo.m\n+++ b/demo.m\n@@ -2,3 +2,3 @@\n"
+           " % c\n+q = [];\n-y = q + n;\n z = y * 2;\n")
+    ok_bad, det_bad = cf.check_patch_preserves_source(bad, [])
+    assert not ok_bad, "负对照竟被判安全"
+    assert det_bad["removed"] == 1 and det_bad["allowed_removals"] == 0
+    # 正对照：1 条删除 + 1 条 dead_code 声明 → 必须放行
+    good = ("--- a/demo.m\n+++ b/demo.m\n@@ -2,4 +2,4 @@\n"
+            " % c\n-z = y * 2;\n+q = [];\n end\n")
+    ok_good, _ = cf.check_patch_preserves_source(
+        good, [{"rule": "dead_code", "rel": "demo.m", "line": 3}])
+    assert ok_good, "正对照竟被判不安全"
+    # 空补丁：不应误报
+    ok_empty, det_empty = cf.check_patch_preserves_source("", [])
+    assert ok_empty and det_empty["hunks"] == 0
+
+
+def test_r30_uninit_no_false_positive_on_nested_and_for():
+    """D-R8：嵌套函数与 for/parfor 循环头不得产生 high 误报，真阳性必须保留。
+
+    实测根因两处：(a) 父函数 body 范围内含 `function z = inner(v)` 声明行，
+    其 v/z 被当成父函数局部量；(b) `_lhs_assigned_vars("for k ")` 取到的首个
+    标识符是关键字 `for` 本身 ⇒ k 不在 lhs_vars ⇒ 被当成读取。
+    """
+    cases = [
+        ("function y = f(x)\n    y = inner(x);\n"
+         "    function z = inner(v)\n        z = v + 1;\n    end\nend\n", 0),
+        # MATLAB 不要求嵌套函数缩进 —— 同缩进形态必须同样被跳过
+        ("function f()\ny = outer_read;\nfunction z = inner(v)\n"
+         "    z = v + 1;\nend\ndisp(y);\nend\n", 1),
+        ("function f(n)\nfor i=1:n\n    disp(i);\nend\n"
+         "s = 0;\nfor k = 1:n\n    s = s + k;\nend\ndisp(s);\nend\n", 0),
+        ("function f()\ntry\n    risky();\ncatch ME\n"
+         "    disp(ME.message);\nend\nend\n", 0),
+    ]
+    for i, (src, want) in enumerate(cases):
+        d = tempfile.mkdtemp(prefix="r30_uninit_%d_" % i)
+        try:
+            io.open(os.path.join(d, "a.m"), "w", encoding="utf-8").write(src)
+            rep = os.path.join(d, "r.json")
+            rc, _o, err = _run([d, "--checks", "uninitialized", "--json", rep],
+                               d)
+            assert rc == 0, err
+            got = [r for r in (json.load(io.open(rep, encoding="utf-8-sig"))
+                               .get("uninitialized") or [])
+                   if r.get("confidence") == "high"]
+            assert len(got) == want, (
+                "夹具 #%d 期望 %d 条 high，实得 %d：%s"
+                % (i, want, len(got), json.dumps(got, ensure_ascii=False)))
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+    # 真阳性保持：读前无写仍必须报
+    d = tempfile.mkdtemp(prefix="r30_uninit_tp_")
+    try:
+        io.open(os.path.join(d, "b.m"), "w", encoding="utf-8").write(
+            "function y = f(n)\ny = q + n;\nend\n")
+        rep = os.path.join(d, "r.json")
+        _run([d, "--checks", "uninitialized", "--json", rep], d)
+        rows = json.load(io.open(rep, encoding="utf-8-sig")).get("uninitialized") or []
+        assert len(rows) == 1 and rows[0]["name"] == "q", rows
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_r30_reproducible_site_is_byte_identical_across_hashseed():
+    """D-R11：--reproducible 必须让整站**逐字节**可复现。
+
+    真因：`_bi_info` 的键来自集合 `_bi_used` 的迭代顺序，str 哈希随机化
+    （PYTHONHASHSEED）使键序跨进程漂移 ⇒ `src/_pageview.js` 两次生成不同，
+    并级联污染 manifest.json（它记录每页 sha256，是下游受害文件）。
+    """
+    d = tempfile.mkdtemp(prefix="r30_repro_")
+    try:
+        srcdir = os.path.join(d, "src")
+        outdir = os.path.join(d, "site")
+        os.makedirs(srcdir)
+        io.open(os.path.join(srcdir, "a.m"), "w", encoding="utf-8").write(
+            "function y = f(x)\ny = sin(x) + abs(x);\nend\n")
+
+        def snap(seed):
+            """同一源目录、同一输出目录，只换 PYTHONHASHSEED，中间清空输出。
+
+            夹具纪律：源/输出路径必须逐字相同 —— 站点里含项目路径（页面标题、
+            面包屑、dirs/<rel>.html 页名）。首版用了 run_a/run_b 两个目录，于是
+            把**夹具差异**伪装成了「不可复现」（实测：同源目录时 index.html
+            逐行相同）。
+            """
+            if os.path.isdir(outdir):
+                shutil.rmtree(outdir)
+            env = dict(os.environ)
+            env["PYTHONHASHSEED"] = str(seed)
+            subprocess.run([_PY, ANALYZER, srcdir, "--browse", outdir, "--offline",
+                            "--reproducible"],
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+            out = {}
+            for base, _dirs, files in os.walk(outdir):
+                for f in files:
+                    p = os.path.join(base, f)
+                    out[os.path.relpath(p, outdir).replace(os.sep, "/")] = \
+                        hashlib.sha256(io.open(p, "rb").read()).hexdigest()
+            return out
+
+        A = snap(1)
+        B = snap(999)
+        assert A, "站点未生成任何文件（夹具失效）"
+        assert set(A) == set(B), "文件集不同：%s" % sorted(set(A) ^ set(B))[:8]
+        diff = sorted(k for k in A if A[k] != B[k])
+        assert not diff, "跨 hashseed 仍不一致：%s" % diff[:8]
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_r30_doc_flags_guard_catches_lying_docs():
+    """能力清单不能撒谎：文档写的开关必须真的存在于对应脚本的 --help。
+
+    这条护栏本来就能抓到 README 的 `--check tainted_sink`（歧义前缀）。
+    """
+    guard = os.path.join(ROOT, "tools", "check_doc_flags.py")
+    proc = subprocess.run([_PY, guard, "--selftest"], stdout=subprocess.PIPE,
+                          stderr=subprocess.STDOUT)
+    out = proc.stdout.decode("utf-8", "replace")
+    assert proc.returncode == 0, out
+    m = re.search(r'SELFTEST COUNTS \{"bad": (\d+), "good": (\d+)\}', out)
+    assert m, "自证计数必须机器可读：\n%s" % out
+    assert int(m.group(1)) >= 4, "反例数退化（下界 4）：%s" % m.group(1)
+    assert int(m.group(2)) >= 5, "正例数退化（下界 5）：%s" % m.group(2)
+
+
+def test_r30_static_guards_all_clean():
+    """登记制静态护栏必须全绿；且每个护栏都要有自己的 --selftest 且通过。
+
+    「缺输入必须能红」的对应面：一个没有自证的护栏 = 一道可能永远绿的门。
+    """
+    gdir = os.path.join(ROOT, "tools")
+    guards = sorted(f for f in os.listdir(gdir)
+                    if f.startswith("check_") and f.endswith(".py"))
+    assert guards, "未找到任何登记制护栏（缺输入 → 红）"
+    for g in guards:
+        p = os.path.join(gdir, g)
+        r = subprocess.run([_PY, p], stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT)
+        assert r.returncode == 0, "%s 未通过：\n%s" % (
+            g, r.stdout.decode("utf-8", "replace")[:600])
+        s = subprocess.run([_PY, p, "--selftest"], stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT)
+        assert s.returncode == 0, "%s --selftest 未通过：\n%s" % (
+            g, s.stdout.decode("utf-8", "replace")[:600])
+        assert b"SELFTEST COUNTS" in s.stdout, "%s 未打印自证计数" % g
+
+
+def test_r30_mcp_run_reports_returncode():
+    """D-P0-3：`_run` 必须回传退出码，否则 CLI 失败会被包装成成功给 Agent。"""
+    sys.path.insert(0, ROOT)
+    import matlabc_mcp
+    # 脚本路径必须绝对化（MCP 宿主的 CWD 不是仓库根）
+    p = matlabc_mcp._script("matlabc.py")
+    assert os.path.isabs(p) and os.path.exists(p), p
+    bad = [os.path.join(ROOT, "matlabc_flow.py"), SAMPLE,
+           "--gen-apply-patch", "x"]        # matlabc_flow 没有这个开关
+    rc, text = matlabc_mcp._run(bad)
+    assert rc != 0, "该调用应非零退出（这个 rc 曾被丢弃）"
+    assert "usage:" in text and "error:" in text, text[:200]
+    raised = False
+    try:
+        matlabc_mcp._run_ok(bad, "probe")
+    except RuntimeError:
+        raised = True
+    assert raised, "_run_ok 未对非零退出码抛错（失败仍会被报成成功）"
+
+
+# ======================================================================
+# superpower 30 轮修复（R20-R28）回归
+# ----------------------------------------------------------------------
+# 覆盖：C++ 扩展名收集 / --no-recursive / 未支持语言显式告警 /
+#       7 个「只声明不产出」的跨语言算子实装 / 算子目录无幻影 + 门能红。
+# 纪律：每个特性都带**负对照** —— 只抓坏（假门）或只放好（假安全）都不算通过。
+# ======================================================================
+def test_r30b_c_collect_cxx_exts_and_no_recursive():
+    """R20：C++ 扩展名必须被收集；--no-recursive 不得恒空（两处旧缺陷）。"""
+    ma._clear_closure_cache()
+    tmp = tempfile.mkdtemp(prefix="mabrr30b_")
+    try:
+        root = os.path.join(tmp, "cdir")
+        os.makedirs(os.path.join(root, "sub"))
+        fixtures = (("a.c", "int f(void){ return 0; }\n"),
+                    (os.path.join("sub", "b.c"), "int g(void){ return 1; }\n"),
+                    ("c.cpp", "int h(){ return 2; }\n"),
+                    ("d.hpp", "#pragma once\nint k();\n"))
+        for rel, body in fixtures:
+            with io.open(os.path.join(root, rel), "w", encoding="utf-8") as fh:
+                fh.write(body)
+        # 正对照①：递归时 .c/.h/.cpp/.hpp 全收（此前 .cpp/.hpp 被静默丢弃）
+        rc, out, _e = _run([root, "--lang", "c"], tmp)
+        assert rc == 0, "--lang c 失败：%s" % out[-300:]
+        assert "C 文件 4" in out, "C++ 扩展名未被收集：%s" % out[-300:]
+        # 正对照②：--no-recursive 只收根目录 3 个（此前恒 0 —— 静默空结果）
+        rc2, out2, _e2 = _run([root, "--lang", "c", "--no-recursive"], tmp)
+        assert rc2 == 0, "--no-recursive 失败：%s" % out2[-300:]
+        assert "C 文件 3" in out2, "--no-recursive 结果错误：%s" % out2[-300:]
+        # 负对照：只有 .c 时不得凭空多算
+        only = os.path.join(tmp, "only")
+        os.makedirs(only)
+        with io.open(os.path.join(only, "x.c"), "w", encoding="utf-8") as fh:
+            fh.write("int z(void){ return 0; }\n")
+        rc3, out3, _e3 = _run([only, "--lang", "c"], tmp)
+        assert rc3 == 0 and "C 文件 1" in out3, out3[-300:]
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r30b_unsupported_language_is_reported_not_silent():
+    """R21：未支持语言必须显式告警，绝不静默返回「0 文件 0 函数」。"""
+    tmp = tempfile.mkdtemp(prefix="mabrr30c_")
+    try:
+        root = os.path.join(tmp, "tsdir")
+        os.makedirs(root)
+        with io.open(os.path.join(root, "mod.ts"), "w", encoding="utf-8") as fh:
+            fh.write("export function k(): number { return 1; }\n")
+        with io.open(os.path.join(root, "lib.rs"), "w", encoding="utf-8") as fh:
+            fh.write("pub fn f() -> i32 { 0 }\n")
+        rc, _o, err = _run([root, "--lang", "c"], tmp)
+        assert rc == 0, "空结果不应改变退出码"
+        assert "TypeScript" in err and "Rust" in err, err
+        assert "mod.ts" in err and "lib.rs" in err, "告警须点到具体文件：%s" % err
+        # 负对照：全是 .c 时不得出现任何未支持告警
+        root2 = os.path.join(tmp, "cdir")
+        os.makedirs(root2)
+        with io.open(os.path.join(root2, "ok.c"), "w", encoding="utf-8") as fh:
+            fh.write("int f(void){ return 0; }\n")
+        rc2, _o2, err2 = _run([root2, "--lang", "c"], tmp)
+        assert rc2 == 0 and "[warn]" not in err2, err2
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r30b_py_eval_and_sql_injection_two_way():
+    """R22/R23：py_eval_usage / py_sql_injection 真实现（含负对照）。"""
+    ma._clear_closure_cache()
+    tmp = tempfile.mkdtemp(prefix="mabrr30d_")
+    try:
+        pos = os.path.join(tmp, "pos")
+        os.makedirs(pos)
+        with io.open(os.path.join(pos, "app.py"), "w", encoding="utf-8") as fh:
+            fh.write("def run_expr(src):\n"
+                     "    return eval(src)\n"
+                     "\n"
+                     "\n"
+                     "def find_user(conn, name):\n"
+                     "    q = 'SELECT * FROM users WHERE name = ' + name\n"
+                     "    return conn.cursor().execute(q)\n"
+                     "\n"
+                     "\n"
+                     "def find_ok(conn, name):\n"
+                     "    return conn.cursor().execute("
+                     "'SELECT 1 WHERE n = ?', (name,))\n")
+        js = os.path.join(tmp, "pos.json")
+        rc, out, err = _run([pos, "--lang", "py", "--json", js], tmp)
+        assert rc == 0, err[-300:]
+        d = json.loads(_read_text(js))
+        by = {}
+        for h in d["heuristics"]:
+            by.setdefault(h["kind"], []).append(h)
+        assert [h["func"] for h in by.get("py_eval_usage", [])] == \
+            ["run_expr"], "eval() 应且仅应在 run_expr 命中：%r" % by.get("py_eval_usage")
+        assert [h["func"] for h in by.get("py_sql_injection", [])] == \
+            ["find_user"], ("拼接 SQL 应且仅应在 find_user 命中：%r"
+                            % by.get("py_sql_injection"))
+        assert by["py_eval_usage"][0]["level"] == "error"
+        assert by["py_sql_injection"][0]["level"] == "error"
+        # 负对照：参数化查询 / literal_eval 不得报
+        neg = os.path.join(tmp, "neg")
+        os.makedirs(neg)
+        with io.open(os.path.join(neg, "app.py"), "w", encoding="utf-8") as fh:
+            fh.write("import ast\n"
+                     "def safe(src):\n"
+                     "    return ast.literal_eval(src)\n"
+                     "def q1(conn, name):\n"
+                     "    return conn.cursor().execute("
+                     "'SELECT 1 WHERE n = ?', (name,))\n")
+        js2 = os.path.join(tmp, "neg.json")
+        rc2, _o2, _e2 = _run([neg, "--lang", "py", "--json", js2], tmp)
+        ks2 = {h["kind"] for h in json.loads(_read_text(js2))["heuristics"]}
+        assert rc2 == 0 and "py_eval_usage" not in ks2 \
+            and "py_sql_injection" not in ks2, ks2
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r30b_js_dangerous_unused_proto_two_way():
+    """R24/R25/R26：js_dangerous_call / js_unused_var / js_prototype_pollution。"""
+    ma._clear_closure_cache()
+    tmp = tempfile.mkdtemp(prefix="mabrr30e_")
+    try:
+        pos = os.path.join(tmp, "pos")
+        os.makedirs(pos)
+        with io.open(os.path.join(pos, "app.js"), "w", encoding="utf-8") as fh:
+            fh.write("function a(s) { return eval(s); }\n"
+                     "function b(el, n) { el.innerHTML = n; }\n"
+                     "function c(u) { setTimeout('go(' + u + ')', 9); }\n"
+                     "function d(n) { document.write(n); }\n"
+                     "function e(s) { return new Function(s)(); }\n"
+                     "function f(t, s) {\n"
+                     "  for (var k in s) {\n"
+                     "    t[k] = s[k];\n"
+                     "  }\n"
+                     "  return t;\n"
+                     "}\n"
+                     "function g(o, v) { o.__proto__ = v; return o; }\n"
+                     "function h(a) {\n"
+                     "  const x = 1;\n"
+                     "  return a;\n"
+                     "}\n")
+        js = os.path.join(tmp, "pos.json")
+        rc, out, err = _run([pos, "--lang", "js", "--json", js], tmp)
+        assert rc == 0, err[-300:]
+        d = json.loads(_read_text(js))
+        cnt = {}
+        for h in d["heuristics"]:
+            cnt[h["kind"]] = cnt.get(h["kind"], 0) + 1
+        assert cnt.get("js_dangerous_call") == 5, cnt
+        assert cnt.get("js_prototype_pollution") == 2, cnt
+        assert cnt.get("js_unused_var") == 1, cnt
+        # 负对照：安全写法一个都不报
+        neg = os.path.join(tmp, "neg")
+        os.makedirs(neg)
+        with io.open(os.path.join(neg, "app.js"), "w", encoding="utf-8") as fh:
+            fh.write("function a(s) { return JSON.parse(s); }\n"
+                     "function b(el, n) { el.textContent = n; }\n"
+                     "function c(fn) { setTimeout(fn, 9); }\n"
+                     "function m(t, s) { return Object.assign(t, s); }\n"
+                     "function h(a) {\n"
+                     "  const x = a;\n"
+                     "  return x;\n"
+                     "}\n")
+        js2 = os.path.join(tmp, "neg.json")
+        rc2, _o2, _e2 = _run([neg, "--lang", "js", "--json", js2], tmp)
+        ks2 = {h["kind"] for h in json.loads(_read_text(js2))["heuristics"]}
+        assert rc2 == 0, "负对照 CLI 失败"
+        assert not ({"js_dangerous_call", "js_unused_var",
+                     "js_prototype_pollution"} & ks2), ks2
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r30b_c_memory_checks_two_way():
+    """R27：c_double_free / c_buffer_overflow 真实现（含负对照）。"""
+    ma._clear_closure_cache()
+    tmp = tempfile.mkdtemp(prefix="mabrr30f_")
+    try:
+        pos = os.path.join(tmp, "pos")
+        os.makedirs(pos)
+        with io.open(os.path.join(pos, "mem.c"), "w", encoding="utf-8") as fh:
+            fh.write("int dbl(void) {\n"
+                     "    char *q = (char *)malloc(8);\n"
+                     "    free(q);\n"
+                     "    free(q);\n"
+                     "    return 0;\n"
+                     "}\n"
+                     "int ovf(const char *s) {\n"
+                     "    char buf[16];\n"
+                     "    strcpy(buf, s);\n"
+                     "    return (int)buf[0];\n"
+                     "}\n")
+        js = os.path.join(tmp, "pos.json")
+        rc, out, err = _run([pos, "--lang", "c", "--json", js], tmp)
+        assert rc == 0, err[-300:]
+        d = json.loads(_read_text(js))
+        by = {}
+        for h in d["heuristics"]:
+            by.setdefault(h["kind"], []).append(h)
+        assert [h["func"] for h in by.get("c_double_free", [])] == ["dbl"], by
+        assert [h["func"] for h in by.get("c_buffer_overflow", [])] == ["ovf"], by
+        # 负对照：重新 malloc 后 free 不算 double free；有界拷贝不算溢出
+        neg = os.path.join(tmp, "neg")
+        os.makedirs(neg)
+        with io.open(os.path.join(neg, "mem.c"), "w", encoding="utf-8") as fh:
+            fh.write("int reuse(void) {\n"
+                     "    char *q = (char *)malloc(8);\n"
+                     "    free(q);\n"
+                     "    q = (char *)malloc(8);\n"
+                     "    free(q);\n"
+                     "    return 0;\n"
+                     "}\n"
+                     "int ok(const char *s) {\n"
+                     "    char buf[16];\n"
+                     "    strncpy(buf, s, sizeof(buf));\n"
+                     "    return (int)buf[0];\n"
+                     "}\n")
+        js2 = os.path.join(tmp, "neg.json")
+        rc2, _o2, _e2 = _run([neg, "--lang", "c", "--json", js2], tmp)
+        ks2 = {h["kind"] for h in json.loads(_read_text(js2))["heuristics"]}
+        assert rc2 == 0, "负对照 CLI 失败"
+        assert "c_double_free" not in ks2, ks2
+        assert "c_buffer_overflow" not in ks2, ks2
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r30b_operator_catalog_has_no_phantom():
+    """R28：算子元表里每个 kind 都必须有产出点；不实现者须显式登记且写原因。"""
+    src = _read_text(ANALYZER)
+    i = src.find("_CROSS_LANG_KIND_META = {")
+    assert i >= 0, "未找到 _CROSS_LANG_KIND_META"
+    j = src.find("{", i)
+    depth, k = 0, j
+    while k < len(src):
+        if src[k] == "{":
+            depth += 1
+        elif src[k] == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        k += 1
+    outside = src[:i] + src[k + 1:]
+    phantom = [kind for kind in ma._CROSS_LANG_KIND_META
+               if ('"kind": "%s"' % kind) not in outside]
+    assert not phantom, "幻影算子（元表登记但全仓无产出点）：%s" % phantom
+    unimpl = getattr(ma, "_UNIMPLEMENTED_KINDS", {})
+    assert "py_undefined_name" in unimpl, "未实现算子必须显式登记（而不是悄悄删掉）"
+    assert not (set(ma._CROSS_LANG_KIND_META) & set(unimpl)), \
+        "元表与未实现表不得有交集（有标签 = 宣称能检测）"
+    for kind, why in unimpl.items():
+        assert isinstance(why, str) and len(why) >= 20, \
+            "未实现算子 %s 必须写明原因" % kind
+    # 新算子必须同时进 --checks 白名单，否则「默认能触发、显式指定反失效」
+    for kind in ("py_eval_usage", "py_sql_injection", "js_dangerous_call",
+                 "js_unused_var", "js_prototype_pollution",
+                 "c_double_free", "c_buffer_overflow"):
+        assert kind in ma._CHECK_NAMES, "%s 未登记进 _CHECK_NAMES" % kind
+
+
+def test_r30b_operator_impl_guard_can_go_red():
+    """R28：算目录护栏必须**真的能红** —— 把幻影算子塞回去必须被拦下。"""
+    guard = os.path.join(ROOT, "tools", "check_operator_impl.py")
+    assert os.path.isfile(guard), "缺少 tools/check_operator_impl.py"
+    src = _read_text(ANALYZER)
+    anchor = '    "py_eval_usage": {"label":'
+    assert anchor in src
+    mutant = src.replace(
+        anchor,
+        '    "py_undefined_name": {"label": "Phantom", "level": "error",'
+        ' "category": "x"},\n' + anchor, 1)
+    assert mutant != src, "变异失败：样本未改变"
+    tmp = tempfile.mkdtemp(prefix="mabrr30g_")
+    try:
+        bad_src = os.path.join(tmp, "mutant.py")
+        with io.open(bad_src, "w", encoding="utf-8") as fh:
+            fh.write(mutant)
+        r = subprocess.run([_PY, guard, "--src", bad_src],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        assert r.returncode == 1, \
+            "护栏对幻影算子竟返回 rc=%d：%s" % (
+                r.returncode, r.stdout.decode("utf-8", "replace")[:300])
+        # 缺输入也必须红（rc=2），不能静默通过
+        r2 = subprocess.run([_PY, guard, "--src",
+                             os.path.join(tmp, "nope.py")],
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        assert r2.returncode == 2, "缺输入竟返回 rc=%d" % r2.returncode
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r30b_check_all_selftest_is_two_way():
+    """R29：护栏总入口自证必须双向 —— 好护栏放行、坏护栏/缺自证/空目录变红。"""
+    r = subprocess.run([_PY, os.path.join(ROOT, "tools", "check_all.py"),
+                        "--selftest"], stdout=subprocess.PIPE,
+                       stderr=subprocess.STDOUT)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[:400]
+    assert "SELFTEST COUNTS" in out, out[:400]
+    assert '"bad": 0' in out, "自证里出现了未抓到的坏样本：%s" % out[:400]
+    # 内嵌在 matlabc 的未支持语言自证同样双向
+    tmp = tempfile.mkdtemp(prefix="mabrr30h_")
+    try:
+        bad, good = ma._scan_unsupported_sources_selftest(tmp)
+        assert bad == 0 and good >= 5, (bad, good)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)

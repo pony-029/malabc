@@ -89,10 +89,12 @@ mindmap
 | Language | Flag | Key capabilities |
 | --- | --- | --- |
 | **MATLAB** (default) | — | Functions / classes / scripts / nested functions / `arguments` blocks / struct fields / global state, fully parsed |
-| **C** | `--lang c` | Function calls / `#include` cross-file dependency edges / heuristics for dangling pointers, out-of-bounds, use-after-free |
-| **Python** | `--lang py` | Functions / calls / static checks, including a **Python 3.6 syntax-compatibility gate** (`--check-py36`) |
-| **JavaScript** | `--lang js` | Functions / calls / global variables, too-many-parameters, missing-docs checks |
+| **C / C++** | `--lang c`（alias `--lang cpp`） | `.c/.h/.cc/.cpp/.cxx/.hpp/.hh/.hxx`; function calls / `#include` cross-file dependency edges / heuristics for uninitialized pointers, out-of-bounds, use-after-free, double-free, buffer overflow. C++ is parsed as a **C subset** (templates / classes / namespaces are not guaranteed) — a disclosed degradation, never a silent drop |
+| **Python** | `--lang py` | Functions / calls / static checks (`py_unused_import` / `py_dup_params` / `py_too_many_params` / `py_missing_doc` / `py_eval_usage` / `py_sql_injection`), including a **Python 3.6 syntax-compatibility gate** (`--check-py36`) |
+| **JavaScript** | `--lang js` | Functions / calls / static checks (`js_unused_import` / `js_global_var` / `js_too_many_params` / `js_missing_doc` / `js_dangerous_call` / `js_unused_var` / `js_prototype_pollution`) |
 | **Mixed (MEX bridge)** | `--mixed` | MATLAB ↔ C cross-language call edges |
+
+**Language boundary (explicit, not silent).** `--lang` covers MATLAB / C·C++ / Python / JavaScript only. TypeScript, Rust, Go, Java, Kotlin, C#, Swift, Scala, Ruby and PHP have **no frontend**: when such files exist but the requested language finds none, the CLI prints a `[warn]` line to stderr naming the language and the files it skipped, instead of quietly reporting `0 files / 0 functions`. A cross-language operator label is only listed in the operator catalog if some code path actually emits it; operators that are deliberately not implemented are registered in `_UNIMPLEMENTED_KINDS` with a stated reason, and `tools/check_operator_impl.py` fails the build if the two ever diverge.
 
 ### Static Check Rules
 
@@ -103,6 +105,13 @@ mindmap
 | `dead_code` | Unreachable code after `return` + always-false `if` branches |
 | `shape_mismatch` | `A*B` / `A+B` / `A-B` dimension-constraint violations |
 | `tainted_sink` | Cross-file taint: user input / file / network → dangerous sinks such as `system` / `eval` / `fprintf` |
+| `py_eval_usage` | `--lang py`: bare `eval()` / `exec()` inside a function (code injection / sandbox escape) |
+| `py_sql_injection` | `--lang py`: SQL built by concatenation / `%` / `.format()` and then handed to `execute()`; parameterised calls are not reported |
+| `c_double_free` | `--lang c`: the same pointer freed twice with no reassignment in between |
+| `c_buffer_overflow` | `--lang c`: unbounded `strcpy`/`strcat`/`sprintf`/`gets` (or `memcpy`/`strncpy` without `sizeof(buf)`) into a fixed-size buffer |
+| `js_dangerous_call` | `--lang js`: `eval` / `new Function` / `document.write` / `innerHTML` assignment / `insertAdjacentHTML` / string-timer |
+| `js_unused_var` | `--lang js`: a simple local declaration never referenced again in the function body |
+| `js_prototype_pollution` | `--lang js`: `__proto__` writes, `prototype[<variable>] =`, `constructor.prototype`, or a for-in merge that writes `target[key]` |
 
 **Four levels of warning suppression** (written as source comments, without changing business semantics):
 
@@ -302,7 +311,7 @@ python matlabc.py myproj/ --checks all --sarif report.sarif \
     --sarif-base baseline.sarif --sarif-diff --max-warnings 0 --reproducible
 
 # Cross-file taint scan
-python matlabc.py myproj/ --check tainted_sink
+python matlabc.py myproj/ --checks tainted_sink
 
 # Generate a deterministic self-verified fix patch
 python matlabc flow myproj --auto-apply --gen-apply-patch

@@ -8,6 +8,25 @@ __pycache__/
 mc_flow_*.json
 eval_ai_fix_report.json
 
+# 分析器 / 打包链产物（原先只在归档文档里「声称已落地」，实际缺失；
+# 多次分析或打包后会把整棵树污染进 git status —— 现在真正落地）
+.analyzer_*
+.codebuddy/
+dist_bin/
+_build/
+*.sarif
+*.git.patch
+watch_status.json
+
+# MCP 工具默认落盘位置（matlabc_mcp.py 锁定 CWD + basename 防穿越）
+mcp_analysis.md
+mcp_fix.patch*
+
+# --browse 的默认输出目录（省略 OUTDIR 时使用，见 matlabc.py 的 --browse）
+matlabc_browse/
+tests/_t_*/
+tests/_t_xf_out/
+
 # 操作系统
 .DS_Store
 Thumbs.db

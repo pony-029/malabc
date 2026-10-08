@@ -84,10 +84,12 @@ mindmap
 | 语言 | 参数 | 关键能力 |
 | --- | --- | --- |
 | **MATLAB**（默认） | — | 函数 / 类 / 脚本 / 嵌套函数 / `arguments` 块 / 结构体字段 / 全局状态，完整解析 |
-| **C** | `--lang c` | 函数调用 / `#include` 跨文件依赖边 / 悬空指针、越界、释放后使用启发式 |
-| **Python** | `--lang py` | 函数 / 调用 / 静态检查，含 **Python 3.6 语法兼容门禁**（`--check-py36`） |
-| **JavaScript** | `--lang js` | 函数 / 调用 / 全局变量、参数过多、缺文档检查 |
+| **C / C++** | `--lang c`（别名 `--lang cpp`） | `.c/.h/.cc/.cpp/.cxx/.hpp/.hh/.hxx`；函数调用 / `#include` 跨文件依赖边 / 悬空指针、越界、释放后使用、重复释放、缓冲区溢出启发式。C++ 按 **C 子集**解析（模板/类/命名空间不保证识别）—— 已披露的降级，不是静默丢弃 |
+| **Python** | `--lang py` | 函数 / 调用 / 静态检查（`py_unused_import` / `py_dup_params` / `py_too_many_params` / `py_missing_doc` / `py_eval_usage` / `py_sql_injection`），含 **Python 3.6 语法兼容门禁**（`--check-py36`） |
+| **JavaScript** | `--lang js` | 函数 / 调用 / 静态检查（`js_unused_import` / `js_global_var` / `js_too_many_params` / `js_missing_doc` / `js_dangerous_call` / `js_unused_var` / `js_prototype_pollution`） |
 | **混合（MEX 桥接）** | `--mixed` | MATLAB ↔ C 跨语言调用边 |
+
+**语言支持边界（显式，不静默）**：`--lang` 只覆盖 MATLAB / C·C++ / Python / JavaScript。TypeScript、Rust、Go、Java、Kotlin、C#、Swift、Scala、Ruby、PHP **没有前端**：当目录里存在这些文件、而本次请求的语言一个源文件都没找到时，CLI 会向 stderr 打印 `[warn]` 行，点名语言与被跳过的文件，而不是悄悄给出「0 文件 / 0 函数」。跨语言算子只有在**确有代码路径会产出**时才会出现在算子目录里；刻意不实现的算子登记在 `_UNIMPLEMENTED_KINDS` 并写明原因，`tools/check_operator_impl.py` 会在两者不一致时让构建失败。
 
 ### 静态检查规则
 
@@ -98,6 +100,13 @@ mindmap
 | `dead_code` | `return` 之后不可达代码 + 恒假 `if` 分支 |
 | `shape_mismatch` | `A*B` / `A+B` / `A-B` 维度约束违背 |
 | `tainted_sink` | 跨文件污点：用户输入 / 文件 / 网络 → 危险汇如 `system` / `eval` / `fprintf` |
+| `py_eval_usage` | `--lang py`：函数体内裸调 `eval()` / `exec()`（代码注入 / 沙箱逃逸） |
+| `py_sql_injection` | `--lang py`：拼接 / `%` / `.format()` 构造 SQL 后交给 `execute()`；参数化查询不报 |
+| `c_double_free` | `--lang c`：同一指针 free 两次且中间无重新赋值 |
+| `c_buffer_overflow` | `--lang c`：`strcpy`/`strcat`/`sprintf`/`gets`（或未用 `sizeof(buf)` 的 `memcpy`/`strncpy`）写入固定大小缓冲区 |
+| `js_dangerous_call` | `--lang js`：`eval` / `new Function` / `document.write` / `innerHTML` 赋值 / `insertAdjacentHTML` / 定时器字符串 |
+| `js_unused_var` | `--lang js`：函数体内简单声明后从未再被引用的局部变量 |
+| `js_prototype_pollution` | `--lang js`：直写 `__proto__`、`prototype[<变量>] =`、`constructor.prototype`，或 for-in 合并中写 `target[key]` |
 
 **四级告警抑制**（写在源码注释里，不改业务语义）：
 
@@ -295,7 +304,7 @@ python matlabc.py myproj/ --checks all --sarif report.sarif \
     --sarif-base baseline.sarif --sarif-diff --max-warnings 0 --reproducible
 
 # 跨文件污点扫描
-python matlabc.py myproj/ --check tainted_sink
+python matlabc.py myproj/ --checks tainted_sink
 
 # 生成确定性、自校验修复补丁
 python matlabc flow myproj --auto-apply --gen-apply-patch

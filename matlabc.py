@@ -6842,26 +6842,139 @@ _RE_C_CX = re.compile(r"\b(?:if|for|while|switch|case|else|do|catch)\b"
 _RE_C_INCLUDE = re.compile(r"^[ \t]*#[ \t]*include[ \t]*[<\"]([^>\"]+)[>\"]")
 _RE_C_MACRO = re.compile(r"^[ \t]*#[ \t]*define\b")
 
+# R62-R31a：C/C++ 源文件扩展名**唯一事实源**（superpower 30 轮修复 R20）。
+# 此前 collect_c_files 硬编码 (".c", ".h")，CFrontend.exts 也声明 (".c", ".h")，
+# 两处一致地**漏掉 C++ 扩展名** —— .cpp/.cc/.cxx/.hpp 被静默丢弃，用户只看到
+# 「C 文件 0 / C 函数 0」而无从判断原因（实测：含 1 个 .c + 1 个 .cpp 的目录
+# 报 C 文件 1）。现改为单一常量，收集与声明共用，消除双处漂移。
+# 注意：C++ 仍走 _parse_c_source（行锚定轻量解析器），模板/类/命名空间等
+# C++ 专有语法不保证识别 —— 这是**已披露**的降级，而不是静默丢弃。
+_C_SOURCE_EXTS = (".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx")
+_C_HEADER_EXTS = (".h", ".hpp", ".hh", ".hxx")
+
+# R62-R31b：已知但当前版本**未提供前端**的语言扩展名 -> 语言名。
+# 扫描到这些文件时必须显式告警（stderr），绝不静默当作「0 文件 0 函数」。
+_UNSUPPORTED_SOURCE_EXTS = {
+    ".ts": "TypeScript", ".tsx": "TypeScript", ".mts": "TypeScript",
+    ".cts": "TypeScript", ".rs": "Rust", ".go": "Go", ".java": "Java",
+    ".kt": "Kotlin", ".kts": "Kotlin", ".cs": "C#", ".swift": "Swift",
+    ".scala": "Scala", ".rb": "Ruby", ".php": "PHP",
+}
+_UNSUPPORTED_SCAN_MAX = 200   # 单语言最多统计文件数（防巨型仓拖慢启动路径）
+
 
 def collect_c_files(root, recursive=True, exclude=None):
-    """P87：收集根目录下的 C/C++ 源码文件（.c/.h）。
+    """P87：收集根目录下的 C/C++ 源码文件（扩展名见 _C_SOURCE_EXTS）。
+
+    R20 修复：`recursive=False` 此前**恒返回空列表** —— 判据
+    `os.path.dirname(os.path.join(dp, fn)) != root` 拿 str 与 Path 比较，
+    str != Path 恒为 True，于是连根目录文件都被跳过（实测 `--lang c
+    --no-recursive` 报「C 文件 0」）。现统一 normcase+normpath 后比较。
 
     返回绝对路径列表，按路径稳定排序。"""
     out = []
     skip = set(exclude or ())
+    root_norm = os.path.normcase(os.path.normpath(str(root)))
     for dp, dns, fns in os.walk(root):
         dns[:] = [d for d in sorted(dns) if d not in skip
                   and not d.startswith(".")]
         for fn in sorted(fns):
-            if not fn.lower().endswith((".c", ".h")):
+            if not fn.lower().endswith(_C_SOURCE_EXTS):
                 continue
-            if not recursive and os.path.dirname(os.path.join(dp, fn)) != root:
+            if not recursive and \
+                    os.path.normcase(os.path.normpath(dp)) != root_norm:
                 continue
             p = os.path.join(dp, fn)
             if p in skip:
                 continue
             out.append(p)
     return sorted(out)
+
+
+def scan_unsupported_sources(root, recursive=True, exclude=None):
+    """R62-R31b：扫描「已知但未支持」的语言源文件 -> {语言名: [相对路径, ...]}。
+
+    为什么需要它：--lang 仅覆盖 matlab / c（含 C++ 扩展名）/ py / js。
+    碰到 TypeScript、Rust 等文件时旧行为是**静默忽略**，用户只看到
+    「0 文件 0 函数」，无法区分「目录里确实没有」与「有但不支持」。
+    调用方据此给出显式告警（`_warn_unsupported_sources`）。
+    单语言最多列举 _UNSUPPORTED_SCAN_MAX 个，避免巨型仓库拖慢启动。"""
+    found = defaultdict(list)
+    skip = set(exclude or ())
+    root_norm = os.path.normcase(os.path.normpath(str(root)))
+    for dp, dns, fns in os.walk(root):
+        dns[:] = [d for d in sorted(dns) if d not in skip
+                  and not d.startswith(".")]
+        if not recursive and \
+                os.path.normcase(os.path.normpath(dp)) != root_norm:
+            continue
+        for fn in sorted(fns):
+            lang = _UNSUPPORTED_SOURCE_EXTS.get(
+                os.path.splitext(fn)[1].lower())
+            if not lang or len(found[lang]) >= _UNSUPPORTED_SCAN_MAX:
+                continue
+            found[lang].append(
+                os.path.relpath(os.path.join(dp, fn), str(root)))
+    return dict(found)
+
+
+def _warn_unsupported_sources(root, args, what):
+    """R62-R31b：本次语言未找到源文件时，显式列出「发现了但不支持」的语言。
+
+    返回 True 表示确有未支持语言文件（调用方可据此改写提示语）。
+    只在「本次语言自己的源文件数为 0」时调用，正常分析流程保持安静。"""
+    try:
+        unsup = scan_unsupported_sources(
+            root, recursive=not getattr(args, "no_recursive", False),
+            exclude=getattr(args, "exclude", None))
+    except Exception:
+        return False
+    for lang in sorted(unsup):
+        rels = unsup[lang]
+        more = "，等 %d 个" % len(rels) if len(rels) > 3 else ""
+        print("[warn] 未找到 %s 源文件；但发现 %d 个 %s 文件，"
+              "当前版本未提供该语言前端，已跳过（不计入结果）：%s%s"
+              % (what, len(rels), lang, "、".join(rels[:3]), more),
+              file=sys.stderr)
+    return bool(unsup)
+
+
+def _scan_unsupported_sources_selftest(tmpdir):
+    """R62-R31b 自证：造 TypeScript / Rust 与 .cpp，验证识别结果与告警接线。
+
+    返回 (bad, good)：bad = 应被发现却漏掉的断言数，good = 正向断言数。
+    两向都要满足才算通过（只抓坏、放不过好 = 假门）。"""
+    bad = 0
+    good = 0
+    ts = os.path.join(tmpdir, "mod.ts")
+    rs = os.path.join(tmpdir, "lib.rs")
+    cpp = os.path.join(tmpdir, "impl.cpp")
+    for p in (ts, rs, cpp):
+        with io.open(p, "w", encoding="utf-8") as fh:
+            fh.write("// fixture\n")
+    got = scan_unsupported_sources(tmpdir)
+    if got.get("TypeScript") != ["mod.ts"]:
+        bad += 1
+    else:
+        good += 1
+    if got.get("Rust") != ["lib.rs"]:
+        bad += 1
+    else:
+        good += 1
+    if "C++" in got or "" in got:
+        bad += 1
+    else:
+        good += 1
+    if cpp not in collect_c_files(tmpdir):
+        bad += 1
+    else:
+        good += 1
+    if collect_c_files(tmpdir, recursive=False) != [cpp]:
+        bad += 1
+    else:
+        good += 1
+    print("SELFTEST COUNTS {\"bad\": %d, \"good\": %d}" % (bad, good))
+    return bad, good
 
 
 def _parse_c_source(text, rel, path):
@@ -7071,14 +7184,371 @@ def _prev_nonspace_lines(lines, upto_line, n):
     return out
 
 
+# ======================================================================
+# R62-R32~R37：跨语言启发式的共享扫描工具（superpower 30 轮修复 R22-R27）。
+# 背景：`_CROSS_LANG_KIND_META` 里登记了 10 个跨语言算子标签，但其中 8 个
+# （py_undefined_name / py_eval_usage / py_sql_injection / c_buffer_overflow /
+#  c_double_free / js_dangerous_call / js_unused_var / js_prototype_pollution）
+# 全仓**只出现 1 次** —— 即元表自身。也就是说「算子目录」在宣称 8 项检测能力，
+# 却没有任何代码会产出这些 kind。测试之所以「通过」，是因为它们手工伪造输入，
+# 并不证明检测能力存在。本节把其中 7 个变成真实现；py_undefined_name 因需要
+# 真实作用域/名字解析（当前前端是行锚定轻量解析器）而显式登记为**未实现**。
+# ======================================================================
+_RE_PY_EVAL_CALL = re.compile(r"(?<![\w.])eval\s*\(|(?<![\w.])exec\s*\(")
+_RE_PY_SQL_KW = re.compile(
+    r"\b(?:select|insert|update|delete|from|where|values|set)\b", re.I)
+_RE_PY_SQL_EXEC = re.compile(r"\.\s*execute(?:many|script)?\s*\(")
+_RE_PY_SQL_BUILD = re.compile(r"\+|%|\.\s*format\s*\(")
+
+
+def _split_str_lits(text):
+    """R62-R33：按**配对引号**剥离字符串字面量 -> (剥离后文本, [字面量内容])。
+
+    为什么不用正则：`['\"][^'\"]*['\"]` 不区分引号种类，对
+    `q = "SELECT ... name = '" + name + "'"` 会把第一个 `"` 与串内的 `'`
+    配成一对，连后面的 `+ name +` 一起吞掉 —— 「拼接构造」判据于是永远为假
+    （实测：py_sql_injection 在正对照样例上 0 命中）。
+    这里逐字符扫描：**只有同种引号才闭合**，因此 `+`/`%`/`.format(` 等
+    构造算子只要落在字面量之外就会被保留下来。"""
+    stripped, lits, buf, quote = [], [], [], None
+    for ch in text:
+        if quote:
+            if ch == quote:
+                lits.append("".join(buf))
+                buf = []
+                stripped.append("''")
+                quote = None
+            else:
+                buf.append(ch)
+            continue
+        if ch in "\"'":
+            quote = ch
+            continue
+        stripped.append(ch)
+    if quote:                      # 引号未闭合（多行字符串）：残余按字面量处理
+        lits.append("".join(buf))
+        stripped.append("''")
+    return "".join(stripped), lits
+
+
+def _py_sql_assignment(code):
+    """R62-R33：识别 `name = expr` / `name += expr` -> (名字, 是否增强赋值, 右侧)。
+
+    用正则一次搞定，避免 `code.split("=", 1)` 在 `==` / `+=` / 串内 `=` 上出错。"""
+    m = re.match(r"^\s*([A-Za-z_]\w*)\s*(\+)?=(?!=)(.*)$", code)
+    if not m:
+        return None
+    return (m.group(1), bool(m.group(2)), m.group(3))
+
+_RE_JS_DANGEROUS = (
+    (re.compile(r"(?<![\w$.])eval\s*\("), "eval() 动态求值"),
+    (re.compile(r"\bnew\s+Function\s*\("), "new Function() 动态编译"),
+    (re.compile(r"\bdocument\s*\.\s*write(?:ln)?\s*\("),
+     "document.write 直接写文档流"),
+    (re.compile(r"\.\s*(?:inner|outer)HTML\s*=(?!=)"),
+     "innerHTML/outerHTML 赋值"),
+    (re.compile(r"\.\s*insertAdjacentHTML\s*\("), "insertAdjacentHTML 注入"),
+    (re.compile(r"\b(?:setTimeout|setInterval)\s*\(\s*['\"]"),
+     "定时器传入字符串代码"),
+)
+_RE_JS_PROTO = (
+    (re.compile(r"\.\s*__proto__\b|\b__proto__\s*[:=]"),
+     "直接读写 __proto__"),
+    (re.compile(r"\.\s*prototype\s*\[\s*[A-Za-z_$][\w$]*\s*\]\s*=(?!=)"),
+     "以变量为键写入 prototype"),
+    (re.compile(r"\bconstructor\s*\.\s*prototype\b"),
+     "经 constructor.prototype 访问原型链"),
+)
+_RE_JS_FOR_IN = re.compile(
+    r"\bfor\s*\(\s*(?:(?:var|let|const)\s+)?([A-Za-z_$][\w$]*)\s+in\b")
+_RE_JS_SIMPLE_DECL = re.compile(
+    r"^\s*(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s*(?:=\s*[^;]*)?;\s*$")
+
+_RE_C_UNSAFE_COPY = re.compile(
+    r"\b(strcpy|strcat|sprintf|vsprintf|gets|memcpy|strncpy|strncat)\s*"
+    r"\(\s*([A-Za-z_]\w*)")
+
+
+def _code_only(line, markers):
+    """R62-R32：剥掉**行注释**后再匹配，避免注释里的示例代码造成误报。
+
+    只做朴素的行内截断（无字符串感知）：字符串里的 `//` 会连带截断，
+    但截断只会**减少**匹配 —— 宁可漏报不误报，符合启发式规则的安全方向。"""
+    out = line
+    for mk in markers:
+        idx = out.find(mk)
+        if idx >= 0:
+            out = out[:idx]
+    return out
+
+
+def _balanced_arg(text, start):
+    """R62-R33：返回 text[start] 起、配对括号内的实参文本（start 指向 `(` 之后）。"""
+    depth, buf, quote = 0, [], None
+    for ch in text[start:]:
+        if quote:
+            buf.append(ch)
+            if ch == quote:
+                quote = None
+            continue
+        if ch in "\"'":
+            quote = ch
+            buf.append(ch)
+            continue
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            if depth == 0:
+                break
+            depth -= 1
+        buf.append(ch)
+    return "".join(buf)
+
+
+def _split_top_level(text):
+    """R62-R33：按**顶层**逗号切分（忽略括号/引号内的逗号）。"""
+    out, depth, buf, quote = [], 0, [], None
+    for ch in text:
+        if quote:
+            buf.append(ch)
+            if ch == quote:
+                quote = None
+            continue
+        if ch in "\"'":
+            quote = ch
+            buf.append(ch)
+            continue
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth = max(0, depth - 1)
+        if ch == "," and depth == 0:
+            out.append("".join(buf))
+            buf = []
+            continue
+        buf.append(ch)
+    if buf:
+        out.append("".join(buf))
+    return out
+
+
+def _ext_owning_func(pf, ln):
+    """R62-R34：返回行号 ln 所属的**最内层**函数名；不在任何函数体内返回 ""。
+
+    Python/JS 前端模型的函数带 body_start/body_end（1-based，闭区间），
+    取 body_start 最大者即为最内层。"""
+    best, best_start = "", -1
+    for fn in pf.get("functions", []) or []:
+        bs = int(fn.get("body_start") or 0)
+        be = int(fn.get("body_end") or 0)
+        if bs and bs <= ln <= max(be, bs) and bs > best_start:
+            best, best_start = fn["name"], bs
+    return best
+
+
+def _scan_ext_first(pf, lines, fn, pattern):
+    """R62-R32：在函数体内逐行扫描 pattern（先剥注释），返回 (行号, 命中文本) 或 None。"""
+    bs = int(fn.get("body_start") or 0)
+    be = int(fn.get("body_end") or 0)
+    for i in range(bs + 1, min(be, len(lines)) + 1):
+        m = pattern.search(_code_only(lines[i - 1], ("#", "//")))
+        if m:
+            return (i, m.group(0).strip())
+    return None
+
+
+def _scan_py_sql(pf, lines):
+    """R62-R33：Python SQL 注入启发式 -> [(行号, 原因)]。
+
+    两级判据（须同时满足，压误报）：
+      1) 出现 `.execute(` / `.executemany(` / `.executescript(` 调用；
+      2) 其实参**不是**「纯字面量」或「(SQL 字面量, 参数)」的参数化形式，
+         而是：实参表达式内直接含 SQL 关键词 + 构造算子（+ / % / .format），
+         或实参是**同一函数作用域内**被拼接/格式化构造出来的 SQL 变量。
+    `cursor.execute("select 1")` 与 `cursor.execute(sql, params)`（sql 为纯字面量）
+    都不报 —— 前者无输入，后者已是正确写法。
+    作用域化的意义：污点按 (函数, 变量) 记录，且**干净重赋值会解除污点**，
+    否则同文件里 f() 拼接出的 q 会让 g() 里同名的字面量 q 误报。"""
+    tainted = {}          # (作用域函数名, 变量名) -> 构造行号
+    hits = []
+    for i, raw in enumerate(lines, 1):
+        code = _code_only(raw, ("#",))
+        scope = _ext_owning_func(pf, i)
+        asg = _py_sql_assignment(code)
+        if asg is not None:
+            _lhs, _plus, _rhs = asg
+            _key = (scope, _lhs)
+            _stripped, _lits = _split_str_lits(_rhs)
+            if (_lits and _RE_PY_SQL_KW.search(" ".join(_lits))
+                    and (_plus or _RE_PY_SQL_BUILD.search(_stripped))):
+                tainted[_key] = i
+            else:
+                # 干净重赋值必须**解除**污点，否则同文件里「先拼接、后改写成字面量」
+                # 的变量会一直背着污点，在别的函数里误报。
+                tainted.pop(_key, None)
+        em = _RE_PY_SQL_EXEC.search(code)
+        if not em:
+            continue
+        arg = _balanced_arg(code, em.end()).strip()
+        parts = [p.strip() for p in _split_top_level(arg) if p.strip()]
+        if len(parts) >= 2 and re.match(r"^[A-Za-z_]\w*$", parts[0]):
+            continue          # 参数化查询：execute(sql, params)
+        if not parts:
+            continue
+        arg0 = parts[0]
+        if re.match(r"^[A-Za-z_]\w*$", arg0):
+            _key = (scope, arg0)
+            if _key in tainted:
+                hits.append((i, "变量 %s 在第 %d 行由拼接/格式化构造"
+                                % (arg0, tainted[_key])))
+            continue
+        _stripped, _lits = _split_str_lits(arg0)
+        if (_lits and _RE_PY_SQL_KW.search(" ".join(_lits))
+                and _RE_PY_SQL_BUILD.search(_stripped)):
+            hits.append((i, "execute 实参内直接拼接/格式化 SQL"))
+    return hits
+
+
+def _scan_js_dangerous(pf, lines):
+    """R62-R34：JS 危险调用扫描 -> [(行号, 说明)]。"""
+    hits = []
+    for i, raw in enumerate(lines, 1):
+        code = _code_only(raw, ("//",))
+        for pat, label in _RE_JS_DANGEROUS:
+            if pat.search(code):
+                hits.append((i, label))
+                break
+    return hits
+
+
+def _scan_js_proto(pf, lines):
+    """R62-R36：原型污染扫描 -> [(行号, 说明)]，同一行只报一次。"""
+    hits = []
+    for i, raw in enumerate(lines, 1):
+        code = _code_only(raw, ("//",))
+        for pat, label in _RE_JS_PROTO:
+            if pat.search(code):
+                hits.append((i, label))
+                break
+    # 递归合并签名：for (k in src) { ... dst[k] = ... }
+    for fn in pf.get("functions", []) or []:
+        bs = int(fn.get("body_start") or 0)
+        be = int(fn.get("body_end") or 0)
+        if not bs:
+            continue
+        for i in range(bs + 1, min(be, len(lines)) + 1):
+            m = _RE_JS_FOR_IN.search(_code_only(lines[i - 1], ("//",)))
+            if not m:
+                continue
+            key = m.group(1)
+            for j in range(i + 1, min(be, len(lines)) + 1):
+                if re.search(r"\[\s*%s\s*\]\s*=(?!=)" % re.escape(key),
+                             _code_only(lines[j - 1], ("//",))):
+                    hits.append((i, "for-in 循环变量 %s 作为下标写入目标对象"
+                                    "（递归合并原型污染）" % key))
+                    break
+    seen, uniq = set(), []
+    for ln, label in sorted(hits):
+        if ln in seen:
+            continue
+        seen.add(ln)
+        uniq.append((ln, label))
+    return uniq
+
+
+def _scan_js_unused_var(pf, lines):
+    """R62-R35：函数体内声明的局部变量从未被再次引用 -> [(行号, 变量名)]。
+
+    只认「整行即一条简单声明」的形式（`var x = ...;` / `let x;` / `const x = 1;`），
+    因此解构、多声明符、for 头内的声明天然被跳过 —— 宁可漏报不误报。
+    下划线前缀视为有意保留（与 _gen_py_tests/_gen_js_tests 的口径一致）。"""
+    hits = []
+    for fn in pf.get("functions", []) or []:
+        bs = int(fn.get("body_start") or 0)
+        be = int(fn.get("body_end") or 0)
+        if not bs:
+            continue
+        body = lines[bs:min(be, len(lines))]
+        for off, raw in enumerate(body):
+            m = _RE_JS_SIMPLE_DECL.match(_code_only(raw, ("//",)))
+            if not m:
+                continue
+            name = m.group(1)
+            if name.startswith("_"):
+                continue
+            pat = re.compile(r"(?<![\w$])%s(?![\w$])" % re.escape(name))
+            if any(pat.search(_code_only(l, ("//",)))
+                   for l in body[off + 1:]):
+                continue
+            hits.append((bs + off + 1, name))
+    return hits
+
+
+def _scan_c_double_free(fn_lines, base_line):
+    """R62-R37：同一指针在函数体内被 free 两次且中间无重新赋值 -> [(行号, 指针)]。"""
+    seen, hits = {}, []
+    for i, raw in enumerate(fn_lines, 1):
+        code = _code_only(raw, ("//",))
+        for m in re.finditer(r"\bfree\s*\(\s*([A-Za-z_]\w*)\s*\)", code):
+            pv = m.group(1)
+            if pv not in seen:
+                seen[pv] = i
+                continue
+            gap = "\n".join(fn_lines[seen[pv]: i - 1])
+            if re.search(r"(?<![\w.>])%s\s*=(?!=)" % re.escape(pv), gap):
+                seen[pv] = i        # 中间重新赋值 -> 视为新的一轮，不算 double free
+                continue
+            hits.append((base_line + i, pv))
+            break
+    return hits
+
+
+def _scan_c_buffer_overflow(fn_lines, base_line):
+    """R62-R37：向**固定大小**栈缓冲区做无长度约束的写入 -> [(行号, 说明)]。
+
+    两级判据：
+      1) 函数体内声明了 `char buf[N]`（N 为字面量）；
+      2) strcpy/strcat/sprintf/vsprintf/gets 直接以 buf 为目标（无长度参数）；
+         memcpy/strncpy/strncat 则要求长度实参**既不是** sizeof(buf) **也不是** N。
+    `strncpy(dst, src, sizeof(dst))` 这类正确写法不报。"""
+    body = "\n".join(fn_lines)
+    bufs = {}
+    for dm in re.finditer(r"\b(?:char|wchar_t|unsigned\s+char|uint8_t)\s+"
+                          r"([A-Za-z_]\w*)\s*\[\s*(\d+)\s*\]", body):
+        bufs[dm.group(1)] = dm.group(2)
+    if not bufs:
+        return []
+    hits = []
+    for m in _RE_C_UNSAFE_COPY.finditer(body):
+        fname, dst = m.group(1), m.group(2)
+        if dst not in bufs:
+            continue
+        ln = base_line + body[: m.start()].count("\n") + 1
+        if fname in ("memcpy", "strncpy", "strncat"):
+            args = _balanced_arg(body, m.end())
+            if re.search(r"\bsizeof\s*\(\s*%s\s*\)" % re.escape(dst), args) \
+                    or re.search(r"(?<![\w])%s(?![\w])" % re.escape(bufs[dst]),
+                                 args):
+                continue
+            hits.append((ln, "%s 写入固定缓冲区 %s[%s]，长度实参既非 sizeof(%s) "
+                             "也非 %s —— 存在越界写风险"
+                             % (fname, dst, bufs[dst], dst, bufs[dst])))
+        else:
+            hits.append((ln, "%s 写入固定缓冲区 %s[%s] 且调用形式无长度上限"
+                             "（越界写）" % (fname, dst, bufs[dst])))
+    return hits
+
+
 def _c_heuristic_checks(c_model, enabled=None):
     """P90：C 静态启发式检查（--lang c --checks）。
 
     规则（enabled 为 None 时全开）：
       c_unused_static    项目内无调用的 static 函数（疑似未使用代码）
-      c_missing_guard    头文件(.h)缺 include 卫士（#ifndef / #pragma once）
+      c_missing_guard    头文件缺 include 卫士（#ifndef / #pragma once）
       c_too_many_params  参数超过 6 个的函数（建议拆分或改传结构体）
       c_missing_doc      函数定义前 3 个非空行内无注释
+      c_double_free      同一指针 free 两次且中间无重新赋值（R62-R37 实装）
+      c_buffer_overflow  向固定大小栈缓冲区做无长度约束写入（R62-R37 实装）
     返回 [{file, line, func, kind, msg, level}]。"""
     out = []
     enabled = set(enabled or ()) if enabled is not None else None
@@ -7197,6 +7667,31 @@ def _c_heuristic_checks(c_model, enabled=None):
                                 "func": nm, "kind": "c_missing_return",
                                 "msg": "非 void 函数 %s 无 return 语句（返回值未定义）"
                                        % nm, "level": "warning"})
+            # R62-R37：c_double_free / c_buffer_overflow —— 同样只在元表登记过、
+            # 无任何产出点。注意这里**不能**复用上面的 `lines`：它受
+            # `_on("c_missing_doc")` 短路，c_missing_doc 关闭时会变成 []。
+            if _on("c_double_free") or _on("c_buffer_overflow"):
+                _clines = _c_file_lines(pf.get("path"))
+                if _clines:
+                    _cbody = _func_body_lines(_clines, fn["line"],
+                                              pf["functions"])
+                    if _on("c_double_free"):
+                        for _dl, _dpv in _scan_c_double_free(_cbody,
+                                                            fn["line"]):
+                            out.append({
+                                "file": pf["rel"], "line": _dl, "func": nm,
+                                "kind": "c_double_free",
+                                "msg": "指针 %s 被 free 两次且中间无重新赋值"
+                                       "（double free，可被利用改写任意地址）"
+                                       % _dpv,
+                                "level": "error"})
+                    if _on("c_buffer_overflow"):
+                        for _bl, _bmsg in _scan_c_buffer_overflow(_cbody,
+                                                                 fn["line"]):
+                            out.append({
+                                "file": pf["rel"], "line": _bl, "func": nm,
+                                "kind": "c_buffer_overflow", "msg": _bmsg,
+                                "level": "warning"})
     return out
 
 
@@ -7528,10 +8023,12 @@ def _build_ext_model(paths, lang, parse_fn):
 
 
 def _py_heuristic_checks(model, enabled=None):
-    """P93：Python 静态启发式——未使用 import / 重复参数名 / 参数过多 / 缺注释。
+    """P93：Python 静态启发式——未使用 import / 重复参数名 / 参数过多 / 缺注释
+    / eval 动态执行 / SQL 拼接注入。
 
     规则（enabled 为 None 时全开）：py_unused_import / py_dup_params /
-    py_too_many_params / py_missing_doc。返回 [{file, line, func, kind, msg, level}]。"""
+    py_too_many_params / py_missing_doc / py_eval_usage / py_sql_injection。
+    返回 [{file, line, func, kind, msg, level}]。"""
     out = []
     enabled = set(enabled or ()) if enabled is not None else None
 
@@ -7584,13 +8081,46 @@ def _py_heuristic_checks(model, enabled=None):
                                 "msg": "import %s 在文件内未被使用"
                                        "（可能为类型标注/惰性加载）" % name,
                                 "level": "note"})
+    # R62-R32/R33：py_eval_usage / py_sql_injection —— 此前这两个 kind 只登记在
+    # `_CROSS_LANG_KIND_META` 里（全仓仅出现 1 次，即元表自身），没有任何代码
+    # 会产出它们；「算子目录」因此在宣称 2 项不存在的检测能力。此处实装。
+    if _on("py_eval_usage") or _on("py_sql_injection"):
+        for pf in model.get("files", []):
+            _plines = _c_file_lines(pf.get("path"))
+            if not _plines:
+                continue
+            if _on("py_eval_usage"):
+                for fn in pf["functions"]:
+                    _hit = _scan_ext_first(pf, _plines, fn, _RE_PY_EVAL_CALL)
+                    if not _hit:
+                        continue
+                    out.append({
+                        "file": pf["rel"], "line": _hit[0], "func": fn["name"],
+                        "kind": "py_eval_usage",
+                        "msg": "函数 %s 第 %d 行调用 %s：动态执行字符串代码，"
+                               "存在代码注入 / 沙箱逃逸风险（可改用 "
+                               "ast.literal_eval 或显式分派表）"
+                               % (fn["name"], _hit[0], _hit[1]),
+                        "level": "error"})
+            if _on("py_sql_injection"):
+                for _sl, _swhy in _scan_py_sql(pf, _plines):
+                    out.append({
+                        "file": pf["rel"], "line": _sl,
+                        "func": _ext_owning_func(pf, _sl),
+                        "kind": "py_sql_injection",
+                        "msg": "第 %d 行构造 SQL 后直接执行（%s）：拼接式 SQL 可被"
+                               "参数注入，应改用参数化查询 "
+                               "（cursor.execute(sql, params)）" % (_sl, _swhy),
+                        "level": "error"})
     return out
 
 
 def _js_heuristic_checks(model, enabled=None):
-    """P93：JavaScript 静态启发式——未使用 import / 隐式全局 / 参数过多 / 缺注释。
+    """P93：JavaScript 静态启发式——未使用 import / 隐式全局 / 参数过多 / 缺注释
+    / 危险调用 / 未使用局部变量 / 原型污染。
 
-    规则：js_unused_import / js_global_var / js_too_many_params / js_missing_doc。"""
+    规则：js_unused_import / js_global_var / js_too_many_params / js_missing_doc
+    / js_dangerous_call / js_unused_var / js_prototype_pollution。"""
     out = []
     enabled = set(enabled or ()) if enabled is not None else None
 
@@ -7648,6 +8178,42 @@ def _js_heuristic_checks(model, enabled=None):
                                 "kind": "js_unused_import",
                                 "msg": "import %s 在文件内未被使用" % name,
                                 "level": "note"})
+    # R62-R34~R36：js_dangerous_call / js_prototype_pollution / js_unused_var
+    # 三个 kind 此前同样只存在于元表、无任何产出点。此处实装。
+    if _on("js_dangerous_call") or _on("js_prototype_pollution") \
+            or _on("js_unused_var"):
+        for pf in model.get("files", []):
+            _jlines = _c_file_lines(pf.get("path"))
+            if not _jlines:
+                continue
+            if _on("js_dangerous_call"):
+                for _jl, _jlab in _scan_js_dangerous(pf, _jlines):
+                    out.append({
+                        "file": pf["rel"], "line": _jl,
+                        "func": _ext_owning_func(pf, _jl),
+                        "kind": "js_dangerous_call",
+                        "msg": "第 %d 行使用 %s：可被注入代码路径，"
+                               "应改用无副作用的等价 API" % (_jl, _jlab),
+                        "level": "error"})
+            if _on("js_prototype_pollution"):
+                for _pl, _plab in _scan_js_proto(pf, _jlines):
+                    out.append({
+                        "file": pf["rel"], "line": _pl,
+                        "func": _ext_owning_func(pf, _pl),
+                        "kind": "js_prototype_pollution",
+                        "msg": "第 %d 行 %s：原型链污染风险（攻击者可借此"
+                               "改写 Object.prototype）" % (_pl, _plab),
+                        "level": "error"})
+            if _on("js_unused_var"):
+                for _ul, _uname in _scan_js_unused_var(pf, _jlines):
+                    out.append({
+                        "file": pf["rel"], "line": _ul,
+                        "func": _ext_owning_func(pf, _ul),
+                        "kind": "js_unused_var",
+                        "msg": "第 %d 行声明的局部变量 %s 在函数体内未被再次"
+                               "引用（可删；若是跨模块导出请改用显式导出）"
+                               % (_ul, _uname),
+                        "level": "note"})
     return out
 
 
@@ -12390,7 +12956,7 @@ def _numel(dims):
     return _n
 
 
-def _fix_diff_function_context(txt):
+def _fix_diff_function_context(txt, eol="\n"):
     """P211z：修正 difflib 把函数上下文行从 hunk 体首「移走」导致的非法补丁。
 
     difflib.unified_diff 在 hunk 头 `@@ ... @@` 之后追加函数定义注释时，
@@ -12400,7 +12966,10 @@ def _fix_diff_function_context(txt):
     修复：把被移走的首上下文行（前缀空格）还原回体首；若体首已存在该行
     （极少数情况）则不重复。仅影响含函数上下文的 hunk，其余行原样保留。"""
     out = []
-    lines = txt.split("\n")
+    # D-R18：按补丁自身的行尾切/拼。用 "\n" 切 CRLF 文本会留下尾随 \r，
+    # 而**新追加**的行（hunk 头、还原的上下文行）会带纯 LF —— 在 CRLF 检出上
+    # 破坏 `git apply` 的上下文匹配。
+    lines = txt.split(eol)
     i = 0
     while i < len(lines):
         ln = lines[i]
@@ -12416,7 +12985,7 @@ def _fix_diff_function_context(txt):
             continue
         out.append(ln)
         i += 1
-    return "\n".join(out)
+    return eol.join(out)
 
 
 def _build_apply_patch(files, checks_for_sarif, dup_exec=False):
@@ -12456,7 +13025,11 @@ def _build_apply_patch(files, checks_for_sarif, dup_exec=False):
         _vn = _r.get("name") or _r.get("var")
         if not _f or not _ln or not _vn:
             continue
-        _edits.setdefault(_f, []).append(("ins", _ln, "%s = [];" % _vn))
+        # D-P0-1 修复：必须是 "ins_before"（在读取行**之前**插入），
+        # 不得使用遗留算子 "ins" —— 后者在 _render 侧被实现为「覆盖目标行」，
+        # 会把 `<var> = [];` 顶掉原读取行，从而**删除源码语句**，
+        # 而 verify 自证门只比对告警条数，仍报 PASS（安全承诺被静默违反）。
+        _edits.setdefault(_f, []).append(("ins_before", _ln, "%s = [];" % _vn))
         _n += 1
     for _r in dead:
         _f = _r.get("file")
@@ -12520,7 +13093,25 @@ def _build_apply_patch(files, checks_for_sarif, dup_exec=False):
         _ins = _edits.get(_f)
         if not _ins:
             continue
-        _src = [l.rstrip("\r") for l in (getattr(mf, "source_lines", []) or [])]
+        _raw_lines = list(getattr(mf, "source_lines", []) or [])
+        # D-R18：保留文件自身行尾。`_src` 曾是「去掉 \r + 一律发 LF」，于是
+        # CRLF 检出上补丁上下文是 LF 而文件是 CRLF ⇒ `git apply` 报
+        # "patch does not apply"（实测 test_p211 第 ④ 步；**未改动基线**上
+        # 同样失败，说明是迁移前既有缺陷，非本轮引入）。
+        # 行尾事实源取原始字节；读不到时退回「逐行是否以 \r 结尾」。
+        _eol = "\n"
+        try:
+            _eol = "\r\n" if b"\r\n" in Path(mf.path).read_bytes() else "\n"
+        except (OSError, TypeError, ValueError):
+            if any(_l.endswith("\r") for _l in _raw_lines):
+                _eol = "\r\n"
+        _src = [l.rstrip("\r") for l in _raw_lines]
+        # D-R18b：`text.split("\n")` 对「以换行结尾」的文件会多出一个空元素。
+        # 它会被当作一条**上下文行**（" "）写进 hunk，使 hunk 声明的 old 行数
+        # 比文件实际行数多 1 ⇒ `git apply` 报 "patch does not apply"。
+        # 这是 test_p211 第 ④ 步在**未改动基线**上一律失败的真因（与 CRLF 无关）。
+        if _src and _src[-1] == "":
+            _src = _src[:-1]
         if not _src:
             # 无源码行则跳过该文件（不应发生）
             continue
@@ -12534,25 +13125,30 @@ def _build_apply_patch(files, checks_for_sarif, dup_exec=False):
                 continue
             if _op == "del":
                 _new[_idx] = None          # 标记删除
-            elif _op == "ins":
-                _indent = _new[_idx][:len(_new[_idx]) - len(_new[_idx].lstrip())] \
-                    if _new[_idx] is not None else "    "
-                _new[_idx] = "%s%s" % (_indent, _payload)
             elif _op == "ins_before":
                 # P213：在指定行前插入新行（不改原行），缩进与原行一致
                 _indent = _new[_idx][:len(_new[_idx]) - len(_new[_idx].lstrip())] \
                     if _new[_idx] is not None else "    "
                 _new[_idx:_idx] = ["%s%s" % (_indent, _payload)]
+            else:
+                # D-P0-1：未知编辑算子必须显式失败，不得静默按「覆盖」处理。
+                # 历史缺陷：遗留算子 "ins" 曾被实现为 `_new[_idx] = payload`
+                # （覆盖目标行）⇒ 删除源码语句，而 verify 门仍然 PASS。
+                # 这里改成硬失败：宁可报错，也不产出破坏性补丁。
+                raise ValueError(
+                    "unsupported edit op %r at line %s "
+                    "(expected 'del' or 'ins_before')" % (_op, _ln))
         _new = [x for x in _new if x is not None]
         # 生成 unified diff（a/b 路径用仓库相对路径，兼容 git apply）
-        # 注意：difflib 的 fromfile/tofile 不会自动补换行，须显式加 \n；
-        # lineterm="" 由我们手动在每行加 \n（已去 \r 的 _src/_new）。
+        # 注意：difflib 的 fromfile/tofile 不会自动补换行，须显式补；
+        # lineterm="" 由我们手动在每行补 `_eol`（D-R18：必须跟随**文件自身**行尾，
+        # 否则 CRLF 检出上 `git apply` 报 "patch does not apply"）。
         _diff = difflib.unified_diff(
-            [l + "\n" for l in _src],
-            [l + "\n" for l in _new],
-            fromfile="a/%s\n" % _f, tofile="b/%s\n" % _f,
+            [l + _eol for l in _src],
+            [l + _eol for l in _new],
+            fromfile="a/%s%s" % (_f, _eol), tofile="b/%s%s" % (_f, _eol),
             lineterm="")
-        _joined = _fix_diff_function_context("".join(_diff))
+        _joined = _fix_diff_function_context("".join(_diff), _eol)
         if _joined.strip():
             L.append(_joined)
     # P213-2：dup_code 提取公共函数的重构脚手架（独立 section，挂在 hunk 之后）
@@ -13987,7 +14583,11 @@ def _run_gen_apply_patch(args, files, model, stats, checks_for_sarif):
         print(_msg)
         return 0
     try:
-        with open(_path, "w", encoding="utf-8") as fh:
+        # D-R18：补丁必须**字节精确**落盘（newline=""）。
+        # 默认文本模式在 Windows 上会把 \n 再翻成 \r\n，于是补丁里本已正确的
+        # CRLF 变成 \r\r\n，`git apply` 必然拒绝；而 LF 源文件也会被悄悄改成 CRLF，
+        # 使「补丁行尾 == 文件行尾」这个前提凭空失效。
+        with io.open(_path, "w", encoding="utf-8", newline="") as fh:
             fh.write(_text)
         print("[P211 --gen-apply-patch] 已生成真实可应用补丁 %s（%d 字节，%d 项自动修复/"
               "重构建议）" % (_path, len(_text.encode("utf-8")), _n))
@@ -20418,8 +21018,17 @@ def render_browse_site(model, outdir, reproducible=False, enabled=None,
     except Exception as _e:
         print("[WARN] 结构体字段索引生成失败（降级为空索引）：%s" % _e)
         _sf_idx = {}
-    _sf_js = "window.__STRUCT_FIELDS__=" + json.dumps(_sf_idx, ensure_ascii=False) + ";\n"
-    _bi_js = ("window.__BUILTIN_INFO__=" + json.dumps(_bi_info, ensure_ascii=False)
+    # D-R11：结构体字段索引同样固定键序，避免跨进程哈希随机化污染产物
+    _sf_js = ("window.__STRUCT_FIELDS__="
+              + json.dumps(_sf_idx, ensure_ascii=False, sort_keys=True) + ";\n")
+    # D-R11：--reproducible 曾**未兑现**。真因在 `_bi_info`：
+    #     _bi_info = {_b: builtin_detail_obj(_b) for _b in _bi_used}   # _bi_used 是 set
+    #   str 的哈希随机化（PYTHONHASHSEED）使 set 的迭代顺序跨进程漂移，于是
+    #   json.dumps 出来的键序跟着漂移 ⇒ `src/_pageview.js` 两次生成逐字节不同，
+    #   并级联污染 manifest.json（它记录每页 sha256，是**下游受害文件**）。
+    #   修法：固定键序。这是「同一份输入 → 同一份字节」的最小充分条件。
+    _bi_js = ("window.__BUILTIN_INFO__="
+              + json.dumps(_bi_info, ensure_ascii=False, sort_keys=True)
               + ";\n" + _sf_js)
     (src_dir / "_pageview.js").write_text(
         VARFLOW_JS + "\n" + LINE_DEEPLINK_JS + "\n" + _bi_js
@@ -21206,6 +21815,12 @@ def _detect_uninitialized(mf):
     for f in mf.functions:
         if f.kind == "script":
             continue
+        # D-R8-A：嵌套函数。
+        #   MATLAB **不要求**嵌套函数缩进（父函数 `end` 之前的同缩进 function
+        #   同样是嵌套函数，实测夹具 f.m 即为此形态），所以判据只能是
+        #   「落在本函数 body 区间内的 `function` 行」—— 本函数自身的声明行
+        #   在 body_start 之前，故不会被误判。
+        fn_stack = []            # 嵌套函数声明的缩进栈（其 body 不属本函数变量流）
         params = set(f.inputs) | set(f.outputs)
         # C3：降误报——global/persistent 注入的变量视为「已初始化」（来自外部/跨调用持久化）
         injected = set(n for n, _ in f.globals) | set(n for n, _ in f.persistents)
@@ -21223,8 +21838,24 @@ def _detect_uninitialized(mf):
             runs, in_block = _tokenize_matlab(raw, in_block)
             if runs and all(k == "comment" for (_, _, k) in runs):
                 continue
-            # 条件块边界：增量维护块栈（if 入栈 / else·elseif 标记 / end 出栈）
-            kwm = re.match(r"^(if|elseif|else|end)\b", stripped, re.IGNORECASE)
+            # D-R8-A：嵌套函数 —— 其声明行与**整个 body** 都不属于当前函数的
+            # 变量流。旧实现把落在父函数 body 范围内的 `function z = inner(v)`
+            # 当普通语句处理，于是 inner 的输入 v / 输出 z 被判成父函数里
+            # 「读前无写」的局部量（实测 nested.m:4 两条 high 误报；而 high
+            # 会被确定性补丁引擎直接拿去自动改源码）。
+            if re.match(r"^function\b", stripped, re.IGNORECASE):
+                fn_stack.append(indent)
+                continue
+            if fn_stack:
+                if (re.match(r"^end\b", stripped, re.IGNORECASE)
+                        and indent <= fn_stack[-1]):
+                    fn_stack.pop()
+                continue                       # 嵌套函数体整体跳过
+            # 块关键字行：不参与变量读写判断。
+            #   刻意**不**把 while/switch 放进来：它们的头部是真实读取
+            #   （`while x < n`），跳过会漏掉真阳性。`try` 行无标识符，纳入无变化。
+            kwm = re.match(r"^(if|elseif|else|end|try|catch)\b", stripped,
+                           re.IGNORECASE)
             if kwm:
                 kw = kwm.group(1).lower()
                 if kw == "end":
@@ -21235,9 +21866,28 @@ def _detect_uninitialized(mf):
                 elif kw in ("elseif", "else"):
                     if cond_stack:
                         cond_stack[-1] = (cond_stack[-1][0], True)
-                continue  # 块关键字行不参与变量读写判断
+                elif kw == "catch":
+                    # catch 绑定的异常变量由捕获**确定赋值**
+                    cm = re.match(r"^catch\s+([A-Za-z_]\w*)", stripped,
+                                  re.IGNORECASE)
+                    if cm:
+                        seen_written.add(cm.group(1))
+                continue
             # 是否处于「无 else 的 if 块」内（条件赋值不保证执行）
             in_cond = bool(cond_stack) and not cond_stack[-1][1]
+            # D-R8-B：for / parfor 循环头 —— 循环变量由循环**确定赋值**。
+            # 旧实现落到通用赋值解析，而 `_lhs_assigned_vars("for k ")` 取到的
+            # 首个标识符是关键字 `for` 本身 ⇒ k 不在 lhs_vars ⇒ 被当作读取
+            # （实测 varargs.m:4 一条 high 误报 → 补丁把 `for k = 1:n` 整行覆盖）。
+            _lm = re.match(r"^(?:for|parfor)\s+(.+?)\s*=(?!=)", stripped,
+                           re.IGNORECASE)
+            if _lm:
+                _lhs = _lm.group(1).strip()
+                if _lhs.startswith("[") and _lhs.endswith("]"):
+                    _lhs = _lhs[1:-1]          # for [i, j] = ... 的多变量形式
+                for _lv in _lhs_assigned_vars(_lhs):
+                    (maybe_written if in_cond else seen_written).add(_lv)
+                continue                       # 循环头不参与读写判断
             idents = [(idx, s, e, raw[s:e]) for idx, (s, e, k) in enumerate(runs)
                       if k == "ident"]
             if not idents:
@@ -22160,7 +22810,6 @@ OPERATOR_BLAST_FUNC_W = 0.2
 # 未在此表登记的 kind 仍走 _operator_meta_fallback 的关键词推导兜底。
 _CROSS_LANG_KIND_META = {
     "py_unused_import": {"label": "Python 未使用导入", "level": "warning", "category": "可维护性"},
-    "py_undefined_name": {"label": "Python 未定义名", "level": "error", "category": "正确性/安全"},
     "py_eval_usage": {"label": "Python eval 危险调用", "level": "error", "category": "安全"},
     "py_sql_injection": {"label": "Python SQL 拼接", "level": "error", "category": "安全"},
     "c_use_after_free": {"label": "C 释放后使用", "level": "error", "category": "安全"},
@@ -22169,6 +22818,21 @@ _CROSS_LANG_KIND_META = {
     "js_dangerous_call": {"label": "JS 危险调用", "level": "error", "category": "安全"},
     "js_unused_var": {"label": "JS 未使用变量", "level": "note", "category": "可维护性"},
     "js_prototype_pollution": {"label": "JS 原型污染", "level": "error", "category": "安全"},
+}
+
+# R62-R38：**已声明但明确不实现**的 kind —— 显式登记，并写明不实现的原因。
+# 为什么要这张表而不是直接从 _CROSS_LANG_KIND_META 删掉：
+#   「做不到」是一种工程结论，需要留下痕迹；否则下一个人会重新加上表项、
+#   又变成「目录宣称有、代码不产出」的幻影算子。
+# 为什么允许不实现：诚实 > 数量。宁可在目录里承认缺一项，也不要做一个
+#   完全不可靠、把用户引向错误结论的正则近似。
+# 由 tools/check_operator_impl.py 守门：_CROSS_LANG_KIND_META 里每个 kind
+#   都必须在元表之外被 `"kind": "<name>"` 真正产出；不实现者必须登记在此。
+_UNIMPLEMENTED_KINDS = {
+    "py_undefined_name": (
+        "需要真实的作用域链 / 名字解析（含 import *、类型标注、全局注入、"
+        "条件定义）。当前 Python 前端是行锚定轻量解析器，做不到；若用正则近似，"
+        "几乎必然在正常代码上大量误报，反而掩盖真问题。故显式登记为未实现。"),
 }
 
 
@@ -27320,13 +27984,20 @@ def collect_empty_dirs(root, recursive=True, exclude=()):
     return [Path(d) for d in empty if os.path.normcase(os.path.normpath(d)) != root_norm]
 
 
+# R62-R32~R37：`_CHECK_NAMES` 是 `--checks <名逗号列表>` 的**白名单** ——
+# 名字不在其中就会被 `_parse_checks_arg` 静默丢弃（注意：默认 --checks all
+# 走的是 None=全开，不走白名单，所以新增算子必须同时登记到这里，否则
+# 「默认能触发、显式指定反而失效」）。
 _CHECK_NAMES = ("uninitialized", "dead_code", "type_mismatch", "shape_mismatch",
                 "c_unused_static", "c_missing_guard", "c_too_many_params",
                 "c_missing_doc", "c_uninit_pointer", "c_array_oob",
                 "c_use_after_free", "c_missing_return",
+                "c_double_free", "c_buffer_overflow",
                 "py_unused_import", "py_dup_params", "py_too_many_params",
-                "py_missing_doc", "js_unused_import", "js_global_var",
-                "js_too_many_params", "js_missing_doc")
+                "py_missing_doc", "py_eval_usage", "py_sql_injection",
+                "js_unused_import", "js_global_var",
+                "js_too_many_params", "js_missing_doc",
+                "js_dangerous_call", "js_unused_var", "js_prototype_pollution")
 _RE_SUPPRESS = re.compile(
     r"%\s*analyzer\s*:\s*ignore\s+(\w+)(?:\s+(\w+))?(?:\s*--\s*(.*))?", re.IGNORECASE)
 _RE_SUPPRESS_NEXT = re.compile(
@@ -27875,8 +28546,10 @@ def main(argv=None):
     ap.add_argument("--combined-graph", metavar="FILE",
                     default=cfg.get("combined_graph"),
                     help="输出「目录-函数」分层调用图 SVG（doxygen 风格：目录为簇、函数为节点，跨目录边标红）")
-    ap.add_argument("--browse", metavar="OUTDIR", default=cfg.get("browse"),
-                    help="生成交互式源码浏览站点（函数点击跳转定义、调用跳转），输出到目录 OUTDIR；"
+    ap.add_argument("--browse", nargs="?", const="matlabc_browse", metavar="OUTDIR",
+                    default=cfg.get("browse"),
+                    help="生成交互式源码浏览站点（函数点击跳转定义、调用跳转），输出到目录 OUTDIR"
+                         "（省略 OUTDIR 时用默认目录 matlabc_browse）；"
                          "与 --from-json 组合时为 P124 快照回放站点（无需源码，直接回放 JSON 快照）")
     ap.add_argument("--watch", nargs="?", const="1.0", metavar="INTERVAL",
                     default=None,
@@ -27943,17 +28616,23 @@ def main(argv=None):
                          "shape_mismatch,c_unused_static,c_missing_guard,"
                          "c_too_many_params,c_missing_doc,c_uninit_pointer,"
                          "c_array_oob,c_use_after_free,c_missing_return,"
+                         "c_double_free,c_buffer_overflow,"
                          "py_unused_import,py_dup_params,py_too_many_params,"
-                         "py_missing_doc,js_unused_import,js_global_var,"
-                         "js_too_many_params,js_missing_doc；all=全部，none=关闭，默认 all）")
+                         "py_missing_doc,py_eval_usage,py_sql_injection,"
+                         "js_unused_import,js_global_var,"
+                         "js_too_many_params,js_missing_doc,js_dangerous_call,"
+                         "js_unused_var,js_prototype_pollution；all=全部，none=关闭，默认 all）")
     ap.add_argument("--gen-tests", metavar="DIR", default=cfg.get("gen_tests"),
                     help="P90：按函数生成测试骨架到指定目录（MATLAB→gen_matlab_tests/，"
                          "C→gen_c_tests/，py→gen_py_tests/，js→gen_js_tests/），"
                          "已存在的同名文件不覆盖")
-    ap.add_argument("--lang", choices=("matlab", "c", "py", "js"),
+    ap.add_argument("--lang", choices=("matlab", "c", "cpp", "py", "js"),
                     default=cfg.get("lang", "matlab"),
-                    help="分析语言：matlab（默认）/ c（C 前端，P87）/ py（Python 前端，P93）/ "
-                         "js（JavaScript 前端，P93），多语言后端扩展")
+                    help="分析语言：matlab（默认）/ c（C/C++ 前端，P87；扩展名含 "
+                         ".c/.h/.cc/.cpp/.cxx/.hpp/.hh/.hxx）/ cpp（= c 的显式别名）/ "
+                         "py（Python 前端，P93）/ js（JavaScript 前端，P93）。"
+                         "TypeScript / Rust / Go 等暂无前端：扫描到时会显式告警，"
+                         "不会静默返回 0 结果")
     ap.add_argument("--mixed", action="store_true", default=cfg.get("mixed", False),
                     help="混合分析：同时分析 .m 与 .c/.h，MATLAB 外部调用命中 C 函数时"
                          "建立跨语言 MEX 桥接（P87）")
@@ -28298,6 +28977,12 @@ def main(argv=None):
     ap.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     args = ap.parse_args(argv)
 
+    # R62-R31c：`--lang cpp` 是 `--lang c` 的**显式别名** —— C++ 复用 C 前端
+    # （C++ 按 C 子集解析，模板/类/命名空间不保证识别；这是已披露的降级）。
+    # 在此归一化，使后续所有 `args.lang in (...)` 分支无需再各处加 cpp。
+    if getattr(args, "lang", None) == "cpp":
+        args.lang = "c"
+
     # P210-2：--benchmark 大仓库性能基准短路——合成仓库 + 完整渲染 + 计时断言，
     # 验证 P203 --max-nodes 截断确实生效且构建时延在 CI 安全上限内，随后退出。
     if args.benchmark is not None:
@@ -28421,6 +29106,8 @@ def main(argv=None):
         paths = collect_files(root, recursive=not args.no_recursive, exclude=args.exclude)
     # P87/P93：纯语言模式（--lang c/py/js）不要求存在 .m 文件，前端报告独立于 MATLAB 流程
     if not paths and args.lang not in ("c", "py", "js"):
+        # R62-R31b：MATLAB 模式空结果时，先说清「目录里有没有我不支持的语言文件」。
+        _warn_unsupported_sources(root, args, "MATLAB(.m)")
         print(f"未找到任何 .m 文件：{root}", file=sys.stderr)
         return 1
 
@@ -28431,6 +29118,8 @@ def main(argv=None):
         if args.lang == "c":
             c_paths = collect_c_files(root, recursive=not args.no_recursive,
                                       exclude=args.exclude)
+            if not c_paths:
+                _warn_unsupported_sources(root, args, "C/C++")
             c_model = build_c_model(c_paths)
             return _run_c_only(c_model, root, args)
         # P93：Python / JavaScript 前端——走注册表插件收集 + 统一模型组装
@@ -28438,6 +29127,7 @@ def main(argv=None):
         ext_paths = fe.collect_files(root, recursive=not args.no_recursive,
                                      exclude=args.exclude)
         if not ext_paths:
+            _warn_unsupported_sources(root, args, args.lang)
             print(f"未找到任何 {args.lang} 文件：{root}", file=sys.stderr)
             return 1
         ext_model = _build_ext_model(ext_paths, args.lang, fe.parse_file)

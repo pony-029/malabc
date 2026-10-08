@@ -22,11 +22,80 @@ import argparse
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
 
 from matlabc_ask import normalize
+
+
+# --------------------------------------------------------------------------
+# D-P0-1 护栏：确定性补丁的「语句保持不变量」
+#
+# 设计契约（见 matlabc._build_apply_patch docstring）：「安全、可验证、不丢数据」。
+# 由此可推出一个**恒等式**：
+#     补丁删除的行数 == 报告里 dead_code 的条数
+# 因为唯一被允许的删除来源就是 dead_code（其余动作用 ins_before 纯插入）。
+# 历史上「插入」曾被实现为「覆盖目标行」，于是删除行数 = dead + 插入数，
+# 而 verify 门只比对告警条数（1 → 0）仍然报 PASS —— 源码语句被删而无人知。
+# 本装置把那句恒等式变成可求值判据，使自证门**能够说「不」**。
+# --------------------------------------------------------------------------
+_HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+
+
+def patch_edit_counts(patch_text):
+    """解析 unified diff，返回 (removed, added, hunks)。
+
+    按 `@@ -a,b +c,d @@` 声明的行数逐个消费 hunk 主体，因此
+    `--- a/f` / `+++ b/f` 文件头、`\\ No newline`、以及 hunk 之外的非 diff
+    文本（dup_code 重构脚手架）都不会被误计。
+    """
+    removed = added = hunks = 0
+    expect_old = expect_new = 0
+    for raw in (patch_text or "").splitlines():
+        m = _HUNK_RE.match(raw)
+        if m:
+            hunks += 1
+            expect_old = int(m.group(2) or 1)
+            expect_new = int(m.group(4) or 1)
+            continue
+        if expect_old <= 0 and expect_new <= 0:
+            continue                       # hunk 之外
+        if raw.startswith("\\"):           # \ No newline at end of file
+            continue
+        if raw.startswith("+"):
+            added += 1
+            expect_new -= 1
+        elif raw.startswith("-"):
+            removed += 1
+            expect_old -= 1
+        else:                              # ' ' 上下文行
+            expect_old -= 1
+            expect_new -= 1
+    return removed, added, hunks
+
+
+def check_patch_preserves_source(patch_text, before_alerts):
+    """确定性补丁安全不变量。返回 (ok, detail)。
+
+    ok=False 表示**不得应用**：补丁会删除报告未声明的源码语句。
+    判定必须发生在落盘**之前**（本函数是纯函数，不碰文件系统）。
+    """
+    removed, added, hunks = patch_edit_counts(patch_text)
+    allowed = sum(1 for a in (before_alerts or [])
+                  if isinstance(a, dict) and a.get("rule") == "dead_code")
+    detail = {"removed": removed, "added": added, "hunks": hunks,
+              "allowed_removals": allowed}
+    if (patch_text or "").strip() and hunks == 0:
+        return False, dict(detail,
+                           reason="补丁非空却解析不出任何 hunk（无法自证 → 拒绝应用）")
+    if removed != allowed:
+        return False, dict(detail, reason=(
+            "语句保持不变量被破坏：补丁删除 %d 行，而报告只声明 %d 条 dead_code"
+            "（多删的 %d 行 = 源码语句被『覆盖式插入』吞掉）"
+            % (removed, allowed, removed - allowed)))
+    return True, detail
 
 
 def _here():
@@ -151,6 +220,7 @@ def run_flow(directory, config_path=None, auto_apply=False, dry_run=False,
 
     rep_before = analyze(directory, lang)
     by_before, total_before = count_alerts(rep_before)
+    _before_alerts = load_alerts(rep_before)
     supp_before = 0
     if use_memory:
         kept, supp = apply_memory(directory, load_alerts(rep_before))
@@ -186,6 +256,17 @@ def run_flow(directory, config_path=None, auto_apply=False, dry_run=False,
                       "形状不匹配 / 重复重构），详见 --gen-pr 草稿。")
         elif step == "apply":
             print("\n--- step: apply（git apply 优先，回退严格进程内校验）---")
+            if patch_text:
+                _safe, _det = check_patch_preserves_source(patch_text,
+                                                           _before_alerts)
+                print("[apply] 语句保持不变量：删除 %s 行 / 新增 %s 行（hunk %s），"
+                      "报告声明允许删除 %s 行 → %s"
+                      % (_det.get("removed"), _det.get("added"), _det.get("hunks"),
+                         _det.get("allowed_removals"),
+                         "通过" if _safe else "不通过"))
+                if not _safe:
+                    print("[apply] 拒绝应用（未改动任何文件）：%s" % _det.get("reason"))
+                    return 2
             if patch_text and do_apply:
                 import matlabc
                 # 优先 git apply（与 --gen-apply-patch「git apply 适用」设计一致，

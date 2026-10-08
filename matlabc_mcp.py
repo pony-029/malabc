@@ -15,6 +15,7 @@ Claude 等）把 matlabc 当作「代码理解 + 静态检查 + 确定性补丁�
 from __future__ import absolute_import, division, print_function
 
 import atexit
+import io
 import json
 import os
 import re
@@ -72,6 +73,17 @@ def _detect_matlabc_version():
 
 
 MATLABC_VERSION = _detect_matlabc_version()
+
+# 脚本解析：MCP 宿主（Cursor / Claude / CodeBuddy…）以它自己的 CWD 拉起本
+# 服务器，所以裸相对名 "matlabc.py" 只有在「巧好以仓库根为 CWD」时才找得到。
+# 实测：把 cwd 设成任意目录后 `_run(["matlabc.py", ...])` 直接 rc=2。
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _script(name):
+    """把 CLI 脚本解析为绝对路径（找不到时退回原名，行为不变）。"""
+    p = os.path.join(_SCRIPT_DIR, name)
+    return p if os.path.exists(p) else name
 
 # ---------------------------------------------------------------------------
 # 工具清单（inputSchema 自描述，供 Agent 发现与调用）
@@ -143,6 +155,7 @@ TOOLS = [
             "properties": {
                 "target": {"type": "string", "description": "待修复目录或文件"},
                 "auto_apply": {"type": "boolean", "description": "是否应用补丁并自证，默认 false"},
+                "output": {"type": "string", "description": "非应用模式下补丁文件名（锁定 CWD），默认 mcp_fix.patch"},
             },
             "required": ["target"],
         },
@@ -202,7 +215,24 @@ def _run(argv, timeout=600):
     except subprocess.TimeoutExpired:
         _kill_tree(proc)
         out, _ = proc.communicate()
-    return out.decode("utf-8", "replace")
+    # D-P0-3：**同时**回传退出码。旧实现只回传 stdout，于是 CLI 的 argparse
+    # 报错（rc=2）被当作成功结果返回给 Agent（isError=false）——「没有门」被
+    # 伪装成「有门」。缺输入 / 失败必须能红。
+    return (proc.returncode or 0), out.decode("utf-8", "replace")
+
+
+def _is_cli_usage_error(text):
+    """argparse 的失败签名（子进程 stderr 已并入 stdout）。"""
+    t = text or ""
+    return ("usage:" in t) and ("error:" in t)
+
+
+def _run_ok(argv, what, timeout=600):
+    """跑子进程；非零退出码 → RuntimeError（由 _handle_call 转成 isError=true）。"""
+    rc, text = _run(argv, timeout=timeout)
+    if rc != 0:
+        raise RuntimeError("%s 失败（rc=%d）：%s" % (what, rc, _tail(text, 800)))
+    return text
 
 
 def _tail(text, limit):
@@ -218,8 +248,10 @@ def _cmd_analyze(args):
     checks = args.get("checks") or "all"
     out = args.get("output") or "mcp_analysis.md"
     out = os.path.basename(out)  # 安全护栏：输出锁定在当前目录，防止路径穿越
-    cli = ["matlabc.py", target, "--checks", checks, "-o", out, "--reproducible"]
-    return "report written to %s\n\n%s" % (out, _tail(_run(cli), 4000))
+    cli = [_script("matlabc.py"), target, "--checks", checks,
+           "-o", out, "--reproducible"]
+    text = _run_ok(cli, "matlabc_analyze")
+    return "report written to %s\n\n%s" % (out, _tail(text, 4000))
 
 
 def _cmd_check(args):
@@ -231,9 +263,15 @@ def _cmd_check(args):
         maxw = int(args.get("max_warnings", 0))
     except (TypeError, ValueError):
         maxw = 0
-    cli = ["matlabc.py", target, "--checks", check,
+    cli = [_script("matlabc.py"), target, "--checks", check,
            "--max-warnings", str(maxw), "--json"]
-    return _tail(_run(cli), 6000)
+    rc, text = _run(cli)
+    if rc != 0 and _is_cli_usage_error(text):
+        # 参数被 CLI 拒绝 → 真错误（不是门禁失败），必须响亮
+        raise RuntimeError("matlabc_check 参数被 CLI 拒绝（rc=%d）：%s"
+                           % (rc, _tail(text, 600)))
+    # 非零退出码在这里是**门禁结果**（告警超阈值），显式上报给 Agent 而非吞掉
+    return "exit_code=%d\n%s" % (rc, _tail(text, 6000))
 
 
 def _cmd_ask(args):
@@ -241,8 +279,8 @@ def _cmd_ask(args):
     if not question:
         return "error: 'question' is required"
     d = args.get("dir") or "."
-    cli = ["matlabc_ask.py", question, "--dir", d]
-    return _tail(_run(cli), 6000)
+    cli = [_script("matlabc_ask.py"), question, "--dir", d]
+    return _tail(_run_ok(cli, "matlabc_ask"), 6000)
 
 
 def _cmd_gen_patch(args):
@@ -250,12 +288,22 @@ def _cmd_gen_patch(args):
     if not target:
         return "error: 'target' is required"
     auto = bool(args.get("auto_apply", False))
-    cli = ["matlabc_flow.py", target]
     if auto:
-        cli.append("--auto-apply")
-    else:
-        cli += ["--gen-apply-patch", "mcp_fix.patch"]
-    return _tail(_run(cli), 6000)
+        return _tail(_run_ok([_script("matlabc_flow.py"), target,
+                              "--auto-apply"], "matlabc_gen_patch"), 6000)
+    # D-P0-3：旧实现在**非应用**分支给 matlabc_flow.py 传 `--gen-apply-patch`，
+    # 而该脚本根本没有这个开关（只有 directory 位置参数 + --auto-apply 等），
+    # argparse 报 rc=2 并打印 usage，而 _run 丢弃退出码 ⇒ 被当成成功回给 Agent。
+    # 正确做法：非应用模式直接调确定性补丁引擎，并把**补丁内容**回传给 Agent。
+    out = os.path.basename(args.get("output") or "mcp_fix.patch")  # 防路径穿越
+    text = _run_ok([_script("matlabc.py"), target, "--gen-apply-patch",
+                    out, "--ai-mode", "off"], "matlabc_gen_patch")
+    patch_path = out + ".git.patch"
+    if os.path.exists(patch_path):
+        body = io.open(patch_path, "r", encoding="utf-8", errors="replace").read()
+        return ("patch written to %s (%d bytes)\n\n%s"
+                % (patch_path, len(body.encode("utf-8")), _tail(body, 6000)))
+    return "no deterministic fix applicable\n\n" + _tail(text, 2000)
 
 
 def _cmd_version(args):
