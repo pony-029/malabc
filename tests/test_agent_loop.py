@@ -225,6 +225,41 @@ class TestAgentLoop(unittest.TestCase):
         self.assertFalse(fb["no_new_alerts"])
         self.assertIn("rejected_patch", fb)
 
+    def test_memory_records_and_looks_up(self):
+        # P1-C：闭环收敛后把已验证修复记入 learned_fixes；且能检索到预置的同分布修复
+        import analyzer_memory as am
+        import tempfile
+
+        proj = tempfile.mkdtemp()
+        _install_mocks({"uninit": 3}, 3, {"uninit": 1}, 1)  # 3 → 1 收敛
+        sig = am.signature_of({"uninit": 3})
+        am.record_learned_fix(proj, {"signature": sig, "ts": "2020"})  # 预置历史修复
+        res = agent_loop.run_fix_loop(
+            proj,
+            lambda a, f: "--- a/x.m\n+++ b/x.m\n@@ -1 +1 @@\n- old\n+ new\n",
+            max_turns=3, project_root=proj, use_memory=True)
+        self.assertTrue(res["result"]["accepted"])
+        self.assertTrue(res["result"]["learned_fix_available"])  # 预置命中
+        self.assertTrue(res["result"]["learned_fix_recorded"])  # 收敛后记录
+        # 同签名去重：预置 + 本次记录仍只算 1 条
+        self.assertEqual(am.learned_fix_count(proj), 1)
+        self.assertIsNotNone(am.lookup_learned_fix(proj, sig))
+
+    def test_memory_off_by_default(self):
+        # 不开 use_memory 时不应触碰项目记忆
+        import analyzer_memory as am
+        import tempfile
+
+        proj = tempfile.mkdtemp()
+        _install_mocks({"uninit": 3}, 3, {"uninit": 1}, 1)
+        res = agent_loop.run_fix_loop(
+            proj,
+            lambda a, f: "--- a/x.m\n+++ b/x.m\n@@ -1 +1 @@\n- old\n+ new\n",
+            max_turns=3, project_root=proj, use_memory=False)
+        self.assertTrue(res["result"]["accepted"])
+        self.assertFalse(res["result"]["learned_fix_recorded"])
+        self.assertEqual(am.learned_fix_count(proj), 0)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

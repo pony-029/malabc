@@ -151,6 +151,40 @@ matlabc flow ./myproj --auto-apply-loop --provider deepseek --max-turns 5
 > provider 支持国产大模型（deepseek / qwen / ernie / zhipu / moonshot / baichuan / doubao /
 > yi / stepfun / iflytek，可用中文别名），密钥仅从环境变量读取，绝不落盘。
 
+### 2.2.3 跨运行记忆（P1-C：learned_fixes 缓存 + 误报抑制）
+
+`--memory` 让闭环「越用越聪明」：把项目级知识持久化到 `.codebuddy/analyzer/memory.json`，
+既服务于 `matlabc flow`（单次管线）也服务于 `--auto-apply-loop`（自主环）。
+
+```bash
+# 开启项目记忆：分析时抑制已知误报，且闭环收敛后把已验证修复记入 learned_fixes
+matlabc flow ./myproj --auto-apply-loop --memory
+```
+
+记忆文件结构（`memory.json`）：
+
+```json
+{
+  "suppressions":  [ {"rule": "uninit", "rel": "a.m", "line": 10} ],   // 人工标注的已知误报
+  "learned_fixes": [ {"signature": "{\"uninit\":3}", "baseline_by_rule": {"uninit":3},
+                      "files": ["a.m"], "patch_bytes": 536, "rule_reduction": 2,
+                      "ts": "2026-10-08T12:35:06Z"} ]
+}
+```
+
+契约：
+
+- **learned_fixes 自动记录**：闭环收敛（accept）后，按「基线告警分布签名」索引把本次已验证修复
+  记入项目记忆；下次**同分布告警**出现时，`learned_fix_available=true`（摘要与 `--agent-plan`
+  JSON 均可见），可据此复用历史补丁、减少重复扫描与试错。同签名自动去重，仅保留最新。
+- **误报抑制**：`suppressions` 由人工标注（如 `analyzer_memory.add_suppression`），分析时过滤，
+  **绝不自动抑制**（避免掩盖真实缺陷）；仅影响基线计数与展示。
+- **离线零依赖**：记忆模块纯标准库实现；文件缺失 / 损坏一律优雅降级为空记忆，不影响既有行为。
+- **限长防膨胀**：`learned_fixes` 默认保留最近 200 条。
+
+> 记忆文件位于工程本地 `.codebuddy/`（已是项目数据目录，非临时缓存），可随仓库提交共享给团队；
+> 也可手动编辑 `suppressions` 把确认无误报的告警排除出闭环视野。
+
 ---
 
 ## 3. 配置参数总表（按功能分组）

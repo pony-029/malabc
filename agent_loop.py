@@ -114,8 +114,26 @@ def _strategy_name(fix_source):
     return getattr(fix_source, "__name__", "fix_source") or "fix_source"
 
 
+def _tally(alerts):
+    by_rule = {}
+    for a in alerts:
+        by_rule[a.get("rule")] = by_rule.get(a.get("rule"), 0) + 1
+    return by_rule, len(alerts)
+
+
+def _memory_signature(by_rule):
+    """由基线告警分布生成稳定签名（与 analyzer_memory.signature_of 一致）。"""
+    return json.dumps(dict(sorted((k, int(v)) for k, v in (by_rule or {}).items())),
+                      ensure_ascii=False, sort_keys=True)
+
+
+def _now_iso():
+    import time
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
 def run_fix_loop(directory, fix_source, max_turns=3, lang=None,
-                 state_path=None, project_root=None):
+                 state_path=None, project_root=None, use_memory=False):
     """受控自校验修复环。返回结构化结果 dict（含 turns / termination / result）。
 
     接口约定（供 matlabc_flow.run_flow_loop 调用）：
@@ -123,11 +141,27 @@ def run_fix_loop(directory, fix_source, max_turns=3, lang=None,
     结果 dict 关键键：accepted / final_total / result.tier / result.checkpoint /
                        termination.reason / exit_code。
     """
-    from matlabc_flow import analyze, count_alerts
+    from matlabc_flow import analyze, count_alerts, load_alerts, apply_memory
 
     use_git = _is_git_repo(directory)
+    root = project_root or directory
     baseline_path = analyze(directory, lang)
     by_before, total_before = count_alerts(baseline_path)
+
+    # 跨运行记忆：分析时抑制已知误报（仅影响基线计数，绝不自动抑制真实缺陷）
+    learned_available = False
+    if use_memory:
+        try:
+            kept, _supp = apply_memory(root, load_alerts(baseline_path))
+            by_before, total_before = _tally(kept)
+        except Exception:
+            pass
+        try:
+            import analyzer_memory as am
+            learned_available = am.lookup_learned_fix(
+                root, _memory_signature(by_before)) is not None
+        except Exception:
+            learned_available = False
 
     turns = []
     accepted = False
@@ -136,6 +170,7 @@ def run_fix_loop(directory, fix_source, max_turns=3, lang=None,
     feedback = ""
     last_candidate = None
     termination = None
+    learned_recorded = False
 
     # 基线已干净：直接收敛，无需任何轮次
     if total_before == 0:
@@ -207,6 +242,21 @@ def run_fix_loop(directory, fix_source, max_turns=3, lang=None,
                 final_total = total_after
                 final_by = dict(by_after)
                 termination = {"reason": "converged", "turns_used": attempt + 1}
+                # 跨运行记忆：把已验证修复记入项目记忆，供后续同分布告警复用
+                if use_memory:
+                    try:
+                        import analyzer_memory as am
+                        am.record_learned_fix(root, {
+                            "signature": _memory_signature(by_before),
+                            "baseline_by_rule": by_before,
+                            "files": _patch_targets(patch),
+                            "patch_bytes": patch_bytes,
+                            "rule_reduction": total_before - total_after,
+                            "ts": _now_iso(),
+                        })
+                        learned_recorded = True
+                    except Exception:
+                        learned_recorded = False
                 break
             # 回退到基线（验证不通过，绝不保留半截改动）
             if use_git:
@@ -263,6 +313,8 @@ def run_fix_loop(directory, fix_source, max_turns=3, lang=None,
             "final_by_rule": final_by,
             "tier": tier,
             "checkpoint": checkpoint,
+            "learned_fix_available": learned_available,
+            "learned_fix_recorded": learned_recorded,
         },
         "exit_code": exit_code,
     }
@@ -316,6 +368,10 @@ def summarize_loop(result):
         lines.append("[agent loop] 自证：不通过(FAIL)，已回退基线。")
         if cp.get("message"):
             lines.append("[checkpoint] %s" % cp["message"])
+    if r.get("learned_fix_available"):
+        lines.append("[记忆] 当前基线存在同分布的「已学习修复」，可复用历史补丁。")
+    if r.get("learned_fix_recorded"):
+        lines.append("[记忆] 已把本次已验证修复记入项目记忆（learned_fixes）。")
     lines.append("=" * 64)
     return "\n".join(lines)
 

@@ -362,15 +362,17 @@ def _loop_fix_source(directory, prefix, lang, provider, config_path=None):
 
 
 def run_flow_loop(directory, config_path=None, max_turns=3, lang=None,
-                  provider=None, agent_plan=None):
-    """P0-1：受控自校验 Agent Loop（验证门控 + 回退重试 + 人工检查点）。
+                  provider=None, agent_plan=None, use_memory=False):
+    """P0-1：受控自校验 Agent Loop（验证门控 + 回退重试 + 人工检查点 + 跨运行记忆）。
 
     区别于 run_flow 的线性单次管线：本函数把修复放进 agent_loop.run_fix_loop，
     应用后确定性重扫验证；未通过则回退并换策略重试，穷尽 max_turns 仍未通过则
     产出人工检查点（不自动提交，绝不无限循环）。
 
+    use_memory：开启项目记忆（.codebuddy/analyzer/memory.json）——分析时抑制已知误报，
+        且闭环收敛后把已验证修复记入 learned_fixes，下次同分布告警可被检索复用。
     agent_plan：若给定路径，额外把结构化闭环计划（每轮决策 + 终止原因 + 分层
-    退出）写 JSON，供 AI Agent 程序化消费；传 "-" 则打印到 stdout。
+        退出 + 记忆状态）写 JSON，供 AI Agent 程序化消费；传 "-" 则打印到 stdout。
     """
     # 惰性导入，避免与 agent_loop 的 `from matlabc_flow import ...` 形成循环依赖
     from agent_loop import run_fix_loop as _run_loop, summarize_loop
@@ -378,7 +380,8 @@ def run_flow_loop(directory, config_path=None, max_turns=3, lang=None,
     print("=" * 64)
     print("[matlabc flow --auto-apply-loop] 工程：%s"
           % os.path.abspath(directory))
-    print("[matlabc flow --auto-apply-loop] max_turns=%d" % max_turns)
+    print("[matlabc flow --auto-apply-loop] max_turns=%d  use_memory=%s"
+          % (max_turns, use_memory))
     print("=" * 64)
 
     pf = tempfile.NamedTemporaryFile(prefix="mc_loop_patch_", delete=False)
@@ -389,7 +392,8 @@ def run_flow_loop(directory, config_path=None, max_turns=3, lang=None,
         state_path = agent_plan
     result = _run_loop(directory, fix_source, max_turns=max_turns,
                        lang=lang, state_path=state_path,
-                       project_root=os.path.abspath(directory))
+                       project_root=os.path.abspath(directory),
+                       use_memory=use_memory)
     print(summarize_loop(result))
     # 注意：checkpoint / final_total 嵌套在 result["result"] 下
     _res = result.get("result", {})
@@ -400,6 +404,11 @@ def run_flow_loop(directory, config_path=None, max_turns=3, lang=None,
     else:
         print("[matlabc flow --auto-apply-loop] 终态告警：%d（已保留修复）"
               % _res.get("final_total", result.get("baseline", {}).get("total", 0)))
+    if use_memory:
+        if _res.get("learned_fix_available"):
+            print("[记忆] 检测到与当前基线同分布的「已学习修复」，可复用历史补丁。")
+        if _res.get("learned_fix_recorded"):
+            print("[记忆] 已把本次已验证修复记入项目记忆（learned_fixes）。")
 
     # --agent-plan 落到 stdout（供 Agent 管道捕获）
     if agent_plan == "-":
@@ -439,7 +448,8 @@ def main(argv=None):
                     help="把结构化闭环计划写 JSON：传路径写文件，传 - 打印到 stdout，"
                          "供 AI Agent 程序化消费（含每轮决策/终止原因/分层退出）")
     ap.add_argument("--memory", action="store_true",
-                    help="启用项目记忆：按 .codebuddy/analyzer/memory.json 抑制已知误报")
+                    help="启用项目记忆（.codebuddy/analyzer/memory.json）：分析时抑制已知误报，"
+                         "且闭环收敛后把已验证修复记入 learned_fixes，下次同分布告警可复用")
     args = ap.parse_args(argv)
 
     if args.auto_apply_loop:
@@ -447,7 +457,8 @@ def main(argv=None):
             return run_flow_loop(args.directory, config_path=args.config,
                                 max_turns=args.max_turns, lang=args.lang,
                                 provider=args.provider,
-                                agent_plan=args.agent_plan)
+                                agent_plan=args.agent_plan,
+                                use_memory=args.memory)
         except Exception as e:
             sys.stderr.write("[matlabc flow --auto-apply-loop] 失败：%s\n" % e)
             return 1
