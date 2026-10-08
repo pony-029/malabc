@@ -20,3 +20,5 @@ MATLAB/Simulink 静态分析与确定性自动修复引擎（matlabc）。
     python tests/test_matlabc.py
 
 完整文档见 [docs/](docs/)。
+
+项目记忆与演进上下文（含 Python 3.6.5 硬约束、历史审计结论、依赖事实）：[MEMORY.md](MEMORY.md)。
