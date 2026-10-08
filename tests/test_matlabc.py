@@ -16224,3 +16224,108 @@ def test_r33_entry_scripts_are_36_syntax_clean_independent_recheck():
             if isinstance(n, _ast.arguments) and getattr(n, "posonlyargs", None):
                 offenders.append("%s 位置限定参数(/)" % fn)
     assert not offenders, "3.8+ 语法回归：%s" % offenders
+
+
+# ===========================================================================
+# R34：C 预处理器感知（`#if 0`）
+#
+# 修前实测（探针 `_r34/probe_preproc_cases.py`）：把一次越界 `strcpy` 与一个未定义
+# 调用**只**放在 `#if 0` 块里，引擎照样报出 `c_buffer_overflow`(error) 与 2 条未解析
+# 调用 —— 那个文件 **100% 的检出都来自死代码**。修后的判据必须**两向**成立：
+# 死代码静下来（该静的静），活代码与 `#else` 分支照常报（该报的还报）。
+# 只测前者会漏掉更危险的错误方向：把**活代码**也一起静掉。
+# ===========================================================================
+_R34_PP_CASES = {
+    "dead": (
+        '#include <string.h>\n\nvoid f(void) {\n    char buf[8];\n'
+        '#if 0\n'
+        '    strcpy(buf, "far longer than eight bytes");\n'
+        '    dead_undefined_zz(buf);\n'
+        '#endif\n    int k = 1;\n}\n',
+        [],                       # 期望：块内调用不进入未解析集合
+        False,                    # 期望：块内越界写不触发 c_buffer_overflow
+    ),
+    "live_control": (
+        '#include <string.h>\n\nvoid f(void) {\n    char buf[8];\n'
+        '    strcpy(buf, "far longer than eight bytes");\n'
+        '    live_undefined_zz(buf);\n    int k = 1;\n}\n',
+        ["live_undefined_zz", "strcpy"],
+        True,
+    ),
+    "else_branch_is_live": (
+        '#include <string.h>\n\nvoid f(void) {\n    char buf[8];\n'
+        '#if 0\n'
+        '    dead_undefined_zz(buf);\n'
+        '#else\n'
+        '    strcpy(buf, "far longer than eight bytes");\n'
+        '    live_else_zz(buf);\n'
+        '#endif\n    int k = 1;\n}\n',
+        ["live_else_zz", "strcpy"],
+        True,
+    ),
+    "nested": (
+        '#include <string.h>\n\nvoid f(void) {\n    char buf[8];\n'
+        '#if 0\n#if 1\n'
+        '    strcpy(buf, "far longer than eight bytes");\n'
+        '    nested_dead_zz(buf);\n'
+        '#endif\n#endif\n    int k = 1;\n}\n',
+        [],
+        False,
+    ),
+}
+
+
+def test_r34_c_if0_block_is_preprocessor_aware():
+    """R34：`#if 0` 块内的代码不再被分析，而 `#else` 分支与活代码照常被分析。
+
+    四个用例必须一起跑：`dead` / `nested` 证明「该静的静了」，
+    `live_control` / `else_branch_is_live` 证明「没有连活代码一起静掉」。
+    """
+    tmp = tempfile.mkdtemp(prefix="_t_r34pp_")
+    try:
+        for name, spec in _R34_PP_CASES.items():
+            src, want_callees, want_buffer = spec
+            d = os.path.join(tmp, name)
+            os.makedirs(d)
+            with io.open(os.path.join(d, "m.c"), "w", encoding="utf-8") as fh:
+                fh.write(src)
+            out = os.path.join(tmp, "%s.json" % name)
+            r = _r31_run(["matlabc.py", d, "--lang", "c", "--checks", "all",
+                          "--json", out], timeout=120)
+            assert r.returncode == 0, \
+                "%s: rc=%s\n%s" % (name, r.returncode,
+                                   r.stdout.decode("utf-8", "replace")[-600:])
+            with io.open(out, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            callees = sorted(set(u["callee"]
+                                 for u in data.get("unresolved", [])))
+            kinds = [h["kind"] for h in (data.get("heuristics") or [])]
+            assert callees == want_callees, \
+                "%s: 未解析集合 %s != 期望 %s" % (name, callees, want_callees)
+            got_buf = "c_buffer_overflow" in kinds
+            assert got_buf is want_buffer, \
+                "%s: c_buffer_overflow 存在性 %s != 期望 %s（kinds=%s）" \
+                % (name, got_buf, want_buffer, kinds)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r34_c_if0_helper_is_line_preserving_and_c_only():
+    """R34 单元级：`_scrub_c_if0` 必须**行数不变**，且不许动 `#ifdef`。
+
+    「行号不变」是这套实现能接进现有流水线的前提：一旦行数变了，
+    函数行号 / 告警行号 / `#include` 行号会成片漂移，比不实现更糟。
+    """
+    src = "a\n#if 0\nb\nc\n#endif\nd\n"
+    got = ma._scrub_c_if0(src).split("\n")
+    assert got == ["a", "", "", "", "", "d", ""], got
+    assert len(got) == len(src.split("\n")), "行数必须与原文一致"
+    # 无 `#if 0` 时原样返回，且**不得**误伤 `#ifdef` / `#ifndef`
+    for same in ("x\n#ifdef Y\nz\n#endif\n", "x\n#ifndef Y\nz\n#endif\n"):
+        assert ma._scrub_c_if0(same) == same, "`#ifdef/#ifndef` 不许被动"
+    # `#elif` 条件未知 ⇒ 保守当作活代码（宁可多报，不可把活代码静掉）
+    elif_got = ma._scrub_c_if0("#if 0\nA\n#elif X\nB\n#endif\n").split("\n")
+    assert elif_got == ["", "", "", "B", "", ""], elif_got
+    # 没有 `#if 0` 的常见文本走快速路径
+    plain = "int main(void) { return 0; }\n"
+    assert ma._scrub_c_if0(plain) == plain

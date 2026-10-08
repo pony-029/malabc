@@ -72,7 +72,12 @@ matlabc — 代码结构梳理与静态分析工具（纯 Python，零依赖，�
     模板、类、命名空间、重载**不保证**识别 —— 这是已披露的降级，不是 bug。
   * 前端实现：.m / C / Python / JS 目前是**行锚定正则**（Python 另有 ast 路径），
     不是完整 AST。函数名与 `) {` 不在同一行、宏拼出来的签名，可能漏掉。
-  * 预处理：**无 `#if 0` 感知** —— 被预处理屏蔽掉的代码同样会被分析。
+  * 预处理：**只做字面量 `#if 0` 感知**（R34）—— 该块内的代码不再被分析，
+    且**行号保持不变**（所以告警行号仍与源文件对齐）。`#if 0 … #else` 的 else
+    分支是**活代码**，照常分析；而 `#ifdef X` / `#if defined(X)` **按兵不动**：
+    不知道宏是否定义时猜「它没定义」，会把活代码当死代码丢掉 —— 那比多报几个
+    告警严重得多。判据是行首匹配，写在多行字符串里、恰好独占一行的 `#if 0`
+    会被误判成指令（所有「按行」工具的同一处近似）。
   * 动态库：不解析 `dlopen`/`LoadLibrary`/`dlsym`/`LD_PRELOAD` 的**运行期**绑定；
     也不解析 Makefile/CMakeLists 的链接意图（`-lfoo` 只作为候选名提示）。
   * GPU：CUDA kernel 名从 cubin 的 `.text._Z` 节名表提取；**PTX 路径基本提不出
@@ -7085,6 +7090,9 @@ def _parse_c_source(text, rel, path):
         # Windows 常见：UTF-8 with BOM。build_c_model 用 utf-8 读取时 BOM 保留，
         # 会粘在首个函数定义行首导致 ^ 锚点失配、首个函数漏解析。
         text = text[1:]
+    # R34/C''2：预处理器感知 —— `#if 0` 块内的行被清空（**行号不变**），
+    # 于是函数定义 / 调用 / include / 宏计数都基于「真正会被编译的代码」。
+    text = _scrub_c_if0(text)
     src_lines = text.split("\n")
     funcs = []
     includes = []
@@ -7270,6 +7278,94 @@ def _c_file_lines(path):
             return fh.read().split("\n")
     except Exception:
         return []
+
+
+# ---------------------------------------------------------------------------
+# R34/C''2：预处理器感知（**只处理字面量 `#if 0`**，且**行号不变**）
+#
+# 为什么只做 `#if 0`：它是**无歧义**的死代码 —— 不依赖任何宏定义。
+# `#ifdef X` / `#if defined(X)` 一律**不动**：在不知道 X 是否定义时，猜「它没定义」
+# 会把**活代码当死代码丢掉**，那比多报几个告警严重得多。同理 `#if 0 … #else` 的
+# else 分支是**活的**，必须原样保留；`#elif` 条件未知 ⇒ 保守当作活代码留下。
+#
+# 实测基线（探针 `_r34/probe_preproc.py`）：把一次越界 `strcpy` 与一个未定义调用
+# **只**放在 `#if 0` 块内时，修前引擎照样报出 `c_buffer_overflow`(error) 与 2 条
+# 未解析调用 —— 也就是该文件 **100% 的检出都来自死代码**。
+#
+# 已知近似（写下来，不假装精确）：判据是**行首**匹配，所以写在多行字符串字面量里、
+# 且恰好独占一行的 `#if 0` 会被误判成指令。这是所有「按行」工具的同一处近似。
+# ---------------------------------------------------------------------------
+_C_RE_IF0 = re.compile(r"^#\s*if\s+0\s*$|^#\s*if\s+0\s*(?:/\*.*\*/|//.*)$")
+_C_RE_ANY_IF = re.compile(r"^#\s*if(?:def|ndef)?\b")
+_C_RE_ENDIF = re.compile(r"^#\s*endif\b")
+_C_RE_ELSE_ELIF = re.compile(r"^#\s*(?:else|elif)\b")
+
+
+def _scrub_c_if0(text):
+    """把 `#if 0 … #endif` 块内的行清成空行 —— **行数不变**，所以行号仍然对得上。
+
+    返回清洗后的文本；调用方拿到的行数、每一行的行号都与原文一致，
+    因此所有下游（函数行号 / 调用行号 / 告警行号）不需要任何换算。
+    """
+    if not text or "#" not in text or "if" not in text:
+        return text
+    lines = text.split("\n")
+    out = list(lines)
+    depth = 0
+    dead = False
+    for i, ln in enumerate(lines):
+        s = ln.strip()
+        if depth == 0:
+            if _C_RE_IF0.match(s):
+                depth, dead = 1, True
+                out[i] = ""
+            continue
+        # depth > 0：处在某个 `#if 0` 区域内部
+        if _C_RE_ANY_IF.match(s):
+            depth += 1
+            out[i] = ""
+            continue
+        if _C_RE_ENDIF.match(s):
+            depth -= 1
+            out[i] = ""
+            if depth == 0:
+                dead = False
+            continue
+        if depth == 1 and _C_RE_ELSE_ELIF.match(s):
+            # `#if 0` 的 #else 分支是要编译的 ⇒ 从这里起重新视为活代码。
+            dead = False
+            out[i] = ""
+            continue
+        if dead:
+            out[i] = ""
+    return "\n".join(out)
+
+
+_C_EFFECTIVE_LINES_CACHE = {}
+
+
+def _c_lines_effective(path):
+    """C 专用：返回**预处理器感知**后的行（`#if 0` 内为空行，行号不变）。
+
+    只给 C 用 —— Python / JS 里的 `#if 0` 是**注释**，语义完全不同，不能共用
+    （所以不复用共享的 `_c_file_lines`，而是单独一层）。
+    缓存以 `(path, mtime)` 为键：同一文件在一轮分析里有 4 个检查点会各读一次，
+    而 watch / GUI 长驻进程里 mtime 一变就自动失效，不会读到陈旧内容。
+    """
+    if not path:
+        return []
+    try:
+        mt = os.path.getmtime(path)
+    except OSError:
+        mt = None
+    key = (path, mt)
+    hit = _C_EFFECTIVE_LINES_CACHE.get(key)
+    if hit is not None:
+        return hit
+    raw = _c_file_lines(path)
+    eff = _scrub_c_if0("\n".join(raw)).split("\n") if raw else raw
+    _C_EFFECTIVE_LINES_CACHE[key] = eff
+    return eff
 
 
 def _prev_nonspace_lines(lines, upto_line, n):
@@ -7667,7 +7763,7 @@ def _c_heuristic_checks(c_model, enabled=None):
         is_hdr = fname.lower().endswith((".h", ".hpp"))
         if is_hdr and _on("c_missing_guard"):
             guard_ok = False
-            for tline in _c_file_lines(pf.get("path")):
+            for tline in _c_lines_effective(pf.get("path")):
                 s = tline.strip()
                 if s.startswith("#ifndef") or s.startswith("#pragma once"):
                     guard_ok = True
@@ -7677,7 +7773,7 @@ def _c_heuristic_checks(c_model, enabled=None):
                             "kind": "c_missing_guard",
                             "msg": "头文件缺少 include 卫士（#ifndef 或 #pragma once）",
                             "level": "note"})
-        lines = _c_file_lines(pf.get("path")) if _on("c_missing_doc") else []
+        lines = _c_lines_effective(pf.get("path")) if _on("c_missing_doc") else []
         for fn in pf["functions"]:
             nm = fn["name"]
             lname = nm.lower()
@@ -7770,7 +7866,7 @@ def _c_heuristic_checks(c_model, enabled=None):
             # 无任何产出点。注意这里**不能**复用上面的 `lines`：它受
             # `_on("c_missing_doc")` 短路，c_missing_doc 关闭时会变成 []。
             if _on("c_double_free") or _on("c_buffer_overflow"):
-                _clines = _c_file_lines(pf.get("path"))
+                _clines = _c_lines_effective(pf.get("path"))
                 if _clines:
                     _cbody = _func_body_lines(_clines, fn["line"],
                                               pf["functions"])
@@ -7858,7 +7954,7 @@ def _gen_c_tests(c_model, out_dir, root):
                 body.append("    int rc = %s;  /* TODO: 补全断言 */" % call)
                 body.append("    assert(rc == 0);  /* TODO: 替换为业务期望值 */")
             # P93：分支覆盖提示——扫描函数体 if/for/while/switch/case 行
-            _flines = _c_file_lines(pf.get("path")) or []
+            _flines = _c_lines_effective(pf.get("path")) or []
             if _flines:
                 _fbody = _func_body_lines(_flines, fn["line"], pf["functions"])
                 for bi, bl in enumerate(_fbody):
