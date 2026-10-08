@@ -270,12 +270,15 @@ def _loop_fix_source(directory, prefix, lang, provider):
 
 
 def run_flow_loop(directory, config_path=None, max_turns=3, lang=None,
-                  provider=None):
+                  provider=None, agent_plan=None):
     """P0-1：受控自校验 Agent Loop（验证门控 + 回退重试 + 人工检查点）。
 
     区别于 run_flow 的线性单次管线：本函数把修复放进 agent_loop.run_fix_loop，
     应用后确定性重扫验证；未通过则回退并换策略重试，穷尽 max_turns 仍未通过则
     产出人工检查点（不自动提交，绝不无限循环）。
+
+    agent_plan：若给定路径，额外把结构化闭环计划（每轮决策 + 终止原因 + 分层
+    退出）写 JSON，供 AI Agent 程序化消费；传 "-" 则打印到 stdout。
     """
     # 惰性导入，避免与 agent_loop 的 `from matlabc_flow import ...` 形成循环依赖
     from agent_loop import run_fix_loop as _run_loop, summarize_loop
@@ -289,20 +292,30 @@ def run_flow_loop(directory, config_path=None, max_turns=3, lang=None,
     pf = tempfile.NamedTemporaryFile(prefix="mc_loop_patch_", delete=False)
     pf.close()
     fix_source = _loop_fix_source(directory, pf.name, lang, provider)
-    state_path = pf.name + ".loop_state.json"
+    state_path = None
+    if agent_plan and agent_plan != "-":
+        state_path = agent_plan
     result = _run_loop(directory, fix_source, max_turns=max_turns,
                        lang=lang, state_path=state_path,
                        project_root=os.path.abspath(directory))
     print(summarize_loop(result))
-    if result["checkpoint"]:
-        cp = result["checkpoint"]
+    # 注意：checkpoint / final_total 嵌套在 result["result"] 下
+    _res = result.get("result", {})
+    if _res.get("checkpoint"):
+        cp = _res["checkpoint"]
         print("[checkpoint] %s" % cp["message"])
-        print("[checkpoint] 候选补丁字节数：%s" % cp.get("candidates"))
+        print("[checkpoint] 候选补丁字节数：%s" % cp.get("candidate_patch_bytes"))
     else:
         print("[matlabc flow --auto-apply-loop] 终态告警：%d（已保留修复）"
-              % result["final_total"])
+              % _res.get("final_total", result.get("baseline", {}).get("total", 0)))
+
+    # --agent-plan 落到 stdout（供 Agent 管道捕获）
+    if agent_plan == "-":
+        print("\n[agent plan JSON]\n" + json.dumps(result, ensure_ascii=False,
+                                                   indent=2, sort_keys=True))
+
     # 0 = 接受并保留修复；2 = 未通过自证(已回退基线，供 CI 区分)
-    return 0 if result["accepted"] else 2
+    return result.get("exit_code", 0 if _res.get("accepted") else 2)
 
 
 def _fmt_rules(d):
@@ -330,6 +343,9 @@ def main(argv=None):
                          "区别于 --auto-apply 的线性单次管线")
     ap.add_argument("--max-turns", type=int, default=3,
                     help="修复环最大尝试轮数（分层终止上限，默认 3）")
+    ap.add_argument("--agent-plan", default=None, metavar="PATH",
+                    help="把结构化闭环计划写 JSON：传路径写文件，传 - 打印到 stdout，"
+                         "供 AI Agent 程序化消费（含每轮决策/终止原因/分层退出）")
     ap.add_argument("--memory", action="store_true",
                     help="启用项目记忆：按 .codebuddy/analyzer/memory.json 抑制已知误报")
     args = ap.parse_args(argv)
@@ -338,7 +354,8 @@ def main(argv=None):
         try:
             return run_flow_loop(args.directory, config_path=args.config,
                                 max_turns=args.max_turns, lang=args.lang,
-                                provider=args.provider)
+                                provider=args.provider,
+                                agent_plan=args.agent_plan)
         except Exception as e:
             sys.stderr.write("[matlabc flow --auto-apply-loop] 失败：%s\n" % e)
             return 1

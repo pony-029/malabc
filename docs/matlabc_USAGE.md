@@ -98,6 +98,34 @@ matlabc flow ./myproj --config ai_config.json
 
 > 注：本机需 `git` 才能走 `git apply`；无 git 时自动退回进程内严格校验（同样安全）。
 
+### 2.2.1 受控自校验 Agent Loop（P0，自主修复闭环）
+
+`--auto-apply-loop` 把「修复 → 应用 → 验证 → 回退」放进带门控与终止条件的自主循环，
+区别于 `--auto-apply` 的线性单次管线：
+
+```bash
+# 自主修复环：应用后确定性重扫，未通过则回退并换策略重试，穷尽仍失败则产出人工检查点
+matlabc flow ./myproj --auto-apply-loop --max-turns 3
+
+# 把结构化闭环计划写 JSON（供 AI Agent 程序化消费）：路径写文件，'-' 打印到 stdout
+matlabc flow ./myproj --auto-apply-loop --agent-plan loop_plan.json
+matlabc flow ./myproj --auto-apply-loop --agent-plan -
+```
+
+闭环契约：
+
+- **验证门控（verifier）**：应用后确定性重扫，要求「各规则告警数不增加（安全）」且
+  「总量下降（有进展）」，二者皆满足才接受本轮修复；否则回退基线。
+- **终止条件（termination）**：`converged`（收敛）｜ `max_turns`（轮次用尽）｜
+  `no_strategy`（修复源返回 `None`，已无新策略）｜ `already_clean`（基线 0 告警）。
+- **分层退出（tier）**：`0` 终态清零（完全干净）；`1` 接受但仍有残留（安全降级）；
+  `2` 未通过自证 → 产出人工检查点（绝不自动提交 / 无限循环）。退出码 `0`=接受，`2`=检查点。
+- **结构化计划（--agent-plan）**：JSON 含 `baseline` / 每轮 `turns`（策略、补丁字节、验证结果、
+  `verdict`）/ `termination` / `result.tier` / `result.checkpoint`，便于 Agent 管道或 CI 消费。
+
+> 当前修复源为确定性补丁引擎（首轮即收敛或判定 `no_strategy`）；后续可在此接入
+> 「带 feedback 的 LLM 修复」，让环在 `max_turns` 内自主迭代。
+
 ---
 
 ## 3. 配置参数总表（按功能分组）
