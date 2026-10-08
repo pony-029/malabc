@@ -35,6 +35,11 @@
 用法：
     python tools/check_patch_ops.py            # 检查仓库，0=干净 1=有违规 2=缺输入
     python tools/check_patch_ops.py --selftest # 两向自证
+
+退出码：
+    0  = 补丁算子集合合法（⊆ {del, ins_before}，无覆盖式赋值，未知算子显式失败）
+    1  = 有违规（发出遗留 "ins" / 出现覆盖目标行的赋值 / 未知算子被静默吞掉）
+    2  = 缺输入（源文件或渲染侧找不到 → 红）
 """
 import argparse
 import io

@@ -44,6 +44,11 @@
 用法：
     python tools/check_py36_clean.py             # 0=干净 1=有违规 2=缺输入
     python tools/check_py36_clean.py --selftest  # 两向自证
+
+退出码：
+    0  = 本仓源码全部通过 3.6.5 语法兼容门
+    1  = 有源码违反了 3.6.5 承诺（用了 3.7+ 语法或标准库）
+    2  = 缺输入（找不到分析器 / 目标树 → 红）
 """
 import argparse
 import io

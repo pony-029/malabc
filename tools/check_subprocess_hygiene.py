@@ -49,6 +49,11 @@
 用法：
     python tools/check_subprocess_hygiene.py             # 0=干净 1=有违规 2=缺输入
     python tools/check_subprocess_hygiene.py --selftest  # 两向自证
+
+退出码：
+    0  = 子进程卫生全部合规（捕获输出必切断 stdin、run 类必带 timeout、登记两向齐）
+    1  = 有违规（捕获输出却继承 stdin / 缺 timeout / Popen 或 kwargs 盲区未登记）
+    2  = 缺输入（找不到待扫源码 → 红）
 """
 import argparse
 import ast

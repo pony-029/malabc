@@ -22,7 +22,7 @@ conclusion into a **CI quality gate**.
 ![Offline](https://img.shields.io/badge/offline-first-yes-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![CI](https://github.com/pony-029/malabc/actions/workflows/ci.yml/badge.svg)
-![Version](https://img.shields.io/badge/version-1.16.67-informational)
+![Version](https://img.shields.io/badge/version-1.16.68-informational)
 
 [Quick Start](#quick-start) · [Core Capabilities](#core-capabilities) · [Architecture](#architecture)
 · [Binary & GPU](#binary--gpu-analysis---binary) · [Command Cheatsheet](#command-cheatsheet)
@@ -42,7 +42,7 @@ conclusion into a **CI quality gate**.
 | "Any hidden risks in this code?" | Run MATLAB to find out | Uninitialized / type mismatch / dead code / shape mismatch / taint, all statically |
 | "How do I change it safely?" | Edit by hand and risk new bugs | `--gen-apply-patch` generates a deterministic, self-verified patch |
 | "How do we stop the rot?" | Rely on reviewers' diligence | SARIF + exit code + trend baseline, enforced in CI |
-| "This call resolves to nothing — is it our bug or a library's?" | Guess, or grep the disk | `--binary` + `--binary-symbols`: every unresolved name is attributed to a library, a GPU kernel, or `missing` |
+| "This call resolves to nothing — is it our bug or a library's?" | Guess, or grep the disk | `--binary` + `--binary-symbols`, or the single-command `--binary-attach`: every unresolved name is attributed to a library, a GPU kernel, or `missing` |
 
 > **Zero dependencies, no MATLAB needed, offline by default**: only the Python standard
 > library is used; MATLAB / Octave is not required, and no network requests are made
@@ -185,6 +185,41 @@ python matlabc.py --binary a.dll,b.so --binary-json -
 - **Run-time binding is out of scope.** `dlopen` / `LoadLibrary` / `dlsym` / `LD_PRELOAD` are not
   traced, and `Makefile` / `CMakeLists.txt` link intent is not parsed (`-lfoo` is only used as a
   candidate-name hint).
+
+#### One command instead of two: `--binary-attach`
+
+`--binary` **short-circuits** — it inspects the binary and exits. `--binary-attach` deliberately
+does **not**: it runs the normal source analysis, and then attributes the unresolved calls it just
+found — in a single invocation, with no intermediate JSON to shuttle around.
+
+```mermaid
+flowchart TB
+    subgraph TWO["--binary + --binary-symbols · two steps"]
+        T1["step 1<br/>matlabc myproj --json out.json"] --> T2["out.json"]
+        T2 --> T3["step 2<br/>matlabc --binary lib.so --binary-symbols out.json"]
+    end
+    subgraph ONE["--binary-attach · one step"]
+        O1["matlabc myproj --binary-attach lib.so --json out.json"]
+        O2["same pass: analyse sources + attribute unresolved + write JSON"]
+        O1 --> O2
+    end
+```
+
+| | `--binary` | `--binary-attach` |
+| --- | --- | --- |
+| Source analysis in the same call | no — binary only | **yes** — then attributes |
+| Where the names come from | a `--binary-symbols` file you built earlier | the source side, automatically |
+
+```bash
+# One command: analyse myproj, then attribute its unresolved calls against libblas.so
+python matlabc.py myproj/ --binary-attach libblas.so --json out.json
+```
+
+Only the binaries you explicitly pass are consulted. A library you did **not** pass yields
+`missing`, never a guess — a false positive would launder a real defect into "it came from some
+library", which is worse than no attribution at all. In JSON the result lands in
+`unresolved_attribution` (`{summary, rows}`), and that key is **absent** when the flag is not
+given — no empty shell that downstream code could mistake for "attributed, but nothing matched".
 
 ### Static Check Rules
 
@@ -423,6 +458,9 @@ python matlabc.py --binary libfoo.so
 python matlabc.py myproj/ --json out.json
 python matlabc.py --binary libcublas.so.12 --binary-symbols out.json
 
+# ...or do both in one command (no intermediate JSON)
+python matlabc.py myproj/ --binary-attach libcublas.so.12 --json out.json
+
 # Generate a deterministic self-verified fix patch
 python matlabc flow myproj --auto-apply --gen-apply-patch
 
@@ -481,12 +519,13 @@ python tools/check_all.py        # runs every tools/check_*.py AND its --selftes
 | `check_doc_flags.py` | Documentation **or a help screen** advertising a CLI flag that does not exist (this really happened: the README said `--check tainted_sink`, which argparse rejects as an **ambiguous prefix**) |
 | `check_operator_impl.py` | "Phantom operators": a check rule listed in the catalog that no code path ever emits |
 | `check_patch_ops.py` | Patch operators that overwrite a target line instead of inserting before it (which would silently delete source) |
-| `check_binfmt_fixtures.py` | Binary / GPU parsers regressing — synthetic PE/ELF fixtures plus contract assertions C1–C6 |
+| `check_binfmt_fixtures.py` | Binary / GPU parsers regressing — synthetic PE/ELF/Mach-O fixtures plus contract assertions C1–C8 |
 | `check_py36_clean.py` | The repo breaking **its own** Python 3.6.5 promise (it already had: `list[str]` and `from __future__ import annotations` had shipped) |
 | `check_subprocess_hygiene.py` | Any subprocess that captures output while inheriting stdin, or that can hang forever |
-| `check_help_contract.py` | An exit code that exists in the code but not in `--help`, or in `--help` but never returned; plus help that lost its usage example, diagram, or exit-code section |
+| `check_help_contract.py` | An exit code that exists in the code but not in `--help`, or in `--help` but never returned; help that lost its usage example, diagram, or exit-code section; **examples that do not actually run**; and help that silently shrank or bloated |
+| `check_readme_parity.py` | The English and Chinese READMEs drifting apart structurally — section count, and per-section table-row / code-block / mermaid counts. It deliberately does **not** compare line counts, because Chinese is more compact |
 
-Two disciplines make these gates trustworthy rather than decorative:
+Three disciplines make these gates trustworthy rather than decorative:
 
 1. **Every gate proves itself in both directions.** `--selftest` builds *bad* samples that must go
    red **and** *good* samples that must stay green, then prints a machine-readable line
@@ -499,11 +538,18 @@ Two disciplines make these gates trustworthy rather than decorative:
    fired — the gate took ~181 s and was killed by the surrounding `timeout 90`, looking like an
    inexplicable freeze. Cutting stdin took the same gate to **3.4 s**, and
    `check_subprocess_hygiene.py` now enforces that lesson repo-wide.
+3. **A measurement tool's own bug fabricates bugs in the thing it measures.** Two-way self-test
+   must therefore run green **before** you are allowed to announce "0 violations in the real
+   repo". This is not a slogan: the exit-code gate's own evidence matcher used `\breturn\s+0\b`,
+   which matches inside `return 0.0` (the boundary sits between `0` and `.`) — so a function that
+   returns a *float* was accepted as proof of "exits with code 0", and a **stale registry entry
+   was laundered as valid**. The gate caught its own bug only because its self-test ran first.
 
-Two of these gates map a claim to an executable counter-party rather than to a style rule:
-`check_py36_clean.py` feeds this repository's own sources to this repository's own 3.6.5 gate,
-and `check_help_contract.py` cross-checks the documented exit codes against the codes the
-source can actually return. Both are **two-way**: a stale registry entry fails just as loudly
+Several of these gates map a claim to an executable counter-party rather than to a style rule:
+`check_py36_clean.py` feeds this repository's own sources to this repository's own 3.6.5 gate;
+`check_help_contract.py` cross-checks the documented exit codes against the codes the source can
+actually return, and *runs* every documented example command; `check_readme_parity.py` compares
+the two READMEs to each other. All are **two-way**: a stale registry entry fails just as loudly
 as a missing one, because a registry that only ever grows stops meaning anything.
 
 ---
@@ -521,11 +567,19 @@ python matlabc_flow.py --help     # repair loop: five-station pipeline + five re
 python matlabc_ask.py --help      # grounded Q&A: how facts become an answer
 python matlabc_mcp.py --help      # MCP server: the five tools + why stdin must be cut
 python gui.py --help              # GUI: which CLI flag each form field maps to
-python tools/check_all.py --help  # gates: what each of the 7 gates stops
+python tools/check_all.py --help  # gates: what each of the 8 gates stops
 ```
 
-This is not a verbal promise — `check_help_contract.py` and `check_doc_flags.py` watch it:
-every flag in an example must really exist, and every documented exit code must match the source.
+This is not a verbal promise — `check_help_contract.py` and `check_doc_flags.py` watch it, and
+they check more than wording:
+
+- every flag named in an example must really exist;
+- every documented exit code must match the codes the source can actually return;
+- every example command is **actually executed** (`rc == 0`) and must appear in the help text
+  **verbatim**, so it is genuinely copy-pasteable;
+- help has a **volume ratchet** with both a floor and a ceiling — a help screen that silently
+  shrinks back to bare argparse usage fails just as loudly as one that bloats past what anyone
+  would read.
 
 ---
 
@@ -539,6 +593,7 @@ every flag in an example must really exist, and every documented exit code must 
 - [docs/matlabc_AI_ROADMAP.md](docs/matlabc_AI_ROADMAP.md) — AI roadmap
 - [docs/analysis/](docs/analysis/) — deep-analysis reports (six-hats reviews, design comparisons)
 - [docs/SUPERPOWER_REVIEW_R31.md](docs/SUPERPOWER_REVIEW_R31.md) — round-by-round review: binary/GPU integration, subprocess hygiene, and the gate that hung
+- [docs/SUPERPOWER_REVIEW_R33.md](docs/SUPERPOWER_REVIEW_R33.md) — round review: `--binary-attach`, the README parity gate, executable help examples, and the exit-code matcher that caught its own bug
 - [docs/GITHUB_REPO_ABOUT.md](docs/GITHUB_REPO_ABOUT.md) — paste-ready repository About panel text (description / website / topics)
 
 ---

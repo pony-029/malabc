@@ -20,7 +20,7 @@
 ![离线](https://img.shields.io/badge/offline-first-yes-orange)
 ![许可](https://img.shields.io/badge/license-MIT-green)
 ![CI](https://github.com/pony-029/malabc/actions/workflows/ci.yml/badge.svg)
-![版本](https://img.shields.io/badge/version-1.16.67-informational)
+![版本](https://img.shields.io/badge/version-1.16.68-informational)
 
 [快速开始](#快速开始) · [核心能力](#核心能力) · [架构](#架构) · [二进制与 GPU](#二进制与-gpu-分析---binary) · [命令速查](#命令速查) · [CI 门禁](#ci-质量门禁) · [自验证质量门](#自验证质量门quality-gates) · [English](README.md) · [许可证](#许可证)
 
@@ -37,7 +37,7 @@
 | "这代码里有没有隐藏风险？" | 跑 MATLAB 才能发现 | 未初始化 / 类型不匹配 / 死代码 / 维度不匹配 / 污点，全部静态可得 |
 | "怎么改才安全？" | 手改，容易引入新 bug | `--gen-apply-patch` 生成确定性、自校验补丁 |
 | "怎么阻止腐烂？" | 靠评审自觉 | SARIF + 退出码 + 趋势基线，CI 强制卡点 |
-| "这个调用解析不出来 —— 是我们写错了，还是它本就是库函数？" | 靠猜，或手动翻磁盘 | `--binary` + `--binary-symbols`：每个未解析名字都被归到某个库、某个 GPU kernel，或标记 `missing` |
+| "这个调用解析不出来 —— 是我们写错了，还是它本就是库函数？" | 靠猜，或手动翻磁盘 | `--binary` + `--binary-symbols`，或用一条命令搞定的 `--binary-attach`：每个未解析名字都被归到某个库、某个 GPU kernel，或标记 `missing` |
 
 > **零依赖、无需 MATLAB、默认离线**：只用 Python 标准库；不依赖 MATLAB / Octave，不发起任何网络请求
 > （离线优先，产物中不含 CDN 引用）——完全可在内网使用。
@@ -174,6 +174,39 @@ python matlabc.py --binary a.dll,b.so --binary-json -
   `[TRUNCATED]`。
 - **运行期绑定不在范围内。** 不追踪 `dlopen` / `LoadLibrary` / `dlsym` / `LD_PRELOAD`，
   也不解析 `Makefile` / `CMakeLists.txt` 的链接意图（`-lfoo` 只作为候选名提示）。
+
+#### 一条命令代替两条：`--binary-attach`
+
+`--binary` 会**短路** —— 看完二进制就退出。`--binary-attach` 刻意**不短路**：它先照常做源码
+分析，再顺手把刚刚发现的未解析调用拿去二进制里对账 —— 一次调用完成，不需要在中途搬一个
+JSON 文件。
+
+```mermaid
+flowchart TB
+    subgraph TWO["--binary + --binary-symbols · 两步"]
+        T1["第 1 步<br/>matlabc myproj --json out.json"] --> T2["out.json"]
+        T2 --> T3["第 2 步<br/>matlabc --binary lib.so --binary-symbols out.json"]
+    end
+    subgraph ONE["--binary-attach · 一步"]
+        O1["matlabc myproj --binary-attach lib.so --json out.json"]
+        O2["同一遍：分析源码 + 归因未解析调用 + 写 JSON"]
+        O1 --> O2
+    end
+```
+
+| | `--binary` | `--binary-attach` |
+| --- | --- | --- |
+| 同一次调用里做源码分析 | 不 —— 只看二进制 | **做** —— 做完再归因 |
+| 名字从哪来 | 你事先用 `--binary-symbols` 备好的文件 | 自动取自源码侧 |
+
+```bash
+# 一条命令：分析 myproj，再把它的未解析调用拿去 libblas.so 里对账
+python matlabc.py myproj/ --binary-attach libblas.so --json out.json
+```
+
+只依据你**显式给出**的二进制。没给的库一律 `missing`，绝不猜 —— 一个假阳性会把真缺陷洗白成
+「来自某个库」，比不归因更糟。JSON 里结果落在 `unresolved_attribution`（`{summary, rows}`），
+且**未给该开关时这个键不存在** —— 不留一个可能被下游误读成「归因过、但一个都没命中」的空壳。
 
 ### 静态检查规则
 
@@ -410,6 +443,9 @@ python matlabc.py --binary libfoo.so
 python matlabc.py myproj/ --json out.json
 python matlabc.py --binary libcublas.so.12 --binary-symbols out.json
 
+# ……或用一条命令同时做掉（不需要中转 JSON）
+python matlabc.py myproj/ --binary-attach libcublas.so.12 --json out.json
+
 # 生成确定性、自校验修复补丁
 python matlabc flow myproj --auto-apply --gen-apply-patch
 
@@ -467,12 +503,13 @@ python tools/check_all.py        # 跑完 tools/check_*.py 全部护栏 + 各自
 | `check_doc_flags.py` | 文档**或帮助正文**里宣传了一个**其实不存在**的命令行开关（真发生过：README 写过 `--check tainted_sink`，而 argparse 会以**歧义前缀**拒绝它） |
 | `check_operator_impl.py` | 「幻影算子」：出现在算子目录里、却没有任何代码路径会产出的检查规则 |
 | `check_patch_ops.py` | 会**覆盖**目标行（而不是插在其前）的补丁算子 —— 那等于静默删源码 |
-| `check_binfmt_fixtures.py` | 二进制 / GPU 解析器回归 —— 合成 PE/ELF 夹具 + 契约断言 C1–C6 |
+| `check_binfmt_fixtures.py` | 二进制 / GPU 解析器回归 —— 合成 PE/ELF/Mach-O 夹具 + 契约断言 C1–C8 |
 | `check_py36_clean.py` | 本仓违背**自己**的 Python 3.6.5 承诺（已经发生过：`list[str]` 与 `from __future__ import annotations` 都曾提交进来） |
 | `check_subprocess_hygiene.py` | 任何「捕获输出却继承 stdin」或「可能永远挂住」的子进程调用 |
-| `check_help_contract.py` | 代码里有、`--help` 里没有的退出码（或反之）；以及帮助丢了用法示例 / 图示 / 退出码段 |
+| `check_help_contract.py` | 代码里有、`--help` 里没有的退出码（或反之）；帮助丢了用法示例 / 图示 / 退出码段；**示例命令其实跑不起来**；以及帮助**悄悄缩水或臃肿** |
+| `check_readme_parity.py` | 中英两份 README 的**结构**逐渐跑偏 —— 小节数，以及逐节的表行 / 代码块 / mermaid 图数。它**故意不比对行数**，因为中文比英文紧凑 |
 
-让这些门可信而不是装饰的，是两条纪律：
+让这些门可信而不是装饰的，是三条纪律：
 
 1. **每道门都要**两向**自证。** `--selftest` 会造出**必须变红**的坏样本，也造出**必须保持
    绿**的好样本，然后打印一行机器可读的 `SELFTEST COUNTS {"bad": N, "good": M}`，由回归
@@ -483,11 +520,17 @@ python tools/check_all.py        # 跑完 tools/check_*.py 全部护栏 + 各自
    内建超时才返回 —— 护栏实测耗时约 181 秒，被外层 `timeout 90` 杀掉，表现出来就是
    「无缘无故卡住」。把 stdin 切断后，同一道护栏降到 **3.4 秒**，并由
    `check_subprocess_hygiene.py` 把这条教训在全仓固化下来。
+3. **测量工具自身的 bug，会伪造出被测对象的 bug。** 所以「两向自证先跑通」必须先于
+   「宣布真实仓库 0 违规」。这不是口号：退出码护栏自己的依据匹配器写的是 `\breturn\s+0\b`，
+   而它会在 `return 0.0` 上命中（`0` 与 `.` 之间就是词边界）—— 于是一个**返回浮点数**的函数
+   被当成了「退出码 0 的依据」，一条**陈旧的登记条目被洗白成有效**。它能发现自己的 bug，
+   只因为自证先跑了一遍。
 
-其中两道门把「宣称」接到了一个**可执行的对手方**，而不是接到风格规则上：
+其中几道门把「宣称」接到了一个**可执行的对手方**，而不是接到风格规则上：
 `check_py36_clean.py` 拿本仓源码去喂本仓自己的 3.6.5 门；
-`check_help_contract.py` 把帮助里写的退出码与源码**真能返回**的退出码互相核对。
-两者都是**双向**的：一条陈旧的登记和一条缺失的登记会同样响亮地失败 ——
+`check_help_contract.py` 把帮助里写的退出码与源码**真能返回**的退出码互相核对，并**真跑**
+每一条文档里的示例命令；`check_readme_parity.py` 把两份 README 互相比对。
+它们都是**双向**的：一条陈旧的登记和一条缺失的登记会同样响亮地失败 ——
 因为只会增长的登记表等于没有登记表。
 
 ---
@@ -504,11 +547,18 @@ python matlabc_flow.py --help     # 修复闭环：五站点流水线图 + 五�
 python matlabc_ask.py --help      # 问答式理解：事实底座如何装配成答案
 python matlabc_mcp.py --help      # MCP 服务：五个工具 + 「为什么 stdin 必须切断」
 python gui.py --help              # 图形界面：表单每一格等价于哪个命令行开关
-python tools/check_all.py --help  # 护栏总纲：7 道门各自拦什么
+python tools/check_all.py --help  # 护栏总纲：8 道门各自拦什么
 ```
 
-这三条不是口头承诺，而是被 `check_help_contract.py` 与 `check_doc_flags.py`
-同时盯着的：示例里的开关必须真实存在，退出码必须与源码一致。
+这不是口头承诺，而是被 `check_help_contract.py` 与 `check_doc_flags.py` 同时盯着的 ——
+而且它们查的不只是措辞：
+
+- 示例里出现的开关必须真实存在；
+- 文档里写的退出码必须与源码**真能返回**的退出码一致；
+- 每条示例命令都会被**真跑**一遍（要求 `rc == 0`），并且必须**逐字**出现在帮助正文里 ——
+  这样它才真的是「复制就能用」；
+- 帮助有**体积棘轮**，上下界都管 —— 悄悄缩水回 argparse 自带 usage，和臃肿到没人会读，
+  一样都会让构建变红。
 
 ---
 
@@ -522,6 +572,7 @@ python tools/check_all.py --help  # 护栏总纲：7 道门各自拦什么
 - [docs/matlabc_AI_ROADMAP.md](docs/matlabc_AI_ROADMAP.md) — AI 演进路线图
 - [docs/analysis/](docs/analysis/) — 深度分析报告（六顶思考帽复盘、方案对比）
 - [docs/SUPERPOWER_REVIEW_R31.md](docs/SUPERPOWER_REVIEW_R31.md) — 逐轮复盘：二进制/GPU 接入、子进程卫生、以及那道会挂死的门
+- [docs/SUPERPOWER_REVIEW_R33.md](docs/SUPERPOWER_REVIEW_R33.md) — 逐轮复盘：`--binary-attach`、README 双语对等门、可执行的帮助示例，以及那个抓出自身 bug 的退出码匹配器
 - [docs/GITHUB_REPO_ABOUT.md](docs/GITHUB_REPO_ABOUT.md) — 可直接粘贴的 GitHub 仓库 About 面板文案（简介 / 网站 / 主题标签）
 
 ---

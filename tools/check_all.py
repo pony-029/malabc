@@ -5,27 +5,30 @@
 
     python tools/check_all.py
         │
-        ├─▶ check_binfmt_fixtures.py      合成夹具 + 契约 C1..C6 + 两向自证
+        ├─▶ check_binfmt_fixtures.py      合成夹具 + 契约 C1..C8 + 两向自证
         ├─▶ check_doc_flags.py            文档/帮助里写的 CLI 开关必须真的存在
+        ├─▶ check_help_contract.py        退出码在代码↔帮助双向一致；示例能真跑
         ├─▶ check_operator_impl.py        算子元表里不得有「只声明不产出」的幻影
         ├─▶ check_patch_ops.py            补丁编辑算子唯一事实源（禁止覆盖式赋值）
         ├─▶ check_py36_clean.py           本仓源码必须通过本仓自己的 3.6.5 门
+        ├─▶ check_readme_parity.py        中英 README 逐节结构对等
         └─▶ check_subprocess_hygiene.py   子进程必须切 stdin 且不会永久挂住
         │
         ├─ 每道护栏都要能跑通（rc=0）
         ├─ 每道护栏都要有 --selftest（两向自证：坏样本要红、好样本要过）
+        ├─ 门数不得少于 MIN_GUARDS（R33/C'9：删掉一道门也会变红）
         └─ 每个子进程都 stdin=DEVNULL + 墙钟超时（挂死 → 判红，不让门永远等）
         │
         ▼
-    0 = 全绿   1 = 有护栏失败或护栏缺自证   2 = 找不到护栏（缺输入 → 红）
+    0 = 全绿   1 = 有护栏失败/缺自证/门数不足   2 = 找不到护栏（缺输入 → 红）
 
 为什么需要它：护栏分散成多个 `tools/check_*.py`，靠人记得逐个跑等于没有门。
 本 runner 与 `tests/test_matlabc.py::test_r30_static_guards_all_clean` 是同一
 判据的两个入口 —— 前者给 CI/人手，后者保证「新加的护栏会被自动收进测试」。
 
-它自己也必须**能红**：`--selftest` 用临时目录造五个样本，
-证明「坏护栏会被抓、好护栏会被放、缺自证的护栏会被抓、空目录会红、
-**永不退出的护栏会被超时判红**」。
+它自己也必须**能红**：`--selftest` 用临时目录造样本，证明
+「坏护栏会被抓、好护栏会被放、缺自证的护栏会被抓、空目录会红、
+**永不退出的护栏会被超时判红**、**门数少于下限会被判红**」。
 一个只会在好天气下变绿的 runner，本身也是一道假门；
 一条会**永远挂住**的链比一道闸门更糟 —— 所以每个子进程都带 `stdin=DEVNULL`
 与墙钟超时（见 `_run` 的注释：这是 R62-R31e 修掉的一个真缺陷）。
@@ -35,6 +38,11 @@
     python tools/check_all.py --tools-dir D   # 指定护栏目录（自证/CI 复用）
     python tools/check_all.py --selftest      # 自证：双向验证本 runner
     python tools/check_all.py --help          # 显示本帮助（立即返回，不跑护栏）
+
+退出码：
+    0  = 全部护栏通过（且各自自证通过）
+    1  = 有护栏失败，或护栏缺自证（`SELFTEST COUNTS` 行缺失 / 格式非法）
+    2  = 找不到护栏（--tools-dir 下没有 check_*.py → 缺输入，红）
 """
 import io
 import os
@@ -68,6 +76,13 @@ time.sleep(3600)
 # 单个护栏的墙钟上限。存在意义：**让挂死变成红，而不是让门永远等着**。
 # 实测全部护栏各自 <2s，600s 是给未来重护栏留的量级余量。
 GUARD_TIMEOUT = 600.0
+
+# R33/C'9：**门数棘轮**。只断言 rc=0 是不够的 —— 一个护栏被误删（或改名、
+# 或移动目录）之后，剩下的门依然全绿，rc 依然是 0，于是「门少了」这件事
+# 静默通过。这里登记「本仓自带护栏的下界」，删掉任何一道都会立刻变红。
+# 数字含义：截至 R33，tools/ 下有 8 道 check_*.py（不含本 runner）。
+# 新增护栏时**必须**同步上调这个数字 —— 这正是棘轮的作用。
+MIN_GUARDS = 8
 
 
 def _write_help(text):
@@ -157,6 +172,20 @@ def run_guards(tools_dir, python_exe=None, timeout=GUARD_TIMEOUT):
     return bad, guards
 
 
+def _guard_count_problem(n_found, minimum, is_own_dir):
+    """R33/C'9 的判定抽成纯函数（好让自证能直接测它）。
+
+    返回问题字符串，或 None 表示通过。
+    `is_own_dir=False`（显式 --tools-dir 指向别处）时不施加下限 —— 那是复用场景。
+    """
+    if not is_own_dir:
+        return None
+    if n_found < minimum:
+        return ("只找到 %d 道护栏，少于登记下限 %d —— 有护栏被删/改名/移走"
+                "（rc 仍为 0 但门少了）" % (n_found, minimum))
+    return None
+
+
 def main(argv):
     # --help 必须在**任何副作用之前**返回。早先它没有分支，于是
     # `python tools/check_all.py --help` 会真的把全套护栏跑一遍（≈30s）——
@@ -168,7 +197,7 @@ def main(argv):
     if "--selftest" in argv:
         bad, good = _selftest()
         print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
-        return 0 if (bad == 0 and good >= 5) else 1
+        return 0 if (bad == 0 and good >= 8) else 1
 
     tools_dir = os.path.dirname(os.path.abspath(__file__))
     if "--tools-dir" in argv:
@@ -184,7 +213,15 @@ def main(argv):
     if bad:
         print("check_all: %d 项失败：%s" % (len(bad), bad))
         return 1
-    print("check_all: OK（%d 个护栏，全部通过且各自自证）" % len(guards))
+    # R33/C'9：门数棘轮 —— 只有当跑的是本仓自己的 tools/ 时才要求下限。
+    # 显式 --tools-dir 指向别处（自证/嵌入式复用）时不施加，否则会误伤。
+    if os.path.abspath(tools_dir) == os.path.dirname(os.path.abspath(__file__)):
+        prob = _guard_count_problem(len(guards), MIN_GUARDS, True)
+        if prob:
+            print("check_all: " + prob)
+            return 1
+    print("check_all: OK（%d 个护栏，全部通过且各自自证；门数下限 %d）"
+          % (len(guards), MIN_GUARDS))
     return 0
 
 
@@ -262,6 +299,24 @@ def _selftest():
         else:
             bad += 1
             print("  [selftest] 永不退出的护栏未被超时判红：%r" % (b5,))
+
+        # ⑥ 门数棘轮（R33/C'9）：少于下限必须变红；达到/超过则放行。
+        # 注意这是纯函数判定，不依赖真实目录 —— 否则自证会被「当前有几道门」绑死。
+        if _guard_count_problem(3, 8, True) is not None:
+            good += 1
+        else:
+            bad += 1
+            print("  [selftest] 门数不足未被判红（C'9 棘轮失效）")
+        if _guard_count_problem(8, 8, True) is None:
+            good += 1
+        else:
+            bad += 1
+            print("  [selftest] 门数达下限被误伤（C'9 误报）")
+        if _guard_count_problem(1, 8, False) is None:
+            good += 1
+        else:
+            bad += 1
+            print("  [selftest] 外部 --tools-dir 被误施加下限（C'9 过严）")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return bad, good

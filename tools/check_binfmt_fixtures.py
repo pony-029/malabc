@@ -326,6 +326,49 @@ def analyze(tmpdir):
     _check(findings, "m" in found_spv,
            "C3: SPIR-V OpEntryPoint 名字未提取到（得到 %s）" % found_spv[:5])
 
+    # C7（R33/C'4）：PTX 的严格判据 —— `.entry <ident>(` 必须**后随左括号**。
+    # 反例：3 个「像 .entry 但不带括号」的假命中（真文件里 347 个命中只有 1 个是真的）。
+    # 断言：只认那 1 个真 entry，绝不放行假命中。
+    ptx_real = b".entry _Z9realentryv(\n"
+    ptx_fake1 = b".entry not_an_entry\n"          # 名字后是换行，不是 (
+    ptx_fake2 = b".entry alsofake "               # 名字后是空格，再后面不是 (
+    ptx_fake3 = b".entry thirdfake\x00"           # 名字后直接 NUL
+    body = (b"\x00" * 8 + ptx_fake1 + ptx_real + ptx_fake2 + ptx_fake3
+            + b"\x00" * 8)
+    ptx = os.path.join(tmpdir, "f_ptx.dll")
+    _make_pe(ptx, sections=[(".text", b"\x90" * 32), (".nv_fatb", body)])
+    rep9 = binfmt.parse(ptx, scan_cap=None)
+    ptx_names = [k for b in rep9.gpu_blobs for k in b.kernels
+                 if k.startswith("_Z9realentryv") or "fake" in k
+                 or k == "not_an_entry"]
+    _check(findings, "_Z9realentryv" in ptx_names,
+           "C4: 真 PTX entry（带括号）未被提取（得到 %s）" % ptx_names)
+    bad_ptx = [n for n in ptx_names
+               if "fake" in n or n == "not_an_entry"]
+    _check(findings, not bad_ptx,
+           "C4: 假 PTX .entry（不带括号）被误当成 kernel：%s" % bad_ptx)
+
+    # C8（R33/C'5）：Mach-O 的「未验证」必须传播到 BinaryReport.verified=False，
+    # 而不是只写在 docstring 里。造一个结构合法的 thin Mach-O 64。
+    macho = os.path.join(tmpdir, "f_macho.dylib")
+    mh = bytearray()
+    mh += b"\xcf\xfa\xed\xfe"                     # MH_MAGIC_64 (little)
+    mh += struct.pack("<IIIIII", 0x01000007, 3, 6, 0, 0, 0)   # cputype,sub,filetype=6,ncmds=0
+    with io.open(macho, "wb") as f:
+        f.write(bytes(mh))
+    rep10 = binfmt.parse(macho, with_gpu=False)
+    _check(findings, rep10.container == "macho",
+           "C8: 合成 Mach-O 未被识别（%s）" % rep10.container)
+    _check(findings, getattr(rep10, "verified", True) is False,
+           "C8: Mach-O 报告未标 verified=False（未验证状态没传播出源码）")
+    # 报告正文里必须**看得见**这个限定（用户在报告里看不到 = 等于没说）
+    txt = binfmt.to_text(rep10)
+    _check(findings, "unverified" in txt.lower() or "未验证" in txt,
+           "C8: Mach-O 报告正文里看不到「未验证」限定")
+    # 反向：PE/ELF 是已验证的，不得被误标
+    _check(findings, getattr(rep, "verified", False) is True,
+           "C8: PE 报告被误标为未验证（反向判据失败）")
+
     return findings
 
 
@@ -420,6 +463,51 @@ def selftest():
         else:
             print("  [selftest] 坏样本3 未触发（C5 消歧失效）")
 
+        # 样本5（坏）：C8 断言必须能对「忘了标 verified=False 的 Mach-O」报错。
+        # 注意：与样本2同理 —— 合法输入构造不出违规（实现自身会标 False），
+        # 所以自证对象是**断言函数本身**：喂一个 container=macho 但 verified=True
+        # 的违规对象，断言必须变红。
+        from binfmt.model import BinaryReport as _BR
+        viol = _BR(path="x", container="macho", verified=True)
+        c8find = []
+        _check(c8find, getattr(viol, "verified", True) is False,
+               "C8: Mach-O 未标 verified=False")
+        if c8find:
+            bad += 1
+        else:
+            print("  [selftest] 坏样本4 未触发（C8 未验证传播失效）")
+
+        # 造一个真实 Mach-O 夹具，用于样本7（好）
+        m = os.path.join(td, "good_macho.dylib")
+        with io.open(m, "wb") as f:
+            f.write(b"\xcf\xfa\xed\xfe"
+                    + struct.pack("<IIIIII", 0x01000007, 3, 6, 0, 0, 0))
+
+        # 样本6（好）：PE 不得被误标未验证（C8 反向）
+        pe_ok = os.path.join(td, "good_pe.dll")
+        _make_pe(pe_ok, sections=[(".text", b"\x90" * 16)])
+        r6 = binfmt.parse(pe_ok, with_gpu=False)
+        gfind2 = []
+        _check(gfind2, getattr(r6, "verified", False) is True,
+               "C8: PE 被误标为未验证")
+        if not gfind2:
+            good += 1
+        else:
+            print("  [selftest] 好样本6 被误伤（C8 反向判据过严）")
+
+        # 样本7（好）：真实 Mach-O 夹具必须 verified=False 且报告正文可见限定
+        r7 = binfmt.parse(m, with_gpu=False)
+        gfind3 = []
+        _check(gfind3, getattr(r7, "verified", True) is False,
+               "C8: 真实 Mach-O 夹具未标 verified=False")
+        _check(gfind3, ("unverified" in binfmt.to_text(r7).lower()
+                        or "未验证" in binfmt.to_text(r7)),
+               "C8: 报告正文里看不到「未验证」限定")
+        if not gfind3:
+            good += 1
+        else:
+            print("  [selftest] 好样本7 被误伤：%s" % gfind3[:1])
+
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     return 0 if (bad >= 3 and good >= 2) else 1
 
@@ -454,7 +542,8 @@ def main(argv):
             print("  - %s" % f)
         return 1
     print("check_binfmt_fixtures: OK（PE/ELF 解析、GPU 段识别、magic 兜底、"
-          "契约 C1/C2/C3/C4/C5/C6 全部通过）")
+          "契约 C1/C2/C3/C4/C5/C6 + R33 新增 C7(PTX .entry 括号判据)/"
+          "C8(Mach-O 未验证传播) 全部通过）")
     return 0
 
 

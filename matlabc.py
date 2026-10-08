@@ -58,6 +58,10 @@ matlabc — 代码结构梳理与静态分析工具（纯 Python，零依赖，�
                                         --binary-symbols out.json
   参数太多，写成配置文件        python matlabc.py --config analyzer_config.json
 
+  不确定装好没有？先跑一条**不改盘**的自检（只打印版本号，立即退出）：
+
+      python matlabc.py --version
+
 ────────────────────────────────────────────────────────────────────────
 诚实的边界（这些事它**不做**，别期待落空）
 ────────────────────────────────────────────────────────────────────────
@@ -567,7 +571,7 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
-VERSION = "1.16.67"  # P222：AI 接入国产大模型（deepseek/qwen/zhipu/moonshot/baichuan/doubao/yi/stepfun 走 OpenAI 兼容；ernie 百度 OAuth2；iflytek 讯飞 WebSocket）；PROVIDER_PRESETS/PROVIDER_ALIASES 注册表 + 中文别名；P221维度；P220 JSON
+VERSION = "1.16.68"  # R33：--binary-attach（源码分析 + 二进制归因一条命令）/ P222：AI 接入国产大模型（deepseek/qwen/zhipu/moonshot/baichuan/doubao/yi/stepfun 走 OpenAI 兼容；ernie 百度 OAuth2；iflytek 讯飞 WebSocket）；PROVIDER_PRESETS/PROVIDER_ALIASES 注册表 + 中文别名；P221维度；P220 JSON
 # P-rev R77-R81（革命批次）：S14 结构配对/地标嵌套审计、_browse_page 统一页壳试点、
 # --browse 产物 manifest.json + S15 一致性对账、源码页 VARFLOW/LINE_DEEPLINK 外链化收编、
 # fe_audit 头清单文档-事实同步。
@@ -8753,7 +8757,11 @@ def _run_c_only(c_model, root, args):
             print("[ERROR] 写入 C 报告失败：%s" % exc, file=sys.stderr)
             ok = False
     if args.json:
-        c_json = json.dumps({
+        # R33/C'3：--binary-attach 的三态归因（只依据显式给出的二进制）
+        _c_names = [u[0] for u in (c_model.get("unresolved", []) or [])]
+        _binattr, _binattr_ok = _emit_binary_attach_names(
+            args, _c_names, label="C 未解析调用")
+        _c_payload = {
             "lang": c_model.get("lang", "c"),
             "version": VERSION,
             "files": [{
@@ -8769,10 +8777,22 @@ def _run_c_only(c_model, root, args):
             "unresolved": [{"callee": u[0], "line": u[1], "file": u[2]}
                            for u in c_model.get("unresolved", [])],
             "heuristics": c_heuristics,
-        }, ensure_ascii=False, indent=2)
+        }
+        if _binattr is not None:
+            _c_payload["unresolved_attribution"] = _binattr
+        if not _binattr_ok:
+            ok = False
+        c_json = json.dumps(_c_payload, ensure_ascii=False, indent=2)
         if _write_output(args.json, c_json, "JSON"):
             print("[OK] JSON 已写入：%s" % args.json)
         else:
+            ok = False
+    else:
+        # 即使不写 JSON，也把归因结果打到终端（否则这个开关在非 JSON 模式下静默无输出）
+        _binattr, _binattr_ok = _emit_binary_attach_names(
+            args, [u[0] for u in (c_model.get("unresolved", []) or [])],
+            label="C 未解析调用")
+        if not _binattr_ok:
             ok = False
     # P90：C 模式 SARIF 输出（--lang c --sarif），C 启发式检查接入统一 SARIF 规范
     _cf = {"c_heuristics": c_heuristics}
@@ -11504,7 +11524,8 @@ def _run_p204_p223_integration(files):
 
 def render_json(files, edges, stats, root, reproducible=False, calls_of=None,
                 callers_of=None, enabled=None, taint=None, doc_todos=None,
-                c_model=None, c_bridge=None, dup_opts=None):
+                c_model=None, c_bridge=None, dup_opts=None,
+                unresolved_attribution=None):
     """导出结构化 JSON（便于程序化处理 / 二次分析）。
 
     reproducible=True 时省略 generated_at（置空），使同一项目两次运行的输出
@@ -11514,6 +11535,8 @@ def render_json(files, edges, stats, root, reproducible=False, calls_of=None,
     enabled 为启用的静态检查名集合（None = 全部），用于告警阈值配置化。
     taint/doc_todos/c_model/c_bridge 为 P85/P86/P87 数据；未传入且
     calls_of/callers_of 可用时惰性计算 taint 与 doc_todos。
+    unresolved_attribution 为 R33/C'3 的 --binary-attach 结果；**未给 --binary-attach
+    时该键不出现**（而不是给一个空壳对象 —— 空壳会被误读成「归因过、结果为空」）。
     """
     _enabled = lambda name: enabled is None or name in enabled
     # P85/P89：污点流与待办清单先算一次；doc_todos 联动受污函数（联合优先级）
@@ -11700,6 +11723,9 @@ def render_json(files, edges, stats, root, reproducible=False, calls_of=None,
                            for u in c_model.get("unresolved", [])],
         }
         data["c_bridge"] = c_bridge or []
+    # R33/C'3：--binary-attach 的归因结果（仅在显式给出时出现，见 docstring）
+    if unresolved_attribution is not None:
+        data["unresolved_attribution"] = unresolved_attribution
     return json.dumps(data, ensure_ascii=False, indent=2, default=_json_default)
 
 
@@ -28560,6 +28586,83 @@ def _emit_gen_tests(args, files, root, c_model):
         print("      ... 其余 %d 个省略" % (len(rels) - 15))
 
 
+def _attribute_unresolved_with_binaries(binary_csv, unresolved_names):
+    """R33/C'3：把源码侧「解析不到的调用名」拿到二进制里对账。
+
+    返回 (attribution_rows, summary_dict, error_message_or_None)。
+    三态（与 binfmt/attribute.py 同语义）：
+        library:<lib>        这个名字是某个动态库的导出符号
+        gpu_kernel:<backend> 这个名字是某个 GPU kernel（CUDA / HIP / Vulkan）
+        missing              哪儿都没有 —— 这才是真的「漏了」
+
+    设计纪律（**不许猜**）：只依赖调用方显式给出的二进制。没给的库一律 missing。
+    一个假阳性会把真缺陷洗白成「来自某个库」，比不归因更糟。
+    """
+    binfmt = _load_binfmt()
+    if binfmt is None:
+        return None, None, "无法导入 binfmt 包（--binary-attach 需要它）"
+    paths = [p.strip() for p in str(binary_csv).split(",") if p.strip()]
+    if not paths:
+        return None, None, "--binary-attach 需要至少一个文件路径"
+    reports = []
+    for p in paths:
+        if not os.path.isfile(p):
+            return None, None, "--binary-attach 指向的文件不存在：%s" % p
+        try:
+            reports.append(binfmt.parse(p, scan_cap=None))
+        except OSError as e:
+            return None, None, "读取失败 %s：%s" % (p, e)
+    names = sorted({n for n in unresolved_names if n})
+    rows = binfmt.attribute.attribute_names(names, reports)
+    summary = {}
+    for r in rows:
+        key = r["attribution"].split(":")[0]   # library:x -> library
+        summary[key] = summary.get(key, 0) + 1
+    return rows, {"index": binfmt.attribute.build_index(reports),
+                  "summary": summary}, None
+
+
+def _emit_binary_attach_names(args, names, label="未解析调用"):
+    """R33/C'3：--binary-attach 的核心 —— 给定待归因名字，打印并返回 JSON 片段。
+
+    返回 (json_payload_or_None, ok_bool)。
+    不短路：这是「正常分析 + 额外对账」，与 --binary 的「分析完就退」不同。
+    """
+    csv = getattr(args, "binary_attach", None)
+    if not csv:
+        return None, True
+    rows, meta, err = _attribute_unresolved_with_binaries(csv, names)
+    print("")
+    print("=" * 78)
+    if err:
+        print("[ERROR] --binary-attach：%s" % err)
+        return None, False
+    print("%s的二进制归因（待归因 %d 个名字；只依据你显式给出的二进制）"
+          % (label, len(names)))
+    print(_render_binary_attribution_text(rows))
+    return {"summary": meta["summary"],
+            "rows": [{"name": r["name"], "attribution": r["attribution"],
+                      "origins": [os.path.basename(o) for o in r["origins"]],
+                      "detail": r["detail"]} for r in rows]}, True
+
+
+def _emit_binary_attach(args, files, root):
+    """R33/C'3：MATLAB 主流程的 --binary-attach（名字取自 _collect_unresolved_calls）。"""
+    if not getattr(args, "binary_attach", None):
+        return None, True
+    unresolved_rows = _collect_unresolved_calls(files)
+    names = [r["name"] for r in unresolved_rows]
+    return _emit_binary_attach_names(args, names)
+
+
+def _render_binary_attribution_text(rows):
+    """把归因结果渲染成终端表格（与 binfmt.attribute.render_attribution_table 同源）。"""
+    binfmt = _load_binfmt()
+    if binfmt is None:
+        return "(binfmt 不可用)"
+    return binfmt.attribute.render_attribution_table(rows)
+
+
 def _emit_report_outputs(args, model, files, index, edges, stats, root,
                         checks_for_sarif=None):
     # P48/R51：把 Markdown / Mermaid / DOT / HTML / 交互站点 的产出编排抽离出 main，
@@ -28865,6 +28968,15 @@ def main(argv=None):
                          "或标记 missing（= 确实没有来源）。")
     ap.add_argument("--binary-json", metavar="FILE", default=cfg.get("binary_json"),
                     help="把 --binary 的结果写成 JSON；FILE 写 - 表示输出到 stdout")
+    ap.add_argument("--binary-attach", metavar="FILE[,FILE...]",
+                    default=cfg.get("binary_attach"),
+                    help="R33/C'3：**不短路**地把二进制归因接进源码分析。"
+                         "与 --binary 的区别：--binary 分析完二进制就退出；"
+                         "--binary-attach 是「正常分析这个工程，同时把源码侧"
+                         "解析不到的调用拿到这些二进制里对账」，"
+                         "在报告末尾给出 library / gpu_kernel / missing 三态归属，"
+                         "并（配合 --json）写进 JSON 的 unresolved_attribution 字段。"
+                         "例：python matlabc.py ./myproj --binary-attach libfoo.so")
     ap.add_argument("--binfmt-scan-cap", type=int,
                     default=cfg.get("binfmt_scan_cap", 64),
                     help="单个文件里 GPU 内容的扫描上限（单位 MiB，0=不限，默认 64）。"
@@ -29560,6 +29672,12 @@ def main(argv=None):
                               checks_for_sarif=checks_for_sarif)
     _emit_gen_tests(args, files, root, c_model)
 
+    # R33/C'3：--binary-attach —— 正常分析后，把源码侧未解析调用拿到二进制里对账。
+    # 放在 --json 之前，好让归属结果一并写进 JSON（否则用户得跑两次）。
+    _binattr, _binattr_ok = _emit_binary_attach(args, files, root)
+    if not _binattr_ok:
+        ok = False
+
     # P220：把 CLI 可调阈值收拢为 dup_opts，贯穿 --json / --sarif / --fail-on-dup 全链路（已前移）
     if args.json:
         if _write_output(args.json, render_json(files, edges, stats, root,
@@ -29571,7 +29689,8 @@ def main(argv=None):
                                                 doc_todos=model.doc_todos,
                                                 c_model=model.c_model,
                                                 c_bridge=model.c_bridge,
-                                                dup_opts=_dup_opts),
+                                                dup_opts=_dup_opts,
+                                                unresolved_attribution=_binattr),
                         "JSON"):
             print(f"[OK] JSON 已写入：{args.json}")
         else:

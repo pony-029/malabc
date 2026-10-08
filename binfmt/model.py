@@ -227,7 +227,8 @@ class BinaryReport(object):
 
     def __init__(self, path="", container="", arch="", bits=0, endian="",
                  flavour="", sections=None, symbols=None, dependencies=None,
-                 gpu_blobs=None, notes=None, scanned_bytes=0, truncated=False):
+                 gpu_blobs=None, notes=None, scanned_bytes=0, truncated=False,
+                 verified=True):
         self.path = path
         self.container = container    # pe / elf / macho
         self.arch = arch              # x86_64 / aarch64 / amdgpu / cuda / unknown
@@ -242,6 +243,10 @@ class BinaryReport(object):
         self.notes = [] if notes is None else notes
         self.scanned_bytes = scanned_bytes
         self.truncated = truncated
+        # R33/C'5：验证等级。False = 本模块**未经真实语料验证**（如本机无 Mach-O
+        # 样本），结论必须带限定。这是**机器可读字段**，不是只写进 docstring ——
+        # 声明在源码里而用户在报告里看不到，等于没说。
+        self.verified = verified
 
     def __repr__(self):
         return ("BinaryReport(path=%r, container=%r, arch=%r, sections=%d, "
@@ -277,6 +282,7 @@ class BinaryReport(object):
             "notes": list(self.notes),
             "scanned_bytes": self.scanned_bytes,
             "truncated": self.truncated,
+            "verified": self.verified,
         }
 
 

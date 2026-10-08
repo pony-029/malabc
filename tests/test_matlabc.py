@@ -15908,3 +15908,319 @@ def test_r32_docstring_help_is_audited_like_docs():
     assert cdf.audit_doc(fake, opts, "<fake>"), \
         "帮助正文里的假开关竟然没被抓到"
 
+
+
+# ===========================================================================
+# R33：把「下一步建议」C'1–C'10 逐条落成**真装置**后的回归
+#
+# 每条测试都对应本轮一个**实测到的真事实**（不是照着文档猜的）：
+#   C'1 帮助里登记的示例命令必须**真能跑通**（rc=0），且**逐字可复制**；
+#   C'6 「测量工具自身的 bug」——`return 0.0` 曾被当成退出码 0 的**依据**；
+#   C'2 两份 README 的**结构对等**（小节数 / 每节表行·代码块·mermaid）；
+#   C'3 `--binary-attach`：**不短路**地把源码侧未解析调用拿到二进制里三态对账；
+#   C'7 退出码契约推广到**护栏脚本自身**（0=干净 1=违规 2=缺输入）；
+#   C'8 帮助体积**棘轮**（上下界都管，防「缩水」也防「臃肿」）；
+#   C'9 护栏道数的**下限**（删掉一道护栏，rc 仍 0，但门少了 —— 必须红）。
+# ===========================================================================
+
+_R33_TOOLS = os.path.join(ROOT, "tools")
+
+
+def test_r33_help_examples_actually_run():
+    """C'1/R4：帮助里登记的示例命令必须**真跑**并且 rc=0，且**逐字**出现在帮助里。
+
+    真实背景：R31 已把「`--help` 立即返回且非空」装置化，但**示例命令本身**
+    仍可能只是一句从没被运行过的 prose。R4 把每条示例命令真跑一遍，并要求
+    它在帮助正文里**逐字**可复制 —— 「帮助里给的命令自己跑不起来」从此是红。
+    """
+    sys.path.insert(0, _R33_TOOLS)
+    try:
+        import check_help_contract as chc
+    finally:
+        sys.path.pop(0)
+
+    # 登记表必须与文件系统对得上（防止登记了一只不存在的手）。
+    assert chc.RUNNABLE, "R4 登记表为空"
+    for script, spec in chc.RUNNABLE.items():
+        assert os.path.isfile(os.path.join(ROOT, script)), \
+            "R4 登记了不存在的脚本：%s" % script
+        argv, expect_blank = spec
+        assert isinstance(argv, list) and argv, script
+        assert isinstance(expect_blank, bool), script
+
+    # 纯函数两向：`_r4_verdict` 的每条分支都要能命中（否则判定写反也测不出）。
+    V = chc._r4_verdict
+    assert V("matlabc.py", "matlabc.py", ["--version"], 0, b"x", False) is None
+    assert V("matlabc.py", "matlabc.py", ["--version"], 1, b"x", False), \
+        "rc!=0 竟然没红"
+    assert V("matlabc.py", "matlabc.py", ["--version"], 0, b"", False), \
+        "rc=0 但零输出（与坏掉无法区分）竟然没红"
+    assert V("matlabc.py", "matlabc.py", ["--version"], None, b"", False), \
+        "超时竟然没红"
+    assert V("matlabc_mcp.py", "matlabc_mcp.py", ["--help"], 0, b"", True) is None
+    assert V("matlabc_mcp.py", "matlabc_mcp.py", ["--help"], 0, b"oops", True), \
+        "登记为按设计零输出、却输出了 —— 竟然没红"
+
+    # 真跑：护栏在本仓必须 rc=0（它内部会真跑 5 条示例命令并核对可复制性）。
+    r = _r31_run(["tools/check_help_contract.py"], timeout=180)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, "R4 在真实仓库判负：\n%s" % out[-1200:]
+    assert "示例" in out or "真跑" in out, out[-400:]
+
+
+def test_r33_return_float_is_not_exit_evidence():
+    """C'6：`return 0.0` **不是**退出码 0 的依据（R1b 首跑在**自身**抓到的真 bug）。
+
+    `\\breturn\\s+0\\b` 会在 `return 0.0` 上命中（`0` 与 `.` 之间就是词边界），
+    于是 `matlabc_ask.py` 里一个**返回浮点数**的函数被当成了「退出码 0 的依据」，
+    让一条本应「过期」的 NO_EVIDENCE 登记被误判为仍然有效。
+    修法：判据尾部加 `(?![.\\d])`。这条测试把这个语义钉死。
+    """
+    sys.path.insert(0, _R33_TOOLS)
+    try:
+        import check_help_contract as chc
+    finally:
+        sys.path.pop(0)
+
+    E = chc._code_has_evidence
+    # 反面（就是那个真 bug）：浮点返回 / 码不匹配
+    assert E("def f():\n    return 0.0\n", 0) is False, \
+        "return 0.0 被误认为「退出码 0 的依据」"
+    assert E("def f():\n    return 20.0\n", 20) is False, \
+        "return 20.0 被误认为依据"
+    assert E("def f():\n    return 0.5\n", 0) is False
+    assert E("def f():\n    return 10\n", 1) is False, "码不匹配却命中"
+    # 正面：四种真依据都要认
+    assert E("def f():\n    return 0\n", 0) is True
+    assert E("sys.exit(2)\n", 2) is True
+    assert E("exit_code = 1\n", 1) is True
+    assert E('d["exit_code"] = 3\n', 3) is True
+    assert E("", 0) is False
+
+    # `_is_stale_no_evidence` 纯函数两向
+    S = chc._is_stale_no_evidence
+    assert S(["def f():\n    return 0\n"], 0) is True, "有依据却没判为过期"
+    assert S(["def f():\n    return 0.0\n"], 0) is False, "浮点返回被当成了依据"
+    assert S([], 0) is False, "空证据集不该判为过期"
+    assert S(["", "sys.exit(5)\n"], 5) is True
+
+
+def test_r33_readme_parity_guard_two_way():
+    """C'2：中英 README 的**结构对等**必须装置化，并两向自证。
+
+    对比的是结构（小节数 / 每节的表行·代码块·mermaid 数），**故意不比对行数**
+    —— 中文比英文紧凑，行数相等是错误的目标（写进判据反而会逼人凑行）。
+    """
+    guard = os.path.join("tools", "check_readme_parity.py")
+    r = _r31_run([guard])
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, "真实仓库两份 README 结构不对等：\n%s" % out[:800]
+
+    s = _r31_run([guard, "--selftest"])
+    so = s.stdout.decode("utf-8", "replace")
+    assert s.returncode == 0, "自证未过：\n%s" % so[-800:]
+    m = re.search(r'SELFTEST COUNTS \{"bad":\s*(\d+),\s*"good":\s*(\d+)\}', so)
+    assert m, "没有机器可读计数行：\n%s" % so[-500:]
+    assert int(m.group(1)) >= 3, "反例样本被删到 %s（应 ≥3）" % m.group(1)
+    assert int(m.group(2)) >= 2, "正例样本被删到 %s（应 ≥2）" % m.group(2)
+    assert "SELFTEST PASSED" in so, so[-400:]
+
+    # 独立复核：用**护栏之外**的代码再数一遍（护栏自己被改错时仍能发现）。
+    def _h2(path):
+        t = io.open(os.path.join(ROOT, path), encoding="utf-8",
+                    errors="replace").read()
+        n = len([ln for ln in t.splitlines() if re.match(r"^##\s", ln)])
+        return n, t.count("mermaid")
+    en_n, en_m = _h2("README.md")
+    cn_n, cn_m = _h2("README_CN.md")
+    assert en_n == cn_n and en_n >= 10, "小节数不等 EN=%d CN=%d" % (en_n, cn_n)
+    assert en_m == cn_m, "mermaid 图数不等 EN=%d CN=%d" % (en_m, cn_m)
+
+    # 纯函数两向：结构不等必须被抓，对等样本必须放行。
+    sys.path.insert(0, _R33_TOOLS)
+    try:
+        import check_readme_parity as crp
+    finally:
+        sys.path.pop(0)
+    seen = []
+    crp.compare("## A\n\n## B\n", "## A\n", seen.append)
+    assert seen, "小节数不等竟然没报警"
+    seen2 = []
+    crp.compare("## A\n| a | b |\n", "## A\n| a | b |\n", seen2.append)
+    assert not seen2, "对等样本被误报：%s" % seen2
+
+
+def test_r33_binary_attach_wires_attribution_into_default_path():
+    """C'3：`--binary-attach` **不短路** —— 正常分析 + 额外三态对账，JSON 里出现归因。
+
+    实测（探针 probe_binattach_c）：一个 C 源里调 `cublasSgemm`（fixture dll 有导出）
+    与 `totally_missing_fn_xyz`（哪都没有），只给那一个 dll 时归因必须是
+    library≥1 / missing≥1 —— 没给的库一律 missing，**不替用户猜**。
+    """
+    import importlib
+    sys.path.insert(0, _R33_TOOLS)
+    try:
+        fx = importlib.import_module("check_binfmt_fixtures")
+    finally:
+        sys.path.pop(0)
+
+    tmp = tempfile.mkdtemp(prefix="_t_r33bin_")
+    try:
+        src = os.path.join(tmp, "src")
+        os.makedirs(src)
+        with io.open(os.path.join(src, "main.c"), "w", encoding="utf-8") as fh:
+            fh.write("int main(void) {\n"
+                     "    cublasSgemm(1, 2, 3);\n"
+                     "    totally_missing_fn_xyz();\n"
+                     "    return 0;\n"
+                     "}\n")
+        lib = os.path.join(tmp, "libprobe.dll")
+        fx._make_pe(lib, sections=[(".text", bytes(64))],
+                    imports=["kernel32.dll"],
+                    exports=["cublasSgemm", "my_helper"])
+
+        jp = os.path.join(tmp, "a.json")
+        r = _r31_run(["matlabc.py", src, "--lang", "c",
+                      "--binary-attach", lib, "--json", jp])
+        out = r.stdout.decode("utf-8", "replace")
+        assert r.returncode == 0, out[:900]
+        assert "二进制归因" in out, "终端没打出归因标题：\n%s" % out[-600:]
+        with io.open(jp, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        ua = data.get("unresolved_attribution")
+        assert ua is not None, "JSON 里没有 unresolved_attribution"
+        summ = ua["summary"]
+        assert summ.get("library", 0) >= 1, summ
+        assert summ.get("missing", 0) >= 1, summ
+        names = [row["name"] for row in ua["rows"]]
+        assert "cublasSgemm" in names, names
+        assert "totally_missing_fn_xyz" in names, names
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r33_binary_attach_absent_flag_leaves_no_empty_shell():
+    """C'3 反面：没给 `--binary-attach` 时，JSON **不得**出现该键（不留空壳）。
+
+    「字段恒存在但为空」会让下游分不清「没做归因」与「归因了但一个都没命中」。
+    """
+    tmp = tempfile.mkdtemp(prefix="_t_r33bin0_")
+    try:
+        src = os.path.join(tmp, "src")
+        os.makedirs(src)
+        with io.open(os.path.join(src, "m.c"), "w", encoding="utf-8") as fh:
+            fh.write("int main(void) { helper_zz(); return 0; }\n")
+        jp = os.path.join(tmp, "b.json")
+        r = _r31_run(["matlabc.py", src, "--lang", "c", "--json", jp])
+        assert r.returncode == 0, r.stdout.decode("utf-8", "replace")[:600]
+        with io.open(jp, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        assert "unresolved_attribution" not in data, \
+            "没给开关却出现了 unresolved_attribution（空壳）"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r33_binary_attach_missing_file_is_red():
+    """C'3 缺输入必须能红：指向不存在的二进制 → rc≠0 且点名该开关。"""
+    tmp = tempfile.mkdtemp(prefix="_t_r33bin1_")
+    try:
+        src = os.path.join(tmp, "src")
+        os.makedirs(src)
+        with io.open(os.path.join(src, "m.c"), "w", encoding="utf-8") as fh:
+            fh.write("int main(void) { return 0; }\n")
+        r = _r31_run(["matlabc.py", src, "--lang", "c",
+                      "--binary-attach", os.path.join(tmp, "no_such.dll")])
+        assert r.returncode != 0, "缺文件竟然 rc=0"
+        out = r.stdout.decode("utf-8", "replace")
+        assert "--binary-attach" in out, out[:400]
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r33_guard_exit_code_contract_and_help_volume_ratchet():
+    """C'7 + C'8：护栏脚本的退出码契约，以及帮助体积棘轮（上下界都管）。"""
+    sys.path.insert(0, _R33_TOOLS)
+    try:
+        import check_help_contract as chc
+    finally:
+        sys.path.pop(0)
+
+    # C'7：每道护栏都在契约表里，声明码 ⊆ {0,1,2} 且含成功码 0。
+    gc = chc.GUARD_CONTRACT
+    assert len(gc) >= 8, "护栏契约表只剩 %d 项（应 ≥8）" % len(gc)
+    assert chc.GUARD_SCRIPTS == tuple(sorted(gc)), "GUARD_SCRIPTS 与表不同步"
+    for name, codes in gc.items():
+        assert os.path.isfile(os.path.join(ROOT, name)), \
+            "契约登记了不存在的护栏：%s" % name
+        assert set(codes) <= {0, 1, 2}, \
+            "%s 声明了界外退出码 %s" % (name, sorted(codes))
+        assert 0 in codes, "%s 没登记成功码 0" % name
+
+    # C'8：界必须自洽（0 <= lo <= hi），且 stdio server 按设计零输出。
+    for name, span in chc.HELP_BYTES.items():
+        lo, hi = span
+        assert 0 <= lo <= hi, "%s 体积界不自洽：(%d, %d)" % (name, lo, hi)
+    assert chc.HELP_BYTES["matlabc_mcp.py"] == (0, 0), \
+        "stdio server 不该有非零体积界"
+
+    # 真测：逐个把 `--help` 量一遍，两侧都断言（缩水与臃肿都要红）。
+    for name, span in chc.HELP_BYTES.items():
+        lo, hi = span
+        r = _r31_run([name, "--help"], timeout=60)
+        assert r.returncode == 0, "%s --help rc=%s" % (name, r.returncode)
+        n = len(r.stdout or b"")
+        assert lo <= n <= hi, \
+            "%s --help 体积 %d 字节不在 [%d, %d]（缩水或臃肿）" % (name, n, lo, hi)
+
+
+def test_r33_check_all_guard_count_floor():
+    """C'9：护栏道数下限 —— 删掉一道护栏（rc 仍可能 0）必须变红。"""
+    sys.path.insert(0, _R33_TOOLS)
+    try:
+        import check_all as ca
+    finally:
+        sys.path.pop(0)
+
+    assert ca.MIN_GUARDS >= 8, "下限被下调到 %d" % ca.MIN_GUARDS
+    found = [f for f in os.listdir(_R33_TOOLS)
+             if f.startswith("check_") and f.endswith(".py")]
+    assert len(found) >= ca.MIN_GUARDS, "只找到 %d 道护栏" % len(found)
+
+    G = ca._guard_count_problem
+    assert G(ca.MIN_GUARDS, ca.MIN_GUARDS, True) is None
+    assert G(ca.MIN_GUARDS + 5, ca.MIN_GUARDS, True) is None
+    assert G(ca.MIN_GUARDS - 1, ca.MIN_GUARDS, True), "少一道护栏竟然没红"
+    assert G(0, ca.MIN_GUARDS, False) is None, \
+        "复用场景（外置 --tools-dir）不该施下限"
+
+    # 真跑聚合门：plain 必须 OK，并在文案里点出「门数下限」。
+    r = _r31_run(["tools/check_all.py"], timeout=300)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[-1200:]
+    assert "check_all: OK" in out, out[-400:]
+    assert "下限" in out, out[-400:]
+
+
+def test_r33_entry_scripts_are_36_syntax_clean_independent_recheck():
+    """独立复核（不调用护栏）：入口脚本不得含 3.8+ 语法（海象 / 位置限定参数）。
+
+    本轮实测教训：C'3 接线时一度把归因打印写成 `print(x := f())`，撞 3.6.5 承诺。
+    这条用**护栏之外**的代码（直接遍历 AST 节点）再查一遍 —— 与 check_py36_clean
+    是两套实现看同一件事，护栏自己被改错时仍能发现。
+    """
+    import ast as _ast
+    offenders = []
+    for fn in ("matlabc.py", "matlabc_flow.py", "matlabc_ask.py",
+               "matlabc_mcp.py", "agent_loop.py", "gui.py"):
+        p = os.path.join(ROOT, fn)
+        if not os.path.exists(p):
+            continue
+        with io.open(p, "r", encoding="utf-8", errors="replace") as fh:
+            tree = _ast.parse(fh.read())
+        for n in _ast.walk(tree):
+            if isinstance(n, _ast.NamedExpr):
+                offenders.append("%s:%d 海象(:=)" % (fn, n.lineno))
+            if isinstance(n, _ast.arguments) and getattr(n, "posonlyargs", None):
+                offenders.append("%s 位置限定参数(/)" % fn)
+    assert not offenders, "3.8+ 语法回归：%s" % offenders

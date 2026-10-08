@@ -46,6 +46,11 @@
 用法：
     python tools/check_doc_flags.py             # 0=干净 1=有说谎 2=缺输入
     python tools/check_doc_flags.py --selftest  # 两向自证
+
+退出码：
+    0  = 文档/帮助正文里的命令行开关全部真实存在
+    1  = 有文档宣传了不存在的开关（或把不存在的脚本当入口）
+    2  = 缺输入（解析不到任何被审文档 / 关键脚本缺失 → 红）
 """
 import argparse
 import ast

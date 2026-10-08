@@ -47,6 +47,10 @@
     python matlabc_flow.py ./myproj --auto-apply-loop --max-turns 3
     python matlabc_flow.py ./myproj --auto-apply-loop --agent-plan -   # 计划打成 JSON
 
+不确定装好没有？先跑一条**不改盘**的自检（只打印帮助，立即退出）：
+
+    python matlabc_flow.py --help
+
 设计要点与代价：
   * fix_source 是**注入**的 callable（attempt, feedback）-> patch_text | None，
     所以「谁来出补丁」与「循环怎么收敛」互不耦合，可分别测试。

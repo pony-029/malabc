@@ -101,7 +101,9 @@ def _looks_like_fat(head, fsize):
 
 def parse(path, scan_cap=None):
     import os
-    rep = BinaryReport(path=path, container=CONTAINER_MACHO)
+    # R33/C'5：整份报告标为**未验证**。这是机器可读字段（report.py 会渲染成
+    # `verified  : NO (…unverified…)`），不是只写在 docstring 里。
+    rep = BinaryReport(path=path, container=CONTAINER_MACHO, verified=False)
     try:
         fsize = os.path.getsize(path)
     except OSError:
