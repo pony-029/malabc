@@ -204,8 +204,16 @@ def run_fix_loop(directory, fix_source, max_turns=3, lang=None,
                 _revert_with_git(patch, directory)
             else:
                 _revert_internal(snapshot, directory)
-            feedback = ("verification_failed: no_new=%s progress=%s delta=%s"
-                        % (no_new, progress, d))
+            # 结构化反馈，供「带 feedback 的 LLM 修复」聚焦剩余 / 新增告警
+            feedback = {
+                "reason": "verification_failed",
+                "no_new_alerts": no_new,
+                "progress": progress,
+                "delta": d,
+                "total_after": total_after,
+                "by_after": by_after,
+                "report_path": rep_after,
+            }
 
         if termination is None:
             termination = {"reason": "max_turns", "turns_used": max_turns}

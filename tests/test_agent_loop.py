@@ -116,6 +116,57 @@ class TestAgentLoop(unittest.TestCase):
         self.assertEqual(res["termination"]["turns_used"], 2)
         self.assertEqual(len(res["turns"]), 2)
 
+    def test_deterministic_empty_falls_back_to_llm(self):
+        # P0+：确定性引擎无解（返回空）→ 首轮直接走 LLM，且 LLM 补丁使总量下降 → 收敛
+        _install_mocks({"uninit": 5}, 5, {"uninit": 2}, 2)
+        calls = {"llm": 0}
+        matlabc_flow.gen_patch = lambda d, prefix, lang=None: ""  # 确定性无解
+
+        def fake_llm(directory, feedback, provider, lang=None, config_path=None):
+            calls["llm"] += 1
+            return "--- a/x.m\n+++ b/x.m\n@@ -1 +1 @@\n- old\n+ new\n"
+
+        matlabc_flow.gen_llm_patch = fake_llm
+        fix_source = matlabc_flow._loop_fix_source(
+            "/tmp/fake_proj", "/tmp/fp", None, "deepseek", None)
+        res = agent_loop.run_fix_loop("/tmp/fake_proj", fix_source, max_turns=3)
+        self.assertEqual(calls["llm"], 1)  # LLM 仅被调用一次即收敛
+        self.assertTrue(res["result"]["accepted"])
+        self.assertEqual(res["termination"]["reason"], "converged")
+
+    def test_llm_iterates_across_attempts(self):
+        # P0+：LLM 首轮补丁验证失败（告警反增）→ 回退 → 次轮 LLM 再生成并收敛
+        matlabc_flow.analyze = lambda d, lang=None: "/tmp/_fake_report.json"
+        seq = [({"uninit": 5}, 5), ({"uninit": 7}, 7), ({"uninit": 2}, 2)]
+        it = {"i": 0}
+
+        def fake_count(path):
+            by, tot = seq[min(it["i"], len(seq) - 1)]
+            it["i"] += 1
+            return by, tot
+
+        matlabc_flow.count_alerts = fake_count
+        agent_loop._apply_with_git = lambda p, d: True
+        agent_loop._revert_with_git = lambda p, d: None
+        agent_loop._apply_internal = lambda p, d: {}
+        agent_loop._revert_internal = lambda s, d: None
+        matlabc_flow.gen_patch = lambda d, prefix, lang=None: ""
+        state = {"n": 0}
+
+        def fake_llm(directory, feedback, provider, lang=None, config_path=None):
+            state["n"] += 1
+            return "--- a/x.m\n+++ b/x.m\n@@ -1 +1 @@\n- old\n+ new\n"
+
+        matlabc_flow.gen_llm_patch = fake_llm
+        fix_source = matlabc_flow._loop_fix_source(
+            "/tmp/fake_proj", "/tmp/fp", None, "deepseek", None)
+        res = agent_loop.run_fix_loop("/tmp/fake_proj", fix_source, max_turns=3)
+        self.assertGreaterEqual(state["n"], 2)  # LLM 至少被调用两次（反馈驱动迭代）
+        self.assertTrue(res["result"]["accepted"])
+        self.assertEqual(res["termination"]["reason"], "converged")
+        self.assertEqual(res["turns"][0]["verdict"], "revert")
+        self.assertEqual(res["turns"][1]["verdict"], "accept")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

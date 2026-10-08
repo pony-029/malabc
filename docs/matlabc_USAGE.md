@@ -126,6 +126,29 @@ matlabc flow ./myproj --auto-apply-loop --agent-plan -
 > 当前修复源为确定性补丁引擎（首轮即收敛或判定 `no_strategy`）；后续可在此接入
 > 「带 feedback 的 LLM 修复」，让环在 `max_turns` 内自主迭代。
 
+### 2.2.2 带 feedback 的 LLM 修复（多策略迭代）
+
+`--provider` 让闭环在确定性引擎之外获得「LLM 兜底 + 反馈驱动迭代」能力：
+
+```bash
+# 确定性无解或验证失败后，自动用 LLM 针对剩余告警生成补丁并继续迭代
+matlabc flow ./myproj --auto-apply-loop --provider deepseek --max-turns 5
+```
+
+迭代契约：
+
+- **首轮优先确定性**：先跑 `--gen-apply-patch`；若确定性无解（无未初始化 high / 死代码 /
+  形状不匹配 / 重复重构），且已配置 `--provider`，则首轮直接走 LLM，不浪费一轮。
+- **反馈驱动**：验证失败后回退基线，并把「剩余告警 / 相对基线增量 / 自证判定」结构化为
+  feedback 注入 LLM 提示词，引导模型聚焦仍未消除的告警，下一轮生成更精准的补丁。
+- **离线降级**：无密钥 / 未知 provider 时自动降级为 offline（仅回显提示词），`gen_llm_patch`
+  返回 `None`，环正常终止（不空转、不报错）；`--provider` 不影响离线可用性。
+- **迭代上限**：每轮都受同一套验证门控（no_new + progress）约束，穷尽 `max_turns` 仍不通过
+  则产出人工检查点（tier 2）。
+
+> provider 支持国产大模型（deepseek / qwen / ernie / zhipu / moonshot / baichuan / doubao /
+> yi / stepfun / iflytek，可用中文别名），密钥仅从环境变量读取，绝不落盘。
+
 ---
 
 ## 3. 配置参数总表（按功能分组）

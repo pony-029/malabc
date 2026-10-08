@@ -255,16 +255,90 @@ def run_flow(directory, config_path=None, auto_apply=False, dry_run=False,
     return 0
 
 
-def _loop_fix_source(directory, prefix, lang, provider):
-    """环的修复源：0 轮用确定性补丁引擎（与 fix 步骤一致）；
+def _feedback_suffix(feedback):
+    """把验证反馈渲染成追加到 LLM 提示词的引导（聚焦剩余 / 新增告警）。"""
+    by = (feedback or {}).get("by_after") or {}
+    delta = (feedback or {}).get("delta") or {}
+    parts = ["# 修复反馈（上一轮自证结果）"]
+    parts.append("上一轮应用补丁后终态告警 %d 条，各规则：%s"
+                 % ((feedback or {}).get("total_after", 0), _fmt_rules(by)))
+    if delta:
+        parts.append("相对基线增量（正=新增）：%s" % _fmt_rules(delta))
+    parts.append("自证判定：no_new_alerts=%s, progress=%s"
+                 % ((feedback or {}).get("no_new_alerts"),
+                    (feedback or {}).get("progress")))
+    parts.append("请仅针对「仍未消除（或被新增）」的告警生成最小化 unified diff 修复，"
+                 "不要改动无关代码；用 ```diff ... ``` 包裹输出。")
+    return "\n".join(parts)
 
-    后续轮次若配置了 provider，可在此接入「带 feedback 的 LLM 修复」（待实现）；
-    当前仅确定性引擎，重跑无新策略 → 返回 None 终止（不浪费轮次）。
+
+def gen_llm_patch(directory, feedback, provider, lang=None, config_path=None):
+    """用 LLM 针对「验证后剩余 / 新增告警」生成修复补丁（unified diff）。
+
+    反馈驱动：把上一轮验证的剩余告警 / 增量事实追加进提示词，引导模型聚焦。
+    离线或无密钥（provider 降级 offline）时返回 None，不浪费轮次。
+    始终对当前工作副本重扫得到最新报告，保证 LLM 看到的是回退后的真实状态。
+    """
+    try:
+        import ai_cli
+    except ImportError:
+        return None
+    ai_cfg = ai_cli.load_ai_config(config_path) if config_path else {}
+    prov, eff_name, warn = ai_cli.resolve_provider_auto(provider, ai_cfg)
+    if eff_name == "offline":
+        sys.stderr.write("[matlabc flow] LLM 修复降级 offline（无可用密钥），跳过本轮。\n")
+        return None
+    if warn:
+        sys.stderr.write("[matlabc flow] %s\n" % warn)
+
+    # 始终基于当前工作副本重扫，得到最新告警事实（回退后 = 基线）
+    report_path = None
+    try:
+        report_path = analyze(directory, lang)
+    except Exception:
+        report_path = None
+    if not report_path and isinstance(feedback, dict):
+        report_path = feedback.get("report_path")
+    if not report_path:
+        return None
+
+    analysis = ai_cli.load_analysis(report_path)
+    tp = ai_cli.task_params("fix", ai_cfg)
+    system, user = ai_cli.build_messages(analysis, "fix", tp)
+    if isinstance(feedback, dict):
+        user = user + "\n\n" + _feedback_suffix(feedback)
+    messages = [{"role": "system", "content": system},
+                {"role": "user", "content": user}]
+    try:
+        resp = prov.complete(messages, model=tp.get("model"),
+                             max_tokens=tp.get("max_tokens") or 2048,
+                             temperature=(tp.get("temperature")
+                                          if tp.get("temperature") is not None
+                                          else 0.2))
+    except RuntimeError as e:
+        sys.stderr.write("[matlabc flow] LLM 调用失败：%s\n" % e)
+        return None
+    return ai_cli.parse_unified_diff(resp) or None
+
+
+def _loop_fix_source(directory, prefix, lang, provider, config_path=None):
+    """环的修复源（多策略 + 反馈驱动 LLM 迭代）：
+
+      * 0 轮：先试确定性补丁引擎（与 fix 步骤一致）；
+          若确定性无解且配置了 provider，则直接走 LLM（不浪费一轮）。
+      * 后续轮次：确定性已用尽，靠「带 feedback 的 LLM 修复」在 max_turns
+          内自主迭代；无 provider 则返回 None 终止（不浪费轮次）。
     """
     def _src(attempt, feedback):
         if attempt == 0:
             p = gen_patch(directory, prefix, lang)
-            return p or None
+            if p:
+                return p
+            if provider:
+                return gen_llm_patch(directory, feedback, provider, lang, config_path)
+            return None
+        if provider:
+            return gen_llm_patch(directory, feedback, provider, lang, config_path)
         return None
     return _src
 
@@ -291,7 +365,7 @@ def run_flow_loop(directory, config_path=None, max_turns=3, lang=None,
 
     pf = tempfile.NamedTemporaryFile(prefix="mc_loop_patch_", delete=False)
     pf.close()
-    fix_source = _loop_fix_source(directory, pf.name, lang, provider)
+    fix_source = _loop_fix_source(directory, pf.name, lang, provider, config_path)
     state_path = None
     if agent_plan and agent_plan != "-":
         state_path = agent_plan
