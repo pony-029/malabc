@@ -212,6 +212,11 @@ GUARD_CONTRACT = {
         1: "有违规（捕获输出却继承 stdin / 缺 timeout / 未登记）",
         2: "缺输入",
     },
+    "tools/check_boundary_reverse.py": {
+        0: "「诚实的边界」的每条否定式承诺都有反向判据，且公开 CLI 行为全绿（V1–V5）",
+        1: "有违规（未认领 / 歧义 / 空断言 / 陈旧 / 棘轮不符 / 行为不符）",
+        2: "缺输入（找不到 matlabc.py / 工具脚本，或公开 CLI 跑不起来）",
+    },
 }
 
 GUARD_SCRIPTS = tuple(sorted(GUARD_CONTRACT))
@@ -471,7 +476,7 @@ HELP_BYTES = {
 # 漂移超限时的正当做法**不是**放宽这两个数，而是同步更新快照
 # （那是一次显式的、可评审的批准动作 —— 这正是棘轮的意义）。
 HELP_BYTES_SNAPSHOT = {
-    "matlabc.py": 50230,
+    "matlabc.py": 50451,
     "matlabc_flow.py": 2075,
     "matlabc_ask.py": 919,
     "matlabc_mcp.py": 0,

@@ -20,7 +20,7 @@ python tests/test_matlabc.py
 # 3) 对示例做静态分析，确认主流程无回归
 python matlabc.py tests/sample_m -o demo.md --html demo.html --browse --offline
 
-# 4) 登记制护栏（12 道，各自还会跑 --selftest；门数少于下限也会红）
+# 4) 登记制护栏（13 道，各自还会跑 --selftest；门数少于下限也会红）
 python tools/check_all.py
 ```
 
@@ -128,6 +128,25 @@ R53 起，借用清单有**静态单一事实源** `renderers/_late.py::BORROWED
 
 > 为什么要它：在 R53 之前，`_mL.X` 的 `X` 只由**使用点**定义 ——
 > 删掉一个使用点、或新加一个借用，没有任何一张表要求同步。
+
+### 「诚实的边界」的反向判据（R55）
+
+`--help` 的「诚实的边界」是**产品对用户的书面承诺**。R51 已让它与
+`tools/check_help_contract.py` 的 `BOUNDARY_CLAIMS` 互为对手方 —— 但那只核对
+「这句话**还在不在**」，**不核对这句话还成不成立**。R55 补上后半句：
+`tools/check_boundary_reverse.py` 让每条**否定式承诺**（含「不识别 / 不做 /
+不跟踪 / 按兵不动 / 不保证 / 静默」任一词）都有一台**能说「不」的判据**。
+
+| 判据 | 什么会红 |
+| --- | --- |
+| V1 认领两向 | 一条否定式承诺既没有反向判据、也没有豁免登记；或又认领又豁免（歧义） |
+| V2 认领真实 | 认领的 head 不是帮助里某条 bullet 的唯一首行前缀；或声明的 token 没逐字出现 |
+| V3 两向齐全 | 一条 case 只有「必须不出现」的期望（空断言：产品什么都不产出时也全绿） |
+| V4 陈旧 | 认领/豁免指向的 bullet 已不存在；或豁免的 `where` 文件/token 找不到 |
+| V5 棘轮 | bullet 总数、否定式 bullet 数、case 数被改动而没同步常量（覆盖静默缩水） |
+
+行为判据一律走**公开 CLI 子进程**（不 `import matlabc`）—— 公开接口才是用户
+看到的那一面，内部函数对了而 CLI 组装错了，一样是缺陷。
 
 ## 深度分析归档
 

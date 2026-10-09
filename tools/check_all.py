@@ -95,8 +95,11 @@ GUARD_TIMEOUT = 600.0
 # R52 新增 check_import_graph.py（把 renderers ↔ matlabc 的 **import 期回边**打断：
 # 借用改走 renderers/_late.py 的惰性代理；此后「模块级 import 图无环」由 G1 钉住，
 # 惰性环与动态 import 走登记 + 两向核对），故 11 → 12。
+# R55 新增 check_boundary_reverse.py（把「诚实的边界」里每条**否定式承诺**
+# 接上一台能说「不」的判据：承诺 ⇄ 判据 两向核对 + 公开 CLI 行为判据 +
+# 三条棘轮），故 12 → 13。
 # 新增护栏时**必须**同步上调这个数字 —— 这正是棘轮的作用。
-MIN_GUARDS = 12
+MIN_GUARDS = 13
 
 
 def _write_help(text):

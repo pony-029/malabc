@@ -17852,3 +17852,178 @@ def test_r53_borrow_registry_two_way():
     out = r.stdout.decode("utf-8", "replace")
     assert r.returncode == 0, out[-1200:]
     assert "G1–G7 全绿" in out, out[-600:]
+
+
+def _r55_cli(d, args, timeout=300):
+    """跑一次公开 CLI，**分开**收 stdout / stderr —— 本轮的判据在 stderr 上。
+
+    `stdin=DEVNULL` + `timeout=` 与 check_subprocess_hygiene 的 S1/S2 同一条纪律。
+    """
+    o = os.path.join(d, "o.json")
+    p = subprocess.run([_PY, "matlabc.py", d] + list(args) + [
+        "--json", o, "--max-warnings", "999"],
+        cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, timeout=timeout)
+    return (p.returncode, p.stdout.decode("utf-8", "replace"),
+            p.stderr.decode("utf-8", "replace"))
+
+
+def test_r55_boundary_claims_have_reverse_criteria():
+    """R55：`--help`「诚实的边界」的每条**否定式承诺**必须有一台能说「不」的判据。
+
+    修前的真缺陷（两条独立证据，见 docs/SUPERPOWER_REVIEW_R55.md §1）：
+      ① 帮助「语言：」这条写的是「**扫到这些文件时**它会打出 [warn]」——**无条件**；
+         仓库外装置 `_r55/probe_p6.py` 在 7 种情形下量出：`.c` 与 `.rs` **混放**时
+         stderr **一行 warn 都没有**（E2/E3/E4 各 0 行），只有「本次语言 0 源文件」
+         时才 warn。而 README 两侧写的**一直是窄口径** ⇒ 帮助与 README 分叉。
+      ② 「前端实现：」这条逐字承诺「仍不识别 K&R 老式定义 … 与返回函数指针的声明」，
+         而全仓扫描里 `函数指针返回` **零次出现**、`K&R` 只作为登记 token 出现一次
+         ⇒ 这条承诺**没有任何对手方**（R51 只核对「这句话还在不在」，
+         不核对「这句话还成不成立」）。
+
+    本测试钉四件事：
+      A 帮助「语言：」这条必须与**实测的两个分支**都一致（修前红、修后绿）；
+      B 端到端：新门在真实仓库 rc=0 且打印 V1–V5 全绿；
+      C 五条判据**各自独立作证** —— 每处变异只许红在**指定**判据上；
+      D 三个棘轮必须等于真实读数（否则覆盖可以静默缩水）。
+    """
+    br = _r37_load("check_boundary_reverse")
+    src = io.open(os.path.join(ROOT, "matlabc.py"), "rb").read().decode("utf-8")
+    doc = br.module_docstring(src.replace("\r\n", "\n"))
+    bl = br.parse_boundary_bullets(doc)
+    assert bl, "帮助正文里必须有「诚实的边界」小节"
+    heads = [h for h, _t in bl]
+    texts = [t for _h, t in bl]
+
+    # ---------------- A 帮助正文 ⇄ 实测行为（修前这条红）----------------
+    lang = [t for t in texts if t.startswith("语言：")]
+    assert len(lang) == 1, heads
+    for tok in ("没有前端", "[warn]", "安静跳过", "混放"):
+        assert tok in lang[0], (
+            "帮助「语言：」这条必须写清**触发条件**（只有本次语言 0 源文件时）"
+            "与**混放行为**（被安静跳过）；缺逐字 token %r。原文：%r"
+            % (tok, lang[0]))
+
+    tmp = tempfile.mkdtemp(prefix="mabrr55_")
+    try:
+        mix = os.path.join(tmp, "mix")
+        os.makedirs(mix)
+        with io.open(os.path.join(mix, "ok.c"), "w", encoding="utf-8",
+                     newline="") as fh:
+            fh.write("int f(void) { return 0; }\n")
+        with io.open(os.path.join(mix, "thing.rs"), "w", encoding="utf-8",
+                     newline="") as fh:
+            fh.write("fn main() {}\n")
+        rc1, _o1, se1 = _r55_cli(mix, ["--lang", "c"])
+        assert rc1 == 0, (rc1, se1[-400:])
+        assert "[warn]" not in se1, (
+            "混放（ok.c + thing.rs）时**不该**有 [warn] —— 帮助正文现在明写了"
+            "「混放时被安静跳过」，这条断言就是那句披露的对手方（实测：%r）"
+            % se1)
+
+        only = os.path.join(tmp, "only")
+        os.makedirs(only)
+        with io.open(os.path.join(only, "thing.rs"), "w", encoding="utf-8",
+                     newline="") as fh:
+            fh.write("fn main() {}\n")
+        rc2, _o2, se2 = _r55_cli(only, ["--lang", "c"])
+        assert rc2 == 0, (rc2, se2[-400:])
+        for tok in ("[warn]", "Rust", "thing.rs"):
+            assert tok in se2, (
+                "本次语言的源文件数为 0 时**必须**点名语言与被跳过的文件；"
+                "缺 %r（实测：%r）" % (tok, se2))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    # ---------------- D 棘轮 == 真实读数 ----------------
+    n_neg = len([t for t in texts if br.is_negation(t)])
+    assert len(heads) == br.EXPECTED_BOUNDARY_BULLETS == 8, len(heads)
+    assert n_neg == br.EXPECTED_NEGATION_BULLETS == 7, n_neg
+    assert len(br.REVERSE_CASES) == br.MIN_REVERSE_CASES == 5
+    assert br.judge_ratchet(len(heads), n_neg, len(br.REVERSE_CASES)) == []
+
+    # 基线：真实仓库的登记表必须**零问题**
+    def _j(cases, exempts):
+        return br.judge_registry(texts, heads, cases, exempts,
+                                 read_text_fn=br.read_text, root=ROOT)
+
+    assert _j(br.REVERSE_CASES, br.NEGATION_EXEMPT) == []
+
+    # ---------------- C 五条判据各自独立作证 ----------------
+    def _only(probs, want):
+        """除 want 之外的判据必须**一条都不响**（否则那条判据没有独立证人）。"""
+        return [x for x in probs if not x.startswith(want)]
+
+    # ① 抽掉「语言：」那条 case ⇒ 那条否定式承诺无人认领
+    c1 = tuple(c for c in br.REVERSE_CASES
+               if c["id"] != "unsupported-language-warn")
+    p1 = _j(c1, br.NEGATION_EXEMPT)
+    assert any(x.startswith("V1") for x in p1), p1
+    assert _only(p1, "V1") == [], p1
+
+    # ② 把某条 case 的 help_must token 写错 ⇒ 逐字核对失败
+    c2 = tuple(dict(c, help_must=("根本不存在的词",))
+               if c["id"] == "c-frontend-shapes" else c
+               for c in br.REVERSE_CASES)
+    p2 = _j(c2, br.NEGATION_EXEMPT)
+    assert any(x.startswith("V2") for x in p2), p2
+    assert _only(p2, "V2") == [], p2
+
+    # ③ 豁免指向一条不存在的 bullet ⇒ 陈旧（与「登记了却不存在 → 也红」同源）
+    e3 = dict(br.NEGATION_EXEMPT)
+    e3["根本没有这条边界："] = {
+        "why": "合成样本：理由足够长，但 head 在帮助正文里找不到",
+        "where": ("tools/check_boundary_reverse.py", "REVERSE_CASES")}
+    p3 = _j(br.REVERSE_CASES, e3)
+    assert any(x.startswith("V4") for x in p3), p3
+    assert _only(p3, "V4") == [], p3
+
+    # ④ 豁免的 where token 写错 ⇒ 逐字核对失败（豁免不是放行后门）
+    e4 = dict(br.NEGATION_EXEMPT)
+    e4["GPU："] = {"why": "合成样本：理由足够长，但 where 的 token 写错了",
+                   "where": ("tools/check_binfmt_fixtures.py",
+                             "这个 token 一定不在文件里")}
+    p4 = _j(br.REVERSE_CASES, e4)
+    assert any(x.startswith("V4") for x in p4), p4
+    assert _only(p4, "V4") == [], p4
+
+    # ⑤ 把一条 case 的「必须不出现」期望清空 ⇒ 空断言（V3）。
+    #    ⚠ 首版这里改的是 `c-frontend-shapes`，实测**没红**：那条 case 的负向
+    #    还有三个 `expect_funcs` 空列表（K&R / 函数指针返回 / 宏拼签名必须
+    #    **零**函数）在承担，清掉 `stderr_must_not` 之后 neg 仍是 3。
+    #    换成 `preprocessing-boundary` 并把它的 expect_funcs 全改成非空，
+    #    才真的把负向清空 —— 这次自伤属于「测量工具自己的 bug」那一类，
+    #    是**跑一遍**才暴露的，正好印证本仓那条纪律。
+    c5 = tuple(dict(c, runs=tuple(dict(
+        r, stderr_must_not=(), json_must_not=(),
+        expect_funcs=dict((k, ["__synth__"])
+                          for k in (r.get("expect_funcs") or {})))
+        for r in c["runs"]))
+               if c["id"] == "preprocessing-boundary" else c
+               for c in br.REVERSE_CASES)
+    p5 = br.judge_case_shape(c5)
+    assert any(x.startswith("V3") for x in p5), p5
+    assert _only(p5, "V3") == [], p5
+
+    # ⑥ 棘轮被改动而不改常量 ⇒ V5（三种读数各试一次）
+    assert any(x.startswith("V5")
+               for x in br.judge_ratchet(len(heads) - 1, n_neg,
+                                         len(br.REVERSE_CASES)))
+    assert any(x.startswith("V5")
+               for x in br.judge_ratchet(len(heads), n_neg - 1,
+                                         len(br.REVERSE_CASES)))
+    assert any(x.startswith("V5")
+               for x in br.judge_ratchet(len(heads), n_neg,
+                                         len(br.REVERSE_CASES) - 1))
+
+    # ---------------- B 端到端：门真的能跑 ----------------
+    r = _r31_run([os.path.join("tools", "check_boundary_reverse.py")],
+                 timeout=300)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[-1500:]
+    assert "V1–V5 全绿" in out, out[-800:]
+
+    ca = _r37_load("check_all")
+    assert ca.MIN_GUARDS >= 13, (
+        "新门必须被 check_all 的门数棘轮算进去（现 MIN_GUARDS=%d）"
+        % ca.MIN_GUARDS)
