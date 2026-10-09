@@ -6973,7 +6973,14 @@ _RE_C_MACRO = re.compile(r"^[ \t]*#[ \t]*define\b")
 # 此前 collect_c_files 硬编码 (".c", ".h")，CFrontend.exts 也声明 (".c", ".h")，
 # 两处一致地**漏掉 C++ 扩展名** —— .cpp/.cc/.cxx/.hpp 被静默丢弃，用户只看到
 # 「C 文件 0 / C 函数 0」而无从判断原因（实测：含 1 个 .c + 1 个 .cpp 的目录
-# 报 C 文件 1）。现改为单一常量，收集与声明共用，消除双处漂移。
+# 报 C 文件 1）。改为单一常量，收集侧先共用上。
+# R50/C''''4 更正：上一句「收集与声明共用」当时**只对了一半** —— 收集侧
+# （collect_c_files）确实改了，声明侧 `CFrontend.exts` 仍写死 (".c", ".h")。
+# 独立装置实测（`_r50/probe_ext_truth.py`，真建目录真跑）：事实源 8 类、
+# 行为 8 类、前端声明 2 类，`CFrontend.exts is _C_SOURCE_EXTS` 为 False。
+# 而 `frontends/__init__.py` 的 docstring 早已宣称二者「共用」——
+# 典型的「叙述与装置分叉」。现声明侧改为**引用**本常量（同一对象、非副本），
+# 由 tools/check_ir_attribution.py 的 C7' 两向守着。
 # 注意：C++ 仍走 _parse_c_source（R49 后为「词法 + 括号配平」的轻量解析器），
 # 模板/类/命名空间等 C++ 专有语法不保证识别 —— 这是**已披露**的降级，
 # 而不是静默丢弃。
@@ -9023,7 +9030,13 @@ register_frontend("js", JsFrontend)
 class CFrontend(BaseFrontend):
     """P90：C/C++ 前端插件（复用 P87 轻量解析器）。"""
     lang = "c"
-    exts = (".c", ".h")
+    # R50/C''''4：**引用**唯一事实源，不复制。此前写死 (".c", ".h")，只覆盖
+    # collect_c_files 真正认的 8 类扩展名里的 2 类（独立装置实测：事实源 8、
+    # 行为 8、声明 2）。exts 目前没有生产读取点，所以它是一句**声明**；而
+    # 声明与行为分叉正是本仓最贵的那类缺陷（文档说共用、源码没共用）。
+    # 守它的是 tools/check_ir_attribution.py 的 C7'：
+    # 「登记类必须把 exts 绑到一个名字上，且那名字就是登记的事实源」。
+    exts = _C_SOURCE_EXTS
     display = "C/C++"
 
     def collect_files(self, root, recursive=True, exclude=None):

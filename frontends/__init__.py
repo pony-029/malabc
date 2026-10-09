@@ -20,9 +20,16 @@ IR_LANG_OWNERS 是本包最重要的一张表
     （陈旧登记：说的是已经不存在的语言，读起来像有覆盖）。
 
 注意「**文件扩展名不在这里**」：C 的 8 类扩展名有它自己的唯一事实源
-（`matlabc.py::_C_SOURCE_EXTS`，`collect_c_files` 与 `CFrontend.exts` 共用）。
+（`matlabc.py::_C_SOURCE_EXTS`）；`collect_c_files` 与 `CFrontend.exts`
+都**引用**它（`CFrontend.exts is _C_SOURCE_EXTS` —— 同一个对象，不是副本）。
 本包只负责 **IR / unresolved 规则**，不重复登记「如何收集文件」——
 否则就会为了「外挂化」而**新造一个第二事实源**，那正是本包要消灭的东西。
+
+R50/C''''4 实测：上面这句「共用」在写下时**并不成立** ——
+`CFrontend.exts` 曾写死 `(".c", ".h")`，只有 `collect_c_files` 真认的
+8 类里的 2 类（独立装置 `_r50/probe_ext_truth.py`：事实源 8 / 行为 8 /
+前端声明 2，`is` 判定为 False）。守这句话的是 `tools/check_ir_attribution.py`
+的 C7'（登记类必须把 `exts` 绑到登记的事实源名上；未登记的复制品也红）。
 """
 
 from . import ir

@@ -17275,6 +17275,92 @@ def test_r44_language_registry_is_two_way_and_typed():
     assert set(ga.REGISTER_OUT_OF_SCOPE) == outside
 
 
+def test_r50_c_ext_truth_source_is_single():
+    """R50/C''''：C 源文件扩展名只有一个事实源，而且是被**引用**、不是被复制。
+
+    反向判据（修前必须红、修后必须绿）：修前 `CFrontend.exts == (".c", ".h")`
+    而 `_C_SOURCE_EXTS` 有 8 类 ⇒ 本函数红；修后绿。
+
+    三条**互相独立**的口径，缺一条都留盲区：
+      ① 声明：`.exts` 的集合 == 事实源的集合
+         （只查这条会漏掉「复制成一个等长元组」）；
+      ② 行为：真建目录、真放文件、真跑 `collect_c_files`，看它到底收了谁
+         （只查①会漏掉「声明对了、收集恰好还错」）；
+      ③ 身份：`exts is _C_SOURCE_EXTS`（同一个对象 —— 最强形态的「不复制」）。
+    """
+    assert set(ma.CFrontend.exts) == set(ma._C_SOURCE_EXTS), \
+        (sorted(ma.CFrontend.exts), sorted(ma._C_SOURCE_EXTS))
+    assert ma.CFrontend.exts is ma._C_SOURCE_EXTS, \
+        "CFrontend.exts 是对事实源的副本，而不是引用"
+    assert set(ma._C_HEADER_EXTS) <= set(ma._C_SOURCE_EXTS), \
+        (sorted(ma._C_HEADER_EXTS), sorted(ma._C_SOURCE_EXTS))
+
+    # ② 行为口径：**不读代码**，在文件系统上量
+    tmp = tempfile.mkdtemp(prefix="r50_ext_")
+    try:
+        probe = list(ma._C_SOURCE_EXTS) + [".txt", ".ccx"]
+        for i, e in enumerate(probe):
+            with io.open(os.path.join(tmp, "f%02d%s" % (i, e)), "w",
+                         encoding="utf-8", newline="") as fh:
+                fh.write("int x;\n")
+        got = set(os.path.splitext(p)[1].lower()
+                  for p in ma.collect_c_files(tmp))
+        assert got == set(ma._C_SOURCE_EXTS), \
+            (sorted(got), sorted(ma._C_SOURCE_EXTS))
+        # 干扰项（.txt / .ccx）一个都不许收
+        assert ".txt" not in got and ".ccx" not in got, sorted(got)
+        # 前端入口必须与收集器同源
+        got_fe = set(os.path.splitext(p)[1].lower()
+                     for p in ma.get_frontend("c").collect_files(tmp))
+        assert got_fe == got, (sorted(got_fe), sorted(got))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r50_ext_truth_gate_can_say_no():
+    """R50/C''''：守「扩展名事实源」的判据必须**能说不**（一正四反 + 一组对照）。
+
+    只跑一遍 rc=0 不足以说明这条判据存在 —— 所以这里直接喂合成数据，
+    要求四种不同的坏法**各自**被报出来，且不含 C 扩展名的类级 exts **不许**误伤。
+    """
+    ga = _r37_load("check_ir_attribution")
+    reg = dict(ga.EXT_TRUTH_REF)
+    assert reg == {("matlabc.py", "CFrontend"): "_C_SOURCE_EXTS"}, reg
+    md = {"matlabc.py": set(["_C_SOURCE_EXTS"])}
+    good = {("matlabc.py", "CFrontend"): ("name", "_C_SOURCE_EXTS")}
+    probs, n = ga.judge_ext_truth(good, md, reg)
+    assert probs == [], probs
+    assert n >= 4, n
+
+    # ① 复制成字面量 -> 红
+    p1, _ = ga.judge_ext_truth(
+        {("matlabc.py", "CFrontend"): ("literal", (".c", ".h"))}, md, reg)
+    assert any(x.startswith("I7") for x in p1), p1
+    # ② 陈旧登记（类已无 exts）-> 红
+    p2, _ = ga.judge_ext_truth({}, md, reg)
+    assert any("陈旧登记" in x for x in p2), p2
+    # ③ 引用了悬空的名字 -> 红
+    p3, _ = ga.judge_ext_truth(good, {}, reg)
+    assert any("悬空" in x for x in p3), p3
+    # ④ 未登记的复制品 -> 红（独立见证：这正是本判据存在的理由）
+    _dup = dict(good)
+    _dup[("matlabc.py", "Other")] = ("literal", (".c", ".h"))
+    p4, _ = ga.judge_ext_truth(_dup, md, reg)
+    assert any("未登记" in x for x in p4), p4
+    # 对照组：未登记的类级 exts 若**不含** C 扩展名，不许误红
+    _pylike = dict(good)
+    _pylike[("matlabc.py", "PyLike")] = ("literal", (".py",))
+    p5, _ = ga.judge_ext_truth(_pylike, md, reg)
+    assert p5 == [], p5
+
+    # 这条判据真的**接在门里**（不是写了个没人调的函数）
+    r = _r31_run([os.path.join("tools", "check_ir_attribution.py")], timeout=180)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[-800:]
+    assert "扩展名事实源 1 处" in out, out[-400:]
+    assert "扩展名事实源判据" in out, out[-400:]
+
+
 def _r44_lowercase_index_lookups():
     """独立实现（**不 import 那道具名门**）：找 `X.get(<expr>.lower())` 且 X 是函数索引。
 
@@ -17359,6 +17445,9 @@ def test_r44_gate_call_sites_agree_with_return_arity():
     三次都靠"跑一遍"才发现：`patch_ir` 改 `judge` 的形参 → 两个调用点传旧参数；
     `patch_judge` 把 `scan_repo` 从 4 元组改成 6 元组 → 两个调用点还在解 4 个；
     `patch_langs` 再把 `scan_repo` 改成 6 元组 → `_sample` 还解 5 个。
+    R50（C''''4：C 扩展名事实源）再把 `scan_repo` 6 → **8** 元组（末尾多两张
+     「类级 exts 声明 / 模块层赋值名」表），两个调用点同步改 —— 这条断言
+     又一次**先红了一次**，然后才被改绿：它就是那一类缺陷的对手方。
     这条断言把"跑一遍才发现"变成"每次测试都跑"：**凡是解包本门某函数返回值的地方，
     元组长度必须与那个函数的 return 一致**。
     """
@@ -17372,7 +17461,7 @@ def test_r44_gate_call_sites_agree_with_return_arity():
                 if isinstance(st, _ast.Return) and isinstance(st.value, _ast.Tuple):
                     ret[n.name] = len(st.value.elts)
     assert ret, "本门里一个元组 return 都没解析到 —— 这条断言本身失效了"
-    assert ret.get("scan_repo") == 6, ret
+    assert ret.get("scan_repo") == 8, ret
 
     bad = []
     for n in _ast.walk(t):

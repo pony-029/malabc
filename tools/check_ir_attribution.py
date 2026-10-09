@@ -21,7 +21,7 @@ R44（C'''1）之前，这个图是**假的**：同一条规则
 而归因只挂在其中一条名字来源上 —— 于是「源码说这个名字解析不到」与
 「归因说它来自某个库」讨论的**可能不是同一批名字**，而两边都不报错。
 
-本护栏把这件事钉成七条静态判据 + 十条纯函数判据，**每条都能被反例证伪**：
+本护栏把这件事钉成八条静态判据 + 十条纯函数判据，**每条都能被反例证伪**：
 
   C1 **写点集合双向一致**：全仓「往一个含 unresolved 的容器里新增条目」的函数
      集合，必须恰好等于 `IR_DECIDERS ∪ IR_CONSUMERS`。未登记 → 红（有人又抄了一遍）；
@@ -50,6 +50,16 @@ R44（C'''1）之前，这个图是**假的**：同一条规则
      这条判据的由来：本包 docstring 当时已写着「守这件事的是本门，并且两向核对」，
      而本门里根本没有那个标识符 —— 一句话在描述一个不存在的对手方。
 
+  C7' **扩展名事实源只许引用，不许复制**：`frontends/__init__.py` 的 docstring
+     写着 C 的扩展名「`collect_c_files` 与 `CFrontend.exts` 共用」
+     `matlabc.py::_C_SOURCE_EXTS`，而源码里 `CFrontend.exts` 曾写死
+     `(".c", ".h")` —— 只有 `collect_c_files` 真认的 8 类里的 **2** 类
+     （R50 独立装置实测：事实源 8 / 行为 8 / 前端声明 2）。判据是**静态 AST**：
+     登记类必须把 `exts` 绑到**登记的事实源名**上；那名字必须在同一文件模块层
+     有定义（否则悬空）；登记的类若已无 `exts` 声明则陈旧；而任何**未登记**的
+     类级 `exts` 只要仍是含 C 扩展名的字面量元组 ⇒ 红（复制品又回来了）。
+     判据**不 import 产品、不读源码文本** —— 与 C4 同一条纪律。
+
 纯函数判据（比集合，不比个数 —— 与 R37 的基线门同一条纪律）：
   C5 IR 形状：`build_ir` 的键集合 == `IR_KEYS`；元组长度 == `UNRESOLVED_ARITY`；
      `unresolved_symbols` 返回 **set**（不是 list）。
@@ -63,8 +73,8 @@ R44（C'''1）之前，这个图是**假的**：同一条规则
     python tools/check_ir_attribution.py --help      # 显示本帮助（立即返回）
 
 退出码：
-    0  = 七条静态判据 + 十条纯函数判据在真实仓库上全部通过
-    1  = 有违规（写点未被登记 / 判定点跑到包外 / 接线缺失 / 归因自算 / 形状或规则不符）
+    0  = 八条静态判据 + 十条纯函数判据在真实仓库上全部通过
+    1  = 有违规（写点未被登记 / 判定点跑到包外 / 接线缺失 / 归因自算 / 形状或规则不符 / 扩展名事实源被复制）
     2  = 缺输入（找不到 frontends/ir.py 或 matlabc.py → 红；「缺输入」不许当「干净」）
 
 为什么必须是一道**静态**门而不是只写测试：五处逐字复制的代码在 review 里
@@ -157,6 +167,29 @@ REGISTER_SCOPE = ("matlabc.py",)
 REGISTER_OUT_OF_SCOPE = {
     "tests/test_matlabc.py": "夹具：注册一个假前端，用来验证注册表自身的行为",
 }
+
+# ── C7' 「文件扩展名 → 语言」事实源：只许**引用**，不许复制 ──────────────
+#
+# 由来（R50 实测）：`frontends/__init__.py` 的 docstring 早已写着 C 的扩展名
+# 「`collect_c_files` 与 `CFrontend.exts` 共用」`matlabc.py::_C_SOURCE_EXTS`，
+# 而源码里 `CFrontend.exts = (".c", ".h")` —— 只有 `collect_c_files` 真认的
+# 8 类扩展名里的 **2** 类。独立装置（`_r50/probe_ext_truth.py`，真建目录真跑）：
+# 行为表 8 类 == 声明表 8 类；而 `CFrontend.exts` 缺 `.cc .cpp .cxx .hh .hpp .hxx`
+# 共 6 类，且 `CFrontend.exts is _C_SOURCE_EXTS` 为 False。
+#
+# 判据不看源码文本、也不 import 产品（静态 AST）：
+#   * 登记类必须把 `exts` 绑到**一个名字**（ast.Name）上，且那名字就是本表
+#     登记的事实源名 —— 写成字面量元组 = 复制品 = 第二事实源 ⇒ 红；
+#   * 事实源名必须在**同一文件**的模块层被赋值（否则是悬空引用）⇒ 红；
+#   * 两向核对：登记了却找不到该类的 `exts` 声明 ⇒ 红（陈旧登记）；
+#   * 独立见证：任何**未登记**的类级 `exts` 若仍是含 C 扩展名的字面量元组
+#     ⇒ 红（复制品又回来了，这正是本判据存在的理由）。
+EXT_TRUTH_REF = {
+    ("matlabc.py", "CFrontend"): "_C_SOURCE_EXTS",
+}
+# 识别「这是一份 C 扩展名复制品」的探测字符：判据自己的**独立**小样本
+# （与产品那份表故意不同源 —— 同 R49 保留 `_RE_C_FUNC` 作对照装置的纪律）。
+EXT_DUP_DETECTORS = (".c", ".h")
 
 # 登记点必须真的调用共享函数（任一命中即可）。
 SHARED_CALL_TOKENS = ("resolve_calls", "call_sites_of_files")
@@ -265,6 +298,31 @@ def scan_file(path, rel):
     reads = {}
     preds = {}
     regs = {}
+    exts_decl = {}
+    mod_defs = set()
+    # C7'：模块层被赋值的名字（用于证明「登记的事实源名」真的有定义）
+    # 与每个类的类级 `exts` 绑法（引用一个名字 / 字面量复制品 / 其它）。
+    for _n in tree.body:
+        if isinstance(_n, ast.Assign):
+            for _t in _n.targets:
+                if isinstance(_t, ast.Name):
+                    mod_defs.add(_t.id)
+        elif isinstance(_n, ast.ClassDef):
+            for _st in _n.body:
+                if not isinstance(_st, ast.Assign) or not _st.targets:
+                    continue
+                _tg = _st.targets[0]
+                if not (isinstance(_tg, ast.Name) and _tg.id == "exts"):
+                    continue
+                _v = _st.value
+                if isinstance(_v, ast.Name):
+                    exts_decl[_n.name] = ("name", _v.id)
+                elif isinstance(_v, (ast.Tuple, ast.List)):
+                    exts_decl[_n.name] = ("literal", tuple(
+                        [x for x in [_str_const(e) for e in _v.elts]
+                         if x is not None]))
+                else:
+                    exts_decl[_n.name] = ("other", None)
     for n in ast.walk(tree):
         fname = _owner(spans, getattr(n, "lineno", 1))
         if isinstance(n, ast.Call):
@@ -322,7 +380,8 @@ def scan_file(path, rel):
                     writes.setdefault(fname, set()).add(
                         "=" if isinstance(n, ast.Assign) else "+=")
     return {"writes": writes, "calls": calls, "reads": reads,
-            "preds": preds, "regs": regs}
+            "preds": preds, "regs": regs,
+            "exts": exts_decl, "mod_defs": mod_defs}
 
 
 def scan_repo(root, on_problem):
@@ -332,6 +391,8 @@ def scan_repo(root, on_problem):
     reads = {}
     preds = {}
     regs = {}
+    exts_all = {}
+    mod_defs_all = {}
     n_files = 0
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
@@ -355,7 +416,11 @@ def scan_repo(root, on_problem):
                 preds.setdefault((rel, f), set()).update(recvs)
             for lang, ln in r["regs"].items():
                 regs[(rel, lang)] = ln
-    return writes, calls, reads, preds, regs, n_files
+            for cls, d in r["exts"].items():
+                exts_all[(rel, cls)] = d
+            mod_defs_all[rel] = r["mod_defs"]
+    return (writes, calls, reads, preds, regs, n_files,
+            exts_all, mod_defs_all)
 
 
 # ---------------------------------------------------------------- 判据
@@ -545,10 +610,67 @@ def judge_langs(registered, declared, owner_lookup,
     return probs, n
 
 
+def judge_ext_truth(decls, mod_defs, registry, detectors=EXT_DUP_DETECTORS):
+    """C7'：语言扩展名的事实源只许**引用**，不许复制。返回 (问题列表, 断言数)。
+
+    decls    : {(相对路径, 类名): (kind, value)}
+               kind == "name"    -> value 是被引用的**名字**
+               kind == "literal" -> value 是字面量元组
+               kind == "other"   -> 其它表达式（拼出来的、调用返回的……）
+    mod_defs : {相对路径: set(该文件模块层被赋值的名字)}
+    registry : {(相对路径, 类名): 期望引用的事实源名}
+
+    为什么不做成 `import matlabc 再比 set(...)`：本门是**静态**门 —— 秒级、
+    不 import 产品（把 3 万行的 matlabc.py 拖进来，这道门就会掉进
+    「分钟级 ⇒ 没人愿意跑」的区间，与 R37/R44 同一条纪律）。行为口径由
+    `tests/test_matlabc.py::test_r50_...` **真建目录真跑**来量。
+    """
+    probs = []
+    n = 0
+    src_names = sorted(set(registry.values()))
+    for key in sorted(registry):
+        want = registry[key]
+        d = decls.get(key)
+        n += 1
+        if d is None:
+            probs.append("I7 陈旧登记 %s::%s —— 登记表说这个类有 exts 声明，"
+                         "源码里已经没有了" % (key[0], key[1]))
+            continue
+        kind, val = d
+        n += 1
+        if kind != "name":
+            probs.append("I7 %s::%s 的 exts 是 %s 写法（%r）—— 必须是**引用**"
+                         "唯一的 %r，复制一份字面量就是第二个事实源"
+                         % (key[0], key[1], kind, val, want))
+            continue
+        if val != want:
+            probs.append("I7 %s::%s 的 exts 引用了 %r，登记的事实源是 %r"
+                         % (key[0], key[1], val, want))
+            continue
+        n += 1
+        if want not in mod_defs.get(key[0], set()):
+            probs.append("I7 %s 里没有模块层的 `%s = ...` —— %s::%s 引用了一个"
+                         "悬空的名字" % (key[0], want, key[0], key[1]))
+    n += 1
+    if not registry:
+        probs.append("I7 扩展名事实源登记表为空 —— 没有对手方守着")
+    # 独立见证：**未登记**的类级 exts 只要还是含 C 扩展名的字面量 ⇒ 红。
+    # 复制品正是这条判据存在的理由（未登记 = 没有对手方看着它）。
+    for key in sorted(set(decls) - set(registry)):
+        kind, val = decls[key]
+        if kind == "literal" and any(x in (val or ()) for x in detectors):
+            n += 1
+            probs.append("I7 未登记的 %s::%s 把 C 扩展名写成字面量 %s —— "
+                         "又复制了一份事实源（应引用 %s）"
+                         % (key[0], key[1], list(val),
+                            src_names or ["<未登记事实源>"]))
+    return probs, n
+
+
 def check_shapes(fr, on_problem):
     """C5 + C6 + C7：纯函数判据（只造内存样本，不起进程、不写盘）。
 
-    返回**实际执行的断言数**（写进成功行 —— 免得「七条判据」是一句没人重算的话）。
+    返回**实际执行的断言数**（写进成功行 —— 免得「判据条数」是一句没人重算的话）。
     """
     ir = fr.ir
     n = 0
@@ -763,7 +885,8 @@ def _selftest():
         try:
             _mk_repo(tmp, files)
             probs = []
-            writes, calls, reads, preds, _regs, n = scan_repo(tmp, probs.append)
+            (writes, calls, reads, preds, _regs, n,
+             _exts, _md) = scan_repo(tmp, probs.append)
             if n == 0:
                 probs.append("I0 一个 .py 都没扫到")
             probs.extend(judge(writes, calls, deciders, consumers, feeds_map,
@@ -915,6 +1038,64 @@ def _selftest():
         bad += 1
         print("  [selftest] **未达预期** C6'：范围外注册点两向核对失效 %s / %s"
               % (l4, l5))
+    # ---- C7'：扩展名事实源只许引用不许复制（1 正 + 4 反，各自独立见证）----
+    _EXT_REG = {("matlabc.py", "CFrontend"): "_C_SOURCE_EXTS"}
+
+    def _ext_sample(name, files, registry, want_problem):
+        tmp = tempfile.mkdtemp(prefix="ir_ext_selftest_")
+        try:
+            _mk_repo(tmp, files)
+            probs = []
+            (_w, _c, _r, _p, _g, n,
+             exts_decl, mod_defs) = scan_repo(tmp, probs.append)
+            if n == 0:
+                probs.append("I0 一个 .py 都没扫到")
+            eprobs, _ne = judge_ext_truth(exts_decl, mod_defs, registry)
+            probs.extend(eprobs)
+            got = bool(probs)
+            if got == want_problem:
+                return True, (probs[0] if probs else "")
+            return False, ("期望 %s 实际 %s%s"
+                           % ("红" if want_problem else "绿",
+                              "红" if got else "绿",
+                              ("；" + probs[0]) if probs else ""))
+        finally:
+            _rm_tree_small(tmp)
+
+    _EXT_GOOD = {
+        "matlabc.py": ("_C_SOURCE_EXTS = ('.c', '.h')\n"
+                       "class CFrontend(object):\n"
+                       "    exts = _C_SOURCE_EXTS\n"),
+    }
+    for name, files, want in (
+        ("扩展名好样本：exts 引用唯一事实源", _EXT_GOOD, False),
+        ("扩展名坏样本①：exts 写成字面量（复制品）",
+         {"matlabc.py": ("_C_SOURCE_EXTS = ('.c', '.h')\n"
+                         "class CFrontend(object):\n"
+                         "    exts = ('.c', '.h')\n")}, True),
+        ("扩展名坏样本②：陈旧登记（类已无 exts）",
+         {"matlabc.py": ("_C_SOURCE_EXTS = ('.c', '.h')\n"
+                         "class CFrontend(object):\n"
+                         "    pass\n")}, True),
+        ("扩展名坏样本③：引用了悬空的名字",
+         {"matlabc.py": ("class CFrontend(object):\n"
+                         "    exts = _C_SOURCE_EXTS\n"),
+          "x.py": "_C_SOURCE_EXTS = ('.c', '.h')\n"}, True),
+        ("扩展名坏样本④：未登记的复制品",
+         {"matlabc.py": ("_C_SOURCE_EXTS = ('.c', '.h')\n"
+                         "class CFrontend(object):\n"
+                         "    exts = _C_SOURCE_EXTS\n"
+                         "class Other(object):\n"
+                         "    exts = ('.c', '.h')\n")}, True),
+    ):
+        ok, why = _ext_sample(name, files, _EXT_REG, want)
+        if ok:
+            good += 1
+            print("  [selftest] %s" % name)
+        else:
+            bad += 1
+            print("  [selftest] **未达预期** %s：%s" % (name, why))
+
     return bad, good
 
 
@@ -945,9 +1126,10 @@ def main(argv):
         b, g = _selftest()
         print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (b, g))
         # 下界断言：新增自证样本不许把它变红；覆盖数只许增。
-        # 今天实测 18（7 个仓库样本 + 7 条纯函数 + 4 条语言登记相关），
-        # 下界留一点重构余量，但不能低到「删掉一半样本也看不出来」。
-        return 0 if (b == 0 and g >= 16) else 1
+        # R50 实测 24（7 个仓库样本 + 7 条纯函数 + 5 条语言登记相关
+        # + 5 条扩展名事实源相关）。下界留一点重构余量，但不能低到
+        # 「删掉一半样本也看不出来」。
+        return 0 if (b == 0 and g >= 20) else 1
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if not os.path.isfile(os.path.join(root, "matlabc.py")):
@@ -958,7 +1140,8 @@ def main(argv):
         return 2
 
     probs = []
-    writes, calls, reads, preds, regs, n_files = scan_repo(root, probs.append)
+    (writes, calls, reads, preds, regs, n_files,
+     exts_all, mod_defs_all) = scan_repo(root, probs.append)
     if n_files == 0:
         print("check_ir_attribution: 一个 .py 都没扫到（缺输入 -> 红）")
         return 2
@@ -981,6 +1164,9 @@ def main(argv):
                                  _owner_lookup(fr, fr.IR_LANG_OWNERS), outside,
                                  REGISTER_OUT_OF_SCOPE)
     probs.extend(lprobs)
+    # C7'：扩展名事实源只许引用，不许复制。
+    eprobs, n_ext = judge_ext_truth(exts_all, mod_defs_all, EXT_TRUTH_REF)
+    probs.extend(eprobs)
 
     if probs:
         print("check_ir_attribution: %d 项不合规" % len(probs))
@@ -988,10 +1174,12 @@ def main(argv):
             print("  - " + p)
         return 1
     print("check_ir_attribution: OK（扫描 %d 个 .py；写点 %d 处 = 判定点 %d + "
-          "消费点 %d，归因喂入点 %d 处，语言登记 %d 个，与登记表双向一致；"
-          "另跑了 %d 项纯函数形状/规则判据 + %d 项语言登记判据）"
+          "消费点 %d，归因喂入点 %d 处，语言登记 %d 个，扩展名事实源 %d 处，"
+          "与登记表双向一致；另有 %d 项纯函数形状/规则判据 + %d 项语言登记判据"
+          " + %d 项扩展名事实源判据）"
           % (n_files, len(IR_DECIDERS) + len(IR_CONSUMERS), len(IR_DECIDERS),
-             len(IR_CONSUMERS), len(ATTR_FEEDS), len(in_scope), n_shape, n_lang))
+             len(IR_CONSUMERS), len(ATTR_FEEDS), len(in_scope),
+             len(EXT_TRUTH_REF), n_shape, n_lang, n_ext))
     return 0
 
 
