@@ -1,0 +1,237 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "matlabc 能力地图",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "subtitle": "围绕单文件分析内核的七块能力子系统",
+    "output": "archify/architecture-malabc-capabilities-20261009-2215/f01-capabilities.zh-CN.html"
+  },
+  "components": [
+    {
+      "id": "core",
+      "type": "backend",
+      "label": "matlabc",
+      "sublabel": "单文件分析内核",
+      "pos": [
+        40,
+        380
+      ],
+      "size": [
+        200,
+        84
+      ]
+    },
+    {
+      "id": "g_struct",
+      "type": "backend",
+      "label": "结构映射",
+      "sublabel": "解析 · 调用图 · 类图 · 影响闭包",
+      "pos": [
+        300,
+        60
+      ],
+      "size": [
+        330,
+        64
+      ]
+    },
+    {
+      "id": "g_site",
+      "type": "frontend",
+      "label": "交互式站点",
+      "sublabel": "点击跳转 · 搜索 · --watch · --max-nodes",
+      "pos": [
+        300,
+        180
+      ],
+      "size": [
+        330,
+        64
+      ]
+    },
+    {
+      "id": "g_checks",
+      "type": "security",
+      "label": "静态检查",
+      "sublabel": "未初始化 · 类型 · 死代码 · 形状 · 污点",
+      "pos": [
+        300,
+        300
+      ],
+      "size": [
+        330,
+        64
+      ]
+    },
+    {
+      "id": "g_metrics",
+      "type": "database",
+      "label": "度量与治理",
+      "sublabel": "债务排序 · 注释 · 重复 · 趋势",
+      "pos": [
+        300,
+        420
+      ],
+      "size": [
+        330,
+        64
+      ]
+    },
+    {
+      "id": "g_fix",
+      "type": "backend",
+      "label": "修复闭环",
+      "sublabel": "补丁 · 自验证 · 测试桩 · PR 草稿",
+      "pos": [
+        300,
+        540
+      ],
+      "size": [
+        330,
+        64
+      ]
+    },
+    {
+      "id": "g_ci",
+      "type": "cloud",
+      "label": "CI 门禁",
+      "sublabel": "SARIF 2.1.0 · 退出码 · 基线对比 · 模板",
+      "pos": [
+        300,
+        660
+      ],
+      "size": [
+        330,
+        64
+      ]
+    },
+    {
+      "id": "g_bin",
+      "type": "external",
+      "label": "二进制与 GPU",
+      "sublabel": "PE/ELF/Mach-O · 导入 · 导出 · CUDA / HSA / SPIR-V",
+      "pos": [
+        300,
+        780
+      ],
+      "size": [
+        330,
+        64
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "core-struct",
+      "from": "core",
+      "to": "g_struct",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "core-site",
+      "from": "core",
+      "to": "g_site",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "core-checks",
+      "from": "core",
+      "to": "g_checks",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "core-metrics",
+      "from": "core",
+      "to": "g_metrics",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "core-fix",
+      "from": "core",
+      "to": "g_fix",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "core-ci",
+      "from": "core",
+      "to": "g_ci",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "core-bin",
+      "from": "core",
+      "to": "g_bin",
+      "fromSide": "right",
+      "toSide": "left"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "结构映射 —— 代码由什么构成",
+      "items": [
+        "函数 / 类 / 脚本解析",
+        "调用图；类继承与协作",
+        "影响与依赖的传递闭包"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "交互式站点 —— 浏览结果",
+      "items": [
+        "点击跳转到定义；全文与正则搜索",
+        "--watch 守护进程重新分析",
+        "大仓库用 --max-nodes 限流"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "静态检查 —— 哪里有问题",
+      "items": [
+        "未初始化；类型不匹配；死代码；形状不匹配",
+        "跨文件污点传播"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "度量与治理 —— 先修什么",
+      "items": [
+        "技术债排序；注释完备度",
+        "重复代码指纹；度量趋势迷你图"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "修复闭环 —— 审查、打补丁、证明",
+      "items": [
+        "确定性补丁；自验证",
+        "测试桩生成；PR 描述草稿"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "CI 门禁 —— 在流水线里强制",
+      "items": [
+        "SARIF 2.1.0；退出码门禁",
+        "趋势与基线对比；一键 CI 模板"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "二进制与 GPU —— 名字为什么解析不到",
+      "items": [
+        "PE / ELF / Mach-O 容器；导入表与 DT_NEEDED；导出符号（dynsym）",
+        "CUDA fatbin 里的 cubin 名；AMD HSA code object；Vulkan SPIR-V 入口",
+        "源侧归因：library / gpu_kernel / missing"
+      ]
+    }
+  ]
+}

@@ -646,6 +646,13 @@ cd flow
 node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.html --quality showcase
 ```
 
+每张图都有**两个版本**：**英文版**（`candidate.json`，`locale: en`）与**中文版**
+（`candidate.zh-CN.json`，`locale: zh-CN`，共 450 条译文）。中文候选**不是手写的**——它由英文候选
+**只替换字符串**得到，生成脚本会断言「把两份文件里所有字符串都清空后，结构逐键逐序完全相同」，
+所以节点 id、顺序、几何与说明卡数量都不会漂。locale 标签本身也有讲究：archify 的内置目录只有
+`en` 与 `zh-CN`，写成 `zh` 这类近似标签会**静默回退**成英文查看器外壳。同理，中文 HTML 会**连渲两次
+逐字节比对**，让「重跑渲染器 == 仓库里的文件」保持为一个可验证的等式。
+
 映射表、每张图背后的实测数字，以及下一步建议，见
 [`flow/FLOW_REPORT.md`](flow/FLOW_REPORT.md) 与 [`flow/INDEX.md`](flow/INDEX.md)。
 

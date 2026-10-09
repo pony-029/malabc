@@ -1,0 +1,140 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "CI 质量门禁：SARIF、基线对比、退出码",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "archify/workflow-ci-gate-20261009-2310/f07-ci-gate.zh-CN.html"
+  },
+  "lanes": [
+    {
+      "id": "repo",
+      "label": "仓库"
+    },
+    {
+      "id": "tool",
+      "label": "CI 任务里的 matlabc"
+    },
+    {
+      "id": "gate",
+      "label": "门禁结果",
+      "variant": "exception"
+    }
+  ],
+  "mainPath": [
+    "push",
+    "diff",
+    "sarif",
+    "decide",
+    "pass"
+  ],
+  "nodes": [
+    {
+      "id": "push",
+      "lane": "repo",
+      "col": 0,
+      "type": "external",
+      "label": "git push / PR",
+      "sublabel": "变更文件",
+      "width": 150
+    },
+    {
+      "id": "diff",
+      "lane": "tool",
+      "col": 1,
+      "type": "backend",
+      "label": "matlabc --git-diff HEAD",
+      "sublabel": "增量分析",
+      "width": 190
+    },
+    {
+      "id": "sarif",
+      "lane": "tool",
+      "col": 2,
+      "type": "database",
+      "label": "快照 + SARIF",
+      "sublabel": "--json --sarif --reproducible",
+      "width": 190
+    },
+    {
+      "id": "decide",
+      "lane": "tool",
+      "col": 3,
+      "type": "security",
+      "label": "--sarif-diff",
+      "sublabel": "与基线对比",
+      "width": 170
+    },
+    {
+      "id": "block",
+      "lane": "gate",
+      "col": 5,
+      "type": "security",
+      "label": "exit 1",
+      "sublabel": "新告警增加 -> 拦截",
+      "width": 200
+    },
+    {
+      "id": "pass",
+      "lane": "gate",
+      "col": 4,
+      "type": "backend",
+      "label": "exit 0",
+      "sublabel": "没有增加 -> 通过",
+      "width": 190
+    }
+  ],
+  "edges": [
+    {
+      "id": "push-diff",
+      "from": "push",
+      "to": "diff",
+      "variant": "emphasis"
+    },
+    {
+      "id": "diff-sarif",
+      "from": "diff",
+      "to": "sarif"
+    },
+    {
+      "id": "sarif-decide",
+      "from": "sarif",
+      "to": "decide",
+      "label": "基线对比"
+    },
+    {
+      "id": "decide-block",
+      "from": "decide",
+      "to": "block",
+      "label": "新告警增加",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "decide-pass",
+      "from": "decide",
+      "to": "pass",
+      "label": "没有增加",
+      "role": "branch"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "退出码就是接口",
+      "items": [
+        "0 = 门禁通过；1 = 门禁失败（告警、契约或往返差异）",
+        "基线自动持久化，所以一个 PR 不需要人工传参"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "为什么还要快照，而不只是 SARIF",
+      "items": [
+        "--json 写全量模型；--sarif 是 GitHub 代码扫描视图",
+        "--reproducible 让指纹跨运行保持稳定"
+      ]
+    }
+  ]
+}

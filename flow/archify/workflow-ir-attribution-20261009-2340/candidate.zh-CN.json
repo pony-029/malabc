@@ -1,0 +1,148 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "一个判定点、六条变异、六条判据",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "archify/workflow-ir-attribution-20261009-2340/f11-ir-attribution.zh-CN.html"
+  },
+  "lanes": [
+    {
+      "id": "point",
+      "label": "唯一判定调用之处"
+    },
+    {
+      "id": "flow",
+      "label": "前端及其产物"
+    },
+    {
+      "id": "view",
+      "label": "下游视图"
+    }
+  ],
+  "mainPath": [
+    "rc",
+    "u",
+    "rp"
+  ],
+  "nodes": [
+    {
+      "id": "rc",
+      "lane": "point",
+      "col": 0,
+      "type": "security",
+      "label": "resolve_calls()",
+      "sublabel": "frontends/ir.py · 唯一判定点",
+      "width": 250
+    },
+    {
+      "id": "m",
+      "lane": "flow",
+      "col": 0,
+      "type": "backend",
+      "label": "frontends/matlab.py",
+      "sublabel": "unresolved_tuples()",
+      "width": 220
+    },
+    {
+      "id": "e",
+      "lane": "flow",
+      "col": 1,
+      "type": "backend",
+      "label": "进调用图的边",
+      "sublabel": "已解析的调用",
+      "width": 200
+    },
+    {
+      "id": "u",
+      "lane": "flow",
+      "col": 2,
+      "type": "security",
+      "label": "未解析",
+      "sublabel": "build_ir 写它，且只写一次",
+      "width": 200
+    },
+    {
+      "id": "rp",
+      "lane": "view",
+      "col": 2,
+      "type": "frontend",
+      "label": "可能漏掉页",
+      "sublabel": "呈现给用户",
+      "width": 210
+    },
+    {
+      "id": "at",
+      "lane": "view",
+      "col": 3,
+      "type": "cloud",
+      "label": "--binary-attach",
+      "sublabel": "library: / gpu_kernel: / missing",
+      "width": 240
+    }
+  ],
+  "edges": [
+    {
+      "id": "rc-e",
+      "from": "rc",
+      "to": "e",
+      "variant": "emphasis"
+    },
+    {
+      "id": "rc-u",
+      "from": "rc",
+      "to": "u",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m-u",
+      "from": "m",
+      "to": "u",
+      "label": "独立模块",
+      "variant": "dashed"
+    },
+    {
+      "id": "u-rp",
+      "from": "u",
+      "to": "rp"
+    },
+    {
+      "id": "u-at",
+      "from": "u",
+      "to": "at"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "六条变异，各自必须命中一条具名判据",
+      "items": [
+        "新增一个自带 build_edges 的前端 → I1（写点集合）",
+        "保留接线但内联查表 → I5（小写查表指纹）",
+        "在归因代码里现算名字 → I4（归因来源必须结构化，来自 AST）",
+        "保留接线、内联且不带查表 → I1b（写点形状）",
+        "多登记一种语言 → I6 前向（已注册前端必须调共享 token）",
+        "把登记指向拼错的函数 → I6 反向（登记项必须解析到真可调用）"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "为什么需要 I1b",
+      "items": [
+        "只看 I1，它只盯写点集合",
+        "「保留共享调用、又顺手内联 append」这种改法对 I1 隐形",
+        "首次红路探针证实了这点：该变异被 I5 抓住，于是 I1b 当时没有独立证人 —— 直到补上第四条变异"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "在这之前：行为保持证明",
+      "items": [
+        "用 git archive HEAD 导出旧树，同一批命令跑两侧",
+        "10 个产物（5 组命令的 JSON + stdout）逐字节比对",
+        "探针自身引入的变量遮蔽并计数；本轮声明的差异打印其值；其余一律归红"
+      ]
+    }
+  ]
+}

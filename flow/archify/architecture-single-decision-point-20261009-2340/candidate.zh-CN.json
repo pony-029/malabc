@@ -1,0 +1,226 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "唯一判定点：frontends/ir.py",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "subtitle": "每个语言前端都把调用点交给同一个解析器；MATLAB 保留自己的模块",
+    "output": "archify/architecture-single-decision-point-20261009-2340/f05-decision-point.zh-CN.html"
+  },
+  "components": [
+    {
+      "id": "cf",
+      "type": "frontend",
+      "label": "C 前端",
+      "sublabel": "行锚定",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        210,
+        56
+      ]
+    },
+    {
+      "id": "pf",
+      "type": "frontend",
+      "label": "Py 前端",
+      "sublabel": "行锚定",
+      "pos": [
+        40,
+        140
+      ],
+      "size": [
+        210,
+        56
+      ]
+    },
+    {
+      "id": "jf",
+      "type": "frontend",
+      "label": "JS 前端",
+      "sublabel": "行锚定",
+      "pos": [
+        40,
+        240
+      ],
+      "size": [
+        210,
+        56
+      ]
+    },
+    {
+      "id": "mf",
+      "type": "frontend",
+      "label": "MATLAB 前端",
+      "sublabel": "调用形状不同",
+      "pos": [
+        40,
+        340
+      ],
+      "size": [
+        210,
+        56
+      ]
+    },
+    {
+      "id": "rc",
+      "type": "security",
+      "label": "唯一判定点",
+      "sublabel": "frontends/ir.py · resolve_calls()",
+      "pos": [
+        320,
+        120
+      ],
+      "size": [
+        300,
+        80
+      ]
+    },
+    {
+      "id": "e",
+      "type": "backend",
+      "label": "进调用图的边",
+      "sublabel": "已解析的调用",
+      "pos": [
+        700,
+        40
+      ],
+      "size": [
+        250,
+        56
+      ]
+    },
+    {
+      "id": "u",
+      "type": "security",
+      "label": "未解析",
+      "sublabel": "找不到定义",
+      "pos": [
+        700,
+        300
+      ],
+      "size": [
+        250,
+        56
+      ]
+    },
+    {
+      "id": "rp",
+      "type": "frontend",
+      "label": "可能漏掉页",
+      "sublabel": "呈现给用户",
+      "pos": [
+        1000,
+        300
+      ],
+      "size": [
+        250,
+        56
+      ]
+    },
+    {
+      "id": "at",
+      "type": "cloud",
+      "label": "--binary-attach",
+      "sublabel": "library: / gpu_kernel: / missing",
+      "pos": [
+        1000,
+        400
+      ],
+      "size": [
+        250,
+        56
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "cf-rc",
+      "from": "cf",
+      "to": "rc",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "pf-rc",
+      "from": "pf",
+      "to": "rc",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "jf-rc",
+      "from": "jf",
+      "to": "rc",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "mf-u",
+      "from": "mf",
+      "to": "u",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "rc-e",
+      "from": "rc",
+      "to": "e",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "rc-u",
+      "from": "rc",
+      "to": "u",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "u-rp",
+      "from": "u",
+      "to": "rp",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "u-at",
+      "from": "u",
+      "to": "at",
+      "fromSide": "bottom",
+      "toSide": "left"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "为什么收成唯一判定点",
+      "items": [
+        "收拢前：同一条规则被抄了五遍（两处内联构建 + 四个前端 build_edges）",
+        "现在：frontends/ir.py 的 resolve_calls(func_index, call_sites) 是唯一判定处",
+        "build_ir 是 unresolved 列表的唯一写入点"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "MATLAB 保留自己的模块",
+      "items": [
+        "MATLAB 按名聚合 external_calls，与 C / Py / JS 的调用点形状不同",
+        "frontends/matlab.py · unresolved_tuples() 必须保持旧的插入顺序",
+        "改了这个顺序，会静默打乱 Counter.most_common() 的并列次序"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "未解析的名字用来做什么",
+      "items": [
+        "它供给「可能漏掉」页，绝不静默丢弃",
+        "--binary-attach 再把每个名字变成 library: / gpu_kernel: / missing",
+        "假阳性比不归因更糟，所以 missing 是一个真答案"
+      ]
+    }
+  ]
+}

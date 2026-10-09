@@ -1,0 +1,152 @@
+{
+  "schema_version": 2,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "superpower 探针闭环：六顶帽、真代码、隔离探针、护栏",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "archify/lifecycle-superpower-loop-20261009-2340/f09-superpower-loop.zh-CN.html"
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "闭环的一轮"
+    },
+    {
+      "id": "rework",
+      "label": "返回通道：探针不同意"
+    }
+  ],
+  "states": [
+    {
+      "id": "a",
+      "type": "start",
+      "label": "六顶思考帽",
+      "sublabel": "白→红→黑→黄→绿→蓝",
+      "lane": "main",
+      "col": 0,
+      "step": "01",
+      "tag": "分析",
+      "width": 180
+    },
+    {
+      "id": "b",
+      "type": "active",
+      "label": "C1–C10 → 真代码",
+      "sublabel": "不接受占位符",
+      "lane": "main",
+      "col": 1,
+      "step": "02",
+      "tag": "落地"
+    },
+    {
+      "id": "c",
+      "type": "decision",
+      "label": "隔离探针",
+      "sublabel": "对真文件跑真 API",
+      "lane": "main",
+      "col": 2,
+      "step": "03",
+      "tag": "测量"
+    },
+    {
+      "id": "d",
+      "type": "active",
+      "label": "登记制护栏",
+      "sublabel": "tools/check_*.py + check_all.py",
+      "lane": "main",
+      "col": 3,
+      "step": "04",
+      "tag": "锁死"
+    },
+    {
+      "id": "e",
+      "type": "success",
+      "label": "全量回归 + 基线",
+      "sublabel": "然后下一轮 C'1–C'10",
+      "lane": "main",
+      "col": 4,
+      "step": "05",
+      "tag": "验证"
+    },
+    {
+      "id": "rw",
+      "type": "active",
+      "label": "重做断言或探针",
+      "sublabel": "探针反驳了断言",
+      "lane": "rework",
+      "col": 2,
+      "tag": "返工",
+      "width": 190
+    }
+  ],
+  "transitions": [
+    {
+      "from": "a",
+      "to": "b"
+    },
+    {
+      "from": "b",
+      "to": "c"
+    },
+    {
+      "from": "c",
+      "to": "d",
+      "label": "两向都过",
+      "variant": "emphasis"
+    },
+    {
+      "from": "c",
+      "to": "rw",
+      "label": "一向失败",
+      "variant": "security"
+    },
+    {
+      "from": "rw",
+      "to": "b",
+      "label": "返工",
+      "variant": "dashed"
+    },
+    {
+      "from": "d",
+      "to": "e"
+    },
+    {
+      "from": "e",
+      "to": "a",
+      "label": "下一轮",
+      "variant": "emphasis",
+      "route": "top-channel"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "四步都不能跳",
+      "items": [
+        "先戴帽：动任何文件之前，先从六个角度分析本轮",
+        "再把 C1–C10 真落地 —— 占位符不算完成",
+        "然后隔离探针在仓库外，用真文件跑真 API",
+        "最后才把发现锁进登记制护栏"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "为什么探针在护栏之前",
+      "items": [
+        "凭猜测写出来的护栏，只会把猜测冻住",
+        "探针自己的自证必须先过，它的数字才可信",
+        "测量工具自身的 bug 会伪造出被测对象的 bug"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "每一轮在哪里结束",
+      "items": [
+        "对基线跑一次全量回归，全绿本轮才算结束",
+        "本轮收尾是下一轮候选 C'1–C'10，而不是一份总结",
+        "「通过一次」不算「可重复」—— 探针要再跑一遍"
+      ]
+    }
+  ]
+}

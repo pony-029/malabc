@@ -12,7 +12,8 @@
 | 导出 | 逐字节导出（**含 CRLF 行尾也一致**，21/21 已断言通过） | 21 个 `source/*.mmd` + `source/INDEX.md` |
 | 去重 | 8 对是 EN/CN 镜像（同构、标签语言不同） | **13** 张不同的图 |
 | 重绘 | 每张图选一个 archify 图型，写 `candidate.json` | 13 个 candidate |
-| 渲染 | `archify render <type> … --quality showcase` | 13 个 HTML，rc=0，合计 **9,854,186** 字节（F12 修正数字后重渲染的最终值） |
+| 渲染 | `archify render <type> … --quality showcase` | 13 张图 × 中英两版 = **26** 个 HTML，rc 全 0；英文合计 **9,854,186** 字节、中文合计 **9,845,424** 字节（F12 修正数字后重渲染的最终值） |
+| 中文版 | 复制英文候选、只换字符串，再断言「清空所有字符串后结构逐键逐序相同」 | 13 个 `candidate.zh-CN.json`，**450** 条译文 |
 | 映射 | 源图 ↔ archify 图，双向往返都要能对上 | `FLOW_INDEX.json` / `INDEX.md`（由脚本断言生成） |
 
 **13 张图的分工**
@@ -294,12 +295,18 @@ kernel」）。校验器立刻报 `composition/container-border-run`：`in_src �
 
 | 审计文档（2026-10-08） | 今天实测（2026-10-09） | 结论 |
 | --- | --- | --- |
-| `matlabc.py` 29,637 行 | **30,876** 行 | 已增长 |
+| `matlabc.py` 29,637 行 | **30,875** 行 | 已增长 |
 | `main()` 906 语句 / 518 函数 | **923** 语句 / 文件内 **635** 函数 | 已增长 |
-| `gui.py` 1,090 行 | **1,201** 行 | 已增长 |
-| `renderers/` 26 文件 7,510 行 | **11** 个 `.py` / **5,929** 行 | **口径不同且已变化** |
-| `agent_loop.py` 620 行 | **672** 行 | 已增长 |
-| `renderers/assets.py` 3,826 行 | **3,826** 行 | ✅ 未变 |
+| `gui.py` 1,090 行 | **1,200** 行 | 已增长 |
+| `renderers/` 26 文件 7,510 行 | **11** 个 `.py` / **5,918** 行 | **口径不同且已变化** |
+| `agent_loop.py` 620 行 | **671** 行 | 已增长 |
+| `renderers/assets.py` 3,826 行 | **3,825** 行 | ≈ 未变（差 1 是口径差） |
+
+> **计数口径必须先定，再比数**：本节一律用**换行符个数**（等价于 `wc -l`）。
+> 本轮初版在这里犯过一次**系统性 +1** 的错：当时用 `text.split("\n")` 计数，末尾换行被当成额外一行，
+> 于是 `matlabc.py`/`gui.py`/`agent_loop.py`/`renderers/` 全都被多算。复测时两种口径
+> （数 `\n` / `readlines()`）对四个文件**完全一致**，且四个文件都以换行结尾 ——
+> 所以那个 +1 只可能是口径错，不可能是内容差。**数字错一次不要紧；口径不说清才致命。**
 
 **处理方式**：把 F12 的 candidate 里三处陈旧数字改成实测值并**重渲染**，
 审计文档本身**不动**（它是历史快照），但在本文里留下对照表。
@@ -366,6 +373,33 @@ host-compat 补丁——把发布步骤从「硬链接」换成**同卷 `renameS
 **逐节比对表行数 / 代码块数 / mermaid 数**，所以任何一侧的增删都必须成对发生。
 本文新增的小节因此在两侧**同位置、同结构**插入。
 
+### 14.4 中文版：同一份骨架，两套文字
+
+archify 的 `SUPPORTED_LOCALES` 是 **`['en', 'zh-CN']`**，所以中文版的 locale 标签是 **`zh-CN`**。
+写 `zh` **不会报错**，但会被**静默回退**成英文外壳 —— 这正是 `i18n/locale-fallback` 那条警告在提醒的事，
+所以「标签写对」本身就是一个必须实测的点。
+
+`meta.locale` 只管**查看器外壳**（`<html lang>`、图例默认词、工具栏、底部说明）；**作者侧的文字必须自己译**。
+于是 13 张图各有两份候选：
+
+| | 文件 | locale | 产物 |
+| --- | --- | --- | --- |
+| 英文 | `candidate.json` | `en` | `f*.html` |
+| 中文 | `candidate.zh-CN.json` | `zh-CN` | `f*.zh-CN.html` |
+
+中文候选**不是手写的**：`_r45/make_zh_candidates.py` 复制英文候选、只替换字符串，然后断言
+**「把两份文件里所有字符串都清空后，剩下的结构必须逐键逐序完全相同」**（`skeleton(en) == skeleton(zh)`）。
+这一条同时锁住了：节点 id 与顺序、坐标与尺寸、`variant` / `role` / `fromSide`、说明卡数量与条目数。
+机器换不出来的只有译文本身（450 条），其余一律不许动 —— **译文可以错，结构不许漂**。
+
+中文标签更短（`结构映射` 对 `Structure Mapping`），而 archify 的测宽把 CJK 按 **2 倍进宽**计
+（`utils.mjs` 的 `FULLWIDTH_RE`），所以不存在「中文塞不下」的问题：实测 13 张图 `render` 全 rc=0，
+**没有一张需要调列号或改宽度**。
+
+**行尾的另一半**：中文候选是手写物 → CRLF；中文 HTML 是生成物 → 保留渲染器原始字节（LF）。
+`_r45/render_zh.py` 对每张中文图**连渲两次并逐字节比对**（13/13 相同），并断言产物里有
+`<html lang="zh-CN"`、有汉字、且**不含 CRLF**。
+
 ---
 
 ## 15. 怎么重新生成
@@ -384,6 +418,10 @@ node E:/matlabc/_r45/archify-probe/bin/archify.mjs render architecture \
   archify/architecture-malabc-capabilities-20261009-2215/candidate.json \
   archify/architecture-malabc-capabilities-20261009-2215/f01-capabilities.html \
   --quality showcase
+
+# 4) 中文版：先由英文候选生成中文候选，再渲染
+python E:/matlabc/_r45/make_zh_candidates.py    # 结构不变式在这里断言
+python E:/matlabc/_r45/render_zh.py             # 26 张图一起跑，含逐字节可重复性断言
 ```
 
 **纪律一**：改图只能改 `candidate.json` 再重渲染，**不要手改 HTML**；
@@ -414,5 +452,10 @@ node E:/matlabc/_r45/archify-probe/bin/archify.mjs render architecture \
    `check_doc_flags` 之类的一致性门在数字被引用时提示「对不上当前值」。
 4. **`renderers/` 的循环依赖**（`matlabc.py ↔ renderers/`，靠模块尾部 import 规避）是 F12
    上唯一标红的结构性债务，也是「已达不可维护线」的那一处。打断它应该是下一轮的主攻方向。
-5. **13 张 HTML 合计 9.85 MB**，其中约 750 KB × 13 是**同一份 viewer 运行时**的重复。
-   若这个目录要长期增长，应该抽出共享运行时或改为按需生成，而不是让仓库无限变胖。
+5. **26 张 HTML 合计 19.70 MB**（英文 13 张 9,854,186 字节 + 中文 13 张 9,845,424 字节），
+   其中约 **750 KB × 26** 是**同一份 viewer 运行时**的重复。若这个目录要长期增长，
+   应该抽出共享运行时或改为按需生成，而不是让仓库无限变胖。
+6. **给「图里的数字」也上一道门**：§12.1 那次系统性 +1 说明，**图里的数字和文档里的数字一样会腐坏**。
+   建议把 `FLOW_REPORT.md` / `INDEX.md` / 两张 README 里出现的**文件行数**统一到一个由脚本测量的来源
+   （例如 `flow/FLOW_METRICS.json`，且必须带**计数口径**字段），再在 `tools/check_*.py` 里比对。
+   判据要两向：**数字不符 → 红；声明了却不存在的指标 → 也红**。

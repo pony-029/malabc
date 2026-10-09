@@ -1,7 +1,7 @@
 # flow/ —— 全部流程图的普查、重绘与详解
 
 这个目录是 **malabc 全部流程图的第二次生命**：把散落在 README 与 docs 里的 mermaid 块，
-一只不少地找出来，逐字节导出，再用 **archify** 重绘成可交互的独立 HTML，
+一只不少地找出来，逐字节导出，再用 **archify** 重绘成可交互的独立 HTML（**中英双语各一套**），
 并给每一张图写一份**能落地核对**的详解。
 
 ## 目录导航
@@ -13,7 +13,7 @@
 | [`FLOW_INDEX.json`](FLOW_INDEX.json) | 上表的机器可读版本 | 同上 |
 | [`FLOW_CENSUS.json`](FLOW_CENSUS.json) | 普查结果：每个块的文件、行号、所在小节、图型、原始正文 | `_r45/census_flow.py` |
 | [`source/`](source/) | 21 个 mermaid 块**逐字节导出**（含 CRLF 行尾，与源文档一致）+ `INDEX.md` | `_r45/scaffold_flow.py` + `_r45/normalize_flow_eol.py` |
-| [`archify/`](archify/) | 13 套 `candidate.json`（可编辑源）+ 13 个渲染产物 `.html` | `archify render` |
+| [`archify/`](archify/) | 13 套 `candidate.json`（英文可编辑源）+ 13 套 `candidate.zh-CN.json`（中文可编辑源）+ **26** 个渲染产物 `.html`（13 英文 + 13 中文） | `archify render` |
 
 ## 一眼看懂：13 张图分别回答什么
 
@@ -49,9 +49,13 @@ node E:/matlabc/_r45/archify-probe/bin/archify.mjs render architecture \
   archify/architecture-malabc-capabilities-20261009-2215/candidate.json \
   archify/architecture-malabc-capabilities-20261009-2215/f01-capabilities.html \
   --quality showcase
+
+# 中文版：先生成中文候选（结构不变式在这里断言），再渲染 26 张图（含逐字节复验）
+python E:/matlabc/_r45/make_zh_candidates.py
+python E:/matlabc/_r45/render_zh.py
 ```
 
-## 四条使用纪律
+## 五条使用纪律
 
 1. **改图只能改 `candidate.json`，不要手改 `.html`** —— HTML 是渲染产物。
 2. **改了源文档的 mermaid，必须重新导出 `source/*.mmd`**，否则两边静默分叉。
@@ -62,6 +66,11 @@ node E:/matlabc/_r45/archify-probe/bin/archify.mjs render architecture \
 4. **行尾分两类**：`.html` 是生成物，按渲染器原始字节（LF）入库 ——
    这样「重跑 `render` == 仓库里的文件」是可验证的等式；`.md` / `.json` / `.mmd`
    是手写物，按仓库约定归一 CRLF。`_r45/normalize_flow_eol.py` 同时对两类做断言。
+5. **中英两版必须同骨架**：中文候选由 `make_zh_candidates.py` **从英文候选复制、只换字符串**得到，
+   并断言「清空所有字符串后两份文件结构逐键逐序完全相同」。所以改了英文的几何或节点后，
+   中文侧的 `candidate.zh-CN.json` 必须**重新生成**，不要手改 —— 否则骨架会静默分叉。
+   locale 必须写 **`zh-CN`**：archify 的内置目录只有 `en` 与 `zh-CN`，写成 `zh` 会被
+   **静默回退**成英文查看器外壳（`i18n/locale-fallback`）。
 
 ## 与 `D:\project\archify` 的关系
 

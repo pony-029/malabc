@@ -1,0 +1,240 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "matlabc 分层架构：一个文件，五层内核",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "subtitle": "顶部是入口与输入，中间是单文件内核，下方是输出与 CI 门禁",
+    "output": "archify/architecture-malabc-layers-20261009-2340/f04-layers.zh-CN.html"
+  },
+  "components": [
+    {
+      "id": "entry",
+      "type": "frontend",
+      "label": "入口层",
+      "sublabel": "matlabc_boot.py 路由 CLI / ask / flow / GUI",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        440,
+        64
+      ]
+    },
+    {
+      "id": "in_src",
+      "type": "database",
+      "label": "输入：工程目录",
+      "sublabel": ".m / .c / .py / .js",
+      "pos": [
+        520,
+        40
+      ],
+      "size": [
+        360,
+        64
+      ]
+    },
+    {
+      "id": "in_cfg",
+      "type": "database",
+      "label": "输入：配置 / 快照",
+      "sublabel": "analyzer_config.json / --from-json",
+      "pos": [
+        900,
+        40
+      ],
+      "size": [
+        350,
+        64
+      ]
+    },
+    {
+      "id": "b1",
+      "type": "backend",
+      "label": "词法",
+      "sublabel": "scrub_source / _logical_statements",
+      "pos": [
+        40,
+        220
+      ],
+      "size": [
+        220,
+        60
+      ]
+    },
+    {
+      "id": "b2",
+      "type": "backend",
+      "label": "解析",
+      "sublabel": "parse_file / analyze_calls",
+      "pos": [
+        290,
+        220
+      ],
+      "size": [
+        210,
+        60
+      ]
+    },
+    {
+      "id": "b3",
+      "type": "backend",
+      "label": "数据",
+      "sublabel": "MatlabFunction · MatlabClass",
+      "pos": [
+        530,
+        220
+      ],
+      "size": [
+        210,
+        60
+      ]
+    },
+    {
+      "id": "b4",
+      "type": "backend",
+      "label": "分析",
+      "sublabel": "影响 · 依赖 · 风险 · 污点",
+      "pos": [
+        770,
+        220
+      ],
+      "size": [
+        250,
+        60
+      ]
+    },
+    {
+      "id": "b5",
+      "type": "backend",
+      "label": "渲染",
+      "sublabel": "render_* (report / json)",
+      "pos": [
+        1060,
+        220
+      ],
+      "size": [
+        180,
+        60
+      ]
+    },
+    {
+      "id": "out",
+      "type": "cloud",
+      "label": "输出层",
+      "sublabel": "Markdown/HTML/Mermaid/DOT · --browse 站点 · JSON/XML/Doxygen · SARIF + 门禁快照 · patch / 测试桩 / PR 草稿",
+      "pos": [
+        40,
+        350
+      ],
+      "size": [
+        1200,
+        64
+      ]
+    },
+    {
+      "id": "ci",
+      "type": "security",
+      "label": "CI 门禁",
+      "sublabel": "退出码 0 / 1",
+      "pos": [
+        900,
+        460
+      ],
+      "size": [
+        340,
+        56
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "entry-b1",
+      "from": "entry",
+      "to": "b1"
+    },
+    {
+      "id": "src-b1",
+      "from": "in_src",
+      "to": "b1"
+    },
+    {
+      "id": "cfg-b4",
+      "from": "in_cfg",
+      "to": "b4"
+    },
+    {
+      "id": "b1-b2",
+      "from": "b1",
+      "to": "b2",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "b2-b3",
+      "from": "b2",
+      "to": "b3",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "b3-b4",
+      "from": "b3",
+      "to": "b4",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "b4-b5",
+      "from": "b4",
+      "to": "b5",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "b5-out",
+      "from": "b5",
+      "to": "out"
+    },
+    {
+      "id": "out-ci",
+      "from": "out",
+      "to": "ci"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "内核五层，按顺序",
+      "items": [
+        "词法 —— scrub_source / _logical_statements 去掉注释与字符串，保留行锚",
+        "解析 —— parse_file / analyze_calls / resolve_call 把文本变成调用点",
+        "数据 —— MatlabFunction / MatlabClass / MatlabFile 是内存模型",
+        "分析 —— 影响、依赖与风险度量、静态检查、污点、重复指纹",
+        "渲染 —— render_* 组装 report / browse / json / sarif 输出"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "为什么是单文件",
+      "items": [
+        "整个内核就是一个 matlabc.py：无第三方依赖、无需安装",
+        "只用 Python 3 标准库，3.6.5 解释器就够"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "五族产物",
+      "items": [
+        "文档：Markdown、HTML、Mermaid、DOT",
+        "可浏览站点：--browse（点击跳转、搜索、--watch）",
+        "机器数据：JSON、XML、Doxygen XML",
+        "CI：SARIF 2.1.0 加持久化的门禁快照",
+        "修复闭环：补丁、测试桩、PR 描述草稿"
+      ]
+    }
+  ]
+}

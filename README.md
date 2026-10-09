@@ -672,6 +672,15 @@ cd flow
 node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.html --quality showcase
 ```
 
+Every diagram ships in two editions: an **English** one (`candidate.json`, `locale: en`) and a
+**Chinese** one (`candidate.zh-CN.json`, `locale: zh-CN`, 450 translated strings). The Chinese
+candidate is not hand-written — it is produced from the English candidate by string substitution
+alone, and the generator asserts that blanking every string leaves the two files structurally
+identical, so node ids, order, geometry and card counts cannot drift. The locale tag matters here:
+archify's built-in catalogs are `en` and `zh-CN`, and a near-miss tag such as `zh` silently falls
+back to the English viewer chrome. The Chinese HTML is likewise rendered twice and compared
+byte-for-byte, so "re-running the renderer == the committed file" stays a checkable equation.
+
 The mapping, the measured numbers behind every drawing, and the recommended next
 steps are in [`flow/FLOW_REPORT.md`](flow/FLOW_REPORT.md) and [`flow/INDEX.md`](flow/INDEX.md).
 

@@ -1,0 +1,156 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "基线门禁：比 nodeid 集合，不比个数",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "archify/workflow-baseline-nodeids-20261009-2310/f08-baseline-nodeids.zh-CN.html"
+  },
+  "lanes": [
+    {
+      "id": "head",
+      "label": "HEAD 树（未改动）"
+    },
+    {
+      "id": "work",
+      "label": "工作区（+ 同一套测试）"
+    },
+    {
+      "id": "diff",
+      "label": "集合比对",
+      "variant": "exception"
+    }
+  ],
+  "mainPath": [
+    "h",
+    "r1",
+    "cmp",
+    "reg"
+  ],
+  "nodes": [
+    {
+      "id": "h",
+      "lane": "head",
+      "col": 0,
+      "type": "database",
+      "label": "HEAD 树",
+      "sublabel": "由 git archive 导出",
+      "width": 170
+    },
+    {
+      "id": "r1",
+      "lane": "head",
+      "col": 1,
+      "type": "backend",
+      "label": "pytest -q",
+      "sublabel": "收集 nodeid",
+      "width": 140
+    },
+    {
+      "id": "w",
+      "lane": "work",
+      "col": 0,
+      "type": "database",
+      "label": "工作区",
+      "sublabel": "同一套测试",
+      "width": 160
+    },
+    {
+      "id": "r2",
+      "lane": "work",
+      "col": 1,
+      "type": "backend",
+      "label": "pytest -q",
+      "sublabel": "收集 nodeid",
+      "width": 140
+    },
+    {
+      "id": "cmp",
+      "lane": "diff",
+      "col": 2,
+      "type": "backend",
+      "label": "nodeid 集合差",
+      "sublabel": "after - before / before - after",
+      "width": 200
+    },
+    {
+      "id": "reg",
+      "lane": "diff",
+      "col": 3,
+      "type": "security",
+      "label": "回归",
+      "sublabel": "-> 红",
+      "width": 150
+    },
+    {
+      "id": "fixed",
+      "lane": "diff",
+      "col": 4,
+      "type": "cloud",
+      "label": "修复 / 改名",
+      "sublabel": "-> 仅提示",
+      "width": 170
+    }
+  ],
+  "edges": [
+    {
+      "id": "head-run",
+      "from": "h",
+      "to": "r1",
+      "variant": "emphasis"
+    },
+    {
+      "id": "work-run",
+      "from": "w",
+      "to": "r2",
+      "variant": "emphasis"
+    },
+    {
+      "id": "r1-cmp",
+      "from": "r1",
+      "to": "cmp",
+      "variant": "emphasis"
+    },
+    {
+      "id": "r2-cmp",
+      "from": "r2",
+      "to": "cmp",
+      "variant": "emphasis"
+    },
+    {
+      "id": "cmp-reg",
+      "from": "cmp",
+      "to": "reg",
+      "label": "after - before",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "cmp-fixed",
+      "from": "cmp",
+      "to": "fixed",
+      "label": "before - after",
+      "variant": "dashed",
+      "role": "branch"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "为什么比集合不比个数",
+      "items": [
+        "比个数会藏住一次改名：走一个、来一个，总数不变",
+        "集合差能点名到底是哪个测试回归了"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "成本被刻意分离",
+      "items": [
+        "默认模式是秒级：前置条件 + 门自身的两向自证",
+        "--full 才真跑两棵树（约 11 分钟），绝不进默认路径"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,151 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "登记制护栏：所有检查由一条入口收拢",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "archify/workflow-guard-registry-20261009-2340/f10-guard-registry.zh-CN.html"
+  },
+  "lanes": [
+    {
+      "id": "runner",
+      "label": "tools/check_all.py —— 一条命令"
+    },
+    {
+      "id": "guards",
+      "label": "tools/check_*.py —— 登记制护栏"
+    },
+    {
+      "id": "collect",
+      "label": "测试套件"
+    },
+    {
+      "id": "ci",
+      "label": "CI"
+    }
+  ],
+  "mainPath": [
+    "g4",
+    "g1",
+    "g2",
+    "g3",
+    "t",
+    "ci"
+  ],
+  "nodes": [
+    {
+      "id": "g4",
+      "lane": "runner",
+      "col": 0,
+      "type": "security",
+      "label": "check_all.py",
+      "sublabel": "跑每道护栏 + 自证",
+      "width": 230
+    },
+    {
+      "id": "g1",
+      "lane": "guards",
+      "col": 1,
+      "type": "backend",
+      "label": "check_patch_ops.py",
+      "sublabel": "补丁算子，单一事实源",
+      "width": 215
+    },
+    {
+      "id": "g2",
+      "lane": "guards",
+      "col": 2,
+      "type": "backend",
+      "label": "check_doc_flags.py",
+      "sublabel": "文档开关 vs --help",
+      "width": 215
+    },
+    {
+      "id": "g3",
+      "lane": "guards",
+      "col": 3,
+      "type": "backend",
+      "label": "check_operator_impl.py",
+      "sublabel": "元表里没有幽灵项",
+      "width": 225
+    },
+    {
+      "id": "t",
+      "lane": "collect",
+      "col": 3,
+      "type": "database",
+      "label": "test_matlabc.py",
+      "sublabel": "新护栏自动被收集",
+      "width": 235
+    },
+    {
+      "id": "ci",
+      "lane": "ci",
+      "col": 3,
+      "type": "cloud",
+      "label": "CI 构建",
+      "sublabel": "一道护栏红就中断构建",
+      "width": 220
+    }
+  ],
+  "edges": [
+    {
+      "id": "all-ops",
+      "from": "g4",
+      "to": "g1",
+      "label": "按序执行每条护栏",
+      "variant": "emphasis"
+    },
+    {
+      "id": "ops-doc",
+      "from": "g1",
+      "to": "g2"
+    },
+    {
+      "id": "doc-opimpl",
+      "from": "g2",
+      "to": "g3"
+    },
+    {
+      "id": "opimpl-test",
+      "from": "g3",
+      "to": "t"
+    },
+    {
+      "id": "test-ci",
+      "from": "t",
+      "to": "ci",
+      "label": "任一护栏红",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "为什么叫登记制",
+      "items": [
+        "每道护栏在自己的文件顶部声明登记表",
+        "测试断言护栏道数，所以光加文件不够 —— 必须登记",
+        "陈旧登记（登记了却不存在）同样报红，不只是漏登记"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "每道护栏都要两向自证",
+      "items": [
+        "每道护栏都有 --selftest，打印 SELFTEST COUNTS {\"bad\": N, \"good\": M}",
+        "测试只解析这一行并用下界断言：加用例不红、删用例必红",
+        "N/M 由实际执行统计，绝不手写"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "护栏与契约",
+      "items": [
+        "MIN_GUARDS 数的是 tools/ 下的护栏文件；check_all.py 自己不算",
+        "GUARD_CONTRACT 管的是包装器，所以两个数正好差一"
+      ]
+    }
+  ]
+}

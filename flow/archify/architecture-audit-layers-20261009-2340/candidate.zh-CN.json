@@ -1,0 +1,385 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "从源码重建的仓库分层（不是抄文档）",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "subtitle": "入口层、单文件内核、渲染层，以及 AI / Agent 层",
+    "output": "archify/architecture-audit-layers-20261009-2340/f12-audit-layers.zh-CN.html"
+  },
+  "components": [
+    {
+      "id": "d5",
+      "type": "frontend",
+      "label": "matlabc_boot.py",
+      "sublabel": "GUI / ask / flow / analyzer",
+      "pos": [
+        300,
+        40
+      ],
+      "size": [
+        220,
+        56
+      ]
+    },
+    {
+      "id": "d6",
+      "type": "external",
+      "label": "matlabc_mcp.py",
+      "sublabel": "基于 stdio 的 MCP",
+      "pos": [
+        580,
+        40
+      ],
+      "size": [
+        300,
+        56
+      ]
+    },
+    {
+      "id": "d1",
+      "type": "backend",
+      "label": "matlabc.py · CLI",
+      "sublabel": "main() 923 语句 · 635 函数",
+      "pos": [
+        40,
+        140
+      ],
+      "size": [
+        250,
+        60
+      ]
+    },
+    {
+      "id": "d2",
+      "type": "frontend",
+      "label": "matlabc_ask.py",
+      "sublabel": "BM25 + 意图路由",
+      "pos": [
+        320,
+        140
+      ],
+      "size": [
+        210,
+        56
+      ]
+    },
+    {
+      "id": "d3",
+      "type": "backend",
+      "label": "matlabc_flow.py",
+      "sublabel": "5 步线性 + 闭环",
+      "pos": [
+        560,
+        140
+      ],
+      "size": [
+        220,
+        56
+      ]
+    },
+    {
+      "id": "d4",
+      "type": "frontend",
+      "label": "gui.py · tkinter",
+      "sublabel": "1200 行",
+      "pos": [
+        810,
+        140
+      ],
+      "size": [
+        230,
+        56
+      ]
+    },
+    {
+      "id": "a_ai",
+      "type": "external",
+      "label": "AI / Agent 层",
+      "sublabel": "ai_cli.py · agent_loop.py · analyzer_memory.py",
+      "pos": [
+        560,
+        240
+      ],
+      "size": [
+        330,
+        64
+      ]
+    },
+    {
+      "id": "fs",
+      "type": "database",
+      "label": "工作副本",
+      "sublabel": "git apply / -R",
+      "pos": [
+        920,
+        240
+      ],
+      "size": [
+        230,
+        56
+      ]
+    },
+    {
+      "id": "b1",
+      "type": "backend",
+      "label": "词法",
+      "sublabel": "scrub_source / _logical_statements",
+      "pos": [
+        40,
+        350
+      ],
+      "size": [
+        220,
+        60
+      ]
+    },
+    {
+      "id": "b2",
+      "type": "backend",
+      "label": "解析",
+      "sublabel": "parse_file / analyze_calls",
+      "pos": [
+        290,
+        350
+      ],
+      "size": [
+        220,
+        60
+      ]
+    },
+    {
+      "id": "b3",
+      "type": "backend",
+      "label": "数据",
+      "sublabel": "MatlabFunction · MatlabClass",
+      "pos": [
+        540,
+        350
+      ],
+      "size": [
+        210,
+        60
+      ]
+    },
+    {
+      "id": "b4",
+      "type": "backend",
+      "label": "分析",
+      "sublabel": "影响 · 依赖 · 风险 · 污点",
+      "pos": [
+        780,
+        350
+      ],
+      "size": [
+        250,
+        60
+      ]
+    },
+    {
+      "id": "b5",
+      "type": "backend",
+      "label": "渲染",
+      "sublabel": "render_*",
+      "pos": [
+        1060,
+        350
+      ],
+      "size": [
+        180,
+        60
+      ]
+    },
+    {
+      "id": "r1",
+      "type": "database",
+      "label": "assets.py",
+      "sublabel": "3825 行 · CSS / JS 常量",
+      "pos": [
+        40,
+        470
+      ],
+      "size": [
+        250,
+        60
+      ]
+    },
+    {
+      "id": "r2",
+      "type": "database",
+      "label": "snapshot / report",
+      "sublabel": "调用图 · 热点",
+      "pos": [
+        320,
+        470
+      ],
+      "size": [
+        300,
+        60
+      ]
+    },
+    {
+      "id": "r3",
+      "type": "database",
+      "label": "sarif / metrics",
+      "sublabel": "creport · unresolved · _shared",
+      "pos": [
+        650,
+        470
+      ],
+      "size": [
+        370,
+        60
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "boot-cli",
+      "from": "d5",
+      "to": "d1"
+    },
+    {
+      "id": "boot-ask",
+      "from": "d5",
+      "to": "d2"
+    },
+    {
+      "id": "boot-flow",
+      "from": "d5",
+      "to": "d3"
+    },
+    {
+      "id": "boot-gui",
+      "from": "d5",
+      "to": "d4"
+    },
+    {
+      "id": "mcp-cli",
+      "from": "d6",
+      "to": "d1",
+      "variant": "dashed"
+    },
+    {
+      "id": "mcp-ask",
+      "from": "d6",
+      "to": "d2",
+      "variant": "dashed"
+    },
+    {
+      "id": "mcp-flow",
+      "from": "d6",
+      "to": "d3",
+      "variant": "dashed"
+    },
+    {
+      "id": "cli-b1",
+      "from": "d1",
+      "to": "b1"
+    },
+    {
+      "id": "ask-b1",
+      "from": "d2",
+      "to": "b1"
+    },
+    {
+      "id": "flow-b1",
+      "from": "d3",
+      "to": "b1"
+    },
+    {
+      "id": "gui-b1",
+      "from": "d4",
+      "to": "b1"
+    },
+    {
+      "id": "b1-b2",
+      "from": "b1",
+      "to": "b2",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "b2-b3",
+      "from": "b2",
+      "to": "b3",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "b3-b4",
+      "from": "b3",
+      "to": "b4",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "b4-b5",
+      "from": "b4",
+      "to": "b5",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "b5-r1",
+      "from": "b5",
+      "to": "r1",
+      "variant": "dashed"
+    },
+    {
+      "id": "b5-r2",
+      "from": "b5",
+      "to": "r2",
+      "variant": "dashed"
+    },
+    {
+      "id": "b5-r3",
+      "from": "b5",
+      "to": "r3",
+      "variant": "dashed"
+    },
+    {
+      "id": "flow-ai",
+      "from": "d3",
+      "to": "a_ai",
+      "variant": "security"
+    },
+    {
+      "id": "ai-fs",
+      "from": "a_ai",
+      "to": "fs",
+      "fromSide": "right",
+      "toSide": "left"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "入口层 —— 四个入口加两个分发器",
+      "items": [
+        "matlabc_boot.py 分发：无参数打开 GUI，否则走 ask / flow / analyzer",
+        "matlabc_mcp.py 把 analyzer、ask、flow 作为 stdio 子进程拉起",
+        "仅 CLI 分析器就有 923 条语句在 main() 里；该文件定义了 635 个函数"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "内核与渲染层构成一个环",
+      "items": [
+        "matlabc.py 导入 renderers/，而 renderers/ 又反过来导入 matlabc.py",
+        "这个环藏在模块尾部的 import 后面，是目前已知最深的结构性债务",
+        "仅 renderers/assets.py 就有 3825 行 CSS 与 JS 字符串常量"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "AI / Agent 层",
+      "items": [
+        "ai_cli.py 对接九家厂商，都不可达时降级为离线提示词",
+        "agent_loop.py 是受控的自验证闭环（本仓最强的模块）",
+        "analyzer_memory.py 跨运行携带已学修复；补丁经 git apply / -R 落盘"
+      ]
+    }
+  ]
+}

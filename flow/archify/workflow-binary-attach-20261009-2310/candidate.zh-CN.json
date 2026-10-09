@@ -1,0 +1,111 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "一条命令代替两条：--binary-attach",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "archify/workflow-binary-attach-20261009-2310/f03-binary-attach.zh-CN.html"
+  },
+  "lanes": [
+    {
+      "id": "two",
+      "label": "--binary + --binary-symbols · 两步"
+    },
+    {
+      "id": "one",
+      "label": "--binary-attach · 一步"
+    }
+  ],
+  "mainPath": [
+    "t1",
+    "t2",
+    "t3"
+  ],
+  "nodes": [
+    {
+      "id": "t1",
+      "lane": "two",
+      "col": 0,
+      "type": "backend",
+      "label": "matlabc myproj",
+      "sublabel": "--json out.json",
+      "width": 150
+    },
+    {
+      "id": "t2",
+      "lane": "two",
+      "col": 1,
+      "type": "database",
+      "label": "out.json",
+      "sublabel": "未解析的调用点",
+      "width": 150
+    },
+    {
+      "id": "t3",
+      "lane": "two",
+      "col": 2,
+      "type": "backend",
+      "label": "matlabc --binary lib.so",
+      "sublabel": "--binary-symbols out.json",
+      "width": 170
+    },
+    {
+      "id": "o1",
+      "lane": "one",
+      "col": 0,
+      "type": "backend",
+      "label": "matlabc myproj",
+      "sublabel": "--binary-attach lib.so --json out.json",
+      "width": 190
+    },
+    {
+      "id": "o2",
+      "lane": "one",
+      "col": 1,
+      "type": "backend",
+      "label": "同一趟",
+      "sublabel": "分析 + 归因 + 写 JSON",
+      "width": 170
+    }
+  ],
+  "edges": [
+    {
+      "id": "step1-json",
+      "from": "t1",
+      "to": "t2",
+      "variant": "emphasis"
+    },
+    {
+      "id": "json-step2",
+      "from": "t2",
+      "to": "t3",
+      "variant": "emphasis"
+    },
+    {
+      "id": "one-pass",
+      "from": "o1",
+      "to": "o2",
+      "label": "没有中间交接",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "变的是什么",
+      "items": [
+        "两步法需要一份中间快照文件和第二条命令",
+        "--binary-attach 一趟完成源码分析与归因"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "不变的是什么",
+      "items": [
+        "两条路写同一个 JSON 键：unresolved_attribution",
+        "--binary（短路）与 --binary-attach（不短路）始终是两个开关"
+      ]
+    }
+  ]
+}

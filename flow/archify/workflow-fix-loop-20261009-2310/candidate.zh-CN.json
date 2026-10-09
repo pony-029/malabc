@@ -1,0 +1,135 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "ai-fix 闭环：review → fix → apply → verify → report",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "archify/workflow-fix-loop-20261009-2310/f06-fix-loop.zh-CN.html"
+  },
+  "lanes": [
+    {
+      "id": "loop",
+      "label": "matlabc_flow.py · 修复闭环"
+    },
+    {
+      "id": "back",
+      "label": "验证失败",
+      "variant": "exception"
+    }
+  ],
+  "mainPath": [
+    "review",
+    "fix",
+    "apply",
+    "verify",
+    "report"
+  ],
+  "nodes": [
+    {
+      "id": "review",
+      "lane": "loop",
+      "col": 0,
+      "type": "backend",
+      "label": "review",
+      "sublabel": "AI 审查 / 离线提示词",
+      "width": 150
+    },
+    {
+      "id": "fix",
+      "lane": "loop",
+      "col": 1,
+      "type": "backend",
+      "label": "fix",
+      "sublabel": "确定性补丁引擎",
+      "width": 160
+    },
+    {
+      "id": "apply",
+      "lane": "loop",
+      "col": 2,
+      "type": "backend",
+      "label": "apply",
+      "sublabel": "git apply 或严格进程内校验",
+      "width": 190
+    },
+    {
+      "id": "verify",
+      "lane": "loop",
+      "col": 3,
+      "type": "security",
+      "label": "verify",
+      "sublabel": "重扫：没有规则报得更多",
+      "width": 170
+    },
+    {
+      "id": "report",
+      "lane": "loop",
+      "col": 4,
+      "type": "backend",
+      "label": "report",
+      "sublabel": "汇总报告",
+      "width": 140
+    },
+    {
+      "id": "refix",
+      "lane": "back",
+      "col": 1,
+      "type": "security",
+      "label": "re-fix",
+      "sublabel": "验证失败",
+      "width": 150
+    }
+  ],
+  "edges": [
+    {
+      "id": "review-fix",
+      "from": "review",
+      "to": "fix",
+      "variant": "emphasis"
+    },
+    {
+      "id": "fix-apply",
+      "from": "fix",
+      "to": "apply"
+    },
+    {
+      "id": "apply-verify",
+      "from": "apply",
+      "to": "verify",
+      "label": "重扫"
+    },
+    {
+      "id": "verify-report",
+      "from": "verify",
+      "to": "report",
+      "label": "没有规则报得更多"
+    },
+    {
+      "id": "verify-refix",
+      "from": "verify",
+      "to": "refix",
+      "label": "失败",
+      "variant": "dashed",
+      "role": "error"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "构造上就是确定性的",
+      "items": [
+        "补丁引擎只产出 del 与 ins_before；遗留的 ins 算子被禁用",
+        "apply 走 git apply，或在落盘前于进程内校验补丁"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "验证才是出口条件",
+      "items": [
+        "verify 重扫，要求没有任何规则比之前报得更多",
+        "verify 失败就回到 fix，而不是上报成功"
+      ]
+    }
+  ]
+}
