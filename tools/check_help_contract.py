@@ -192,6 +192,51 @@ GUARD_CONTRACT = {
 
 GUARD_SCRIPTS = tuple(sorted(GUARD_CONTRACT))
 
+# ---------------------------------------------------------------------------
+# R39（C''9）：把退出码契约推广到 ci-examples/。
+#
+# 为什么需要单独一档：`ci-examples/` 里的东西会被用户**直接复制走**
+# （README 的原话就是「复制为 .github/workflows/…」）。模板一旦在退出码上说谎，
+# 用户的流水线会长期静默失效 —— 而且**没有任何现有门看得见它**：
+#   * check_doc_flags 只认 README / CONTRIBUTING / 6 个入口脚本的正文；
+#   * check_help_contract 的 CONTRACT 只管入口脚本，GUARD_CONTRACT 只管护栏。
+#
+# 与那两档的差别（**故意不同，不是漏做**）：
+#   * 判据仍是「登记有依据 + 反向 + 陈旧」，但对 shell 脚本用 `exit N` 而不是
+#     Python 的 `return N` —— 语言都不同，硬套同一套正则只会得到假绿。
+#   * 对「只断言非零、不点具体数字」的 YAML 模板，用**证伪式短语登记**：
+#     模板里必须真的出现那句断言，而 matlabc.py 的退出契约里必须真的存在非零码。
+#     两向成立才算过 —— 一旦 matlabc 改成永远 0，这条会红。
+# ---------------------------------------------------------------------------
+CI_PY_EXIT_CONTRACT = {
+    "ci-examples/merge_sarif.py": {
+        0: "合并成功且输出已落盘",
+        1: "输入里找不到任何 SARIF 文件",
+        2: "用法错误（参数不足 / --summary 缺路径）",
+    },
+}
+
+CI_SH_EXIT_CONTRACT = {
+    "ci-examples/pre-commit": {
+        0: "没有可跑的检查，放行提交",
+        1: "连仓库根目录都进不去",
+    },
+}
+
+# 只断言「失败时非零退出」、不点具体数字的模板：登记它**必须包含的那句话**。
+# 两向：改掉措辞 → 红（登记陈旧）；matlabc 不再有任何非零码 → 也红（前提失效）。
+CI_RELIES_ON_NONZERO = {
+    "ci-examples/github-actions-static-analysis.yml": "非零退出",
+    "ci-examples/gitlab-ci-static-analysis.yml": "非零退出",
+}
+
+SH_EXIT_RE = re.compile(r"\bexit\s+(\d+)\b")
+
+
+def _sh_exit_literals(src):
+    """shell 脚本里的字面量退出码（`exit N`）。"""
+    return set(int(x) for x in SH_EXIT_RE.findall(src or ""))
+
 # R4 的唯一事实源：每个被示例指向的脚本，登记一条**无副作用**命令。
 # 元组形态：(argv 列表, 是否按设计无输出)。
 #   * 只允许 --help / --version / --selftest 这类不改盘的开关；
@@ -650,6 +695,85 @@ def on_problem_collector(bucket):
     return _cb
 
 
+def audit_ci_examples(root, on_problem, matlabc_codes):
+    """R39（C''9）：ci-examples/ 的退出码契约。返回核对过的文件数。
+
+    matlabc_codes = matlabc.py 的登记退出码集合（用于校验「非零退出」这个前提）。
+    """
+    n = 0
+    for script, registered in sorted(CI_PY_EXIT_CONTRACT.items()):
+        registered = set(registered)
+        path = os.path.join(root, script)
+        if not os.path.exists(path):
+            on_problem("C0 %s 不存在（缺输入 → 红）" % script)
+            continue
+        src, doc = _docstring(path)
+        if doc is None:
+            on_problem("C0 %s 解析不到模块 docstring（缺输入 → 红）" % script)
+            continue
+        n += 1
+        for code in sorted(registered):
+            if not _code_has_evidence(src, code):
+                on_problem("C1 %s: 登记了退出码 %d，但源码里找不到依据"
+                           "（return %d / sys.exit(%d)）" % (script, code, code, code))
+        for code in sorted(_literal_sys_exits(src) - registered):
+            on_problem("C1 %s: 源码里有 sys.exit(%d)，但 CI_PY_EXIT_CONTRACT 没登记它"
+                       % (script, code))
+        declared = parse_exit_section(doc)
+        if declared is None:
+            on_problem("C2 %s: docstring 里解析不到非空的「退出码」段 —— "
+                       "被复制进用户 CI 的脚本必须写清退出码" % script)
+        elif declared != registered:
+            on_problem("C2 %s: 帮助与登记表不一致（少写 %s / 多写 %s）"
+                       % (script, sorted(registered - declared) or "无",
+                          sorted(declared - registered) or "无"))
+
+    for script, registered in sorted(CI_SH_EXIT_CONTRACT.items()):
+        registered = set(registered)
+        path = os.path.join(root, script)
+        if not os.path.exists(path):
+            on_problem("C0 %s 不存在（缺输入 → 红）" % script)
+            continue
+        try:
+            with io.open(path, "r", encoding="utf-8", errors="replace") as fh:
+                src = fh.read()
+        except OSError as e:
+            on_problem("C0 %s 读不到（%s）" % (script, e))
+            continue
+        n += 1
+        # shell 侧用 `exit N`，不是 Python 的 return —— 语言不同，判据必须不同
+        for code in sorted(registered):
+            if code not in _sh_exit_literals(src):
+                on_problem("C1 %s: 登记了退出码 %d，但文件里没有 `exit %d`"
+                           % (script, code, code))
+        for code in sorted(_sh_exit_literals(src) - registered):
+            on_problem("C1 %s: 文件里有 `exit %d`，但 CI_SH_EXIT_CONTRACT 没登记它"
+                       % (script, code))
+
+    for script, phrase in sorted(CI_RELIES_ON_NONZERO.items()):
+        path = os.path.join(root, script)
+        if not os.path.exists(path):
+            on_problem("C0 %s 不存在（缺输入 → 红）" % script)
+            continue
+        n += 1
+        try:
+            with io.open(path, "r", encoding="utf-8", errors="replace") as fh:
+                src = fh.read()
+        except OSError as e:
+            on_problem("C0 %s 读不到（%s）" % (script, e))
+            continue
+        # 两向之一：模板必须真的还写着那句断言（陈旧的登记也要抓）
+        if phrase not in src:
+            on_problem("C3 %s: 登记它断言「%s」，但文件里已经没有这句话 —— "
+                       "要么把话加回去，要么更新 CI_RELIES_ON_NONZERO"
+                       % (script, phrase))
+        # 两向之二：它的前提必须仍成立 —— matlabc.py 的退出契约里要有非零码
+        if not [c for c in matlabc_codes if c != 0]:
+            on_problem("C3 %s: 它断言「门禁 FAIL 会%s」，但 matlabc.py 的退出契约里"
+                       "**没有任何非零码** —— 模板在说谎" % (script, phrase))
+    return n
+
+
 def _selftest():
     """两向自证：R1/R2/R3 各配独立坏样本与好样本，并对真实仓库整体核对。
 
@@ -853,14 +977,87 @@ def _selftest():
             GUARD_CONTRACT.update(saved)
             globals()["GUARD_SCRIPTS"] = saved_scripts
 
+    # ---- R39（C''9）：ci-examples 退出码契约（纯函数 + 临时文件，不起进程） ----
+    with _tf.TemporaryDirectory() as ctd:
+        cdir = os.path.join(ctd, "ci-examples")
+        os.makedirs(cdir)
+        # 好样本：Python 侧有依据 + 帮助声明齐全；shell 侧 `exit N` 齐全
+        with io.open(os.path.join(cdir, "ok.py"), "w", encoding="utf-8") as fh:
+            fh.write('"""x\n\n退出码：0 = a；1 = b\n"""\n'
+                     "def main():\n    return 0\n"
+                     "def main2():\n    return 1\n")
+        with io.open(os.path.join(cdir, "ok.sh"), "w", encoding="utf-8") as fh:
+            fh.write("#!/bin/sh\ncd /x || exit 1\nexit 0\n")
+        # 坏样本：帮助声明 {0,1,2}，源码只 return 0（缺 1/2 依据）；
+        # 且 shell 里出现 `exit 7` 却没登记
+        with io.open(os.path.join(cdir, "bad.py"), "w", encoding="utf-8") as fh:
+            fh.write('"""x\n\n退出码：0 = a；1 = b；2 = c\n"""\n'
+                     "def main():\n    return 0\n")
+        with io.open(os.path.join(cdir, "bad.sh"), "w", encoding="utf-8") as fh:
+            fh.write("#!/bin/sh\nexit 0\nexit 7\n")
+
+        saved_py = dict(CI_PY_EXIT_CONTRACT)
+        saved_sh = dict(CI_SH_EXIT_CONTRACT)
+        saved_nz = dict(CI_RELIES_ON_NONZERO)
+        try:
+            CI_PY_EXIT_CONTRACT.clear()
+            CI_PY_EXIT_CONTRACT.update({
+                "ci-examples/ok.py": {0: "a", 1: "b"},
+                "ci-examples/bad.py": {0: "a", 1: "b", 2: "c"},
+            })
+            CI_SH_EXIT_CONTRACT.clear()
+            CI_SH_EXIT_CONTRACT.update({
+                "ci-examples/ok.sh": {0: "a", 1: "b"},
+                "ci-examples/bad.sh": {0: "a"},
+            })
+            CI_RELIES_ON_NONZERO.clear()
+            cb = []
+            audit_ci_examples(ctd, on_problem_collector(cb), {0, 1, 2})
+            expect("C''9 坏样本：Python 侧缺依据（抓到）",
+                   any("bad.py" in x and "找不到依据" in x for x in cb), True)
+            expect("C''9 坏样本：shell 侧未登记的 `exit 7`（抓到）",
+                   any("bad.sh" in x and "没登记" in x for x in cb), True)
+            expect("C''9 好样本：登记齐全不得误伤",
+                   any("ok.py" in x or "ok.sh" in x for x in cb), False)
+
+            # 前提失效：matlabc 退出契约里没有非零码 → 「非零退出」这句话就是谎言
+            CI_RELIES_ON_NONZERO.clear()
+            CI_RELIES_ON_NONZERO.update({"ci-examples/ok.py": "非零退出"})
+            with io.open(os.path.join(cdir, "ok.py"), "a", encoding="utf-8") as fh:
+                fh.write("# 门禁 FAIL 会非零退出\n")
+            cb2 = []
+            audit_ci_examples(ctd, on_problem_collector(cb2), {0})
+            expect("C''9 坏样本：模板断言非零退出但 matlabc 只有 0（抓到）",
+                   any("没有任何非零码" in x for x in cb2), True)
+            cb3 = []
+            audit_ci_examples(ctd, on_problem_collector(cb3), {0, 1})
+            expect("C''9 好样本：matlabc 有非零码则放行",
+                   any("没有任何非零码" in x for x in cb3), False)
+            # 陈旧登记：模板里已经没有那句话了
+            CI_RELIES_ON_NONZERO.clear()
+            CI_RELIES_ON_NONZERO.update({"ci-examples/bad.py": "非零退出"})
+            cb4 = []
+            audit_ci_examples(ctd, on_problem_collector(cb4), {0, 1})
+            expect("C''9 坏样本：模板已改口而登记未更新（抓到）",
+                   any("已经没有这句话" in x for x in cb4), True)
+        finally:
+            CI_PY_EXIT_CONTRACT.clear()
+            CI_PY_EXIT_CONTRACT.update(saved_py)
+            CI_SH_EXIT_CONTRACT.clear()
+            CI_SH_EXIT_CONTRACT.update(saved_sh)
+            CI_RELIES_ON_NONZERO.clear()
+            CI_RELIES_ON_NONZERO.update(saved_nz)
+
     # ---- 真实仓库整体核对 ----
     root = repo_root()
     probs = []
     cache = {}
     n = audit(root, on_problem_collector(probs), cache=cache)
     ng = audit_guards(root, on_problem_collector(probs))
-    print("  真实仓库：核对 %d 个入口脚本 + %d 个护栏脚本，发现 %d 项不一致"
-          % (n, ng, len(probs)))
+    nc = audit_ci_examples(root, on_problem_collector(probs),
+                           set(CONTRACT.get("matlabc.py", {}).get("codes", {})))
+    print("  真实仓库：核对 %d 个入口脚本 + %d 个护栏脚本 + %d 个 CI 模板/示例，"
+          "发现 %d 项不一致" % (n, ng, nc, len(probs)))
     for p in probs[:12]:
         print("      " + p)
     if len(probs) > 12:
@@ -893,6 +1090,8 @@ def main(argv=None):
     probs = []
     n = audit(root, on_problem_collector(probs), cache={})
     ng = audit_guards(root, on_problem_collector(probs))
+    nc = audit_ci_examples(root, on_problem_collector(probs),
+                           set(CONTRACT.get("matlabc.py", {}).get("codes", {})))
     if n == 0:
         print("check_help_contract: 一个入口脚本都没核对到（缺输入 → 红）")
         return 2
@@ -901,9 +1100,9 @@ def main(argv=None):
         for p in probs:
             print("  - " + p)
         return 1
-    print("check_help_contract: OK（%d 个入口脚本 + %d 个护栏脚本的退出码在代码与"
-          "帮助之间双向一致；入口帮助骨架齐备；%d 条示例命令已真跑且 rc=0）"
-          % (n, ng, len(RUNNABLE)))
+    print("check_help_contract: OK（%d 个入口脚本 + %d 个护栏脚本 + %d 个 CI 模板/示例"
+          "的退出码在代码与帮助之间双向一致；入口帮助骨架齐备；%d 条示例命令已真跑且 rc=0）"
+          % (n, ng, nc, len(RUNNABLE)))
     return 0
 
 

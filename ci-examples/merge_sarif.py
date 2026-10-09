@@ -12,6 +12,13 @@
     - 保留并合并 artifacts（文件清单），避免 code scanning 找不到源文件；
     - P209-5：若指定 --summary，额外输出「质量概览」Markdown（按 ruleId 聚合计数 +
       严重度排序 error>warning>note），并写入合并 SARIF 的 run.properties 供后续消费。
+
+退出码：0 = 合并成功且输出已落盘；1 = 输入里找不到任何 SARIF 文件；2 = 用法错误（参数不足 / --summary 缺路径）
+
+  为什么要把退出码写在这里（R39/C''9）：这个脚本是被**直接复制进用户 CI** 的示例。
+  用户会在流水线里按退出码分支；脚本一旦在退出码上说谎，用户的流水线会长期静默
+  失效 —— 而这类谎言除了本文件自己的帮助正文，没有任何东西看得见。
+  本仓的退出码契约（tools/check_help_contract.py::CI_PY_EXIT_CONTRACT）就是盯它的。
 """
 import sys
 import os

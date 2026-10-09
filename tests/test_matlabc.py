@@ -16631,3 +16631,56 @@ def test_r38_help_volume_ratchet_has_a_relative_arm():
     r5b = [p for p in probs2 if p.startswith("R5")]
     assert any("matlabc_flow.py" in p for p in r5b), \
         "帮助悄悄膨胀 3 倍时，相对棘轮没有变红：%r" % probs2
+
+
+def test_r39_ci_examples_exit_codes_are_under_contract():
+    """R39/C''9：`ci-examples/` 的退出码也必须有契约。
+
+    为什么它单独需要一档：这些文件会被用户**直接复制进自己的 CI**（README 的原话
+    就是「复制为 .github/workflows/…」）。模板一旦在退出码上说谎，用户的流水线会
+    长期静默失效 —— 而 check_doc_flags / CONTRACT / GUARD_CONTRACT 都看不见它。
+
+    这里钉四件事：
+      ① Python 示例（merge_sarif.py）有「退出码」段，且与登记表一致、源码有依据
+      ② shell 示例（pre-commit）用 `exit N` 作为依据（**不能**套 Python 的正则）
+      ③ 只断言「非零退出」的 YAML 模板：那句话必须真在文件里（陈旧也抓）
+      ④ 那个断言的**前提**必须成立：matlabc.py 的退出契约里要有非零码
+    """
+    hc = _r37_load("check_help_contract")
+
+    # 登记表本身的两向自检：每个登记项都要在真实文件里站得住
+    assert hc.CI_PY_EXIT_CONTRACT, "CI 的 Python 示例一档是空的"
+    assert hc.CI_SH_EXIT_CONTRACT, "CI 的 shell 示例一档是空的"
+    assert hc.CI_RELIES_ON_NONZERO, "「只断言非零」的模板一档是空的"
+    for script in list(hc.CI_PY_EXIT_CONTRACT) + list(hc.CI_SH_EXIT_CONTRACT) \
+            + list(hc.CI_RELIES_ON_NONZERO):
+        assert os.path.isfile(os.path.join(ROOT, script)), \
+            "登记了不存在的 CI 文件：%s" % script
+
+    # ③ + ④：真实仓库上跑一遍，不得有 C* 问题
+    probs = []
+    n = hc.audit_ci_examples(
+        ROOT, probs.append,
+        set(hc.CONTRACT.get("matlabc.py", {}).get("codes", {})))
+    assert n >= 4, "CI 契约只核对到 %d 个文件（期望 >= 4）" % n
+    assert not [p for p in probs if p.startswith("C")], probs
+
+    # matlabc.py 的退出契约里必须真的有非零码 —— 否则 YAML 里那句
+    # 「门禁 FAIL 会非零退出」就是谎言，而 CI 模板正建立在这个前提上
+    codes = set(hc.CONTRACT["matlabc.py"]["codes"])
+    assert [c for c in codes if c != 0], \
+        "matlabc.py 的退出契约里没有非零码，而 CI 模板断言它会非零退出"
+
+    # ② shell 侧必须用 `exit N` 判定，不能套 Python 的 return/sys.exit
+    sh_src = io.open(os.path.join(ROOT, "ci-examples", "pre-commit"),
+                     encoding="utf-8").read()
+    assert hc._sh_exit_literals(sh_src) >= set(hc.CI_SH_EXIT_CONTRACT[
+        "ci-examples/pre-commit"]), hc._sh_exit_literals(sh_src)
+
+    # ① docstring 里的「退出码」段必须可解析且等于登记表
+    ms = hc.CI_PY_EXIT_CONTRACT["ci-examples/merge_sarif.py"]
+    _src, doc = hc._docstring(os.path.join(ROOT, "ci-examples", "merge_sarif.py"))
+    assert doc, "merge_sarif.py 没有模块 docstring"
+    assert hc.parse_exit_section(doc) == set(ms), \
+        "merge_sarif.py 的帮助退出码 %r != 登记表 %r" \
+        % (hc.parse_exit_section(doc), set(ms))
