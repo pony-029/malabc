@@ -16760,8 +16760,9 @@ def test_r41_prose_numbers_match_reality():
 
     # 真实仓库：0 项
     probs = []
-    n = hc.audit_doc_numbers(ROOT, probs.append)
+    n, n_ex = hc.audit_doc_numbers(ROOT, probs.append)
     assert n >= 4, "只核对了 %d 份文档" % n
+    assert n_ex >= 1, "R42：README 里的历史引用豁免没有生效（n_ex=%d）" % n_ex
     assert not probs, probs
 
     # 两向 A：数字写错 → 红
@@ -16792,5 +16793,75 @@ def test_r41_prose_numbers_match_reality():
             assert p3, "宣称被整段删掉后没有报「覆盖被静默取消」"
         finally:
             shutil.rmtree(tmp2, ignore_errors=True)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+def test_r42_historical_numbers_need_a_reason_bearing_marker():
+    """R42：允许「历史引用」豁免，但**必须带理由**，陈旧标记反向也要抓。
+
+    R41 的门一上线就**抓住了我自己**：README 里那段解释「散文数字会烂」的文字，
+    为举例而引用了旧值（7 gates / 8 gates）。门是对的 —— 那是历史引用，不是
+    关于当前态的宣称。修法不是把正则改松（那会连带失去检测力，而且没人会注意到），
+    而是显式豁免：行内标记 + 必须写理由，且标记本身受两条反向约束。
+
+    三条方向都要钉住，否则标记会退化成「永久静默关掉一行」。
+    """
+    hc = _r37_load("check_help_contract")
+    want = hc.real_guard_count()
+    mk = "<!-- guard-count:historical R42 举例引用旧值 -->"
+
+    # 1) 带理由的历史引用：放行，且不被当成陈旧标记
+    line = "旧帮助曾写 %d 道护栏。" % (want - 2) + mk
+    assert not hc.doc_number_problems(line, want), "带理由的历史引用仍被抓"
+    assert not hc.num_exempt_problems(line, want), "正常豁免被误判为陈旧标记"
+
+    # 2) 不带标记 → 必须抓：证明豁免是「显式」的，不是正则碰巧不命中
+    assert hc.doc_number_problems("旧帮助曾写 %d 道护栏。" % (want - 2), want)
+
+    # 3) 反向一：理由太短 → 抓，且**不产生豁免**（标记视为不存在）
+    short = ("旧帮助曾写 %d 道护栏。"
+             "<!-- guard-count:historical x -->") % (want - 2)
+    assert any("N4" in p for p in hc.num_exempt_problems(short, want)), \
+        "一个字符的理由就能永久关掉一行，必须判红"
+    assert hc.doc_number_problems(short, want), \
+        "理由不合格时该行应回到违规命中（标记视为不存在）"
+
+    # 4) 反向二：陈旧标记 → 抓（那一行本来就不违规）
+    stale_a = "这段没有数字。" + mk
+    assert any("N3" in p for p in hc.num_exempt_problems(stale_a, want)), \
+        "标记挂在一行没有数字的话上，没有被判为陈旧"
+    stale_b = "一次跑完 %d 道护栏。" % want + mk
+    assert any("N3" in p for p in hc.num_exempt_problems(stale_b, want)), \
+        "标记挂在数字本来就对的行上，没有被判为陈旧"
+
+    # 5) 豁免只对**同一行**生效：上一行的标记救不了下一行
+    two = mk + "\n旧帮助曾写 %d 道护栏。" % (want - 2)
+    assert hc.doc_number_problems(two, want), "跨行豁免被误生效"
+
+    # 6) 真实仓库：豁免全部有效，0 项问题
+    probs = []
+    n, n_ex = hc.audit_doc_numbers(ROOT, probs.append)
+    assert not probs, probs
+    assert n >= 4, "只核对了 %d 份文档" % n
+    assert n_ex >= 4, "README 里的历史引用豁免数 = %d（期望 ≥4）" % n_ex
+
+    # 7) 两向：把这个机制**从真实仓库的调用路径上**打断（理由抹空）→ 必须红。
+    #    否则真实仓库的绿灯可能只是因为标记被整体忽略了。
+    tmp = tempfile.mkdtemp(prefix="_t_r42_")
+    try:
+        for rel, _c in hc.DOC_NUMBER_CLAIM_FILES:
+            p = os.path.join(tmp, rel)
+            d = os.path.dirname(p)
+            if d and not os.path.isdir(d):
+                os.makedirs(d)
+            io.open(p, "w", encoding="utf-8").write(
+                "旧值曾写 %d 道护栏 <!-- guard-count:historical x -->\n"
+                % (want - 2))
+        p2 = []
+        hc.audit_doc_numbers(tmp, p2.append)
+        assert any("N4" in x for x in p2), \
+            "真实文件路径下，过短的理由没有被抓：%r" % p2
+        assert any("N1" in x for x in p2), \
+            "豁免无效后该行应回到违规命中：%r" % p2
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

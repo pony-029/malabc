@@ -261,14 +261,42 @@ DOC_NUMBER_CLAIM_FILES = (
     ("matlabc.py", 1),
     ("README.md", 1),
     ("README_CN.md", 1),
-    ("CONTRIBUTING.md", 0),
+    ("CONTRIBUTING.md", 1),
 )
+
+# ── R42：**历史引用**的行内豁免标记 ─────────────────────────────────────────
+#
+# 起因：R41 的门一上线，**它立刻抓住了我自己刚写进 README 的那段话** —— 那段
+# 解释「散文里的数字会烂」的文字，为了举例而引用了旧值（`7 gates`、`8 gates`）。
+# 门是对的：那是**历史引用**，不是关于当前态的宣称。
+#
+# 两条路：
+#   (a) 把正则改松，让它"碰巧不命中"这几句 —— 这正是上面那段注释明令禁止的：
+#       判据会连带失去对真实违规的检测力，而且**没人会注意到**。
+#   (b) 显式豁免：给该行一个行内标记，且标记**必须携带非空理由**。
+# 取 (b)。标记是机器指令（Markdown 渲染后不可见），但它**出现在 diff 里**，
+# 可以被 review —— 与仓库里 `NO_EVIDENCE` / `UNVERIFIABLE` 那套"证伪式登记"
+# 是同一条纪律：允许豁免，但你必须把「为什么」写下来。
+#
+# 两条反向约束（缺了它，标记就退化成"永久静默关掉一行"）：
+#   * 理由长度下限 NUM_EXEMPT_MIN_REASON：一个字符的理由不算理由（N4）。
+#   * 陈旧标记要抓（N3）：标记所在行**本来就不会被判定为违规**时（那一行没有
+#     数字、或数字本来就对），标记是多余的 —— 与「登记了而代码里没有 → 也抓」
+#     是同一条纪律。
+NUM_EXEMPT_RE = re.compile(
+    r"<!--\s*guard-count\s*:\s*historical\s+(.+?)\s*-->")
+NUM_EXEMPT_MIN_REASON = 8
 
 GUARD_COUNT_PATTERNS = (
     re.compile(r"(?<![\w.])(\d+)\s*道[^\n]{0,12}?护栏"),
     re.compile(r"(?<![\w.])(\d+)\s*道[^\n]{0,6}?门"),
     re.compile(r"(?<![\w.])(\d+)\s*gates?\b"),
     re.compile(r"(?<![\w.])(\d+)\s*guard scripts?\b"),
+    # 形态 5：数字在**括号里**、量词是「道」。
+    # CONTRIBUTING.md 的写法：「登记制护栏（8 道，各自还会跑 --selftest；…）」——
+    # 数字在「护栏」**之后**，上面四条都够不着。R41 首版就漏了这一处，
+    # 是靠"把量词放宽再扫一遍"才发现的：**判据要按真实写法枚举，不能只写"最常见的那种"**。
+    re.compile(r"[（(]\s*(\d+)\s*道[，,、]"),
 )
 
 
@@ -278,25 +306,65 @@ def real_guard_count():
                 if os.path.basename(s) != "check_all.py"])
 
 
-def doc_number_problems(text, want):
-    """纯函数：返回 [(行号, 命中文本, 该文本写的数)]，只含**与 want 不符**的。
+def scan_doc_numbers(text, want):
+    """核心纯函数：一次扫完一份文档，返回 dict。抽成纯函数是为了自证不必造文件。
 
-    抽成纯函数是为了自证不必造文件。
+    键：
+      hits         : [(行号, 命中文本, 该文本写的数)] —— **未被豁免**的全部命中
+                     （含数字正确的，调用方自己筛）
+      exempt       : [(行号, 理由)] —— 生效的历史引用豁免
+      marker_probs : [str] —— 标记**自身**的问题（理由太短 N4 / 陈旧标记 N3）
     """
-    out = []
-    for rx in GUARD_COUNT_PATTERNS:
-        for m in rx.finditer(text or ""):
-            got = int(m.group(1))
-            if got != want:
-                out.append((text[:m.start()].count("\n") + 1,
-                            m.group(0).strip(), got))
-    return out
+    hits, exempt, probs = [], [], []
+    for i, line in enumerate((text or "").split("\n"), 1):
+        line_hits = []
+        for rx in GUARD_COUNT_PATTERNS:
+            for m in rx.finditer(line):
+                line_hits.append((m.group(0).strip(), int(m.group(1))))
+        mm = NUM_EXEMPT_RE.search(line)
+        if mm is None:
+            for hit, got in line_hits:
+                hits.append((i, hit, got))
+            continue
+        reason = mm.group(1).strip()
+        if len(reason) < NUM_EXEMPT_MIN_REASON:
+            probs.append("N4 第 %d 行豁免标记的理由只有 %d 个字符（下限 %d）—— "
+                         "一个字符就能永久关掉一行，等于静默取消覆盖"
+                         % (i, len(reason), NUM_EXEMPT_MIN_REASON))
+            # **理由不合格 = 标记不存在**：继续豁免会让「标记无效」与
+            # 「标记生效」两种语义同时成立，读数就不可信了。
+            for hit, got in line_hits:
+                hits.append((i, hit, got))
+            continue
+        if not [h for h in line_hits if h[1] != want]:
+            probs.append("N3 第 %d 行的豁免标记**是陈旧的**：这一行本来就不会被判"
+                         "为违规（没有数字，或数字本来就对）—— 陈旧登记必须抓"
+                         % i)
+            continue          # 陈旧标记不生效；它唯一的信号就是上面这条
+        exempt.append((i, reason))
+    return {"hits": hits, "exempt": exempt, "marker_probs": probs}
+
+
+def doc_number_problems(text, want):
+    """纯函数：只含**与 want 不符**的（已扣掉生效的历史引用豁免）。"""
+    return [(ln, hit, got)
+            for ln, hit, got in scan_doc_numbers(text, want)["hits"]
+            if got != want]
+
+
+def num_exempt_problems(text, want):
+    """纯函数：标记自身的问题（理由太短 / 陈旧标记）。"""
+    return scan_doc_numbers(text, want)["marker_probs"]
 
 
 def audit_doc_numbers(root, on_problem):
-    """R41：核对当前态文档里的「N 道护栏」类数字。返回核对过的文件数。"""
+    """R41/R42：核对当前态文档里的「N 道护栏」类数字。
+
+    返回 (核对过的文件数, 生效的历史引用豁免条数)。
+    """
     want = real_guard_count()
     n = 0
+    n_exempt = 0
     for rel, min_claims in DOC_NUMBER_CLAIM_FILES:
         path = os.path.join(root, rel)
         if not os.path.exists(path):
@@ -309,18 +377,21 @@ def audit_doc_numbers(root, on_problem):
             on_problem("N0 %s 读不到（%s）" % (rel, e))
             continue
         n += 1
-        total = 0
-        for rx in GUARD_COUNT_PATTERNS:
-            total += len(rx.findall(text))
+        sc = scan_doc_numbers(text, want)
+        n_exempt += len(sc["exempt"])
         for line, hit, got in doc_number_problems(text, want):
             on_problem("N1 %s:%d 「%s」说 %d，真实护栏数是 %d —— "
                        "散文里的数字没人守就会烂（R41 起因：帮助里曾写 7、实际 9）"
                        % (rel, line, hit, got, want))
-        if total < min_claims:
-            on_problem("N2 %s: 期望至少有 %d 处「N 道护栏」类宣称，实际 0 处 —— "
-                       "覆盖被静默取消了（rc 依然是 0，所以必须抓）"
-                       % (rel, min_claims))
-    return n
+        for p in sc["marker_probs"]:
+            on_problem("%s %s" % (rel, p))
+        # min_claims 只数**未被豁免**的命中：否则把覆盖挪进一条豁免标记里，
+        # 就等价于静默取消覆盖（与 N2 要防的是同一件事）。
+        if len(sc["hits"]) < min_claims:
+            on_problem("N2 %s: 期望至少有 %d 处**未被豁免**的「N 道护栏」类宣称，"
+                       "实际 %d 处 —— 覆盖被静默取消了（rc 依然是 0，所以必须抓）"
+                       % (rel, min_claims, len(sc["hits"])))
+    return n, n_exempt
 
 # R4 的唯一事实源：每个被示例指向的脚本，登记一条**无副作用**命令。
 # 元组形态：(argv 列表, 是否按设计无输出)。
@@ -1146,6 +1217,43 @@ def _selftest():
     expect("R41 好样本：P203 gate 不是宣称（放行）",
            bool(doc_number_problems("the P203 gate writes SARIF", 9)), False)
 
+    # ---- R42：历史引用的行内豁免标记（纯函数） ----
+    # 场景就是 R41 上线后立刻发生的真实情况：解释该规则的散文里引用了旧值。
+    _hist = ("4. 散文里的数字也是宣称。旧帮助曾写 7 道护栏。"
+             "<!-- guard-count:historical R41 举例引用旧值 -->")
+    expect("R42 好样本：带理由的历史引用被豁免（放行）",
+           bool(doc_number_problems(_hist, 9)), False)
+    expect("R42 好样本：豁免不算作陈旧标记（放行）",
+           bool(num_exempt_problems(_hist, 9)), False)
+    expect("R42 坏样本：同一行**不带**标记就必须抓到",
+           bool(doc_number_problems(_hist.split("<!--")[0], 9)), True)
+    # 反向约束一：理由太短 → 抓（否则一个字符就能永久关掉一行）
+    expect("R42 坏样本：豁免理由只有 1 个字符（抓到）",
+           any("N4" in x for x in num_exempt_problems(
+               "旧帮助曾写 7 道护栏 <!-- guard-count:historical x -->", 9)), True)
+    expect("R42 好样本：理由正好达到下限（放行）",
+           bool(num_exempt_problems(
+               "旧帮助曾写 7 道护栏 <!-- guard-count:historical 01234567 -->", 9)),
+           False)
+    # 反向约束二：陈旧标记 → 抓（那一行本来就不违规）
+    # ⚠ 样本的理由必须**达到长度下限**，否则会先触发 N4、N3 根本没机会跑
+    #   —— 首版样本写的是「历史引用」（4 字符），自证立刻把它抓了出来。
+    _r = "R42 举例引用旧值"
+    expect("R42 坏样本：标记挂在一行没有数字的话上（陈旧，抓到）",
+           any("N3" in x for x in num_exempt_problems(
+               "这段没有数字 <!-- guard-count:historical " + _r + " -->", 9)),
+           True)
+    expect("R42 坏样本：标记挂在数字本来就对的行上（陈旧，抓到）",
+           any("N3" in x for x in num_exempt_problems(
+               "一次跑完 9 道护栏 <!-- guard-count:historical " + _r + " -->",
+               9)), True)
+    # 豁免标记必须**同行**生效：上一行的标记救不了下一行的错数字
+    # （这里也必须用合格长度的理由，否则测到的是 N4 而不是"同行"语义）
+    expect("R42 坏样本：标记在上一行，下一行的错数字照样抓到",
+           bool(doc_number_problems(
+               "<!-- guard-count:historical " + _r + " -->\n旧帮助曾写 7 道护栏",
+               9)), True)
+
     # ---- 真实仓库整体核对 ----
     root = repo_root()
     probs = []
@@ -1154,9 +1262,10 @@ def _selftest():
     ng = audit_guards(root, on_problem_collector(probs))
     nc = audit_ci_examples(root, on_problem_collector(probs),
                            set(CONTRACT.get("matlabc.py", {}).get("codes", {})))
-    nd = audit_doc_numbers(root, on_problem_collector(probs))
+    nd, n_ex = audit_doc_numbers(root, on_problem_collector(probs))
     print("  真实仓库：核对 %d 个入口脚本 + %d 个护栏脚本 + %d 个 CI 模板/示例"
-          " + %d 份文档数字，发现 %d 项不一致" % (n, ng, nc, nd, len(probs)))
+          " + %d 份文档数字（其中 %d 处为显式豁免的历史引用），发现 %d 项不一致"
+          % (n, ng, nc, nd, n_ex, len(probs)))
     for p in probs[:12]:
         print("      " + p)
     if len(probs) > 12:
@@ -1191,7 +1300,7 @@ def main(argv=None):
     ng = audit_guards(root, on_problem_collector(probs))
     nc = audit_ci_examples(root, on_problem_collector(probs),
                            set(CONTRACT.get("matlabc.py", {}).get("codes", {})))
-    nd = audit_doc_numbers(root, on_problem_collector(probs))
+    nd, n_ex = audit_doc_numbers(root, on_problem_collector(probs))
     if n == 0:
         print("check_help_contract: 一个入口脚本都没核对到（缺输入 → 红）")
         return 2
@@ -1202,8 +1311,9 @@ def main(argv=None):
         return 1
     print("check_help_contract: OK（%d 个入口脚本 + %d 个护栏脚本 + %d 个 CI 模板/示例"
           "的退出码在代码与帮助之间双向一致；%d 份文档里的「N 道护栏」数字与事实"
-          "一致；入口帮助骨架齐备；%d 条示例命令已真跑且 rc=0）"
-          % (n, ng, nc, nd, len(RUNNABLE)))
+          "一致（其中 %d 处为带理由的显式历史引用豁免，理由过短或陈旧的标记也会"
+          "被反向抓出）；入口帮助骨架齐备；%d 条示例命令已真跑且 rc=0）"
+          % (n, ng, nc, nd, n_ex, len(RUNNABLE)))
     return 0
 
 

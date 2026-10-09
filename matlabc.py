@@ -586,7 +586,7 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
-VERSION = "1.16.68"  # R33：--binary-attach（源码分析 + 二进制归因一条命令）/ P222：AI 接入国产大模型（deepseek/qwen/zhipu/moonshot/baichuan/doubao/yi/stepfun 走 OpenAI 兼容；ernie 百度 OAuth2；iflytek 讯飞 WebSocket）；PROVIDER_PRESETS/PROVIDER_ALIASES 注册表 + 中文别名；P221维度；P220 JSON
+VERSION = "1.16.70"  # R36-R41：Mach-O 头部偏移真缺陷修复 + 公平基线门 + 帮助体积两臂棘轮 + CI 退出码契约 + 未实现算子进帮助 + 散文数字核实；R33：--binary-attach（源码分析 + 二进制归因一条命令）/ P222：AI 接入国产大模型（deepseek/qwen/zhipu/moonshot/baichuan/doubao/yi/stepfun 走 OpenAI 兼容；ernie 百度 OAuth2；iflytek 讯飞 WebSocket）；PROVIDER_PRESETS/PROVIDER_ALIASES 注册表 + 中文别名；P221维度；P220 JSON
 # P-rev R77-R81（革命批次）：S14 结构配对/地标嵌套审计、_browse_page 统一页壳试点、
 # --browse 产物 manifest.json + S15 一致性对账、源码页 VARFLOW/LINE_DEEPLINK 外链化收编、
 # fe_audit 头清单文档-事实同步。

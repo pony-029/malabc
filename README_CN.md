@@ -20,7 +20,7 @@
 ![离线](https://img.shields.io/badge/offline-first-yes-orange)
 ![许可](https://img.shields.io/badge/license-MIT-green)
 ![CI](https://github.com/pony-029/malabc/actions/workflows/ci.yml/badge.svg)
-![版本](https://img.shields.io/badge/version-1.16.68-informational)
+![版本](https://img.shields.io/badge/version-1.16.70-informational)
 
 [快速开始](#快速开始) · [核心能力](#核心能力) · [架构](#架构) · [二进制与 GPU](#二进制与-gpu-分析---binary) · [命令速查](#命令速查) · [CI 门禁](#ci-质量门禁) · [自验证质量门](#自验证质量门quality-gates) · [English](README.md) · [许可证](#许可证)
 
@@ -504,16 +504,36 @@ python tools/check_all.py        # 跑完 tools/check_*.py 全部护栏 + 各自
 
 | 护栏 | 它拦住什么 |
 | --- | --- |
+| `check_baseline.py` | 「这次改动有没有让测试变差？」—— 按失败 **nodeid 集合**比对，不是比个数。本仓测试集**本来就不全绿**，所以个数证明不了任何事：124 → 123 可能是「修好一个」，也可能是「修好两个又弄坏一个」。`--full` 真跑两侧；默认模式只做前置条件体检 + 判定逻辑两向自证 |
 | `check_doc_flags.py` | 文档**或帮助正文**里宣传了一个**其实不存在**的命令行开关（真发生过：README 写过 `--check tainted_sink`，而 argparse 会以**歧义前缀**拒绝它） |
-| `check_operator_impl.py` | 「幻影算子」：出现在算子目录里、却没有任何代码路径会产出的检查规则 |
+| `check_operator_impl.py` | 「幻影算子」（出现在算子目录里、却没有任何代码路径会产出）、元表与未实现表自相矛盾，以及**「不做」这件事没写进 `--help`** |
 | `check_patch_ops.py` | 会**覆盖**目标行（而不是插在其前）的补丁算子 —— 那等于静默删源码 |
-| `check_binfmt_fixtures.py` | 二进制 / GPU 解析器回归 —— 合成 PE/ELF/Mach-O 夹具 + 契约断言 C1–C8 |
+| `check_binfmt_fixtures.py` | 二进制 / GPU 解析器回归 —— 合成 PE/ELF/Mach-O 夹具 + 契约断言 C1–C9 |
 | `check_py36_clean.py` | 本仓违背**自己**的 Python 3.6.5 承诺（已经发生过：`list[str]` 与 `from __future__ import annotations` 都曾提交进来） |
 | `check_subprocess_hygiene.py` | 任何「捕获输出却继承 stdin」或「可能永远挂住」的子进程调用 |
-| `check_help_contract.py` | 代码里有、`--help` 里没有的退出码（或反之）；帮助丢了用法示例 / 图示 / 退出码段；**示例命令其实跑不起来**；以及帮助**悄悄缩水或臃肿** |
+| `check_help_contract.py` | 代码里有、`--help` 里没有的退出码（或反之）；帮助丢了用法示例 / 图示 / 退出码段；**示例命令其实跑不起来**；帮助**悄悄缩水或臃肿**（绝对界 **+** 相对已批准快照的漂移）；`ci-examples/` 模板宣称的退出码；以及**散文里陈旧的「N 道护栏」数字** |
 | `check_readme_parity.py` | 中英两份 README 的**结构**逐渐跑偏 —— 小节数，以及逐节的表行 / 代码块 / mermaid 图数。它**故意不比对行数**，因为中文比英文紧凑 |
 
-让这些门可信而不是装饰的，是三条纪律：
+**「多少个测试失败」在本仓证明不了任何事 —— 基线门存在的意义就是说出这一点。** 因为这套
+测试集带着一批历史遗留失败，一个「比个数」的门会欣然放行「修好一个、弄坏一个」的改动。
+所以它比的是**集合**：
+
+```mermaid
+flowchart LR
+  H["HEAD 树<br/>（未改动）"] --> R1["pytest -q"]
+  W["当前工作区<br/>（+ 同一套测试集）"] --> R2["pytest -q"]
+  R1 --> C{"nodeid<br/>集合差"}
+  R2 --> C
+  C -->|"after − before"| X["回归<br/>→ 判红"]
+  C -->|"before − after"| F["修好 / 改名<br/>→ 仅供参考"]
+```
+
+```bash
+python tools/check_baseline.py          # 前置条件体检 + 门自身两向自证（秒级）
+python tools/check_baseline.py --full    # 真基线：两侧各跑一次全量（分钟级）
+```
+
+让这些门可信而不是装饰的，是四条纪律：
 
 1. **每道门都要**两向**自证。** `--selftest` 会造出**必须变红**的坏样本，也造出**必须保持
    绿**的好样本，然后打印一行机器可读的 `SELFTEST COUNTS {"bad": N, "good": M}`，由回归
@@ -529,11 +549,19 @@ python tools/check_all.py        # 跑完 tools/check_*.py 全部护栏 + 各自
    而它会在 `return 0.0` 上命中（`0` 与 `.` 之间就是词边界）—— 于是一个**返回浮点数**的函数
    被当成了「退出码 0 的依据」，一条**陈旧的登记条目被洗白成有效**。它能发现自己的 bug，
    只因为自证先跑了一遍。
+4. **散文里的数字也是宣称，而且它烂掉时不会有任何东西失败。** `--help` 曾写着「7 道护栏」 <!-- guard-count:historical R42 历史引用：举例引用旧值 -->
+   而实际是 9 道；两份 README 又各写过「8 道门」。没有语法错误、没有测试失败、没有编译 <!-- guard-count:historical R42 历史引用：举例引用旧值 -->
+   警告 —— 陈旧的数字只能靠某人恰好读到才被发现。所以 `check_help_contract.py` 现在会把
+   当前态文档里每一处 `N 道…护栏` / `N gates` 与真实道数核对，并且要求**那句话仍然存在**
+   （把句子整段删掉 = 静默取消覆盖，而 `rc` 依然是 0）。历史文档 —— 逐轮复盘与
+   `docs/analysis/**` —— 显式豁免：它们的数字在写下时是真的，去「修正」等于篡改历史。
 
 其中几道门把「宣称」接到了一个**可执行的对手方**，而不是接到风格规则上：
 `check_py36_clean.py` 拿本仓源码去喂本仓自己的 3.6.5 门；
-`check_help_contract.py` 把帮助里写的退出码与源码**真能返回**的退出码互相核对，并**真跑**
-每一条文档里的示例命令；`check_readme_parity.py` 把两份 README 互相比对。
+`check_help_contract.py` 把帮助里写的退出码与源码**真能返回**的退出码互相核对，**真跑**
+每一条文档里的示例命令，并把 `ci-examples/` 的 CI 模板按住它们自己宣称的退出码；
+`check_baseline.py` 拿当前工作区与 `git archive HEAD` 对比；
+`check_readme_parity.py` 把两份 README 互相比对。
 它们都是**双向**的：一条陈旧的登记和一条缺失的登记会同样响亮地失败 ——
 因为只会增长的登记表等于没有登记表。
 

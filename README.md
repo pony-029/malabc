@@ -22,7 +22,7 @@ conclusion into a **CI quality gate**.
 ![Offline](https://img.shields.io/badge/offline-first-yes-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![CI](https://github.com/pony-029/malabc/actions/workflows/ci.yml/badge.svg)
-![Version](https://img.shields.io/badge/version-1.16.68-informational)
+![Version](https://img.shields.io/badge/version-1.16.70-informational)
 
 [Quick Start](#quick-start) · [Core Capabilities](#core-capabilities) · [Architecture](#architecture)
 · [Binary & GPU](#binary--gpu-analysis---binary) · [Command Cheatsheet](#command-cheatsheet)
@@ -521,16 +521,36 @@ python tools/check_all.py        # runs every tools/check_*.py AND its --selftes
 
 | Gate | What it stops |
 | --- | --- |
+| `check_baseline.py` | "Did this change make the suite worse?" — answered by comparing failure **nodeid sets**, not counts. This suite is *not* green, so counts prove nothing: 124 → 123 can be "fixed one" or "fixed two, broke one". `--full` runs both sides; the default mode checks preconditions and self-tests the verdict logic |
 | `check_doc_flags.py` | Documentation **or a help screen** advertising a CLI flag that does not exist (this really happened: the README said `--check tainted_sink`, which argparse rejects as an **ambiguous prefix**) |
-| `check_operator_impl.py` | "Phantom operators": a check rule listed in the catalog that no code path ever emits |
+| `check_operator_impl.py` | "Phantom operators" (a rule in the catalog that no code path emits), contradictions between the catalog and the not-implemented table, and **a "we don't do this" that never reaches `--help`** |
 | `check_patch_ops.py` | Patch operators that overwrite a target line instead of inserting before it (which would silently delete source) |
-| `check_binfmt_fixtures.py` | Binary / GPU parsers regressing — synthetic PE/ELF/Mach-O fixtures plus contract assertions C1–C8 |
+| `check_binfmt_fixtures.py` | Binary / GPU parsers regressing — synthetic PE/ELF/Mach-O fixtures plus contract assertions C1–C9 |
 | `check_py36_clean.py` | The repo breaking **its own** Python 3.6.5 promise (it already had: `list[str]` and `from __future__ import annotations` had shipped) |
 | `check_subprocess_hygiene.py` | Any subprocess that captures output while inheriting stdin, or that can hang forever |
-| `check_help_contract.py` | An exit code that exists in the code but not in `--help`, or in `--help` but never returned; help that lost its usage example, diagram, or exit-code section; **examples that do not actually run**; and help that silently shrank or bloated |
+| `check_help_contract.py` | An exit code that exists in the code but not in `--help`, or in `--help` but never returned; help that lost its usage example, diagram, or exit-code section; **examples that do not actually run**; help that silently shrank or bloated (absolute bound **and** drift from a ratified snapshot); exit codes claimed by the `ci-examples/` templates; and **stale "N gates" numbers in prose** |
 | `check_readme_parity.py` | The English and Chinese READMEs drifting apart structurally — section count, and per-section table-row / code-block / mermaid counts. It deliberately does **not** compare line counts, because Chinese is more compact |
 
-Three disciplines make these gates trustworthy rather than decorative:
+**"How many tests fail" proves nothing here — the baseline gate exists to say so.** Because the
+suite carries a backlog of failures, a gate that compared counts would happily bless a change
+that fixed one test and broke another. So it compares *sets*:
+
+```mermaid
+flowchart LR
+  H["HEAD tree<br/>(unmodified)"] --> R1["pytest -q"]
+  W["working tree<br/>(+ the same test set)"] --> R2["pytest -q"]
+  R1 --> C{"nodeid<br/>set difference"}
+  R2 --> C
+  C -->|"after − before"| X["regressions<br/>→ RED"]
+  C -->|"before − after"| F["fixed / renamed<br/>→ informational"]
+```
+
+```bash
+python tools/check_baseline.py          # preconditions + the gate's own two-way self-test
+python tools/check_baseline.py --full    # the real baseline: both sides, minutes
+```
+
+Four disciplines make these gates trustworthy rather than decorative:
 
 1. **Every gate proves itself in both directions.** `--selftest` builds *bad* samples that must go
    red **and** *good* samples that must stay green, then prints a machine-readable line
@@ -549,13 +569,23 @@ Three disciplines make these gates trustworthy rather than decorative:
    which matches inside `return 0.0` (the boundary sits between `0` and `.`) — so a function that
    returns a *float* was accepted as proof of "exits with code 0", and a **stale registry entry
    was laundered as valid**. The gate caught its own bug only because its self-test ran first.
+4. **A number in prose is a claim, and nothing fails when it goes stale.** `--help` said "7 gates" <!-- guard-count:historical R42 历史引用：举例引用旧值 -->
+   while there were 9; both READMEs said "8 gates". No syntax error, no failing test, no compiler <!-- guard-count:historical R42 历史引用：举例引用旧值 -->
+   warning — a stale number is only ever found by someone happening to read it. So
+   `check_help_contract.py` now checks every `N 道…护栏` / `N gates` in the current-state docs
+   against the real count, and requires the claim to *still exist* (deleting the sentence would
+   silently drop the coverage while `rc` stayed 0). Historical documents — the per-round reviews
+   and `docs/analysis/**` — are explicitly exempt: their numbers were true when written, and
+   "correcting" them would be rewriting history.
 
 Several of these gates map a claim to an executable counter-party rather than to a style rule:
 `check_py36_clean.py` feeds this repository's own sources to this repository's own 3.6.5 gate;
 `check_help_contract.py` cross-checks the documented exit codes against the codes the source can
-actually return, and *runs* every documented example command; `check_readme_parity.py` compares
-the two READMEs to each other. All are **two-way**: a stale registry entry fails just as loudly
-as a missing one, because a registry that only ever grows stops meaning anything.
+actually return, *runs* every documented example command, and holds the `ci-examples/` CI
+templates to their own exit codes; `check_baseline.py` compares the working tree against
+`git archive HEAD`; `check_readme_parity.py` compares the two READMEs to each other. All are
+**two-way**: a stale registry entry fails just as loudly as a missing one, because a registry
+that only ever grows stops meaning anything.
 
 ---
 
