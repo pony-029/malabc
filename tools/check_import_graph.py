@@ -16,7 +16,8 @@
         ├─ G3 指向**本仓模块**的动态 import 必须登记（DYNAMIC_IMPORTS，两向）
         ├─ G4 自环（模块 import 自己）→ 红，**不可登记**
         ├─ G5 理由少于 8 字符 → 该登记**不生效**
-        └─ G6 `CONTRIBUTING.md` 双向标记 `<!-- import-cycle: <id> -->`
+        ├─ G6 `CONTRIBUTING.md` 双向标记 `<!-- import-cycle: <id> -->`
+        └─ G7 借用清单两向核对（`_mL.X` 使用点 ↔ `renderers/_late.py::BORROWED`）
         │
         ▼
     0 = 全绿   1 = 有违规   2 = 缺输入
@@ -31,10 +32,18 @@
 R52 把这条回边搬进 `renderers/_late.py`（**惰性**属性访问 + 一条登记过的动态 import），
 import 期图于是无环；这道门就是**不让它再长回来**的对手方。
 
-三条判据「各自独立作证」（本仓纪律：被别的判据抓走 ⇒ 该判据没有独立证人）：
+R53/C''''2 又补上这条通道**内容侧**的对手方：`_mL.X` 的 `X` 原先只由**使用点**定义，
+门与测试只能验「X 存在于 matlabc」，**多一个借用、少一个使用点都没有东西要求同步**。
+现在 `renderers/_late.py::BORROWED` 是借用清单的**静态单一事实源**，G7 两向核对：
+用了没登记 → 红；登记了没人用、或登记了 matlabc 模块层里不存在的名字 → 也红。
+⚠ 树里没有 `renderers/_late.py`（合成样本）时 G7 **不适用**；有这条通道而
+登记表**缺失或为空** ⇒ **真红**（与 check_ir_attribution 的 `pred_registry=None` 同口径）。
+
+四条判据「各自独立作证」（本仓纪律：被别的判据抓走 ⇒ 该判据没有独立证人）：
   * 加一条**模块级**回边        → 只 G1 红（G2 抓的是嵌套环，G3 抓的是动态 import）；
   * 加一条**未登记的嵌套**环    → 只 G2 红；
-  * 加一条**未登记的动态** import → 只 G3 红。
+  * 加一条**未登记的动态** import → 只 G3 红；
+  * 动一处**借用**（用多一个 / 少登记一个 / 登记一个 matlabc 里没有的名字）→ 只 G7 红。
 
 用法：
     python tools/check_import_graph.py            # 0=全绿 1=有违规 2=缺输入
@@ -42,8 +51,8 @@ import 期图于是无环；这道门就是**不让它再长回来**的对手方
     python tools/check_import_graph.py --help     # 显示本帮助（立即返回）
 
 退出码：
-    0 = 全绿（模块级无环、登记两向一致、文档标记对称）
-    1 = 有违规（未登记环 / 陈旧登记 / 未登记动态 import / 理由过短 / 文档标记不对称）
+    0 = 全绿（模块级无环、登记两向一致、文档标记对称、借用清单两向一致）
+    1 = 有违规（未登记环 / 陈旧登记 / 未登记动态 import / 未登记借用 / 陈旧借用登记 / 悬空借用 / 理由过短 / 文档标记不对称）
     2 = 缺输入（找不到仓库根、扫不到任何 .py、或缺 CONTRIBUTING.md）
 """
 import ast
@@ -107,6 +116,40 @@ def _str_const(node):
     if isinstance(s, str):
         return s
     return None
+
+
+def _literal_dict(node):
+    """把 ast 节点还原成纯字面量 dict；失败返回 None。
+
+    **不做任何"尽力而为"**：`BORROWED` 读不出来就是「登记表缺失」，由 G7 判红，
+    而不是静默当成空表 —— 后者会让整张表悄悄失效而 rc 依然是 0。
+    """
+    try:
+        return ast.literal_eval(node)
+    except Exception:                       # noqa: BLE001 - 故意兜住
+        return None
+
+
+def _toplevel_names(tree):
+    """模块层的绑定名（def / class / 赋值目标 / import asname）。
+
+    只看 `tree.body` 的**直接子节点** —— 与 G1 判「模块级」同一条口径：
+    嵌在模块层 `if/try` 里的定义**不算**模块层绑定（那类名字在 import 期是否
+    存在取决于分支，借用它们本就不安全）。
+    """
+    out = set()
+    for n in tree.body:
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            out.add(n.name)
+        elif isinstance(n, ast.Assign):
+            for t in n.targets:
+                for x in ast.walk(t):
+                    if isinstance(x, ast.Name):
+                        out.add(x.id)
+        elif isinstance(n, (ast.Import, ast.ImportFrom)):
+            for a in n.names:
+                out.add(a.asname or a.name.split(".")[0])
+    return out
 
 
 def _mod_name(rel):
@@ -225,9 +268,52 @@ def scan(files):
                     if t in kset:
                         dyn.append((rel, t, node.lineno))
 
+    # ---- R53/C''''2：借用清单一族（使用点 / 登记表 / 目标模块的模块层名字） ----
+    # 只看 `renderers/` 子树，且只认字面别名 `_mL`（R52 起全仓唯一写法）。
+    # 用 (模块, 属性) 而不是属性名 —— 同一个名字被两个模块借用时，
+    # 登记表必须**两边都写**，否则「谁借了什么」这件事就模糊了。
+    borrow_sites = {}
+    for rel, text in sorted(files.items()):
+        r = rel.replace("\\", "/")
+        if not r.startswith("renderers/"):
+            continue
+        try:
+            btree = ast.parse(text)
+        except SyntaxError:
+            continue
+        src = _mod_name(rel)
+        for node in ast.walk(btree):
+            if (isinstance(node, ast.Attribute)
+                    and isinstance(node.value, ast.Name)
+                    and node.value.id == "_mL"):
+                key = (src, node.attr)
+                borrow_sites[key] = borrow_sites.get(key, 0) + 1
+
+    late_key = "renderers/_late.py"
+    has_late = late_key in files
+    borrowed_reg = None
+    if has_late:
+        try:
+            for node in ast.parse(files[late_key]).body:
+                if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                        and isinstance(node.targets[0], ast.Name)
+                        and node.targets[0].id == "BORROWED"):
+                    borrowed_reg = _literal_dict(node.value)
+        except SyntaxError:
+            borrowed_reg = None
+
+    mc_names = None
+    if "matlabc.py" in files:
+        try:
+            mc_names = _toplevel_names(ast.parse(files["matlabc.py"]))
+        except SyntaxError:
+            mc_names = None
+
     return {"known": kset, "edges_mod": edges_mod, "edges_all": edges_all,
             "self_mod": self_mod, "dyn": dyn, "parse_err": parse_err,
-            "n_mod": n_mod, "n_nested": n_nested}
+            "n_mod": n_mod, "n_nested": n_nested,
+            "has_late": has_late, "borrow_sites": borrow_sites,
+            "borrowed_reg": borrowed_reg, "mc_names": mc_names}
 
 
 def scc(nodes, graph):
@@ -340,6 +426,44 @@ def judge(built, lazy_cycles, dyn_imports, doc_text):
     for i in sorted(marks - want):
         probs.append("G6 CONTRIBUTING.md 有陈旧标记 `<!-- import-cycle: %s -->`"
                      "：登记表里没有这个 id" % i)
+
+    # G7 借用清单（R53/C''''2）：`_mL.X` 的使用点必须与
+    # `renderers/_late.py::BORROWED` **互为对手方**。
+    # 口径：树里没有 `renderers/_late.py` ⇒ 该树不涉及借用通道 ⇒ G7 **不适用**
+    # （合成样本因此不受影响）；有通道而登记表缺失/为空 ⇒ **真红**。
+    if built.get("has_late"):
+        reg = built.get("borrowed_reg")
+        sites = built.get("borrow_sites") or {}
+        mc = built.get("mc_names")
+        if not isinstance(reg, dict) or not reg:
+            probs.append("G7 renderers/_late.py 里找不到非空的 BORROWED 登记表 —— "
+                         "借用必须有静态单一事实源（空表也是真红）")
+        else:
+            reg_names = {}
+            for mod in sorted(reg):
+                entry = reg.get(mod) or {}
+                names = tuple(entry.get("names") or ())
+                reg_names[mod] = names
+                if not names:
+                    probs.append("G7 借用登记 %s 的 names 为空 —— 空登记不成立" % mod)
+                if len("".join(entry.get("reason") or "").strip()) < MIN_REASON:
+                    probs.append("G7 借用登记 %s 的理由少于 %d 字符 ⇒ 该登记不生效"
+                                 % (mod, MIN_REASON))
+                if mod not in built["known"]:
+                    probs.append("G7 借用登记 %s：仓库里根本没有这个模块（陈旧登记）"
+                                 % mod)
+                for nm in names:
+                    if (mod, nm) not in sites:
+                        probs.append("G7 陈旧登记 %s：登记借用了 %s，"
+                                     "但仓库里再没有 `_mL.%s` 使用点"
+                                     % (mod, nm, nm))
+                    if mc is not None and nm not in mc:
+                        probs.append("G7 悬空借用 %s：登记借用的 %s 在 matlabc 的"
+                                     "模块层没有定义（借用目标不存在）" % (mod, nm))
+            for (mod, nm) in sorted(sites):
+                if nm not in reg_names.get(mod, ()):
+                    probs.append("G7 未登记借用：%s 用了 `_mL.%s`，"
+                                 "但 BORROWED 里没有登记" % (mod, nm))
     return probs
 
 
@@ -408,10 +532,14 @@ def main(argv):
         return 1
     n_mod = sum(len(v) for v in built["edges_mod"].values())
     n_all = sum(len(v) for v in built["edges_all"].values())
+    _bs = built.get("borrow_sites") or {}
+    _reg = built.get("borrowed_reg") or {}
     print("check_import_graph: OK（%d 个模块 / 模块级仓库内边 %d 条 / 全图仓库内边 %d 条；"
-          "模块级环 0、惰性环 %d（已登记）、动态 import %d（已登记）；G1–G6 全绿）"
+          "模块级环 0、惰性环 %d（已登记）、动态 import %d（已登记）；"
+          "借用登记 %d 个模块 / %d 个符号 / %d 处使用点；G1–G7 全绿）"
           % (len(built["known"]), n_mod, n_all,
-             len(LAZY_CYCLES), len(DYNAMIC_IMPORTS)))
+             len(LAZY_CYCLES), len(DYNAMIC_IMPORTS),
+             len(_reg), len(set(nm for (_m, nm) in _bs)), sum(_bs.values())))
     return 0
 
 
@@ -504,6 +632,44 @@ def _selftest():
     green("G5 文档示例形态不算标记",
           _mk({"a.py": ["def fa():", "    return 1"]}),
           (), (), "示例：<!-- import-cycle: <id> -->\n")
+
+    # -------- R53/C''''2：G7 借用清单（使用点 ↔ BORROWED 两向） --------
+    # 合成树必须**自带** `renderers/_late.py`（G7 的适用开关）与 `matlabc.py`
+    # （悬空借用的对手方）；否则 G7 不适用，坏样本也红不起来。
+    _late_ok = ("BORROWED = {\n"
+                "    'renderers.m': {'names': ('foo',),\n"
+                "                     'reason': 'm 只借一个纯函数 foo，用于合成自证'},\n"
+                "}\n")
+    _mc_ok = "def foo():\n    return 1"
+    _use_foo = ["from renderers._late import late as _mL", "def f():",
+                "    return _mL.foo()"]
+
+    def _btree(late=None, use=None, mc=None):
+        return _mk({"renderers/_late.py": [late or _late_ok],
+                    "renderers/m.py": use if use is not None else _use_foo,
+                    "matlabc.py": [mc or _mc_ok]})
+
+    red("B10 未登记借用",
+        _btree(use=["from renderers._late import late as _mL", "def f():",
+                    "    return _mL.bar()"]), (), (), "", "G7 未登记")
+    red("B11 陈旧借用登记",
+        _btree(late="BORROWED = {\n"
+                    "    'renderers.m': {'names': ('foo', 'baz'),\n"
+                    "                     'reason': '登记了 baz 但其实没人用'},\n"
+                    "}\n"), (), (), "", "G7 陈旧")
+    red("B12 悬空借用",
+        _btree(late="BORROWED = {\n"
+                    "    'renderers.m': {'names': ('foo', 'nope'),\n"
+                    "                     'reason': 'nope 在 matlabc 里没有定义'},\n"
+                    "}\n",
+               use=["from renderers._late import late as _mL", "def f():",
+                    "    return _mL.foo() + _mL.nope()"]),
+        (), (), "", "G7 悬空")
+    red("B13 借用登记理由过短",
+        _btree(late="BORROWED = {\n"
+                    "    'renderers.m': {'names': ('foo',), 'reason': '短'},\n"
+                    "}\n"), (), (), "", "G7 借用登记")
+    green("G7 借用清单两向一致", _btree(), (), (), "")
 
     return bad[0], good[0]
 

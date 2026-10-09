@@ -178,8 +178,8 @@ GUARD_CONTRACT = {
         2: "缺输入（入口脚本缺失 / 解析不到 docstring）",
     },
     "tools/check_import_graph.py": {
-        0: "模块级 import 无环、登记两向一致、文档标记对称（G1–G6）",
-        1: "有违规（未登记环 / 陈旧登记 / 未登记动态 import / 理由过短 / 文档标记不对称）",
+        0: "模块级 import 无环、登记两向一致、文档标记对称、借用清单两向一致（G1–G7）",
+        1: "有违规（未登记环 / 陈旧登记 / 未登记动态 import / 未登记借用 / 陈旧借用登记 / 悬空借用 / 理由过短 / 文档标记不对称）",
         2: "缺输入（扫不到 .py / 缺 CONTRIBUTING.md）",
     },
     "tools/check_ir_attribution.py": {

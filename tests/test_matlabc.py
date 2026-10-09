@@ -17616,7 +17616,7 @@ def test_r52_import_graph_can_say_no():
     r = _r31_run([os.path.join("tools", "check_import_graph.py")], timeout=180)
     out = r.stdout.decode("utf-8", "replace")
     assert r.returncode == 0, out[-1200:]
-    assert "G1–G6 全绿" in out, out[-600:]
+    assert "G1–G7 全绿" in out, out[-600:]
 
 def test_r44_gate_call_sites_agree_with_return_arity():
     """R44 的**过程**教训：本轮三次「改被调签名、漏了调用方」。
@@ -17655,3 +17655,104 @@ def test_r44_gate_call_sites_agree_with_return_arity():
                 bad.append("第 %d 行：解包 %d 个名字，而 %s 返回 %d 个"
                            % (n.lineno, len(tgt.elts), name, ret[name]))
     assert not bad, bad
+
+
+def test_r53_borrow_registry_two_way():
+    """R53/C''''2：借用清单必须有**静态单一事实源**，且门两向核对。
+
+    修前的真缺陷：`_mL.X` 的 `X` **只由使用点定义** —— 门与测试只能验
+    「X 存在于 matlabc」，于是一个**新借用**、一个**被删掉的使用点**，
+    都没有任何东西要求同步（R52 §8 把它记为「已有装置但没接上线」）。
+
+    落地：`renderers/_late.py::BORROWED` 是登记表（按借用方模块分组 + 理由），
+    `tools/check_import_graph.py` 的 **G7** 两向核对。
+
+    反向判据（在**真实仓库的文件图**上动四处，每处必须红在**指定**判据上，
+    且不许被 G1/G2/G3/G4/G5/G6 抢走 —— 那会让 G7 没有独立证人）：
+      ① 抽掉一个已登记的名字        ⇒ G7 未登记借用；
+      ② 塞进一个没人用的登记        ⇒ G7 陈旧登记；
+      ③ 登记一个 matlabc 里没有、却真有使用点的名字 ⇒ G7 悬空借用；
+      ④ 把某条登记的理由缩到一个字  ⇒ G7 该登记不生效。
+    """
+    gi = _r37_load("check_import_graph")
+    files = gi.read_repo(gi.root_dir())
+    doc = io.open(os.path.join(ROOT, "CONTRIBUTING.md"), "r", encoding="utf-8",
+                  errors="replace").read()
+    base = gi.scan(files)
+    assert base.get("has_late"), "仓库里必须有 renderers/_late.py（G7 的适用前提）"
+    reg = base.get("borrowed_reg")
+    assert isinstance(reg, dict) and reg, \
+        "renderers/_late.py 缺 BORROWED 登记表（G7 要求非空）"
+    sites = base.get("borrow_sites") or {}
+
+    # 两向相等（真实读数）：登记表 == 使用点集合
+    reg_pairs = set()
+    for _mod in reg:
+        for _nm in (reg[_mod].get("names") or ()):
+            reg_pairs.add((_mod, _nm))
+    assert reg_pairs == set(sites), (
+        "登记表与使用点不一致：登记多出 %s / 使用点多出 %s"
+        % (sorted(reg_pairs - set(sites)), sorted(set(sites) - reg_pairs)))
+    assert len(reg_pairs) >= 22, len(reg_pairs)
+    assert sum(sites.values()) >= 40, sum(sites.values())
+    assert not any(k.startswith("G7") for k in
+                   gi.judge(base, gi.LAZY_CYCLES, gi.DYNAMIC_IMPORTS, doc))
+
+    late_rel = "renderers/_late.py"
+    late_src = files[late_rel]
+
+    def _judge_with(late_text, extra=None):
+        f2 = dict(files)
+        f2[late_rel] = late_text
+        if extra:
+            f2.update(extra)
+        return gi.judge(gi.scan(f2), gi.LAZY_CYCLES, gi.DYNAMIC_IMPORTS, doc)
+
+    def _others(probs):
+        return [x for x in probs
+                if x.startswith(("G1", "G2 ", "G3", "G4", "G5", "G6 "))]
+
+    # ① 抽掉一个已登记的名字 ⇒ 它的使用点无人认领
+    victim = sorted(reg_pairs)[0][1]
+    txt1 = late_src.replace('"%s"' % victim, '"__removed__"', 1)
+    assert txt1 != late_src, victim
+    p1 = _judge_with(txt1)
+    assert any(x.startswith("G7 未登记借用") for x in p1), p1
+    assert _others(p1) == [], p1
+
+    # ② 塞一个没人用的登记 ⇒ 陈旧
+    txt2 = late_src.replace(
+        "BORROWED = {",
+        "BORROWED = {\n"
+        "    'renderers.__nobody__': {\n"
+        "        'names': ('__ghost__',),\n"
+        "        'reason': '合成样本：登记了却没有任何使用点'},\n", 1)
+    assert txt2 != late_src
+    p2 = _judge_with(txt2)
+    assert any(x.startswith("G7 陈旧登记") for x in p2), p2
+    assert _others(p2) == [], p2
+
+    # ③ 登记一个真被使用、但 matlabc 里没有的名字 ⇒ 悬空借用
+    txt3 = late_src.replace('("_src_href_from_rel",)',
+                            '("_src_href_from_rel", "__ghost_sym__")', 1)
+    assert txt3 != late_src
+    p3 = _judge_with(txt3, {"renderers/unresolved.py":
+                            files["renderers/unresolved.py"]
+                            + "\n__R53_GHOST__ = _mL.__ghost_sym__\n"})
+    assert any(x.startswith("G7 悬空借用") for x in p3), p3
+    assert _others(p3) == [], p3
+
+    # ④ 理由缩到一个字 ⇒ 该登记不生效
+    txt4 = late_src.replace(
+        "只借三个纯路径辅助，把源码路径映射成浏览站 URL；无其它模块级依赖",
+        "短", 1)
+    assert txt4 != late_src
+    p4 = _judge_with(txt4)
+    assert any("理由少于" in x for x in p4), p4
+    assert _others(p4) == [], p4
+
+    # 端到端：门真的能跑，rc=0 且打印 G1–G7 全绿
+    r = _r31_run([os.path.join("tools", "check_import_graph.py")], timeout=180)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[-1200:]
+    assert "G1–G7 全绿" in out, out[-600:]
