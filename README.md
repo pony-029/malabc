@@ -624,7 +624,7 @@ python matlabc_flow.py --help     # repair loop: five-station pipeline + five re
 python matlabc_ask.py --help      # grounded Q&A: how facts become an answer
 python matlabc_mcp.py --help      # MCP server: the five tools + why stdin must be cut
 python gui.py --help              # GUI: which CLI flag each form field maps to
-python tools/check_all.py --help  # gates: what each of the 10 gates stops
+python tools/check_all.py --help  # gates: what each of the 11 gates stops
 ```
 
 This is not a verbal promise — `check_help_contract.py` and `check_doc_flags.py` watch it, and
@@ -680,6 +680,68 @@ identical, so node ids, order, geometry and card counts cannot drift. The locale
 archify's built-in catalogs are `en` and `zh-CN`, and a near-miss tag such as `zh` silently falls
 back to the English viewer chrome. The Chinese HTML is likewise rendered twice and compared
 byte-for-byte, so "re-running the renderer == the committed file" stays a checkable equation.
+
+#### The thirteen diagrams
+
+Every diagram is committed **twice over**: as a standalone **SVG** (so the picture is
+visible here without opening anything) and as the **interactive HTML**. The editions
+below are the English ones; [`README_CN.md`](README_CN.md) carries the Chinese ones.
+`flow/diagrams/` and the `flow/FLOW_INDEX.json` index are kept in step with the
+candidates by `tools/check_flow_diagrams.py`, so a picture that stops matching its
+source — or drifts out of the index — turns the build red instead of rotting
+silently. Click any picture to open its interactive edition.
+
+### `F01` — Which capabilities make up the tool?
+
+[![F01 · matlabc capability map](flow/diagrams/f01-capabilities.svg)](flow/archify/architecture-malabc-capabilities-20261009-2215/f01-capabilities.html)
+
+### `F02` — Why is a name left unresolved — and which evidence backs each state?
+
+[![F02 · binary attribution: the three states](flow/diagrams/f02-binary-attribution.svg)](flow/archify/architecture-binary-attribution-20261009-2340/f02-binary-attribution.html)
+
+### `F03` — What does `--binary-attach` actually save?
+
+[![F03 · --binary-attach in one command](flow/diagrams/f03-binary-attach.svg)](flow/archify/workflow-binary-attach-20261009-2310/f03-binary-attach.html)
+
+### `F04` — Which layers live inside the single-file kernel?
+
+[![F04 · the single-file kernel's five layers](flow/diagrams/f04-layers.svg)](flow/archify/architecture-malabc-layers-20261009-2340/f04-layers.html)
+
+### `F05` — Where exactly is an unresolvable call decided?
+
+[![F05 · the single decision point](flow/diagrams/f05-decision-point.svg)](flow/archify/architecture-single-decision-point-20261009-2340/f05-decision-point.html)
+
+### `F06` — What are the five steps of the fix loop, and where does a failure return?
+
+[![F06 · the fix loop](flow/diagrams/f06-fix-loop.svg)](flow/archify/workflow-fix-loop-20261009-2310/f06-fix-loop.html)
+
+### `F07` — How is the CI exit code computed?
+
+[![F07 · the CI exit-code gate](flow/diagrams/f07-ci-gate.svg)](flow/archify/workflow-ci-gate-20261009-2310/f07-ci-gate.html)
+
+### `F08` — Why does the baseline gate compare sets instead of counts?
+
+[![F08 · the baseline gate compares sets](flow/diagrams/f08-baseline-nodeids.svg)](flow/archify/workflow-baseline-nodeids-20261009-2310/f08-baseline-nodeids.html)
+
+### `F09` — How does one round of the method loop run?
+
+[![F09 · the method loop](flow/diagrams/f09-superpower-loop.svg)](flow/archify/lifecycle-superpower-loop-20261009-2340/f09-superpower-loop.html)
+
+### `F10` — How are the guardrails registered into the tests and CI?
+
+[![F10 · the guard registry](flow/diagrams/f10-guard-registry.svg)](flow/archify/workflow-guard-registry-20261009-2340/f10-guard-registry.html)
+
+### `F11` — After collapsing to one decision point, what keeps it from spreading again?
+
+[![F11 · the single decision point + six mutation criteria](flow/diagrams/f11-ir-attribution.svg)](flow/archify/workflow-ir-attribution-20261009-2340/f11-ir-attribution.html)
+
+### `F12` — What is the repository's real layering, including the import cycle?
+
+[![F12 · the repository's real layering](flow/diagrams/f12-audit-layers.svg)](flow/archify/architecture-audit-layers-20261009-2340/f12-audit-layers.html)
+
+### `F13` — How does the loop guarantee it never leaves a half-applied tree?
+
+[![F13 · the agent_loop state machine](flow/diagrams/f13-agent-loop.svg)](flow/archify/lifecycle-agent-loop-20261009-2340/f13-agent-loop.html)
 
 The mapping, the measured numbers behind every drawing, and the recommended next
 steps are in [`flow/FLOW_REPORT.md`](flow/FLOW_REPORT.md) and [`flow/INDEX.md`](flow/INDEX.md).

@@ -4,6 +4,9 @@
 > 21 个块里有 8 对是 EN/CN 镜像（内容同构、标签语言不同），映射后是 **13 张不同的图**；
 > 每张图都用 archify 渲染成**英文版**（`candidate.json`）与**中文版**（`candidate.zh-CN.json`，
 > 中文版的查看器外壳取自 archify 内置 `zh-CN` 目录，作者侧文字为中文）。
+> R47 起每张图另有一份**独立 SVG**（`diagrams/*.svg`，共 26 个）—— 那是从同一份产物里由
+> archify 自己的 `serializeSvg()` 取出的静态图，嵌进 `README.md` / `README_CN.md` **直接显示**，
+> 不再只是「一个点得开的链接」。
 
 | 图 | 源文档 | 行范围 | 源图型 | archify 图型 | 交互产物 | 它回答的问题 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -54,4 +57,29 @@
 | `F11` | 6 | 5 | 3 | [`candidate.json`](archify/workflow-ir-attribution-20261009-2340/candidate.json) | [`candidate.zh-CN.json`](archify/workflow-ir-attribution-20261009-2340/candidate.zh-CN.json) | [f11-ir-attribution.zh-CN.html](archify/workflow-ir-attribution-20261009-2340/f11-ir-attribution.zh-CN.html) | [`docs__SUPERPOWER_REVIEW_R44__01.mmd`](source/docs__SUPERPOWER_REVIEW_R44__01.mmd) |
 | `F12` | 16 | 20 | 3 | [`candidate.json`](archify/architecture-audit-layers-20261009-2340/candidate.json) | [`candidate.zh-CN.json`](archify/architecture-audit-layers-20261009-2340/candidate.zh-CN.json) | [f12-audit-layers.zh-CN.html](archify/architecture-audit-layers-20261009-2340/f12-audit-layers.zh-CN.html) | [`docs__analysis__ANALYSIS_2026-10-08_MALABC_DEEP_AUDIT__01.mmd`](source/docs__analysis__ANALYSIS_2026-10-08_MALABC_DEEP_AUDIT__01.mmd) |
 | `F13` | 13 | 14 | 3 | [`candidate.json`](archify/lifecycle-agent-loop-20261009-2340/candidate.json) | [`candidate.zh-CN.json`](archify/lifecycle-agent-loop-20261009-2340/candidate.zh-CN.json) | [f13-agent-loop.zh-CN.html](archify/lifecycle-agent-loop-20261009-2340/f13-agent-loop.zh-CN.html) | [`docs__analysis__ANALYSIS_2026-10-08_MALABC_DEEP_AUDIT__02.mmd`](source/docs__analysis__ANALYSIS_2026-10-08_MALABC_DEEP_AUDIT__02.mmd) |
+
+## 独立 SVG —— README 里直接显示的那张图
+
+> 上表 26 个 HTML 是**可交互产物**（点开进查看器）；下表 26 个 SVG 是从**同一个产物**里
+> 取出的**静态图**，被 `README.md` / `README_CN.md` 以 `![](…)` 直接嵌入。两者同源，
+> 不是截图 —— 所以缩放到任意倍数都不会糊。生成与校验方法见 `FLOW_REPORT.md` §14.5。
+
+| 图 | 英文 SVG | 中文 SVG | 英文字节 | 中文字节 |
+| --- | --- | --- | --- | --- |
+| `F01` | [f01-capabilities.svg](diagrams/f01-capabilities.svg) | [f01-capabilities.zh-CN.svg](diagrams/f01-capabilities.zh-CN.svg) | 154262 | 153912 |
+| `F02` | [f02-binary-attribution.svg](diagrams/f02-binary-attribution.svg) | [f02-binary-attribution.zh-CN.svg](diagrams/f02-binary-attribution.zh-CN.svg) | 155905 | 155499 |
+| `F03` | [f03-binary-attach.svg](diagrams/f03-binary-attach.svg) | [f03-binary-attach.zh-CN.svg](diagrams/f03-binary-attach.zh-CN.svg) | 144991 | 144881 |
+| `F04` | [f04-layers.svg](diagrams/f04-layers.svg) | [f04-layers.zh-CN.svg](diagrams/f04-layers.zh-CN.svg) | 156536 | 156227 |
+| `F05` | [f05-decision-point.svg](diagrams/f05-decision-point.svg) | [f05-decision-point.zh-CN.svg](diagrams/f05-decision-point.zh-CN.svg) | 154272 | 153857 |
+| `F06` | [f06-fix-loop.svg](diagrams/f06-fix-loop.svg) | [f06-fix-loop.zh-CN.svg](diagrams/f06-fix-loop.zh-CN.svg) | 147358 | 147319 |
+| `F07` | [f07-ci-gate.svg](diagrams/f07-ci-gate.svg) | [f07-ci-gate.zh-CN.svg](diagrams/f07-ci-gate.zh-CN.svg) | 148606 | 148495 |
+| `F08` | [f08-baseline-nodeids.svg](diagrams/f08-baseline-nodeids.svg) | [f08-baseline-nodeids.zh-CN.svg](diagrams/f08-baseline-nodeids.zh-CN.svg) | 149402 | 149293 |
+| `F09` | [f09-superpower-loop.svg](diagrams/f09-superpower-loop.svg) | [f09-superpower-loop.zh-CN.svg](diagrams/f09-superpower-loop.zh-CN.svg) | 151815 | 151517 |
+| `F10` | [f10-guard-registry.svg](diagrams/f10-guard-registry.svg) | [f10-guard-registry.zh-CN.svg](diagrams/f10-guard-registry.zh-CN.svg) | 148528 | 148379 |
+| `F11` | [f11-ir-attribution.svg](diagrams/f11-ir-attribution.svg) | [f11-ir-attribution.zh-CN.svg](diagrams/f11-ir-attribution.zh-CN.svg) | 147789 | 147593 |
+| `F12` | [f12-audit-layers.svg](diagrams/f12-audit-layers.svg) | [f12-audit-layers.zh-CN.svg](diagrams/f12-audit-layers.zh-CN.svg) | 171125 | 170591 |
+| `F13` | [f13-agent-loop.svg](diagrams/f13-agent-loop.svg) | [f13-agent-loop.zh-CN.svg](diagrams/f13-agent-loop.zh-CN.svg) | 169635 | 169502 |
+| **合计** | **13 个** | **13 个** | **2000224 字节** | **1997065 字节** |
+
+两种语言合计 **26 个 SVG、3997289 字节**。
 

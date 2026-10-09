@@ -1,0 +1,15 @@
+# 行尾由仓库自己钉住，不交给每台机器的 core.autocrlf。
+#
+# 本仓有两类字节，两类都是「事实」：
+#   * 手写物（.md / .json / .py / .mmd）—— 仓库约定 CRLF
+#   * 生成物（archify 渲染出的 .html、以及从中取出的 flow/diagrams/*.svg）—— 渲染器原始字节（LF）
+#
+# 为什么必须钉：`tools/check_flow_diagrams.py` 的 D5 直接断言 SVG **不含 CRLF**，
+# 而「重跑渲染器 == 仓库里的文件」这个等式也只有在字节不被搬动时才成立。
+# 本机 core.autocrlf=false，所以一直没有暴露问题；但换一台 autocrlf=true 的机器
+# clone 下来，git 会把 .svg 当文本文件转成 CRLF，于是门禁在新机器上假红，
+# 而那条「可验证的等式」也悄悄失效。
+#
+# `-text` = 不做任何行尾转换，blob 逐字节等于工作区。这与本机现状完全一致，
+# 所以这一条**只钉住现状，不改变任何已入库内容**。
+* -text

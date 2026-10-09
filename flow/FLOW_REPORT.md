@@ -44,6 +44,23 @@
   `lifecycle` 的契约会强制「可恢复的失败必须有一条真的返回边」——恰好是这两张图要讲的事。
 - **F10 / F11**（`graph/flowchart` → `workflow`）：有泳道（谁在做）、有阶段、有判定边。
 
+### 0.2 R47 加的一步：把图从产物里「取出来」，直接嵌进 README
+
+上面 13 张图原本只以**可交互 HTML** 存在 —— README 里只有「点得开的链接」，
+读者要看到图必须先打开一个约 750 KB 的页面。R47 把图**取出来**做成独立 SVG，
+直接嵌进两份 README（方法、三个量测陷阱、以及那 58 处具名差异见 §14.5，图册见 §14.6）。
+多出来的是一条**可重跑的四步链路**，每一步都有实测数字：
+
+| 步骤 | 做法 | 实测结果 |
+| --- | --- | --- |
+| 提取 | 调 archify **自己的** `serializeSvg()`（不是截图、也不是重画一遍） | 26 个 `flow/diagrams/*.svg`，合计 **3,997,289** 字节 |
+| 校验 | 同文档三臂比对（REF / shadow / lightDOM），29 个计算属性 × 2,910 个元素 | **84,390** 次比对，0 处解释不了的差异、0 处 bbox 差、0 处文本长度差 |
+| 嵌入 | 两份 README 各嵌 13 张，位置与结构对称，点图打开同语种的交互产物 | 两侧 **15** 个小节仍逐节对等（`check_readme_parity` 的 P1/P2 全绿） |
+| 守门 | `tools/check_flow_diagrams.py`，**D1–D9，每一对都双向** | 22 个反例全抓 / 真实仓库 **0** 项不对齐 |
+
+顺带：`flow/INDEX.md` 与 `FLOW_INDEX.json` 也登记了这 26 个 SVG 的路径与字节数，
+而**索引自己也被 D9 钉住** —— 漏登记、体积漂移、登记了磁盘上没有的文件，三种都红。
+
 ---
 
 ## 1. F01 —— 能力地图（`architecture`）
@@ -342,9 +359,9 @@ kernel」）。校验器立刻报 `composition/container-border-run`：`in_src �
 
 ---
 
-## 14. 这批图之外，本轮还测出来的三件事
+## 14. 这批图之外，本轮还做出来的装置与实测到的事实
 
-这三条都属于「**工具/环境的事实**」，会影响后续任何一次重绘，必须记下来。
+下面这些都属于「**工具 / 环境 / 装置的事实**」，会影响后续任何一次重绘，必须记下来。这三条都属于「**工具/环境的事实**」，会影响后续任何一次重绘，必须记下来。
 
 ### 14.1 本机 archify 的 `finalize` 用不了，`render` 可以
 
@@ -400,6 +417,109 @@ archify 的 `SUPPORTED_LOCALES` 是 **`['en', 'zh-CN']`**，所以中文版的 l
 `_r45/render_zh.py` 对每张中文图**连渲两次并逐字节比对**（13/13 相同），并断言产物里有
 `<html lang="zh-CN"`、有汉字、且**不含 CRLF**。
 
+### 14.5 独立 SVG：把产物里那张图「取出来」，而不是「截出来」
+
+README 里要直接看得见图，就得有**静态图**。栅格截图（PNG）会丢掉矢量、体积大、且和源脱钩；
+而**图本身就是 SVG** —— 每张的标记只有 2 万字符左右。所以做法是**取** SVG，不是截。
+
+`archify` 自己就有这个装置：`viewer/export.js` 的 `serializeSvg(scale, opts)` ——
+克隆 `.diagram-container svg`、只保留 SVG 相关 CSS 规则、把主题变量**解析成真值**、
+内联字体字节、补一张背景 rect。但它**在闭包里，没有暴露**；CLI 也没有 svg 子命令
+（`archify --help` 只有 render/compare/deliver/finalize/preview/validate/migrate/inspect/check/…），
+而 `browser-check` / `visual-check` / `finalize` 在本机**不可用**（Node 无法 spawn，见 14.1）。
+
+于是 `_r47/extract_svg.py` 绕了一圈，但**没有重写它**：把产物复制到仓库外临时目录 →
+在**同一闭包作用域内**插一行 `window.__archifySerialize = serializeSvg;`
+（函数声明会提升，插在定义之前也取得到，**原声明一个字不动**）→ 在 `</body>` 前追加 harness，
+调它、把结果 **base64** 回传 → 无头浏览器 `--dump-dom` 取回。
+用 base64 有两个好处：dump 出来的 DOM 里**不含 `<`**（不会被 HTML 解析器改写），
+且取回来的字节可以逐字节校验。
+**仓库里的 `.html` 与 `D:\project\archify` 都是零改动。**
+
+两个开关是**按失败模式选的**，不是按好不好看：
+
+| 开关 | 取值 | 为什么是它 |
+| --- | --- | --- |
+| `autoTheme` | `true` | 双主题（深色为底，浅色走 `prefers-color-scheme`）。万一番主不认这个媒体查询，它会退回**深色底 + 自带背景**，最坏是「浅色页面上多一块深色卡片」；若锁成浅色，最坏是「深色页面上深色文字 = 看不见」。**前者可用，后者不可用** —— 按最坏情况选，不按最优情况选。 |
+| `figure` | `true` | 让导出把 `.diagram-container > svg` 那批规则**改写到 `svg` 上**。不开会实测丢两样：`[data-edge-from]` 的 round 线帽/拐角，以及 `[data-node-id] > rect` 的 drop-shadow（节点「浮起来」的那层投影）。f01 实测 8 处 `filter` + 7 处 `linecap/linejoin` 不一致。 |
+
+背景**不受** `figure` 影响：`autoTheme` 分支注入的 `rect.c-bg-rect { fill: var(--bg); }`
+是一条 **CSS 规则**，优先级高于 `figure` 那句 `setAttribute('fill','none')` ——
+实测背景仍是 `rgb(244,245,247)`（浅色 `--bg`），不是透明。
+
+#### 怎么证明「取出来的 == 产物里那张」（`_r47/verify_svg.py`）
+
+把**产物自己的渲染路径**和**独立 SVG 的渲染路径**放进**同一个文档**里逐元素比：
+
+- **REF 支**：产物原样的 `<svg>` 放回 `.diagram-container`，页面照搬产物的两张 `<style>`
+  与 `<html>` / 容器的属性 —— 这就是产物自己的渲染路径；
+- **CAND 支**：独立 SVG 放进 **shadow root**（宿主的 CSS 一条也匹配不进来），
+  所以它看到的只有自己身上那份 —— 这正是它被单独打开时的渲染路径；
+- 比 **29 个计算属性 × 2910 个元素**，外加 `getBBox()` 与 `getComputedTextLength()`。
+
+##### 三处**测量装置自己的坑**（都是先红了才修好的，记下来免得重踩）
+
+1. **主题必须先对齐。** 产物的 `<html data-theme="dark">` 是**钉死的**，而 `autoTheme` 的独立 SVG
+   跟随浏览器偏好 —— 无头 Chromium 报的是 **light**。首轮没对齐，f01 直接 139 处不一致，
+   全是 `fill`/`stroke`/`color`（深色值 vs 浅色值），看上去像「CSS 过滤漏了规则」，
+   其实是**两边在比两个主题**。
+2. **缩放比必须先钉到 1:1。** 产物里的 `<svg>` 没有 `width`/`height`，尺寸全由查看器布局 CSS 给；
+   独立 SVG 的 `width`/`height` 就是 viewBox。两者缩放比不同时，Chromium 会在**设备像素**上
+   对字形取整，于是同一段文字在用户坐标里量出的前进宽度会差千分之几
+   （首轮 23 条 `getComputedTextLength` 里有 8 条差 0.09~0.17px）。把参考支的宽高钉成 viewBox 后归零。
+3. **`@font-face` 的等待不能只看 `document.fonts`。** 本机 `document.fonts.check()` 对
+   JetBrains Mono 返回 **false**（`fonts.size=12`，但两棵树都一样地退回后备字体），
+   所以又加了一路**光 DOM 副本**（CAND2）做对照 —— 实测 `cand2 vs cand` 全 0，
+   证明 shadow root 不是差异来源，把「**环境差异**」和「**SVG 自己的差异**」分开了。
+
+##### 结果
+
+`_r47/verify_all2.txt`：**26/26 全绿** —— 84,390 项属性比对 **0 项不明差异**，
+`getBBox` 0 项、`getComputedTextLength` 0 项、结构（元素序列）26/26 完全相同。
+
+另有 **58 项「已披露的差别」**，全部落在 f09（各 11 处）与 f13（各 18 处）的 `opacity` 上：
+
+> 产物初始态是 `data-detail-level="read"`，那条
+> `.diagram-container[data-detail-level="read"] svg [data-detail="fine"] { opacity: 0 }`
+> 会把**细粒度标注藏起来**（放大才出现）。导出按设计把它们显出来 ——
+> 静态图要的正是「完整」，而不是「复刻当前的缩放级别」。
+
+这 58 项**不是从判据里删掉的**：验证器把它**点名并单独计数**（只有 `opacity` 在 `{0,1}` 之间跳、
+且元素确实带 `data-detail`，才算这一类）。所以下一轮若出现**新的**差异，它仍然会红 ——
+「把一条差异命名并计数」和「把一条差异豁免掉」是两件事。
+
+### 14.6 图册：README 里直接看得见的那 26 张
+
+`flow/diagrams/` 下正好 26 个文件，由 `_r47/extract_svg.py` 从 26 个交互产物里一一取出，
+中英成对、骨架同构。两份 README 各嵌 13 张（英文版 / 中文版），点图即可打开对应的交互产物。
+
+| 图 | 英文独立 SVG | 中文独立 SVG | 交互产物 |
+| --- | --- | --- | --- |
+| `F01` | `f01-capabilities.svg` | `f01-capabilities.zh-CN.svg` | `architecture-malabc-capabilities-20261009-2215/f01-capabilities.html` |
+| `F02` | `f02-binary-attribution.svg` | `f02-binary-attribution.zh-CN.svg` | `architecture-binary-attribution-20261009-2340/f02-binary-attribution.html` |
+| `F03` | `f03-binary-attach.svg` | `f03-binary-attach.zh-CN.svg` | `workflow-binary-attach-20261009-2310/f03-binary-attach.html` |
+| `F04` | `f04-layers.svg` | `f04-layers.zh-CN.svg` | `architecture-malabc-layers-20261009-2340/f04-layers.html` |
+| `F05` | `f05-decision-point.svg` | `f05-decision-point.zh-CN.svg` | `architecture-single-decision-point-20261009-2340/f05-decision-point.html` |
+| `F06` | `f06-fix-loop.svg` | `f06-fix-loop.zh-CN.svg` | `workflow-fix-loop-20261009-2310/f06-fix-loop.html` |
+| `F07` | `f07-ci-gate.svg` | `f07-ci-gate.zh-CN.svg` | `workflow-ci-gate-20261009-2310/f07-ci-gate.html` |
+| `F08` | `f08-baseline-nodeids.svg` | `f08-baseline-nodeids.zh-CN.svg` | `workflow-baseline-nodeids-20261009-2310/f08-baseline-nodeids.html` |
+| `F09` | `f09-superpower-loop.svg` | `f09-superpower-loop.zh-CN.svg` | `lifecycle-superpower-loop-20261009-2340/f09-superpower-loop.html` |
+| `F10` | `f10-guard-registry.svg` | `f10-guard-registry.zh-CN.svg` | `workflow-guard-registry-20261009-2340/f10-guard-registry.html` |
+| `F11` | `f11-ir-attribution.svg` | `f11-ir-attribution.zh-CN.svg` | `workflow-ir-attribution-20261009-2340/f11-ir-attribution.html` |
+| `F12` | `f12-audit-layers.svg` | `f12-audit-layers.zh-CN.svg` | `architecture-audit-layers-20261009-2340/f12-audit-layers.html` |
+| `F13` | `f13-agent-loop.svg` | `f13-agent-loop.zh-CN.svg` | `lifecycle-agent-loop-20261009-2340/f13-agent-loop.html` |
+| | **合计 26 个 SVG，3,997,289 字节** | | **26 个交互 HTML，19,699,610 字节** |
+
+对比一下量级：26 个独立 SVG **3.82 MB**，占 26 个交互 HTML（19.70 MB）的 **五分之一不到**，
+而它带来的差别是「打开 README 就看得见图」。两者都在仓库里，各自有各自的用途：
+SVG 用来看，HTML 用来**放大、查找、沿着关系走**。
+
+`flow/INDEX.md` 与 `flow/FLOW_INDEX.json` 也一并登记了这 26 个 SVG 的**路径与字节数**
+（由 `_r45/gen_flow_index.py` 从磁盘**实测**生成，不是手写）。索引既然叫索引，它自己
+也得被钉住 —— `tools/check_flow_diagrams.py` 的 **D9** 判据就是干这个的：索引漏登记、
+登记了磁盘上不存在的文件、或声明的体积与 `os.path.getsize` 对不上，一律变红。
+**一条会过期的索引比没有索引更糟**，因为它看起来是对的。
+
 ---
 
 ## 15. 怎么重新生成
@@ -422,6 +542,17 @@ node E:/matlabc/_r45/archify-probe/bin/archify.mjs render architecture \
 # 4) 中文版：先由英文候选生成中文候选，再渲染
 python E:/matlabc/_r45/make_zh_candidates.py    # 结构不变式在这里断言
 python E:/matlabc/_r45/render_zh.py             # 26 张图一起跑，含逐字节可重复性断言
+
+# 5) 从 26 个产物里各取一份独立 SVG（仓库外脚本，只动临时副本；
+#    `window.__archifySerialize = serializeSvg;` 只插在临时副本上）
+python E:/matlabc/_r47/extract_svg.py
+
+# 6) 验证取出来的图 == 产物里那张图（同文档、同主题、1:1、逐元素比计算样式）
+python E:/matlabc/_r47/verify_svg.py --ref-theme light
+
+# 7) 把独立 SVG 嵌进两份 README（锚点唯一性 + 中英逐节对等，本步自检）
+python E:/matlabc/_r47/embed_docs.py
+python E:/matlabc/_r45/render_zh.py             # 26 张图一起跑，含逐字节可重复性断言
 ```
 
 **纪律一**：改图只能改 `candidate.json` 再重渲染，**不要手改 HTML**；
@@ -439,6 +570,13 @@ python E:/matlabc/_r45/render_zh.py             # 26 张图一起跑，含逐字
 ---
 
 ## 16. 下一步（建设性意见）
+
+> **R47 落地情况**：下面第 1 条里「**图与文档对不上**」的那一半已经落地 ——
+> 新增的 `tools/check_flow_diagrams.py` 把 **README 里的引用 ↔ `flow/diagrams/` 里的文件 ↔
+> `candidate*.json` 里的声明 ↔ `flow/archify/` 里的交互产物 ↔ `flow/FLOW_INDEX.json` 的索引登记**
+> 钉成了 **D1–D9 九条判据，且**每一对都双向**（引用悬空 → 红；文件没人引用 → 也红；
+> 索引漏登记 → 红；索引登记了不存在的东西、或声明的体积与磁盘对不上 → 也红）。
+> **仍然没做的**是「`source/*.mmd` 与源文档对不上」那一半（它要重跑普查），见下面第 1 条。
 
 1. **把「图」纳入 CI 一致性检查**：现在 `source/*.mmd` 与源文档是**人工同步**的。
    建议加一道 `tools/check_flow_sync.py`：重新跑一次普查，与 `FLOW_CENSUS.json` 逐字节比对，
@@ -459,3 +597,14 @@ python E:/matlabc/_r45/render_zh.py             # 26 张图一起跑，含逐字
    建议把 `FLOW_REPORT.md` / `INDEX.md` / 两张 README 里出现的**文件行数**统一到一个由脚本测量的来源
    （例如 `flow/FLOW_METRICS.json`，且必须带**计数口径**字段），再在 `tools/check_*.py` 里比对。
    判据要两向：**数字不符 → 红；声明了却不存在的指标 → 也红**。
+7. **给独立 SVG 补一条「尺寸判据」**：D5 现在只查静态形态。可以再加一条 —— SVG 的
+   `viewBox` 必须等于 `candidate.json` 里声明的宽高（`extract_svg.py` 已经把
+   `width`/`height` 带回来了），否则「图被重渲染成另一个尺寸」不会有人发现。
+8. **给「取图」也做一次逐字节可重复**：`extract_svg.py` 每次都要起一次无头浏览器。
+   应加一条断言：同一份产物**连取两次，SVG 必须逐字节相同**（像 `render_zh.py`
+   对 HTML 做的那样）。这样「取图」也从「跑过一次」升级成「可重复的等式」。
+9. **那 88 KB 的内联字体值不值得背？** 26 个 SVG 合计 3.82 MB，其中 **57%**（每张 ~88 KB）
+   是同一份 JetBrains Mono WOFF2 子集。而 GitHub 侧用 `<img>` 加载 SVG 时，`@font-face`
+   到底会不会生效，各浏览器并不一致；中文又本来就不在这个子集里。
+   值得实测一次（去掉字体块再比一次像素），再决定是否保留 —— **先测，再选**，
+   和本轮选 `autoTheme` / `figure` 是同一套方法。

@@ -601,7 +601,7 @@ python matlabc_flow.py --help     # 修复闭环：五站点流水线图 + 五�
 python matlabc_ask.py --help      # 问答式理解：事实底座如何装配成答案
 python matlabc_mcp.py --help      # MCP 服务：五个工具 + 「为什么 stdin 必须切断」
 python gui.py --help              # 图形界面：表单每一格等价于哪个命令行开关
-python tools/check_all.py --help  # 护栏总纲：10 道门各自拦什么
+python tools/check_all.py --help  # 护栏总纲：11 道门各自拦什么
 ```
 
 这不是口头承诺，而是被 `check_help_contract.py` 与 `check_doc_flags.py` 同时盯着的 ——
@@ -652,6 +652,66 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 所以节点 id、顺序、几何与说明卡数量都不会漂。locale 标签本身也有讲究：archify 的内置目录只有
 `en` 与 `zh-CN`，写成 `zh` 这类近似标签会**静默回退**成英文查看器外壳。同理，中文 HTML 会**连渲两次
 逐字节比对**，让「重跑渲染器 == 仓库里的文件」保持为一个可验证的等式。
+
+#### 13 张图
+
+每张图都**存了两份**：一份是**独立 SVG**（不用打开任何东西就能在这里看见），
+一份是**可交互的 HTML**。下面是中文版；英文版在 [`README.md`](README.md) 里。
+`flow/diagrams/` 与候选、以及 `flow/FLOW_INDEX.json` 索引之间由
+`tools/check_flow_diagrams.py` 钉住 —— 图一旦和它的源对不上、或漂出索引，
+构建就会变红，而不是静默腐坏。点任意一张图可打开它的交互版。
+
+### `F01` — 这个工具由哪几块能力组成？
+
+[![F01 · matlabc 能力地图](flow/diagrams/f01-capabilities.zh-CN.svg)](flow/archify/architecture-malabc-capabilities-20261009-2215/f01-capabilities.zh-CN.html)
+
+### `F02` — 一个名字为什么被判成 unresolved？三态各由什么证据支持？
+
+[![F02 · 三态归因](flow/diagrams/f02-binary-attribution.zh-CN.svg)](flow/archify/architecture-binary-attribution-20261009-2340/f02-binary-attribution.zh-CN.html)
+
+### `F03` — `--binary-attach` 到底省了什么？
+
+[![F03 · 一条命令代替两条](flow/diagrams/f03-binary-attach.zh-CN.svg)](flow/archify/workflow-binary-attach-20261009-2310/f03-binary-attach.zh-CN.html)
+
+### `F04` — 单文件内核内部分了哪几层？输入输出各是什么？
+
+[![F04 · 单文件五层内核](flow/diagrams/f04-layers.zh-CN.svg)](flow/archify/architecture-malabc-layers-20261009-2340/f04-layers.zh-CN.html)
+
+### `F05` — 「解析不到的调用」在哪里被判定？
+
+[![F05 · 唯一判定点](flow/diagrams/f05-decision-point.zh-CN.svg)](flow/archify/architecture-single-decision-point-20261009-2340/f05-decision-point.zh-CN.html)
+
+### `F06` — 修复闭环五步是什么？失败回哪一步？
+
+[![F06 · 修复闭环](flow/diagrams/f06-fix-loop.zh-CN.svg)](flow/archify/workflow-fix-loop-20261009-2310/f06-fix-loop.zh-CN.html)
+
+### `F07` — CI 退出码怎么算出来？
+
+[![F07 · CI 退出码门](flow/diagrams/f07-ci-gate.zh-CN.svg)](flow/archify/workflow-ci-gate-20261009-2310/f07-ci-gate.zh-CN.html)
+
+### `F08` — 基线门为什么比集合不比个数？
+
+[![F08 · 基线门比集合](flow/diagrams/f08-baseline-nodeids.zh-CN.svg)](flow/archify/workflow-baseline-nodeids-20261009-2310/f08-baseline-nodeids.zh-CN.html)
+
+### `F09` — 一轮方法论闭环怎么走？
+
+[![F09 · 方法论闭环](flow/diagrams/f09-superpower-loop.zh-CN.svg)](flow/archify/lifecycle-superpower-loop-20261009-2340/f09-superpower-loop.zh-CN.html)
+
+### `F10` — 护栏怎么被登记进测试与 CI？
+
+[![F10 · 登记制护栏](flow/diagrams/f10-guard-registry.zh-CN.svg)](flow/archify/workflow-guard-registry-20261009-2340/f10-guard-registry.zh-CN.html)
+
+### `F11` — 唯一判定点收拢后，用什么挡住它再扩散？
+
+[![F11 · 唯一判定点 + 六条变异判据](flow/diagrams/f11-ir-attribution.zh-CN.svg)](flow/archify/workflow-ir-attribution-20261009-2340/f11-ir-attribution.zh-CN.html)
+
+### `F12` — 仓库真实分层是什么？循环依赖在哪？
+
+[![F12 · 仓库真实分层](flow/diagrams/f12-audit-layers.zh-CN.svg)](flow/archify/architecture-audit-layers-20261009-2340/f12-audit-layers.zh-CN.html)
+
+### `F13` — 怎么保证不留下改了一半的树？
+
+[![F13 · agent_loop 状态机](flow/diagrams/f13-agent-loop.zh-CN.svg)](flow/archify/lifecycle-agent-loop-20261009-2340/f13-agent-loop.zh-CN.html)
 
 映射表、每张图背后的实测数字，以及下一步建议，见
 [`flow/FLOW_REPORT.md`](flow/FLOW_REPORT.md) 与 [`flow/INDEX.md`](flow/INDEX.md)。

@@ -8,6 +8,7 @@
         ├─▶ check_baseline.py             公平基线：按 nodeid 集合比失败（--full 才真跑）
         ├─▶ check_binfmt_fixtures.py      合成夹具 + 契约 C1..C9 + 两向自证
         ├─▶ check_doc_flags.py            文档/帮助里写的 CLI 开关必须真的存在
+        ├─▶ check_flow_diagrams.py        图的引用 ↔ 文件 ↔ 候选声明，两两对齐且双向
         ├─▶ check_help_contract.py        退出码在代码↔帮助双向一致；示例能真跑
         ├─▶ check_ir_attribution.py       「解析不到的调用」只有一个判定点，归因吃的就是它
         ├─▶ check_operator_impl.py        算子元表里不得有「只声明不产出」的幻影
@@ -86,8 +87,11 @@ GUARD_TIMEOUT = 600.0
 # R36 新增 check_baseline.py（C''7：把公平基线做成可重跑的门），故 8 → 9。
 # R44 新增 check_ir_attribution.py（C'''1：把「解析不到的调用只有一个判定点、
 # 且归因吃到的是它」钉成全仓集合判据），故 9 → 10。
+# R47 新增 check_flow_diagrams.py（把 README 里嵌的图 ↔ flow/diagrams/ 的文件 ↔
+# candidate*.json 的声明 ↔ 交互产物 ↔ FLOW_INDEX.json 索引 五条来源钉成 D1–D9、
+# 每对双向），故 10 → 11。
 # 新增护栏时**必须**同步上调这个数字 —— 这正是棘轮的作用。
-MIN_GUARDS = 10
+MIN_GUARDS = 11
 
 
 def _write_help(text):

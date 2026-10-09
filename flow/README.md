@@ -14,6 +14,7 @@
 | [`FLOW_CENSUS.json`](FLOW_CENSUS.json) | 普查结果：每个块的文件、行号、所在小节、图型、原始正文 | `_r45/census_flow.py` |
 | [`source/`](source/) | 21 个 mermaid 块**逐字节导出**（含 CRLF 行尾，与源文档一致）+ `INDEX.md` | `_r45/scaffold_flow.py` + `_r45/normalize_flow_eol.py` |
 | [`archify/`](archify/) | 13 套 `candidate.json`（英文可编辑源）+ 13 套 `candidate.zh-CN.json`（中文可编辑源）+ **26** 个渲染产物 `.html`（13 英文 + 13 中文） | `archify render` |
+| [`diagrams/`](diagrams/) | **26 个独立 SVG**（13 张 × 中英两套）——README 里直接看得见的那一份 | `_r47/extract_svg.py`（从产物里取出，不是截图） |
 
 ## 一眼看懂：13 张图分别回答什么
 
@@ -50,12 +51,18 @@ node E:/matlabc/_r45/archify-probe/bin/archify.mjs render architecture \
   archify/architecture-malabc-capabilities-20261009-2215/f01-capabilities.html \
   --quality showcase
 
+# 取独立 SVG：把 26 个产物里那张图取出来（仓库外脚本，只动临时副本）
+python E:/matlabc/_r47/extract_svg.py
+
+# 验证：把「产物自己的渲染路径」与「独立 SVG 的渲染路径」放进同一文档逐元素比
+python E:/matlabc/_r47/verify_svg.py --ref-theme light
+
 # 中文版：先生成中文候选（结构不变式在这里断言），再渲染 26 张图（含逐字节复验）
 python E:/matlabc/_r45/make_zh_candidates.py
 python E:/matlabc/_r45/render_zh.py
 ```
 
-## 五条使用纪律
+## 六条使用纪律
 
 1. **改图只能改 `candidate.json`，不要手改 `.html`** —— HTML 是渲染产物。
 2. **改了源文档的 mermaid，必须重新导出 `source/*.mmd`**，否则两边静默分叉。
@@ -71,6 +78,14 @@ python E:/matlabc/_r45/render_zh.py
    中文侧的 `candidate.zh-CN.json` 必须**重新生成**，不要手改 —— 否则骨架会静默分叉。
    locale 必须写 **`zh-CN`**：archify 的内置目录只有 `en` 与 `zh-CN`，写成 `zh` 会被
    **静默回退**成英文查看器外壳（`i18n/locale-fallback`）。
+
+6. **README 里嵌的是 `flow/diagrams/` 里的独立 SVG，不是截图**。它们由
+   `_r47/extract_svg.py` 调 **archify 自己的** `serializeSvg()` 取出（只是把闭包里的函数
+   临时暴露给临时副本，产物 HTML 与 archify 原仓库都是零改动）。所以**重新渲染 HTML 之后
+   必须重新取 SVG**，否则两边会静默分叉。`tools/check_flow_diagrams.py` 会把
+   「README 里的引用 ↔ `diagrams/` 里的文件 ↔ `candidate*.json` 里的声明」两两对齐，
+   中英成对、骨架同构、形态自足（无外链 / 有双主题 / 自带背景 / 保留 LF）都在这道门里；
+   `flow/FLOW_INDEX.json` 也在这道门里 —— 索引漏登记、或登记的体积与磁盘不符，一样红。
 
 ## 与 `D:\project\archify` 的关系
 

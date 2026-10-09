@@ -20,7 +20,7 @@ python tests/test_matlabc.py
 # 3) 对示例做静态分析，确认主流程无回归
 python matlabc.py tests/sample_m -o demo.md --html demo.html --browse --offline
 
-# 4) 登记制护栏（10 道，各自还会跑 --selftest；门数少于下限也会红）
+# 4) 登记制护栏（11 道，各自还会跑 --selftest；门数少于下限也会红）
 python tools/check_all.py
 ```
 
