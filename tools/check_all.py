@@ -5,7 +5,8 @@
 
     python tools/check_all.py
         │
-        ├─▶ check_binfmt_fixtures.py      合成夹具 + 契约 C1..C8 + 两向自证
+        ├─▶ check_baseline.py             公平基线：按 nodeid 集合比失败（--full 才真跑）
+        ├─▶ check_binfmt_fixtures.py      合成夹具 + 契约 C1..C9 + 两向自证
         ├─▶ check_doc_flags.py            文档/帮助里写的 CLI 开关必须真的存在
         ├─▶ check_help_contract.py        退出码在代码↔帮助双向一致；示例能真跑
         ├─▶ check_operator_impl.py        算子元表里不得有「只声明不产出」的幻影
@@ -80,9 +81,10 @@ GUARD_TIMEOUT = 600.0
 # R33/C'9：**门数棘轮**。只断言 rc=0 是不够的 —— 一个护栏被误删（或改名、
 # 或移动目录）之后，剩下的门依然全绿，rc 依然是 0，于是「门少了」这件事
 # 静默通过。这里登记「本仓自带护栏的下界」，删掉任何一道都会立刻变红。
-# 数字含义：截至 R33，tools/ 下有 8 道 check_*.py（不含本 runner）。
+# 数字含义：截至 R36，tools/ 下有 9 道 check_*.py（不含本 runner）。
+# R36 新增 check_baseline.py（C''7：把公平基线做成可重跑的门），故 8 → 9。
 # 新增护栏时**必须**同步上调这个数字 —— 这正是棘轮的作用。
-MIN_GUARDS = 8
+MIN_GUARDS = 9
 
 
 def _write_help(text):
@@ -197,7 +199,7 @@ def main(argv):
     if "--selftest" in argv:
         bad, good = _selftest()
         print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
-        return 0 if (bad == 0 and good >= 8) else 1
+        return 0 if (bad == 0 and good >= 9) else 1
 
     tools_dir = os.path.dirname(os.path.abspath(__file__))
     if "--tools-dir" in argv:
@@ -228,7 +230,7 @@ def main(argv):
 def _selftest():
     """双向自证：既造坏样本（必须红），也造好样本（必须绿）。
 
-    五项断言缺一不可：
+    七项断言缺一不可：
       ① 坏护栏（rc=1）         -> runner 必须返回 1
       ② 好护栏（rc=0 且有自证） -> runner 必须返回 0
       ③ 缺自证的护栏           -> runner 必须返回 1（否则「无自证」会被静默放行）
@@ -236,6 +238,10 @@ def _selftest():
       ⑤ **永不退出的护栏**     -> runner 必须在超时后返回 1（R62-R31e 新增：
          一条会挂死的链比一道闸门更糟 —— 旧实现没有 timeout，一个不退出
          的护栏会让 check_all 和 CI 永远等下去。这里用 3s 超时把它变成红。）
+      ⑥ 门数棘轮（R33/C'9，R37 改成从 MIN_GUARDS 派生）-> 少于下限要红、
+         达到下限放行、外部目录不施加下限
+      ⑦ MIN_GUARDS 必须等于本目录真实护栏数（R37）—— 只测「函数在给定数字下
+         对不对」不够，还要保证**那个数字本身**没被落下
     """
     bad = good = 0
     tmp = tempfile.mkdtemp(prefix="chk_all_selftest_")
@@ -302,21 +308,39 @@ def _selftest():
 
         # ⑥ 门数棘轮（R33/C'9）：少于下限必须变红；达到/超过则放行。
         # 注意这是纯函数判定，不依赖真实目录 —— 否则自证会被「当前有几道门」绑死。
-        if _guard_count_problem(3, 8, True) is not None:
+        # R37：样本里的数字改成**从 MIN_GUARDS 派生**，而不是写死 8 ——
+        # 否则 MIN_GUARDS 调到 20 时，自证还在测 8，棘轮会悄悄失效。
+        if _guard_count_problem(MIN_GUARDS - 1, MIN_GUARDS, True) is not None:
             good += 1
         else:
             bad += 1
             print("  [selftest] 门数不足未被判红（C'9 棘轮失效）")
-        if _guard_count_problem(8, 8, True) is None:
+        if _guard_count_problem(MIN_GUARDS, MIN_GUARDS, True) is None:
             good += 1
         else:
             bad += 1
             print("  [selftest] 门数达下限被误伤（C'9 误报）")
-        if _guard_count_problem(1, 8, False) is None:
+        if _guard_count_problem(1, MIN_GUARDS, False) is None:
             good += 1
         else:
             bad += 1
             print("  [selftest] 外部 --tools-dir 被误施加下限（C'9 过严）")
+
+        # ⑦ MIN_GUARDS 必须等于**本目录真实的护栏数**（R37）。
+        # 这是棘轮的另一半：只测「函数在给定数字下对不对」不够，
+        # 还要保证**那个数字本身**没被落下 —— 加了一道门却忘了上调，
+        # 棘轮就等于不存在，而 rc 依然是 0。
+        _here = os.path.dirname(os.path.abspath(__file__))
+        _me = os.path.basename(os.path.abspath(__file__))
+        _real = len([f for f in os.listdir(_here)
+                     if f.startswith("check_") and f.endswith(".py")
+                     and f != _me])
+        if MIN_GUARDS == _real:
+            good += 1
+        else:
+            bad += 1
+            print("  [selftest] MIN_GUARDS=%d 与本目录真实护栏数 %d 不一致 —— "
+                  "加门/删门后必须同步这个数字" % (MIN_GUARDS, _real))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return bad, good

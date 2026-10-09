@@ -16501,3 +16501,85 @@ def test_r36_macho_has_two_independent_verification_axes():
             "两轴（有夹具/无夹具）渲染出了同一段话 —— 区分装置失效"
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _r37_load(name):
+    import importlib
+    sys.path.insert(0, _R33_TOOLS)
+    try:
+        return importlib.import_module(name)
+    finally:
+        sys.path.pop(0)
+
+
+def test_r37_baseline_compares_failure_sets_not_counts():
+    """R37/C''7：公平基线必须按 **nodeid 集合** 比对，而不是比失败**个数**。
+
+    这是这道门存在的全部理由 —— 本仓测试集本来就不全绿（历史遗留一百多个
+    failed），个数变化分不出「修好一个」与「修好两个又弄坏一个」。
+    """
+    cb = _r37_load("check_baseline")
+
+    # ① 个数相同、集合不同 -> 必须判为回归。
+    #    本例刻意让两侧个数相等：任何「比个数」的实现都会在这里说「没变」。
+    res = cb.compare_failure_sets(["a::t1", "a::t2"], ["a::t1", "a::t3"])
+    assert res["regressions"] == ["a::t3"], res
+    assert res["fixed"] == ["a::t2"], res
+    assert len(res["regressions"]) == len(res["fixed"]), res
+    prob = []
+    cb.baseline_problems(["a::t1", "a::t2"], ["a::t1", "a::t3"], prob.append)
+    assert prob, "个数相等而集合不同时没有报回归（比个数就会漏）"
+
+    # ② 完全相同 -> 不报
+    prob2 = []
+    cb.baseline_problems(["a::t1"], ["a::t1"], prob2.append)
+    assert not prob2, prob2
+
+    # ③ 只修好 -> 不报回归（fixed 非空是**好消息**）
+    prob3 = []
+    r3 = cb.baseline_problems(["a::t1", "a::t2"], ["a::t1"], prob3.append)
+    assert not prob3, prob3
+    assert r3["fixed"] == ["a::t2"], r3
+
+    # ④ 收集期 ERROR（nodeid 里没有 ::）同样算「没通过」
+    prob4 = []
+    cb.baseline_problems([], ["tests/a.py"], prob4.append)
+    assert prob4, "收集期 ERROR 没被算成失败"
+
+    # ⑤ parse_failed 只认**行首**：汇总行 / 进度行不得被当 nodeid
+    txt = ("tests/x.py .F.\n"
+           "FAILED tests/x.py::test_a - AssertionError: boom\n"
+           "ERROR tests/y.py\n"
+           "1 failed, 1 error, 1 passed, 1 skipped in 0.20s\n"
+           "2 failed in 0.10s\n")
+    got = cb.parse_failed(txt)
+    assert got == {"tests/x.py::test_a", "tests/y.py"}, got
+
+
+def test_r37_baseline_gate_is_registered_and_self_proving():
+    """R37：基线门必须（a）有退出码契约，（b）计入门数下限，（c）两向自证通过。
+
+    还要钉住一条：**MIN_GUARDS 必须等于本目录真实护栏数** —— 否则「加了一道门
+    却忘了上调」会让门数棘轮静默失效（rc 仍是 0）。
+    """
+    hc = _r37_load("check_help_contract")
+    ca = _r37_load("check_all")
+
+    assert "tools/check_baseline.py" in hc.GUARD_CONTRACT, \
+        "check_baseline.py 没有登记退出码契约"
+    assert set(hc.GUARD_CONTRACT["tools/check_baseline.py"]) == {0, 1, 2}, \
+        hc.GUARD_CONTRACT["tools/check_baseline.py"]
+
+    real = len([f for f in os.listdir(_R33_TOOLS)
+                if f.startswith("check_") and f.endswith(".py")
+                and f != "check_all.py"])
+    assert ca.MIN_GUARDS == real, \
+        "MIN_GUARDS=%d 与真实护栏数 %d 不一致（加门/删门后要同步）" \
+        % (ca.MIN_GUARDS, real)
+
+    r = _r31_run(["tools/check_baseline.py", "--selftest"], timeout=120)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[-500:]
+    m = re.search(r'SELFTEST COUNTS \{"bad": (\d+), "good": (\d+)\}', out)
+    assert m, out[-500:]
+    assert int(m.group(1)) >= 3 and int(m.group(2)) >= 3, m.group(0)
