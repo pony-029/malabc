@@ -16583,3 +16583,51 @@ def test_r37_baseline_gate_is_registered_and_self_proving():
     m = re.search(r'SELFTEST COUNTS \{"bad": (\d+), "good": (\d+)\}', out)
     assert m, out[-500:]
     assert int(m.group(1)) >= 3 and int(m.group(2)) >= 3, m.group(0)
+
+
+def test_r38_help_volume_ratchet_has_a_relative_arm():
+    """R38/C''8：帮助体积棘轮必须**两臂取严** —— 绝对界 + 相对界。
+
+    只有绝对界时两头都不够：辅助入口（上界 16 KiB）等于没设界，可以悄悄胖 8 倍；
+    旗舰入口又太紧。相对臂（相对已批准快照 ±30%，最少 512 B 宽容）补上这一课，
+    而且**必须在绝对界毫无反应时**就能抓住。
+
+    这里既测纯函数，也在真实仓库上验证相对臂真的会红（只改进程内存里的快照）。
+    """
+    hc = _r37_load("check_help_contract")
+    v = hc._r5_verdict
+
+    # 臂 A：绝对界
+    assert v("x.py", 5000, 400, 16384, None) is None
+    assert v("x.py", 100, 400, 16384, None) is not None
+    assert v("x.py", 99999, 400, 16384, None) is not None
+    assert v("x.py", 999999, 0, 0, 0) is None, "(0,0) 表示显式不设界"
+
+    # 臂 B：绝对界**无反应**（3000 远在 400..16384 之内），相对界必须抓住
+    assert v("x.py", 3000, 400, 16384, 1000) is not None, \
+        "绝对界够不着时相对界没反应 —— 第二臂形同虚设"
+    assert v("x.py", 1000, 400, 16384, 2000) is not None      # 缩水
+    assert v("x.py", 1250, 400, 16384, 1000) is None          # +25% 放行
+    assert v("x.py", 1400, 400, 16384, 1000) is None          # 512 B 宽容
+    # 快照必须覆盖每一个设了绝对界的入口（否则第二臂对它是空的）
+    for s, (lo, hi) in hc.HELP_BYTES.items():
+        if hi > 0:
+            assert s in hc.HELP_BYTES_SNAPSHOT, \
+                "%s 设了绝对界却没有相对快照（第二臂对它是空的）" % s
+
+    # 真实仓库：真快照下不得误报；把快照调小必须变红
+    probs = []
+    hc.audit(ROOT, probs.append, cache={})
+    assert not [p for p in probs if p.startswith("R5")], \
+        [p for p in probs if p.startswith("R5")]
+
+    saved = hc.HELP_BYTES_SNAPSHOT["matlabc_flow.py"]
+    hc.HELP_BYTES_SNAPSHOT["matlabc_flow.py"] = 600
+    try:
+        probs2 = []
+        hc.audit(ROOT, probs2.append, cache={})
+    finally:
+        hc.HELP_BYTES_SNAPSHOT["matlabc_flow.py"] = saved
+    r5b = [p for p in probs2 if p.startswith("R5")]
+    assert any("matlabc_flow.py" in p for p in r5b), \
+        "帮助悄悄膨胀 3 倍时，相对棘轮没有变红：%r" % probs2

@@ -226,6 +226,35 @@ HELP_BYTES = {
     "gui.py": (400, 16 * 1024),
 }
 
+# R38/C''8：体积棘轮的**第二臂 —— 相对界**。
+#
+# 只有绝对界是不够的，而且是**两头不够**：
+#   * 对辅助入口（matlabc_ask.py 实测 919 B、上界 16 KiB）等于没设界 ——
+#     它可以悄悄胖 8 倍而 rc 依然是 0。
+#   * 对旗舰入口又太紧：合法地加三个功能就可能顶到 64 KiB，于是界要么被随手
+#     放宽（等于取消），要么逼着把帮助拆走（可读性反而变差）。
+#
+# 相对界的做法：记一份**已批准快照**，实测值相对快照的漂移不得超过 ±30%
+# （并给 512 B 最小宽容，免得小文件被几个字符就判红）。两臂**取严**：
+#   matlabc.py：64 KiB 绝对上界 vs 48593×1.3≈63 KiB 相对上界 ⇒ 相对界先起作用
+#   matlabc_ask.py：16 KiB 绝对上界 vs 919×1.3≈1.2 KiB 相对上界 ⇒ 相对界先起作用
+#
+# 为什么用「已批准快照」而不是 C''8 原文的「上一 tag」：
+# 本仓**至今没有任何 tag**（`git tag` 为空），那个基线根本不存在。
+# 快照与 tag 的唯一差别是「谁批准」，而快照随时可用、而且在 diff 里看得见 ——
+# 等本仓开始打 tag 时，这道门一行都不用改。
+# 漂移超限时的正当做法**不是**放宽这两个数，而是同步更新快照
+# （那是一次显式的、可评审的批准动作 —— 这正是棘轮的意义）。
+HELP_BYTES_SNAPSHOT = {
+    "matlabc.py": 48593,
+    "matlabc_flow.py": 2075,
+    "matlabc_ask.py": 919,
+    "matlabc_mcp.py": 0,
+    "gui.py": 2651,
+}
+HELP_DRIFT_MAX = 0.30
+HELP_DRIFT_FLOOR = 512
+
 # 真跑示例的墙钟上限。实测这些命令都是 0.2–1.0s 返回（探针 probe_safe_flags），
 # 60s 有 ~100 倍余量；上限的意义是「让挂死变成红，而不是让门永远等着」。
 RUN_TIMEOUT = 60.0
@@ -425,6 +454,38 @@ def _r4_verdict(script, target, argv, rc, out, expect_blank):
     return None
 
 
+def _r5_verdict(script, n_bytes, lo, hi, snapshot):
+    """R5 的判定，抽成**纯函数**（自证不必起进程）。
+
+    两条臂，**取严**：
+      臂 A 绝对界：lo <= n_bytes <= hi
+      臂 B 相对界：|n_bytes - snapshot| <= max(HELP_DRIFT_MAX*snapshot, FLOOR)
+    返回问题字符串，或 None 表示通过。
+    """
+    if hi <= 0:
+        return None            # (0, 0) = 显式「不设界」（stdio server 按设计零输出）
+    if n_bytes < lo:
+        return ("R5 %s: --help 只有 %d 字节（绝对下界 %d）—— 帮助被无声缩水了"
+                % (script, n_bytes, lo))
+    if n_bytes > hi:
+        return ("R5 %s: --help 已达 %d 字节（绝对上界 %d）—— 终端里读不完，"
+                "应拆分到 docs/ 独立文档" % (script, n_bytes, hi))
+    if snapshot is None:
+        return None
+    allow = max(int(HELP_DRIFT_MAX * snapshot), HELP_DRIFT_FLOOR)
+    drift = n_bytes - snapshot
+    if abs(drift) <= allow:
+        return None
+    how = "膨胀" if drift > 0 else "缩水"
+    return ("R5 %s: --help %d 字节相对已批准快照 %d 漂移 %+d 字节（%s %.0f%%，"
+            "允许 ±%d）—— 若是**合法增长**，请在同一个提交里把 "
+            "HELP_BYTES_SNAPSHOT['%s'] 更新为 %d 并在提交信息里说明理由；"
+            "不要放宽 HELP_DRIFT_MAX"
+            % (script, n_bytes, snapshot, drift, how,
+               100.0 * drift / snapshot if snapshot else 0.0, allow,
+               script, n_bytes))
+
+
 def audit(root, on_problem, cache=None):
     """对真实仓库施加 R1/R2/R3/R4；返回检查过的脚本数。
 
@@ -531,7 +592,7 @@ def audit(root, on_problem, cache=None):
                 on_problem("R4 %s: 已验证可跑的 `%s` 没有原样出现在文档里 —— "
                            "能跑但抄不到，等于没写" % (script, literal))
 
-        # ---- R5：帮助体积棘轮（R33/C'8，上下界都管） ----
+        # ---- R5：帮助体积棘轮（R33/C'8 立，R38/C''8 改成**两臂取严**） ----
         lo, hi = HELP_BYTES.get(script, (0, 0))
         if hi > 0:
             hk = script + "::--help"
@@ -541,13 +602,11 @@ def audit(root, on_problem, cache=None):
             n_bytes = len(_out)
             if _rc is None:
                 on_problem("R5 %s: `--help` 超时，拿不到体积" % script)
-            elif n_bytes < lo:
-                on_problem("R5 %s: --help 只有 %d 字节（下界 %d）—— "
-                           "帮助被无声缩水了" % (script, n_bytes, lo))
-            elif n_bytes > hi:
-                on_problem("R5 %s: --help 已达 %d 字节（上界 %d）—— "
-                           "终端里读不完，应拆分到 docs/ 独立文档"
-                           % (script, n_bytes, hi))
+            else:
+                msg = _r5_verdict(script, n_bytes, lo, hi,
+                                  HELP_BYTES_SNAPSHOT.get(script))
+                if msg:
+                    on_problem(msg)
     return n
 
 
@@ -733,21 +792,28 @@ def _selftest():
                _r4_verdict("loop", "loop_script.py", ["--help"], rc_to, out_to,
                            False) is not None, True)
 
-    # ---- R5：帮助体积棘轮（纯函数判定，不起进程） ----
-    def _r5_verdict(n_bytes, lo, hi):
-        if hi <= 0:
-            return None
-        if n_bytes < lo:
-            return "R5 缩水"
-        if n_bytes > hi:
-            return "R5 膨胀"
-        return None
-
-    expect("R5 正常体积（放行）", _r5_verdict(5000, 400, 16384) is not None, False)
-    expect("R5 低于下界（抓到）", _r5_verdict(100, 400, 16384) is not None, True)
-    expect("R5 高于上界（抓到）", _r5_verdict(99999, 400, 16384) is not None, True)
-    expect("R5 上界为 0 = 不设界（放行）",
-           _r5_verdict(999999, 0, 0) is not None, False)
+    # ---- R5：帮助体积棘轮（两臂取严；纯函数判定，不起进程） ----
+    # 臂 A：绝对界
+    expect("R5 正常体积（放行）",
+           _r5_verdict("x.py", 5000, 400, 16384, None) is not None, False)
+    expect("R5 低于绝对下界（抓到）",
+           _r5_verdict("x.py", 100, 400, 16384, None) is not None, True)
+    expect("R5 高于绝对上界（抓到）",
+           _r5_verdict("x.py", 99999, 400, 16384, None) is not None, True)
+    # 臂 B：相对快照。这条是 R38 新加的核心 —— 它必须在**绝对界毫无反应**时抓住。
+    expect("坏样本：绝对界无反应但相对界抓到膨胀",
+           _r5_verdict("x.py", 3000, 400, 16384, 1000) is not None, True)
+    expect("坏样本：相对界抓到缩水（−50%，超出 512 B 宽容）",
+           _r5_verdict("x.py", 1000, 400, 16384, 2000) is not None, True)
+    # 好样本：漂移在允许范围内（含 512 B 最小宽容对小文件的保护）
+    expect("好样本：漂移 +25% 放行（正处在允许内）",
+           _r5_verdict("x.py", 1250, 400, 16384, 1000) is not None, False)
+    expect("好样本：小文件 ±512 B 宽容生效",
+           _r5_verdict("x.py", 1400, 400, 16384, 1000) is not None, False)
+    expect("好样本：无快照 = 只有绝对界",
+           _r5_verdict("x.py", 9999, 400, 16384, None) is not None, False)
+    expect("好样本：(0,0) = 显式不设界（stdio server 放行）",
+           _r5_verdict("x.py", 999999, 0, 0, 0) is not None, False)
 
     # ---- C'7：护栏退出码契约（真实仓库核对已覆盖；再补一条纯函数反例） ----
     import tempfile as _tf
