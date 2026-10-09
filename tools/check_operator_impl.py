@@ -15,6 +15,15 @@
         ∨ kind ∈ _UNIMPLEMENTED_KINDS（且原因非空）
     等价地：`幻影算子数 == 0`。
 
+C''5（R40）追加的第三条判据 —— **「不做」必须让用户看得见**：
+    ∀ kind ∈ _UNIMPLEMENTED_KINDS:
+        kind 必须出现在 matlabc.py 的**模块 docstring** 里
+    为什么：`_UNIMPLEMENTED_KINDS` 是源码里的字典，用户永远看不到它。
+    一个「不做」的算子如果只写在源码里，用户从 `--help` 得到的印象仍是
+    「这个工具会查未定义名」—— 那就是用沉默冒充能力。
+    而 matlabc.py 的模块 docstring **就是它的 --help 正文**，
+    所以这条判据等于「未实现项必须在帮助里说明理由」。
+
 为什么用 `"kind": "<name>"` 而不是「名字出现过」：
     `_on("py_eval_usage")` 这种开关判断里也有名字，若按「出现过」判就会
     把「只加了个开关、没写产出」算成已实现 —— 那正是这道门要拦的东西。
@@ -84,6 +93,20 @@ def _keys_of(block, name):
     return re.findall(r'^\s{4}"([A-Za-z_][\w]*)"\s*:', head, re.M)
 
 
+def _module_docstring(path):
+    """取模块 docstring；解析不了返回 None。
+
+    为什么要 ast 而不是正则找第一段三引号：`matlabc.py` 开头有编码声明注释、
+    文件里有大量非 docstring 的三引号字符串，正则很容易抓错那一段。
+    """
+    import ast
+    try:
+        with io.open(path, "r", encoding="utf-8", errors="replace") as fh:
+            return ast.get_docstring(ast.parse(fh.read()), clean=False)
+    except (SyntaxError, OSError):
+        return None
+
+
 def analyze(src_path):
     """返回 (findings, unimplemented, meta_keys, err)，findings 为问题 kind 字典。
 
@@ -93,9 +116,11 @@ def analyze(src_path):
                             **必须报红**：这正是「先把 kind 塞进元表凑数、
                             再补一句未实现」的敷衍写法，等于幻影算子换个马甲。
     findings["no_reason"] : _UNIMPLEMENTED_KINDS 里原因为空/过短的 kind
+    findings["undocumented"] : 未实现项**没有写进模块 docstring**（= --help 正文）
+                               —— 源码里有理由、用户看不到，等于没有（C''5/R40）
     err                   : 非 None 表示缺输入（源文件/元表/未实现表）
     """
-    empty = {"phantom": [], "conflict": [], "no_reason": []}
+    empty = {"phantom": [], "conflict": [], "no_reason": [], "undocumented": []}
     if not os.path.isfile(src_path):
         return empty, [], [], "源文件不存在：%s" % src_path
     text = _read(src_path)
@@ -112,7 +137,7 @@ def analyze(src_path):
     unimpl = _keys_of(unimpl_block, _UNIMPL_NAME)
     meta_keys = _keys_of(block, _META_NAME)
 
-    findings = {"phantom": [], "conflict": [], "no_reason": []}
+    findings = {"phantom": [], "conflict": [], "no_reason": [], "undocumented": []}
     for kind in unimpl:
         m = re.search(r'"%s"\s*:\s*(.*?)\)\s*,?\s*(?:"|\})' % re.escape(kind),
                       unimpl_block, re.S)
@@ -120,6 +145,12 @@ def analyze(src_path):
         # 只认「明确写了足够长的原因」；空字符串/占位符视同没写
         if len(re.findall(r"[\u4e00-\u9fffA-Za-z]", body)) < 8:
             findings["no_reason"].append(kind)
+
+    # C''5（R40）：理由还必须出现在**模块 docstring**（即 --help 正文）里。
+    doc = _module_docstring(src_path) or ""
+    for kind in unimpl:
+        if kind not in doc:
+            findings["undocumented"].append(kind)
 
     for kind in meta_keys:
         if kind in unimpl:
@@ -146,11 +177,15 @@ def report(src_path, quiet=False):
     if findings["no_reason"]:
         print("[FAIL] _UNIMPLEMENTED_KINDS 缺少原因说明：%s"
               % ", ".join(findings["no_reason"]))
+    if findings["undocumented"]:
+        print("[FAIL] 未实现算子没有写进**帮助正文**（模块 docstring）—— "
+              "源码里有理由、用户看不到，等于用沉默冒充能力：%s"
+              % ", ".join(findings["undocumented"]))
     if any(findings.values()):
         return 1
     if not quiet:
         print("check_operator_impl: OK（元表 %d 个 kind 全部有产出点；"
-              "显式登记未实现 %d 个；两表交集为空）"
+              "显式登记未实现 %d 个且已写进帮助正文；两表交集为空）"
               % (len(meta_keys), len(unimpl)))
     return 0
 
@@ -165,15 +200,29 @@ _META_TMPL = '''%s = {
 %s}
 '''
 
+# 合成样本的模块 docstring（= matlabc.py 里「就是 --help 正文」的那个 docstring）。
+# 默认把它写成**提到 zz_alpha** 的样子，好让「幻影/冲突/空原因」那几个样本
+# 只在被测变量上有差异 —— 夹具引入额外差异是这道门自己踩过的坑（见 _synth 注释）。
+_DOC_TMPL = '"""%s"""\n\n'
+_DOC_OK = "合成样本。zz_alpha 不实现：需要真正的名字解析，替代方案是 pyflakes。\n"
+
 
 def _synth(bad_kind=None, good_kind=None, empty_reason=False,
-           dup_kind=None):
+           dup_kind=None, doc=None):
     """合成样本。dup_kind：同时写进元表与未实现表（冲突样本）。
 
     注意夹具纪律：`zz_alpha` **只**出现在未实现表里。首版夹具把它同时写进
     两张表，于是「好样本」被判成 conflict 而被误伤 —— 那是夹具引入了被测
     变量之外的差异，不是实现的问题。
+    同理（R40）：模块 docstring 默认就提 `zz_alpha`，只想测「幻影」的样本
+    不该顺带触发「未写进帮助」。
     """
+    if doc is None:
+        doc = _DOC_OK
+    # 冲突样本同时把 dup_kind 登记成未实现，所以帮助里也得提到它 ——
+    # 否则该样本会顺带触发一次「未写进帮助」，测到的就不是「冲突」这一件事了。
+    if dup_kind and dup_kind not in doc:
+        doc = doc + "\n%s 也登记为未实现。\n" % dup_kind
     meta_extra = ('    "%s": {"label": "B", "level": "error", "category": "x"},\n'
                   % bad_kind) if bad_kind else ""
     if good_kind:
@@ -191,7 +240,9 @@ def _synth(bad_kind=None, good_kind=None, empty_reason=False,
     body = ''
     if good_kind:
         body = 'out.append({"kind": "%s"})\n' % good_kind
-    return _META_TMPL % (_META_NAME, meta_extra, _UNIMPL_NAME, unimpl) + body
+    return (_DOC_TMPL % doc
+            + _META_TMPL % (_META_NAME, meta_extra, _UNIMPL_NAME, unimpl)
+            + body)
 
 
 def selftest():
@@ -260,6 +311,24 @@ def selftest():
         bad += 1
         print("  [selftest] 无元表未变红")
 
+    # ⑦ 坏样本（C''5/R40）：未实现项**没写进帮助正文** → 必须抓
+    p = _write("undoc.py", _synth(doc="这个帮助里一个字都没提未实现算子。\n"))
+    f, _u, _mk, err = analyze(p)
+    if err is None and f["undocumented"] == ["zz_alpha"]:
+        good += 1
+    else:
+        bad += 1
+        print("  [selftest] 未实现项没写进帮助正文未被抓：%r err=%r" % (f, err))
+
+    # ⑧ 好样本（C''5/R40）：帮助里写了 → 不得误伤
+    p = _write("docok.py", _synth())
+    f, _u, _mk, err = analyze(p)
+    if err is None and not f["undocumented"]:
+        good += 1
+    else:
+        bad += 1
+        print("  [selftest] 写进帮助的好样本被误伤：%r err=%r" % (f, err))
+
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     return bad, good
 
@@ -267,7 +336,7 @@ def selftest():
 def main(argv):
     if "--selftest" in argv:
         bad, good = selftest()
-        return 0 if (bad == 0 and good >= 6) else 1
+        return 0 if (bad == 0 and good >= 8) else 1
     src = DEFAULT_SRC
     if "--src" in argv:
         i = argv.index("--src")

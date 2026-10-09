@@ -16684,3 +16684,47 @@ def test_r39_ci_examples_exit_codes_are_under_contract():
     assert hc.parse_exit_section(doc) == set(ms), \
         "merge_sarif.py 的帮助退出码 %r != 登记表 %r" \
         % (hc.parse_exit_section(doc), set(ms))
+
+
+def test_r40_unimplemented_operators_are_documented_in_help():
+    """R40/C''5：`_UNIMPLEMENTED_KINDS` 里的每一项都必须写进**帮助正文**。
+
+    为什么：那张表是源码里的字典，用户永远看不到。一个「不做」的算子只写在源码里，
+    用户从 `--help` 得到的印象仍是「这个工具会查未定义名」—— 那是用沉默冒充能力。
+    matlabc.py 的模块 docstring **就是它的 --help 正文**，所以这条判据等于
+    「未实现项必须在帮助里说明理由与替代方案」。
+
+    两向都在这里钉住：真实 matlabc.py 必须过；把帮助里那一段删掉必须变红。
+    """
+    op = _r37_load("check_operator_impl")
+
+    # A) 真实仓库：不得有 undocumented
+    f, unimpl, meta, err = op.analyze(os.path.join(ROOT, "matlabc.py"))
+    assert err is None, err
+    assert unimpl, "未实现表是空的 —— 这条判据失去对象（要么真全实现了，要么表被删）"
+    assert f["undocumented"] == [], \
+        "未实现项没写进帮助正文：%r" % f["undocumented"]
+
+    # 帮助正文里必须能读到「不做」的理由与替代方案
+    doc = op._module_docstring(os.path.join(ROOT, "matlabc.py"))
+    assert doc, "matlabc.py 没有模块 docstring（--help 正文就靠它）"
+    for kind in unimpl:
+        assert kind in doc, "%s 没写进帮助正文" % kind
+    assert "pyflakes" in doc or "ruff" in doc, \
+        "只说了「不做」，没给替代方案 —— 用户不知道该用什么"
+
+    # B) 两向：把帮助里那一段删掉必须变红（在仓库外造拷贝，不碰源码）
+    tmp = tempfile.mkdtemp(prefix="_t_r40undoc_")
+    try:
+        src = os.path.join(ROOT, "matlabc.py")
+        text = io.open(src, encoding="utf-8", newline="").read()
+        pat = re.compile(r"  \* \*\*跨语言算子有一个是「不做」的\*\*：.*?(?=\n─)", re.S)
+        assert pat.search(text), "找不到帮助里的未实现说明段（锚点已变）"
+        bad = os.path.join(tmp, "matlabc_undoc.py")
+        io.open(bad, "w", encoding="utf-8", newline="").write(pat.sub("", text))
+        f2, _u2, _m2, e2 = op.analyze(bad)
+        assert e2 is None, e2
+        assert "py_undefined_name" in f2["undocumented"], \
+            "删掉帮助段后没有报 undocumented —— 判据在真实文件上不生效"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
