@@ -45,7 +45,7 @@ def render_unresolved_page(rows, orphaned=None, dynamic=None, indirect=None, ind
       "按调用次数降序。若某名在项目内存在同名函数/脚本（<span class=\"tag-god\">疑似漏检</span>），"
       "说明可能存在脚本调用、限定名或解析遗漏，请核对；否则为工具箱/外部依赖（"
       "<span class=\"tag-iso\">外部</span>）。</div>")
-    A(_render_unresolved_table_html(rows, link_fn=lambda rel, line: _src_href_from_rel(rel)))
+    A(_render_unresolved_table_html(rows, link_fn=lambda rel, line: _mL._src_href_from_rel(rel)))
 
     # P43：溯源完整性——无法溯源到根的函数（处于调用循环、缺外部入口）
     A("<h2>溯源完整性（无法溯源到根的函数）</h2>")
@@ -55,7 +55,7 @@ def render_unresolved_page(rows, orphaned=None, dynamic=None, indirect=None, ind
         A("<ul class=\"call-order-list\">")
         for mf, f in orphaned:
             A("<li><a href=\"%s#L%d\">%s</a><span class=\"muted\"> · %s</span></li>"
-              % (_src_href_from_rel(mf.rel), f.line, html_mod.escape(f.name),
+              % (_mL._src_href_from_rel(mf.rel), f.line, html_mod.escape(f.name),
                  html_mod.escape(mf.rel)))
         A("</ul>")
     else:
@@ -70,7 +70,7 @@ def render_unresolved_page(rows, orphaned=None, dynamic=None, indirect=None, ind
         for d in dynamic:
             cnts = ", ".join("%s × %d" % (k, v) for k, v in sorted(d["counts"].items()))
             A("<li><a href=\"%s#L%d\">%s</a><span class=\"muted\"> · %s · %s</span></li>"
-              % (_src_href_from_rel(d["rel"]), d["line"], html_mod.escape(d["name"]),
+              % (_mL._src_href_from_rel(d["rel"]), d["line"], html_mod.escape(d["name"]),
                  html_mod.escape(d["rel"]), cnts))
         A("</ul>")
     else:
@@ -86,7 +86,7 @@ def render_unresolved_page(rows, orphaned=None, dynamic=None, indirect=None, ind
         for d in indirect:
             cnts = ", ".join("%s × %d" % (k, v) for k, v in sorted(d["counts"].items()))
             A("<li><a href=\"%s#L%d\">%s</a><span class=\"muted\"> · %s · %s</span></li>"
-              % (_src_href_from_rel(d["rel"]), d["line"], html_mod.escape(d["name"]),
+              % (_mL._src_href_from_rel(d["rel"]), d["line"], html_mod.escape(d["name"]),
                  html_mod.escape(d["rel"]), cnts))
         A("</ul>")
     else:
@@ -102,7 +102,7 @@ def render_unresolved_page(rows, orphaned=None, dynamic=None, indirect=None, ind
         for d in index_like:
             cnts = ", ".join("%s × %d" % (k, v) for k, v in sorted(d["counts"].items()))
             A("<li><a href=\"%s#L%d\">%s</a><span class=\"muted\"> · %s · %s</span></li>"
-              % (_src_href_from_rel(d["rel"]), d["line"], html_mod.escape(d["name"]),
+              % (_mL._src_href_from_rel(d["rel"]), d["line"], html_mod.escape(d["name"]),
                  html_mod.escape(d["rel"]), cnts))
         A("</ul>")
     else:
@@ -113,6 +113,6 @@ def render_unresolved_page(rows, orphaned=None, dynamic=None, indirect=None, ind
 
 
 
-# _src_href_from_rel 由 matlabc 持有（被多个渲染模块复用），放底部再导入，
-# 与 matlabc 的「底部再导出 renderers.unresolved」错开，避免部分初始化循环导入。
-from matlabc import _src_href_from_rel
+# R52：_src_href_from_rel 仍由 matlabc 持有（被多个渲染模块复用），但不再
+# `from matlabc import` —— 那是 import 期回边。改为惰性代理，见 renderers/_late.py。
+from renderers._late import late as _mL

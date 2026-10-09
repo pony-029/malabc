@@ -20,7 +20,7 @@ python tests/test_matlabc.py
 # 3) 对示例做静态分析，确认主流程无回归
 python matlabc.py tests/sample_m -o demo.md --html demo.html --browse --offline
 
-# 4) 登记制护栏（11 道，各自还会跑 --selftest；门数少于下限也会红）
+# 4) 登记制护栏（12 道，各自还会跑 --selftest；门数少于下限也会红）
 python tools/check_all.py
 ```
 
@@ -72,8 +72,45 @@ python tools/check_all.py
 ## 代码风格
 
 - 不引入第三方依赖；新增 Python 代码须 3.6.5 兼容（禁用 walrus / `match` / 仅位置参数 / 内置泛型下标 `list[int]` 等 3.7+ 语法）。
-- 渲染器在 `renderers/` 下独立成文件，避免与 `matlabc.py` 反向 `import` 形成环形依赖。
+- 渲染器在 `renderers/` 下独立成文件；**不要在模块级反向 `import` `matlabc`** ——
+  借用请走 `renderers/_late.py` 的惰性代理（见下面「import 图纪律」一节）。
 - 新增静态检查 / 渲染能力请在 `docs/matlabc_FEATURES.md` 与 `docs/matlabc_USAGE.md` 同步更新。
+
+## import 图纪律：模块级 import 必须无环（R52）
+
+`tools/check_import_graph.py` 用 `ast` 建两张图，进 CI、也进 `check_all.py`：
+
+| 图 | 边怎么算 | 判据 |
+| --- | --- | --- |
+| **import 期图** | 只算**模块级**的 `import` / `from ... import` | **必须无环**（G1）；模块级自环直接红（G4） |
+| **全图** | 再加上写在函数体里的**惰性** import | 允许成环，但必须登记（G2） |
+
+三条不可协商的后果：
+
+1. **`renderers/` 不许在模块级 `from matlabc import ...`。** 要借用 matlabc 的符号，
+   请走 `renderers/_late.py` 的惰性代理：`from renderers._late import late as _mL`，
+   然后写成 `_mL.名字`。R52 复盘：模块级回边会造出一份「**部分初始化的对方**」契约 ——
+   「被借用的名字必须已经定义在再导出点之前」—— 而这份契约**没有任何对手方**，
+   谁把它挪到后面去，两个方向都不会报错。
+2. **指向本仓模块的动态 import**（`importlib.import_module` / `__import__`）必须登记。
+   它绕开 import 图，是最容易被忽视的一条回边。
+3. 登记**两向核对**：未登记 → 红；登记了却已不成环、或那个动态调用已经不在了 → 也红。
+
+登记项必须在**本节**留一个标记（机器读；Markdown 渲染后不可见）。
+标记的 id 只允许字母、数字与 `.` `_` `-`，所以文档里可以安全地写示例形态：
+
+    <!-- import-cycle: <id> -->   ← 这一行是**示例**，不会被当成真标记
+
+当前登记表（改代码前先看这里）：
+
+| id | 类型 | 位置 | 为什么允许 |
+| --- | --- | --- | --- |
+| `agent-loop-matlabc-flow` | 惰性环 | `agent_loop` 与 `matlabc_flow` 互指 | 两条边都写在**函数体**里，import 期不发生 <!-- import-cycle: agent-loop-matlabc-flow --> |
+| `late-matlabc` | 动态 import | `renderers/_late.py` → `matlabc` | R52 起 renderers 借用 matlabc 的**唯一**通道 <!-- import-cycle: late-matlabc --> |
+| `tests-frontends` | 动态 import | `tests/test_matlabc.py` → `frontends` | 测试按仓库根动态导入、随后立刻撤掉 `sys.path`，避免依赖「运行目录恰好是仓库根」 <!-- import-cycle: tests-frontends --> |
+
+> 这一节的价值是：把一份**隐式**时序契约换成一张**显式**的表。
+> 表里每一条都有对手方 —— 边没了 → 陈旧登记报红；来了新边 → 未登记报红。
 
 ## 深度分析归档
 

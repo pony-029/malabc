@@ -1678,20 +1678,54 @@ def test_p44_struct_members_nested_dynamic():
 
 
 def test_renderers_import_smoke():
-    """回归守卫：renderers 拆分后 snapshot.py 引用的所有符号必须可解析（防止 p124 类静默回归）。"""
+    """回归守卫：renderers 借用的每个 matlabc 符号都必须真的存在（防止 p124 类静默回归）。
+
+    R52 改了借用形态：`renderers.*` **不再**在模块底部 `from matlabc import ...`
+    （那是一条 import 期回边，靠「被借用的名字必须已定义在再导出点之前」这份
+    **隐式时序契约**才跑得起来），改成走 `renderers/_late.py` 的惰性代理 `_mL.名字`。
+    于是「可解析」的判据也跟着变强：从「renderers 模块里有这个属性」变成
+    **「`_mL.` 后面出现的每个名字都真的存在于 matlabc」** —— 这条是**自动派生**的，
+    新加一个借用会自动被纳入，不需要有人记得来改一张手写名单。
+    """
+    import ast as _ast
     import renderers.snapshot as _snap
     import renderers.metrics as _metrics
     import renderers.unresolved as _unres
     for _name in ("render_snapshot_report", "render_snapshot_browse_site",
-                  "_clean_browse_dir", "_json_default", "_page_rel",
-                  "_src_href_from_rel", "_write_output", "render_checks_page",
-                  "render_matlab_lib_page", "render_taint_page", "render_todo_page",
-                  "render_metrics_page", "render_unresolved_page"):
+                  "_clean_browse_dir"):
         assert hasattr(_snap, _name), "renderers.snapshot 缺少 %s" % _name
     assert hasattr(_metrics, "render_metrics_page")
     assert hasattr(_unres, "render_unresolved_page")
     for _name in ("CG_PULSE_CSS", "HTML_CG_CSS"):  # r2/r3 依赖
         assert hasattr(ma, _name), "matlabc 缺少 %s" % _name
+
+    # R52：每个 `_mL.X` 借用都必须存在于 matlabc；且模块级不得再有 matlabc 引用。
+    _borrowed = set()
+    _rdir = os.path.join(ROOT, "renderers")
+    for _f in sorted(os.listdir(_rdir)):
+        if not _f.endswith(".py"):
+            continue
+        _tree = _ast.parse(io.open(os.path.join(_rdir, _f), "r",
+                                   encoding="utf-8", errors="replace").read())
+        for _top in _tree.body:
+            if isinstance(_top, _ast.ImportFrom) and _top.module == "matlabc":
+                raise AssertionError(
+                    "renderers/%s 在模块级 from matlabc import（R52 起必须走 _mL 惰性代理）"
+                    % _f)
+            if isinstance(_top, _ast.Import):
+                for _a in _top.names:
+                    if _a.name.split(".")[0] == "matlabc":
+                        raise AssertionError(
+                            "renderers/%s 在模块级 import matlabc" % _f)
+        for _n in _ast.walk(_tree):
+            if not isinstance(_n, _ast.Attribute):
+                continue
+            if not (isinstance(_n.value, _ast.Name) and _n.value.id == "_mL"):
+                continue
+            _borrowed.add(_n.attr)
+    assert len(_borrowed) >= 20, sorted(_borrowed)
+    for _name in sorted(_borrowed):
+        assert hasattr(ma, _name), "matlabc 缺少被借用的 %s" % _name
 
 
 def test_p45_json_snapshot_stats_and_load(tmp_path):
@@ -17505,6 +17539,84 @@ def test_r51_runtime_binding_named_everywhere():
     dprobs, nd = hc.boundary_doc_problems(ROOT, hc.BOUNDARY_CLAIMS)
     assert dprobs == [], dprobs
     assert nd >= 2, nd
+
+def test_r52_import_graph_repo_acyclic():
+    """R52/C''''3：**模块级** import 图必须无环，借用只能走登记过的惰性通道。
+
+    修前实测（仓库外 `_r52/probe_cycle_kind.py`，装置 1 首版还自伤过一次：
+    它用「行号落在顶层语句范围内」判顶层，而**嵌套节点天然落在其中**，
+    于是把 `agent_loop ↔ matlabc_flow` 误判成模块级环）：
+
+      * `matlabc ↔ renderers.{callgraph,hotspot,report,sarif,snapshot,unresolved}`
+        —— **模块级**回边，靠一份没有任何对手方的隐式时序契约才跑得起来；
+      * `agent_loop ↔ matlabc_flow` —— 两条边都写在函数体里，import 期不发生。
+
+    R52 把前者搬进 `renderers/_late.py` 的惰性代理 ⇒ 模块级环 **0**。
+    """
+    gi = _r37_load("check_import_graph")
+    built = gi.scan(gi.read_repo(gi.root_dir()))
+    assert not built["parse_err"], built["parse_err"]
+    assert not built["self_mod"], built["self_mod"]
+    mod_cycles = [c for c in gi.scc(built["known"], built["edges_mod"])
+                  if len(c) > 1]
+    assert mod_cycles == [], mod_cycles
+
+    doc = io.open(os.path.join(ROOT, "CONTRIBUTING.md"), "r", encoding="utf-8",
+                  errors="replace").read()
+    probs = gi.judge(built, gi.LAZY_CYCLES, gi.DYNAMIC_IMPORTS, doc)
+    assert probs == [], probs
+
+    mod_keys = set(frozenset(c) for c in mod_cycles)
+    lazy = [sorted(c) for c in gi.scc(built["known"], built["edges_all"])
+            if len(c) > 1 and frozenset(c) not in mod_keys]
+    assert lazy == [["agent_loop", "matlabc_flow"]], lazy
+    assert sorted(set((f, t) for (f, t, _l) in built["dyn"])) == [
+        ("renderers/_late.py", "matlabc"),
+        ("tests/test_matlabc.py", "frontends")], built["dyn"]
+
+
+def test_r52_import_graph_can_say_no():
+    """R52/C''''3：这条门必须**能说不**，而且三条判据各自独立作证。
+
+    只跑一遍 rc=0 不能说明门存在。这里在**真实仓库**的文件图上做三处修改：
+      ① 往 `renderers/unresolved.py` 顶部塞回一条模块级 `from matlabc import ...`
+         （正是 R52 删掉的那条回边）⇒ 只 **G1** 红；
+      ② 抽掉 `LAZY_CYCLES` 里那条登记 ⇒ 只 **G2** 红（惰性环无人认领）；
+      ③ 抽掉 `DYNAMIC_IMPORTS` 里那两条登记 ⇒ 只 **G3** 红。
+    再加一条端到端：真的把 `tools/check_import_graph.py` 跑起来，rc=0 且打印全绿。
+    """
+    gi = _r37_load("check_import_graph")
+    files = gi.read_repo(gi.root_dir())
+    doc = io.open(os.path.join(ROOT, "CONTRIBUTING.md"), "r", encoding="utf-8",
+                  errors="replace").read()
+    assert gi.judge(gi.scan(files), gi.LAZY_CYCLES, gi.DYNAMIC_IMPORTS,
+                    doc) == []
+
+    # ① 人为加一条**模块级**回边 ⇒ 只 G1
+    f2 = dict(files)
+    f2["renderers/unresolved.py"] = ("from matlabc import _src_href_from_rel\n" +
+                                     files["renderers/unresolved.py"])
+    p1 = gi.judge(gi.scan(f2), gi.LAZY_CYCLES, gi.DYNAMIC_IMPORTS, doc)
+    assert any(x.startswith("G1") for x in p1), p1
+    assert any("renderers.unresolved" in x for x in p1), p1
+    assert not any(x.startswith("G2 ") or x.startswith("G3") or
+                   x.startswith("G4") for x in p1), p1
+
+    # ② 抽掉惰性环登记 ⇒ 只 G2
+    p2 = gi.judge(gi.scan(files), (), gi.DYNAMIC_IMPORTS, doc)
+    assert any(x.startswith("G2 未登记") for x in p2), p2
+    assert not any(x.startswith("G1") or x.startswith("G3") for x in p2), p2
+
+    # ③ 抽掉动态 import 登记 ⇒ 只 G3
+    p3 = gi.judge(gi.scan(files), gi.LAZY_CYCLES, (), doc)
+    assert any(x.startswith("G3 未登记") for x in p3), p3
+    assert not any(x.startswith("G1") or x.startswith("G2 ") for x in p3), p3
+
+    # 端到端：门真的接在顶层入口，rc=0
+    r = _r31_run([os.path.join("tools", "check_import_graph.py")], timeout=180)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[-1200:]
+    assert "G1–G6 全绿" in out, out[-600:]
 
 def test_r44_gate_call_sites_agree_with_return_arity():
     """R44 的**过程**教训：本轮三次「改被调签名、漏了调用方」。

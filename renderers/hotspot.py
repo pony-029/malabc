@@ -18,7 +18,7 @@ def render_html_hotspot_callgraphs(model, top_n=12, max_nodes=None):
     calls_of = model.calls_of
     fn_to_file = model.fn_to_file
     files = getattr(model, "files", []) or []
-    cg_json, gid_of = _build_global_cg(files, fn_to_file, calls_of, callers_of, model,
+    cg_json, gid_of = _mL._build_global_cg(files, fn_to_file, calls_of, callers_of, model,
                                        max_nodes=max_nodes)
     parts = []
     P = parts.append
@@ -48,9 +48,9 @@ def render_html_hotspot_callgraphs(model, top_n=12, max_nodes=None):
       'data-cg-act="cgCopyShareLink">'
       '&#128279; 复制可分享链接</button></div>')
     # P20：调用路径查找面板（最短可达路径 BFS），位于搜索 / 分享控件下方。
-    P(_cg_path_panel_html())
+    P(_mL._cg_path_panel_html())
     # P22：影响面 / 依赖面（传递闭包）交互面板。
-    P(_cg_impact_panel_html())
+    P(_mL._cg_impact_panel_html())
     cguid = [0]
     for mf, f in ranked:
         if f.kind == "script":
@@ -143,5 +143,7 @@ def _rel_to_src_asset(from_rel, asset):
 # 本脚本统一负责「URL → 控件」还原与「控件 → URL」同步，任何页面都能低成本接入。
 # 例：index.html#cgmin=2&cglbl=1 分享出去，对方打开即为「只看高扇入 + 显示全部标签」的视图。
 
-# 分析层辅助（被本模块渲染函数调用，反向借用 matlabc）
-from matlabc import _build_global_cg, _cg_impact_panel_html, _cg_path_panel_html
+# R52：分析层辅助仍由 matlabc 持有，但改为**惰性代理** —— 原写法
+# `from matlabc import ...` 是一条 import 期回边（matlabc 底部又再导出
+# renderers.hotspot）。见 renderers/_late.py 顶部说明。
+from renderers._late import late as _mL

@@ -101,7 +101,7 @@ def render_static_callgraph_svg(files, calls_of, callers_of, max_nodes=300, link
         f = all_nodes[i]
         color = colors.get(f.kind, "#0969da")
         rel = fn_rel.get(id(f), "")
-        href = link_prefix + "src/" + _page_rel(rel) + "#L%d" % f.line
+        href = link_prefix + "src/" + _mL._page_rel(rel) + "#L%d" % f.line
         svg.append('<a href="%s">' % html_mod.escape(href, quote=True))
         svg.append('<circle cx="%d" cy="%d" r="%d" fill="%s"/>' % (x, y, R, color))
         svg.append('<text x="%d" y="%d" font-size="12" fill="#1f2328">%s</text>'
@@ -225,7 +225,7 @@ def render_folder_function_graph_svg(files, calls_of):
                    'stroke="%s" stroke-width="%s"/>' % (g["x"], TOP, g["w"], g["h"], bcol, bwidth))
         svg.append('<a href="dirs/%s"><text x="%d" y="%d" font-size="13" '
                    'font-weight="bold" fill="%s">%s</text></a>'
-                   % (_dir_page_name(d), g["x"] + 12, TOP + 22, bcol, label))
+                   % (_mL._dir_page_name(d), g["x"] + 12, TOP + 22, bcol, label))
 
     # 函数节点——P63：可点击跳转源码页对应行
     for mf in files:
@@ -234,7 +234,7 @@ def render_folder_function_graph_svg(files, calls_of):
                 continue
             x, y = fn_pos[id(f)]
             color = kind_colors.get(f.kind, "#0969da")
-            href = _src_href_from_rel(mf.rel) + "#L%d" % f.line
+            href = _mL._src_href_from_rel(mf.rel) + "#L%d" % f.line
             svg.append('<a href="%s">' % html_mod.escape(href, quote=True))
             svg.append('<circle cx="%d" cy="%d" r="%d" fill="%s"/>' % (x, y, R, color))
             svg.append('<text x="%d" y="%d" font-size="12" fill="#1f2328">%s</text>'
@@ -246,9 +246,8 @@ def render_folder_function_graph_svg(files, calls_of):
 
 
 
-# 以下路径辅助函数由 matlabc 持有（被多个渲染模块复用），放底部再导入，
-# 与 matlabc 的「底部再导出 renderers.callgraph」错开，避免部分初始化循环导入。
-from matlabc import (
-    _page_rel,
-    _dir_page_name,
-    _src_href_from_rel)
+# R52：以下路径辅助函数仍由 matlabc 持有，但**不再**在模块底部 `from matlabc import`
+# —— 那是一条 import 期回边（matlabc 底部又再导出 renderers.callgraph），两个方向
+# 都依赖「对方恰好已经定义好这几个名字」这一**隐式时序契约**。现改为惰性代理：
+# 首次属性访问时才取 matlabc，本模块在 import 期不再依赖 matlabc。
+from renderers._late import late as _mL

@@ -27,7 +27,7 @@ def render_sarif(checks, root, base_fps=None, return_stats=False):
             "region": {"startLine": line},
         }}
 
-    for rule_id, short_desc, level in _SARIF_RULES:
+    for rule_id, short_desc, level in _mL._SARIF_RULES:
         rules.append({"id": rule_id, "shortDescription": {"text": short_desc},
                       "defaultConfiguration": {"level": level}})
 
@@ -97,12 +97,12 @@ def render_sarif(checks, root, base_fps=None, return_stats=False):
         current = set()
         added_results = []
         for r in results:
-            fp = _sarif_result_fp(r)
+            fp = _mL._sarif_result_fp(r)
             current.add(fp)
             if fp not in base_fps:
                 added_results.append(r)
-        stats["added"] = [_sarif_fp_detail(_sarif_result_fp(r)) for r in added_results]
-        stats["fixed"] = [_sarif_fp_detail(fp) for fp in sorted(base_fps - current)]
+        stats["added"] = [_mL._sarif_fp_detail(_mL._sarif_result_fp(r)) for r in added_results]
+        stats["fixed"] = [_mL._sarif_fp_detail(fp) for fp in sorted(base_fps - current)]
         results = added_results
 
     sarif = {
@@ -110,7 +110,7 @@ def render_sarif(checks, root, base_fps=None, return_stats=False):
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
         "runs": [{
             "tool": {"driver": {"name": "matlabc",
-                                "version": VERSION, "rules": rules}},
+                                "version": _mL.VERSION, "rules": rules}},
             "results": results,
         }],
     }
@@ -154,7 +154,7 @@ def render_sarif_diff_md(stats, base_path, root):
           % (d.get("uri", ""), d.get("line"), d.get("ruleId"), d.get("message", "")))
     A("")
     A("_由 matlabc v%s 生成。_"
-      % (VERSION))
+      % (_mL.VERSION))
     return "\n".join(lines)
 
 
@@ -165,9 +165,6 @@ def render_sarif_diff_md(stats, base_path, root):
 # ---------------------------------------------------------------------------
 # 统一分析数据层（供 --browse 与 --html 共用）
 
-# 以下名称由 matlabc 持有，放底部再导入，避免部分初始化循环导入。
-from matlabc import (
-    _SARIF_RULES,
-    _sarif_result_fp,
-    _sarif_fp_detail,
-    VERSION)
+# R52：以下名称仍由 matlabc 持有，但不再 `from matlabc import` —— 那是 import 期
+# 回边（matlabc 底部又再导出 renderers.sarif）。改为惰性代理，见 renderers/_late.py。
+from renderers._late import late as _mL

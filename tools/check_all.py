@@ -10,6 +10,7 @@
         ├─▶ check_doc_flags.py            文档/帮助里写的 CLI 开关必须真的存在
         ├─▶ check_flow_diagrams.py        图的引用 ↔ 文件 ↔ 候选声明，两两对齐且双向
         ├─▶ check_help_contract.py        退出码在代码↔帮助双向一致；示例能真跑
+        ├─▶ check_import_graph.py         模块级 import 必须无环；回边只能走登记过的惰性通道
         ├─▶ check_ir_attribution.py       「解析不到的调用」只有一个判定点，归因吃的就是它
         ├─▶ check_operator_impl.py        算子元表里不得有「只声明不产出」的幻影
         ├─▶ check_patch_ops.py            补丁编辑算子唯一事实源（禁止覆盖式赋值）
@@ -91,8 +92,11 @@ GUARD_TIMEOUT = 600.0
 # candidate*.json 的声明 ↔ 交互产物 ↔ FLOW_INDEX.json 索引 ↔ SVG 自身形态（尺寸/字体/语言）
 # 六条来源钉成 D1–D12、
 # 每对双向），故 10 → 11。
+# R52 新增 check_import_graph.py（把 renderers ↔ matlabc 的 **import 期回边**打断：
+# 借用改走 renderers/_late.py 的惰性代理；此后「模块级 import 图无环」由 G1 钉住，
+# 惰性环与动态 import 走登记 + 两向核对），故 11 → 12。
 # 新增护栏时**必须**同步上调这个数字 —— 这正是棘轮的作用。
-MIN_GUARDS = 11
+MIN_GUARDS = 12
 
 
 def _write_help(text):

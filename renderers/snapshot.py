@@ -96,7 +96,7 @@ def _serialize_model(data):
     与 render_json 同构（generated_at 置空，与 --reproducible 对齐），
     支持 --from-json X --json Y 的往返一致性比对。返回 (out, notes)。"""
     try:
-        out = json.loads(json.dumps(data, ensure_ascii=False, default=_json_default))
+        out = json.loads(json.dumps(data, ensure_ascii=False, default=_mL._json_default))
     except Exception as exc:
         return None, {"error": str(exc)}
     out["generated_at"] = ""
@@ -262,9 +262,9 @@ def _run_from_json(args):
         if out_data is None:
             print("[ERROR] 对称化失败：%s" % notes.get("error", ""), file=sys.stderr)
             return 1
-        _write_output(args.json,
+        _mL._write_output(args.json,
                       json.dumps(out_data, ensure_ascii=False, indent=2,
-                                 default=_json_default),
+                                 default=_mL._json_default),
                       "快照重导出 JSON")
         data2, err2 = _from_json_load(args.json)
         if err2:
@@ -280,7 +280,7 @@ def _run_from_json(args):
             else:
                 print("往返校验：一致（读-写-读逐字段相等；generated_at 已规范化置空）")
     if args.output:
-        _write_output(args.output,
+        _mL._write_output(args.output,
                       render_snapshot_report(data, contract_issues=issues),
                       "快照报告")
     if args.max_warnings > 0 and len(issues) > args.max_warnings:
@@ -345,8 +345,8 @@ def _snapshot_index(data):
 def _snapshot_rel_href(from_rel, to_rel):
     """P124：文件页内指向另一文件页的相对链接（src 目录内，处理子目录层级）。"""
     import posixpath as _pp
-    base = _pp.dirname("src/" + _page_rel(from_rel)) or "."
-    return _pp.relpath("src/" + _page_rel(to_rel), base)
+    base = _pp.dirname("src/" + _mL._page_rel(from_rel)) or "."
+    return _pp.relpath("src/" + _mL._page_rel(to_rel), base)
 
 
 def _snapshot_fn_href(idx, key, from_rel=None):
@@ -362,7 +362,7 @@ def _snapshot_fn_href(idx, key, from_rel=None):
         base = "%s#fn-%s" % (_snapshot_rel_href(from_rel, info["rel"]),
                              info["name"])
     else:
-        base = "%s#fn-%s" % (_src_href_from_rel(info["rel"]), info["name"])
+        base = "%s#fn-%s" % (_mL._src_href_from_rel(info["rel"]), info["name"])
     return base
 
 
@@ -558,7 +558,7 @@ def _render_snapshot_index(data, idx):
         npe = len(mf.get("parse_errors") or [])
         rows.append('<tr><td><a href="%s">%s</a></td><td>%s</td><td>%s</td>'
                     "<td>%d</td><td>%d</td><td>%d</td><td>%d</td></tr>"
-                    % (_src_href_from_rel(rel), html_mod.escape(rel),
+                    % (_mL._src_href_from_rel(rel), html_mod.escape(rel),
                        html_mod.escape(str(mf.get("kind") or "")),
                        html_mod.escape(str(mf.get("encoding") or "-")),
                        int(mf.get("lines", 0)), nf, nc, npe))
@@ -569,7 +569,7 @@ def _render_snapshot_index(data, idx):
             if not isinstance(fn, dict):
                 continue
             name = fn.get("name", "")
-            href = "%s#fn-%s" % (_src_href_from_rel(rel), name)
+            href = "%s#fn-%s" % (_mL._src_href_from_rel(rel), name)
             fn_rows.append(
                 '<tr><td><a href="%s">%s</a></td><td><a href="%s"><code>%s</code></a></td>'
                 "<td>%s</td><td>%d</td><td>%s</td></tr>"
@@ -580,7 +580,7 @@ def _render_snapshot_index(data, idx):
     cls_rows = []
     for rel in sorted(idx["cls_by_rel"]):
         for c in idx["cls_by_rel"][rel]:
-            href = "%s#cls-%s" % (_src_href_from_rel(rel), c.get("name", ""))
+            href = "%s#cls-%s" % (_mL._src_href_from_rel(rel), c.get("name", ""))
             cls_rows.append(
                 '<tr><td><a href="%s">%s</a></td><td><a href="%s"><code>%s</code></a></td>'
                 "<td>%s</td><td>%d</td></tr>"
@@ -733,7 +733,7 @@ def _render_snapshot_file_page(idx, mf):
     A(_snapshot_page_head("快照回放：%s" % rel))
     A('<header><span class="brand">\u2b8c 快照回放</span>'
       '<a href="index.html">\u2190 索引</a></header><main>')
-    A('<p class="crumbs"><a href="%s">\u2190 返回索引</a></p>' % _up_to_index(rel))
+    A('<p class="crumbs"><a href="%s">\u2190 返回索引</a></p>' % _mL._up_to_index(rel))
     A("<h1>%s</h1>" % html_mod.escape(rel))
     A('<div class="muted">快照回放模式：JSON 快照未导出源码正文，'
       "以下为文件级分析结果（函数 / 类卡片）</div>")
@@ -787,15 +787,15 @@ def render_snapshot_browse_site(data, outdir):
     idx = _snapshot_index(data)
     pages = 0
     snap, _notes = _serialize_model(data)
-    _write_output(os.path.join(outdir, "snapshot.json"),
+    _mL._write_output(os.path.join(outdir, "snapshot.json"),
                   json.dumps(snap, ensure_ascii=False, indent=2,
-                             default=_json_default),
+                             default=_mL._json_default),
                   "快照归档副本")
-    _write_output(os.path.join(outdir, "index.html"),
+    _mL._write_output(os.path.join(outdir, "index.html"),
                   _render_snapshot_index(data, idx), "快照回放索引页")
     pages += 1
     for rel in sorted(idx["file_by_rel"]):
-        _write_output(os.path.join(outdir, "src", _page_rel(rel)),
+        _mL._write_output(os.path.join(outdir, "src", _mL._page_rel(rel)),
                       _render_snapshot_file_page(idx, idx["file_by_rel"][rel]),
                       "快照回放文件页 %s" % rel)
         pages += 1
@@ -803,7 +803,7 @@ def render_snapshot_browse_site(data, outdir):
         ("metrics.html", "函数风险度量",
          render_metrics_page(_snapshot_metric_rows(data, idx))),
         ("checks.html", "静态检查",
-         render_checks_page({
+         _mL.render_checks_page({
              "uninitialized": _snapshot_attach_file(idx,
                                 data.get("uninitialized") or []),
              "type_mismatch": _snapshot_attach_file(idx,
@@ -816,35 +816,27 @@ def render_snapshot_browse_site(data, outdir):
          render_unresolved_page(_snapshot_unresolved_rows(data, idx),
                                 orphaned=[], dynamic=[], indirect=[], index_like=[])),
         ("matlab_lib.html", "MATLAB 内置库函数",
-         render_matlab_lib_page(_snapshot_builtin_items(data))),
+         _mL.render_matlab_lib_page(_snapshot_builtin_items(data))),
     ]
     taint = data.get("taint")
     if isinstance(taint, dict) and (taint.get("flows") or taint.get("stats")):
         sub_pages.append(("taint.html", "污点流分析",
-                          render_taint_page(taint, data.get("root") or "")))
+                          _mL.render_taint_page(taint, data.get("root") or "")))
     todo = data.get("doc_todos")
     if isinstance(todo, dict) and (todo.get("todos") or todo.get("stats")):
         sub_pages.append(("todo.html", "函数待办清单",
-                          render_todo_page(todo, data.get("root") or "")))
+                          _mL.render_todo_page(todo, data.get("root") or "")))
     for fname, _lbl, html in sub_pages:
-        _write_output(os.path.join(outdir, fname), html, "快照回放子页 %s" % fname)
+        _mL._write_output(os.path.join(outdir, fname), html, "快照回放子页 %s" % fname)
         pages += 1
     return pages
 
 
 
-# 以下辅助函数由 matlabc 持有（被多处渲染复用），放到本模块底部再导入，
-# 与 matlabc 的「底部再导出 renderers.snapshot」错开，避免部分初始化循环导入。
-from matlabc import (
-    _src_href_from_rel,
-    _write_output,
-    _json_default,
-    _page_rel,
-    _up_to_index,
-    render_checks_page,
-    render_taint_page,
-    render_todo_page,
-    render_matlab_lib_page)
+# R52：以下辅助函数仍由 matlabc 持有（被多处渲染复用），但不再 `from matlabc import`
+# —— 那是 import 期回边（matlabc 底部又再导出 renderers.snapshot）。改为惰性代理：
+# 首次属性访问时才取 matlabc，本模块在 import 期不再依赖 matlabc。
+from renderers._late import late as _mL
 from renderers.metrics import render_metrics_page
 from renderers.unresolved import render_unresolved_page
 # 度量页/未解析调用页已迁出；快照回放内嵌这两类页面，故从此处借用。

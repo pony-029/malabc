@@ -154,8 +154,8 @@ def render_html(markdown_body, mermaid_txt, title="MATLAB 代码结构分析报�
     body = md_to_html(markdown_body)
     builtin_section = ""
     if model is not None and getattr(model, "files", None):
-        builtin_section = render_matlab_builtin_section(
-            collect_used_builtins(model.files))
+        builtin_section = _mL.render_matlab_builtin_section(
+            _mL.collect_used_builtins(model.files))
     hotspot_html = ""
     if model is not None:
         hotspot_html = render_html_hotspot_callgraphs(model, max_nodes=max_nodes)
@@ -165,7 +165,7 @@ def render_html(markdown_body, mermaid_txt, title="MATLAB 代码结构分析报�
     unresolved_html = ""
     if model is not None and getattr(model, "files", None):
         # P23：关键函数风险度量（扇入/扇出 + 影响面/依赖面 + 圈复杂度排名）
-        _metrics = _compute_function_metrics(
+        _metrics = _mL._compute_function_metrics(
             model.files, model.callers_of, model.calls_of)
         metrics_html = ('<h2>关键函数风险度量</h2>'
                         '<div class="muted">按风险分降序排列（影响面权重最高，'
@@ -175,7 +175,7 @@ def render_html(markdown_body, mermaid_txt, title="MATLAB 代码结构分析报�
                         '<span class="tag-iso">孤立</span>（无人调用也不调用他人）。</div>'
                         + _render_metrics_table(_metrics, top_n=40))
         # P25：疑似漏检调用诊断（未解析到项目/内置的调用名 + 项目内同名交叉核对）
-        _unresolved = _collect_unresolved_calls(model.files)
+        _unresolved = _mL._collect_unresolved_calls(model.files)
         unresolved_html = ('<h2>疑似漏检调用诊断</h2>'
                            '<div class="muted">列出未匹配到项目函数或 MATLAB 内置函数的调用名。'
                            '<span class="tag-god">疑似漏检</span> = 项目内存在同名函数/脚本'
@@ -184,7 +184,7 @@ def render_html(markdown_body, mermaid_txt, title="MATLAB 代码结构分析报�
                            + _render_unresolved_table_html(_unresolved))
     # 统一补全横切元信息（description/OG/viewport/表头 scope）：报告页不走
     # --browse 的目录收口，故在此就地接入，保证任何落盘路径都合规。
-    return _finalize_html_str(f"""<!DOCTYPE html>
+    return _mL._finalize_html_str(f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
@@ -264,15 +264,11 @@ window.__GS_FN_HREF__ = function(it){{
 </html>
 """)
 
-# 以下分析数据层辅助函数由 matlabc 持有（被 browse/snapshot/metrics 等多处复用），
-# 此处仅「借用」，保持单向依赖 renderers -> matlabc。必须放到本模块底部再导入，
-# 与 matlabc 的「底部再导出 renderers.report」错开，避免部分初始化循环导入。
-from matlabc import (
-    render_matlab_builtin_section,
-    collect_used_builtins,
-    _compute_function_metrics,
-    _collect_unresolved_calls,
-    _finalize_html_str)
+# R52：以下分析数据层辅助函数仍由 matlabc 持有（被 browse/snapshot/metrics 等多处
+# 复用），但**不再**在本模块底部 `from matlabc import` —— 那是一条 import 期回边
+# （matlabc 底部又再导出 renderers.report）。现改为惰性代理：首次属性访问时才取
+# matlabc，本模块在 import 期不再依赖 matlabc。见 renderers/_late.py 顶部说明。
+from renderers._late import late as _mL
 # 度量表已迁至 renderers.metrics；未解析调用表已迁至 renderers.unresolved；
 # 热点调用图已迁至 renderers.hotspot。render_html 在报告中内嵌这些片段，故从此处借用。
 from renderers.metrics import _render_metrics_table

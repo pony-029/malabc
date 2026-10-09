@@ -553,6 +553,7 @@ python tools/check_all.py        # runs every tools/check_*.py AND its --selftes
 | `check_subprocess_hygiene.py` | Any subprocess that captures output while inheriting stdin, or that can hang forever |
 | `check_help_contract.py` | An exit code that exists in the code but not in `--help`, or in `--help` but never returned; help that lost its usage example, diagram, or exit-code section; **examples that do not actually run**; help that silently shrank or bloated (absolute bound **and** drift from a ratified snapshot); exit codes claimed by the `ci-examples/` templates; and **stale "N gates" numbers in prose** |
 | `check_ir_attribution.py` | A **second** place deciding "this call could not be resolved". Before R44 that rule was **copied five times** (inline in `build_c_model` and `_build_ext_model`, verbatim in three `build_edges`), so the call graph and the binary attribution could be discussing **different sets of names** while neither side reported anything. The gate pins the whole-repo **set** of write sites, the **write shape** per site, and the `func_index.get(x.lower())` lookup that no re-copy can avoid — any unregistered "look the function index up by lowercased name" predicate is red; and **C7'** pins the **C extension-name truth source** — `CFrontend.exts` must *reference* `matlabc.py::_C_SOURCE_EXTS` instead of copying it (R50 measured 2 extensions declared vs the 8 that `collect_c_files` really honours) |
+| `check_import_graph.py` | A **new cycle at import time**. `renderers/*` used to borrow symbols from `matlabc.py` through a module-level `from matlabc import ...` at the *bottom* of each file, while `matlabc.py` re-exported `renderers.*` at its own bottom — a real import-time cycle that only worked because of an **implicit ordering contract** ("whatever gets borrowed must already be defined before the re-export point"). Nothing pinned that contract, and no test, `git status` or `git diff` could see it. R52 moved the borrows onto a lazy accessor (`renderers/_late.py`), so the import-time graph is acyclic; this gate keeps it that way, and requires every remaining lazy cycle and every dynamic import of a repo module to be **registered and counter-party checked** (unregistered → red; stale registration → red) |
 | `check_readme_parity.py` | The English and Chinese READMEs drifting apart structurally — section count, and per-section table-row / code-block / mermaid counts. It deliberately does **not** compare line counts, because Chinese is more compact |
 
 **"How many tests fail" proves nothing here — the baseline gate exists to say so.** Because the
@@ -626,7 +627,7 @@ python matlabc_flow.py --help     # repair loop: five-station pipeline + five re
 python matlabc_ask.py --help      # grounded Q&A: how facts become an answer
 python matlabc_mcp.py --help      # MCP server: the five tools + why stdin must be cut
 python gui.py --help              # GUI: which CLI flag each form field maps to
-python tools/check_all.py --help  # gates: what each of the 11 gates stops
+python tools/check_all.py --help  # gates: what each of the 12 gates stops
 ```
 
 This is not a verbal promise — `check_help_contract.py` and `check_doc_flags.py` watch it, and
