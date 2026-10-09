@@ -15,7 +15,7 @@
 
 判据（只认装置，不认叙述）
 --------------------------
-三条来源两两对齐，且**每一对都双向**：
+六条来源两两对齐，且**每一对都双向**：
 
     D1 引用必须落地：四个文档里出现的每个 `flow/diagrams/*.svg`，都必须在磁盘上存在。
     D2 文件必须被用：`flow/diagrams/` 下的每个文件，都必须在某个文档里被提到过。← D1 的反向
@@ -43,20 +43,44 @@
              且声明的字节数与 `os.path.getsize` 相等（体积漂了 = 产物变了而索引没跟）；
          (b) 磁盘上的每个 SVG / HTML 都被索引登记过 —— 反过来漏登记也是坏索引。
        索引自己缺失或不是合法 JSON 同样算红。← 两个方向分别判
+    D10 尺寸必须自洽：根 `<svg>` 标签的 `viewBox` 必须等于**同一标签自己**的
+       `style` 里的 `width: Wpx; height: Hpx`，且四个数都是有限正数。
+       独立 SVG 的 width/height **就是**它的渲染尺寸；两者分叉 ⇒ 缩放静默变形。
+       （R47 三臂比对里第②个陷阱就是这么现形的：缩放不钉 1:1 时，
+       `getComputedTextLength` 差 0.09–0.17px。）
+    D11 内联字体必须是**同一套子集**：每个文件恰好 6 段 `@font-face`、
+       6 段 `unicode-range`、6 个 `data:font/woff2`；**6 段 `src` 的 base64
+       在 26 个文件之间逐字节相同**（同一套字体管线不该产出第二种结果 ——
+       某一个文件漂了，就说明它被别的工具重新生成过，而渲染会跟着变）；
+       且字体负载（base64 字符数合计）占文件字节比必须落在 (40%, 80%)。
+       实测 51.6%–61.0%、每文件 88,366 字符、26 份完全相同。
+    D12 语言必须落到文本层：英文版**一个中文字都不许有**；中文版必须**至少有一个**
+       中文字（实测 154–615）。D6 只比骨架、D7 只比链接，都看不见「译文没落进产物」。
+       并且内联 `unicode-range` 的并集**不得覆盖 CJK 基本区**（U+4E00–U+9FFF）：
+       CJK 由宿主 fallback 渲染，内联进来会让每张图涨好几 MB。
 
 为什么 D2/D4 的反方向不能省
     只判「引用了的要存在」，删掉文件必然红；但**多出来的文件是绿的** ——
     于是改名/重生成之后留下的旧文件会永久躺着，而没有任何东西会说它已经没人用了。
     登记表两向核对是本仓的既定纪律（子进程 / 退出码 / 护栏 / 帮助 / CI / 散文数字 / 基线）。
 
-两向自证：22 个反例（引用悬空、孤儿文件、缺中/缺英、语言串台、两侧图集不等、
+两向自证：28 个反例（引用悬空、孤儿文件、缺中/缺英、语言串台、两侧图集不等、
 脚本/外链/CRLF/缺主题/缺背景、节点数漂移、候选名对不上、交互产物悬空/没人引用、
-索引缺失/漏登记关键字段/体积漂移/多登记一条）必须全部抓到；
+索引缺失/漏登记关键字段/体积漂移/多登记一条、viewBox 与 style 不一致、
+字体少一段/字体被改一个字节、英文版混入中文/中文版丢了中文/字体子集盖了 CJK）必须全部抓到；
 干净样本必须放行；最后对**真实仓库**再整体核对一次。
 
 首轮自证就在这里抓到了我自己写的一条错判据：D5 原本写「含 `http://` 即红」，
 结果 `xmlns="http://www.w3.org/2000/svg"` 会命中 —— **对每一张真图都判红**。
 **一条永远变红的判据和一条永远不变红的判据一样没用**，所以只抓 `url(`/`href=`/`src=` 后面的外部地址。
+
+R48 加 D10–D12 时，同一种错又踩了两回（都是**装置自己的 bug**，不是被检对象）：
+  * D12 一度把 `unicode-range` 聚合成 `(min,max)` 再判交叠，而它是**若干不相交区间的并**
+    —— 聚合把中间的空洞也算了进去，`U+0460-052F … U+FE2E-FE2F` 被判成「盖住了 CJK」，
+    **对每一张真图都判红**（真实仓库实测 78 项）。改成**逐 token** 判才消掉。
+  * 样本字体一度按每个文件自己的骨架长度反推填充长度，样本之间 `src` 就互不相同，
+    D11 的「跨文件逐字节相同」去误伤了干净样本。真实产物共用同一串字节，样本也必须共用。
+**每加一条判据，都要先问：它在干净样本上是绿的吗、在被污染的样本上是红的吗。**
 
 用法：
     python tools/check_flow_diagrams.py             # 0=全部对齐 1=有不对齐 2=缺输入
@@ -64,8 +88,8 @@
     python tools/check_flow_diagrams.py --help       # 显示本帮助
 
 退出码：
-    0 = 三条来源两两对齐（含索引）
-    1 = 发现不对齐（D1..D9 任一红）
+    0 = 六条来源两两对齐（含索引与 SVG 自身形态）
+    1 = 发现不对齐（D1..D12 任一红）
     2 = 缺输入（缺文档 / 缺 flow/diagrams/ / 一个候选都找不到 → 红）
 """
 import argparse
@@ -100,6 +124,24 @@ FORBIDDEN = ("<script", "<foreignObject", "<image")
 EXTERNAL_RE = re.compile(r"""(?:url\(|href=|src=)\s*["']?\s*https?://""")
 BG_RULE = "rect.c-bg-rect { fill: var(--bg); }"
 
+# D10：独立 SVG 的**渲染尺寸**。viewBox 必须等于同一标签自己 style 里的 width/height。
+ROOT_TAG_RE = re.compile(r"<svg\b[^>]*>")
+VIEWBOX_RE = re.compile(r'viewBox\s*=\s*"([^"]*)"')
+STYLE_WH_RE = re.compile(r"width\s*:\s*([0-9.]+)px\s*;\s*height\s*:\s*([0-9.]+)px")
+
+# D11：内联字体。同一套字体管线 ⇒ 26 个文件的子集必须是**同一串字节**。
+FONTFACE_RE = re.compile(r"@font-face\s*\{(.*?)\}", re.S)
+FONT_SRC_RE = re.compile(r"url\(([^)]*)\)")
+FONT_FACES = 6
+# 带子下界防「字体被抹掉」、上界防「有人把 CJK 也内联进来」。实测 51.6%–61.0%，
+# 两侧各留 ≥10 个百分点 —— 宽到不会误伤，又窄到能抓住结构性变化。
+FONT_RATIO_LO, FONT_RATIO_HI = 0.40, 0.80
+
+# D12：语言落到文本层；内联字体子集不得盖住 CJK 基本区。
+CJK_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
+URANGE_RE = re.compile(r"unicode-range\s*:\s*([^;]+)")
+CJK_LO, CJK_HI = 0x4E00, 0x9FFF
+
 # D9：索引。它的路径一律**相对 flow/**（`diagrams/x.svg`、`archify/d/x.html`），
 # 与 INDEX.md 里的相对链接同源，所以在这里只加一层 `flow/` 前缀。
 INDEX = "flow/FLOW_INDEX.json"
@@ -121,7 +163,7 @@ def read_bytes(path):
         return fh.read()
 
 
-# ---------------------------------------------------------------- 三条来源
+# ----------------------------------------------------------- 六条来源的读入器
 
 def doc_references(root):
     """返回 (refs, html_refs, missing_docs)。
@@ -239,8 +281,30 @@ def index_entries(root):
 
 # ---------------------------------------------------------------- 判据
 
+def urange_hits_cjk(seg, lo_bound, hi_bound):
+    """这段 `unicode-range` 是否与 [lo_bound, hi_bound] **相交**。
+
+    ⚠ **必须逐 token 判，不能聚合成 (min,max)** —— `unicode-range` 是**若干不相交
+    区间的并**，聚合出来的跨度会把中间的空洞也算进去。R48 首轮自证就栽在这上面：
+    `U+0460-052F, …, U+FE2E-FE2F` 聚合后是 0x0460–0xFE2F，**数值上盖住了** U+4E00–U+9FFF，
+    于是对**每一张真图**都判红（真实仓库 78 项假红）。
+    和 R47 的 D5 是同一类错误：**一条永远变红的判据和一条永远不变红的判据一样没用**。
+
+    返回 True/False；解析不动返回 None。
+    """
+    for tok in seg.split(","):
+        m = re.match(r"^U\+([0-9A-Fa-f]{1,6})(?:-([0-9A-Fa-f]{1,6}))?$", tok.strip())
+        if not m:
+            return None
+        a = int(m.group(1), 16)
+        b = int(m.group(2), 16) if m.group(2) else a
+        if not (b < lo_bound or a > hi_bound):
+            return True
+    return False
+
+
 def audit(root, on_problem):
-    """施加 D1..D9。返回 (引用条数, 文件数, 候选数)，供调用方判断「缺输入」。"""
+    """施加 D1..D12。返回 (引用条数, 文件数, 候选数)，供调用方判断「缺输入」。"""
     refs, html_refs, missing_docs = doc_references(root)
     for rel in missing_docs:
         on_problem("D0 文档不存在：%s（缺输入 → 红）" % rel)
@@ -378,6 +442,84 @@ def audit(root, on_problem):
         for hp in sorted(idx_htmls - html_set):
             on_problem("D9 %s 登记了 %s，磁盘上没有（索引指着空气）" % (INDEX, hp))
 
+    # ---- D10：尺寸必须自洽（viewBox == 同一标签自己 style 的 width/height）
+    for name in files:
+        text = read_text(os.path.join(root, DIAGRAM_DIR.replace("/", os.sep), name))
+        mtag = ROOT_TAG_RE.search(text)
+        if not mtag:
+            on_problem("D10 %s 找不到根 <svg> 标签" % name)
+            continue
+        tag = mtag.group(0)
+        mvb = VIEWBOX_RE.search(tag)
+        mwh = STYLE_WH_RE.search(tag)
+        if not mvb or not mwh:
+            on_problem("D10 %s 根标签缺 viewBox 或缺 style 里的 width/height" % name)
+            continue
+        try:
+            nums = [float(x) for x in mvb.group(1).replace(",", " ").split()]
+        except ValueError:
+            nums = []
+        if len(nums) != 4:
+            on_problem("D10 %s 的 viewBox 不是 4 个数：%r" % (name, mvb.group(1)))
+            continue
+        w, h = float(mwh.group(1)), float(mwh.group(2))
+        if not (nums[2] > 0 and nums[3] > 0 and w > 0 and h > 0):
+            on_problem("D10 %s 的尺寸不是正数（viewBox=%r style=%gx%g）"
+                       % (name, mvb.group(1), w, h))
+            continue
+        if nums[2] != w or nums[3] != h:
+            on_problem("D10 %s 的 viewBox %gx%g 与 style %gx%g 不一致 —— 缩放会静默变形"
+                       % (name, nums[2], nums[3], w, h))
+
+    # ---- D11：内联字体必须是同一套子集，且负载占比在带内
+    font_ref = None
+    font_ref_name = None
+    for name in files:
+        raw = read_bytes(os.path.join(root, DIAGRAM_DIR.replace("/", os.sep), name))
+        text = raw.decode("utf-8", "replace")
+        faces = FONTFACE_RE.findall(text)
+        if len(faces) != FONT_FACES:
+            on_problem("D11 %s 有 %d 段 @font-face，期望 %d 段"
+                       % (name, len(faces), FONT_FACES))
+        n_ur = len(URANGE_RE.findall(text))
+        if n_ur != FONT_FACES:
+            on_problem("D11 %s 有 %d 段 unicode-range，期望 %d 段"
+                       % (name, n_ur, FONT_FACES))
+        n_woff = text.count("data:font/woff2")
+        if n_woff != FONT_FACES:
+            on_problem("D11 %s 有 %d 个 data:font/woff2，期望 %d 个"
+                       % (name, n_woff, FONT_FACES))
+        srcs = [FONT_SRC_RE.search(b).group(1) for b in faces if FONT_SRC_RE.search(b)]
+        payload = sum(len(s) for s in srcs)
+        ratio = (payload / len(raw)) if raw else 0.0
+        if not (FONT_RATIO_LO <= ratio <= FONT_RATIO_HI):
+            on_problem("D11 %s 的字体负载占比 %.1f%% 掉出 (%.0f%%, %.0f%%) —— 内联字体漂了"
+                       % (name, ratio * 100, FONT_RATIO_LO * 100, FONT_RATIO_HI * 100))
+        if font_ref is None:
+            font_ref, font_ref_name = srcs, name
+        elif srcs != font_ref:
+            on_problem("D11 %s 的内联字体子集与 %s 不同（同一套字体管线不该有第二种结果）"
+                       % (name, font_ref_name))
+
+    # ---- D12：语言必须落到文本层；字体子集不得盖住 CJK
+    for name in files:
+        text = read_text(os.path.join(root, DIAGRAM_DIR.replace("/", os.sep), name))
+        n_cjk = len(CJK_RE.findall(text))
+        if name.endswith(ZH_SUFFIX):
+            if n_cjk == 0:
+                on_problem("D12 %s 一个中文字都没有 —— 译文没落进产物（或只剩英文）" % name)
+        elif n_cjk != 0:
+            on_problem("D12 %s 是英文版却含 %d 个中文字（语言串台到文本层）" % (name, n_cjk))
+        for seg in URANGE_RE.findall(text):
+            hit = urange_hits_cjk(seg, CJK_LO, CJK_HI)
+            if hit is None:
+                on_problem("D12 %s 的 unicode-range 解析不动：%r" % (name, seg.strip()[:60]))
+                continue
+            if hit:
+                on_problem("D12 %s 的 unicode-range 盖住了 CJK 基本区（%s）—— "
+                           "中文应由宿主 fallback 渲染，内联会让体积暴涨"
+                           % (name, seg.strip()[:60]))
+
     return n_refs, len(files), len(declared)
 
 
@@ -389,15 +531,63 @@ def on_problem_collector(bucket):
 
 # ---------------------------------------------------------------- 自证
 
-def _svg(node_ids, extra="", crlf=False, drop_theme=False, drop_bg=False):
-    theme = "" if drop_theme else "@media (prefers-color-scheme: light) { :root, svg { --bg: #fff; } }\n"
+FIXTURE_FONT_FACES = 6
+FIXTURE_FONT_RATIO = 0.55
+FONT_PRE = "data:font/woff2;base64,"
+THEME_LINE = "@media (prefers-color-scheme: light) { :root, svg { --bg: #fff; } }\n"
+_FIXTURE_PAD = None
+
+
+def _face(i, pad):
+    return ("@font-face { font-family: 'JB%d'; font-style: normal; "
+            "src: url(%s%s) format('woff2'); "
+            "unicode-range: U+0000-00FF; }\n" % (i, FONT_PRE, "A" * pad))
+
+
+def _assemble(node_ids, theme, bg, fonts, extra, label, w, h, sw, sh):
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %g %g" '
+            'style="width: %gpx; height: %gpx;"><style>\n' % (w, h, sw, sh)
+            + theme + bg + fonts + '</style>' + extra
+            + '<text data-node-id="title">%s</text>' % label
+            + '<rect class="c-bg-rect" x="0" y="0" width="%g" height="%g"/>' % (w, h)
+            + "".join('<g data-node-id="%s"/>' % n for n in node_ids)
+            + '</svg>\n')
+
+
+def _fixture_pad():
+    """按目标占比反推 base64 填充长度；**全局只算一次、所有样本共用**。
+
+    为什么必须共用：真实产物的 6 段 `src` 在 26 个文件里是**同一串字节**。
+    若按每个样本自己的骨架长度算 pad，样本之间字体就互不相同，
+    D11 的「跨文件逐字节相同」会去误伤干净样本（首轮自证实测：f02-b 被判与 f01-a 不同）。
+    """
+    global _FIXTURE_PAD
+    if _FIXTURE_PAD is None:
+        ref = _assemble(["n1", "n2"], THEME_LINE, BG_RULE + "\n",
+                        "".join(_face(i, 0) for i in range(FIXTURE_FONT_FACES)),
+                        "", "Title", 10, 10, 10, 10)
+        n = FIXTURE_FONT_FACES
+        _FIXTURE_PAD = max(8, int(
+            (FIXTURE_FONT_RATIO * len(ref) - n * len(FONT_PRE))
+            / (n * (1 - FIXTURE_FONT_RATIO))))
+    return _FIXTURE_PAD
+
+
+def _svg(node_ids, extra="", crlf=False, drop_theme=False, drop_bg=False,
+         cjk=False, vb=(10, 10), style_wh=None):
+    """造一张**形态完整**的样本 SVG。
+
+    必须完整：D10 看 viewBox/style、D11 数 6 段字体、D12 数中文字。
+    样本缺了这些，「干净样本」就会因为判据而红 —— 那是自检装置自身的 bug。
+    """
+    w, h = vb
+    sw, sh = style_wh if style_wh else (w, h)
+    theme = "" if drop_theme else THEME_LINE
     bg = "" if drop_bg else BG_RULE + "\n"
-    text = ('<?xml version="1.0" encoding="UTF-8"?>\n'
-            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><style>\n'
-            + theme + bg +
-            '</style>' + extra +
-            '<rect class="c-bg-rect" x="0" y="0" width="10" height="10"/>'
-            + "".join('<g data-node-id="%s"/>' % n for n in node_ids) + '</svg>\n')
+    fonts = "".join(_face(i, _fixture_pad()) for i in range(FIXTURE_FONT_FACES))
+    label = "中文标题" if cjk else "Title"
+    text = _assemble(node_ids, theme, bg, fonts, extra, label, w, h, sw, sh)
     if crlf:
         return text.replace("\n", "\r\n")
     return text
@@ -411,6 +601,30 @@ def _write(path, text):
         fh.write(text)
 
 
+def _resync_index(root):
+    """把样本索引里声明的体积按磁盘重算（只重算体积，路径一条不动）。
+
+    为什么必须做：`_fixture` 的索引体积是**实测**的（不实测，就等于把「索引对不对」
+    从判据里删掉）。于是**任何**改写 SVG 的退化都会顺手让 D9 的体积判据变红 ——
+    那样 D10/D11/D12 永远拿不到「独立证人」（R44 的纪律：变异必须由**它该抓的那条**
+    判据抓到）。索引类退化不重算，它就是要坏。
+    """
+    p = os.path.join(root, INDEX)
+    if not os.path.exists(p):
+        return
+    recs = json.loads(read_text(p))
+    for r in recs:
+        for key, bkey in (("svg", "svg_bytes"), ("zh_svg", "zh_svg_bytes"),
+                          ("html", "html_bytes"), ("zh_html", "zh_html_bytes")):
+            rel = r.get(key)
+            if not rel:
+                continue
+            f = os.path.join(root, "flow", rel)
+            if os.path.exists(f):
+                r[bkey] = os.path.getsize(f)
+    _write(p, json.dumps(recs, ensure_ascii=False, indent=2) + "\n")
+
+
 def _fixture(root):
     """造一棵**干净**的样本树：2 张图 × 2 语言 + 4 个候选。"""
     P = {
@@ -420,7 +634,8 @@ def _fixture(root):
         "f02-b.zh-CN.svg": ("d4/candidate.zh-CN.json", "archify/d4/f02-b.zh-CN.html", "zh-CN", ["m1", "m2", "m3"]),
     }
     for name, (crel, out, locale, nodes) in P.items():
-        _write(os.path.join(root, DIAGRAM_DIR, name), _svg(nodes))
+        _write(os.path.join(root, DIAGRAM_DIR, name),
+               _svg(nodes, cjk=name.endswith(ZH_SUFFIX)))
         _write(os.path.join(root, ARCHIFY_DIR, crel),
                json.dumps({"meta": {"output": out, "locale": locale}}, ensure_ascii=False))
         # 交互产物本体。D8 的两个方向都要数它 —— 样本里不造出来，
@@ -472,7 +687,7 @@ def _damage(root, kind):
         _write(p("f03-c.svg"), _svg(["z1"]))
     elif kind == "unreferenced":
         _write(p("f03-c.svg"), _svg(["z1"]))
-        _write(p("f03-c.zh-CN.svg"), _svg(["z1"]))
+        _write(p("f03-c.zh-CN.svg"), _svg(["z1"], cjk=True))
         _write(os.path.join(root, ARCHIFY_DIR, "d5", "candidate.json"),
                json.dumps({"meta": {"output": "archify/d5/f03-c.html", "locale": "en"}}))
         _write(os.path.join(root, ARCHIFY_DIR, "d5", "candidate.zh-CN.json"),
@@ -507,7 +722,7 @@ def _damage(root, kind):
     elif kind == "drop-bg":
         _write(p("f01-a.svg"), _svg(["n1", "n2"], drop_bg=True))
     elif kind == "node-drift":
-        _write(p("f02-b.zh-CN.svg"), _svg(["m1", "m2"]))
+        _write(p("f02-b.zh-CN.svg"), _svg(["m1", "m2"], cjk=True))
     elif kind == "bad-candidate-name":
         _write(os.path.join(root, ARCHIFY_DIR, "d1", "candidate.json"),
                json.dumps({"meta": {"output": "archify/d1/zzz.html", "locale": "en"}}))
@@ -536,8 +751,31 @@ def _damage(root, kind):
         recs.append(ghost)
         _write(os.path.join(root, INDEX),
                json.dumps(recs, ensure_ascii=False, indent=2) + "\n")
+    elif kind == "viewbox-mismatch":
+        _write(p("f01-a.svg"), _svg(["n1", "n2"], style_wh=(10, 9)))
+    elif kind == "font-drift":
+        t = read_text(p("f02-b.zh-CN.svg"))
+        i = t.find("@font-face")
+        j = t.find("@font-face", i + 1)
+        _write(p("f02-b.zh-CN.svg"), t[:i] + t[j:])
+    elif kind == "font-variant":
+        t = read_text(p("f01-a.svg"))
+        k = t.find("base64,")
+        t = t[:k + 7] + ("B" if t[k + 7] == "A" else "A") + t[k + 8:]
+        _write(p("f01-a.svg"), t)
+    elif kind == "cjk-in-en":
+        _write(p("f01-a.svg"), _svg(["n1", "n2"], cjk=True))
+    elif kind == "cjk-lost-in-zh":
+        _write(p("f01-a.zh-CN.svg"),
+               read_text(p("f01-a.zh-CN.svg")).replace("中文标题", "Title"))
+    elif kind == "cjk-subset-inlined":
+        _write(p("f01-a.svg"), read_text(p("f01-a.svg")).replace(
+            "unicode-range: U+0000-00FF;", "unicode-range: U+4E00-9FFF;", 1))
     else:
         return False
+    if not kind.startswith("index-"):
+        # 只把**体积**同步回来；索引类退化不碰，它坏得就是索引本身。
+        _resync_index(root)
     return True
 
 
@@ -547,7 +785,20 @@ BAD_KINDS = ("ref-missing", "orphan-file", "unreferenced", "pair-missing-zh",
              "bad-candidate-name", "bad-locale-suffix", "missing-doc",
              "html-ref-missing", "html-orphan",
              "index-missing", "index-drop-field", "index-bytes-drift",
-             "index-ghost-entry")
+             "index-ghost-entry",
+             "viewbox-mismatch", "font-drift", "font-variant",
+             "cjk-in-en", "cjk-lost-in-zh", "cjk-subset-inlined")
+
+# 「这条判据有没有独立证人」—— R44 的纪律：变异必须**由它该抓的那条判据**抓到，
+# 被别的判据顺手抓走 ⇒ 该判据其实没被证明。索引类归 D9，形态类各归各的 D。
+WITNESS = {
+    "viewbox-mismatch": "D10",
+    "font-drift": "D11",
+    "font-variant": "D11",
+    "cjk-in-en": "D12",
+    "cjk-lost-in-zh": "D12",
+    "cjk-subset-inlined": "D12",
+}
 
 
 def _selftest():
@@ -588,10 +839,10 @@ def _selftest():
             print("  [正例] %-46s -> 放行（引用 %d 条 / 文件 %d 个 / 候选 %d 个）"
                   % ("干净样本一条问题都没有", n_refs, n_files, n_cand))
 
-        # 正例：判据必须真的把三条来源都数进去了（否则「全绿」可能只是因为什么都没看）
+        # 正例：判据必须真的把三路计数都数进去了（否则「全绿」可能只是因为什么都没看）
         good += 1
         if n_refs >= 4 and n_files == 4 and n_cand == 4:
-            print("  [正例] %-46s -> 放行" % "三条来源的条数都被数到（≥4/4/4）")
+            print("  [正例] %-46s -> 放行" % "三路计数都被数到（≥4/4/4）")
         else:
             bad += 1
             fails.append("counts")
@@ -626,13 +877,14 @@ def _selftest():
                 # 索引类退化要求 **D9 自己是证人**：若被 D2/D8 顺手抓到，
                 # D9 就没有独立证人（R44 的教训：变异被别的判据抓走 = 该判据未被证明）。
                 wit = ""
-                if kind.startswith("index-"):
-                    only = [p for p in probs if p.startswith("D9")]
+                want_tag = "D9" if kind.startswith("index-") else WITNESS.get(kind)
+                if want_tag:
+                    only = [pr for pr in probs if pr.startswith(want_tag)]
                     if len(only) == len(probs):
-                        wit = "  ← D9 独立作证"
+                        wit = "  ← %s 独立作证" % want_tag
                     else:
-                        wit = "  *** D9 不是唯一证人：%s ***" % (probs[:2],)
-                        fails.append(kind + "(D9 无独立证人)")
+                        wit = "  *** %s 不是唯一证人：%s ***" % (want_tag, probs[:2],)
+                        fails.append(kind + "(%s 无独立证人)" % want_tag)
                 print("  [反例] %-46s -> 抓到（%d 条：%s）%s"
                       % (kind, len(probs), probs[0][:60], wit))
             else:
@@ -692,7 +944,7 @@ def main(argv=None):
             print("  ...（还有 %d 条）" % (len(probs) - 40))
         return 1
     print("check_flow_diagrams: OK（引用 %d 条 / 产物 %d 个 / 候选 %d 个，"
-          "D1–D9 全绿）" % (n_refs, n_files, n_cand))
+          "D1–D12 全绿）" % (n_refs, n_files, n_cand))
     return 0
 
 

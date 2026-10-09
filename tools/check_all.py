@@ -88,7 +88,8 @@ GUARD_TIMEOUT = 600.0
 # R44 新增 check_ir_attribution.py（C'''1：把「解析不到的调用只有一个判定点、
 # 且归因吃到的是它」钉成全仓集合判据），故 9 → 10。
 # R47 新增 check_flow_diagrams.py（把 README 里嵌的图 ↔ flow/diagrams/ 的文件 ↔
-# candidate*.json 的声明 ↔ 交互产物 ↔ FLOW_INDEX.json 索引 五条来源钉成 D1–D9、
+# candidate*.json 的声明 ↔ 交互产物 ↔ FLOW_INDEX.json 索引 ↔ SVG 自身形态（尺寸/字体/语言）
+# 六条来源钉成 D1–D12、
 # 每对双向），故 10 → 11。
 # 新增护栏时**必须**同步上调这个数字 —— 这正是棘轮的作用。
 MIN_GUARDS = 11

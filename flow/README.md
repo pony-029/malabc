@@ -86,6 +86,10 @@ python E:/matlabc/_r45/render_zh.py
    「README 里的引用 ↔ `diagrams/` 里的文件 ↔ `candidate*.json` 里的声明」两两对齐，
    中英成对、骨架同构、形态自足（无外链 / 有双主题 / 自带背景 / 保留 LF）都在这道门里；
    `flow/FLOW_INDEX.json` 也在这道门里 —— 索引漏登记、或登记的体积与磁盘不符，一样红。
+   R48 起再加三条静态臂（**D10–D12**）：`viewBox` 必须等于根标签自己 `style` 的
+   `width/height`；26 个文件的 6 段 `@font-face` **`src` 必须逐字节相同**、占比落在
+   (40%, 80%)；英文版不得含中文字、中文版必须含中文字、字体子集不得覆盖 CJK 基本区。
+   详见 `FLOW_REPORT.md` §14.7。
 
 ## 与 `D:\project\archify` 的关系
 
