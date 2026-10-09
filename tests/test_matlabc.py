@@ -16329,3 +16329,73 @@ def test_r34_c_if0_helper_is_line_preserving_and_c_only():
     # 没有 `#if 0` 的常见文本走快速路径
     plain = "int main(void) { return 0; }\n"
     assert ma._scrub_c_if0(plain) == plain
+
+
+# ===========================================================================
+# R35：把构建脚本的链接意图接到 `--binary-attach` 的 `missing` 上
+#
+# 修前实测：`binfmt/buildsys.py` 全仓**没有被任何模块 import** ——
+# 「有装置没接线」比没有装置更危险：会让人以为已经有覆盖。
+# 它的价值不在「多一个功能」，而在把 `missing` 从「我也不知道该给哪个库」
+# 变成「你的 Makefile 写着 -lblas，把 libblas.so 一起传进来就能定下来」。
+# ===========================================================================
+def test_r35_buildsys_link_intents_are_wired_into_binary_attach():
+    """R35：`--binary-attach` 出现 `missing` 时，必须把构建脚本的链接意图列出来。
+
+    三个方向都要成立：有 Makefile 时要提（含候选文件名）、没有构建脚本时**不留空壳**、
+    CMake 的 `target_link_libraries` 与 `find_package` 都要被提出。
+    """
+    import importlib
+    sys.path.insert(0, _R33_TOOLS)
+    try:
+        fx = importlib.import_module("check_binfmt_fixtures")
+    finally:
+        sys.path.pop(0)
+    tmp = tempfile.mkdtemp(prefix="_t_r35bs_")
+    try:
+        lib = os.path.join(tmp, "libprobe.dll")
+        fx._make_pe(lib, sections=[(".text", bytes(64))],
+                    imports=["kernel32.dll"], exports=["my_helper"])
+
+        def _case(name, files):
+            d = os.path.join(tmp, name)
+            src = os.path.join(d, "src")
+            os.makedirs(src)
+            with io.open(os.path.join(src, "m.c"), "w", encoding="utf-8") as fh:
+                fh.write("int main(void) {\n    blas_sgemm_zz(1);\n"
+                         "    return 0;\n}\n")
+            for fn, text in files.items():
+                with io.open(os.path.join(d, fn), "w", encoding="utf-8") as fh:
+                    fh.write(text)
+            out = os.path.join(tmp, "%s.json" % name)
+            r = _r31_run(["matlabc.py", d, "--lang", "c",
+                          "--binary-attach", lib, "--json", out], timeout=180)
+            assert r.returncode == 0, \
+                r.stdout.decode("utf-8", "replace")[-600:]
+            with io.open(out, "r", encoding="utf-8") as fh:
+                return json.load(fh).get("unresolved_attribution") or {}
+
+        # A) Makefile 里写了 -lblas -> 必须提出 blas + 候选文件名
+        ua = _case("A", {"Makefile": "LDFLAGS += -lblas\n"})
+        bh = ua.get("build_link_hints")
+        assert bh, "有 Makefile 却没有任何链接意图（装置没接线）"
+        blas = [i for i in bh["link_intents"] if i["name"] == "blas"]
+        assert blas, bh["link_intents"]
+        assert "libblas.so" in blas[0]["candidates"], blas[0]
+        assert "blas_sgemm_zz" in bh["missing"], bh["missing"]
+
+        # B) 没有构建脚本 -> 不留空壳
+        ua2 = _case("B", {})
+        assert "build_link_hints" not in ua2, "没有构建脚本却造了一个空壳键"
+
+        # C) CMake：target_link_libraries 与 find_package 都要提出
+        ua3 = _case("C", {"CMakeLists.txt":
+                          "project(p C)\nfind_package(BLAS REQUIRED)\n"
+                          "add_executable(app src/m.c)\n"
+                          "target_link_libraries(app PRIVATE cublas)\n"})
+        names = [i["name"] for i in
+                 ((ua3.get("build_link_hints") or {}).get("link_intents") or [])]
+        assert "cublas" in names, names
+        assert ("BLAS" in names or "blas" in names), names
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)

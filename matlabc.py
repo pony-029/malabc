@@ -8856,7 +8856,7 @@ def _run_c_only(c_model, root, args):
         # R33/C'3：--binary-attach 的三态归因（只依据显式给出的二进制）
         _c_names = [u[0] for u in (c_model.get("unresolved", []) or [])]
         _binattr, _binattr_ok = _emit_binary_attach_names(
-            args, _c_names, label="C 未解析调用")
+            args, _c_names, label="C 未解析调用", root=root)
         _c_payload = {
             "lang": c_model.get("lang", "c"),
             "version": VERSION,
@@ -8887,7 +8887,7 @@ def _run_c_only(c_model, root, args):
         # 即使不写 JSON，也把归因结果打到终端（否则这个开关在非 JSON 模式下静默无输出）
         _binattr, _binattr_ok = _emit_binary_attach_names(
             args, [u[0] for u in (c_model.get("unresolved", []) or [])],
-            label="C 未解析调用")
+            label="C 未解析调用", root=root)
         if not _binattr_ok:
             ok = False
     # P90：C 模式 SARIF 输出（--lang c --sarif），C 启发式检查接入统一 SARIF 规范
@@ -28718,11 +28718,97 @@ def _attribute_unresolved_with_binaries(binary_csv, unresolved_names):
                   "summary": summary}, None
 
 
-def _emit_binary_attach_names(args, names, label="未解析调用"):
+def _buildsys_link_hints(root, missing_names=None):
+    """R35/C''3：把「构建脚本里声明的链接意图」接到 `missing` 上（**有装置没接线**）。
+
+    今天 `missing` 的含义只是「在你**本次提供**的二进制里没找到」—— 用户无从知道
+    **该给哪个库**。而 `Makefile` / `CMakeLists.txt` 里往往就写着 `-lblas`。
+    这里把它读出来：
+
+      * 只做**字面量**提取（`binfmt/buildsys.py` 本来就这样；含变量的 `-l$(X)`
+        会被记成 note 而**不猜**）；
+      * 只给**候选文件名**（纯命名约定），**不去磁盘上找文件**。
+
+    返回 `{"missing": [...], "link_intents": [...], "notes": [...]}`；
+    没有任何线索时返回 `None`（**不制造空壳**，与 `unresolved_attribution` 同一纪律）。
+    """
+    if not root:
+        return None
+    binfmt = _load_binfmt()
+    if binfmt is None:
+        return None
+    bs = getattr(binfmt, "buildsys", None)
+    if bs is None:
+        # 兼容「binfmt/__init__ 未导出 buildsys」的旧包：显式按子模块取一次。
+        try:
+            from binfmt import buildsys as bs
+        except Exception:
+            return None
+    try:
+        deps, notes = bs.scan(root)
+    except Exception:
+        return None
+    if not deps:
+        return None
+    intents = []
+    seen = set()
+    for d in deps:
+        name = getattr(d, "name", "") or ""
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        try:
+            cands = bs.lib_flag_to_candidates(name)
+        except Exception:
+            cands = []
+        intents.append({
+            "name": name,
+            "origin": os.path.basename(getattr(d, "origin", "") or ""),
+            "detail": getattr(d, "detail", "") or "",
+            "candidates": cands,
+        })
+    if not intents:
+        return None
+    return {"missing": sorted(set(missing_names or [])),
+            "link_intents": intents,
+            "notes": list(notes or [])}
+
+
+def _render_buildsys_hints(hints):
+    """R35：把构建脚本里的链接意图渲染成「你可能该把哪些库一起传进来」。
+
+    措辞刻意**不承诺**：`missing` 只表示「本次没提供」，不是说「一定是这个库」。
+    一个假阳性会把真缺陷洗白成「来自某个库」—— 与归因三态同一条纪律。
+    """
+    lines = ["构建脚本里声明的链接意图（只读**字面量**；含变量的 -l 不猜）："]
+    lines.append("  %-22s %-14s %s" % ("库名", "出处", "候选文件名 / 说明"))
+    lines.append("  " + "-" * 74)
+    for it in hints.get("link_intents", []) or []:
+        cand = ", ".join(it.get("candidates") or []) or "（无命名约定候选）"
+        detail = it.get("detail") or ""
+        lines.append("  %-22s %-14s %s%s"
+                     % (it.get("name", ""), it.get("origin", ""), cand,
+                        ("   " + detail) if detail else ""))
+    miss = hints.get("missing") or []
+    if miss:
+        lines.append("")
+        lines.append("  提示：`missing` 只表示「在你**本次提供**的二进制里没找到」。")
+        lines.append("  若上面某个库正是这些符号的来源，把它一起传给 --binary-attach")
+        lines.append("  就能定下来（本次归为 missing 的名字）：")
+        lines.append("    " + ", ".join(miss[:12])
+                     + ("  …（另有 %d 个）" % (len(miss) - 12) if len(miss) > 12
+                        else ""))
+    for n in (hints.get("notes") or []):
+        lines.append("  [note] " + n)
+    return "\n".join(lines)
+
+
+def _emit_binary_attach_names(args, names, label="未解析调用", root=None):
     """R33/C'3：--binary-attach 的核心 —— 给定待归因名字，打印并返回 JSON 片段。
 
     返回 (json_payload_or_None, ok_bool)。
     不短路：这是「正常分析 + 额外对账」，与 --binary 的「分析完就退」不同。
+    R35/C''3：`root` 用于把构建脚本的链接意图接到 `missing` 上（有装置没接线）。
     """
     csv = getattr(args, "binary_attach", None)
     if not csv:
@@ -28736,10 +28822,18 @@ def _emit_binary_attach_names(args, names, label="未解析调用"):
     print("%s的二进制归因（待归因 %d 个名字；只依据你显式给出的二进制）"
           % (label, len(names)))
     print(_render_binary_attribution_text(rows))
-    return {"summary": meta["summary"],
-            "rows": [{"name": r["name"], "attribution": r["attribution"],
-                      "origins": [os.path.basename(o) for o in r["origins"]],
-                      "detail": r["detail"]} for r in rows]}, True
+    missing = [r["name"] for r in rows if r.get("attribution") == "missing"]
+    hints = _buildsys_link_hints(root, missing) if missing else None
+    if hints:
+        print("")
+        print(_render_buildsys_hints(hints))
+    payload = {"summary": meta["summary"],
+               "rows": [{"name": r["name"], "attribution": r["attribution"],
+                         "origins": [os.path.basename(o) for o in r["origins"]],
+                         "detail": r["detail"]} for r in rows]}
+    if hints is not None:
+        payload["build_link_hints"] = hints
+    return payload, True
 
 
 def _emit_binary_attach(args, files, root):
@@ -28748,7 +28842,7 @@ def _emit_binary_attach(args, files, root):
         return None, True
     unresolved_rows = _collect_unresolved_calls(files)
     names = [r["name"] for r in unresolved_rows]
-    return _emit_binary_attach_names(args, names)
+    return _emit_binary_attach_names(args, names, root=root)
 
 
 def _render_binary_attribution_text(rows):
@@ -29072,6 +29166,9 @@ def main(argv=None):
                          "解析不到的调用拿到这些二进制里对账」，"
                          "在报告末尾给出 library / gpu_kernel / missing 三态归属，"
                          "并（配合 --json）写进 JSON 的 unresolved_attribution 字段。"
+                         "R35/C''3：当出现 missing 时，还会读工程里的 Makefile / CMakeLists.txt，"
+                         "把**字面量**链接意图（-lblas 等）列成「候选文件名」提示"
+                         "（含变量的 -l 不猜），帮你知道该再传哪个库进来。"
                          "例：python matlabc.py ./myproj --binary-attach libfoo.so")
     ap.add_argument("--binfmt-scan-cap", type=int,
                     default=cfg.get("binfmt_scan_cap", 64),

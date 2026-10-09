@@ -48,13 +48,14 @@ from .model import (
     BinaryReport, Dependency, GpuBlob, Section, Symbol,
     SYM_DYNAMIC, SYM_EXPORT, SYM_GPU_KERNEL, SYM_IMPORT,
 )
-from . import attribute, gpu
+from . import attribute, buildsys, gpu
 from .report import to_summary_line, to_text
 
 __version__ = "1.0.0"
 
 __all__ = [
     "parse", "sniff", "to_text", "to_summary_line", "gpu", "attribute",
+    "buildsys",
     "BinaryReport", "GpuBlob", "Section", "Symbol", "Dependency",
     "CONTAINER_PE", "CONTAINER_ELF", "CONTAINER_MACHO",
     "SYM_EXPORT", "SYM_IMPORT", "SYM_DYNAMIC", "SYM_GPU_KERNEL",

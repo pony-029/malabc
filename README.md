@@ -221,6 +221,11 @@ library", which is worse than no attribution at all. In JSON the result lands in
 `unresolved_attribution` (`{summary, rows}`), and that key is **absent** when the flag is not
 given — no empty shell that downstream code could mistake for "attributed, but nothing matched".
 
+When a name still lands in `missing`, it goes one step further: it reads the project's
+`Makefile` / `CMakeLists.txt` and lists their **literal** link intents (`-lblas` → candidate
+`libblas.so`, `find_package(BLAS)` → a hint too), so you can see *which library to pass next*.
+Variable-expanded flags such as `-l$(X)` are reported as an explicit note, never guessed.
+
 ### Static Check Rules
 
 | Rule | Description |
