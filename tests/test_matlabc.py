@@ -16728,3 +16728,69 @@ def test_r40_unimplemented_operators_are_documented_in_help():
             "删掉帮助段后没有报 undocumented —— 判据在真实文件上不生效"
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r41_prose_numbers_match_reality():
+    """R41：当前态文档里的「N 道护栏」必须等于**真实护栏数**。
+
+    起因很具体：R40 是**手工**发现帮助里写着「7 道登记制护栏」而实际已是 9 道，
+    中英 README 里还各有一处「8 gates / 8 道门」。这类陈旧数字没有语法错误、
+    不会让任何测试失败 —— 典型的「没人守就会烂」。
+
+    两向都钉住：数字写错必须红；**那句话被删掉**也必须红（否则等于静默取消覆盖）。
+    历史文档（SUPERPOWER_REVIEW_R*.md / docs/analysis/**）显式豁免 ——
+    它们记的是写下的那一刻的数字，去"修正"是篡改历史。
+    """
+    hc = _r37_load("check_help_contract")
+    want = hc.real_guard_count()
+    real = len([f for f in os.listdir(_R33_TOOLS)
+                if f.startswith("check_") and f.endswith(".py")
+                and f != "check_all.py"])
+    assert want == real, \
+        "real_guard_count()=%d 与真实护栏数 %d 不一致" % (want, real)
+
+    # 纯函数：正反 + 左边界假阳性（`3.6.5 gate` / `P203 gate` 不是宣称）
+    assert hc.doc_number_problems("一次跑完 7 道登记制护栏", 9)
+    assert hc.doc_number_problems("# what each of the 8 gates stops", 9)
+    assert not hc.doc_number_problems("一次跑完 9 道登记制护栏", 9)
+    assert not hc.doc_number_problems("its own 3.6.5 gate", 9), \
+        "「3.6.5 gate」被误当成护栏数宣称"
+    assert not hc.doc_number_problems("the P203 gate writes SARIF", 9), \
+        "「P203 gate」被误当成护栏数宣称"
+
+    # 真实仓库：0 项
+    probs = []
+    n = hc.audit_doc_numbers(ROOT, probs.append)
+    assert n >= 4, "只核对了 %d 份文档" % n
+    assert not probs, probs
+
+    # 两向 A：数字写错 → 红
+    tmp = tempfile.mkdtemp(prefix="_t_r41num_")
+    try:
+        for rel, _cnt in hc.DOC_NUMBER_CLAIM_FILES:
+            p = os.path.join(tmp, rel)
+            d = os.path.dirname(p)
+            if d and not os.path.isdir(d):
+                os.makedirs(d)
+            io.open(p, "w", encoding="utf-8").write(
+                "一次跑完 %d 道登记制护栏\n" % (want + 3))
+        p2 = []
+        hc.audit_doc_numbers(tmp, p2.append)
+        assert len(p2) >= 3, "写错数字没有被抓：%r" % p2
+
+        # 两向 B：那句话被删掉（要求 ≥1 条宣称的文件却没有任何宣称）→ 红
+        tmp2 = tempfile.mkdtemp(prefix="_t_r41cov_")
+        try:
+            for rel, _cnt in hc.DOC_NUMBER_CLAIM_FILES:
+                p = os.path.join(tmp2, rel)
+                d = os.path.dirname(p)
+                if d and not os.path.isdir(d):
+                    os.makedirs(d)
+                io.open(p, "w", encoding="utf-8").write("什么数字都不提。\n")
+            p3 = []
+            hc.audit_doc_numbers(tmp2, p3.append)
+            assert p3, "宣称被整段删掉后没有报「覆盖被静默取消」"
+        finally:
+            shutil.rmtree(tmp2, ignore_errors=True)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)

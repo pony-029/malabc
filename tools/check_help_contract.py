@@ -237,6 +237,91 @@ def _sh_exit_literals(src):
     """shell 脚本里的字面量退出码（`exit N`）。"""
     return set(int(x) for x in SH_EXIT_RE.findall(src or ""))
 
+
+# ---------------------------------------------------------------------------
+# R41：**散文里的数字**也要有人守。
+#
+# 起因：R40 是**手工**发现帮助里写着「7 道登记制护栏」而实际已是 9 道。
+# 这类陈旧数字没有语法错误、不会让任何测试失败，只有一个人恰好读到才会被发现 ——
+# 典型的「没人守就会烂」的东西。
+#
+# 判据：在**当前态**文档里，凡是 `N 道…护栏` / `N 道…门` / `N gates` 的写法，
+# N 必须等于真实护栏数。
+#
+# 为什么用白名单而不是全仓扫描：`docs/SUPERPOWER_REVIEW_R*.md` 与
+# `docs/analysis/**` 是**历史记录**，里面每一行的数字在写下的那一刻都是真的。
+# 去"修正"它们是篡改历史。所以这里显式豁免，而不是把正则改松到"碰巧不命中"
+# —— 后者会让判据失去检测力，而没人会注意到。
+#
+# 左边界 `(?<![\w.])` 不是多余的：`3.6.5 gate`、`P203 gate` 这类文本
+# 会让 `(\d+)\s*gates?\b` 误命中"5 gate"（R41 实测就撞上了）。
+DOC_NUMBER_CLAIM_FILES = (
+    # 文件 → **期望至少出现几条**这类宣称。0 表示"允许没有"。
+    # 为什么要求条数：不然删掉那句话就等于**静默取消覆盖**，而 rc 依然是 0。
+    ("matlabc.py", 1),
+    ("README.md", 1),
+    ("README_CN.md", 1),
+    ("CONTRIBUTING.md", 0),
+)
+
+GUARD_COUNT_PATTERNS = (
+    re.compile(r"(?<![\w.])(\d+)\s*道[^\n]{0,12}?护栏"),
+    re.compile(r"(?<![\w.])(\d+)\s*道[^\n]{0,6}?门"),
+    re.compile(r"(?<![\w.])(\d+)\s*gates?\b"),
+    re.compile(r"(?<![\w.])(\d+)\s*guard scripts?\b"),
+)
+
+
+def real_guard_count():
+    """被 check_all 聚合的护栏数（= GUARD_SCRIPTS 去掉 runner 自己）。"""
+    return len([s for s in GUARD_SCRIPTS
+                if os.path.basename(s) != "check_all.py"])
+
+
+def doc_number_problems(text, want):
+    """纯函数：返回 [(行号, 命中文本, 该文本写的数)]，只含**与 want 不符**的。
+
+    抽成纯函数是为了自证不必造文件。
+    """
+    out = []
+    for rx in GUARD_COUNT_PATTERNS:
+        for m in rx.finditer(text or ""):
+            got = int(m.group(1))
+            if got != want:
+                out.append((text[:m.start()].count("\n") + 1,
+                            m.group(0).strip(), got))
+    return out
+
+
+def audit_doc_numbers(root, on_problem):
+    """R41：核对当前态文档里的「N 道护栏」类数字。返回核对过的文件数。"""
+    want = real_guard_count()
+    n = 0
+    for rel, min_claims in DOC_NUMBER_CLAIM_FILES:
+        path = os.path.join(root, rel)
+        if not os.path.exists(path):
+            on_problem("N0 %s 不存在（缺输入 → 红）" % rel)
+            continue
+        try:
+            with io.open(path, "r", encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+        except OSError as e:
+            on_problem("N0 %s 读不到（%s）" % (rel, e))
+            continue
+        n += 1
+        total = 0
+        for rx in GUARD_COUNT_PATTERNS:
+            total += len(rx.findall(text))
+        for line, hit, got in doc_number_problems(text, want):
+            on_problem("N1 %s:%d 「%s」说 %d，真实护栏数是 %d —— "
+                       "散文里的数字没人守就会烂（R41 起因：帮助里曾写 7、实际 9）"
+                       % (rel, line, hit, got, want))
+        if total < min_claims:
+            on_problem("N2 %s: 期望至少有 %d 处「N 道护栏」类宣称，实际 0 处 —— "
+                       "覆盖被静默取消了（rc 依然是 0，所以必须抓）"
+                       % (rel, min_claims))
+    return n
+
 # R4 的唯一事实源：每个被示例指向的脚本，登记一条**无副作用**命令。
 # 元组形态：(argv 列表, 是否按设计无输出)。
 #   * 只允许 --help / --version / --selftest 这类不改盘的开关；
@@ -1048,6 +1133,19 @@ def _selftest():
             CI_RELIES_ON_NONZERO.clear()
             CI_RELIES_ON_NONZERO.update(saved_nz)
 
+    # ---- R41：散文里的数字（纯函数，不起进程、不读文件） ----
+    expect("R41 坏样本：写 7 而实际 9（抓到）",
+           bool(doc_number_problems("一次跑完 7 道登记制护栏", 9)), True)
+    expect("R41 坏样本：英文 8 gates 而实际 9（抓到）",
+           bool(doc_number_problems("# what each of the 8 gates stops", 9)), True)
+    expect("R41 好样本：数字正确（放行）",
+           bool(doc_number_problems("一次跑完 9 道登记制护栏", 9)), False)
+    # 左边界：`3.6.5 gate` / `P203 gate` 必须**不**被当成宣称
+    expect("R41 好样本：3.6.5 gate 不是宣称（放行）",
+           bool(doc_number_problems("feeds sources to its own 3.6.5 gate", 9)), False)
+    expect("R41 好样本：P203 gate 不是宣称（放行）",
+           bool(doc_number_problems("the P203 gate writes SARIF", 9)), False)
+
     # ---- 真实仓库整体核对 ----
     root = repo_root()
     probs = []
@@ -1056,8 +1154,9 @@ def _selftest():
     ng = audit_guards(root, on_problem_collector(probs))
     nc = audit_ci_examples(root, on_problem_collector(probs),
                            set(CONTRACT.get("matlabc.py", {}).get("codes", {})))
-    print("  真实仓库：核对 %d 个入口脚本 + %d 个护栏脚本 + %d 个 CI 模板/示例，"
-          "发现 %d 项不一致" % (n, ng, nc, len(probs)))
+    nd = audit_doc_numbers(root, on_problem_collector(probs))
+    print("  真实仓库：核对 %d 个入口脚本 + %d 个护栏脚本 + %d 个 CI 模板/示例"
+          " + %d 份文档数字，发现 %d 项不一致" % (n, ng, nc, nd, len(probs)))
     for p in probs[:12]:
         print("      " + p)
     if len(probs) > 12:
@@ -1092,6 +1191,7 @@ def main(argv=None):
     ng = audit_guards(root, on_problem_collector(probs))
     nc = audit_ci_examples(root, on_problem_collector(probs),
                            set(CONTRACT.get("matlabc.py", {}).get("codes", {})))
+    nd = audit_doc_numbers(root, on_problem_collector(probs))
     if n == 0:
         print("check_help_contract: 一个入口脚本都没核对到（缺输入 → 红）")
         return 2
@@ -1101,8 +1201,9 @@ def main(argv=None):
             print("  - " + p)
         return 1
     print("check_help_contract: OK（%d 个入口脚本 + %d 个护栏脚本 + %d 个 CI 模板/示例"
-          "的退出码在代码与帮助之间双向一致；入口帮助骨架齐备；%d 条示例命令已真跑且 rc=0）"
-          % (n, ng, nc, len(RUNNABLE)))
+          "的退出码在代码与帮助之间双向一致；%d 份文档里的「N 道护栏」数字与事实"
+          "一致；入口帮助骨架齐备；%d 条示例命令已真跑且 rc=0）"
+          % (n, ng, nc, nd, len(RUNNABLE)))
     return 0
 
 
