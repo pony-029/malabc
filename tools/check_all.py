@@ -9,6 +9,7 @@
         ├─▶ check_binfmt_fixtures.py      合成夹具 + 契约 C1..C9 + 两向自证
         ├─▶ check_doc_flags.py            文档/帮助里写的 CLI 开关必须真的存在
         ├─▶ check_help_contract.py        退出码在代码↔帮助双向一致；示例能真跑
+        ├─▶ check_ir_attribution.py       「解析不到的调用」只有一个判定点，归因吃的就是它
         ├─▶ check_operator_impl.py        算子元表里不得有「只声明不产出」的幻影
         ├─▶ check_patch_ops.py            补丁编辑算子唯一事实源（禁止覆盖式赋值）
         ├─▶ check_py36_clean.py           本仓源码必须通过本仓自己的 3.6.5 门
@@ -81,10 +82,12 @@ GUARD_TIMEOUT = 600.0
 # R33/C'9：**门数棘轮**。只断言 rc=0 是不够的 —— 一个护栏被误删（或改名、
 # 或移动目录）之后，剩下的门依然全绿，rc 依然是 0，于是「门少了」这件事
 # 静默通过。这里登记「本仓自带护栏的下界」，删掉任何一道都会立刻变红。
-# 数字含义：截至 R36，tools/ 下有 9 道 check_*.py（不含本 runner）。
+# 数字含义：截至 R44，tools/ 下有 10 道 check_*.py（不含本 runner）。
 # R36 新增 check_baseline.py（C''7：把公平基线做成可重跑的门），故 8 → 9。
+# R44 新增 check_ir_attribution.py（C'''1：把「解析不到的调用只有一个判定点、
+# 且归因吃到的是它」钉成全仓集合判据），故 9 → 10。
 # 新增护栏时**必须**同步上调这个数字 —— 这正是棘轮的作用。
-MIN_GUARDS = 9
+MIN_GUARDS = 10
 
 
 def _write_help(text):
@@ -199,6 +202,8 @@ def main(argv):
     if "--selftest" in argv:
         bad, good = _selftest()
         print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
+        # 这里的 good 数的是**自证断言条数**（9 条），与 MIN_GUARDS（护栏道数）
+        # 是两件事 —— 别把它们调成同一个变量。
         return 0 if (bad == 0 and good >= 9) else 1
 
     tools_dir = os.path.dirname(os.path.abspath(__file__))

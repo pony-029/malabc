@@ -16931,3 +16931,375 @@ def test_r43_baseline_work_dir_cannot_silently_go_stale():
     assert any("test_r30_static_guards_all_clean" in k
                for k in cb.KNOWN_BASELINE_NOISE), \
         "KNOWN_BASELINE_NOISE 的键名与真实 nodeid 不匹配 —— 登记等于没登记"
+
+# ---------------------------------------------------------------- R44（C'''1）
+#
+# 本轮把「解析不到的调用」从**五份逐字复制**收敛成**一个判定点**。测试分三档：
+#   * 行为档（① ②）：直接调用真实类/函数，断言产出；
+#   * 结构档（③ ④ ⑤）：断言**第二份实现不存在**（`build_edges` 不再被子类 override、
+#     语言登记双向一致、查表谓词只有两处），这一档是 review 看不出来的那部分；
+#   * 过程档（⑥）：本轮三次「改签名漏调用方」的复发护栏 —— 把"跑一遍才发现"变成
+#     每次测试都跑。
+#
+# 第 ⑤ 条是**独立复核**：它自己走一遍 AST，**不 import 那道具名门**。理由是
+# 门自己被改错时，只有另一份实现看同一件事才能发现（与 R33 的 36 兼容性独立复核同法）。
+_R44_GATE = os.path.join(ROOT, "tools", "check_ir_attribution.py")
+
+
+def _r44_frontends():
+    """按 ROOT 导入 frontends 包（导入后把 ROOT 从 sys.path 撤掉，避免副作用）。"""
+    import importlib
+    inserted = ROOT not in sys.path
+    if inserted:
+        sys.path.insert(0, ROOT)
+    try:
+        return importlib.import_module("frontends")
+    finally:
+        if inserted:
+            try:
+                sys.path.remove(ROOT)
+            except ValueError:
+                pass
+
+
+def test_r44_frontends_ir_is_the_only_decision_point():
+    """R44/C'''1：「这个调用解析不到」只有一个判定点，而且四条路径真的都调它。
+
+    三层断言，缺一层都会漏掉一种真实回归：
+      ① 公开面：`IR_LANG_OWNERS` 覆盖四种语言，且每个登记项都指向包内**可调用**的东西
+         —— 只写字符串的登记表可以是两个拼错的名字，而它看起来依然"有覆盖"；
+      ② 行为：`resolve_calls` 的三种情形（多命中扇出 / 零命中 / 同名两次）；
+      ③ 结构：C/Py/JS 三个前端**不再** override `build_edges`；
+         基类实现真的返回共享判定点的结果（直接调用能拿到 unresolved）；
+         MATLAB 显式覆盖成空并写明理由（它的边由主流程产出）。
+    """
+    fr = _r44_frontends()
+
+    # ① 公开面
+    assert set(fr.LANGS) == set(["c", "js", "matlab", "py"]), fr.LANGS
+    for lang, spec in fr.IR_LANG_OWNERS.items():
+        assert len(spec) == 2, (lang, spec)
+        mod = getattr(fr, spec[0], None)
+        assert mod is not None, (lang, spec)
+        assert callable(getattr(mod, spec[1], None)), (lang, spec)
+
+    # ② 行为
+    idx = {"foo": [{"file": None, "func": {"name": "foo"}},
+                   {"file": None, "func": {"name": "Foo"}}]}
+    e, u = fr.resolve_calls(idx, [("a", "foo", 1, "x")])
+    assert len(e) == 2 and not u, (e, u)
+    e, u = fr.resolve_calls({}, [("a", "nope", 1, "x")])
+    assert e == [] and u == [("nope", 1, "x")], (e, u)
+    e, u = fr.resolve_calls({}, [("a", "dup", 1, "x"), ("b", "dup", 2, "y")])
+    assert len(u) == 2, u
+    # 比**集合**不比个数：两条同名元组只能折叠成一个符号
+    assert len(fr.unresolved_symbols({"unresolved": u})) == 1
+
+    # ③ 结构：三个子类不再自带一份判定
+    for cls in (ma.CFrontend, ma.PyFrontend, ma.JsFrontend):
+        assert "build_edges" not in cls.__dict__, \
+            "%s 又自带了一份 build_edges —— 第二事实源回来了" % cls.__name__
+
+    # ③ 行为：基类实现真的走共享判定点
+    model = {"func_index": {},
+             "files": [{"rel": "a.c",
+                        "functions": [{"name": "f", "calls": [("g", 3)]}]}]}
+    e, u = ma.BaseFrontend().build_edges(model)
+    assert e == [] and u == [("g", 3, "a.c")], (e, u)
+
+    # MATLAB 侧显式覆盖为「不产出边」，且这是**写着理由**的覆盖，不是漏写
+    assert "build_edges" in ma.MatlabFrontend.__dict__, \
+        "MatlabFrontend 应显式覆盖 build_edges 并写明理由"
+    assert ma.MatlabFrontend().build_edges(model) == ([], [])
+
+
+def test_r44_frontends_matlab_is_the_only_unresolved_producer():
+    """R44/C'''1：MATLAB 的名字流也必须**只有一处产出**。
+
+    真缺陷背景：`_collect_unresolved_calls` 以前直接 `cnt.update(f.external_calls)`，
+    而诊断页/归因各读各的 —— 「源码说这个名字解析不到」与「归因说它来自某个库」
+    讨论的可能不是同一批名字，且**两边都不报错**。
+
+    这里用假 MFile 断言两件事：
+      ① `unresolved_tuples` 的形状是统一的 3 段元组，且**顺序**与老实现的迭代
+         （files → functions → external_calls 键序）一致 —— 下游 `Counter.most_common()`
+         的并列项顺序完全由首次插入顺序决定，顺序分叉不会有任何断言变红；
+      ② `_collect_unresolved_calls` 的计数与符号集合与它**同源**。
+    """
+    import collections
+    fr = _r44_frontends()
+
+    class _F(object):
+        def __init__(self, name, line, ext, kind="function"):
+            self.name, self.line = name, line
+            self.external_calls = ext
+            self.kind = kind
+
+    class _MF(object):
+        def __init__(self, rel, fns):
+            self.rel, self.functions = rel, fns
+
+    files = [_MF("a.m", [_F("f", 10, collections.OrderedDict(
+                            [("sin", 1), ("cos", 2)])),
+                         _F("g", 20, collections.OrderedDict(
+                            [("sin", 3), ("custom", 1)]))])]
+
+    rows = list(fr.matlab.unresolved_tuples(files))
+    assert all(len(r) == fr.UNRESOLVED_ARITY for r in rows), rows
+    # 顺序 = files → functions → external_calls 键序（sin,cos 在前，再 sin,custom）
+    assert [r[0] for r in rows] == ["sin", "cos", "sin", "custom"], rows
+    assert fr.matlab.unresolved_symbols(files) == set(["sin", "cos", "custom"])
+    assert not fr.unresolved_arity_problems({"unresolved": rows}), \
+        fr.unresolved_arity_problems({"unresolved": rows})
+
+    got = ma._collect_unresolved_calls(files)
+    assert set([(r["name"], r["count"]) for r in got]) == \
+        set([("sin", 2), ("cos", 1), ("custom", 1)]), got
+    # 三个名字在项目里都没有同名函数 -> 全为「纯外部」（in_project=False）
+    assert all(r["in_project"] is False for r in got), got
+
+    # 再放一个项目内同名函数：只有它翻成 in_project=True（这条同时守住
+    # 「matches 是按名字聚合」的语义没被 R44 的收敛改坏）
+    files2 = [_MF("a.m", [_F("f", 10, collections.OrderedDict([("cos", 1)]))]),
+              _MF("b.m", [_F("cos", 30, collections.OrderedDict())])]
+    got2 = ma._collect_unresolved_calls(files2)
+    assert len(got2) == 1 and got2[0]["in_project"] is True, got2
+    assert got2[0]["matches"], got2
+
+
+def test_r44_gate_is_registered_and_can_say_no():
+    """R44：新门必须①登记了退出码契约 ②自证两向 ③**能说"不"**。
+
+    第 ③ 条是这道门存在的全部理由：五处逐字复制的代码在 review 里完全看不出问题，
+    只有"全仓恰好这些写点"这种全局集合判据才能让它现形。所以这里不满足于
+    「跑一遍 rc=0」—— 还要直接喂一个**第二判定点**给门的纯函数判据，要求它报错。
+    """
+    cb = _r37_load("check_all")
+    hc = _r37_load("check_help_contract")
+    ga = _r37_load("check_ir_attribution")
+
+    assert "tools/check_ir_attribution.py" in hc.GUARD_CONTRACT, \
+        "新门没有登记退出码契约"
+    assert set(hc.GUARD_CONTRACT["tools/check_ir_attribution.py"]) == set([0, 1, 2])
+    _here = os.path.join(ROOT, "tools")
+    _real = len([f for f in os.listdir(_here)
+                 if f.startswith("check_") and f.endswith(".py")
+                 and f != "check_all.py"])
+    assert cb.MIN_GUARDS == _real, \
+        "MIN_GUARDS=%d 与真实护栏数 %d 不一致" % (cb.MIN_GUARDS, _real)
+    assert cb.MIN_GUARDS >= 10, cb.MIN_GUARDS
+
+    # 真跑：rc=0 且成功行里三个读数都在（写点 3 = 判定点 1 + 消费点 2）
+    r = _r31_run([os.path.join("tools", "check_ir_attribution.py")], timeout=180)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[-800:]
+    assert "写点 3 处 = 判定点 1 + 消费点 2" in out, out[-400:]
+    assert "语言登记 4 个" in out, out[-400:]
+
+    # 自证：坏样本必须报、好样本必须过
+    r = _r31_run([os.path.join("tools", "check_ir_attribution.py"), "--selftest"],
+                 timeout=180)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[-800:]
+    m = re.search(r'SELFTEST COUNTS \{"bad": (\d+), "good": (\d+)\}', out)
+    assert m, out[-800:]
+    assert int(m.group(1)) == 0, m.group(0)
+    assert int(m.group(2)) >= 16, m.group(0)      # 下界（今天实测 19）
+
+    # 能说"不"：不登记的第二判定点 + 写点形状漂移，两条都必须报
+    bad = ga.judge(
+        {("frontends/ir.py", "resolve_calls"): set(["append"]),
+         ("matlabc.py", "build_c_model"): set(["extend"]),
+         ("matlabc.py", "another_copy"): set(["append"])},
+        {}, dict(ga.IR_DECIDERS), dict(ga.IR_CONSUMERS),
+        dict(ga.ATTR_FEEDS), ga.ATTR_TARGETS,
+        write_shapes=dict(ga.IR_WRITE_SHAPES))
+    assert any(x.startswith("I1 未登记的写点") for x in bad), bad
+
+
+def test_r44_language_registry_is_two_way_and_typed():
+    """R44/C6'：语言登记必须**双向一致**，而且登记项要**能兑现**。
+
+    这条判据的由来是一处实测：`frontends/__init__.py` 的 docstring 写着
+    「守这件事的是 check_ir_attribution.py，并且两向核对」，而那道门里
+    **根本没有** IR_LANG_OWNERS / register_frontend / LANGS 三个标识符。
+    一份文档在描述一个不存在的对手方 —— 所以这里把它钉死在**两份数据**上。
+    """
+    import ast as _ast
+    fr = _r44_frontends()
+    ga = _r37_load("check_ir_attribution")
+
+    # 一次全仓扫描，同时得到两样东西：
+    #   reg     —— **产品模块**（REGISTER_SCOPE）里注册的语言；
+    #   outside —— 产品范围外**调用过** register_frontend 的文件。
+    # 只扫 matlabc.py 是不够的：那样 outside 恒为空，而"范围外两向核对"这条判据
+    # 就永远看不到真实的那处 `ma.register_frontend(...)`（测试自己踩过这个坑）。
+    reg = {}
+    outside = set()
+    skip = set([".git", "__pycache__", ".pytest_cache", "node_modules",
+                ".workbuddy", ".mypy_cache"])
+    for dp, dns, fns in os.walk(ROOT):
+        dns[:] = [d for d in dns if d not in skip]
+        for fn in sorted(fns):
+            if not fn.endswith(".py"):
+                continue
+            p = os.path.join(dp, fn)
+            rel = os.path.relpath(p, ROOT).replace(os.sep, "/")
+            try:
+                tree = _ast.parse(io.open(p, "r", encoding="utf-8",
+                                          errors="replace").read().replace("\r\n", "\n"))
+            except SyntaxError:
+                continue
+            for n in _ast.walk(tree):
+                if not isinstance(n, _ast.Call) or not n.args:
+                    continue
+                f = n.func
+                name = f.id if isinstance(f, _ast.Name) else getattr(f, "attr", None)
+                if name != ga.REGISTER_FN:
+                    continue
+                a0 = n.args[0]
+                lang = getattr(a0, "value", None)
+                if not isinstance(lang, str):
+                    lang = getattr(a0, "s", None)
+                if not lang:
+                    continue
+                if rel in ga.REGISTER_SCOPE:
+                    reg[lang] = n.lineno
+                else:
+                    outside.add(rel)
+    assert set(reg) == set(fr.IR_LANG_OWNERS), (sorted(reg), sorted(fr.IR_LANG_OWNERS))
+    assert set(reg) == set(["c", "js", "matlab", "py"]), sorted(reg)
+
+    # 门自己的判据也要认同一件事（否则"文档说两向核对"就还是空的）
+    probs, n_lang = ga.judge_langs(reg, fr.IR_LANG_OWNERS,
+                                   ga._owner_lookup(fr, fr.IR_LANG_OWNERS),
+                                   outside, ga.REGISTER_OUT_OF_SCOPE)
+    assert probs == [], probs
+    assert n_lang >= 8, n_lang
+
+    # 登记项必须**可兑现**：把 IR_LANG_OWNERS 里 matlab 的函数名拼错 -> 判据必须报。
+    # （这条断言曾经**写不出来** —— 当时 _owner_lookup 总去读模块里的全局表，
+    #   于是传进来的那张表根本没被兑现；接口因此被改成 owners 必传。）
+    _typo = dict(fr.IR_LANG_OWNERS)
+    _typo["matlab"] = ("matlab", "unresolved_tuples_TYPO")
+    probs2, _n2 = ga.judge_langs(reg, _typo, ga._owner_lookup(fr, _typo),
+                                 outside, ga.REGISTER_OUT_OF_SCOPE)
+    assert any("取不到" in x for x in probs2), probs2
+
+    # 范围外登记点两向核对：真实仓库里 tests/ 那处属性式调用必须被**看见**
+    assert outside == set(["tests/test_matlabc.py"]), outside
+    assert set(ga.REGISTER_OUT_OF_SCOPE) == outside
+
+
+def _r44_lowercase_index_lookups():
+    """独立实现（**不 import 那道具名门**）：找 `X.get(<expr>.lower())` 且 X 是函数索引。
+
+    与门里的实现故意不同：这里用 **AST 接收者**判断（`Name.id` / `Attribute.attr`），
+    门里用的是**源码文本切片**。两套实现看同一件事，门自己被改错时还能发现。
+    """
+    import ast as _ast
+    hits = set()
+    skip = set([".git", "__pycache__", ".pytest_cache", "node_modules",
+                ".workbuddy", ".mypy_cache"])
+    for dp, dns, fns in os.walk(ROOT):
+        dns[:] = [d for d in dns if d not in skip]
+        for fn in sorted(fns):
+            if not fn.endswith(".py"):
+                continue
+            p = os.path.join(dp, fn)
+            rel = os.path.relpath(p, ROOT).replace(os.sep, "/")
+            try:
+                t = _ast.parse(io.open(p, "r", encoding="utf-8",
+                                       errors="replace").read().replace("\r\n", "\n"))
+            except SyntaxError:
+                continue
+            spans = []
+            for n in _ast.walk(t):
+                if isinstance(n, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+                    lo = n.lineno
+                    end = getattr(n, "end_lineno", None)
+                    if end is None:
+                        end = max([getattr(c, "lineno", lo)
+                                   for c in _ast.walk(n)] or [lo])
+                    spans.append((lo, end, n.name))
+            for n in _ast.walk(t):
+                if not isinstance(n, _ast.Call) or not n.args:
+                    continue
+                f = n.func
+                if not isinstance(f, _ast.Attribute) or f.attr != "get":
+                    continue
+                v = f.value
+                recv = v.id if isinstance(v, _ast.Name) else (
+                    v.attr if isinstance(v, _ast.Attribute) else None)
+                if not recv or not (recv == "idx" or "func_index" in recv):
+                    continue
+                low = False
+                for x in _ast.walk(n.args[0]):
+                    if isinstance(x, _ast.Call) and isinstance(x.func, _ast.Attribute) \
+                            and x.func.attr == "lower":
+                        low = True
+                if not low:
+                    continue
+                owner = "<module>"
+                best = None
+                for lo, hi, nm in spans:
+                    if lo <= n.lineno <= hi and (best is None or lo > best):
+                        best, owner = lo, nm
+                hits.add((rel, owner))
+    return hits
+
+
+def test_r44_independent_recheck_lowercase_index_lookup_sites():
+    """R44/C5' 独立复核：全仓「按小写名查函数索引」只许出现在两处。
+
+    为什么这条要单独写一遍而不是"门的自证已经覆盖了"：门的自证测的是
+    **判据函数在合成数据下对不对**，而这条测的是**真实仓库里到底有几处**。
+    两者都过才能同时排除「判据坏了」与「仓库脏了」。
+
+    两处是：
+      * `frontends/ir.py::resolve_calls`     —— 唯一判定点，命中/未命中都在这里判；
+      * `matlabc.py::_match_c_bridge`        —— **只取命中**的桥接（`if not hits: continue`），
+        既不产出 unresolved 也不产出边，语义不同，故显式允许存在。
+    任何**第三处**出现，就意味着判定规则又被抄了一遍（改临时变量名也绕不过这次查表）。
+    """
+    got = _r44_lowercase_index_lookups()
+    want = set([("frontends/ir.py", "resolve_calls"),
+                ("matlabc.py", "_match_c_bridge")])
+    assert got == want, ("查表谓词出现点变了：实际 %s，期望 %s —— 多出来的一处"
+                         "几乎必然是把判定规则又抄了一遍" % (sorted(got), sorted(want)))
+
+
+def test_r44_gate_call_sites_agree_with_return_arity():
+    """R44 的**过程**教训：本轮三次「改被调签名、漏了调用方」。
+
+    三次都靠"跑一遍"才发现：`patch_ir` 改 `judge` 的形参 → 两个调用点传旧参数；
+    `patch_judge` 把 `scan_repo` 从 4 元组改成 6 元组 → 两个调用点还在解 4 个；
+    `patch_langs` 再把 `scan_repo` 改成 6 元组 → `_sample` 还解 5 个。
+    这条断言把"跑一遍才发现"变成"每次测试都跑"：**凡是解包本门某函数返回值的地方，
+    元组长度必须与那个函数的 return 一致**。
+    """
+    import ast as _ast
+    t = _ast.parse(io.open(_R44_GATE, "r", encoding="utf-8",
+                           errors="replace").read().replace("\r\n", "\n"))
+    ret = {}
+    for n in t.body:
+        if isinstance(n, _ast.FunctionDef):
+            for st in n.body:
+                if isinstance(st, _ast.Return) and isinstance(st.value, _ast.Tuple):
+                    ret[n.name] = len(st.value.elts)
+    assert ret, "本门里一个元组 return 都没解析到 —— 这条断言本身失效了"
+    assert ret.get("scan_repo") == 6, ret
+
+    bad = []
+    for n in _ast.walk(t):
+        if not isinstance(n, _ast.Assign) or not isinstance(n.value, _ast.Call):
+            continue
+        f = n.value.func
+        name = f.id if isinstance(f, _ast.Name) else getattr(f, "attr", None)
+        if name not in ret:
+            continue
+        for tgt in n.targets:
+            if isinstance(tgt, _ast.Tuple) and len(tgt.elts) != ret[name]:
+                bad.append("第 %d 行：解包 %d 个名字，而 %s 返回 %d 个"
+                           % (n.lineno, len(tgt.elts), name, ret[name]))
+    assert not bad, bad

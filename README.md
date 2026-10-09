@@ -303,6 +303,10 @@ malabc/
 ├─ matlabc_ask.py      # Q&A code understanding (BM25 retrieval + intent recognition + LLM)
 ├─ matlabc_flow.py     # AI fix-loop orchestrator review→fix→apply→verify→report
 ├─ matlabc_mcp.py      # MCP server (exposes matlabc as tools to AI agents)
+├─ frontends/          # The ONE decision point for "which call could not be resolved"
+│  ├─ ir.py            #   shared IR + resolve_calls(); the single place that decides
+│  ├─ matlab.py        #   MATLAB's own unresolved producer (different shape, same contract)
+│  └─ __init__.py      #   public surface + IR_LANG_OWNERS (which language is whose)
 ├─ binfmt/             # Binary & GPU container analysis (zero-dependency)
 │  ├─ model.py         #   unified IR: Section / Symbol / Dependency / GpuBlob / BinaryReport
 │  ├─ pe.py  elf.py    #   PE32+ and ELF64/32 streaming parsers (incl. CUDA/AMDGPU classification)
@@ -314,7 +318,8 @@ malabc/
 ├─ tools/              # Self-verifying static gates (see "Quality Gates")
 │  ├─ check_all.py     #   one-shot runner: runs every check_*.py + its own --selftest
 │  └─ check_*.py       #   doc-flags · operator-impl · patch-ops · py36-clean ·
-│                      #   help-contract · binfmt-fixtures · subprocess-hygiene
+│                      #   help-contract · binfmt-fixtures · subprocess-hygiene ·
+│                      #   readme-parity · baseline · ir-attribution
 ├─ ai_cli.py           # Multi-vendor LLM access (offline echo / online answer, graceful degradation)
 ├─ gui.py              # Zero-dependency tkinter desktop GUI
 ├─ renderers/          # Report and visualization renderers (report/callgraph/hotspot/sarif/snapshot...)
@@ -324,6 +329,22 @@ malabc/
 ├─ ci-examples/        # GitHub / GitLab CI template examples
 ├─ LICENSE             # MIT License (English original, the sole legally binding text)
 └─ LICENSE_CN          # MIT License Chinese translation (for reference only)
+```
+
+**One rule, one place.** `resolve_calls()` is the only code that decides a call could not be resolved;
+everything downstream — the call graph, the "possibly missed" page, and the binary attribution —
+reads that same verdict instead of re-deriving it.
+
+```mermaid
+flowchart LR
+  C["C frontend"] --> RC
+  P["Py frontend"] --> RC
+  J["JS frontend"] --> RC
+  M["MATLAB<br/>frontends/matlab.py"] --> U
+  RC["frontends/ir.py<br/>resolve_calls()<br/><b>the ONE decision point</b>"] --> E["edges → call graph"]
+  RC --> U["unresolved"]
+  U --> RP["\"possibly missed\" page"]
+  U --> AT["--binary-attach<br/>library: / gpu_kernel: / missing"]
 ```
 
 ---
@@ -529,6 +550,7 @@ python tools/check_all.py        # runs every tools/check_*.py AND its --selftes
 | `check_py36_clean.py` | The repo breaking **its own** Python 3.6.5 promise (it already had: `list[str]` and `from __future__ import annotations` had shipped) |
 | `check_subprocess_hygiene.py` | Any subprocess that captures output while inheriting stdin, or that can hang forever |
 | `check_help_contract.py` | An exit code that exists in the code but not in `--help`, or in `--help` but never returned; help that lost its usage example, diagram, or exit-code section; **examples that do not actually run**; help that silently shrank or bloated (absolute bound **and** drift from a ratified snapshot); exit codes claimed by the `ci-examples/` templates; and **stale "N gates" numbers in prose** |
+| `check_ir_attribution.py` | A **second** place deciding "this call could not be resolved". Before R44 that rule was **copied five times** (inline in `build_c_model` and `_build_ext_model`, verbatim in three `build_edges`), so the call graph and the binary attribution could be discussing **different sets of names** while neither side reported anything. The gate pins the whole-repo **set** of write sites, the **write shape** per site, and the `func_index.get(x.lower())` lookup that no re-copy can avoid — any unregistered "look the function index up by lowercased name" predicate is red |
 | `check_readme_parity.py` | The English and Chinese READMEs drifting apart structurally — section count, and per-section table-row / code-block / mermaid counts. It deliberately does **not** compare line counts, because Chinese is more compact |
 
 **"How many tests fail" proves nothing here — the baseline gate exists to say so.** Because the
@@ -602,7 +624,7 @@ python matlabc_flow.py --help     # repair loop: five-station pipeline + five re
 python matlabc_ask.py --help      # grounded Q&A: how facts become an answer
 python matlabc_mcp.py --help      # MCP server: the five tools + why stdin must be cut
 python gui.py --help              # GUI: which CLI flag each form field maps to
-python tools/check_all.py --help  # gates: what each of the 9 gates stops
+python tools/check_all.py --help  # gates: what each of the 10 gates stops
 ```
 
 This is not a verbal promise — `check_help_contract.py` and `check_doc_flags.py` watch it, and

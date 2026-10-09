@@ -163,6 +163,11 @@ GUARD_CONTRACT = {
         1: "发现不一致（R1/R1b/R2/R3/R4 任一红）",
         2: "缺输入（入口脚本缺失 / 解析不到 docstring）",
     },
+    "tools/check_ir_attribution.py": {
+        0: "唯一判定点 + 归因来源 + 语言登记三向一致（七条静态 + 十条纯函数判据）",
+        1: "有违规（写点未登记/形状漂移/判定点出包/接线缺失/归因自算/谓词未登记）",
+        2: "缺输入（找不到 frontends/ir.py 或 matlabc.py，或导不进 frontends 包）",
+    },
     "tools/check_operator_impl.py": {
         0: "无幻影算子",
         1: "有幻影算子 / 缺原因",

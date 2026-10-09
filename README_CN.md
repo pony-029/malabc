@@ -289,6 +289,10 @@ malabc/
 ├─ matlabc_ask.py      # 问答式代码理解（BM25 检索 + 意图识别 + 大模型）
 ├─ matlabc_flow.py     # AI 修复闭环编排 review→fix→apply→verify→report
 ├─ matlabc_mcp.py      # MCP 服务器（把 matlabc 作为工具暴露给 AI Agent）
+├─ frontends/          # 「哪个调用解析不到」的**唯一判定点**
+│  ├─ ir.py            #   共享 IR + resolve_calls()；唯一做判定的地方
+│  ├─ matlab.py        #   MATLAB 自己的 unresolved 产出器（形状不同，契约相同）
+│  └─ __init__.py      #   对外接口 + IR_LANG_OWNERS（哪种语言归谁）
 ├─ binfmt/             # 二进制与 GPU 容器分析（零依赖）
 │  ├─ model.py         #   统一 IR：Section / Symbol / Dependency / GpuBlob / BinaryReport
 │  ├─ pe.py  elf.py    #   PE32+ 与 ELF64/32 流式解析（含 CUDA/AMDGPU 判别）
@@ -300,7 +304,8 @@ malabc/
 ├─ tools/              # 自验证静态护栏（见「自验证质量门」一节）
 │  ├─ check_all.py     #   一键跑完全部 check_*.py 及各自的 --selftest
 │  └─ check_*.py       #   文档开关 · 算子实装 · 补丁算子 · 3.6 兼容 ·
-│                      #   帮助契约 · binfmt 夹具 · 子进程卫生
+│                      #   帮助契约 · binfmt 夹具 · 子进程卫生 ·
+│                      #   README 对等 · 公平基线 · IR 归因
 ├─ ai_cli.py           # 多厂商大模型接入（离线回显 / 在线回答，优雅降级）
 ├─ gui.py              # 零依赖 tkinter 桌面 GUI
 ├─ renderers/          # 报告与可视化渲染器（report/callgraph/hotspot/sarif/snapshot...）
@@ -310,6 +315,22 @@ malabc/
 ├─ ci-examples/        # GitHub / GitLab CI 模板样例
 ├─ LICENSE             # MIT 许可证（英文正本，唯一具法律效力的文本）
 └─ LICENSE_CN          # MIT 许可证中文译本（仅供参考）
+```
+
+**一条规则只有一个地方判。** `resolve_calls()` 是唯一决定「这个调用解析不到」的代码；
+下游三处 —— 调用图、「疑似漏检」页、二进制归因 —— 读的都是这同一个结论，
+而不是各自再推一遍。
+
+```mermaid
+flowchart LR
+  C["C 前端"] --> RC
+  P["Py 前端"] --> RC
+  J["JS 前端"] --> RC
+  M["MATLAB<br/>frontends/matlab.py"] --> U
+  RC["frontends/ir.py<br/>resolve_calls()<br/><b>唯一判定点</b>"] --> E["edges → 调用图"]
+  RC --> U["unresolved"]
+  U --> RP["「疑似漏检」页"]
+  U --> AT["--binary-attach<br/>library: / gpu_kernel: / missing"]
 ```
 
 ---
@@ -512,6 +533,7 @@ python tools/check_all.py        # 跑完 tools/check_*.py 全部护栏 + 各自
 | `check_py36_clean.py` | 本仓违背**自己**的 Python 3.6.5 承诺（已经发生过：`list[str]` 与 `from __future__ import annotations` 都曾提交进来） |
 | `check_subprocess_hygiene.py` | 任何「捕获输出却继承 stdin」或「可能永远挂住」的子进程调用 |
 | `check_help_contract.py` | 代码里有、`--help` 里没有的退出码（或反之）；帮助丢了用法示例 / 图示 / 退出码段；**示例命令其实跑不起来**；帮助**悄悄缩水或臃肿**（绝对界 **+** 相对已批准快照的漂移）；`ci-examples/` 模板宣称的退出码；以及**散文里陈旧的「N 道护栏」数字** |
+| `check_ir_attribution.py` | 「这个调用解析不到」被**第二处**独立判定。R44 之前这条规则被**抄了五遍**（`build_c_model` / `_build_ext_model` 内联，三个 `build_edges` 逐字复制），于是调用图与二进制归因讨论的**可能不是同一批名字**，而两边都不报错。此门钉住全仓写点的**集合**、每个写点的**写入形状**，以及每一次「再抄一遍」都绕不过的 `func_index.get(x.lower())` 查表 —— 任何未登记的「按小写名查函数索引」谓词即红 |
 | `check_readme_parity.py` | 中英两份 README 的**结构**逐渐跑偏 —— 小节数，以及逐节的表行 / 代码块 / mermaid 图数。它**故意不比对行数**，因为中文比英文紧凑 |
 
 **「多少个测试失败」在本仓证明不了任何事 —— 基线门存在的意义就是说出这一点。** 因为这套
@@ -579,7 +601,7 @@ python matlabc_flow.py --help     # 修复闭环：五站点流水线图 + 五�
 python matlabc_ask.py --help      # 问答式理解：事实底座如何装配成答案
 python matlabc_mcp.py --help      # MCP 服务：五个工具 + 「为什么 stdin 必须切断」
 python gui.py --help              # 图形界面：表单每一格等价于哪个命令行开关
-python tools/check_all.py --help  # 护栏总纲：9 道门各自拦什么
+python tools/check_all.py --help  # 护栏总纲：10 道门各自拦什么
 ```
 
 这不是口头承诺，而是被 `check_help_contract.py` 与 `check_doc_flags.py` 同时盯着的 ——

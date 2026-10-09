@@ -98,7 +98,7 @@ matlabc — 代码结构梳理与静态分析工具（纯 Python，零依赖，�
 质量门（改代码前先看这里）
 ────────────────────────────────────────────────────────────────────────
 
-  python tools/check_all.py     # 一次跑完 9 道登记制护栏，各自还会跑 --selftest
+  python tools/check_all.py     # 一次跑完 10 道登记制护栏，各自还会跑 --selftest
 
   每道护栏都要求**两向自证**：坏样本必须变红、好样本必须放行，并打印
   机器可读的 `SELFTEST COUNTS {"bad": N, "good": M}`。只会在好天气下变绿的
@@ -152,6 +152,14 @@ import re
 _here = os.path.dirname(os.path.abspath(__file__))
 if _here not in _sys.path:
     _sys.path.insert(0, _here)
+
+# R44 / C'''1：跨语言**统一 IR** —— unresolved 的判定与产出只有这一个来源。
+# 在此之前这条规则在 build_c_model 里内联写了 12 行，又被 C/Py/JS 三个
+# build_edges **逐字复制**了三遍；改一处另外三处会静默保持旧语义，
+# 而 --binary-attach 的三态归因只挂在其中一条名字来源上。
+# 只能放在上面那两行之后：本包要从本文件所在目录解析。
+from frontends import ir as f_ir
+from frontends import matlab as f_matlab
 
 
 MAX_CALLGRAPH_DEPTH = 4
@@ -586,7 +594,7 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
-VERSION = "1.16.71"  # R36-R41：Mach-O 头部偏移真缺陷修复 + 公平基线门 + 帮助体积两臂棘轮 + CI 退出码契约 + 未实现算子进帮助 + 散文数字核实；R33：--binary-attach（源码分析 + 二进制归因一条命令）/ P222：AI 接入国产大模型（deepseek/qwen/zhipu/moonshot/baichuan/doubao/yi/stepfun 走 OpenAI 兼容；ernie 百度 OAuth2；iflytek 讯飞 WebSocket）；PROVIDER_PRESETS/PROVIDER_ALIASES 注册表 + 中文别名；P221维度；P220 JSON
+VERSION = "1.16.72"  # R44：frontends/ = 「哪个调用解析不到」的唯一判定点（五份逐字复制 → 一份）+ 归因来源按 AST 可证；R36-R41：Mach-O 头部偏移真缺陷修复 + 公平基线门 + 帮助体积两臂棘轮 + CI 退出码契约 + 未实现算子进帮助 + 散文数字核实；R33：--binary-attach（源码分析 + 二进制归因一条命令）/ P222：AI 接入国产大模型（deepseek/qwen/zhipu/moonshot/baichuan/doubao/yi/stepfun 走 OpenAI 兼容；ernie 百度 OAuth2；iflytek 讯飞 WebSocket）；PROVIDER_PRESETS/PROVIDER_ALIASES 注册表 + 中文别名；P221维度；P220 JSON
 # P-rev R77-R81（革命批次）：S14 结构配对/地标嵌套审计、_browse_page 统一页壳试点、
 # --browse 产物 manifest.json + S15 一致性对账、源码页 VARFLOW/LINE_DEEPLINK 外链化收编、
 # fe_audit 头清单文档-事实同步。
@@ -7187,16 +7195,13 @@ def build_c_model(c_files):
         for fn in parsed["functions"]:
             model["func_index"].setdefault(fn["name"].lower(), []).append(
                 {"file": parsed, "func": fn})
-    for pfile in model["files"]:
-        for fn in pfile["functions"]:
-            for cname, ln in fn["calls"]:
-                hits = model["func_index"].get(cname.lower())
-                if hits:
-                    for h in hits:
-                        model["edges"].append(
-                            (fn["name"], h["func"]["name"], ln, pfile["rel"]))
-                else:
-                    model["unresolved"].append((cname, ln, pfile["rel"]))
+    # R44 / C'''1：调用解析（edges + unresolved）走 frontends.ir 的**唯一判定点**。
+    # 这里以前是 12 行内联实现，与另外四处逐字重复（build_c_model /
+    # _build_ext_model / C·Py·JS 三个 build_edges）。
+    _edges, _unresolved = f_ir.resolve_calls(
+        model["func_index"], f_ir.call_sites_of_files(model["files"]))
+    model["edges"].extend(_edges)
+    model["unresolved"].extend(_unresolved)
     # P90：C #include 跨文件依赖边——按头文件名解析到项目内文件。
     # 形如 (include_方_rel, 头名, 被解析到的_rel 或 None)。
     include_edges = []
@@ -7252,9 +7257,16 @@ class BaseFrontend(object):
         raise NotImplementedError
 
     def build_edges(self, model):
-        """在 model["files"] 之上构造跨文件结构边。
-        返回 (edges, unresolved)。"""
-        return [], []
+        """在 model["files"] 之上构造跨文件结构边。返回 (edges, unresolved)。
+
+        R44 / C'''1：**默认实现就是唯一判定点**（`frontends.ir.resolve_calls`）。
+        子类若自带一份「命不中就记 unresolved」的实现，就是第二个事实源 ——
+        `tools/check_ir_attribution.py` 会红。此前 C/Py/JS 三个子类各自
+        逐字复制了同一段 12 行代码，现在它们**不再 override**。
+        """
+        return f_ir.resolve_calls(
+            model.get("func_index", {}) or {},
+            f_ir.call_sites_of_files(model.get("files", []) or []))
 
     def collect_checks(self, model, enabled=None):
         """P90：静态启发式检查，返回 [{file,line,func,kind,msg,level}]。"""
@@ -8214,16 +8226,13 @@ def _build_ext_model(paths, lang, parse_fn):
         for fn in parsed["functions"]:
             model["func_index"].setdefault(fn["name"].lower(), []).append(
                 {"file": parsed, "func": fn})
-    for pfile in model["files"]:
-        for fn in pfile["functions"]:
-            for cname, ln in fn["calls"]:
-                hits = model["func_index"].get(cname.lower())
-                if hits:
-                    for h in hits:
-                        model["edges"].append(
-                            (fn["name"], h["func"]["name"], ln, pfile["rel"]))
-                else:
-                    model["unresolved"].append((cname, ln, pfile["rel"]))
+    # R44 / C'''1：调用解析（edges + unresolved）走 frontends.ir 的**唯一判定点**。
+    # 这里以前是 12 行内联实现，与另外四处逐字重复（build_c_model /
+    # _build_ext_model / C·Py·JS 三个 build_edges）。
+    _edges, _unresolved = f_ir.resolve_calls(
+        model["func_index"], f_ir.call_sites_of_files(model["files"]))
+    model["edges"].extend(_edges)
+    model["unresolved"].extend(_unresolved)
     return model
 
 
@@ -8520,20 +8529,9 @@ class PyFrontend(BaseFrontend):
     def parse_file(self, text, rel, path):
         return _parse_py_source(text, rel, path)
 
-    def build_edges(self, model):
-        idx = model.get("func_index", {}) or {}
-        edges, unresolved = [], []
-        for pf in model.get("files", []) or []:
-            for fn in pf["functions"]:
-                for cname, ln in fn.get("calls", []):
-                    hits = idx.get(cname.lower())
-                    if hits:
-                        for h in hits:
-                            edges.append((fn["name"], h["func"]["name"], ln,
-                                          pf["rel"]))
-                    else:
-                        unresolved.append((cname, ln, pf["rel"]))
-        return edges, unresolved
+    # R44 / C'''1：build_edges 不再 override —— BaseFrontend 的默认实现
+    # 就是唯一判定点 frontends.ir.resolve_calls。此处曾经**逐字复制**过
+    # 同一段 12 行代码（C/Py/JS 各一份），那正是本包要消灭的第二事实源。
 
     def collect_checks(self, model, enabled=None):
         return _py_heuristic_checks(model, enabled=enabled)
@@ -8571,20 +8569,9 @@ class JsFrontend(BaseFrontend):
     def parse_file(self, text, rel, path):
         return _parse_js_source(text, rel, path)
 
-    def build_edges(self, model):
-        idx = model.get("func_index", {}) or {}
-        edges, unresolved = [], []
-        for pf in model.get("files", []) or []:
-            for fn in pf["functions"]:
-                for cname, ln in fn.get("calls", []):
-                    hits = idx.get(cname.lower())
-                    if hits:
-                        for h in hits:
-                            edges.append((fn["name"], h["func"]["name"], ln,
-                                          pf["rel"]))
-                    else:
-                        unresolved.append((cname, ln, pf["rel"]))
-        return edges, unresolved
+    # R44 / C'''1：build_edges 不再 override —— BaseFrontend 的默认实现
+    # 就是唯一判定点 frontends.ir.resolve_calls。此处曾经**逐字复制**过
+    # 同一段 12 行代码（C/Py/JS 各一份），那正是本包要消灭的第二事实源。
 
     def collect_checks(self, model, enabled=None):
         return _js_heuristic_checks(model, enabled=enabled)
@@ -8608,20 +8595,9 @@ class CFrontend(BaseFrontend):
     def parse_file(self, text, rel, path):
         return _parse_c_source(text, rel, path)
 
-    def build_edges(self, model):
-        idx = model.get("func_index", {}) or {}
-        edges, unresolved = [], []
-        for pf in model.get("files", []) or []:
-            for fn in pf["functions"]:
-                for cname, ln in fn.get("calls", []):
-                    hits = idx.get(cname.lower())
-                    if hits:
-                        for h in hits:
-                            edges.append((fn["name"], h["func"]["name"], ln,
-                                          pf["rel"]))
-                    else:
-                        unresolved.append((cname, ln, pf["rel"]))
-        return edges, unresolved
+    # R44 / C'''1：build_edges 不再 override —— BaseFrontend 的默认实现
+    # 就是唯一判定点 frontends.ir.resolve_calls。此处曾经**逐字复制**过
+    # 同一段 12 行代码（C/Py/JS 各一份），那正是本包要消灭的第二事实源。
 
     def collect_checks(self, model, enabled=None):
         return _c_heuristic_checks(model, enabled=enabled)
@@ -8645,6 +8621,12 @@ class MatlabFrontend(BaseFrontend):
     def parse_file(self, text, rel, path):
         # 主流程使用 MFile 类解析（含语义分析）；此处保留原始文本供扩展。
         return {"rel": rel, "path": path, "text": text}
+
+    def build_edges(self, model):
+        """MATLAB 的结构边由**主流程**产出（MFile / 语义分析），不走 IR 的
+        func_index 判定 —— 显式覆盖成空，避免读者以为这里也在算边。
+        MATLAB 的 unresolved 产出点是 `frontends/matlab.py::unresolved_tuples`。"""
+        return [], []
 
     def gen_tests(self, model, out_dir, root):
         return _gen_matlab_tests(model, out_dir, root)
@@ -22594,10 +22576,12 @@ def _collect_unresolved_calls(files):
     """P25：收集「疑似漏检调用」诊断数据。汇总每个函数中未解析到项目/内置的调用名
     （func.external_calls），并标记该名是否在项目内存在同名函数/脚本（存在 → 疑似漏检，
     可能为脚本调用、限定名或解析遗漏；不存在 → 纯外部/工具箱）。返回按调用次数降序的列表。"""
+    # R44 / C'''1：名字流来自 frontends.matlab 的**唯一产出点**。
+    # 此前这里直接 cnt.update(f.external_calls)，于是「诊断页用的名字」与
+    # 「归因用的名字」是两条各自独立的读取 —— 没有任何装置守着它们同源。
     cnt = Counter()
-    for mf in files:
-        for f in mf.functions:
-            cnt.update(f.external_calls)
+    for name, _line, _rel in f_matlab.unresolved_tuples(files):
+        cnt[name] += 1
     project = {}
     for mf in files:
         for f in mf.functions:
