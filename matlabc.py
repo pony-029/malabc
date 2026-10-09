@@ -21,7 +21,7 @@ matlabc — 代码结构梳理与静态分析工具（纯 Python，零依赖，�
            │
      ┌─────▼──────────────────────────────────────────────┐
      │ ② 解析   各语言前端 → 统一中间表示                  │
-     │          .m/C/Py/JS 为行锚定正则；Python 走 ast      │
+     │          .m/C/Py/JS 为行锚定前端；Python 走 ast      │
      └─────┬──────────────────────────────────────────────┘
            │
      ┌─────▼──────────────────────────────────────────────┐
@@ -70,8 +70,13 @@ matlabc — 代码结构梳理与静态分析工具（纯 Python，零依赖，�
     打出 [warn] 点名语言与文件，**不会静默返回 0 结果**。
   * C++：`--lang cpp` 是 `--lang c` 的**别名**，按 C 子集解析。
     模板、类、命名空间、重载**不保证**识别 —— 这是已披露的降级，不是 bug。
-  * 前端实现：.m / C / Python / JS 目前是**行锚定正则**（Python 另有 ast 路径），
-    不是完整 AST。函数名与 `) {` 不在同一行、宏拼出来的签名，可能漏掉。
+  * 前端实现：.m / Python / JS 是**行锚定正则**（Python 另有 ast 路径），
+    不是完整 AST。**C 已升级为「词法 + 括号配平」扫描（R49）**：
+    `名字(参数) {` 跨行（Allman、返回类型独占一行、参数表跨行）的定义
+    同样识别 —— 升级前实测 glibc-2.37 有 **99.05%** 的定义不可见，
+    调用方因此被系统性误判成 unresolved。仍**不识别** K&R 老式定义
+    （`)` 后面不是 `{`）与返回函数指针的声明；宏拼出来的签名需要先
+    预处理才可见。
   * 预处理：**只做字面量 `#if 0` 感知**（R34）—— 该块内的代码不再被分析，
     且**行号保持不变**（所以告警行号仍与源文件对齐）。`#if 0 … #else` 的 else
     分支是**活代码**，照常分析；而 `#ifdef X` / `#if defined(X)` **按兵不动**：
@@ -6969,8 +6974,9 @@ _RE_C_MACRO = re.compile(r"^[ \t]*#[ \t]*define\b")
 # 两处一致地**漏掉 C++ 扩展名** —— .cpp/.cc/.cxx/.hpp 被静默丢弃，用户只看到
 # 「C 文件 0 / C 函数 0」而无从判断原因（实测：含 1 个 .c + 1 个 .cpp 的目录
 # 报 C 文件 1）。现改为单一常量，收集与声明共用，消除双处漂移。
-# 注意：C++ 仍走 _parse_c_source（行锚定轻量解析器），模板/类/命名空间等
-# C++ 专有语法不保证识别 —— 这是**已披露**的降级，而不是静默丢弃。
+# 注意：C++ 仍走 _parse_c_source（R49 后为「词法 + 括号配平」的轻量解析器），
+# 模板/类/命名空间等 C++ 专有语法不保证识别 —— 这是**已披露**的降级，
+# 而不是静默丢弃。
 _C_SOURCE_EXTS = (".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx")
 _C_HEADER_EXTS = (".h", ".hpp", ".hh", ".hxx")
 
@@ -7099,8 +7105,419 @@ def _scan_unsupported_sources_selftest(tmpdir):
     return bad, good
 
 
+# ---------------------------------------------------------------------------
+# R49 / C\'\'\'\'1：C 函数定义扫描器 —— 跨行签名感知
+# ---------------------------------------------------------------------------
+# 旧实现用一条**行锚定正则** `_RE_C_FUNC` 在逐行循环里找函数定义。它要求
+# `名字(参数) {` **全在同一行**，于是三种真实并存的书写形态整类漏掉：
+#
+#     P2  花括号换行（Allman）    int f(int a)\n{\n…\n}
+#     P3  返回类型独占一行（GNU） int\nf(int a)\n{      ← glibc 主力写法
+#     P4  参数表跨行              void f(int a,\n int b)\n{
+#
+# 实测影响（glibc-2.37，13,527 个 .c/.h；装置＝词法 token + 括号/花括号配平
+# 的**独立**扫描器，见仓库外 `_r49/measure_c_frontend.py`）：
+#     P1 46/46 命中 · P2 290→0 · P3 15,266→0 · P4 17→0
+#     ⇒ 15,471 / 15,619 = **99.05% 的定义不可见**。
+# 后果不是「少报几个函数」，而是**调用方一律被判成 unresolved 假阳性** ——
+# 与本项目「假阳性比不归因更糟」的口径正面冲突。
+#
+# 新实现改为**词法 + 括号/花括号配平**扫描。判据（只在花括号深度 0 处）：
+#     声明起始 → IDENT（非关键字）→ `(` … 配对 `)` → `{`
+# `_RE_C_FUNC` **保留不删**：它现在退居为**对照装置** ——
+# `_scan_c_definitions_selftest()` 强制「凡是旧正则认得的单行定义，新扫描器
+# 必须给出逐字段相同的 name / ret / params」。这样老正则在被替换之后仍
+# **有独立证人**，而不是悄悄变成一段没人验证的死代码。
+#
+# 明确**声明**的边界（不做，也不静默）：
+#   * K&R 老式定义 `f(a, b) int a; int b; {`：`)` 后面不是 `{` ⇒ 不识别
+#   * 返回函数指针 `int (*f(int))(void)`：`)` 后面是 `(` ⇒ 不识别
+#   * 宏体里的伪定义：`#` 开头的整条指令（含反斜杠续行）折叠成一个 token
+#     被跳过，且定义起点被重置
+
+
+def _c_lex(text):
+    """C 词法：返回 [(kind, text, line, off)]，kind ∈ id/punct/num/str/pp。
+
+    跳过注释与字符串**内容**；`#` 开头的整条预处理指令（含反斜杠续行）
+    折叠成**一个** `pp` token。`off` 是 token 在**原始文本**里的字符偏移，
+    供回填函数的返回类型原文用。
+    """
+    toks = []
+    i, n, line = 0, len(text), 1
+    while i < n:
+        c = text[i]
+        if c == "\n":
+            line += 1
+            i += 1
+            continue
+        if c in " \t\r\f\v":
+            i += 1
+            continue
+        if c == "/" and i + 1 < n and text[i + 1] == "*":
+            j = text.find("*/", i + 2)
+            j = n if j < 0 else j
+            line += text.count("\n", i, j)
+            i = j + 2
+            continue
+        if c == "/" and i + 1 < n and text[i + 1] == "/":
+            # `//` 注释在 C 里也能用反斜杠续行 —— 不认的话会把注释正文
+            # 当成代码 token 化（并丢掉那些换行的行计数）。
+            j = i + 2
+            while True:
+                j = text.find("\n", j)
+                if j < 0:
+                    j = n
+                    break
+                if j > 0 and text[j - 1] == "\\":
+                    j += 1
+                    continue
+                break
+            line += text.count("\n", i, j)
+            i = j
+            continue
+        if c in "\"'":
+            q = c
+            start_line = line   # 多行 token 的行号取**起始**行
+            j = i + 1
+            while j < n:
+                if text[j] == "\\":
+                    # 反斜杠后跟换行 = 字符串续行（C 里很常见）。
+                    # 早期版本直接 `j += 2` 把它跳过、**漏计行号**，
+                    # 导致该文件后续所有函数的 `line` 整体偏移。
+                    if j + 1 < n and text[j + 1] == "\n":
+                        line += 1
+                    j += 2
+                    continue
+                if text[j] == q:
+                    j += 1
+                    break
+                if text[j] == "\n":
+                    line += 1
+                j += 1
+            toks.append(("str", "", start_line, i))
+            i = j
+            continue
+        if c == "#":
+            pp_line = line      # 续行宏同理
+            j = i
+            while True:
+                k = text.find("\n", j)
+                if k < 0:
+                    j = n
+                    break
+                if k > 0 and text[k - 1] == "\\":
+                    j = k + 1
+                    continue
+                line += text.count("\n", i, k)
+                j = k
+                break
+            toks.append(("pp", "", pp_line, i))
+            i = j
+            continue
+        if c.isalpha() or c == "_":
+            j = i
+            while j < n and (text[j].isalnum() or text[j] == "_"):
+                j += 1
+            toks.append(("id", text[i:j], line, i))
+            i = j
+            continue
+        if c.isdigit():
+            j = i
+            while j < n and (text[j].isalnum() or text[j] in "._"):
+                j += 1
+            toks.append(("num", text[i:j], line, i))
+            i = j
+            continue
+        toks.append(("punct", c, line, i))
+        i += 1
+    return toks
+
+
+def _c_match_paren(toks, j):
+    """`toks[j]` 必须是 `(`；返回配对 `)` 的下标。
+
+    未闭合、或在该层提前遇到 `;` `{` `}` ⇒ 返回 None（那不是参数表）。
+    """
+    d = 0
+    k = j
+    n = len(toks)
+    while k < n:
+        kind, txt, _ln, _off = toks[k]
+        if kind == "punct":
+            if txt == "(":
+                d += 1
+            elif txt == ")":
+                d -= 1
+                if d == 0:
+                    return k
+            elif d == 0 and txt in ";{}":
+                return None
+        k += 1
+    return None
+
+
+def _c_split_params(raw):
+    """把参数表原文按**顶层**逗号切开。
+
+    与旧实现的 `raw.split(",")` 区别只在「逗号在括号里」时：
+    `int (*cb)(int, int)` 旧实现切成两段、新实现切成一段。
+    空白归一为单空格（旧实现是 `.strip()`，单行输入下逐字节相同）。
+    """
+    if not raw.strip():
+        return []
+    parts = []
+    buf = []
+    depth = 0
+    for ch in raw:
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth = max(0, depth - 1)
+        if ch == "," and depth == 0:
+            parts.append("".join(buf))
+            buf = []
+            continue
+        buf.append(ch)
+    parts.append("".join(buf))
+    return [" ".join(p.split()) for p in parts if p.strip()]
+
+
+def _scan_c_definitions(text):
+    """扫出全部 C 函数定义，按出现顺序返回：
+
+        [{name, params, ret, line, body_start, brace_line, end_line}, …]
+
+    只在**花括号深度 0** 处判定义；`#` 行会重置「当前声明起点」。
+    `line` = 声明起点行（旧实现下等于定义行），`body_start` / `brace_line`
+    = 函数体 `{` 所在行 —— 旧实现里这三者恒相等。
+    `end_line` = 配对 `}` 所在行（**词法层判定**，不受字符串/注释里的花括号
+    干扰）；未闭合时为 None，调用方退回行计数。
+    """
+    toks = _c_lex(text)
+    out = []
+    pending = []      # 已检测、等配对 `}` 的定义 —— 用于回填 end_line
+    depth = 0
+    prev = None
+    decl_start = None
+    n = len(toks)
+    i = 0
+    while i < n:
+        kind, txt, ln, off = toks[i]
+        if kind == "punct":
+            if txt == "{":
+                depth += 1
+            elif txt == "}":
+                if depth > 0:
+                    depth -= 1
+                    # 深度**回到 0** 的这一行就是最内层待闭合定义的函数体末行。
+                    # 在词法层判定 ⇒ 字符串/注释里的 `{` `}` 干扰不到它。
+                    if depth == 0 and pending:
+                        pending.pop()["end_line"] = ln
+        if depth == 0:
+            if kind == "pp" or (kind == "punct" and txt in ";{}"):
+                decl_start = None
+            elif decl_start is None and kind in ("id", "punct"):
+                decl_start = i
+            if (kind == "id" and txt.lower() not in _C_KEYWORDS
+                    and i + 1 < n and toks[i + 1][0] == "punct"
+                    and toks[i + 1][1] == "("):
+                p = prev
+                # 名字前一个 token 是 `(`/`)`/`,`/`=`/`;` ⇒ 这是调用/初值，
+                # 不是定义；`prev is None` 同样排除（文件开头孤零零一个名字）。
+                if not (p is None or (p[0] == "punct"
+                                      and p[1] in "(),=;")):
+                    rp = _c_match_paren(toks, i + 1)
+                    if (rp is not None and rp + 1 < n
+                            and toks[rp + 1][0] == "punct"
+                            and toks[rp + 1][1] == "{"):
+                        a = toks[decl_start][3] if decl_start is not None \
+                            else off
+                        raw_ret = text[a:off].strip()
+                        # 跨行的返回类型内部换行折成空格；**单行输入逐字节不变**
+                        if "\n" in raw_ret or "\r" in raw_ret:
+                            raw_ret = " ".join(raw_ret.split())
+                        brace_ln = toks[rp + 1][2]
+                        rec = {
+                            "name": txt,
+                            "params": _c_split_params(
+                                text[toks[i + 1][3] + 1:toks[rp][3]]),
+                            "ret": raw_ret,
+                            "line": (toks[decl_start][2]
+                                     if decl_start is not None else ln),
+                            "body_start": brace_ln,
+                            "brace_line": brace_ln,
+                            # R49b：配对 `}` 所在行；未闭合为 None
+                            "end_line": None,
+                        }
+                        out.append(rec)
+                        pending.append(rec)
+        prev = (kind, txt)
+        i += 1
+    return out
+
+
+def _scan_c_definitions_selftest():
+    """R49 自证：跨行形态必须抓到、单行形态必须与旧正则**逐字段一致**。
+
+    返回 (bad, good)：bad = 应当失败却没失败的断言数，good = 通过的断言数。
+    两向都要有 —— 只抓坏不放好，是假门。
+    """
+    bad = 0
+    good = 0
+
+    src = ("/* fixture */\n"
+           "#include <stdio.h>\n"
+           "static int p1_add(int a, int b) { return a + b; }\n"
+           "int p2_mul(int a, int b)\n"
+           "{\n"
+           "    return a * b;\n"
+           "}\n"
+           "int\n"
+           "p3_sub(int a, int b)\n"
+           "{\n"
+           "    return a - b;\n"
+           "}\n"
+           "void p4_many(int a,\n"
+           "             int b,\n"
+           "             const char *c)\n"
+           "{\n"
+           "    (void)a; (void)b; (void)c;\n"
+           "}\n"
+           "int caller(void)\n"
+           "{\n"
+           "    return p1_add(1, 2) + p2_mul(3, 4) + p3_sub(5, 6);\n"
+           "}\n")
+    got = [d["name"] for d in _scan_c_definitions(src)]
+    want = ["p1_add", "p2_mul", "p3_sub", "p4_many", "caller"]
+    if got == want:
+        good += 1
+    else:
+        bad += 1
+        print("  [bad] 四形态未全中：got=%r want=%r" % (got, want))
+
+    # 行号：P3 的声明起点在名字**上一行**，`{` 又在名字下一行
+    by = {}
+    for d in _scan_c_definitions(src):
+        by[d["name"]] = d
+    if by.get("p3_sub", {}).get("line") == 8:
+        good += 1
+    else:
+        bad += 1
+        print("  [bad] P3 声明起点行应为 8，实为 %r"
+              % (by.get("p3_sub", {}).get("line")))
+    if by.get("p3_sub", {}).get("brace_line") == 10:
+        good += 1
+    else:
+        bad += 1
+        print("  [bad] P3 函数体 `{` 行应为 10，实为 %r"
+              % (by.get("p3_sub", {}).get("brace_line")))
+    if by.get("p2_mul", {}).get("ret") == "int":
+        good += 1
+    else:
+        bad += 1
+        print("  [bad] P2 返回类型应为 int，实为 %r"
+              % (by.get("p2_mul", {}).get("ret")))
+
+    # 对照装置 A（agree）：旧正则 `_RE_C_FUNC` **认得的**单行定义 ——
+    # 新扫描器必须给出逐字段相同的 name / ret / params（行为保持的直接证据）。
+    agree_cases = [
+        "static int sub(int a, int b) {\n  return a - b;\n}\n",
+        "int add(int a, int b) {\n  return a + b;\n}\n",
+        "void g(int a, const char *b) { }\n",
+        "unsigned long long h(int x) { return x; }\n",
+        "double f(void) { return 0.0; }\n",
+    ]
+    for s in agree_cases:
+        sm = _RE_C_FUNC.match(s)
+        new = _scan_c_definitions(s)
+        if sm is None:
+            bad += 1
+            print("  [bad] 对照样本旧正则竟不命中（样本选错）：%r" % s[:24])
+            continue
+        if not new:
+            bad += 1
+            print("  [bad] 对照样本新扫描器漏掉：%r" % s[:24])
+            continue
+        want_params = [p.strip() for p in sm.group(2).split(",")
+                       if p.strip()]
+        if (new[0]["name"] == sm.group(1)
+                and new[0]["ret"] == s[:sm.start(1)].strip()
+                and new[0]["params"] == want_params
+                and new[0]["line"] == 1 and new[0]["brace_line"] == 1):
+            good += 1
+        else:
+            bad += 1
+            print("  [bad] 与旧正则不一致：%r new=%r re=(%r,%r,%r)"
+                  % (s[:24], new[0], sm.group(1),
+                     s[:sm.start(1)].strip(), want_params))
+
+    # 对照装置 B（beyond）：旧正则**不认得**、新扫描器**必须**认得的两类 ——
+    #   ① 跨行签名（P2 Allman / P3 返回类型独占一行 / P4 参数表跨行）
+    #   ② 指针返回类型**紧贴**函数名（`int *pi(` / `char *dup(`）。第 ② 类是
+    #      R49 顺手量出来的**第二处**老缺陷：`_RE_C_FUNC` 的
+    #      `[A-Za-z0-9_ \t\*]*?[ \t]+` 要求名字前必须是**空白**，
+    #      于是 `char *dup(` 这种写法整类不可见（不是跨行问题）。
+    beyond_cases = [
+        ("int p2(int a)\n{\n    return a;\n}\n", "p2"),
+        ("int\np3(int a)\n{\n    return a;\n}\n", "p3"),
+        ("void p4(int a,\n        int b)\n{\n}\n", "p4"),
+        ("int *pi(int a) { return 0; }\n", "pi"),
+        ("char *dup(const char *s) { return 0; }\n", "dup"),
+    ]
+    for s, nm in beyond_cases:
+        new = _scan_c_definitions(s)
+        names = [d["name"] for d in new]
+        if names == [nm] and _RE_C_FUNC.match(s) is None:
+            good += 1
+        else:
+            bad += 1
+            print("  [bad] 「旧正则不认、新扫描器必认」失败：%r -> %r"
+                  % (s[:20], names))
+
+    # R49b：函数体边界必须由**词法层**给出 —— 字符串字面量里的 `{` `}`
+    # 不算。旧的行计数对它们完全失明，会让 `a` 永不闭合、把 `b` 整个吞掉。
+    sbs = ('void a(void)\n'
+           '{\n'
+           '  fputs ("{", fp);\n'
+           '}\n'
+           'void b(void)\n'
+           '{\n'
+           '  fputs ("}", fp);\n'
+           '}\n')
+    _ds = _scan_c_definitions(sbs)
+    if ([d["name"] for d in _ds] == ["a", "b"]
+            and _ds[0]["end_line"] == 4 and _ds[1]["end_line"] == 8):
+        good += 1
+    else:
+        bad += 1
+        print("  [bad] 字符串里的花括号干扰了结束行：%r"
+              % [(d["name"], d["end_line"]) for d in _ds])
+
+    # 不假阳：控制语句 / 调用 / 宏都不算定义
+    for s in ["if (x) {\n}\n",
+              "while (x) {\n}\n",
+              "for (;;) {\n}\n",
+              "switch (x) {\n}\n",
+              "foo(bar) ;\n",
+              "#define M(x) { x; }\n",
+              "int y = f(1);\n"]:
+        if _scan_c_definitions(s):
+            bad += 1
+            print("  [bad] 假阳性：%r" % s)
+        else:
+            good += 1
+
+    print("SELFTEST COUNTS {\"bad\": %d, \"good\": %d}" % (bad, good))
+    return bad, good
+
+
 def _parse_c_source(text, rel, path):
     """P87：轻量 C 源码解析——提取函数定义、函数调用、include 依赖。
+
+    R49：函数定义识别改走 `_scan_c_definitions()`（词法 + 括号配平），
+    所以 `名字(参数) {` **跨行**（Allman / 返回类型独占一行 / 参数表
+    跨行）的定义同样可见；逐行的调用收集 / 复杂度 / 花括号记账未改动。
 
     返回 {"rel": rel, "path": path, "functions": [CFunction dict], 
          "includes": [头文件名], "macros": 宏定义数}。"""
@@ -7117,6 +7534,16 @@ def _parse_c_source(text, rel, path):
     macros = 0
     active = None  # 当前函数 dict（匹配到 { 后进入）
     brace_depth = 0
+    # R49：先一次性扫出全部定义（词法 + 括号/花括号配平），再按**声明起点行**
+    # 在下面的逐行循环里挂起 active。P1 同行 / P2 Allman / P3 返回类型
+    # 独占一行 / P4 参数表跨行 四种形态由此统一，而逐行的调用收集 /
+    # 复杂度 / 花括号记账逻辑**一字未改**。
+    defs_by_line = {}
+    for _d in _scan_c_definitions(text):
+        defs_by_line.setdefault(_d["line"], []).append(_d)
+    awaiting = False   # 定义已登记、`{` 还没到（P2/P3/P4）
+    await_line = 0     # 该定义的 `{` 行号
+    active_end = None  # 该定义配对 `}` 的行号（词法层给；None = 未闭合）
     for idx, raw in enumerate(src_lines):
         ln = idx + 1
         line = raw
@@ -7127,25 +7554,27 @@ def _parse_c_source(text, rel, path):
         if _RE_C_MACRO.match(line):
             macros += 1
             continue
-        fm = _RE_C_FUNC.match(line)
         is_def = False
-        if fm and active is None:
-            name = fm.group(1)
-            if name.lower() not in _C_KEYWORDS:
-                params = [p.strip() for p in fm.group(2).split(",")
-                          if p.strip()]
+        if active is None:
+            _pend = defs_by_line.get(ln)
+            if _pend:
+                _rec = _pend.pop(0)
                 active = {
-                    "name": name, "line": ln, "params": params,
-                    "ret": line[:fm.start(1)].strip(),
-                    "complexity": 1, "calls": [], "body_start": ln,
-                    "body_end": ln,
+                    "name": _rec["name"], "line": _rec["line"],
+                    "params": _rec["params"], "ret": _rec["ret"],
+                    "complexity": 1, "calls": [],
+                    "body_start": _rec["body_start"], "body_end": ln,
                 }
                 funcs.append(active)
-                # 函数定义行的花括号计数（正确处理单行闭合）
+                # 花括号从**声明起点行**起算：P1（`{` 同行）与改造前
+                # 逐字段一致；P2/P3/P4 的 `{` 在后续行，首行没有 `{`
+                # ⇒ 深度仍为 0，但**不能**据此判「已闭合」—— 由
+                # awaiting 抑制到 `{` 那一行为止。
                 brace_depth = line.count("{") - line.count("}")
+                await_line = _rec["brace_line"]
+                awaiting = await_line > ln
+                active_end = _rec["end_line"]
                 is_def = True
-            else:
-                fm = None
         if active is not None:
             active["body_end"] = ln
             if not is_def:
@@ -7166,7 +7595,15 @@ def _parse_c_source(text, rel, path):
             cx = _RE_C_CX.findall(line)
             if cx:
                 active["complexity"] += len(cx)
-            if brace_depth <= 0:
+            if awaiting and ln >= await_line:
+                awaiting = False
+            # 结束判定：优先用词法层给的配对 `}` 行 —— 行计数对字符串字面量
+            # 里的 `{` `}` 完全失明（`fputs ("{\n", fp)` 会把深度带偏，
+            # 该函数永不闭合、把下一个函数整个吞掉）。拿不到 end_line
+            # （未闭合）时退回行计数，与改造前一致。
+            if not awaiting and (
+                    (active_end is not None and ln >= active_end)
+                    or (active_end is None and brace_depth <= 0)):
                 active = None
                 brace_depth = 0
     return {

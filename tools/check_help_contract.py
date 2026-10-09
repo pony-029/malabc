@@ -457,7 +457,7 @@ HELP_BYTES = {
 # 漂移超限时的正当做法**不是**放宽这两个数，而是同步更新快照
 # （那是一次显式的、可评审的批准动作 —— 这正是棘轮的意义）。
 HELP_BYTES_SNAPSHOT = {
-    "matlabc.py": 48593,
+    "matlabc.py": 49960,
     "matlabc_flow.py": 2075,
     "matlabc_ask.py": 919,
     "matlabc_mcp.py": 0,

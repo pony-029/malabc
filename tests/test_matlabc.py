@@ -4732,6 +4732,90 @@ def test_p87_c_frontend():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_r49_c_multiline_signature():
+    """R49 / C''''1 回归：C 前端必须认得**跨行**函数签名。
+
+    由来（实测）：glibc-2.37 的 13,527 个 `.c/.h` 里，旧的行锚定正则只看得到
+    65 个函数定义 —— 15,619 个里的 **0.4%**；被漏掉的函数，其调用方一律被
+    判成 `unresolved` **假阳性**（本项目口径：假阳性比不归因更糟）。
+
+    本测试的期望是**手写**的（不来自任何扫描器），所以它是一台独立证人；
+    旧实现下它必须红，R49 之后必须绿。
+    """
+    ma._clear_closure_cache()
+    tmp = tempfile.mkdtemp(prefix="mabr49_")
+    try:
+        src = ("/* R49 fixture */\n"
+               "#include <stdio.h>\n"
+               "static int p1_add(int a, int b) { return a + b; }\n"
+               "int p2_mul(int a, int b)\n"
+               "{\n"
+               "    return a * b;\n"
+               "}\n"
+               "int\n"
+               "p3_sub(int a, int b)\n"
+               "{\n"
+               "    return a - b;\n"
+               "}\n"
+               "void p4_many(int a,\n"
+               "             const char *b)\n"
+               "{\n"
+               "    (void)a; (void)b;\n"
+               "}\n"
+               "int caller(void)\n"
+               "{\n"
+               "    return p1_add(1, 2) + p2_mul(3, 4) + p3_sub(5, 6);\n"
+               "}\n")
+        path = os.path.join(tmp, "styles.c")
+        with io.open(path, "w", encoding="utf-8", newline="") as fh:
+            fh.write(src)
+        parsed = ma._parse_c_source(src, "styles.c", path)
+        names = [fn["name"] for fn in parsed["functions"]]
+        # 手写期望：四种书写形态（P1 同行 / P2 Allman / P3 GNU / P4 参数跨行）
+        # 外加调用者，且顺序按出现次序。
+        assert names == ["p1_add", "p2_mul", "p3_sub", "p4_many", "caller"], \
+            "跨行签名应全部识别，实测 %r" % names
+        by = {fn["name"]: fn for fn in parsed["functions"]}
+        assert by["p2_mul"]["ret"] == "int"
+        assert by["p2_mul"]["body_start"] == 5, \
+            "Allman 形态的函数体应从 `{` 那一行起，实测 %d" % \
+            by["p2_mul"]["body_start"]
+        assert by["p3_sub"]["line"] == 8, \
+            "GNU 形态的声明起点在返回类型那一行，实测 %d" % by["p3_sub"]["line"]
+        assert by["p3_sub"]["body_start"] == 10
+        assert by["p4_many"]["params"] == ["int a", "const char *b"], \
+            "跨行参数表应按顶层逗号切开，实测 %r" % by["p4_many"]["params"]
+        assert any(c[0] == "p1_add" for c in by["caller"]["calls"]), \
+            "跨行定义的调用者应被正常解析"
+
+        # 函数体边界来自**词法层**：字符串字面量里的 `{` `}` 不得干扰
+        # （旧的行计数对它完全失明，会让 `a` 永不闭合、把 `b` 整个吞掉）
+        sbs = ('void a(void)\n'
+               '{\n'
+               '  fputs ("{", fp);\n'
+               '}\n'
+               'void b(void)\n'
+               '{\n'
+               '  fputs ("}", fp);\n'
+               '}\n')
+        sb = ma._parse_c_source(sbs, "s.c", "s.c")
+        assert [fn["name"] for fn in sb["functions"]] == ["a", "b"], \
+            "字符串里的花括号不得吞掉下一个函数"
+
+        # 不假阳：控制语句 / 函数调用 / 宏都不是函数定义
+        for bad_src in ("if (x) {\n}\n", "while (x) {\n}\n",
+                        "foo(bar);\n", "#define M(x) { x; }\n"):
+            assert ma._parse_c_source(bad_src, "z.c", "z.c")["functions"] == [], \
+                "不该把 %r 当函数定义" % bad_src
+
+        # 模块内自证：旧正则（对照装置 A）与新扫描器（beyond）两向对照
+        bad, good = ma._scan_c_definitions_selftest()
+        assert bad == 0, "自证有 %d 条断言失败（应全过）" % bad
+        assert good >= 20, "正向断言太少（今天实测 22），置信度不足"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def test_p88_var_taint():
     """P88 回归：变量级污点——源赋值变量追踪、赋值传播、跨函数形参、汇实参精确命中。"""
     ma._clear_closure_cache()
