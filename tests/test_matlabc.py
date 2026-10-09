@@ -16865,3 +16865,69 @@ def test_r42_historical_numbers_need_a_reason_bearing_marker():
             "豁免无效后该行应回到违规命中：%r" % p2
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+def test_r43_baseline_work_dir_cannot_silently_go_stale():
+    """R43：公平基线的工作目录必须**要么真干净、要么明确拒绝**。
+
+    三件事同时被钉住：
+    ① 清理器「假装成功」（不删、不改名、也不报错）时必须仍然红 —— 旧实现的病根
+       就是 `ignore_errors=True` 把删除失败吞掉，然后带着脏目录往下走，
+       两侧比对结论**静默失真**。
+    ② 本机 safe-delete 守卫在对 200+ 项的目录 `rmtree` 时**直接终止进程**
+       （不是抛异常，所以 try/except 兜不住），因此导出树必须用**唯一目录**，
+       根本不该发生删除动作。
+    ③ `fixed` 里的「已登记环境噪声」必须**双向**核对：未登记的新噪声要红
+       （它可能掩盖同一 nodeid 上真实的修复），登记了却没出现的陈旧登记也要红。
+    """
+    cb = _r37_load("check_baseline")
+
+    # ①/② 唯一目录：连续两次必须得到**不同**路径，且都不需要删除已有目录
+    tmp = tempfile.mkdtemp(prefix="_t_r43_")
+    try:
+        a = cb._unique_dir(tmp, "head")
+        b = cb._unique_dir(tmp, "head")
+        assert os.path.isdir(a) and os.path.isdir(b)
+        assert a != b, "两次 _unique_dir 返回了同一个目录（会撞脏目录）"
+        assert os.listdir(a) == [] and os.listdir(b) == []
+
+        # 清理器撒谎 -> 必须抛（不许安静地继续）
+        def _lie(*_a, **_k):
+            return None
+
+        d = os.path.join(tmp, "lie")
+        os.makedirs(d)
+        io.open(os.path.join(d, "stale.txt"), "w").write("x")
+        raised = False
+        try:
+            cb._prepare_dir(d, remove=_lie, rename=_lie)
+        except Exception:
+            raised = True
+        assert raised, "清理器假装成功时没有报错 —— 会带着脏目录继续"
+
+        # 删不掉但能改名 -> 必须归档 + 留旁证，且不抛
+        d2 = os.path.join(tmp, "ren")
+        os.makedirs(d2)
+        io.open(os.path.join(d2, "stale.txt"), "w").write("x")
+
+        def _refuse(_p):
+            raise OSError("simulated safe-delete refusal")
+
+        notes = []
+        cb._prepare_dir(d2, remove=_refuse, note=notes.append)
+        assert notes, "删不掉时没有留下任何说明（旁证）"
+        assert os.path.isdir(d2) and os.listdir(d2) == []
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    # ③ fixed 的登记制：未登记要红、陈旧登记也要红
+    e, u, s = cb.classify_fixed(["new::t"], {})
+    assert u == ["new::t"] and not e and not s, (e, u, s)
+    e, u, s = cb.classify_fixed([], {"old::t": "原因"})
+    assert s == ["old::t"], s
+    e, u, s = cb.classify_fixed(["k::t"], {"k::t": "原因"})
+    assert e == ["k::t"] and not u and not s, (e, u, s)
+
+    # 真实登记：键名必须真的指向那条测试（键名写错 = 登记无效却看不出来）
+    assert any("test_r30_static_guards_all_clean" in k
+               for k in cb.KNOWN_BASELINE_NOISE), \
+        "KNOWN_BASELINE_NOISE 的键名与真实 nodeid 不匹配 —— 登记等于没登记"

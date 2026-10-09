@@ -20,7 +20,7 @@
 ![离线](https://img.shields.io/badge/offline-first-yes-orange)
 ![许可](https://img.shields.io/badge/license-MIT-green)
 ![CI](https://github.com/pony-029/malabc/actions/workflows/ci.yml/badge.svg)
-![版本](https://img.shields.io/badge/version-1.16.70-informational)
+![版本](https://img.shields.io/badge/version-1.16.71-informational)
 
 [快速开始](#快速开始) · [核心能力](#核心能力) · [架构](#架构) · [二进制与 GPU](#二进制与-gpu-分析---binary) · [命令速查](#命令速查) · [CI 门禁](#ci-质量门禁) · [自验证质量门](#自验证质量门quality-gates) · [English](README.md) · [许可证](#许可证)
 

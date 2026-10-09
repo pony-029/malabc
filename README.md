@@ -22,7 +22,7 @@ conclusion into a **CI quality gate**.
 ![Offline](https://img.shields.io/badge/offline-first-yes-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![CI](https://github.com/pony-029/malabc/actions/workflows/ci.yml/badge.svg)
-![Version](https://img.shields.io/badge/version-1.16.70-informational)
+![Version](https://img.shields.io/badge/version-1.16.71-informational)
 
 [Quick Start](#quick-start) · [Core Capabilities](#core-capabilities) · [Architecture](#architecture)
 · [Binary & GPU](#binary--gpu-analysis---binary) · [Command Cheatsheet](#command-cheatsheet)
