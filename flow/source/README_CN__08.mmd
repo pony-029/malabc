@@ -1,0 +1,7 @@
+flowchart LR
+  H["HEAD 树<br/>（未改动）"] --> R1["pytest -q"]
+  W["当前工作区<br/>（+ 同一套测试集）"] --> R2["pytest -q"]
+  R1 --> C{"nodeid<br/>集合差"}
+  R2 --> C
+  C -->|"after − before"| X["回归<br/>→ 判红"]
+  C -->|"before − after"| F["修好 / 改名<br/>→ 仅供参考"]

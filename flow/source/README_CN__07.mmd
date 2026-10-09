@@ -1,0 +1,6 @@
+flowchart TD
+    S["git push / PR"] --> A["matlabc --git-diff HEAD<br/>增量分析"]
+    A --> J["--json --sarif<br/>--reproducible"]
+    J --> D{"--sarif-diff<br/>比对基线"}
+    D -->|新增告警上升| F["退出码 1 拦截"]
+    D -->|无上升| P["退出码 0 通过"]

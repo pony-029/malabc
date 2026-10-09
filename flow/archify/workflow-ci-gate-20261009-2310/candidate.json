@@ -1,0 +1,49 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "CI quality gate: SARIF, baseline diff, exit code",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "archify/workflow-ci-gate-20261009-2310/f07-ci-gate.html"
+  },
+  "lanes": [
+    { "id": "repo", "label": "Repository" },
+    { "id": "tool", "label": "matlabc in the CI job" },
+    { "id": "gate", "label": "Gate outcome", "variant": "exception" }
+  ],
+  "mainPath": ["push", "diff", "sarif", "decide", "pass"],
+  "nodes": [
+    { "id": "push", "lane": "repo", "col": 0, "type": "external", "label": "git push / PR", "sublabel": "changed files", "width": 150 },
+    { "id": "diff", "lane": "tool", "col": 1, "type": "backend", "label": "matlabc --git-diff HEAD", "sublabel": "incremental analysis", "width": 190 },
+    { "id": "sarif", "lane": "tool", "col": 2, "type": "database", "label": "snapshot + SARIF", "sublabel": "--json --sarif --reproducible", "width": 190 },
+    { "id": "decide", "lane": "tool", "col": 3, "type": "security", "label": "--sarif-diff", "sublabel": "compare against baseline", "width": 170 },
+    { "id": "block", "lane": "gate", "col": 5, "type": "security", "label": "exit 1", "sublabel": "new warnings increase -> blocked", "width": 200 },
+    { "id": "pass", "lane": "gate", "col": 4, "type": "backend", "label": "exit 0", "sublabel": "no increase -> passed", "width": 190 }
+  ],
+  "edges": [
+    { "id": "push-diff", "from": "push", "to": "diff", "variant": "emphasis" },
+    { "id": "diff-sarif", "from": "diff", "to": "sarif" },
+    { "id": "sarif-decide", "from": "sarif", "to": "decide", "label": "baseline compare" },
+    { "id": "decide-block", "from": "decide", "to": "block", "label": "new warnings increase", "variant": "security", "role": "error" },
+    { "id": "decide-pass", "from": "decide", "to": "pass", "label": "no increase", "role": "branch" }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "The exit code is the interface",
+      "items": [
+        "0 = gate passed; 1 = gate failed (warnings, contract, or round-trip diff)",
+        "The baseline is persisted automatically, so a PR needs no manual parameter"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Why a snapshot and not just SARIF",
+      "items": [
+        "--json writes the full model; --sarif is the GitHub code-scanning view",
+        "--reproducible keeps the fingerprint stable across runs"
+      ]
+    }
+  ]
+}

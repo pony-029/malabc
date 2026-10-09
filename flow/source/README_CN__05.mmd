@@ -1,0 +1,9 @@
+flowchart LR
+  C["C 前端"] --> RC
+  P["Py 前端"] --> RC
+  J["JS 前端"] --> RC
+  M["MATLAB<br/>frontends/matlab.py"] --> U
+  RC["frontends/ir.py<br/>resolve_calls()<br/><b>唯一判定点</b>"] --> E["edges → 调用图"]
+  RC --> U["unresolved"]
+  U --> RP["「疑似漏检」页"]
+  U --> AT["--binary-attach<br/>library: / gpu_kernel: / missing"]

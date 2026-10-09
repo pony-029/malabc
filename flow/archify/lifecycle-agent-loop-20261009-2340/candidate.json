@@ -1,0 +1,79 @@
+{
+  "schema_version": 2,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "agent_loop.py: a controlled self-verifying fix loop",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "archify/lifecycle-agent-loop-20261009-2340/f13-agent-loop.html"
+  },
+  "lanes": [
+    { "id": "main", "label": "The loop" },
+    { "id": "apply", "label": "Apply gate" },
+    { "id": "recovery", "label": "Rollback + feedback" },
+    { "id": "exits", "label": "Exits" }
+  ],
+  "states": [
+    { "id": "s", "type": "start", "label": "Baseline analysis", "sublabel": "analyze()", "lane": "main", "col": 0, "step": "01", "tag": "warn count" },
+    { "id": "q", "type": "decision", "label": "total == 0 ?", "sublabel": "nothing to fix", "lane": "main", "col": 1, "step": "02", "tag": "gate" },
+    { "id": "l", "type": "active", "label": "Attempt loop", "sublabel": "for attempt in range(max_turns)", "lane": "main", "col": 2, "step": "03", "tag": "bounded" },
+    { "id": "fx", "type": "active", "label": "fix_source()", "sublabel": "returns patch | None", "lane": "main", "col": 3, "step": "04", "tag": "deterministic" },
+    { "id": "v", "type": "decision", "label": "Rescan and verify", "sublabel": "no_new_alerts && progress", "lane": "main", "col": 4, "step": "05", "tag": "prove" },
+
+    { "id": "ap", "type": "decision", "label": "git apply --check", "sublabel": "strict in-process validation", "lane": "apply", "col": 3, "tag": "dry run" },
+
+    { "id": "fb1", "type": "waiting", "label": "feedback: apply_rejected", "sublabel": "rejected patch handed back", "lane": "recovery", "col": 2, "tag": "retry input", "width": 190 },
+    { "id": "rv", "type": "active", "label": "Rollback", "sublabel": "git apply -R / snapshot restore", "lane": "recovery", "col": 3, "tag": "no half state" },
+
+    { "id": "clean", "type": "success", "label": "already_clean", "sublabel": "tier 0", "lane": "exits", "col": 0, "tag": "no work" },
+    { "id": "t2", "type": "failure", "label": "max_turns exhausted", "sublabel": "tier 2 · checkpoint + Draft PR", "lane": "exits", "col": 1, "tag": "bounded" },
+    { "id": "t1", "type": "failure", "label": "no_strategy", "sublabel": "patch is None", "lane": "exits", "col": 2, "tag": "no fix" },
+    { "id": "ok", "type": "success", "label": "accept", "sublabel": "tier 0 / 1 · record_learned_fix", "lane": "exits", "col": 3, "tag": "verified" },
+    { "id": "rg", "type": "failure", "label": "review_gate", "sublabel": "rollback + review artifact · exit 3", "lane": "exits", "col": 4, "tag": "human", "width": 190 }
+  ],
+  "transitions": [
+    { "from": "s", "to": "q" },
+    { "from": "q", "to": "clean", "label": "no warnings", "variant": "emphasis", "labelDy": -31 },
+    { "from": "q", "to": "l", "label": "warnings found", "labelDy": -31 },
+    { "from": "l", "to": "fx" },
+    { "from": "l", "to": "t2", "label": "loop exhausted", "variant": "security" },
+    { "from": "fx", "to": "t1", "label": "no patch", "variant": "security" },
+    { "from": "fx", "to": "ap", "label": "patch" },
+    { "from": "ap", "to": "fb1", "label": "check failed", "variant": "security" },
+    { "from": "ap", "to": "v", "label": "check passed" },
+    { "from": "v", "to": "ok", "label": "verified", "variant": "emphasis" },
+    { "from": "v", "to": "rv", "label": "regressed", "variant": "security" },
+    { "from": "fb1", "to": "l", "label": "retry" },
+    { "from": "rv", "to": "l", "label": "retry" },
+    { "from": "ok", "to": "rg", "label": "review_gate", "variant": "security", "labelDy": 57 }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Why this loop is trusted",
+      "items": [
+        "A patch is never accepted because it was generated — it is accepted because the rescan proves it",
+        "Two independent gates: git apply --check before, rescan after",
+        "Every rejection returns a structured feedback object the next attempt can read"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "The loop is bounded by design",
+      "items": [
+        "max_turns caps the attempts; exhaustion is a normal, reported outcome (tier 2)",
+        "The exhausted path still emits a checkpoint and an optional Draft PR instead of failing silently",
+        "tier 0 means nothing to do, tier 1 means a verified fix, tier 2 means a human is needed"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "No half-applied state",
+      "items": [
+        "A failed verification is rolled back with git apply -R or an in-process snapshot restore",
+        "The review_gate path deliberately leaves the tree clean and exits 3 with a review artifact",
+        "A learned fix is only recorded after acceptance"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "ai-fix loop: review, patch, apply, verify, report",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "archify/workflow-fix-loop-20261009-2310/f06-fix-loop.html"
+  },
+  "lanes": [
+    { "id": "loop", "label": "matlabc_flow.py · fix loop" },
+    { "id": "back", "label": "failed verification", "variant": "exception" }
+  ],
+  "mainPath": ["review", "fix", "apply", "verify", "report"],
+  "nodes": [
+    { "id": "review", "lane": "loop", "col": 0, "type": "backend", "label": "review", "sublabel": "AI review / offline prompt", "width": 150 },
+    { "id": "fix", "lane": "loop", "col": 1, "type": "backend", "label": "fix", "sublabel": "deterministic patch engine", "width": 160 },
+    { "id": "apply", "lane": "loop", "col": 2, "type": "backend", "label": "apply", "sublabel": "git apply or strict in-process validation", "width": 190 },
+    { "id": "verify", "lane": "loop", "col": 3, "type": "security", "label": "verify", "sublabel": "re-scan: no rule warns more", "width": 170 },
+    { "id": "report", "lane": "loop", "col": 4, "type": "backend", "label": "report", "sublabel": "summary report", "width": 140 },
+    { "id": "refix", "lane": "back", "col": 1, "type": "security", "label": "re-fix", "sublabel": "verification failed", "width": 150 }
+  ],
+  "edges": [
+    { "id": "review-fix", "from": "review", "to": "fix", "variant": "emphasis" },
+    { "id": "fix-apply", "from": "fix", "to": "apply" },
+    { "id": "apply-verify", "from": "apply", "to": "verify", "label": "re-scan" },
+    { "id": "verify-report", "from": "verify", "to": "report", "label": "no rule warns more" },
+    { "id": "verify-refix", "from": "verify", "to": "refix", "label": "failed", "variant": "dashed", "role": "error" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Deterministic by construction",
+      "items": [
+        "The patch engine emits del and ins_before only; the legacy ins op is banned",
+        "apply either uses git apply or validates the patch in-process before writing"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Verification is the exit condition",
+      "items": [
+        "verify re-scans and requires that no rule warns more than before",
+        "A failed verify returns to fix instead of reporting success"
+      ]
+    }
+  ]
+}

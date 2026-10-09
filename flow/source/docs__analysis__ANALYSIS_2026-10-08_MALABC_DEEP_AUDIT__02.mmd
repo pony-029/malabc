@@ -1,0 +1,18 @@
+flowchart LR
+    S["基线分析<br/>analyze()"] --> B{"total==0?"}
+    B -->|是| C0["already_clean<br/>tier 0"]
+    B -->|否| L["for attempt in range(max_turns)"]
+    L --> FX["fix_source(attempt, feedback)<br/>→ patch | None"]
+    FX -->|None| T1["no_strategy"]
+    FX -->|patch| AP{"git apply --check"}
+    AP -->|失败| FB1["feedback={reason:apply_rejected,<br/>rejected_patch}"]
+    AP -->|成功| V["重扫验证<br/>no_new_alerts && progress"]
+    V -->|通过| OK["accept → tier 0/1"]
+    V -->|不通过| RV["回退 git apply -R<br/>/ 进程内快照还原"]
+    RV --> FB2["feedback={reason:verification_failed,<br/>delta, rejected_patch}"]
+    FB1 --> L
+    FB2 --> L
+    OK --> G{"review_gate?"}
+    G -->|是| RG["回退 + 出审查产物<br/>exit 3"]
+    G -->|否| MEM["record_learned_fix"]
+    L -->|耗尽| T2["max_turns → tier 2<br/>出检查点 + 可选 Draft PR"]

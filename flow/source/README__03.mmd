@@ -1,0 +1,10 @@
+flowchart TB
+    subgraph TWO["--binary + --binary-symbols · two steps"]
+        T1["step 1<br/>matlabc myproj --json out.json"] --> T2["out.json"]
+        T2 --> T3["step 2<br/>matlabc --binary lib.so --binary-symbols out.json"]
+    end
+    subgraph ONE["--binary-attach · one step"]
+        O1["matlabc myproj --binary-attach lib.so --json out.json"]
+        O2["same pass: analyse sources + attribute unresolved + write JSON"]
+        O1 --> O2
+    end

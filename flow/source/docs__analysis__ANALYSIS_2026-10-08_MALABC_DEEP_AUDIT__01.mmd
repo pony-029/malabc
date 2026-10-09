@@ -1,0 +1,34 @@
+flowchart TB
+    subgraph APP["入口层（4 入口 + 1 分发）"]
+        D5["matlabc_boot.py<br/>无参=GUI / ask / flow / 否则=分析器"]
+        D1["matlabc.py · CLI 分析器<br/>main() 906 语句 · 518 函数"]
+        D2["matlabc_ask.py<br/>BM25 + 意图识别"]
+        D3["matlabc_flow.py<br/>线性 5 步 + 自主闭环"]
+        D4["gui.py · tkinter<br/>1090 行"]
+        D6["matlabc_mcp.py<br/>MCP over stdio"]
+    end
+    subgraph CORE["matlabc.py · 单文件分层内核 29,637 行"]
+        B1["词法层 scrub_source / _logical_statements"]
+        B2["解析层 parse_file / analyze_calls / resolve_call"]
+        B3["数据层 MatlabFunction / MatlabClass / MatlabFile"]
+        B4["分析层 影响·依赖·风险 + 5 静态检查 + 污点 + 维度"]
+        B5["渲染装配 render_*（约 120 个 render_/build_ 函数）"]
+        B1 --> B2 --> B3 --> B4 --> B5
+    end
+    subgraph REND["renderers/ 26 文件 7,510 行"]
+        R1["assets.py 3826 行<br/>CSS/JS 字符串常量"]
+        R2["snapshot / report / callgraph / hotspot"]
+        R3["sarif / metrics / creport / unresolved / _shared"]
+    end
+    subgraph AGENT["AI/Agent 层"]
+        A1["ai_cli.py · 9 厂商 + 离线降级"]
+        A2["agent_loop.py · 受控自校验闭环"]
+        A3["analyzer_memory.py · 跨运行记忆"]
+    end
+    D5 --> D1 & D2 & D3 & D4
+    D1 & D2 & D3 & D4 --> CORE
+    D6 -.subprocess.-> D1 & D2 & D3
+    CORE <-->|"双向 import（循环依赖）"| REND
+    D3 --> A1 & A2
+    A2 --> A3
+    A2 -->|"git apply / -R"| FS[("工作副本")]

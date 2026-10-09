@@ -1,0 +1,33 @@
+flowchart TB
+    subgraph IN["Input Layer"]
+        A1[".m / .c / .py / .js<br/>project directory"]
+        A2["analyzer_config.json<br/>or --from-json snapshot"]
+    end
+    subgraph CORE["matlabc.py · single-file layered kernel"]
+        B1["Lexical layer<br/>scrub_source / _logical_statements"]
+        B2["Parser layer<br/>parse_file / analyze_calls / resolve_call"]
+        B3["Data layer<br/>MatlabFunction / MatlabClass / MatlabFile"]
+        B4["Analysis layer<br/>impact · dependency · risk metrics<br/>static checks + taint + duplicate fingerprints"]
+        B5["Render layer<br/>render_* (report/browse/json/sarif)"]
+        B1 --> B2 --> B3 --> B4 --> B5
+    end
+    subgraph OUT["Output Layer"]
+        C1["Markdown / HTML / Mermaid / DOT"]
+        C2["Browsable site --browse"]
+        C3["JSON / XML / Doxygen XML"]
+        C4["SARIF 2.1.0 / gate snapshot"]
+        C5["Patch / test stub / PR draft"]
+    end
+    subgraph APP["Entry Layer"]
+        D1["matlabc.py · CLI analyzer"]
+        D2["matlabc_ask.py · Q&A"]
+        D3["matlabc_flow.py · fix loop"]
+        D4["gui.py · tkinter desktop GUI"]
+        D5["matlabc_boot.py · unified entry/packaging"]
+    end
+    A1 --> B1
+    A2 --> B4
+    B5 --> C1 & C2 & C3 & C4 & C5
+    D1 & D2 & D3 & D4 --> CORE
+    D5 --> D1 & D2 & D3 & D4
+    C4 --> E1{"CI gate<br/>exit code 0/1"}

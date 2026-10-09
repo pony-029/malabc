@@ -616,6 +616,41 @@ python tools/check_all.py --help  # 护栏总纲：10 道门各自拦什么
 
 ---
 
+## 流程图（archify）
+
+本仓库里全部 21 个图块都被找了出来，逐字导出，再用 **archify** 重绘成可独立打开的交互式 HTML。
+结果都在 [`flow/`](flow/) 下，并且逐张详解在 [`flow/FLOW_REPORT.md`](flow/FLOW_REPORT.md)。
+
+21 个块里有 8 对是中英镜像（同一张图、标签语言不同），因此对应 **13 张不同的图**：
+
+| 图 | archify 图型 | 源锚点 | 它回答的问题 |
+| --- | --- | --- | --- |
+| `F01` | architecture | `README.md` L55–97 | 这个工具由哪几块能力组成？ |
+| `F02` | architecture | `README.md` L117–138 | 一个名字为什么被判成 unresolved？三态各由什么证据支持？ |
+| `F03` | workflow | `README.md` L195–206 | `--binary-attach` 到底省了什么？ |
+| `F04` | architecture | `README.md` L261–295 | 单文件内核内部分了哪几层？输入输出各是什么？ |
+| `F05` | architecture | `README.md` L338–348 | 「解析不到的调用」在哪里被判定？ |
+| `F06` | workflow | `README.md` L400–407 | 修复闭环五步是什么？失败回哪一步？ |
+| `F07` | workflow | `README.md` L447–454 | CI 退出码怎么算出来？ |
+| `F08` | workflow | `README.md` L560–568 | 基线门为什么比集合不比个数？ |
+| `F09` | lifecycle | `docs/SUPERPOWER_REVIEW_R30.md` L24–36 | 一轮方法论闭环怎么走？ |
+| `F10` | workflow | `docs/SUPERPOWER_REVIEW_R30.md` L176–189 | 护栏怎么被登记进测试与 CI？ |
+| `F11` | workflow | `docs/SUPERPOWER_REVIEW_R44.md` L182–200 | 唯一判定点收拢后，用什么挡住它再扩散？ |
+| `F12` | architecture | `docs/analysis/ANALYSIS_2026-10-08_MALABC_DEEP_AUDIT.md` L72–107 | 仓库真实分层是什么？循环依赖在哪？ |
+| `F13` | lifecycle | `docs/analysis/ANALYSIS_2026-10-08_MALABC_DEEP_AUDIT.md` L189–208 | 怎么保证不留下改了一半的树？ |
+
+任意一张都可以从可编辑源重新生成：
+
+```bash
+cd flow
+node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.html --quality showcase
+```
+
+映射表、每张图背后的实测数字，以及下一步建议，见
+[`flow/FLOW_REPORT.md`](flow/FLOW_REPORT.md) 与 [`flow/INDEX.md`](flow/INDEX.md)。
+
+---
+
 ## 文档
 
 - [docs/matlabc_USAGE.md](docs/matlabc_USAGE.md) — 完整命令行用法参考

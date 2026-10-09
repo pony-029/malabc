@@ -1,0 +1,61 @@
+{
+  "schema_version": 2,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "The superpower probe loop: hats, real code, isolation probe, guardrail",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "archify/lifecycle-superpower-loop-20261009-2340/f09-superpower-loop.html"
+  },
+  "lanes": [
+    { "id": "main", "label": "One round of the loop" },
+    { "id": "rework", "label": "Back edge: the probe disagreed" }
+  ],
+  "states": [
+    { "id": "a", "type": "start", "label": "Six thinking hats", "sublabel": "white→red→black→yellow→green→blue", "lane": "main", "col": 0, "step": "01", "tag": "analyse", "width": 180 },
+    { "id": "b", "type": "active", "label": "C1–C10 → real code", "sublabel": "no placeholders accepted", "lane": "main", "col": 1, "step": "02", "tag": "implement" },
+    { "id": "c", "type": "decision", "label": "Isolation probe", "sublabel": "run the real API on real files", "lane": "main", "col": 2, "step": "03", "tag": "measure" },
+    { "id": "d", "type": "active", "label": "Registry guardrail", "sublabel": "tools/check_*.py + check_all.py", "lane": "main", "col": 3, "step": "04", "tag": "lock in" },
+    { "id": "e", "type": "success", "label": "Regression + baseline", "sublabel": "then next-round C'1–C'10", "lane": "main", "col": 4, "step": "05", "tag": "verify" },
+    { "id": "rw", "type": "active", "label": "Rework claim or probe", "sublabel": "the probe contradicted the claim", "lane": "rework", "col": 2, "tag": "rework", "width": 190 }
+  ],
+  "transitions": [
+    { "from": "a", "to": "b" },
+    { "from": "b", "to": "c" },
+    { "from": "c", "to": "d", "label": "both pass", "variant": "emphasis" },
+    { "from": "c", "to": "rw", "label": "one way fails", "variant": "security" },
+    { "from": "rw", "to": "b", "label": "rework", "variant": "dashed" },
+    { "from": "d", "to": "e" },
+    { "from": "e", "to": "a", "label": "next round", "variant": "emphasis", "route": "top-channel" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "The four steps that must not be skipped",
+      "items": [
+        "Hats first: the round is analysed from six angles before any file is touched",
+        "Then C1–C10 are implemented for real — a stub does not count as done",
+        "Then the isolation probe runs the real API on real files, outside the repo",
+        "Only then is the finding locked into a registry guardrail"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Why the probe comes before the guardrail",
+      "items": [
+        "A guard written from a guess freezes the guess",
+        "The probe's own self-test must pass before its numbers are trusted",
+        "A measurement tool's own bug fabricates bugs in the thing being measured"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Where each round ends",
+      "items": [
+        "A green full-regression against the baseline closes the round",
+        "The round ends with next-round candidates C'1–C'10, not with a summary",
+        "'Passed once' is not accepted as 'repeatable' — the probe is run again"
+      ]
+    }
+  ]
+}

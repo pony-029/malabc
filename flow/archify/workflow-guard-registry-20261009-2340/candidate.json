@@ -1,0 +1,60 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Registry guardrails: every check is collected by one entry point",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "archify/workflow-guard-registry-20261009-2340/f10-guard-registry.html"
+  },
+  "lanes": [
+    { "id": "runner", "label": "tools/check_all.py — one command" },
+    { "id": "guards", "label": "tools/check_*.py — registry guardrails" },
+    { "id": "collect", "label": "Test suite" },
+    { "id": "ci", "label": "CI" }
+  ],
+  "mainPath": ["g4", "g1", "g2", "g3", "t", "ci"],
+  "nodes": [
+    { "id": "g4", "lane": "runner", "col": 0, "type": "security", "label": "check_all.py", "sublabel": "runs every guard + self-test", "width": 230 },
+    { "id": "g1", "lane": "guards", "col": 1, "type": "backend", "label": "check_patch_ops.py", "sublabel": "patch operators, one source", "width": 215 },
+    { "id": "g2", "lane": "guards", "col": 2, "type": "backend", "label": "check_doc_flags.py", "sublabel": "documented switches vs --help", "width": 215 },
+    { "id": "g3", "lane": "guards", "col": 3, "type": "backend", "label": "check_operator_impl.py", "sublabel": "no phantom in the meta table", "width": 225 },
+    { "id": "t", "lane": "collect", "col": 3, "type": "database", "label": "test_matlabc.py", "sublabel": "new guards collected automatically", "width": 235 },
+    { "id": "ci", "lane": "ci", "col": 3, "type": "cloud", "label": "CI build", "sublabel": "one red guard fails the build", "width": 220 }
+  ],
+  "edges": [
+    { "id": "all-ops", "from": "g4", "to": "g1", "label": "runs each guard in order", "variant": "emphasis" },
+    { "id": "ops-doc", "from": "g1", "to": "g2" },
+    { "id": "doc-opimpl", "from": "g2", "to": "g3" },
+    { "id": "opimpl-test", "from": "g3", "to": "t" },
+    { "id": "test-ci", "from": "t", "to": "ci", "label": "any guard red", "variant": "security" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "What makes it a registry",
+      "items": [
+        "Each guard declares its own registry table at the top of its file",
+        "The test suite asserts the count of guards, so adding a file is not enough — it must be registered",
+        "A stale entry (registered but no longer present) is red too, not just a missing one"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Every guard proves itself in both directions",
+      "items": [
+        "Each guard has --selftest and prints SELFTEST COUNTS {\"bad\": N, \"good\": M}",
+        "The test parses that one line and asserts a lower bound: adding cases stays green, deleting cases turns red",
+        "N and M are counted from real execution and are never hand-written"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Guard vs contract",
+      "items": [
+        "MIN_GUARDS counts the guard files under tools/; check_all.py itself is not one of them",
+        "GUARD_CONTRACT tracks the wrapper, so the two numbers differ by exactly one"
+      ]
+    }
+  ]
+}

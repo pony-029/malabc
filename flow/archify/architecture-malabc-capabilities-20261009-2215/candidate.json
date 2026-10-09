@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "matlabc Capability Map",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "subtitle": "Seven capability subsystems around one single-file analyzer kernel",
+    "output": "archify/architecture-malabc-capabilities-20261009-2215/f01-capabilities.html"
+  },
+  "components": [
+    { "id": "core", "type": "backend", "label": "matlabc", "sublabel": "single-file analyzer kernel", "pos": [40, 380], "size": [200, 84] },
+
+    { "id": "g_struct", "type": "backend", "label": "Structure Mapping", "sublabel": "parsing · call graph · class graph · impact closure", "pos": [300, 60], "size": [330, 64] },
+    { "id": "g_site", "type": "frontend", "label": "Interactive Site", "sublabel": "click-to-jump · search · --watch · --max-nodes", "pos": [300, 180], "size": [330, 64] },
+    { "id": "g_checks", "type": "security", "label": "Static Checks", "sublabel": "uninit · type · dead code · shape · taint", "pos": [300, 300], "size": [330, 64] },
+    { "id": "g_metrics", "type": "database", "label": "Metrics & Governance", "sublabel": "debt ranking · comments · duplicates · trend", "pos": [300, 420], "size": [330, 64] },
+    { "id": "g_fix", "type": "backend", "label": "Fix Loop", "sublabel": "patch · self-verify · test stub · PR draft", "pos": [300, 540], "size": [330, 64] },
+    { "id": "g_ci", "type": "cloud", "label": "CI Gate", "sublabel": "SARIF 2.1.0 · exit code · baseline diff · templates", "pos": [300, 660], "size": [330, 64] },
+    { "id": "g_bin", "type": "external", "label": "Binary & GPU", "sublabel": "PE/ELF/Mach-O · imports · exports · CUDA / HSA / SPIR-V", "pos": [300, 780], "size": [330, 64] }
+  ],
+  "connections": [
+    { "id": "core-struct", "from": "core", "to": "g_struct", "fromSide": "right", "toSide": "left" },
+    { "id": "core-site", "from": "core", "to": "g_site", "fromSide": "right", "toSide": "left" },
+    { "id": "core-checks", "from": "core", "to": "g_checks", "fromSide": "right", "toSide": "left" },
+    { "id": "core-metrics", "from": "core", "to": "g_metrics", "fromSide": "right", "toSide": "left" },
+    { "id": "core-fix", "from": "core", "to": "g_fix", "fromSide": "right", "toSide": "left" },
+    { "id": "core-ci", "from": "core", "to": "g_ci", "fromSide": "right", "toSide": "left" },
+    { "id": "core-bin", "from": "core", "to": "g_bin", "fromSide": "right", "toSide": "left" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Structure Mapping — what the code is made of",
+      "items": [
+        "Function / class / script parsing",
+        "Call graph; class inheritance and collaboration",
+        "Impact and dependency transitive closure"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Interactive Site — explore the result",
+      "items": [
+        "Click-to-jump to definitions; full-text and regex search",
+        "--watch daemon re-analysis",
+        "--max-nodes guard for large repositories"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Static Checks — what is wrong",
+      "items": [
+        "Uninitialized; type mismatch; dead code; shape mismatch",
+        "Cross-file taint propagation"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Metrics & Governance — what to fix first",
+      "items": [
+        "Technical-debt ranking; comment completeness",
+        "Duplicate-code fingerprints; metric trend sparkline"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Fix Loop — review, patch, prove",
+      "items": [
+        "Deterministic patch; self-verification",
+        "Test-stub generation; PR description draft"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "CI Gate — enforce in the pipeline",
+      "items": [
+        "SARIF 2.1.0; exit-code gate",
+        "Trend and baseline comparison; one-click CI templates"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "Binary & GPU — why a name is unresolved",
+      "items": [
+        "PE / ELF / Mach-O containers; import table and DT_NEEDED; export symbols (dynsym)",
+        "CUDA fatbin to cubin names; AMD HSA code object; Vulkan SPIR-V entry points",
+        "Source-side attribution: library / gpu_kernel / missing"
+      ]
+    }
+  ]
+}

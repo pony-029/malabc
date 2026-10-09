@@ -1,0 +1,12 @@
+graph TB
+    subgraph G["tools/ 登记制护栏"]
+        G1["check_patch_ops.py<br/>补丁算子唯一事实源"]
+        G2["check_doc_flags.py<br/>文档 CLI 开关 ↔ 真实 --help"]
+        G3["check_operator_impl.py<br/>算子元表无幻影"]
+        G4["check_all.py<br/>一键总入口 + 双向自证"]
+    end
+    G4 --> G1 & G2 & G3
+    G1 --> T["tests/test_matlabc.py<br/>test_r30_static_guards_all_clean<br/>（新护栏自动被收进测试）"]
+    G2 --> T
+    G3 --> T
+    T --> CI["CI 门禁：任一门红 → 构建失败"]

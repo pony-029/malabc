@@ -1,0 +1,6 @@
+flowchart LR
+    R["review<br/>AI 评审 / 离线提示词"] --> F["fix<br/>确定性补丁引擎"]
+    F --> AP["apply<br/>git apply 或<br/>严格进程内校验"]
+    AP --> V["verify<br/>重扫：规则告警不增"]
+    V --> RP["report<br/>汇总报告"]
+    V -.->|失败| F

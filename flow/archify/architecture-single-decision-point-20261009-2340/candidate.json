@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "One decision point: frontends/ir.py",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "subtitle": "Every language frontend hands call sites to the same resolver; MATLAB keeps its own module",
+    "output": "archify/architecture-single-decision-point-20261009-2340/f05-decision-point.html"
+  },
+  "components": [
+    { "id": "cf", "type": "frontend", "label": "C frontend", "sublabel": "line-anchored", "pos": [40, 40], "size": [210, 56] },
+    { "id": "pf", "type": "frontend", "label": "Py frontend", "sublabel": "line-anchored", "pos": [40, 140], "size": [210, 56] },
+    { "id": "jf", "type": "frontend", "label": "JS frontend", "sublabel": "line-anchored", "pos": [40, 240], "size": [210, 56] },
+    { "id": "mf", "type": "frontend", "label": "MATLAB frontend", "sublabel": "different call shape", "pos": [40, 340], "size": [210, 56] },
+
+    { "id": "rc", "type": "security", "label": "the ONE decision point", "sublabel": "frontends/ir.py · resolve_calls()", "pos": [320, 120], "size": [300, 80] },
+
+    { "id": "e", "type": "backend", "label": "edges to call graph", "sublabel": "resolved calls", "pos": [700, 40], "size": [250, 56] },
+    { "id": "u", "type": "security", "label": "unresolved", "sublabel": "no definition found", "pos": [700, 300], "size": [250, 56] },
+
+    { "id": "rp", "type": "frontend", "label": "possibly missed page", "sublabel": "shown to the user", "pos": [1000, 300], "size": [250, 56] },
+    { "id": "at", "type": "cloud", "label": "--binary-attach", "sublabel": "library: / gpu_kernel: / missing", "pos": [1000, 400], "size": [250, 56] }
+  ],
+  "connections": [
+    { "id": "cf-rc", "from": "cf", "to": "rc", "fromSide": "right", "toSide": "left" },
+    { "id": "pf-rc", "from": "pf", "to": "rc", "fromSide": "right", "toSide": "left" },
+    { "id": "jf-rc", "from": "jf", "to": "rc", "fromSide": "right", "toSide": "left" },
+    { "id": "mf-u", "from": "mf", "to": "u", "fromSide": "right", "toSide": "left" },
+    { "id": "rc-e", "from": "rc", "to": "e", "fromSide": "right", "toSide": "left" },
+    { "id": "rc-u", "from": "rc", "to": "u", "fromSide": "right", "toSide": "left" },
+    { "id": "u-rp", "from": "u", "to": "rp", "fromSide": "right", "toSide": "left" },
+    { "id": "u-at", "from": "u", "to": "at", "fromSide": "bottom", "toSide": "left" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Why a single decision point",
+      "items": [
+        "Before: the same rule was copied five times (two inlined builders plus four frontend build_edges)",
+        "Now: resolve_calls(func_index, call_sites) in frontends/ir.py is the only place that decides",
+        "build_ir is the only writer of the unresolved list"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "MATLAB keeps its own module",
+      "items": [
+        "MATLAB aggregates external_calls by name, a different shape from the C / Py / JS call sites",
+        "frontends/matlab.py · unresolved_tuples() must keep the legacy insertion order",
+        "Changing that order would silently reorder Counter.most_common() ties"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "What an unresolved name is for",
+      "items": [
+        "It feeds the 'possibly missed' page, never a silent drop",
+        "--binary-attach then turns each name into library: / gpu_kernel: / missing",
+        "A false positive is worse than no attribution, so 'missing' is a real answer"
+      ]
+    }
+  ]
+}

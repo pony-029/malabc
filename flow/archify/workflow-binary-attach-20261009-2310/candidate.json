@@ -1,0 +1,45 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "One command instead of two: --binary-attach",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "archify/workflow-binary-attach-20261009-2310/f03-binary-attach.html"
+  },
+  "lanes": [
+    { "id": "two", "label": "--binary + --binary-symbols · two steps" },
+    { "id": "one", "label": "--binary-attach · one step" }
+  ],
+  "mainPath": ["t1", "t2", "t3"],
+  "nodes": [
+    { "id": "t1", "lane": "two", "col": 0, "type": "backend", "label": "matlabc myproj", "sublabel": "--json out.json", "width": 150 },
+    { "id": "t2", "lane": "two", "col": 1, "type": "database", "label": "out.json", "sublabel": "unresolved call sites", "width": 150 },
+    { "id": "t3", "lane": "two", "col": 2, "type": "backend", "label": "matlabc --binary lib.so", "sublabel": "--binary-symbols out.json", "width": 170 },
+    { "id": "o1", "lane": "one", "col": 0, "type": "backend", "label": "matlabc myproj", "sublabel": "--binary-attach lib.so --json out.json", "width": 190 },
+    { "id": "o2", "lane": "one", "col": 1, "type": "backend", "label": "same pass", "sublabel": "analyse + attribute + write JSON", "width": 170 }
+  ],
+  "edges": [
+    { "id": "step1-json", "from": "t1", "to": "t2", "variant": "emphasis" },
+    { "id": "json-step2", "from": "t2", "to": "t3", "variant": "emphasis" },
+    { "id": "one-pass", "from": "o1", "to": "o2", "label": "no intermediate hand-off", "variant": "emphasis" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "What changes",
+      "items": [
+        "Two steps need an intermediate snapshot file and a second command",
+        "--binary-attach runs source analysis and attribution in one pass"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "What does not change",
+      "items": [
+        "Both paths write the same JSON key: unresolved_attribution",
+        "--binary (short-circuit) and --binary-attach (no short-circuit) stay two switches"
+      ]
+    }
+  ]
+}

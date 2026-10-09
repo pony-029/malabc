@@ -1,0 +1,9 @@
+flowchart LR
+  C["C frontend"] --> RC
+  P["Py frontend"] --> RC
+  J["JS frontend"] --> RC
+  M["MATLAB<br/>frontends/matlab.py"] --> U
+  RC["frontends/ir.py<br/>resolve_calls()<br/><b>the ONE decision point</b>"] --> E["edges → call graph"]
+  RC --> U["unresolved"]
+  U --> RP["\"possibly missed\" page"]
+  U --> AT["--binary-attach<br/>library: / gpu_kernel: / missing"]

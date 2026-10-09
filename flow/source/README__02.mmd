@@ -1,0 +1,20 @@
+flowchart LR
+    subgraph SRC["Source side"]
+        S1["matlabc --json out.json<br/>unresolved call sites"]
+    end
+    subgraph BIN["Binary side"]
+        B1["libfoo.so / bar.dll<br/>PE · ELF · Mach-O"]
+        B2["dynamic dependencies<br/>DT_NEEDED / import table"]
+        B3["export symbols<br/>dynsym / export directory"]
+        B4["embedded GPU content<br/>CUDA fatbin · HSA code object · SPIR-V"]
+    end
+    S1 --> AT["attribution engine<br/>binfmt/attribute.py"]
+    B2 --> AT
+    B3 --> AT
+    B4 --> AT
+    B1 --> B2
+    B1 --> B3
+    B1 --> B4
+    AT --> R1["library<br/>explained by libfoo.so"]
+    AT --> R2["gpu_kernel<br/>it is a CUDA / AMD kernel"]
+    AT --> R3["missing<br/>genuinely unresolved"]

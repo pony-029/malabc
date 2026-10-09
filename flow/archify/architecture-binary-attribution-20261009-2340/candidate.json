@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Binary & GPU attribution: why a call site is unresolved",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "subtitle": "Source-side call sites meet the evidence extracted from the binary in one attribution engine",
+    "output": "archify/architecture-binary-attribution-20261009-2340/f02-binary-attribution.html"
+  },
+  "components": [
+    { "id": "s1", "type": "external", "label": "unresolved call sites", "sublabel": "source side · matlabc myproj --json out.json", "pos": [40, 40], "size": [330, 64] },
+
+    { "id": "b1", "type": "backend", "label": "library file", "sublabel": "PE · ELF · Mach-O", "pos": [1040, 40], "size": [280, 60] },
+    { "id": "b2", "type": "database", "label": "dynamic dependencies", "sublabel": "DT_NEEDED / import table", "pos": [1040, 150], "size": [300, 60] },
+    { "id": "b3", "type": "database", "label": "export symbols", "sublabel": "dynsym / export directory", "pos": [1040, 260], "size": [280, 60] },
+    { "id": "b4", "type": "external", "label": "embedded GPU content", "sublabel": "CUDA fatbin · HSA · SPIR-V", "pos": [1040, 370], "size": [320, 60] },
+
+    { "id": "at", "type": "security", "label": "attribution engine", "sublabel": "binfmt/attribute.py", "pos": [560, 180], "size": [340, 80] },
+
+    { "id": "r1", "type": "backend", "label": "library:", "sublabel": "explained by the .so", "pos": [40, 470], "size": [280, 60] },
+    { "id": "r2", "type": "external", "label": "gpu_kernel:", "sublabel": "it is a CUDA / AMD kernel", "pos": [360, 470], "size": [300, 60] },
+    { "id": "r3", "type": "security", "label": "missing:", "sublabel": "genuinely unresolved", "pos": [700, 470], "size": [280, 60] }
+  ],
+  "connections": [
+    { "id": "s1-at", "from": "s1", "to": "at", "variant": "emphasis" },
+
+    { "id": "b1-b2", "from": "b1", "to": "b2", "fromSide": "bottom", "toSide": "top" },
+    { "id": "b2-b3", "from": "b2", "to": "b3", "fromSide": "bottom", "toSide": "top" },
+    { "id": "b3-b4", "from": "b3", "to": "b4", "fromSide": "bottom", "toSide": "top" },
+
+    { "id": "b2-at", "from": "b2", "to": "at", "fromSide": "left", "toSide": "right" },
+    { "id": "b3-at", "from": "b3", "to": "at", "fromSide": "left", "toSide": "right", "variant": "emphasis" },
+    { "id": "b4-at", "from": "b4", "to": "at", "fromSide": "left", "toSide": "right" },
+
+    { "id": "at-r1", "from": "at", "to": "r1", "variant": "emphasis" },
+    { "id": "at-r2", "from": "at", "to": "r2" },
+    { "id": "at-r3", "from": "at", "to": "r3", "variant": "security" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Three states, never two",
+      "items": [
+        "library: — the name is explained by a dynamic library that is present",
+        "gpu_kernel: — the name is a CUDA / AMD kernel found inside the binary",
+        "missing: — no evidence was found; the tool says so instead of guessing"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Only explicit binaries count",
+      "items": [
+        "Attribution uses exactly the files passed on the command line",
+        "Anything not supplied stays missing — a false positive is worse than no attribution",
+        "The engine walks the container first, then its dependency list, symbol table and GPU sections"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Where the GPU names come from",
+      "items": [
+        "CUDA fatbin to cubin: the kernel name sits in the .text._Z section-name table",
+        "AMD HSA code object and Vulkan SPIR-V entry points are read the same way",
+        "A cubin is not a standard ELF: e_type 0x8000 and e_shoff 0xCAFE are sentinels"
+      ]
+    }
+  ]
+}

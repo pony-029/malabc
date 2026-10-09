@@ -1,0 +1,63 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "One decision point, six mutations, six criteria",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "archify/workflow-ir-attribution-20261009-2340/f11-ir-attribution.html"
+  },
+  "lanes": [
+    { "id": "point", "label": "The only place a call is judged" },
+    { "id": "flow", "label": "Frontends and their outputs" },
+    { "id": "view", "label": "Downstream views" }
+  ],
+  "mainPath": ["rc", "u", "rp"],
+  "nodes": [
+    { "id": "rc", "lane": "point", "col": 0, "type": "security", "label": "resolve_calls()", "sublabel": "frontends/ir.py · the ONE decision point", "width": 250 },
+    { "id": "m", "lane": "flow", "col": 0, "type": "backend", "label": "frontends/matlab.py", "sublabel": "unresolved_tuples()", "width": 220 },
+    { "id": "e", "lane": "flow", "col": 1, "type": "backend", "label": "edges to call graph", "sublabel": "resolved calls", "width": 200 },
+    { "id": "u", "lane": "flow", "col": 2, "type": "security", "label": "unresolved", "sublabel": "build_ir writes it, once", "width": 200 },
+    { "id": "rp", "lane": "view", "col": 2, "type": "frontend", "label": "possibly missed page", "sublabel": "shown to the user", "width": 210 },
+    { "id": "at", "lane": "view", "col": 3, "type": "cloud", "label": "--binary-attach", "sublabel": "library: / gpu_kernel: / missing", "width": 240 }
+  ],
+  "edges": [
+    { "id": "rc-e", "from": "rc", "to": "e", "variant": "emphasis" },
+    { "id": "rc-u", "from": "rc", "to": "u", "variant": "emphasis" },
+    { "id": "m-u", "from": "m", "to": "u", "label": "own module", "variant": "dashed" },
+    { "id": "u-rp", "from": "u", "to": "rp" },
+    { "id": "u-at", "from": "u", "to": "at" }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Six mutations, each must trip one named criterion",
+      "items": [
+        "A new frontend carrying its own build_edges → I1 (the set of write points)",
+        "Keeping the wiring but inlining a lookup → I5 (the lowercase-lookup fingerprint)",
+        "Computing the name inside the attribution code → I4 (provenance must be structural, from the AST)",
+        "Keeping the wiring, inlining without a lookup → I1b (the shape of the write point)",
+        "Registering one extra language → I6 forward (every registered frontend must call the shared token)",
+        "Pointing the registry at a misspelled function → I6 reverse (an entry must resolve to a real callable)"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Why I1b exists",
+      "items": [
+        "I1 alone looks only at the set of write points",
+        "A change that keeps the shared call and also appends inline stays invisible to I1",
+        "The first red-path probe proved it: the mutation was caught by I5, so I1b had no independent witness until a fourth mutation was added"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Behaviour preservation, before any of this",
+      "items": [
+        "The old tree is exported with git archive HEAD and the same commands run on both sides",
+        "Ten artefacts (five command pairs of JSON + stdout) are compared byte for byte",
+        "Probe-introduced variables are masked and counted; declared differences print their values; everything else is red"
+      ]
+    }
+  ]
+}

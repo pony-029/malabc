@@ -1,0 +1,20 @@
+flowchart LR
+    subgraph SRC["源码侧"]
+        S1["matlabc --json out.json<br/>未解析调用点"]
+    end
+    subgraph BIN["二进制侧"]
+        B1["libfoo.so / bar.dll<br/>PE · ELF · Mach-O"]
+        B2["动态依赖<br/>DT_NEEDED / 导入表"]
+        B3["导出符号<br/>dynsym / 导出目录"]
+        B4["内嵌 GPU 内容<br/>CUDA fatbin · HSA code object · SPIR-V"]
+    end
+    S1 --> AT["归因引擎<br/>binfmt/attribute.py"]
+    B2 --> AT
+    B3 --> AT
+    B4 --> AT
+    B1 --> B2
+    B1 --> B3
+    B1 --> B4
+    AT --> R1["library<br/>由 libfoo.so 解释"]
+    AT --> R2["gpu_kernel<br/>它是 CUDA / AMD 算子"]
+    AT --> R3["missing<br/>确实没有来源"]

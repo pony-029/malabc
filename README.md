@@ -640,6 +640,43 @@ they check more than wording:
 
 ---
 
+## Flow Diagrams (archify)
+
+All 21 diagram blocks in this repository were located, exported verbatim and re-drawn as
+standalone interactive HTML with **archify**. The results live in [`flow/`](flow/), and every
+diagram is described in [`flow/FLOW_REPORT.md`](flow/FLOW_REPORT.md).
+
+Eight of the 21 blocks are EN/CN mirrors of the same picture, so they map to
+**13 distinct diagrams**:
+
+| Diagram | archify type | Source | What it answers |
+| --- | --- | --- | --- |
+| `F01` | architecture | `README.md` L55–97 | Which capabilities make up the tool? |
+| `F02` | architecture | `README.md` L117–138 | Why is a name left unresolved — and which evidence backs each of the three states? |
+| `F03` | workflow | `README.md` L195–206 | What does `--binary-attach` actually save? |
+| `F04` | architecture | `README.md` L261–295 | Which layers live inside the single-file kernel, and what goes in and out? |
+| `F05` | architecture | `README.md` L338–348 | Where exactly is "a call that could not be resolved" decided? |
+| `F06` | workflow | `README.md` L400–407 | What are the five steps of the fix loop, and where does a failure return? |
+| `F07` | workflow | `README.md` L447–454 | How is the CI exit code computed? |
+| `F08` | workflow | `README.md` L560–568 | Why does the baseline gate compare sets instead of counts? |
+| `F09` | lifecycle | `docs/SUPERPOWER_REVIEW_R30.md` L24–36 | How does one round of the method loop run? |
+| `F10` | workflow | `docs/SUPERPOWER_REVIEW_R30.md` L176–189 | How are the guardrails registered into the tests and CI? |
+| `F11` | workflow | `docs/SUPERPOWER_REVIEW_R44.md` L182–200 | After collapsing to one decision point, what keeps it from spreading again? |
+| `F12` | architecture | `docs/analysis/ANALYSIS_2026-10-08_MALABC_DEEP_AUDIT.md` L72–107 | What is the repository's real layering, including the import cycle? |
+| `F13` | lifecycle | `docs/analysis/ANALYSIS_2026-10-08_MALABC_DEEP_AUDIT.md` L189–208 | How does the loop guarantee it never leaves a half-applied tree? |
+
+Regenerate any diagram from its editable source:
+
+```bash
+cd flow
+node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.html --quality showcase
+```
+
+The mapping, the measured numbers behind every drawing, and the recommended next
+steps are in [`flow/FLOW_REPORT.md`](flow/FLOW_REPORT.md) and [`flow/INDEX.md`](flow/INDEX.md).
+
+---
+
 ## Documents
 
 - [docs/matlabc_USAGE.md](docs/matlabc_USAGE.md) — full command-line usage reference

@@ -1,0 +1,7 @@
+flowchart LR
+  H["HEAD tree<br/>(unmodified)"] --> R1["pytest -q"]
+  W["working tree<br/>(+ the same test set)"] --> R2["pytest -q"]
+  R1 --> C{"nodeid<br/>set difference"}
+  R2 --> C
+  C -->|"after − before"| X["regressions<br/>→ RED"]
+  C -->|"before − after"| F["fixed / renamed<br/>→ informational"]

@@ -1,0 +1,51 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Baseline gate: compare nodeid sets, not counts",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "archify/workflow-baseline-nodeids-20261009-2310/f08-baseline-nodeids.html"
+  },
+  "lanes": [
+    { "id": "head", "label": "HEAD tree (unmodified)" },
+    { "id": "work", "label": "Working tree (+ the same test set)" },
+    { "id": "diff", "label": "Set comparison", "variant": "exception" }
+  ],
+  "mainPath": ["h", "r1", "cmp", "reg"],
+  "nodes": [
+    { "id": "h", "lane": "head", "col": 0, "type": "database", "label": "HEAD tree", "sublabel": "exported via git archive", "width": 170 },
+    { "id": "r1", "lane": "head", "col": 1, "type": "backend", "label": "pytest -q", "sublabel": "collect nodeids", "width": 140 },
+    { "id": "w", "lane": "work", "col": 0, "type": "database", "label": "working tree", "sublabel": "same test set", "width": 160 },
+    { "id": "r2", "lane": "work", "col": 1, "type": "backend", "label": "pytest -q", "sublabel": "collect nodeids", "width": 140 },
+    { "id": "cmp", "lane": "diff", "col": 2, "type": "backend", "label": "nodeid set difference", "sublabel": "after - before / before - after", "width": 200 },
+    { "id": "reg", "lane": "diff", "col": 3, "type": "security", "label": "regressions", "sublabel": "-> RED", "width": 150 },
+    { "id": "fixed", "lane": "diff", "col": 4, "type": "cloud", "label": "fixed / renamed", "sublabel": "-> informational", "width": 170 }
+  ],
+  "edges": [
+    { "id": "head-run", "from": "h", "to": "r1", "variant": "emphasis" },
+    { "id": "work-run", "from": "w", "to": "r2", "variant": "emphasis" },
+    { "id": "r1-cmp", "from": "r1", "to": "cmp", "variant": "emphasis" },
+    { "id": "r2-cmp", "from": "r2", "to": "cmp", "variant": "emphasis" },
+    { "id": "cmp-reg", "from": "cmp", "to": "reg", "label": "after - before", "variant": "security", "role": "error" },
+    { "id": "cmp-fixed", "from": "cmp", "to": "fixed", "label": "before - after", "variant": "dashed", "role": "branch" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Why sets and not counts",
+      "items": [
+        "A count comparison hides a rename: one test leaves, one arrives, the total is unchanged",
+        "Set difference names the exact test that regressed"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Cost is deliberately separated",
+      "items": [
+        "Default mode is seconds: preconditions plus the guard's own two-way self-test",
+        "--full runs both trees (about 11 minutes) and must stay out of the default path"
+      ]
+    }
+  ]
+}

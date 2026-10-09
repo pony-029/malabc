@@ -1,0 +1,6 @@
+flowchart LR
+    R["review<br/>AI review / offline prompt"] --> F["fix<br/>deterministic patch engine"]
+    F --> AP["apply<br/>git apply or<br/>strict in-process validation"]
+    AP --> V["verify<br/>re-scan: no rule warns more"]
+    V --> RP["report<br/>summary report"]
+    V -.->|failed| F

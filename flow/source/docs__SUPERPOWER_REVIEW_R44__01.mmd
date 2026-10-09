@@ -1,0 +1,17 @@
+flowchart TB
+  subgraph S["唯一判定点（收拢后）"]
+    RC["frontends/ir.py<br/>resolve_calls()"]
+  end
+  RC --> E["edges → 调用图"]
+  RC --> U["unresolved"]
+  U --> RP["疑似漏检页"]
+  U --> AT["--binary-attach<br/>三态归因"]
+  M["frontends/matlab.py<br/>unresolved_tuples()"] --> U
+  subgraph V["六个变异 → 各自必须命中的判据"]
+    V1["新前端自带 build_edges"] --> C1["I1 写点集合"]
+    V2["保留接线 + 内联**带查表**"] --> C5["I5 查表谓词登记"]
+    V3["归因自己算名字"] --> C4["I4 来源结构可证"]
+    V4["保留接线 + 内联**不查表**"] --> C1B["I1b 写入形状"]
+    V5["多注册一个语言"] --> C6L["I6 语言登记前向"]
+    V6["登记表指向拼错函数"] --> C6R["I6 登记项可兑现"]
+  end

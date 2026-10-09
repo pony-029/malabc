@@ -1,0 +1,6 @@
+flowchart TD
+    S["git push / PR"] --> A["matlabc --git-diff HEAD<br/>incremental analysis"]
+    A --> J["--json --sarif<br/>--reproducible"]
+    J --> D{"--sarif-diff<br/>compare baseline"}
+    D -->|new warnings increase| F["exit 1 blocked"]
+    D -->|no increase| P["exit 0 passed"]

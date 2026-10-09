@@ -1,0 +1,33 @@
+flowchart TB
+    subgraph IN["输入层"]
+        A1[".m / .c / .py / .js<br/>工程目录"]
+        A2["analyzer_config.json<br/>或 --from-json 快照"]
+    end
+    subgraph CORE["matlabc.py · 单文件分层内核"]
+        B1["词法层<br/>scrub_source / _logical_statements"]
+        B2["解析层<br/>parse_file / analyze_calls / resolve_call"]
+        B3["数据层<br/>MatlabFunction / MatlabClass / MatlabFile"]
+        B4["分析层<br/>影响 · 依赖 · 风险度量<br/>静态检查 + 污点 + 重复指纹"]
+        B5["渲染层<br/>render_*（report/browse/json/sarif）"]
+        B1 --> B2 --> B3 --> B4 --> B5
+    end
+    subgraph OUT["输出层"]
+        C1["Markdown / HTML / Mermaid / DOT"]
+        C2["可浏览站点 --browse"]
+        C3["JSON / XML / Doxygen XML"]
+        C4["SARIF 2.1.0 / 门禁快照"]
+        C5["补丁 / 测试桩 / PR 草稿"]
+    end
+    subgraph APP["入口层"]
+        D1["matlabc.py · CLI 分析器"]
+        D2["matlabc_ask.py · 问答"]
+        D3["matlabc_flow.py · 修复闭环"]
+        D4["gui.py · tkinter 桌面 GUI"]
+        D5["matlabc_boot.py · 统一入口/打包"]
+    end
+    A1 --> B1
+    A2 --> B4
+    B5 --> C1 & C2 & C3 & C4 & C5
+    D1 & D2 & D3 & D4 --> CORE
+    D5 --> D1 & D2 & D3 & D4
+    C4 --> E1{"CI 门禁<br/>退出码 0/1"}

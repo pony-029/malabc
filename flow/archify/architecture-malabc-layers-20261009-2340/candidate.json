@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "matlabc layered architecture: one file, five internal layers",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "subtitle": "Entry and input at the top, the single-file kernel in the middle, output and the CI gate below",
+    "output": "archify/architecture-malabc-layers-20261009-2340/f04-layers.html"
+  },
+  "components": [
+    { "id": "entry", "type": "frontend", "label": "Entry Layer", "sublabel": "matlabc_boot.py routes CLI / ask / flow / GUI", "pos": [40, 40], "size": [440, 64] },
+    { "id": "in_src", "type": "database", "label": "Input: project directory", "sublabel": ".m / .c / .py / .js", "pos": [520, 40], "size": [360, 64] },
+    { "id": "in_cfg", "type": "database", "label": "Input: config / snapshot", "sublabel": "analyzer_config.json / --from-json", "pos": [900, 40], "size": [350, 64] },
+
+    { "id": "b1", "type": "backend", "label": "Lexical", "sublabel": "scrub_source / _logical_statements", "pos": [40, 220], "size": [220, 60] },
+    { "id": "b2", "type": "backend", "label": "Parser", "sublabel": "parse_file / analyze_calls", "pos": [290, 220], "size": [210, 60] },
+    { "id": "b3", "type": "backend", "label": "Data", "sublabel": "MatlabFunction · MatlabClass", "pos": [530, 220], "size": [210, 60] },
+    { "id": "b4", "type": "backend", "label": "Analysis", "sublabel": "impact · deps · risk · taint", "pos": [770, 220], "size": [250, 60] },
+    { "id": "b5", "type": "backend", "label": "Render", "sublabel": "render_* (report / json)", "pos": [1060, 220], "size": [180, 60] },
+
+    { "id": "out", "type": "cloud", "label": "Output Layer", "sublabel": "Markdown/HTML/Mermaid/DOT · --browse site · JSON/XML/Doxygen · SARIF + gate snapshot · patch / test stub / PR draft", "pos": [40, 350], "size": [1200, 64] },
+    { "id": "ci", "type": "security", "label": "CI gate", "sublabel": "exit code 0 / 1", "pos": [900, 460], "size": [340, 56] }
+  ],
+  "connections": [
+    { "id": "entry-b1", "from": "entry", "to": "b1" },
+    { "id": "src-b1", "from": "in_src", "to": "b1" },
+    { "id": "cfg-b4", "from": "in_cfg", "to": "b4" },
+    { "id": "b1-b2", "from": "b1", "to": "b2", "fromSide": "right", "toSide": "left" },
+    { "id": "b2-b3", "from": "b2", "to": "b3", "fromSide": "right", "toSide": "left" },
+    { "id": "b3-b4", "from": "b3", "to": "b4", "fromSide": "right", "toSide": "left" },
+    { "id": "b4-b5", "from": "b4", "to": "b5", "fromSide": "right", "toSide": "left" },
+    { "id": "b5-out", "from": "b5", "to": "out" },
+    { "id": "out-ci", "from": "out", "to": "ci" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "The five internal layers, in order",
+      "items": [
+        "Lexical — scrub_source / _logical_statements strip comments and strings, keep line anchors",
+        "Parser — parse_file / analyze_calls / resolve_call turn text into call sites",
+        "Data — MatlabFunction / MatlabClass / MatlabFile are the in-memory model",
+        "Analysis — impact, dependency and risk metrics, the static checks, taint, duplicate fingerprints",
+        "Render — render_* assembles report / browse / json / sarif output"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Why it is one file",
+      "items": [
+        "The whole kernel ships as matlabc.py with no third-party dependency and no install step",
+        "Only the Python 3 standard library is used, so a 3.6.5 interpreter is enough"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Five output families",
+      "items": [
+        "Documents: Markdown, HTML, Mermaid, DOT",
+        "Browsable site: --browse (click-to-jump, search, --watch)",
+        "Machine data: JSON, XML, Doxygen XML",
+        "CI: SARIF 2.1.0 plus the persisted gate snapshot",
+        "Fix loop: patch, test stub, PR description draft"
+      ]
+    }
+  ]
+}
