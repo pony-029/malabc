@@ -16399,3 +16399,105 @@ def test_r35_buildsys_link_intents_are_wired_into_binary_attach():
         assert ("BLAS" in names or "blas" in names), names
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _r36_load_fx():
+    import importlib
+    sys.path.insert(0, _R33_TOOLS)
+    try:
+        return importlib.import_module("check_binfmt_fixtures")
+    finally:
+        sys.path.pop(0)
+
+
+def test_r36_macho_thin_header_is_read_from_offset_zero():
+    """R36/K9：thin Mach-O 的 32 字节头必须从**文件偏移 0** 读。
+
+    旧实现：`parse()` 先 `f.read(4096)`（指针到 4096），`_parse_thin()` 又自己
+    `f.read(32)`。于是头部是从偏移 4096 读的：magic 恒为 0 ⇒ is64=False ⇒
+    cputype/filetype/ncmds 全零 ⇒ 整条 LC_SEGMENT_64 命令表不被遍历。
+    对 <4096 的输入这只是一次 struct.error（留下 note）；对 >4096 的输入却
+    **安静地把垃圾当头部**（实测 arch=unknown(0x0)、bits=32、sections=0）——
+    真实的 dylib 必然 >4096 字节，所以危险形态是后者。
+
+    夹具刻意 > 4096 字节，并且**在偏移 4096 埋一个诱饵头**（ppc 大端 magic +
+    ncmds=0x01000000）：一旦 K9 回归，arch 会变成诱饵里的东西而不是 x86_64，
+    失败信息一眼可辨，不会退化成一个含糊的「段数为 0」。
+    """
+    fx = _r36_load_fx()
+    binfmt = fx.binfmt
+    tmp = tempfile.mkdtemp(prefix="_t_r36mh_")
+    try:
+        p = os.path.join(tmp, "syn.dylib")
+        n = fx._make_macho(p)
+        assert n > 4096, \
+            "夹具必须 >4096 字节才能复现「安静错答案」形态，实得 %d" % n
+        decoy = (b"\xfe\xed\xfa\xce"                 # ppc 大端 32 位 magic
+                 + b"\x00\x00\x00\x12"               # cputype=18 (ppc)
+                 + b"\x00\x00\x00\x00"               # cpusubtype
+                 + b"\x00\x00\x00\x06"               # filetype=dylib
+                 + b"\x00\x00\x00\x01"               # ncmds
+                 + b"\x00\x00\x00\x48"               # sizeofcmds
+                 + b"\x00\x00\x00\x00"               # flags
+                 + b"\x00\x00\x00\x00")              # reserved
+        with io.open(p, "r+b") as fh:
+            fh.seek(4096)
+            fh.write(decoy)
+        rep = binfmt.parse(p, with_gpu=False)
+        assert rep.container == "macho", rep.container
+        assert rep.arch == "x86_64", \
+            "K9 回归：arch=%r —— 头部又是从偏移 4096 读的" % rep.arch
+        assert rep.bits == 64, "K9 回归：bits=%d（期望 64）" % rep.bits
+        assert rep.flavour == "dylib", rep.flavour
+        names = [s.name for s in rep.sections]
+        assert "__TEXT" in names, "LC_SEGMENT_64 的 __TEXT 段没解析出来：%s" % names
+        assert "__TEXT,__text" in names, "__text 节没解析出来：%s" % names
+        assert any(s.gpu_hint for s in rep.sections), \
+            "__nv_fatbin 的 GPU 段名提示丢了"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r36_macho_has_two_independent_verification_axes():
+    """R36/C''6：`verified`（有真实语料）与 `fixture_verified`（有合成夹具）必须**分开**。
+
+    只写「未验证」会让人以为连夹具都没过；只写 True 又会把合成夹具冒充成真实语料
+    —— 两种都是谎言，所以拆成两条轴，且报告措辞必须区分。
+    三个方向都钉住：
+      A) Mach-O：verified=False 且 fixture_verified=True，正文同时出现
+         「真实语料」与「合成夹具」；
+      B) PE：verified=True，正文里**不得**出现「未验证」行（反向判据）；
+      C) 两轴都缺时措辞必须与 A 不同（否则这个区分装置等于不存在）。
+    """
+    fx = _r36_load_fx()
+    binfmt = fx.binfmt
+    BR = binfmt.BinaryReport
+    tmp = tempfile.mkdtemp(prefix="_t_r36ax_")
+    try:
+        dylib = os.path.join(tmp, "syn.dylib")
+        fx._make_macho(dylib)
+        rep = binfmt.parse(dylib, with_gpu=False)
+        assert rep.verified is False, "Mach-O 不该被标 verified=True"
+        assert rep.fixture_verified is True, \
+            "Mach-O 未记 fixture_verified=True（合成夹具验证没被记录）"
+        txt = binfmt.to_text(rep)
+        assert "未验证" in txt, "报告正文里看不到「未验证」限定"
+        assert "真实语料" in txt and "合成夹具" in txt, \
+            "报告没把「无真实语料」与「有合成夹具」分开写：%r" % txt
+
+        pe = os.path.join(tmp, "syn.dll")
+        fx._make_pe(pe, sections=[(".text", bytes(32))])
+        rpe = binfmt.parse(pe, with_gpu=False)
+        assert rpe.verified is True, "PE 被误标为未验证"
+        assert "未验证" not in binfmt.to_text(rpe), \
+            "PE（已经真实语料验证）的报告里出现了「未验证」行"
+
+        t_fx = binfmt.to_text(BR(path="x", container="macho",
+                                 verified=False, fixture_verified=True))
+        t_no = binfmt.to_text(BR(path="x", container="macho",
+                                 verified=False, fixture_verified=False))
+        assert "未验证" in t_fx and "未验证" in t_no
+        assert t_fx != t_no, \
+            "两轴（有夹具/无夹具）渲染出了同一段话 —— 区分装置失效"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)

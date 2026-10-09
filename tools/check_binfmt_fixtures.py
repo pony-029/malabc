@@ -14,6 +14,11 @@
   C4  非二进制输入不得被误判为 PE/ELF/Mach-O
   C5  0xCAFEBABE 且结构不合理者不得被误判为 Mach-O fat（Java class 消歧）
   C6  PE 依赖名必须全为可打印 ASCII（防「导入表越界读出 2532 条垃圾」复现）
+  C7  PTX 的 `.entry <ident>(` 必须**后随左括号**，假命中一律不得放行
+  C8  Mach-O 的「无真实语料」必须传播为 BinaryReport.verified=False 并渲染进报告
+  C9  合成 Mach-O 夹具（LC_SEGMENT_64 段/节 + fat 切片）必须真解析出来；
+      `fixture_verified`（有夹具）与 `verified`（有真实语料）**两轴分开**，
+      报告措辞必须区分，不得把合成夹具冒充成真实语料验证
 
 一图看懂（夹具是怎么造的，以及它证明了什么）：
 
@@ -227,6 +232,93 @@ def _make_elf(path, machine=62, etype=2, osabi=0, abiver=0, sections=()):
         f.write(bytes(out))
 
 
+def _seg64(segname, vmaddr, vmsize, fileoff, filesize, sects):
+    """一个 LC_SEGMENT_64 命令的字节串（含它的节表）。
+
+    sects: [(sectname, segname, addr, size, offset)]，每节固定 80 字节。
+    布局严格对齐 loader.h：
+        cmd(4) cmdsize(4) segname[16] vmaddr(8) vmsize(8) fileoff(8) filesize(8)
+        maxprot(4) initprot(4) nsects(4) flags(4)  → 共 72 字节
+    """
+    body = bytearray()
+    body += struct.pack("<II", 0x19, 72 + 80 * len(sects))
+    body += segname.encode("latin1").ljust(16, b"\x00")
+    body += struct.pack("<QQQQ", vmaddr, vmsize, fileoff, filesize)
+    body += struct.pack("<IIII", 7, 5, len(sects), 0)
+    for sn, sgn, addr, size, off in sects:
+        body += sn.encode("latin1").ljust(16, b"\x00")
+        body += sgn.encode("latin1").ljust(16, b"\x00")
+        body += struct.pack("<QQIIIIIIII", addr, size, off, 0, 0, 0, 0, 0, 0, 0)
+    return bytes(body)
+
+
+def _make_macho(path, segments=None, cputype=0x01000007, filetype=6,
+                pad_to=0x2400):
+    """构造一个最小但结构合法的 thin Mach-O 64（little-endian）。
+
+    segments: [(segname, [(sectname, addr, size, fileoff), ...])]，默认
+              `__TEXT`（含 `__text`）+ `__nv_fatbin`（用于打 GPU 段名提示）。
+
+    ⚠ 为什么刻意补零到 **> 4096 字节**（pad_to=0x2400）：
+      旧实现里 `parse()` 先 `f.read(4096)`，`_parse_thin()` 又自己 `f.read(32)`，
+      文件指针已在 4096。于是：
+        * 输入 < 4096  → 第二次读返回空 → struct.error → 走 except 分支，**留下 note**
+        * 输入 > 4096  → 第二次读拿到 4096 处的垃圾 → **安静地给出错误答案**
+      真实 dylib 必然 > 4096 字节，所以真实世界的形态是后者（更危险）。
+      夹具必须复现**危险的那一种**，否则护栏只挡住了会自己喊疼的失败。
+    """
+    if segments is None:
+        segments = [
+            ("__TEXT", [("__text", 0x1000, 0x100, 0x1000)]),
+            ("__nv_fatbin", [("__nv_fatbin", 0x2000, 0x40, 0x2000)]),
+        ]
+    cmds = []
+    vm = 0
+    for segname, sects in segments:
+        sects3 = [(sn, segname, addr, size, off) for sn, addr, size, off in sects]
+        cmds.append(_seg64(segname, vm, 0x1000, vm, 0x1000, sects3))
+        vm += 0x1000
+    sizeofcmds = sum(len(c) for c in cmds)
+    out = bytearray()
+    out += b"\xcf\xfa\xed\xfe"                       # MH_MAGIC_64
+    out += struct.pack("<IIIIII", cputype, 3, filetype, len(cmds), sizeofcmds, 0)
+    out += struct.pack("<I", 0)                      # reserved
+    for c in cmds:
+        out += c
+    if pad_to and len(out) < pad_to:
+        out += b"\x00" * (pad_to - len(out))
+    with io.open(path, "wb") as f:
+        f.write(bytes(out))
+    return len(out)
+
+
+def _make_macho_fat(path, nslices=2):
+    """构造一个最小 fat Mach-O（big-endian 头 + n 个 thin 切片）。"""
+    per = 20
+    hdr_len = 8 + nslices * per
+    slices = []
+    for i in range(nslices):
+        body = bytearray()
+        body += b"\xcf\xfa\xed\xfe"
+        body += struct.pack("<IIIIII", 0x01000007 - (i and 1) * 0x01000000,
+                            3, 6, 0, 0, 0)
+        body += struct.pack("<I", 0)
+        slices.append(bytes(body))
+    out = bytearray()
+    out += b"\xca\xfe\xba\xbe" + struct.pack(">I", nslices)
+    off = hdr_len
+    for i, s in enumerate(slices):
+        out += struct.pack(">IIIII", 0x01000007 - (i and 1) * 0x01000000,
+                           3, off, len(s), 0)
+        off += len(s)
+    for s in slices:
+        out += s
+    out += b"\x00" * 64
+    with io.open(path, "wb") as f:
+        f.write(bytes(out))
+    return len(out)
+
+
 # ---------------------------------------------------------------- 断言
 
 def _check(findings, cond, msg):
@@ -369,6 +461,44 @@ def analyze(tmpdir):
     _check(findings, getattr(rep, "verified", False) is True,
            "C8: PE 报告被误标为未验证（反向判据失败）")
 
+    # ---- C9（R36/C''6）：合成 Mach-O 夹具 —— 把「无真实语料」推进到「有夹具验证」 ----
+    # 这段就是 R36 抓到 K9 的那个夹具：结构完整、> 4096 字节的 thin Mach-O 64。
+    ma = os.path.join(tmpdir, "f_struct.dylib")
+    _make_macho(ma)
+    rep11 = binfmt.parse(ma, with_gpu=False)
+    _check(findings, rep11.container == "macho",
+           "C9: 结构夹具未被识别为 macho（%s）" % rep11.container)
+    _check(findings, rep11.arch == "x86_64",
+           "C9: Mach-O arch=%s（期望 x86_64）" % rep11.arch)
+    _check(findings, rep11.bits == 64,
+           "C9: Mach-O bits=%d（期望 64）" % rep11.bits)
+    _check(findings, rep11.flavour == "dylib",
+           "C9: Mach-O flavour=%r（期望 dylib）" % rep11.flavour)
+    s9 = [s.name for s in rep11.sections]
+    _check(findings, "__TEXT" in s9,
+           "C9: LC_SEGMENT_64 的 __TEXT 段未解析（得到 %s）" % s9)
+    _check(findings, "__TEXT,__text" in s9,
+           "C9: __TEXT 段内的 __text 节未解析（得到 %s）" % s9)
+    _check(findings, any(s.gpu_hint for s in rep11.sections),
+           "C9: __nv_fatbin 的 GPU 段名提示未命中")
+    _check(findings, getattr(rep11, "fixture_verified", False) is True,
+           "C9: Mach-O 未记 fixture_verified=True（合成夹具验证没被记录）")
+    _check(findings, getattr(rep11, "verified", True) is False,
+           "C9: Mach-O 被误标 verified=True（合成夹具 ≠ 真实语料）")
+    txt9 = binfmt.to_text(rep11)
+    _check(findings, "真实语料" in txt9 and "合成夹具" in txt9,
+           "C9: 报告没把「无真实语料」与「有合成夹具」分开写（等于没区分）")
+    _check(findings, "未验证" not in binfmt.to_text(rep),
+           "C9: PE（已经真实语料验证）的报告里出现了「未验证」行（反向判据失败）")
+
+    mf = os.path.join(tmpdir, "f_fat.dylib")
+    _make_macho_fat(mf, 2)
+    rep12 = binfmt.parse(mf, with_gpu=False)
+    _check(findings, rep12.container == "macho",
+           "C9: fat Mach-O 未被识别（%s）" % rep12.container)
+    _check(findings, rep12.flavour == "fat",
+           "C9: fat 标记缺失（flavour=%r）" % rep12.flavour)
+
     return findings
 
 
@@ -508,8 +638,31 @@ def selftest():
         else:
             print("  [selftest] 好样本7 被误伤：%s" % gfind3[:1])
 
+        # 样本8（好）：C9 的「两轴必须分开」装置 —— fixture_verified 真/假必须渲染出
+        # **不同**的话，且两句都仍带「未验证」。若两句一模一样，说明区分装置失效。
+        r_fx = _BR(path="x", container="macho", verified=False, fixture_verified=True)
+        r_no = _BR(path="x", container="macho", verified=False, fixture_verified=False)
+        t_fx, t_no = binfmt.to_text(r_fx), binfmt.to_text(r_no)
+        if ("未验证" in t_fx and "未验证" in t_no and t_fx != t_no):
+            good += 1
+        else:
+            print("  [selftest] 好样本8 被误伤（两轴措辞没有区分开）")
+
+        # 样本9（坏）：C9 断言必须能对「没记夹具验证」的对象报红。
+        # 与样本2/5 同理 —— 合法输入构造不出违规（macho.parse 自己会标 True），
+        # 所以自证对象是**断言函数本身**。
+        viol2 = _BR(path="x", container="macho", verified=False,
+                    fixture_verified=False)
+        c9find = []
+        _check(c9find, getattr(viol2, "fixture_verified", False) is True,
+               "C9: Mach-O 未记录合成夹具验证")
+        if c9find:
+            bad += 1
+        else:
+            print("  [selftest] 坏样本5 未触发（C9 夹具验证判据失去检测力）")
+
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
-    return 0 if (bad >= 3 and good >= 2) else 1
+    return 0 if (bad >= 4 and good >= 4) else 1
 
 
 # ---------------------------------------------------------------- main
@@ -543,7 +696,8 @@ def main(argv):
         return 1
     print("check_binfmt_fixtures: OK（PE/ELF 解析、GPU 段识别、magic 兜底、"
           "契约 C1/C2/C3/C4/C5/C6 + R33 新增 C7(PTX .entry 括号判据)/"
-          "C8(Mach-O 未验证传播) 全部通过）")
+          "C8(Mach-O 未验证传播) + R36 新增 C9(合成 Mach-O 夹具：LC_SEGMENT_64 "
+          "段/节解析、fat 切片、fixture_verified 两轴) 全部通过）")
     return 0
 
 

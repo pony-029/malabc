@@ -228,7 +228,7 @@ class BinaryReport(object):
     def __init__(self, path="", container="", arch="", bits=0, endian="",
                  flavour="", sections=None, symbols=None, dependencies=None,
                  gpu_blobs=None, notes=None, scanned_bytes=0, truncated=False,
-                 verified=True):
+                 verified=True, fixture_verified=True):
         self.path = path
         self.container = container    # pe / elf / macho
         self.arch = arch              # x86_64 / aarch64 / amdgpu / cuda / unknown
@@ -243,10 +243,14 @@ class BinaryReport(object):
         self.notes = [] if notes is None else notes
         self.scanned_bytes = scanned_bytes
         self.truncated = truncated
-        # R33/C'5：验证等级。False = 本模块**未经真实语料验证**（如本机无 Mach-O
-        # 样本），结论必须带限定。这是**机器可读字段**，不是只写进 docstring ——
-        # 声明在源码里而用户在报告里看不到，等于没说。
+        # ---- 验证等级：**两条独立轴**，绝不合并成一个布尔 ----
+        # verified        = 有**真实语料**（厂商真实文件）验证
+        # fixture_verified= 有**合成夹具**验证
+        # R33/C'5 先立了第一轴（PE/ELF=True，Mach-O=False），
+        # R36/C''6 补第二轴：Mach-O 从此「有夹具验证但仍无真实语料」，报告措辞
+        # 必须把两者分开写 —— 只写「未验证」会让人以为连夹具都没过。
         self.verified = verified
+        self.fixture_verified = fixture_verified
 
     def __repr__(self):
         return ("BinaryReport(path=%r, container=%r, arch=%r, sections=%d, "
@@ -283,6 +287,7 @@ class BinaryReport(object):
             "scanned_bytes": self.scanned_bytes,
             "truncated": self.truncated,
             "verified": self.verified,
+            "fixture_verified": self.fixture_verified,
         }
 
 

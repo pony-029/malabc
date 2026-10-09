@@ -41,11 +41,18 @@ def to_text(rep, max_kernels=20, max_sections=40, max_deps=30):
                 rep.endian or "?", rep.flavour or "?"))
     L.append("symbols   : %d   dependencies: %d   gpu_blobs: %d"
              % (len(rep.symbols), len(rep.dependencies), len(rep.gpu_blobs)))
-    # R33/C'5：验证等级必须出现在**报告里**，不能只写在源码 docstring 里。
+    # R33/C'5 + R36/C''6：验证等级必须出现在**报告里**，不能只写在源码 docstring 里。
     # 报告是用户唯一会读的东西；声明在那儿看不到，等于没说。
+    # 两条轴分开写：「无真实语料」与「无任何验证」是**不同**的话 ——
+    # 前者意味着合成夹具已经过了，后者意味着连夹具都没有。
     if not getattr(rep, "verified", True):
-        L.append("verified  : NO  ⚠ 未验证 —— 本容器（%s）本机无真实语料，"
-                 "结论仅供参考" % (rep.container or "?"))
+        _fx = getattr(rep, "fixture_verified", False)
+        if _fx:
+            L.append("verified  : NO  ⚠ 未验证（无**真实语料**，本机无该容器样本）"
+                     "；已过合成夹具 —— 结论仅供参考")
+        else:
+            L.append("verified  : NO  ⚠ 未验证（**既无真实语料也无合成夹具**）"
+                     " —— 结论仅供参考")
     L.append("=" * 78)
 
     if rep.sections:
@@ -139,4 +146,6 @@ def to_summary_line(rep):
     return "%-10s %-10s %-8s sym=%-6d dep=%-4d %s%s" % (
         rep.container or "?", rep.arch or "?", rep.flavour or "?",
         len(rep.symbols), len(rep.dependencies), gpu,
-        "" if getattr(rep, "verified", True) else "  [UNVERIFIED]")
+        "" if getattr(rep, "verified", True) else
+        ("  [UNVERIFIED/NO-CORPUS]" if getattr(rep, "fixture_verified", False)
+         else "  [UNVERIFIED/NONE]"))

@@ -10,8 +10,10 @@
     ──────────  ─────────────  ──────────  ──────────────────────────
 
   为什么没有：本机是 Windows；WSL 被安全策略禁用；网络受限无法下载 macOS 样本。
-  因此本模块只有合成夹具。任何依赖它的结论都必须在报告里带上这个限定 ——
-  不允许把它与「已用真实文件验证」的 PE/ELF 混为一谈。
+  因此本模块只有合成夹具。R36/C''6 起，这张表被编码成**两个机器可读字段**
+  （`BinaryReport.verified` / `.fixture_verified`）并渲染进报告正文 ——
+  任何依赖它的结论都必须在报告里带上这个限定，不允许把它与「已用真实文件验证」
+  的 PE/ELF 混为一谈。措辞也必须分开：只说「未验证」会让人以为连夹具都没过。
 
 一个真实的歧义：Mach-O fat binary 的 magic 0xCAFEBABE 与 Java class 文件相同。
 本模块用「nfat_arch 合理性 + 每个 arch 的 offset/size 是否落在文件内」做消歧；
@@ -101,9 +103,14 @@ def _looks_like_fat(head, fsize):
 
 def parse(path, scan_cap=None):
     import os
-    # R33/C'5：整份报告标为**未验证**。这是机器可读字段（report.py 会渲染成
-    # `verified  : NO (…unverified…)`），不是只写在 docstring 里。
-    rep = BinaryReport(path=path, container=CONTAINER_MACHO, verified=False)
+    # R33/C'5 + R36/C''6：**两条验证轴分开写**。
+    #   verified=False         —— 没有真实语料（本机 Windows，无 macOS 样本）
+    #   fixture_verified=True  —— 有合成夹具（tools/check_binfmt_fixtures.py::_make_macho
+    #                             会造出带 LC_SEGMENT_64 的真结构 thin Mach-O 64 并断言）
+    # 只写 verified=False 会让人误以为「连夹具都没过」；只写 True 又会把合成夹具
+    # 冒充成真实语料验证 —— 两种都是谎言，所以分成两个字段。
+    rep = BinaryReport(path=path, container=CONTAINER_MACHO, verified=False,
+                       fixture_verified=True)
     try:
         fsize = os.path.getsize(path)
     except OSError:
@@ -114,7 +121,8 @@ def parse(path, scan_cap=None):
         if not sniff(head):
             rep.notes.append("Mach-O: 魔数不匹配")
             return rep
-        rep.notes.append("Mach-O: ⚠ 未经真实语料验证（本机无 Mach-O 样本）")
+        rep.notes.append("Mach-O: ⚠ 未经**真实语料**验证（本机无 Mach-O 样本）；"
+                         "已通过合成夹具（LC_SEGMENT_64 段/节 + fat 切片）")
         magic = head[:4]
         if magic == b"\xca\xfe\xba\xbe":
             if not _looks_like_fat(head, fsize):
@@ -122,7 +130,12 @@ def parse(path, scan_cap=None):
                 return rep
             return _parse_fat(f, head, rep, fsize)
         endian = "<" if magic in (b"\xce\xfa\xed\xfe", b"\xcf\xfa\xed\xfe") else ">"
-        return _parse_thin(f, rep, endian)
+        # R36/K9：**必须把已经读到的 head 传下去**。旧实现在这里让 _parse_thin
+        # 自己 `f.read(32)` —— 而文件指针此刻已在 4096，于是 32 字节头部是从
+        # 文件偏移 4096 读的：magic 恒为 0 ⇒ is64=False ⇒ cputype/filetype/ncmds
+        # 全零 ⇒ 整条命令表不被遍历。**不报错，只是安静地给出错误答案**
+        # （实测：arch=unknown(0x0)、bits=32、sections=0）。这比崩溃更危险。
+        return _parse_thin(f, rep, endian, head)
     except (OSError, struct.error) as e:
         rep.notes.append("Mach-O: 解析中断 %s: %s" % (type(e).__name__, e))
         return rep
@@ -143,8 +156,12 @@ def _parse_fat(f, head, rep, fsize):
     return rep
 
 
-def _parse_thin(f, rep, endian):
-    head = f.read(32)
+def _parse_thin(f, rep, endian, head):
+    # R36/K9：head 由调用方从**文件开头**读入并传入；这里绝不再 f.read()。
+    head = head[:32]
+    if len(head) < 28:
+        rep.notes.append("Mach-O: 文件不足 28 字节，无法解析 thin 头")
+        return rep
     mv = int.from_bytes(head[:4], "little" if endian == "<" else "big")
     is64 = mv in (MH_MAGIC_64, MH_CIGAM_64)
     cputype, cpusub, filetype, ncmds, sizeofcmds, flags = \
