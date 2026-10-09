@@ -69,7 +69,41 @@ import tempfile
 
 
 def _is_git_repo(directory):
-    return os.path.isdir(os.path.join(directory, ".git"))
+    """`directory` 是不是 git 仓库 —— **两种形态**都算。
+
+    ① 普通仓库 / 子模块：`.git` 是**目录**。
+    ② `git worktree add` 出来的工作树：`.git` 是**文件**，首行 `gitdir: <路径>`
+       指向真正的 git 目录（通常是主仓 `.git/worktrees/<name>`）。
+
+    旧实现只认 ①（`os.path.isdir(directory/.git)`）：worktree 里恒判「不是仓」，
+    于是**白白退回进程内快照**（明明有 git 回退可用）。那是判据自己的缺陷。
+
+    `gitdir:` 指向的目标**必须真的存在且是目录** —— 只看到 `gitdir:` 字样就放行，
+    等于把「是不是仓」换成「像不像仓」，会把**损坏的**工作树也算成仓。
+
+    ⚠ 本函数在 `tools/check_baseline.py` 有一份**独立同义**实现（tools 不 import
+      产品模块），两者在 `tests/test_matlabc.py::test_r54_git_repo_detection_*`
+      上被强制**逐例一致**。
+    """
+    dot = os.path.join(directory, ".git")
+    if os.path.isdir(dot):
+        return True
+    if not os.path.isfile(dot):
+        return False
+    try:
+        with io.open(dot, "r", encoding="utf-8", errors="replace") as fh:
+            first = fh.readline()
+    except (OSError, IOError):
+        return False
+    first = first.strip()
+    if not first.startswith("gitdir:"):
+        return False
+    target = first[len("gitdir:"):].strip()
+    if not target:
+        return False
+    if not os.path.isabs(target):
+        target = os.path.join(directory, target)
+    return os.path.isdir(target)
 
 
 def _patch_targets(patch_text):

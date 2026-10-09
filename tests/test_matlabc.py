@@ -16630,6 +16630,102 @@ def _r37_load(name):
         sys.path.pop(0)
 
 
+def test_r54_git_repo_detection_accepts_worktree_form():
+    """R54 / C1：判「是不是 git 仓库」必须接受 `git worktree` 形态。
+
+    旧判据是 `os.path.isdir(root/.git)`。`git worktree add` 出来的工作树里
+    `.git` 是**文件**（首行 `gitdir: <主仓>/.git/worktrees/<name>`），于是判据恒否：
+    `tools/check_baseline.py` 默认模式的 P1 报红 ⇒ `check_all` 跑不完 ⇒ 用 worktree
+    起的**对照组只能跑 pytest**、证不了门禁（R53 实测）。那是**测量工具自己**的缺陷。
+
+    本测试同时钉住三件事：
+      ① **修对了**：worktree 形态被认成仓（反向判据：修前必红）；
+      ② **没修歪**：损坏的 worktree（`gitdir:` 指向不存在目录）与「`.git` 是文件
+         却没有 `gitdir:`」**仍然**不是仓 —— 不许把「像仓」当仓；
+      ③ 两份**独立实现**（`agent_loop._is_git_repo` 与
+         `tools/check_baseline.py::_is_git_repo`）在全部样本上**逐例一致**。
+    """
+    cb = _r37_load("check_baseline")
+    spec = importlib.util.spec_from_file_location(
+        "_r54_agent_loop", os.path.join(ROOT, "agent_loop.py"))
+    al = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(al)
+
+    def _w54(p, text):
+        fh = io.open(p, "w")
+        try:
+            fh.write(text)
+        finally:
+            fh.close()
+
+    with tempfile.TemporaryDirectory() as td:
+        def mk(name):
+            d = os.path.join(td, name)
+            os.makedirs(d)
+            return d
+
+        cases = []
+
+        # ① 普通仓库：`.git` 是目录
+        a = mk("plain")
+        os.makedirs(os.path.join(a, ".git"))
+        cases.append(("普通仓库(.git 是目录)", True, a))
+
+        # ② worktree：`.git` 是文件，gitdir 用**相对**路径
+        b = mk("wt_rel")
+        os.makedirs(os.path.join(td, "store_rel"))
+        _w54(os.path.join(b, ".git"), "gitdir: ../store_rel" + chr(10))
+        cases.append(("worktree(.git 文件/相对 gitdir)", True, b))
+
+        # ③ worktree：`.git` 是文件，gitdir 用**绝对**路径
+        c = mk("wt_abs")
+        store = os.path.join(td, "store_abs")
+        os.makedirs(store)
+        _w54(os.path.join(c, ".git"), "gitdir: " + store + chr(10))
+        cases.append(("worktree(.git 文件/绝对 gitdir)", True, c))
+
+        # ④ 反例：没有 `.git`
+        cases.append(("无 .git", False, mk("none")))
+
+        # ⑤ 反例：损坏的 worktree（gitdir 指向不存在目录）
+        e = mk("wt_dangling")
+        _w54(os.path.join(e, ".git"),
+             "gitdir: " + os.path.join(td, "nope") + chr(10))
+        cases.append(("损坏 worktree(gitdir 悬空)", False, e))
+
+        # ⑥ 反例：`.git` 是文件但没有 `gitdir:` 前缀
+        f = mk("wt_badline")
+        _w54(os.path.join(f, ".git"), "not a gitdir line" + chr(10))
+        cases.append(("`.git` 文件无 gitdir: 前缀", False, f))
+
+        # ⑦ 反例：`gitdir:` 后为空
+        g = mk("wt_empty")
+        _w54(os.path.join(g, ".git"), "gitdir:" + chr(10))
+        cases.append(("`gitdir:` 后为空", False, g))
+
+        for tag, want, d in cases:
+            got_a = al._is_git_repo(d)
+            got_c = cb._is_git_repo(d)
+            assert got_a == want, \
+                "agent_loop._is_git_repo(%s)：得到 %s 期望 %s" % (tag, got_a, want)
+            assert got_c == want, \
+                "check_baseline._is_git_repo(%s)：得到 %s 期望 %s" % (tag, got_c, want)
+            assert got_a == got_c, \
+                "两份独立实现在 %s 上不一致：%s vs %s" % (tag, got_a, got_c)
+
+        # ⑧ P1 在 worktree 形态下**不得**报红（这是对照组能跑 check_all 的前提）
+        problems = []
+        cb.check_prerequisites(b, problems.append)
+        p1 = [p for p in problems if p.startswith("P1")]
+        assert not p1, "worktree 形态下 P1 仍报红：%r" % p1
+
+        # ⑨ P1 在真·非仓库目录里**必须**报红（否则这条判据就是洗白）
+        problems = []
+        cb.check_prerequisites(os.path.join(td, "none"), problems.append)
+        assert any(p.startswith("P1") for p in problems), \
+            "非仓库目录下 P1 未报红 —— 判据被洗白了"
+
+
 def test_r37_baseline_compares_failure_sets_not_counts():
     """R37/C''7：公平基线必须按 **nodeid 集合** 比对，而不是比失败**个数**。
 

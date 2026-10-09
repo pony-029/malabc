@@ -544,7 +544,7 @@ python tools/check_all.py        # runs every tools/check_*.py AND its --selftes
 
 | Gate | What it stops |
 | --- | --- |
-| `check_baseline.py` | "Did this change make the suite worse?" — answered by comparing failure **nodeid sets**, not counts. This suite is *not* green, so counts prove nothing: 124 → 123 can be "fixed one" or "fixed two, broke one". `--full` runs both sides; the default mode checks preconditions and self-tests the verdict logic |
+| `check_baseline.py` | "Did this change make the suite worse?" — answered by comparing failure **nodeid sets**, not counts. This suite is *not* green, so counts prove nothing: 124 → 123 can be "fixed one" or "fixed two, broke one". `--full` runs both sides; the default mode checks preconditions and self-tests the verdict logic. A "repository" counts in **both** git forms: `.git` a directory, or `.git` a file whose first line is `gitdir:` pointing at an **existing** directory (`git worktree add`) — the old check accepted only the former, so a worktree could not run `check_all` at all (R54) |
 | `check_doc_flags.py` | Documentation **or a help screen** advertising a CLI flag that does not exist (this really happened: the README said `--check tainted_sink`, which argparse rejects as an **ambiguous prefix**) |
 | `check_operator_impl.py` | "Phantom operators" (a rule in the catalog that no code path emits), contradictions between the catalog and the not-implemented table, and **a "we don't do this" that never reaches `--help`** |
 | `check_patch_ops.py` | Patch operators that overwrite a target line instead of inserting before it (which would silently delete source) |

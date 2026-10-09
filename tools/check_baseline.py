@@ -43,8 +43,15 @@
 默认路径，所有人都会开始绕开 check_all —— 那时的实际覆盖率是 **0**，比慢更糟。
 所以进 check_all 的是「机制自证 + 前置条件体检」，真基线由人显式触发。
 
-    体检能证的：仓库可导出 HEAD、测试集在、git/pytest 可用、判定逻辑正反都灵
+    体检能证的：仓库可导出 HEAD（**含 `git worktree` 形态：`.git` 是文件**）、
+                测试集在、git/pytest 可用、判定逻辑正反都灵
     体检不证的：**这一版相对上一版到底有没有回归** —— 那需要 --full
+
+    ⚠ 「仓库」的判据见 `_is_git_repo()`：**两种形态都算** —— `.git` 是目录（普通仓库），
+      或 `.git` 是首行 `gitdir:` 指向**存在目录**的文件（`git worktree`）。旧实现只认
+      前者，于是在 worktree 里恒判「不是仓」、`check_all` 跑不完 ⇒ 用
+      `git worktree add` 起的**对照组只能跑 pytest**、证不了门禁（R53 实测）。
+      那是**测量工具自己**的缺陷，不是被测对象的。
 
 退出码：0 = 通过（默认模式：机制+前置条件；--full：无回归）；1 = --full 发现回归，或机制自证失败；2 = 缺输入/环境不可用
 
@@ -116,6 +123,43 @@ def baseline_problems(before, after, on_problem):
 
 # ---------------------------------------------------------------- 前置条件
 
+def _is_git_repo(root):
+    """`root` 是不是 git 仓库 —— **两种形态**都算。
+
+    ① 普通仓库 / 子模块：`.git` 是**目录**。
+    ② `git worktree add` 出来的工作树：`.git` 是**文件**，首行 `gitdir: <路径>`
+       指向真正的 git 目录（主仓 `.git/worktrees/<name>`）。
+
+    ⚠ 旧实现只认 ①（`os.path.isdir(root/.git)`）：worktree 里 P1 恒红、
+      `check_all` 跑不完（R53 实测）——那是**测量工具自己**的缺陷。
+
+    ⚠ `gitdir:` 指向的目标**必须真的存在且是目录**：只看到 `gitdir:` 字样就放行，
+      等于把「是不是仓」换成「像不像仓」，会把**损坏的**工作树也算成仓。
+
+    ⚠ 与 `agent_loop.py::_is_git_repo` 是**两份实现**（tools 不 import 产品模块），
+      但 `tests/test_matlabc.py::test_r54_git_repo_detection_*` 强制二者**逐例一致**。
+    """
+    dot = os.path.join(root, ".git")
+    if os.path.isdir(dot):
+        return True
+    if not os.path.isfile(dot):
+        return False
+    try:
+        with io.open(dot, "r", encoding="utf-8", errors="replace") as fh:
+            first = fh.readline()
+    except (OSError, IOError):
+        return False
+    first = first.strip()
+    if not first.startswith("gitdir:"):
+        return False
+    target = first[len("gitdir:"):].strip()
+    if not target:
+        return False
+    if not os.path.isabs(target):
+        target = os.path.join(root, target)
+    return os.path.isdir(target)
+
+
 def _git(repo, argv, timeout=120):
     return subprocess.run(["git"] + list(argv), cwd=repo,
                           stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -126,8 +170,9 @@ def check_prerequisites(root, on_problem):
     """默认模式能真做的体检（不跑测试）。返回体检项数。"""
     n = 0
     n += 1
-    if not os.path.isdir(os.path.join(root, ".git")):
-        on_problem("P1 %s 不是 git 仓库：无法导出 HEAD（基线的前提）" % root)
+    if not _is_git_repo(root):
+        on_problem("P1 %s 不是 git 仓库（`.git` 既不是目录，也不是首行 `gitdir:` "
+                   "指向存在目录的文件）：无法导出 HEAD（基线的前提）" % root)
     n += 1
     try:
         r = _git(root, ["rev-parse", "HEAD^{tree}"])
@@ -438,6 +483,70 @@ def selftest():
     e, u, s = classify_fixed([], {"x::t": "原因"})
     _expect("R43 坏样本：登记了却没出现 -> 陈旧登记，必须报（抓到）",
             bool(s), True, tally)
+
+    # ---- R54：`_is_git_repo` 必须接受 **worktree 形态**（`.git` 是文件） ----
+    #
+    # 旧判据 `os.path.isdir(root/.git)` 在 `git worktree add` 出来的树里恒判否
+    # ⇒ P1 红 ⇒ check_all 跑不完 ⇒ 用 worktree 起的**对照组只能跑 pytest**
+    # （R53 实测）。这是**测量工具自己**的缺陷。下面是它的两向判据。
+    #
+    # 约定：`detected` = 判据认为「有问题」；这里「有问题」= **不是仓** = `not _is_git_repo`。
+    import tempfile as _tf54
+    with _tf54.TemporaryDirectory() as _td54:
+        def _n54(name):
+            d = os.path.join(_td54, name)
+            os.makedirs(d)
+            return d
+
+        def _w54(d, text):
+            fh = io.open(os.path.join(d, ".git"), "w")
+            try:
+                fh.write(text)
+            finally:
+                fh.close()
+
+        # 好样本①：`.git` 是目录（普通仓库 / 子模块）
+        _p = _n54("plain")
+        os.makedirs(os.path.join(_p, ".git"))
+        _expect("R54 好样本：`.git` 是目录 -> 是仓",
+                not _is_git_repo(_p), False, tally)
+
+        # 好样本②：`.git` 是文件，`gitdir:` **相对**指向存在的目录（worktree 形态）
+        _w = _n54("wt_rel")
+        os.makedirs(os.path.join(_td54, "store_rel"))
+        _w54(_w, "gitdir: ../store_rel" + chr(10))
+        _expect("R54 好样本：`.git` 文件 + gitdir 相对指向存在目录 -> 是仓",
+                not _is_git_repo(_w), False, tally)
+
+        # 好样本③：`.git` 是文件，`gitdir:` **绝对**路径指向存在的目录
+        _a = _n54("wt_abs")
+        _store = os.path.join(_td54, "store_abs")
+        os.makedirs(_store)
+        _w54(_a, "gitdir: " + _store + chr(10))
+        _expect("R54 好样本：`.git` 文件 + gitdir 绝对指向存在目录 -> 是仓",
+                not _is_git_repo(_a), False, tally)
+
+        # 坏样本①：没有 `.git`
+        _expect("R54 坏样本：没有 `.git` -> 不是仓",
+                not _is_git_repo(_n54("none")), True, tally)
+
+        # 坏样本②：`.git` 指向**不存在**的目录（损坏的 worktree）—— 不许当仓
+        _d = _n54("wt_dangling")
+        _w54(_d, "gitdir: " + os.path.join(_td54, "nope") + chr(10))
+        _expect("R54 坏样本：gitdir 指向不存在目录 -> 不是仓（不许把『像仓』当仓）",
+                not _is_git_repo(_d), True, tally)
+
+        # 坏样本③：`.git` 是文件但没有 `gitdir:` 前缀
+        _b = _n54("wt_badline")
+        _w54(_b, "not a gitdir line" + chr(10))
+        _expect("R54 坏样本：`.git` 文件无 gitdir: 前缀 -> 不是仓",
+                not _is_git_repo(_b), True, tally)
+
+        # 坏样本④：`gitdir:` 后为空
+        _e = _n54("wt_empty")
+        _w54(_e, "gitdir:" + chr(10))
+        _expect("R54 坏样本：gitdir: 后为空 -> 不是仓",
+                not _is_git_repo(_e), True, tally)
     # 真实仓库的登记必须**确实是被解释掉的那一条**（否则登记名写错也看不出来）
     _expect("R43 好样本：真实登记键指向 test_r30 那条",
             not any("test_r30_static_guards_all_clean" in k
@@ -526,7 +635,7 @@ def selftest():
                 not ("d6" in msg and len(msg) >= 20), False, tally)
 
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (tally[0], tally[1]))
-    return 0 if (tally[0] >= 7 and tally[1] >= 9) else 1
+    return 0 if (tally[0] >= 11 and tally[1] >= 12) else 1
 
 
 # ---------------------------------------------------------------- main
