@@ -17439,6 +17439,73 @@ def test_r44_independent_recheck_lowercase_index_lookup_sites():
                          "几乎必然是把判定规则又抄了一遍" % (sorted(got), sorted(want)))
 
 
+def test_r51_boundary_contract_can_say_no():
+    """R51/C''''2：守「诚实的边界」的判据必须**能说不**（一正五反）。
+
+    只跑一遍 rc=0 不能说明这条判据存在 —— 这里直接喂合成/改写过的帮助正文，
+    要求五种坏法**各自**被它该抓的那条判据抓到：
+      B3 逐字（抹掉 token）/ B1 未登记（多一条边界）/ B2 陈旧（登记了不存在的边界）
+      B4 理由太短 / B0 小节消失。
+    """
+    hc = _r37_load("check_help_contract")
+    real = hc._docstring(os.path.join(ROOT, "matlabc.py"))[1]
+    assert real, "读不到 matlabc.py 的模块 docstring"
+    probs, nb = hc.boundary_verdict(real, hc.BOUNDARY_CLAIMS)
+    assert probs == [], probs
+    # 没有魔法数字：登记表条数必须**等于**小节里 bullet 条数（互为对手方的直接后果）
+    assert nb == len(hc.BOUNDARY_CLAIMS) >= 8, (nb, len(hc.BOUNDARY_CLAIMS))
+
+    p3 = hc.boundary_verdict(real.replace("ltrace", "LTRACE"),
+                             hc.BOUNDARY_CLAIMS)[0]
+    assert any(x.startswith("B3") for x in p3), p3
+    p1 = hc.boundary_verdict(
+        real.replace("  * GPU：CUDA", "  * 新边界：不做\n  * GPU：CUDA", 1),
+        hc.BOUNDARY_CLAIMS)[0]
+    assert any(x.startswith("B1") for x in p1), p1
+    stale = tuple(hc.BOUNDARY_CLAIMS) + (
+        {"head": "早已删除的边界：", "help_must": (),
+         "reason": "用来测陈旧登记必须被抓出来"},)
+    p2 = hc.boundary_verdict(real, stale)[0]
+    assert any(x.startswith("B2") for x in p2), p2
+    short = tuple({"head": c["head"], "help_must": c["help_must"], "reason": "短"}
+                  for c in hc.BOUNDARY_CLAIMS)
+    p4 = hc.boundary_verdict(real, short)[0]
+    assert any(x.startswith("B4") for x in p4), p4
+    p0 = hc.boundary_verdict("# 没有这一节\n", hc.BOUNDARY_CLAIMS)[0]
+    assert any(x.startswith("B0") for x in p0), p0
+
+    # 这条判据真的**接在门里**（不是写了个没人调的函数）
+    r = _r31_run([os.path.join("tools", "check_help_contract.py")], timeout=180)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[-1200:]
+    assert "诚实的边界」" in out, out[-800:]
+
+
+def test_r51_runtime_binding_named_everywhere():
+    """R51/C''''2：运行期绑定的**替代装置**必须逐字出现在帮助与两侧 README。
+
+    这是本轮真正补上的那条洞：修前三个 token 在帮助正文、README.md、README_CN.md
+    里**各是 0 次**（独立装置 `_r51/probe_boundary_contract.py` 实测）。
+    只写「不跟踪运行期绑定」等于把一个死胡同交给用户 —— 边界必须是**可执行的**。
+    """
+    hc = _r37_load("check_help_contract")
+    toks = hc.RUNTIME_BINDING_TOOLS
+    assert toks == ("ltrace", "strace -e openat", "LD_DEBUG=bindings"), toks
+    helpdoc = hc._docstring(os.path.join(ROOT, "matlabc.py"))[1]
+    for t in toks:
+        assert t in helpdoc, ("帮助正文里没有点名 %r —— 只写「不做」不写替代手段，"
+                             "用户只能自己猜" % t)
+    for rel in ("README.md", "README_CN.md"):
+        txt = io.open(os.path.join(ROOT, rel), "r", encoding="utf-8",
+                      errors="replace").read()
+        for t in toks:
+            assert t in txt, ("%s 里没有点名 %r —— 帮助说了、README 没说，"
+                             "读者看到的不是同一件事" % (rel, t))
+    # B5 的口径也必须真的过（登记表里的 docs/docs_must 不是摆设）
+    dprobs, nd = hc.boundary_doc_problems(ROOT, hc.BOUNDARY_CLAIMS)
+    assert dprobs == [], dprobs
+    assert nd >= 2, nd
+
 def test_r44_gate_call_sites_agree_with_return_arity():
     """R44 的**过程**教训：本轮三次「改被调签名、漏了调用方」。
 

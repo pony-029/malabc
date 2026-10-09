@@ -184,7 +184,9 @@ python matlabc.py --binary a.dll,b.so --binary-json -
   bites, the report prints `[TRUNCATED]`.
 - **Run-time binding is out of scope.** `dlopen` / `LoadLibrary` / `dlsym` / `LD_PRELOAD` are not
   traced, and `Makefile` / `CMakeLists.txt` link intent is not parsed (`-lfoo` is only used as a
-  candidate-name hint).
+  candidate-name hint). To see who loads whom at run time, use an external tool: `ltrace`,
+  `strace -e openat`, or glibc's `LD_DEBUG=bindings` - those are run-time instruments, and
+  static analysis cannot give you that answer.
 
 #### One command instead of two: `--binary-attach`
 

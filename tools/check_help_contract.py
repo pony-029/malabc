@@ -37,7 +37,16 @@
         这类会**真的写盘**的命令 —— 让护栏去跑它们，等于让检查本身产生副作用。
         宁可不跑，也不能跑错。
 
-两向自证：R1/R2/R3/R4 各配独立坏样本（必须红）与好样本（必须过），
+R5 「帮助体积棘轮」：`--help` 字节数受**绝对界**与**相对已批准快照（±30%）**
+    两臂取严；合法增长要在同一提交里更新快照，不许放宽 `HELP_DRIFT_MAX`。
+
+R51（C''''2）「诚实的边界」逐字契约：`--help` 的「诚实的边界」小节里每一条
+    bullet 必须被登记表 `BOUNDARY_CLAIMS` **恰好一条**认领（未登记 → 红；
+    指向已不存在的边界 → 红；前缀不唯一 → 红），且登记项声明的 token 必须
+    **逐字**出现在它认领的 bullet 里；带 `docs` 的登记还要求 `docs_must` 在
+    README 两侧逐字出现（防「帮助说了、README 没说」这条新缝）。
+
+两向自证：R1/R2/R3/R4/R51 各配独立坏样本（必须红）与好样本（必须过），
 并对真实仓库做一次整体核对。
 
 退出码：
@@ -165,7 +174,7 @@ GUARD_CONTRACT = {
     },
     "tools/check_help_contract.py": {
         0: "全部一致",
-        1: "发现不一致（R1/R1b/R2/R3/R4 任一红）",
+        1: "发现不一致（R1/R1b/R2/R3/R4/R5/R51 任一红）",
         2: "缺输入（入口脚本缺失 / 解析不到 docstring）",
     },
     "tools/check_ir_attribution.py": {
@@ -457,7 +466,7 @@ HELP_BYTES = {
 # 漂移超限时的正当做法**不是**放宽这两个数，而是同步更新快照
 # （那是一次显式的、可评审的批准动作 —— 这正是棘轮的意义）。
 HELP_BYTES_SNAPSHOT = {
-    "matlabc.py": 49960,
+    "matlabc.py": 50230,
     "matlabc_flow.py": 2075,
     "matlabc_ask.py": 919,
     "matlabc_mcp.py": 0,
@@ -500,6 +509,228 @@ def _is_sep_line(s):
     return bool(body) and len(body) >= 4 and \
         all(ch in "─-=~—" for ch in body)
 
+
+# ── R51（C''''2）：**「诚实的边界」逐字契约** ────────────────────────────────
+#
+# 动因：`--help` 的「诚实的边界」小节是**产品对用户的书面承诺** —— 它列出的每一条
+# 都是「这件事我不做」。这类承诺有一个隐蔽的腐烂方式：**没有任何装置守着它本身**，
+# 于是下一轮改代码时某条边界会被悄悄挪走。R50 的 `.exts` 就是同一形态：一句
+# docstring 宣称的接线在源码里不存在，而此前没有任何装置守着**那句话**。
+#
+# R51 把这一节变成**逐字契约**：登记表与帮助正文互为对手方，谁掉队谁红。
+#
+# 为什么用它而不是「帮助里必须出现某几个字符串」：后者只查一条、且新增边界
+# 不会被发现（覆盖可以静默缩水，与 R41 的 N2 是同一件事）。
+#
+# 诚实声明（不假装）：
+#   * B1–B3 保证的是「登记表与帮助互为对手方」，**不保证 bullet 的内容正确**
+#     —— 一句错话照样能过；内容的正确性靠 review 与 B3 里显式列出的 token。
+#   * `head` 前缀必须唯一：两条 bullet 共用一个前缀时 B2 直接报歧义（不许蒙对）。
+BOUNDARY_SECTION = "诚实的边界"
+BOUNDARY_MIN_REASON = 8
+
+# 运行期绑定这条边界点名的**替代装置**（单一事实源）：
+# 帮助正文与两侧 README 都必须**逐字**出现它们（B3 / B5）。
+# 为什么非要点名替代手段：只写「不跟踪运行期绑定」等于把一个死胡同交给用户；
+# 写下 `ltrace` / `strace -e openat` / `LD_DEBUG=bindings` 才是**可执行的**边界。
+RUNTIME_BINDING_TOOLS = ("ltrace", "strace -e openat", "LD_DEBUG=bindings")
+
+BOUNDARY_CLAIMS = (
+    {
+        "head": "语言：",
+        "help_must": ("没有前端", "[warn]"),
+        "reason": "扫到不支持的语言必须点名文件并打 warn，不能静默返回 0 结果",
+    },
+    {
+        "head": "C++：",
+        "help_must": ("按 C 子集解析", "不保证"),
+        "reason": "cpp 是 c 的别名，模板/类/命名空间/重载是已披露的降级而非 bug",
+    },
+    {
+        "head": "前端实现：",
+        "help_must": ("行锚定正则", "不识别", "K&R"),
+        "reason": "前端仍是行锚定正则（C 已升级为词法配平），必须写明不识别的那两类",
+    },
+    {
+        "head": "预处理：",
+        "help_must": ("#if 0", "按兵不动"),
+        "reason": "只做字面量 #if 0 感知；不猜宏是否定义，否则会把活代码当死代码",
+    },
+    {
+        "head": "动态库：",
+        # 这条是本轮（C''''2）真正补的内容：帮助原本只写「不解析运行期绑定」，
+        # **没有点名任何替代装置**，实测三个 token 在帮助与两侧 README 里都是 0 次。
+        "help_must": ("不跟踪运行期绑定", "dlopen", "LoadLibrary", "dlsym",
+                      "LD_PRELOAD") + RUNTIME_BINDING_TOOLS,
+        "docs_must": RUNTIME_BINDING_TOOLS,
+        "docs": ("README.md", "README_CN.md"),
+        "reason": "运行期绑定零覆盖，必须点名可替代的外部装置，否则用户以为它能查",
+    },
+    {
+        "head": "GPU：",
+        "help_must": (".text._Z", "不静默给 0"),
+        "reason": "PTX 提不出 kernel 名时必须写原因，不能静默给 0 个 kernel",
+    },
+    {
+        "head": "Mach-O：",
+        "help_must": ("合成夹具", "verified: NO"),
+        "reason": "有夹具无真实语料，两条轴必须分开写，不许把夹具当实测",
+    },
+    {
+        "head": "**跨语言算子有一个是「不做」的**：",
+        "help_must": ("_UNIMPLEMENTED_KINDS", "pyflakes"),
+        "reason": "「不做」的算子必须说明理由并点名真正能做它的旁路工具",
+    },
+)
+
+
+def parse_boundary_bullets(doc):
+    """切出帮助正文「诚实的边界」小节里的 bullets。
+
+    返回 [(head, full_text)]；找不到小节返回 None（= 缺输入）。
+    切法：定位标题行 → 越过其后第一条分隔线 → 收集到**下一条分隔线**为止；
+    形如 `  * xxx` 的行是新 bullet，其余非空行是它的续行（本仓的排版约定）。
+
+    ⚠ 这里只认「首行」定 bullet —— 续行缩进不参与判定。判据不依赖缩进宽度，
+    因为缩进一变就会让判据自己变成噪声源（与本仓 D5 的教训同源）。
+    """
+    if not doc:
+        return None
+    lines = doc.split("\n")
+    start = None
+    for i, ln in enumerate(lines):
+        if BOUNDARY_SECTION in ln:
+            start = i
+            break
+    if start is None:
+        return None
+    j = start + 1
+    while j < len(lines) and not _is_sep_line(lines[j]):
+        j += 1
+    k = j + 1
+    while k < len(lines) and not _is_sep_line(lines[k]):
+        k += 1
+    out = []
+    for ln in lines[j + 1:k]:
+        if ln.lstrip().startswith("* "):
+            out.append([ln.lstrip()[2:].rstrip(), []])
+        elif out and ln.strip():
+            out[-1][1].append(ln.rstrip())
+    return [(h, "\n".join([h] + body)) for h, body in out]
+
+
+def boundary_verdict(doc, claims):
+    """R51 的判定，抽成**纯函数**（自证不必起进程、不必造文件）。
+
+    返回 (问题列表, 核对过的 bullet 数)。问题为空 = 通过。
+    问题串一律以 B0–B4 开头，便于外部只按前缀判断。
+    """
+    probs = []
+    bullets = parse_boundary_bullets(doc)
+    if bullets is None:
+        return (["B0 帮助正文里找不到「%s」小节 —— 缺输入 → 红"
+                 % BOUNDARY_SECTION], 0)
+    heads = [h for h, _ in bullets]
+    texts = dict(bullets)
+
+    # B4 先查：理由不合格的登记**不参与认领判定**。否则「无效登记」与「未登记」
+    # 两种语义会同时成立，读数就不可信了 —— 与 R42 的 N4 同一条纪律。
+    usable = []
+    for c in claims:
+        reason = (c.get("reason") or "").strip()
+        if len(reason) < BOUNDARY_MIN_REASON:
+            probs.append("B4 登记项 head=%r 的理由只有 %d 个字符（下限 %d）—— "
+                         "少于下限的登记不生效（否则一个字符就能永久关掉一条边界）"
+                         % (c.get("head"), len(reason), BOUNDARY_MIN_REASON))
+            continue
+        usable.append(c)
+
+    # B2：每条登记项必须认领到**恰好一条** bullet（0 = 陈旧；>1 = 前缀不唯一）。
+    claimed = {}
+    for c in usable:
+        head = c.get("head") or ""
+        hit = [h for h in heads if h.startswith(head)]
+        if len(hit) == 0:
+            probs.append("B2 登记项 head=%r 在小节里认领不到任何 bullet —— "
+                         "陈旧登记必须抓（边界已被挪走或改写）" % head)
+        elif len(hit) > 1:
+            probs.append("B2 登记项 head=%r 同时认领到 %d 条 bullet —— "
+                         "前缀不唯一，登记表失去判定力" % (head, len(hit)))
+        else:
+            claimed[hit[0]] = c
+
+    # B1：小节里每条 bullet 都必须被认领（新增边界不许悄悄溜进来）。
+    for h in heads:
+        if h not in claimed:
+            probs.append("B1 小节里的 bullet %r **未被登记** —— 新增一条「不做的"
+                         "边界」必须同时写下理由并进登记表，否则下一轮它会被挪走"
+                         % h[:40])
+
+    # B3：登记项声明的 token 必须逐字出现在它认领的 bullet 全文里。
+    for h in sorted(claimed):
+        text = texts.get(h, h)
+        for tok in claimed[h].get("help_must") or ():
+            if tok not in text:
+                probs.append("B3 bullet %r 里逐字找不到 `%s` —— 帮助正文把这条"
+                             "边界的**内容**改写掉了（登记表说它还在）"
+                             % (h[:24], tok))
+    return probs, len(bullets)
+
+
+def boundary_doc_problems(root, claims):
+    """B5：带 `docs` 的登记项，其 `docs_must` 必须在所列文档里逐字出现。
+
+    返回 (问题列表, 核对过的文档数)。这是「帮助说了、README 没说」这条缝的对手方。
+    """
+    probs = []
+    n = 0
+    seen = set()
+    for c in claims:
+        rels = c.get("docs") or ()
+        toks = c.get("docs_must") or ()
+        if not rels or not toks:
+            continue
+        for rel in rels:
+            if rel in seen:
+                continue          # 同一份文档只读一次、只计一次
+            seen.add(rel)
+            p = os.path.join(root, rel)
+            if not os.path.exists(p):
+                probs.append("B5 文档 %s 不存在（缺输入 → 红）" % rel)
+                continue
+            try:
+                with io.open(p, "r", encoding="utf-8", errors="replace") as fh:
+                    text = fh.read()
+            except OSError as e:
+                probs.append("B5 文档 %s 读不到（%s）" % (rel, e))
+                continue
+            n += 1
+            for tok in toks:
+                if tok not in text:
+                    probs.append("B5 %s 里逐字找不到 `%s` —— 帮助正文讲了运行期"
+                                 "绑定的替代装置，而文档没讲，读者看到的就不是"
+                                 "同一件事" % (rel, tok))
+    return probs, n
+
+
+def audit_boundary(root, on_problem, claims=None):
+    """对真实仓库施加 R51；返回 (bullet 数, B5 核对过的文档数)。"""
+    claims = BOUNDARY_CLAIMS if claims is None else claims
+    path = os.path.join(root, "matlabc.py")
+    if not os.path.exists(path):
+        on_problem("B0 matlabc.py 不存在（缺输入 → 红）")
+        return (0, 0)
+    _src, doc = _docstring(path)
+    if doc is None:
+        on_problem("B0 matlabc.py 解析不到模块 docstring（缺输入 → 红）")
+        return (0, 0)
+    probs, nb = boundary_verdict(doc, claims)
+    for p in probs:
+        on_problem(p)
+    dprobs, nd = boundary_doc_problems(root, claims)
+    for p in dprobs:
+        on_problem(p)
+    return (nb, nd)
 
 def parse_exit_section(doc):
     """从 docstring 解析「退出码」段的码集合；解析不到返回 None。
@@ -1264,6 +1495,31 @@ def _selftest():
                "<!-- guard-count:historical " + _r + " -->\n旧帮助曾写 7 道护栏",
                9)), True)
 
+    # ---- R51：诚实的边界逐字契约（纯函数；真实正文既作正例、又作登记对象） ----
+    _bd = _docstring(os.path.join(repo_root(), "matlabc.py"))[1]
+    expect("R51 好样本：真实帮助正文与登记表互为对手方（放行）",
+           bool(boundary_verdict(_bd, BOUNDARY_CLAIMS)[0]), False)
+    expect("R51 坏样本：动态库那条被抹掉 `ltrace`（B3 抓到）",
+           any(x.startswith("B3") for x in
+               boundary_verdict(_bd.replace("ltrace", "LTRACE"),
+                                BOUNDARY_CLAIMS)[0]), True)
+    expect("R51 坏样本：小节里多出一条未登记的边界（B1 抓到）",
+           any(x.startswith("B1") for x in boundary_verdict(
+               _bd.replace("  * GPU：CUDA", "  * 新边界：不做\n  * GPU：CUDA", 1),
+               BOUNDARY_CLAIMS)[0]), True)
+    expect("R51 坏样本：登记了一条已不存在的边界（B2 抓到）",
+           any(x.startswith("B2") for x in boundary_verdict(
+               _bd, tuple(BOUNDARY_CLAIMS) + (
+                   {"head": "早已删除的边界：", "help_must": (),
+                    "reason": "用来测陈旧登记必须被抓出来"},))[0]), True)
+    expect("R51 坏样本：理由只有 1 个字符（B4 抓到）",
+           any(x.startswith("B4") for x in boundary_verdict(
+               _bd, tuple({"head": c["head"], "help_must": c["help_must"],
+                           "reason": "短"} for c in BOUNDARY_CLAIMS))[0]), True)
+    expect("R51 坏样本：帮助里没有「诚实的边界」小节（B0 抓到）",
+           any(x.startswith("B0") for x in
+               boundary_verdict("# 没有这一节\n", BOUNDARY_CLAIMS)[0]), True)
+
     # ---- 真实仓库整体核对 ----
     root = repo_root()
     probs = []
@@ -1273,9 +1529,11 @@ def _selftest():
     nc = audit_ci_examples(root, on_problem_collector(probs),
                            set(CONTRACT.get("matlabc.py", {}).get("codes", {})))
     nd, n_ex = audit_doc_numbers(root, on_problem_collector(probs))
+    nb, nbd = audit_boundary(root, on_problem_collector(probs))
     print("  真实仓库：核对 %d 个入口脚本 + %d 个护栏脚本 + %d 个 CI 模板/示例"
-          " + %d 份文档数字（其中 %d 处为显式豁免的历史引用），发现 %d 项不一致"
-          % (n, ng, nc, nd, n_ex, len(probs)))
+          " + %d 份文档数字（其中 %d 处为显式豁免的历史引用）+ %d 条边界承诺"
+          "（%d 份文档同源核对），发现 %d 项不一致"
+          % (n, ng, nc, nd, n_ex, nb, nbd, len(probs)))
     for p in probs[:12]:
         print("      " + p)
     if len(probs) > 12:
@@ -1311,8 +1569,13 @@ def main(argv=None):
     nc = audit_ci_examples(root, on_problem_collector(probs),
                            set(CONTRACT.get("matlabc.py", {}).get("codes", {})))
     nd, n_ex = audit_doc_numbers(root, on_problem_collector(probs))
+    nb, nbd = audit_boundary(root, on_problem_collector(probs))
     if n == 0:
         print("check_help_contract: 一个入口脚本都没核对到（缺输入 → 红）")
+        return 2
+    if nb == 0:
+        print("check_help_contract: 帮助正文里找不到「诚实的边界」小节"
+              "（缺输入 → 红）")
         return 2
     if probs:
         print("check_help_contract: %d 项不一致" % len(probs))
@@ -1322,8 +1585,9 @@ def main(argv=None):
     print("check_help_contract: OK（%d 个入口脚本 + %d 个护栏脚本 + %d 个 CI 模板/示例"
           "的退出码在代码与帮助之间双向一致；%d 份文档里的「N 道护栏」数字与事实"
           "一致（其中 %d 处为带理由的显式历史引用豁免，理由过短或陈旧的标记也会"
-          "被反向抓出）；入口帮助骨架齐备；%d 条示例命令已真跑且 rc=0）"
-          % (n, ng, nc, nd, n_ex, len(RUNNABLE)))
+          "被反向抓出）；入口帮助骨架齐备；%d 条示例命令已真跑且 rc=0；"
+          "「诚实的边界」%d 条承诺与登记表逐字互为对手方（%d 份文档同源核对））"
+          % (n, ng, nc, nd, n_ex, len(RUNNABLE), nb, nbd))
     return 0
 
 

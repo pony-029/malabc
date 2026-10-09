@@ -83,8 +83,11 @@ matlabc — 代码结构梳理与静态分析工具（纯 Python，零依赖，�
     不知道宏是否定义时猜「它没定义」，会把活代码当死代码丢掉 —— 那比多报几个
     告警严重得多。判据是行首匹配，写在多行字符串里、恰好独占一行的 `#if 0`
     会被误判成指令（所有「按行」工具的同一处近似）。
-  * 动态库：不解析 `dlopen`/`LoadLibrary`/`dlsym`/`LD_PRELOAD` 的**运行期**绑定；
-    也不解析 Makefile/CMakeLists 的链接意图（`-lfoo` 只作为候选名提示）。
+  * 动态库：**不跟踪运行期绑定** —— `dlopen` / `LoadLibrary` / `dlsym` /
+    `LD_PRELOAD` 一律在范围外，也不解析 Makefile/CMakeLists 的链接意图
+    （`-lfoo` 只作为候选名提示）。要看**运行期**谁加载了谁、符号绑定到哪个
+    DSO，请用外部装置：`ltrace`、`strace -e openat`、glibc 的
+    `LD_DEBUG=bindings` —— 它们是运行期装置，静态分析原理上给不出这个答案。
   * GPU：CUDA kernel 名从 cubin 的 `.text._Z` 节名表提取；**PTX 路径基本提不出
     kernel 名**（真 entry 极少）。提不到时报告会写明原因，不静默给 0。
   * Mach-O：解析器已实现，且已有**合成夹具**验证（LC_SEGMENT_64 段/节 + fat 切片），

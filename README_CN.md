@@ -174,6 +174,8 @@ python matlabc.py --binary a.dll,b.so --binary-json -
   `[TRUNCATED]`。
 - **运行期绑定不在范围内。** 不追踪 `dlopen` / `LoadLibrary` / `dlsym` / `LD_PRELOAD`，
   也不解析 `Makefile` / `CMakeLists.txt` 的链接意图（`-lfoo` 只作为候选名提示）。
+  要看运行期谁加载了谁，请用外部装置：`ltrace` / `strace -e openat` / `LD_DEBUG=bindings`
+  —— 它们是运行期装置，静态分析原理上给不出这个答案。
 
 #### 一条命令代替两条：`--binary-attach`
 
