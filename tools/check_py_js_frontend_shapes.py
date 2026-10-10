@@ -25,7 +25,7 @@
   ② 公开 CLI（`--lang py|js --json`）才是用户真正看到的那一面：内部函数对了、
      组装错了（行号算错 / params 被截断），一样是缺陷。
 
-判据（G1–G6；六条判据的**管辖范围互不重叠**，每条各有自己的突变体作独立证人）：
+判据（G1–G7；七条判据的**管辖范围互不重叠**，每条各有自己的突变体作独立证人）：
   G1 Python 四形态全覆盖：**单行体** `def one(): return 1` / **`async def`** /
      **返回注解** `def f(a) -> bool:` / **参数表跨行**。少任一种 ⇒ 红。
   G2 JS 七形态全覆盖：`async function` / `export function` / `export default
@@ -40,13 +40,17 @@
      只写「必须不出现」的判据在「产品什么都不产出」时也成立 —— 那是**空断言**。
   G6 声明起点行号：跨行参数表的函数，`line` 必须等于**声明起点**那一行，不能是
      `{` / 参数表末行（G1 只查存在性、G3 只查值域 ⇒ 三条互不重叠）。
+  G7 不**过度**识别：写在三引号字符串 / 块注释 / 模板串里、独占一行的
+     `def ghost(a, b):` / `function ghostfn(a, b) {` **必须不被认出来** ——
+     仓库外装置 `_r67/probe_r67_overrecog.py` 实测基线 **7/12 泄漏**，R67 修掉。
 
-已知**过度识别**（写在这里披露，本门**不**为它出判据 —— 它是一条真缺陷、
-  不是被守住的行为）：`_scan_py_defs` 只做括号配平、不做字符串状态机，于是
-  **文档字符串里写的 `def pseudo():` 会被当成真函数**。修它需要字符串状态机，
-  属独立一轮的活；修完请把这段披露一并改写。
+过度识别（G7）：`_scan_py_defs` 只做括号配平，于是**文档字符串里独占一行的
+  `def pseudo():` 会被当成真函数**。R66 只把它披露在这里、**不给判据**；R67 给
+  py / js 两个扫描器加了字符串 / 注释状态机，并**补上判据 G7** —— 夹具里字符串 /
+  注释内的 `def ghost(a, b):` 与 `function ghostfn(a, b) {` **必须不被认出来**。
+  改产品却漏改这段披露，就等于**承诺与行为分叉**。
 
-两向自证（`--selftest`）：1 个好样本 + 11 个坏样本喂给**纯函数** `judge()`，
+两向自证（`--selftest`）：1 个好样本 + 15 个坏样本喂给**纯函数** `judge()`，
 每个坏样本必须红在**它该红的**那条判据上，且**只**红那一条（`others == []`）；
 另外还自证：夹具完备性判据 `R2` 两向、棘轮 `R1` 两向、坏 JSON 被判为缺输入。
 
@@ -57,18 +61,18 @@
     │ shapes.py  单行/async/ │── G1/G3/G6 ─────▶│ files[].functions[]          │
     │            注解/跨行/嵌套│                 │  {name, params, line, ...}   │
     │            默认值嵌套括号│                 │                              │
-    │ neg.py     lambda/调用/ │── G4/G5 ────────▶│                              │
+    │ neg.py     lambda/调用/ │── G4/G5/G7 ─────▶│                              │
     │            if __name__  │                 │                              │
     │ shapes.js  七形态 /     │── G2/G3/G6 ─────▶│                              │
     │            默认值嵌套括号│                 │                              │
-    │ neg.js     控制/调用/   │── G4/G5 ────────▶│                              │
+    │ neg.js     控制/调用/   │── G4/G5/G7 ─────▶│                              │
     │            方法简写/匿名 │                 │                              │
     └────────────────────────┘                  └──────────────────────────────┘
               ▲                                              │
               └──── 手写期望 WANT（独立于产品）──────────────┘
 
 退出码：
-    0 = G1–G6 全绿，且棘轮与夹具完备性全绿
+    0 = G1–G7 全绿，且棘轮与夹具完备性全绿
     1 = 有违规（某条判据红 / 棘轮不符 / 夹具被改瘦）
     2 = 缺输入（找不到 matlabc.py / 公开 CLI 跑不起来 / JSON 不可解析）
 
@@ -91,7 +95,9 @@ import tempfile
 #   ① 本门的成功行（下面 main() 打印的那一行）；
 #   ② README.md / README_CN.md 里本门那一行。
 # 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
-ROW_SIGNATURE = "G1–G6"
+# R67：签名带 `(py/js)` 限定 —— `check_import_graph.py` 已经占用 `G1–G7`，
+# 两道门共用同一个签名时 P5 无法区分（它会直接报红）。判据族仍是 G1–G7。
+ROW_SIGNATURE = "G1–G7 (py/js)"
 
 # 公开 CLI 的墙钟上限。实测一次 ≈0.5s，300s 是给「机器正忙」留的量级余量；
 # 它的意义是「让挂死变成红，而不是让门永远等着」。
@@ -132,6 +138,11 @@ SHAPES_PY = (
 NEG_PY = (
     "lam = lambda x: x + 1\n"                # 假阳陷阱：lambda 不是 def
     "def real():\n"                          # 唯一的真函数（G5 正向半边）
+    "    \"\"\"Real.\n"                     # G7：三引号字符串从这里开始
+    "\n"
+    "    def ghost(a, b):\n"                 # G7：字符串里的假定义，必须**不**被认出
+    "        return a\n"
+    "    \"\"\"\n"                             # G7：三引号字符串在这里结束
     "    return compute(1)\n"                # 假阳陷阱：调用名不是函数
     "if __name__ == \"__main__\":\n"          # 假阳陷阱：控制语句
     "    pass\n")
@@ -193,7 +204,16 @@ NEG_JS = (
     "\n"
     "export default function (a) {\n"        # G5 已披露边界：匿名 default
     "  return a;\n"
-    "}\n")
+    "}\n"
+    "\n"
+    "/*\n"                                   # G7：块注释从这里开始
+    "function ghostfn(a, b) {\n"             # G7：注释里的假定义，必须**不**被认出
+    "  return a;\n"
+    "}\n"
+    "const ghostarrow = (a) => {\n"          # G7：注释里的箭头假定义
+    "  return a;\n"
+    "};\n"
+    "*/\n")
 
 FIXTURES = (("shapes.py", SHAPES_PY),
             ("neg.py", NEG_PY),
@@ -245,6 +265,9 @@ FP_TRAPS_PY = ("lam", "compute", "if")
 FP_TRAPS_JS = ("if", "for", "while", "switch", "foo", "bar", "obj")
 # G5 的已披露边界（**必须不出现**；正向半边 = 每个 neg 里的真函数必须出现）
 BOUNDARY_TRAPS_JS = ("greet",)
+# G7 的过度识别陷阱（**必须不出现**）：写在三引号字符串 / 块注释里、独占一行的定义。
+OVER_RECOG_PY = ("ghost",)
+OVER_RECOG_JS = ("ghostfn", "ghostarrow")
 
 CRITERIA = (
     ("G1", "Python 四形态全覆盖（单行体 / async / 返回注解 / 参数表跨行）"),
@@ -253,19 +276,22 @@ CRITERIA = (
     ("G4", "不假阳（lambda / 调用 / 控制语句 / 对象键）"),
     ("G5", "已披露边界保持不识别（方法简写 / 匿名 default），且 neg 里的真函数必须认出来"),
     ("G6", "声明起点行号逐字段相等"),
+    ("G7", "不**过度**识别（三引号字符串 / 块注释 / 模板串里独占一行的定义必须不被认出）"),
 )
 CRITERIA_IDS = tuple(c[0] for c in CRITERIA)
 
 # ---------------------------------------------------------------------------
 # 棘轮：全部是「事实的读数」，不是可调参数。覆盖不许静默缩水。
 # ---------------------------------------------------------------------------
-EXPECTED_CRITERIA = 6
+EXPECTED_CRITERIA = 7
 EXPECTED_FIXTURES = 4
 EXPECTED_G1 = 4
 EXPECTED_G2 = 7
 EXPECTED_BOUNDARY_TRAPS = 1
-EXPECTED_PY_FUNCS = 10           # 9（shapes.py）+ 1（neg.py）
-EXPECTED_JS_FUNCS = 11           # 10（shapes.js）+ 1（neg.js）
+EXPECTED_OVER_RECOG_PY = 1
+EXPECTED_OVER_RECOG_JS = 2
+EXPECTED_PY_FUNCS = 10           # 9（shapes.py）+ 1（neg.py）；ghost **不**计入
+EXPECTED_JS_FUNCS = 11           # 10（shapes.js）+ 1（neg.js）；ghostfn/ghostarrow **不**计入
 
 
 # ---------------------------------------------------------------------------
@@ -330,6 +356,14 @@ def judge(per):
         probs.append("G5 neg.js 竟认出 %r —— 本门 docstring 已披露这两类**不识别**，"
                      "认出来等于承诺与行为分叉" % (bd,))
 
+    # ---- G7 不**过度**识别：字符串 / 注释 / 模板串里独占一行的定义必须不被认出 ----
+    for rel, names in (("neg.py", OVER_RECOG_PY), ("neg.js", OVER_RECOG_JS)):
+        got = per.get(rel) or {}
+        leak = [n for n in names if n in got]
+        if leak:
+            probs.append("G7 %s 把字符串 / 注释里的 %r 当成真函数（过度识别）"
+                         % (rel, leak))
+
     # ---- G6 声明起点行号（三个夹具里**已出现**的函数；存在性归 G1/G2/G5） ----
     for rel in ("shapes.py", "shapes.js"):
         got = per.get(rel) or {}
@@ -383,6 +417,13 @@ def judge_fixtures(fixtures=None, neg_py=None, neg_js=None,
                         ("function h2(a, b = g2(1, 2)) {", "默认值嵌套括号")):
         if marker not in sjs:
             probs.append("R2 shapes.js 缺形态标记 %r（%s）" % (marker, why))
+    # G7 的陷阱必须真的以「字符串 / 注释里」的形态写进夹具
+    if "def ghost(a, b):" not in npy:
+        probs.append("R2 neg.py 夹具里找不到字符串内的假定义 'def ghost(a, b):'"
+                     " —— G7 变成空断言")
+    if "function ghostfn(a, b) {" not in njs:
+        probs.append("R2 neg.js 夹具里找不到注释内的假定义"
+                     " 'function ghostfn(a, b) {' —— G7 变成空断言")
     for rel, text in fixtures:
         if not text.strip():
             probs.append("R2 夹具 %s 是空的" % rel)
@@ -398,6 +439,10 @@ def judge_ratchet(n_py, n_js):
                            ("G2 形态名数", len(G2_NAMES_JS), EXPECTED_G2),
                            ("已披露边界陷阱数", len(BOUNDARY_TRAPS_JS),
                             EXPECTED_BOUNDARY_TRAPS),
+                           ("过度识别陷阱数（py）", len(OVER_RECOG_PY),
+                            EXPECTED_OVER_RECOG_PY),
+                           ("过度识别陷阱数（js）", len(OVER_RECOG_JS),
+                            EXPECTED_OVER_RECOG_JS),
                            ("Python 认出函数数", n_py, EXPECTED_PY_FUNCS),
                            ("JS 认出函数数", n_js, EXPECTED_JS_FUNCS)):
         if got != want:
@@ -635,6 +680,13 @@ def _selftest():
     # ---- G5'：neg 什么都产出不了 ⇒ 正向半边必须红（空断言的对手方） ----
     red("坏样本 G5 负半边空断言（neg.py 全空）", _mk(np_={}), "G5")
 
+    # ---- G7：过度识别 —— 字符串 / 注释里的假定义被认出来 ----
+    for rel, names in (("neg.py", OVER_RECOG_PY), ("neg.js", OVER_RECOG_JS)):
+        for fn in names:
+            d = _mk()
+            d[rel][fn] = {"params": ["a"], "line": 5}
+            red("坏样本 G7 过度识别 %s:%s" % (rel, fn), d, "G7")
+
     # ---- G6：行号漂移（跨行参数表少算一行） ----
     d = _mk()
     d["shapes.py"]["wide"] = {"params": ["a", "b", "c"], "line": 13}
@@ -683,6 +735,17 @@ def _selftest():
     else:
         bad[0] += 1
         print("  [selftest] 空夹具 R2 不报红")
+    if judge_fixtures(neg_py=NEG_PY.replace("def ghost(a, b):", "x = 1")):
+        good[0] += 1
+    else:
+        bad[0] += 1
+        print("  [selftest] neg.py 的过度识别陷阱被删掉后 R2 不报红")
+    if judge_fixtures(neg_js=NEG_JS.replace("function ghostfn(a, b) {",
+                                            "function z() {")):
+        good[0] += 1
+    else:
+        bad[0] += 1
+        print("  [selftest] neg.js 的过度识别陷阱被删掉后 R2 不报红")
 
     # ---- ④ 棘轮 R1 两向：正确读数不报红，缩水读数必须报红 ----
     green("好样本：棘轮在正确读数上全绿",

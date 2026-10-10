@@ -18717,7 +18717,7 @@ def test_r66_py_js_frontend_shapes_two_way():
     r = _r31_run([gate], timeout=180)
     out = r.stdout.decode("utf-8", "replace")
     assert r.returncode == 0, out[-900:]
-    assert "G1\u2013G6" in out, out[-400:]
+    assert "G1\u2013G7" in out, out[-400:]
 
     # ② 自证：下界断言（`bad` / `good` 两个数绝不手写）
     rs = _r31_run([gate, "--selftest"], timeout=180)
@@ -18855,4 +18855,109 @@ def test_r66_gate_registry_mentions_the_new_guard():
     for rel in ("README.md", "README_CN.md"):
         text = io.open(os.path.join(ROOT, rel), encoding="utf-8").read()
         assert "check_py_js_frontend_shapes.py" in text, rel
-        assert "G1\u2013G6" in text, rel
+        assert "G1\u2013G7" in text, rel
+
+
+def test_r67_py_js_no_over_recognition_two_way():
+    """R67：字符串 / 注释里的假定义**不得**被当成真函数（过度识别）。
+
+    R66 把 py / js 的定义识别重写成词法扫描，但只做括号配平 ⇒ docstring / 块注释 /
+    模板串里**独占一行**的 `def` / `function` 会被误认（仓库外装置
+    `_r67/probe_r67_overrecog.py` 实测基线 7/12 泄漏、R67 修后 0/12）。
+    这条测试用**公开 CLI** 做端到端两向：真函数必须在、假定义必须不在。
+    """
+    tmp = tempfile.mkdtemp(prefix="mar67_")
+    try:
+        src = os.path.join(tmp, "src")
+        os.makedirs(src)
+        io.open(os.path.join(src, "a.py"), "w", encoding="utf-8",
+                newline="").write(
+            "def real():\n"
+            "    \"\"\"Doc.\n"
+            "\n"
+            "    def ghost(a, b):\n"
+            "        return a\n"
+            "    \"\"\"\n"
+            "    return 1\n"
+            "R = r\"\"\"\n"
+            "def ghost2(a):\n"
+            "    return a\n"
+            "\"\"\"\n")
+        io.open(os.path.join(src, "b.js"), "w", encoding="utf-8",
+                newline="").write(
+            "/*\n"
+            "function ghostfn(a, b) { return a; }\n"
+            "const ghostarrow = (a) => a;\n"
+            "*/\n"
+            "function real() { return 1; }\n"
+            "const s = `\n"
+            "function tplghost(a) { return a; }\n"
+            "`;\n")
+        pj = os.path.join(tmp, "py.json")
+        rc, _o, _e = _run([src, "--lang", "py", "--json", pj], tmp)
+        assert rc == 0, "python 前端跑失败"
+        py_names = set()
+        for pf in json.loads(_read_text(pj))["files"]:
+            for fn in pf["functions"]:
+                py_names.add(fn["name"])
+        assert "real" in py_names, sorted(py_names)
+        assert "ghost" not in py_names, sorted(py_names)
+        assert "ghost2" not in py_names, sorted(py_names)
+
+        jj = os.path.join(tmp, "js.json")
+        rc2, _o2, _e2 = _run([src, "--lang", "js", "--json", jj], tmp)
+        assert rc2 == 0, "js 前端跑失败"
+        js_names = set()
+        for pf in json.loads(_read_text(jj))["files"]:
+            for fn in pf["functions"]:
+                js_names.add(fn["name"])
+        assert "real" in js_names, sorted(js_names)
+        assert "ghostfn" not in js_names, sorted(js_names)
+        assert "ghostarrow" not in js_names, sorted(js_names)
+        assert "tplghost" not in js_names, sorted(js_names)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r67_gate_g7_is_two_way():
+    """R67：第 16 道门的 G7（不**过度**识别）必须能红也能绿。
+
+    ① 判据本体（纯函数 judge）：坏样本（把字符串里的假定义塞进函数表）红在 **G7**、
+       且**只**红 G7；好样本（手写期望）全绿；
+    ② 门本体 rc=0 且成功行带本门签名；`--selftest` 下界断言（bad == 0）。
+    """
+    gate = os.path.join(_R33_TOOLS, "check_py_js_frontend_shapes.py")
+    assert os.path.isfile(gate), "第 16 道护栏必须真存在"
+
+    mod = _r37_load("check_py_js_frontend_shapes")
+    assert "G7" in mod.CRITERIA_IDS, mod.CRITERIA_IDS
+    assert mod.ROW_SIGNATURE.startswith("G1\u2013G7"), mod.ROW_SIGNATURE
+
+    def _base():
+        return dict((k, dict(v)) for k, v in mod.WANT.items())
+
+    assert mod.judge(_base()) == [], "手写期望本身必须全绿"
+    for rel, name in (("neg.py", mod.OVER_RECOG_PY[0]),
+                      ("neg.js", mod.OVER_RECOG_JS[0]),
+                      ("neg.js", mod.OVER_RECOG_JS[1])):
+        d = _base()
+        d[rel][name] = {"params": ["a"], "line": 3}
+        probs = mod.judge(d)
+        hit = [p for p in probs if p.startswith("G7")]
+        others = [p for p in probs
+                  if p[:2] in mod.CRITERIA_IDS and not p.startswith("G7")]
+        assert hit, (rel, name, probs)
+        assert not others, (rel, name, others)
+
+    r = _r31_run([gate], timeout=180)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[-900:]
+    assert "G1\u2013G7" in out, out[-400:]
+
+    rs = _r31_run([gate, "--selftest"], timeout=180)
+    s_out = rs.stdout.decode("utf-8", "replace")
+    assert rs.returncode == 0, s_out[-700:]
+    m = re.search(r'SELFTEST COUNTS \{"bad": (\d+), "good": (\d+)\}', s_out)
+    assert m, s_out[-500:]
+    assert int(m.group(1)) == 0, s_out[-500:]
+    assert int(m.group(2)) >= 29, s_out[-500:]

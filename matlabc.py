@@ -8551,6 +8551,109 @@ _JS_KEYWORDS = set(("var let const function return if else for while do "
                     "document window parseInt parseFloat isNaN").split())
 
 
+def _skip_str_span(s, i, quote):
+    """R67:从 `s[i] == quote` 起跳过一段**单行**字符串,返回闭引号之后的下标。
+
+    处理反斜杠转义;到行尾仍未闭合就返回 `len(s)`(单行串不允许跨行 —— 跨行的只有
+    三引号与 JS 模板串,由调用方另管)。
+    """
+    j = i + 1
+    n = len(s)
+    while j < n:
+        ch = s[j]
+        if ch == "\\":
+            j += 2
+            continue
+        if ch == quote:
+            return j + 1
+        j += 1
+    return n
+
+
+def _py_code_mask(text):
+    """R67:逐行标记「这一行的**起始处**是否在代码里」(不在三引号字符串内部)。
+
+    过度识别(R66 §1.5 / §8 C16-1)的根因就是缺这一层:扫描器按行锚定,而
+    文档字符串里独占一行的 `def pseudo():` 照样命中行首 ⇒ 被当成真函数。
+    这里先过一遍三引号 / 单行引号 / `#` 注释的状态机,凡「起始处在三引号内部」的
+    行一律标 False,调用方据此跳过。
+
+    只认成对的三个引号(单引号版与双引号版)与成对单行引号;`#` 之后视为注释。
+    """
+    mask = []
+    open_q = None
+    for raw in text.split("\n"):
+        mask.append(open_q is None)
+        i = 0
+        n = len(raw)
+        while i < n:
+            if open_q is not None:
+                k = raw.find(open_q, i)
+                if k == -1:
+                    i = n
+                else:
+                    i = k + 3
+                    open_q = None
+            else:
+                ch = raw[i]
+                if ch == "#":
+                    break
+                if ch == '"' or ch == "'":
+                    if raw.startswith(ch * 3, i):
+                        open_q = ch * 3
+                        i += 3
+                    else:
+                        i = _skip_str_span(raw, i, ch)
+                else:
+                    i += 1
+    return mask
+
+
+def _js_code_mask(text):
+    """R67:逐行标记「这一行的**起始处**是否在代码里」(不在块注释或模板串内部)。
+
+    同 `_py_code_mask`,JS 侧要跳的是跨行块注释与反引号模板串;行注释只影响本行,
+    不必跨行跟踪。
+    """
+    mask = []
+    in_block = False
+    in_tpl = False
+    for raw in text.split("\n"):
+        mask.append((not in_block) and (not in_tpl))
+        i = 0
+        n = len(raw)
+        while i < n:
+            if in_block:
+                k = raw.find("*/", i)
+                if k == -1:
+                    i = n
+                else:
+                    i = k + 2
+                    in_block = False
+            elif in_tpl:
+                if raw[i] == "\\":
+                    i += 2
+                    continue
+                if raw[i] == "`":
+                    in_tpl = False
+                i += 1
+            else:
+                ch = raw[i]
+                if raw.startswith("/*", i):
+                    in_block = True
+                    i += 2
+                elif raw.startswith("//", i):
+                    break
+                elif ch == "`":
+                    in_tpl = True
+                    i += 1
+                elif ch == '"' or ch == "'":
+                    i = _skip_str_span(raw, i, ch)
+                else:
+                    i += 1
+    return mask
+
+
 def _split_top_commas(raw):
     """R66:按**顶层逗号**切分(py / js 形参表共用)。
 
@@ -8612,14 +8715,19 @@ def _scan_py_defs(text):
     形参用 `_paren_span` 的**深度配平**取(老实现的 `\\(([^)]*)\\)` 遇到
     `x=(1, 2)` 就截断,严重时整个定义认不出来)。
 
-    ⚠ 只做括号配平,**不做字符串状态机** ⇒ 文档字符串里写的 `def` 仍会被误认。
-    这是**已披露边界**(守它的 check_py_js_frontend_shapes.py 的 G5),不是遗漏。
+    R67:前置一层 `_py_code_mask` 的**字符串 / 注释状态机** —— 落在三引号字符串内部的行不再参与定义识别。R66 时这里只做括号配平,于是文档字符串里独占一行的 `def pseudo():` 会被当成真函数
+    (过度识别,实测 7/12 泄漏);R67 修掉,守它的是
+    check_py_js_frontend_shapes.py 的 **G7**。
     """
     defs = []
     lines = text.split("\n")
+    mask = _py_code_mask(text)
     n = len(lines)
     i = 0
     while i < n:
+        if not mask[i]:
+            i += 1
+            continue
         s = lines[i].strip()
         if not s or s.startswith("#"):
             i += 1
@@ -8662,9 +8770,13 @@ def _parse_py_source(text, rel, path):
     _defs_by_line = {}
     for _d in _scan_py_defs(text):
         _defs_by_line.setdefault(_d["line"], []).append(_d)
+    # R67:落在三引号字符串内部的行既不是定义、也不该贡献调用/复杂度。
+    _mask = _py_code_mask(text)
     for idx, raw in enumerate(src_lines):
         ln = idx + 1
         line = raw
+        if not _mask[idx]:
+            continue
         s = line.strip()
         if not s or s.startswith("#"):
             continue
@@ -8746,12 +8858,20 @@ def _scan_js_defs(text):
       * 对象 / 类里的方法简写 `greet(a) { ... }`;
       * 匿名 `export default function (a) {}`(没有名字可登记);
       * `module.exports.foo = function (a) {}`(左值不是裸标识符)。
+
+    R67:前置一层 `_js_code_mask` —— 落在块
+    注释、模板串内部的行不再参与定义识别(过度识别,实测基线 7/12 泄漏);
+    守它的是同门的 **G7**。
     """
     defs = []
     lines = text.split("\n")
+    mask = _js_code_mask(text)
     n = len(lines)
     i = 0
     while i < n:
+        if not mask[i]:
+            i += 1
+            continue
         s = lines[i].strip()
         if not s or s.startswith(("//", "/*", "*", "#")):
             i += 1
@@ -8802,9 +8922,13 @@ def _parse_js_source(text, rel, path):
     _defs_by_line = {}
     for _d in _scan_js_defs(text):
         _defs_by_line.setdefault(_d["line"], []).append(_d)
+    # R67:落在块注释/模板串内部的行既不是定义、也不该贡献调用/复杂度。
+    _mask = _js_code_mask(text)
     for idx, raw in enumerate(src_lines):
         ln = idx + 1
         line = raw
+        if not _mask[idx]:
+            continue
         s = line.strip()
         if not s or s.startswith(("//", "/*", "*", "#")):
             continue

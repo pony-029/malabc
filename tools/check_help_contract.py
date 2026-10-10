@@ -248,7 +248,7 @@ GUARD_CONTRACT = {
         2: "缺输入（找不到 tests/test_matlabc.py）",
     },
     "tools/check_py_js_frontend_shapes.py": {
-        0: "Python / JS 前端函数定义形态六条判据（G1–G6）全绿，且夹具完备性与棘轮全绿",
+        0: "Python / JS 前端函数定义形态七条判据（G1–G7）全绿，且夹具完备性与棘轮全绿",
         1: "有违规（某条判据红 / 棘轮不符 / 夹具被改瘦）",
         2: "缺输入（找不到 matlabc.py / 公开 CLI 跑不起来 / JSON 不可解析）",
     },
