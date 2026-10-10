@@ -59,6 +59,13 @@ import subprocess
 import sys
 import tempfile
 
+# R62/P5：「质量门表」里本门那一行的**签名**（本门自己的判据族，
+# 或本门独有的机制名）。它必须逐字出现在两处：
+#   ① 本门的成功行（下面 main() 打印的那一行）；
+#   ② README.md / README_CN.md 里本门那一行。
+# 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
+ROW_SIGNATURE = "--check-py36"
+
 # 单次扫描的墙钟上限（本仓全量 42 个文件实测约 2s）。
 SCAN_TIMEOUT = 600.0
 
@@ -197,8 +204,8 @@ def main(argv=None):
         print("  提示：本仓承诺严格兼容 Python 3.6.5，"
               "CONTRIBUTING.md「代码风格」一节有禁用清单。")
         return 1
-    print("check_py36_clean: OK（本仓 %s 个 .py 文件全部通过 3.6.5 语法兼容门）"
-          % n_files)
+    print("check_py36_clean: OK（本仓 %s 个 .py 文件全部通过 3.6.5 语法兼容门 "
+          "%s）" % (n_files, ROW_SIGNATURE))
     return 0
 
 

@@ -65,6 +65,13 @@ import os
 import re
 import sys
 
+# R62/P5：「质量门表」里本门那一行的**签名**（本门自己的判据族，
+# 或本门独有的机制名）。它必须逐字出现在两处：
+#   ① 本门的成功行（下面 main() 打印的那一行）；
+#   ② README.md / README_CN.md 里本门那一行。
+# 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
+ROW_SIGNATURE = "B0–B5"
+
 # ---------------------------------------------------------------------------
 # 退出码契约的唯一事实源。每个码都要在 evidence 指的文件里有真实依据
 # （见 R1），且必须与 docstring 的「退出码」段逐码一致（见 R2）。
@@ -203,8 +210,10 @@ GUARD_CONTRACT = {
         2: "缺输入",
     },
     "tools/check_readme_parity.py": {
-        0: "两侧结构对等，且两侧质量门表 == tools/check_*.py 真实清单",
-        1: "发现不对等 / 质量门表与真实护栏清单不符（P1/P2/P4 任一红）",
+        0: "两侧结构对等，且两侧质量门表 == tools/check_*.py 真实清单，"
+           "表里每一行都含那道门自己声明的 ROW_SIGNATURE",
+        1: "发现不对等 / 质量门表与真实护栏清单不符 / 表行缺本门签名"
+           "（P1/P2/P4/P5 任一红）",
         2: "缺输入（任一 README 不存在）",
     },
     "tools/check_subprocess_hygiene.py": {
@@ -1601,8 +1610,9 @@ def main(argv=None):
           "的退出码在代码与帮助之间双向一致；%d 份文档里的「N 道护栏」数字与事实"
           "一致（其中 %d 处为带理由的显式历史引用豁免，理由过短或陈旧的标记也会"
           "被反向抓出）；入口帮助骨架齐备；%d 条示例命令已真跑且 rc=0；"
-          "「诚实的边界」%d 条承诺与登记表逐字互为对手方（%d 份文档同源核对））"
-          % (n, ng, nc, nd, n_ex, len(RUNNABLE), nb, nbd))
+          "「诚实的边界」%d 条承诺与登记表逐字互为对手方（%d 份文档同源核对）；"
+          "判据族 %s）"
+          % (n, ng, nc, nd, n_ex, len(RUNNABLE), nb, nbd, ROW_SIGNATURE))
     return 0
 
 

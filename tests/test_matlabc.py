@@ -18257,3 +18257,86 @@ def test_r61_gate_registry_mentions_the_new_guard():
     assert "tools/check_c_frontend_shapes.py" in hc.GUARD_CONTRACT
     assert hc.real_guard_count() == ca.MIN_GUARDS, (
         hc.real_guard_count(), ca.MIN_GUARDS)
+
+
+
+def test_r62_gate_row_signatures_two_way():
+    """R62 / R61 §8 C12-1：质量门表的**内容**必须与那道门脱不了钩。
+
+    P4（R61）把对手方从「另一侧文件」换成「事实（真实护栏清单）」，但它只证
+    「14 行都在」，不证「那一行说的是不是那道门」：把一行**整段**换到另一行上，
+    行的集合没变 ⇒ P4 一声不响。本测试钉住三层：
+
+      ① **静态半**（门里的 P5）：每道真实护栏都在源码里声明 `ROW_SIGNATURE`；
+         签名非退化；签名的锚点在该门源码里真的出现（**不含声明行自身**）；
+         两道门不共用签名；两侧 README 的对应表行逐字含它。
+      ② **行为半**（门里的 P5 刻意不做 —— 否则本门会把全套护栏再跑一遍）：
+         真的把每道门跑一次，它的**成功行**必须逐字含它自己声明的签名。
+         没有这一半，「声明了却没打出来」就没人管。
+      ③ **反向**：把某一行整段换成另一行的描述 ⇒ P5 必须红且点名那一道门；
+         与此同时 P4 **必须仍然是绿的** —— 否则这条反向判据证明不了 P5 的必要性。
+    """
+    rp = _r37_load("check_readme_parity")
+    guards = rp.guard_scripts(ROOT)
+    assert guards, "tools/check_*.py 一个都没扫到（判据本身失效）"
+    assert "check_all.py" not in guards, "runner 不该进清单"
+    en = rp._read(os.path.join(ROOT, rp.EN))
+    cn = rp._read(os.path.join(ROOT, rp.CN))
+
+    # ① 静态半
+    sigs = {}
+    for name in guards:
+        sig, src = rp.gate_row_signature(ROOT, name)
+        assert sig, "%s 没有声明 ROW_SIGNATURE" % name
+        assert len(sig) >= 3 and re.search(r"[0-9_]", sig), (name, sig)
+        missed = [a for a in rp.signature_anchors(sig) if a not in src]
+        assert missed == [], (name, sig, missed)
+        sigs[name] = sig
+    assert len(set(sigs.values())) == len(sigs), "两道门共用了同一个签名"
+    probs = []
+    rp.judge_signatures(ROOT, en, cn, rp.on_problem_collector(probs))
+    assert probs == [], probs
+
+    # ② 行为半：真的跑每道门，成功行必须逐字含它自己声明的签名
+    rows = rp.guard_rows(en)
+    assert sorted(rows) == sorted(guards), (sorted(rows), sorted(guards))
+    for name in guards:
+        r = _r31_run([os.path.join("tools", name)], timeout=300)
+        out = r.stdout.decode("utf-8", "replace")
+        assert r.returncode == 0, (name, out[-500:])
+        last = [l for l in out.splitlines() if l.strip()][-1]
+        assert sigs[name] in last, (name, sigs[name], last)
+
+    # ③ 反向：把 alpha 那一行的描述整段换成 beta 的（行的集合没变）
+    alpha, beta = guards[0], guards[1]
+    row_a = re.search(r"^\|\s*`%s`\s*\|.*$" % re.escape(alpha), en, re.M)
+    row_b = re.search(r"^\|\s*`%s`\s*\|(.*)$" % re.escape(beta), en, re.M)
+    assert row_a and row_b, "质量门表里找不到这两行（P5 的锚点失效）"
+    doctored = en.replace(row_a.group(0),
+                          "| `%s` |%s" % (alpha, row_b.group(1)))
+    assert doctored != en
+    bad = []
+    rp.judge_signatures(ROOT, doctored, cn, rp.on_problem_collector(bad))
+    assert any(x.startswith("P5") and alpha in x for x in bad), bad
+    # P4 在同一份文本上仍然是绿的 —— 这正是 P5 存在的理由
+    p4 = []
+    rp.judge_table(doctored, guards, rp.on_problem_collector(p4), rp.EN)
+    assert p4 == [], p4
+
+
+def test_r62_parity_gate_p5_end_to_end():
+    """R62：P5 的端到端读数与自证（**不写死门数** —— 加一道门不该弄红它）。"""
+    r = _r31_run([os.path.join("tools", "check_readme_parity.py")], timeout=300)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[-600:]
+    assert "表行签名 P1/P2/P4/P5" in out, out[-400:]
+    assert "逐字对上" in out, out[-400:]
+    s = _r31_run([os.path.join("tools", "check_readme_parity.py"), "--selftest"],
+                 timeout=300)
+    sout = s.stdout.decode("utf-8", "replace")
+    assert s.returncode == 0, sout[-800:]
+    assert "SELFTEST COUNTS" in sout, sout[-400:]
+    assert "SELFTEST PASSED" in sout, sout[-400:]
+    rp = _r37_load("check_readme_parity")
+    assert rp.ROW_SIGNATURE == "P1/P2/P4/P5", rp.ROW_SIGNATURE
+    assert "P5" in (rp.__doc__ or "")

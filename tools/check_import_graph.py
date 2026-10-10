@@ -61,6 +61,13 @@ import os
 import re
 import sys
 
+# R62/P5：「质量门表」里本门那一行的**签名**（本门自己的判据族，
+# 或本门独有的机制名）。它必须逐字出现在两处：
+#   ① 本门的成功行（下面 main() 打印的那一行）；
+#   ② README.md / README_CN.md 里本门那一行。
+# 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
+ROW_SIGNATURE = "G1–G7"
+
 # ---------------------------------------------------------------------------
 # 登记表（单一事实源）。每项必须有 id / reason（>=8 字符），
 # 且必须在 CONTRIBUTING.md 里出现一次 `<!-- import-cycle: <id> -->` 标记（G6，双向）。
@@ -536,10 +543,11 @@ def main(argv):
     _reg = built.get("borrowed_reg") or {}
     print("check_import_graph: OK（%d 个模块 / 模块级仓库内边 %d 条 / 全图仓库内边 %d 条；"
           "模块级环 0、惰性环 %d（已登记）、动态 import %d（已登记）；"
-          "借用登记 %d 个模块 / %d 个符号 / %d 处使用点；G1–G7 全绿）"
+          "借用登记 %d 个模块 / %d 个符号 / %d 处使用点；%s 全绿）"
           % (len(built["known"]), n_mod, n_all,
              len(LAZY_CYCLES), len(DYNAMIC_IMPORTS),
-             len(_reg), len(set(nm for (_m, nm) in _bs)), sum(_bs.values())))
+             len(_reg), len(set(nm for (_m, nm) in _bs)), sum(_bs.values()),
+             ROW_SIGNATURE))
     return 0
 
 

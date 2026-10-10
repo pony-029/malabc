@@ -87,6 +87,13 @@ import os
 import sys
 import tempfile
 
+# R62/P5：「质量门表」里本门那一行的**签名**（本门自己的判据族，
+# 或本门独有的机制名）。它必须逐字出现在两处：
+#   ① 本门的成功行（下面 main() 打印的那一行）；
+#   ② README.md / README_CN.md 里本门那一行。
+# 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
+ROW_SIGNATURE = "I0–I7"
+
 # ---------------------------------------------------------------- 登记表
 # 键 = (相对仓库根的路径, 函数名)。**两向核对**：未登记 → 红；登记了却不存在 → 红。
 #
@@ -1176,10 +1183,10 @@ def main(argv):
     print("check_ir_attribution: OK（扫描 %d 个 .py；写点 %d 处 = 判定点 %d + "
           "消费点 %d，归因喂入点 %d 处，语言登记 %d 个，扩展名事实源 %d 处，"
           "与登记表双向一致；另有 %d 项纯函数形状/规则判据 + %d 项语言登记判据"
-          " + %d 项扩展名事实源判据）"
+          " + %d 项扩展名事实源判据；判据族 %s）"
           % (n_files, len(IR_DECIDERS) + len(IR_CONSUMERS), len(IR_DECIDERS),
              len(IR_CONSUMERS), len(ATTR_FEEDS), len(in_scope),
-             len(EXT_TRUTH_REF), n_shape, n_lang, n_ext))
+             len(EXT_TRUTH_REF), n_shape, n_lang, n_ext, ROW_SIGNATURE))
     return 0
 
 

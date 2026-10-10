@@ -101,6 +101,13 @@ import shutil
 import sys
 import tempfile
 
+# R62/P5：「质量门表」里本门那一行的**签名**（本门自己的判据族，
+# 或本门独有的机制名）。它必须逐字出现在两处：
+#   ① 本门的成功行（下面 main() 打印的那一行）；
+#   ② README.md / README_CN.md 里本门那一行。
+# 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
+ROW_SIGNATURE = "D1–D12"
+
 EN = "README.md"
 CN = "README_CN.md"
 DOCS = (EN, CN, "flow/README.md", "flow/FLOW_REPORT.md")
@@ -944,7 +951,7 @@ def main(argv=None):
             print("  ...（还有 %d 条）" % (len(probs) - 40))
         return 1
     print("check_flow_diagrams: OK（引用 %d 条 / 产物 %d 个 / 候选 %d 个，"
-          "D1–D12 全绿）" % (n_refs, n_files, n_cand))
+          "%s 全绿）" % (n_refs, n_files, n_cand, ROW_SIGNATURE))
     return 0
 
 

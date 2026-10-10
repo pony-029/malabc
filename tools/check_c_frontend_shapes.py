@@ -87,6 +87,13 @@ import subprocess
 import sys
 import tempfile
 
+# R62/P5：「质量门表」里本门那一行的**签名**（本门自己的判据族，
+# 或本门独有的机制名）。它必须逐字出现在两处：
+#   ① 本门的成功行（下面 main() 打印的那一行）；
+#   ② README.md / README_CN.md 里本门那一行。
+# 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
+ROW_SIGNATURE = "F1–F6"
+
 # 公开 CLI 的墙钟上限。实测一次 ≈0.5s，300s 是给「机器正忙」留的量级余量；
 # 它的意义是「让挂死变成红，而不是让门永远等着」。
 CLI_TIMEOUT = 300.0
@@ -447,7 +454,8 @@ def main(argv):
         print("check_c_frontend_shapes: %d 项违规" % len(probs))
         return 1
     print("check_c_frontend_shapes: OK（%d 个合成夹具 / 公开 CLI 认出 %d 个函数 / "
-          "F1–F6 全绿 + 夹具完备性 + 棘轮）" % (len(FIXTURES), n_funcs))
+          "%s 全绿 + 夹具完备性 + 棘轮）"
+          % (len(FIXTURES), n_funcs, ROW_SIGNATURE))
     return 0
 
 

@@ -50,6 +50,13 @@ import struct
 import sys
 import tempfile
 
+# R62/P5：「质量门表」里本门那一行的**签名**（本门自己的判据族，
+# 或本门独有的机制名）。它必须逐字出现在两处：
+#   ① 本门的成功行（下面 main() 打印的那一行）；
+#   ② README.md / README_CN.md 里本门那一行。
+# 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
+ROW_SIGNATURE = "C1–C9"
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
 if _ROOT not in sys.path:
@@ -697,7 +704,8 @@ def main(argv):
     print("check_binfmt_fixtures: OK（PE/ELF 解析、GPU 段识别、magic 兜底、"
           "契约 C1/C2/C3/C4/C5/C6 + R33 新增 C7(PTX .entry 括号判据)/"
           "C8(Mach-O 未验证传播) + R36 新增 C9(合成 Mach-O 夹具：LC_SEGMENT_64 "
-          "段/节解析、fat 切片、fixture_verified 两轴) 全部通过）")
+          "段/节解析、fat 切片、fixture_verified 两轴) 全部通过；"
+          "判据族 %s）" % ROW_SIGNATURE)
     return 0
 
 

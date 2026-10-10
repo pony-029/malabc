@@ -51,6 +51,13 @@ import sys
 # 统一改用 typing 的 List，3.6 起都可用。
 from typing import List
 
+# R62/P5：「质量门表」里本门那一行的**签名**（本门自己的判据族，
+# 或本门独有的机制名）。它必须逐字出现在两处：
+#   ① 本门的成功行（下面 main() 打印的那一行）；
+#   ② README.md / README_CN.md 里本门那一行。
+# 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
+ROW_SIGNATURE = "G0–G3"
+
 PROD_RE = re.compile(
     r"_edits\.setdefault\([^)]*\)\.append\(\s*\(\s*[\"']([A-Za-z_]+)[\"']")
 # 只匹配「以 _new[_idx] 为左值的赋值」，右值若是 None 则为合法的删除标记
@@ -177,8 +184,9 @@ def main(argv=None) -> int:
         for p in probs:
             print("  - " + p)
         return 1
-    print("check_patch_ops: OK（算子集合 ⊆ %s，无覆盖式赋值，未知算子显式失败）"
-          % sorted(ALLOWED_OPS))
+    print("check_patch_ops: OK（算子集合 ⊆ %s，无覆盖式赋值，"
+          "未知算子显式失败；判据族 %s）"
+          % (sorted(ALLOWED_OPS), ROW_SIGNATURE))
     return 0
 
 

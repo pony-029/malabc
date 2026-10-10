@@ -60,6 +60,13 @@ import ast
 import os
 import sys
 
+# R62/P5：「质量门表」里本门那一行的**签名**（本门自己的判据族，
+# 或本门独有的机制名）。它必须逐字出现在两处：
+#   ① 本门的成功行（下面 main() 打印的那一行）；
+#   ② README.md / README_CN.md 里本门那一行。
+# 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
+ROW_SIGNATURE = "S1–S5"
+
 # 扫描范围：本仓**运行时** Python 文件所在的目录（不含 tests/）。
 # 登记在这里 = 明确声明「我只看这些地方」，避免护栏边界悄悄漂移。
 SCAN_DIRS = (".", "tools", "binfmt", "renderers")
@@ -420,8 +427,9 @@ def main(argv=None):
         return 1
     print("check_subprocess_hygiene: OK（运行时捕获点 %d 全部切断 stdin；"
           "run 类全部带 timeout；Popen 捕获点 %d、**kwargs 盲区 %d 全部登记；"
-          "tests/ 另有 %d 点按设计不计入）"
-          % (len(r_sites), len(popen_keys), len(blind_keys), len(t_sites)))
+          "tests/ 另有 %d 点按设计不计入；判据族 %s）"
+          % (len(r_sites), len(popen_keys), len(blind_keys), len(t_sites),
+             ROW_SIGNATURE))
     return 0
 
 

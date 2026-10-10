@@ -90,6 +90,13 @@ import subprocess
 import sys
 import tempfile
 
+# R62/P5：「质量门表」里本门那一行的**签名**（本门自己的判据族，
+# 或本门独有的机制名）。它必须逐字出现在两处：
+#   ① 本门的成功行（下面 main() 打印的那一行）；
+#   ② README.md / README_CN.md 里本门那一行。
+# 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
+ROW_SIGNATURE = "V1–V5"
+
 # ---------------------------------------------------------------------------
 # 常量：全部是「事实的读数」，不是可调参数。
 # 三个棘轮（V5）与真实值**必须相等** —— 改一条边界就要同步改一次这里，
@@ -816,12 +823,13 @@ def main(argv):
     n_neg = len([1 for t in texts if is_negation(t)])
     print("check_boundary_reverse: OK（帮助正文 %d 条边界，其中带否定词 %d 条；"
           "**全部 %d 条**都有对手方：%d 条 case 认领 + %d 条豁免登记（where 逐字"
-          "核对）；行为判据 %d 组公开 CLI 全绿；V1–V5 全绿）"
+          "核对）；行为判据 %d 组公开 CLI 全绿；%s 全绿）"
           % (len(heads), n_neg, covered,
              len([1 for c in REVERSE_CASES
                   if c["claim"] not in BOUNDARY_EXEMPT]),
              len(BOUNDARY_EXEMPT),
-             sum(len(c.get("runs") or ()) for c in REVERSE_CASES)))
+             sum(len(c.get("runs") or ()) for c in REVERSE_CASES),
+             ROW_SIGNATURE))
     return 0
 
 

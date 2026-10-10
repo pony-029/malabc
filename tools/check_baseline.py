@@ -68,6 +68,13 @@ import subprocess
 import sys
 import time
 
+# R62/P5：「质量门表」里本门那一行的**签名**（本门自己的判据族，
+# 或本门独有的机制名）。它必须逐字出现在两处：
+#   ① 本门的成功行（下面 main() 打印的那一行）；
+#   ② README.md / README_CN.md 里本门那一行。
+# 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
+ROW_SIGNATURE = "P1–P4"
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
 
@@ -709,11 +716,13 @@ def main(argv):
             for p in regressions:
                 print("  - %s" % p)
             return 1
-        print("check_baseline: OK（--full：按 nodeid 集合比对两侧，无回归）")
+        print("check_baseline: OK（--full：按 nodeid 集合比对两侧，无回归；"
+              "判据族 %s）" % ROW_SIGNATURE)
         return 0
 
     print("check_baseline: OK（前置条件 %d 项 + 判定逻辑两向自证 %s；"
-          "完整基线请显式跑 --full —— 它会真跑两侧全量，分钟级）" % (n, tally))
+          "完整基线请显式跑 --full —— 它会真跑两侧全量，分钟级；判据族 %s）"
+          % (n, tally, ROW_SIGNATURE))
     return 0
 
 

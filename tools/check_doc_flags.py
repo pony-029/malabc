@@ -61,6 +61,13 @@ import subprocess
 import sys
 import tempfile
 
+# R62/P5：「质量门表」里本门那一行的**签名**（本门自己的判据族，
+# 或本门独有的机制名）。它必须逐字出现在两处：
+#   ① 本门的成功行（下面 main() 打印的那一行）；
+#   ② README.md / README_CN.md 里本门那一行。
+# 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
+ROW_SIGNATURE = "NO_HELP_SCRIPTS"
+
 SCRIPTS = ("matlabc.py", "matlabc_flow.py", "matlabc_ask.py", "matlabc_mcp.py",
            "gui.py")
 # 子进程 `--help` 的墙钟上限。实测（探针 probe_r26b / probe_help_behavior）五个
@@ -404,8 +411,8 @@ def main(argv=None):
             print("  - " + p)
         return 1
     print("check_doc_flags: OK（%d 份文档/帮助正文的命令行开关全部存在于对应脚本的 --help；"
-          "含 %d 个入口脚本的模块 docstring）"
-          % (scanned, len(SELF_DOCS)))
+          "含 %d 个入口脚本的模块 docstring；判据 %s）"
+          % (scanned, len(SELF_DOCS), ROW_SIGNATURE))
     return 0
 
 
