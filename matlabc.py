@@ -93,7 +93,7 @@ matlabc — 代码结构梳理与静态分析工具（纯 Python，零依赖，�
   * GPU：CUDA kernel 名从 cubin 的 `.text._Z` 节名表提取；**PTX 路径基本提不出
     kernel 名**（真 entry 极少）。提不到时报告会写明原因，不静默给 0。
   * Mach-O：解析器已实现，且已有**合成夹具**验证（LC_SEGMENT_64 段/节 +
-    LC_LOAD_DYLIB 一族依赖 + LC_SYMTAB 外部符号 + fat 切片清单），
+    LC_LOAD_DYLIB 一族依赖 + LC_SYMTAB 外部符号 + fat 逐片解析），
     但**本机无 Mach-O 真实语料**，所以报告里仍是 `verified: NO`。
     报告把「无真实语料」与「有合成夹具」分成两条轴写 —— 这不是一回事。
   * **跨语言算子有一个是「不做」的**：`py_undefined_name`（Python 未定义名）。

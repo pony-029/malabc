@@ -183,7 +183,7 @@ GUARD_CONTRACT = {
         2: "缺输入 / 环境不可用（非 git 仓库 / 无 git / 测试集不在）",
     },
     "tools/check_binfmt_fixtures.py": {
-        0: "契约 C1–C12 全部通过",
+        0: "契约 C1–C13 全部通过",
         1: "发现违规",
         2: "缺输入 / 环境不可用（无法导入 binfmt）",
     },

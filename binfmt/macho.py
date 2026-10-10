@@ -39,8 +39,32 @@ R68 起，本模块不再只读「容器」——它同时读**依赖形态**与
     归一（去掉那一个前导下划线再去和源码侧的名字对账）发生在 attribute.py，
     且**只对 macho 容器**做 —— 别的容器上的 `_foo` 是合法的 C 名字，不能动它。
 
+R71 起，fat（universal）二进制**逐片解析**：真实 macOS 二进制大多是 universal，
+而在此之前 `flavour == "fat"` 只把切片清单写进 notes —— 依赖与符号只在 thin 路径读，
+于是「这个 universal dylib 依赖谁」的答案**恒为空**（R71 探针 `_r71/probe_r71_fat_macho.py`
+实测：fat 侧 0 依赖 / 0 符号 / 0 段，同一个打包器造的 thin 侧 3 依赖 / 1 导出）。
+现在的做法与三条纪律（**都是刻意的，不是随手选的**）：
+
+    事项                做法                                  为什么
+    ──────────────────  ────────────────────────────────────  ──────────────────────────────
+    切片怎么读          `_SliceView`：只做**偏移换算**的视图  真实 universal 的单片常 > 8 MiB，
+                        （切片相对偏移 ⇄ 宿主绝对偏移）       整片读进内存要么爆、要么被
+                                                              MAX_CHUNK 截断 ⇒ **安静少读符号表**
+    片内偏移            section.file_off **重基**成容器绝对     gpu.py 拿 file_off 去宿主文件里读，
+                        偏移（`+ slice_off`）                  不重基就会读到别的切片的字节
+    同名片怎么并        `_FatMerge`：按 (名字, kind) **去重**， universal 的每一片都带同一份
+                        切片下标进 detail（`slice[0,1] LC_…`）  install name 与同一批符号；
+                                                              不去重会把导出表按片数翻倍
+    段名                带 `slice[i]:` 前缀（**同名片会重名**） GPU 段名提示表按**精确**名查，
+                                                              所以 gpu.section_base_name()
+                                                              负责剥掉这个前缀（见 gpu.py）
+    读不懂的片          写一条**点名** note（`slice[1] … 不是   一个读不懂的切片不许静默变成
+                        thin Mach-O，跳过`），其余片照常解析    「这个库没有依赖」
+
   仍**不做**（诚实边界）：反汇编、重定位、运行期符号绑定（two-level namespace /
-  dyld shared cache 的解析）、以及 fat 切片内部的逐片解析（fat 目前只列切片清单）。
+  dyld shared cache 的解析）；`fat_arch_64`（magic `0xCAFEBABF`，32 字节 fat_arch）
+  **不认** —— `sniff()` 只认 `0xCAFEBABE` 的 20 字节形态，一个 `0xCAFEBABF` 文件
+  会走「无法识别的容器类型」而不是被猜测。
 """
 import io
 import struct
@@ -177,7 +201,8 @@ def parse(path, scan_cap=None):
             rep.notes.append("Mach-O: 魔数不匹配")
             return rep
         rep.notes.append("Mach-O: ⚠ 未经**真实语料**验证（本机无 Mach-O 样本）；"
-                         "已通过合成夹具（LC_SEGMENT_64 段/节 + fat 切片）")
+                         "已通过合成夹具（LC_SEGMENT_64 段/节 + 依赖指令 + 符号表 "
+                         "+ fat 逐片解析）")
         magic = head[:4]
         if magic == b"\xca\xfe\xba\xbe":
             if not _looks_like_fat(head, fsize):
@@ -199,16 +224,171 @@ def parse(path, scan_cap=None):
 
 
 def _parse_fat(f, head, rep, fsize):
+    """fat（universal）头 + **逐片解析**（R71）。
+
+    每一片都是一个完整的 thin Mach-O，片内的所有偏移（段表、LC_SYMTAB 的
+    symoff/stroff）都是**相对该片起点**的 —— 所以片必须被当成一个独立的文件来读，
+    这正是 `_SliceView` 做的事（只换算偏移，不整片读进内存）。
+    """
     n = struct.unpack_from(">I", head, 4)[0]
     rep.flavour = "fat"
     rep.endian = "big"
     rep.arch = "fat(%d)" % n
     rep.notes.append("Mach-O: fat binary 含 %d 个架构切片" % n)
+    merge = _FatMerge(rep)
     for i in range(min(n, MAX_FAT_ARCH)):
         cputype, cpusub, off, size, align = struct.unpack_from(">IIIII", head, 8 + i * 20)
+        arch = CPU_TYPE.get(cputype, "?")
         rep.notes.append("Mach-O:   slice[%d] cputype=0x%x arch=%s off=%d size=%d"
-                         % (i, cputype, CPU_TYPE.get(cputype, "?"), off, size))
+                         % (i, cputype, arch, off, size))
+        _parse_fat_slice(f, rep, merge, i, arch, off, size, fsize)
     return rep
+
+
+def _parse_fat_slice(f, rep, merge, idx, arch, off, size, fsize):
+    """解析**一片**。任何读不懂的情形都必须留下**点名到片**的 note，绝不静默。"""
+    lab = "slice[%d]" % idx
+    if size <= 0 or off < 0:
+        rep.notes.append("Mach-O: %s 的 offset/size 非法（off=%d size=%d），跳过"
+                         % (lab, off, size))
+        return
+    if fsize and off + size > fsize:
+        rep.notes.append("Mach-O: %s 越过文件末尾（off+size=%d > 文件 %d），跳过"
+                         % (lab, off + size, fsize))
+        return
+    view = _SliceView(f, off, size)
+    try:
+        head = view.read(4096)
+    except OSError as e:
+        rep.notes.append("Mach-O: %s 读取失败 %s: %s（该片未被解析）"
+                         % (lab, type(e).__name__, e))
+        return
+    if not thin_magic(head):
+        rep.notes.append("Mach-O: %s 的魔数 %s 不是 thin Mach-O，跳过"
+                         "（该片未被解析）"
+                         % (lab, head[:4].hex(" ") if head else "<读到 0 字节>"))
+        return
+    endian = "<" if head[:4] in (b"\xce\xfa\xed\xfe", b"\xcf\xfa\xed\xfe") else ">"
+    sub = BinaryReport(path=rep.path, container=CONTAINER_MACHO,
+                       verified=False, fixture_verified=True)
+    _parse_thin(view, sub, endian, head)
+    merge.add_slice(sub, idx, arch, off)
+
+
+class _SliceView(object):
+    """把宿主文件的 [base, base+size) 段当成一个**独立只读文件**（R71）。
+
+    为什么不是「把切片读进内存」：真实 universal 的单个切片常常超过 MAX_CHUNK，
+    整片读入要么爆内存、要么被上限截断 —— 而**被截断的切片会安静地少读符号表**
+    （`_read_symtab` 按 symoff/stroff 在切片内定位）。视图只做偏移换算，单次 I/O
+    的大小仍由调用方决定，与 thin 路径逐字相同。
+
+    越界语义与真文件一致：seek 到末尾之后 read 返回 b""（调用方各自有 note）。
+    """
+
+    __slots__ = ("_f", "_base", "_size", "_pos")
+
+    def __init__(self, f, base, size):
+        self._f = f
+        self._base = base
+        self._size = size
+        self._pos = 0
+
+    def seek(self, off, whence=0):
+        if whence == 1:
+            off = self._pos + off
+        elif whence == 2:
+            off = self._size + off
+        if off < 0:
+            raise OSError("切片内 seek 到负偏移 %d" % off)
+        self._pos = off
+        return off
+
+    def tell(self):
+        return self._pos
+
+    def read(self, n=-1):
+        if n is None or n < 0:
+            n = self._size - self._pos
+        else:
+            n = min(n, self._size - self._pos)
+        if n <= 0:
+            return b""
+        self._f.seek(self._base + self._pos)
+        b = self._f.read(n)
+        self._pos += len(b)
+        return b
+
+    def close(self):
+        pass
+
+
+class _FatMerge(object):
+    """fat 各片解析结果的**并集归并器**（R71）。
+
+    去重键 = (名字, kind)。为什么必须去重：universal 的每一片都带**同一份**
+    install name（LC_ID_DYLIB 是库自己的身份，与架构无关）和**同一批**外部符号，
+    不去重会让依赖表与导出表按片数整倍膨胀；而 `attribute.missing_dependencies`
+    是按表逐条走的，重复会直接污染「未提供」的结论。
+
+    去重后**切片下标不许丢**：进 `detail`（依赖）/ `section`（符号），形如
+    `slice[0,1] LC_LOAD_DYLIB` —— 「谁提供的」这个问题必须还能回答。
+    """
+
+    def __init__(self, rep):
+        self.rep = rep
+        self._dep = {}
+        self._sym = {}
+
+    def add_slice(self, sub, idx, arch, slice_off):
+        rep = self.rep
+        for s in sub.sections:
+            # 段/节名加 `slice[i]:` 前缀：两片的 `__TEXT` 同名，不打前缀就分不开。
+            # GPU 段名提示表的精确匹配由 gpu.section_base_name() 负责剥前缀。
+            rep.sections.append(Section(
+                name="slice[%d]:%s" % (idx, s.name), vaddr=s.vaddr,
+                vsize=s.vsize,
+                # **重基**：片内偏移是相对片起点的，而 gpu.py 是拿 file_off 去
+                # 宿主文件里读的。不重基 ⇒ 读到别的切片的字节（错得很安静）。
+                file_off=slice_off + s.file_off, file_size=s.file_size,
+                kind=s.kind, gpu_hint=s.gpu_hint))
+        for d in sub.dependencies:
+            key = (d.name, d.kind)
+            cur = self._dep.get(key)
+            if cur is None:
+                dep = Dependency(name=d.name, kind=d.kind, origin=rep.path,
+                                 resolved_path=d.resolved_path,
+                                 detail="slice[%d] %s" % (idx, d.detail))
+                self._dep[key] = (dep, [idx])
+                rep.dependencies.append(dep)
+            else:
+                dep, idxs = cur
+                idxs.append(idx)
+                dep.detail = "slice[%s] %s" % (
+                    ",".join(str(x) for x in idxs), d.detail)
+        for s in sub.symbols:
+            key = (s.name, s.kind)
+            cur = self._sym.get(key)
+            if cur is None:
+                sym = Symbol(name=s.name, kind=s.kind, origin=rep.path,
+                             address=s.address,
+                             section="slice[%d]%s" % (idx, s.section or ".symtab"),
+                             backend=s.backend, demangled=s.demangled)
+                self._sym[key] = (sym, [idx])
+                rep.symbols.append(sym)
+            else:
+                sym, idxs = cur
+                idxs.append(idx)
+                sym.section = "slice[%s]%s" % (
+                    ",".join(str(x) for x in idxs), s.section or ".symtab")
+        rep.scanned_bytes += sub.scanned_bytes
+        for n in sub.notes:
+            rep.notes.append("Mach-O: slice[%d] %s"
+                             % (idx, n[len("Mach-O: "):] if n.startswith("Mach-O: ")
+                                else n))
+        rep.notes.append("Mach-O: slice[%d] arch=%s 解析完成：段/节 %d、依赖 %d、符号 %d"
+                         % (idx, arch, len(sub.sections), len(sub.dependencies),
+                            len(sub.symbols)))
 
 
 def _parse_thin(f, rep, endian, head):

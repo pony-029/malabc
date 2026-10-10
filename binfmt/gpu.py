@@ -93,6 +93,25 @@ SECTION_HINTS = {
 
 DEFAULT_SCAN_CAP = 64 << 20
 
+# R71：fat（universal）的段名带 `slice[i]:` 前缀 —— 同一个 `__TEXT` 在两个架构
+# 切片里都出现，不打前缀就分不开（见 macho.py 的 `_FatMerge`）。提示表是按**精确**
+# 段名查的，所以查表前必须先把前缀剥掉；剥法是**一处实现**（下面这个函数），
+# 免得 `analyze()` 与 `_magic_fallback()` 各写一份而慢慢分叉。
+_FAT_SLICE_PREFIX = "slice["
+
+
+def section_base_name(name):
+    """剥掉 fat 的 `slice[i]:` 前缀；没有前缀时**原样返回**。
+
+    前缀只由 macho.py 的 `_FatMerge` 生成，形如 `slice[0]:__TEXT,__text`。
+    不是这个形状（例如 ELF 段名叫 `.nv_fatb`）时一个字节都不动。
+    """
+    if name.startswith(_FAT_SLICE_PREFIX):
+        i = name.find("]:")
+        if i > 0:
+            return name[i + 2:]
+    return name
+
 IDENT_CHARS = frozenset(
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_$.@"
 )
@@ -234,7 +253,7 @@ def analyze(rep, path, scan_cap=DEFAULT_SCAN_CAP):
     try:
         hinted = []
         for s in rep.sections:
-            hint = SECTION_HINTS.get(s.name)
+            hint = SECTION_HINTS.get(section_base_name(s.name))
             if hint:
                 hinted.append((s, hint[0], hint[1]))
         budget = [scan_cap]
@@ -473,8 +492,9 @@ def _magic_fallback(f, rep, budget):
     for s in rep.sections:
         if s.file_size <= 0:
             continue
-        if (s.kind and "data" in s.kind) or s.name.startswith((".rdata", ".rodata",
-                                                              ".data")):
+        base = section_base_name(s.name)
+        if (s.kind and "data" in s.kind) or base.startswith((".rdata", ".rodata",
+                                                            ".data")):
             cand.append(s)
     if not cand:
         return None

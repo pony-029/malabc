@@ -18993,7 +18993,7 @@ _R68_N_SECT = 0x0E                    # nlist n_type：节内符号，**无** N_
 _R68_N_UNDF_EXT = 0x01                # nlist n_type：未定义 + 外部 => import
 
 
-def _r68_macho(path, deps=(), syms=(), pad=0x1200):
+def _r68_macho(path, deps=(), syms=(), pad=0x1200, cputype=0x01000007):
     """R68：**测试自己**写一个最小 thin Mach-O 64（刻意不借用 tools/ 里的构造器）。
 
     为什么要再写一份：护栏的夹具构造器与护栏的判据同源 —— 构造器若把布局写错，
@@ -19045,7 +19045,7 @@ def _r68_macho(path, deps=(), syms=(), pad=0x1200):
         cmds[-1] = _s.pack("<IIIIII", 0x2, 24, symoff, len(syms), stroff,
                            len(str_blob))
     out = bytearray(b"\xcf\xfa\xed\xfe")       # MH_MAGIC_64（little-endian）
-    out += _s.pack("<IIIIII", 0x01000007, 3, 6, len(cmds), sizeofcmds, 0)
+    out += _s.pack("<IIIIII", cputype, 3, 6, len(cmds), sizeofcmds, 0)
     out += _s.pack("<I", 0)                       # reserved
     for c in cmds:
         out += c
@@ -19290,7 +19290,7 @@ def test_r68_binfmt_gate_c10_c11_c12_is_two_way():
     gate = os.path.join(_R33_TOOLS, "check_binfmt_fixtures.py")
     assert os.path.isfile(gate), "二进制约束护栏必须真存在"
     mod = _r37_load("check_binfmt_fixtures")
-    sig = "C1\u2013C12"
+    sig = "C1\u2013C13"
     assert mod.ROW_SIGNATURE == sig, mod.ROW_SIGNATURE
 
     # ① 门本体 rc=0 且成功行带签名
@@ -19471,3 +19471,237 @@ def test_r70_guard_contract_desc_carries_own_signature():
         assert any(x.startswith("H1") and victim in x for x in probs), probs
     finally:
         hc.GUARD_CONTRACT[victim][0] = saved
+
+
+# ===========================================================================
+# R71：fat（universal）Mach-O **逐片**解析（R68 §8 的 C18-1）
+#
+# 本轮修掉的事实：`flavour == "fat"` 只把切片清单写进 notes —— 依赖与符号只在
+# thin 路径读，于是「这个 universal dylib 依赖谁」的答案**恒为空**，而真实 macOS
+# 二进制大多是 universal。探针 `_r71/probe_r71_fat_macho.py`（仓库外、自带打包器）
+# 实测：同一个打包器造的 thin 件读出 3 依赖 / 1 导出，fat 件读出 0 / 0 / 0 段。
+#
+# `_r71_fat` 是**第三份**手写布局（产品一份、护栏夹具一份、这里一份）——
+# 三份只有在都对时才可能同时通过。
+# ===========================================================================
+
+_R71_CPU_X86_64 = 0x01000007
+_R71_CPU_ARM64 = 0x0100000C
+
+_R71_SLICE0 = dict(
+    deps=[(0x0D, "libfat.dylib"),                 # LC_ID_DYLIB：**两片同名**
+          (0x0C, "libSystem.B.dylib"),            # 两片都有
+          (0x0C, "libonly0.dylib")],              # 只在第 0 片
+    syms=[("_fa_export", _R68_N_SECT_EXT), ("_fa_priv", _R68_N_SECT)])
+_R71_SLICE1 = dict(
+    deps=[(0x0D, "libfat.dylib"),
+          (0x0C, "libSystem.B.dylib"),
+          (0x0C, "@rpath/libonly1.dylib")],       # 只在第 1 片
+    syms=[("_fb_export", _R68_N_SECT_EXT)])
+
+_R71_WANT_DEPS = {
+    "libfat.dylib": "id_dylib",
+    "libSystem.B.dylib": "load_dylib",
+    "libonly0.dylib": "load_dylib",
+    "@rpath/libonly1.dylib": "load_dylib",
+}
+
+
+def _r71_fat(path, slices):
+    """R71：**测试自己**拼一个 fat 头（big-endian 20 字节 fat_arch）+ n 片。
+
+    slices: [(cputype, thin 字节)]。返回 (fat 字节, [(idx, cpu, off, size)])；
+    切片表由本函数自己算 —— 判据拿它当**独立期望**，不看产品报了些什么。
+    """
+    import struct as _s
+    per = 20
+    off = 8 + per * len(slices)
+    table = []
+    for i, (cpu, blob) in enumerate(slices):
+        table.append((i, cpu, off, len(blob)))
+        off += len(blob)
+    out = bytearray(_s.pack(">I", 0xCAFEBABE) + _s.pack(">I", len(slices)))
+    for _i, cpu, o, sz in table:
+        out += _s.pack(">IIIII", cpu, 3, o, sz, 0)   # align=0，产品不读它
+    for _cpu, blob in slices:
+        out += blob
+    with open(path, "wb") as fh:
+        fh.write(bytes(out))
+    return bytes(out), table
+
+
+def _r71_slice_bytes(tmp, tag, cputype, **kw):
+    """借 R68 那份手写 thin 构造器造一片，再把**字节**读回来（不碰 tools/ 的构造器）。"""
+    p = os.path.join(tmp, "slice_%s.dylib" % tag)
+    _r68_macho(p, cputype=cputype, **kw)
+    with open(p, "rb") as fh:
+        return fh.read()
+
+
+def _r71_cleanup(tmp):
+    shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r71_fat_macho_slices_are_parsed_end_to_end():
+    """R71-1：fat 的**每一片**都要被解析 —— 依赖、导出符号、段表，三样都要。
+
+    基线（R71 之前）实测：fat 侧 **0 依赖 / 0 符号 / 0 段**。判据的证人刻意选
+    「**只在第 1 片里出现**的名字」（`@rpath/libonly1.dylib` / `_fb_export`）——
+    「只读第一片」的实现会让它们必然缺席，而「两片都读」的实现必然看得见它们。
+    同名的那些（install name、两片都有的依赖）反过来钉**去重**：表不许按片数翻倍。
+    """
+    tmp = tempfile.mkdtemp(prefix="_t_r71a_")
+    try:
+        s0 = _r71_slice_bytes(tmp, "0", _R71_CPU_X86_64, **_R71_SLICE0)
+        s1 = _r71_slice_bytes(tmp, "1", _R71_CPU_ARM64, **_R71_SLICE1)
+        fatp = os.path.join(tmp, "fat_two_slice.dylib")
+        data, table = _r71_fat(fatp, [(_R71_CPU_X86_64, s0), (_R71_CPU_ARM64, s1)])
+
+        # 前置：夹具自洽（不成立就不许往下判 OK）
+        for i, _cpu, off, size in table:
+            assert data[off:off + 4] == b"\xcf\xfa\xed\xfe", (i, off, size)
+
+        # ① 公开 CLI 一侧：两片独有的名字都必须出现
+        reps, _out = _r68_binary_json([fatp], tmp, "r71fat")
+        assert len(reps) == 1, reps
+        rep = reps[0]
+        assert rep["flavour"] == "fat", rep["flavour"]
+        got = dict((d["name"], d["kind"]) for d in rep["dependencies"])
+        for nm, kind in _R71_WANT_DEPS.items():
+            assert got.get(nm) == kind, (nm, kind, sorted(got.items()))
+        assert len(rep["dependencies"]) == len(_R71_WANT_DEPS), rep["dependencies"]
+        exports = [s["name"] for s in rep["symbols"] if s["kind"] == "export"]
+        assert "_fa_export" in exports and "_fb_export" in exports, exports
+        assert "_fa_priv" not in [s["name"] for s in rep["symbols"]], exports
+        assert len(exports) == len(set(exports)), exports
+
+        # ② 产品对象一侧：切片归属（去重不许把下标丢掉）+ 段表偏移**重基**
+        obj = _r68_load("binfmt").parse(fatp, with_gpu=False)
+        detail = dict((d.name, d.detail) for d in obj.dependencies)
+        assert "slice[0,1]" in detail["libfat.dylib"], detail
+        assert "slice[0,1]" in detail["libSystem.B.dylib"], detail
+        assert "slice[0]" in detail["libonly0.dylib"], detail
+        assert "slice[1]" in detail["@rpath/libonly1.dylib"], detail
+        assert len(obj.sections) == 2 * len(table), len(obj.sections)
+        for i, _cpu, off, size in table:
+            mine = [s for s in obj.sections if s.name.startswith("slice[%d]:" % i)]
+            assert mine, (i, [s.name for s in obj.sections])
+            lo = min(s.file_off for s in mine)
+            # __TEXT 段在片内的 fileoff 是 0 ⇒ 重基后必须**恰好**等于该片容器起点。
+            # 不重基的话这里是 0，而 0 是 fat 头的偏移 —— 会读到别的切片的字节。
+            assert lo == off, (i, lo, off)
+            for s in mine:
+                assert off <= s.file_off < off + size, (s.name, s.file_off)
+    finally:
+        _r71_cleanup(tmp)
+
+
+def test_r71_fat_broken_slice_is_named_not_swallowed():
+    """R71-2：读不懂的切片必须被**点名**（带片号），其余片照常解析。
+
+    静默丢片比报错更糟：一个「读不懂的片」如果只是一片空白，报告会声称
+    「这个库没有依赖」—— 而事实是**我们没读**。所以四种「读不懂」
+    （魔数不对 / 越过文件末尾 / offset-size 非法 / 读取失败）都必须留话，
+    且话里必须带片号，否则两片都读不懂时你分不清是哪一片。
+    """
+    binfmt = _r68_load("binfmt")
+    tmp = tempfile.mkdtemp(prefix="_t_r71b_")
+    try:
+        s0 = _r71_slice_bytes(tmp, "0", _R71_CPU_X86_64, **_R71_SLICE0)
+        p1 = os.path.join(tmp, "fat_one_bad.dylib")
+        _r71_fat(p1, [(_R71_CPU_X86_64, s0), (_R71_CPU_ARM64, b"A" * 128)])
+        rep1 = binfmt.parse(p1, with_gpu=False)
+        assert rep1.flavour == "fat", rep1.flavour
+        got1 = dict((d.name, d.kind) for d in rep1.dependencies)
+        assert got1.get("libonly0.dylib") == "load_dylib", sorted(got1.items())
+        assert "_fa_export" in [s.name for s in rep1.symbols], rep1.symbols
+        named = [n for n in rep1.notes
+                 if "slice[1]" in n and "不是 thin Mach-O" in n]
+        assert named, rep1.notes[-4:]
+
+        p2 = os.path.join(tmp, "fat_two_bad.dylib")
+        _r71_fat(p2, [(_R71_CPU_X86_64, b"B" * 128), (_R71_CPU_ARM64, b"C" * 128)])
+        rep2 = binfmt.parse(p2, with_gpu=False)
+        assert rep2.container == "macho", rep2.container
+        assert not rep2.dependencies and not rep2.symbols, (rep2.dependencies,
+                                                            rep2.symbols)
+        n_named = len([n for n in rep2.notes if "不是 thin Mach-O" in n])
+        assert n_named == 2, rep2.notes
+    finally:
+        _r71_cleanup(tmp)
+
+
+def test_r71_binfmt_gate_c13_is_two_way():
+    """R71-3：判据 C13 的**看守**是否在册，且签名一路对得上。
+
+    五层，照 R68/R70 的样式：
+      ① 门本体 rc=0 且成功行带签名 `C1–C13`；
+      ② `GUARD_CONTRACT` 的 `rc=0` 描述含同一签名（H1 的对手方）—— R70 起的门；
+      ③ 两侧 README 的门行含同一签名（P5 的对手方）；
+      ④ **纯函数两向**：一片不读的 fat 报告 ⇒ 抓到；只读首片的报告 ⇒ 抓到；
+         真产品在完整两片夹具上 ⇒ 放行；
+      ⑤ `--selftest` 的下界（`11/10`）—— 样本不许静默缩水。
+    """
+    gate = os.path.join(_R33_TOOLS, "check_binfmt_fixtures.py")
+    assert os.path.isfile(gate), "二进制约束护栏必须真存在"
+    mod = _r37_load("check_binfmt_fixtures")
+    sig = "C1\u2013C13"
+    assert mod.ROW_SIGNATURE == sig, mod.ROW_SIGNATURE
+
+    # ①
+    r = _r31_run([gate], timeout=180)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[-1200:]
+    assert sig in out, out[-500:]
+
+    # ②
+    hc = _r37_load("check_help_contract")
+    desc = " ".join(hc.GUARD_CONTRACT["tools/check_binfmt_fixtures.py"].values())
+    assert sig in desc, desc
+
+    # ③
+    for rel in ("README.md", "README_CN.md"):
+        text = io.open(os.path.join(ROOT, rel), encoding="utf-8").read()
+        assert sig in text, rel
+
+    # ④ 纯函数两向（**不进产品**：直接喂报告 + 夹具自己算的表）
+    data_ok = b"\x00" * 48 + b"\xcf\xfa\xed\xfe"
+    blind = mod.binfmt.BinaryReport(path="x", container="macho", flavour="fat",
+                                    arch="fat(2)")
+    f_blind = []
+    mod._c13_check_report(f_blind, blind, [(0, 7, 48, 9216)], data_ok)
+    assert any("读不出依赖" in x for x in f_blind), f_blind
+
+    half = mod.binfmt.BinaryReport(path="x", container="macho", flavour="fat",
+                                   arch="fat(2)")
+    for nm, kind, idxs in mod.FAT_EXPECT_DEPS:
+        if 1 in idxs and len(idxs) == 1:
+            continue
+        half.dependencies.append(mod.binfmt.Dependency(
+            name=nm, kind=kind, origin="x",
+            detail="slice[%s] %s" % (",".join(str(x) for x in idxs), kind)))
+    for snm, soff in (("__TEXT", 0), ("__TEXT,__text", 0x1000)):
+        half.sections.append(mod.binfmt.Section(name="slice[0]:" + snm,
+                                                file_off=48 + soff))
+    f_half = []
+    mod._c13_check_report(f_half, half, [(0, 7, 48, 9216)], data_ok)
+    assert any("@rpath/libonly1.dylib" in x for x in f_half), f_half
+
+    tmp = tempfile.mkdtemp(prefix="_t_r71c_")
+    try:
+        p = os.path.join(tmp, "fat_gate.dylib")
+        d13, t13 = mod._make_macho_fat(p, 2, slice_specs=mod.FAT_SLICE_SPECS)
+        g13 = []
+        mod._c13_check_report(g13, mod.binfmt.parse(p, with_gpu=False), t13, d13)
+        assert g13 == [], g13
+    finally:
+        _r71_cleanup(tmp)
+
+    # ⑤
+    rs = _r31_run([gate, "--selftest"], timeout=180)
+    s_out = rs.stdout.decode("utf-8", "replace")
+    assert rs.returncode == 0, s_out[-800:]
+    m = re.search(r'SELFTEST COUNTS \{"bad": (\d+), "good": (\d+)\}', s_out)
+    assert m, s_out[-500:]
+    assert int(m.group(1)) >= 11, s_out[-500:]
+    assert int(m.group(2)) >= 10, s_out[-500:]

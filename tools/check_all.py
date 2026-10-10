@@ -6,7 +6,7 @@
     python tools/check_all.py
         │
         ├─▶ check_baseline.py             公平基线：按 nodeid 集合比失败（--full 才真跑）
-        ├─▶ check_binfmt_fixtures.py      合成夹具 + 契约 C1..C12 + 两向自证
+        ├─▶ check_binfmt_fixtures.py      合成夹具 + 契约 C1..C13 + 两向自证
         ├─▶ check_doc_flags.py            文档/帮助里写的 CLI 开关必须真的存在
         ├─▶ check_flow_diagrams.py        图的引用 ↔ 文件 ↔ 候选声明，两两对齐且双向
         ├─▶ check_help_contract.py        退出码在代码↔帮助双向一致；示例能真跑
@@ -130,6 +130,10 @@ GUARD_TIMEOUT = 600.0
 # licensee 靠正文识别，一句「顺手润色」就能把 README 上那枚 license-MIT
 # 徽章变成假话；本轮还量出 README 双侧的版本徽章写 1.16.71 而
 # VERSION 已是 1.16.72。L1–L7 七条互不重叠、各有突变体），故 16 → 17。
+# R71 没有加门：给 `check_binfmt_fixtures.py` 补判据族 C13（fat/universal Mach-O
+# **逐片**解析 —— 依赖/符号/段表都要从每一片读、同名片去重且点名、片内偏移重基、
+# 读不懂的片必须被点名、GPU 段名提示不被 `slice[i]:` 前缀打瞎），
+# 判据族 C1–C12 → C1–C13。门数不变，仍是 16。
 MIN_GUARDS = 17
 
 
