@@ -291,7 +291,7 @@ check_help_contract: 1 项不一致
 | 家族回归 | `pytest -q -k "r66 or r65 or r64 or r63 or r62 or r61 or p93 or r30b or p217g"` | **22 passed** · 445 deselected · 69.23 s · **0 failed** |
 | 行尾 | 9 个改动/新增文件 | 全部 `bare_lf == 0`（`FILES_WITH_BARE_LF=0`） |
 | 永久红登记 | `python tools/check_known_red.py` | **rc=0**（`红 47 / 优雅跳过 8 / 其余绿 4`；判据族 `K1–K9`） |
-| 远端复核 | `_r66/verify_remote_r66.py` | 见 §4.1 |
+| 远端复核 | `_r66/verify_remote_r66.py` | **`REMOTE_VERIFY OK`** —— 全新克隆：`HEAD^{tree}` 相等 · `ls-tree -r` **249** 条 · 249/249 blob sha256 全同 · 克隆侧 `check_all` rc=0（3.13，无 pytest）· 克隆侧 `pytest -k r66` rc=0 |
 
 ### §4.1 定稿之后的完整读数（原文）
 
@@ -353,6 +353,32 @@ has 15 道登记制护栏: False
 | `check_help_contract` 的 **G0b** | 「`tools/check_py_js_frontend_shapes.py` 存在，但 `GUARD_CONTRACT` 没有登记它 —— 它的退出码契约没有任何人在核对」 | 补登记（`{0,1,2}`） |
 | `check_help_contract` 的 **N1** | 「`CONTRIBUTING.md:415`『17 道门』说 17，真实护栏数是 16」 | 改成「第 16 道门」（§5.1-6） |
 
+**⑨ 远端复核**（`_r66/verify_remote_r66.py`，全新克隆 + 逐文件比对 + 克隆侧真跑）：
+
+```
+  [OK] HEAD == 远端 HEAD                    dd6785d679c813259a13f47d88d013794d62db55
+  [OK] HEAD^{tree} 相等                     0e620b9a295feab288d1f4fedbe25af75696043e
+  [OK] ls-tree -r 条目数                     249
+  [OK] 逐文件 sha256 全部相同                    0
+  [OK] 克隆侧 check_all（3.13，无 pytest）rc     0
+       check_all: OK（16 个护栏，全部通过且各自自证；门数下限 16）
+  [OK] 克隆侧 pytest -k r66（3.10）rc          0
+       2 passed, 465 deselected in 3.46s
+REMOTE_VERIFY OK  （HEAD=dd6785d6  tree=0e620b9a  条目=249）
+```
+
+> ⚠ **哪几行是「逐字引用」**：**条目数 249**、**逐文件 sha256 全同（249/249）**、
+> **克隆侧两条 rc=0** —— 这三项与提交 id 无关，是**不变量**，逐字固化。
+> `HEAD` / `^{tree}` 两个 id 是**本次提交**的读数，**只作示例**（每次回归都会变。R65 的
+> 同一条纪律：墙钟与提交 id 这类「次数相关读数」不逐字固化，否则下一次就变成假话）。
+
+**为什么必须从远端取回来比**：`git diff` / 本地 `git status` / `git log` 看到的都是
+**本地**状态；「推送是否真的落地、落地的是不是同一棵树」只有 clone 回来才能证明。
+⚠ `ls-tree` 给的 sha 是 **blob object id（SHA-1）** —— 拿工作区字节的 `sha256` 去比**恒不等**；
+所以脚本用 `git cat-file blob <sha>` 取内容再比 `sha256`（249/249）。
+⚠ 条目数 **249** = R65 的 247 + 本轮新增 2（`docs/SUPERPOWER_REVIEW_R66.md`、
+`tools/check_py_js_frontend_shapes.py`）—— 这个加法和实测对上了，所以它是**读数**不是估计。
+
 （`test_s9_missing_lang_is_error` 的 `ModuleNotFoundError: fe_audit` 是 R63 起就登记的
 **B 类永久红**，不在本轮 `-k` 集合内，也不是本轮引入 —— 见 §2-10 / C16-6。）
 
@@ -401,6 +427,13 @@ has 15 道登记制护栏: False
 
    两个数**都对**，混用就错。**这道门区分得比我清楚** —— 它只抓「道门」，不碰「护栏脚本」。
    这也是本轮唯一一次**真红**（其余四处 N1 是修级联时按顺序红的）。
+7. **校验探针自己有个变量遮蔽 bug**：`entries()` 里把 `sh()` 的返回值也叫 `out`，
+   下一行又把 `out` 赋成了 dict ⇒ `AttributeError: 'dict' object has no attribute 'split'`。
+   **当场就炸**（比静默好），改个变量名即可。
+   教训：**测量装置自己是最该被怀疑的那一个** —— 它要是默默返回「相等」，
+   那正好是最危险的失败模式。这次它是在**比完 HEAD 与 tree 之后**才炸的，
+   所以前两项是真读数；但如果它是在「逐文件 sha256」那一步静默算错，
+   我会拿到一个**假的 OK**。这也是为什么 §7-10 把「装置的自证」列成盲区。
 
 ## §6 探针清单（`E:\matlabc\_r66\`，仓库外，LF）
 
@@ -440,6 +473,10 @@ has 15 道登记制护栏: False
 8. 本轮的**两端对照只有 1 台解释器**（系统 3.10 跑 pytest、托管 3.13 跑 CLI）：
    CLI 侧只用 3.13 量过；py / js 前端在 3.10 上的读数**没有单独测**。
 9. `check_known_red.py` 的 **B 类 6 件产物**仍在登记表里（§2-10）—— 本轮无决策。
+10. **测量装置自身没有自证**：三台探针（`_r66/probe_r66a/b/c`）与
+    `_r66/verify_remote_r66.py` 都是「我写的、我信的」—— 它们**没有 `--selftest`**，
+    也没有两向自证。本轮真踩了一次（§5.1-7 的变量遮蔽）。`tools/` 里的 16 道门
+    每道都强制两向自证，**探针却没有** —— 这是本轮**最大的方法论缺口**（C16-13）。
 
 ## §8 下一次建设性意见（接在 R65 §8 之后）
 
@@ -457,6 +494,7 @@ has 15 道登记制护栏: False
 | **C16-10** | `.workbuddy/` 仍不在 `.gitignore`（`git status` 里一直是 `??`），且**记忆文件不在任何门管辖内**（承接 C15-8） | 每一轮都要手工绕开它 | 中 |
 | **C16-11** | 把「**16 道门** vs **17 个护栏脚本**」这两个**都合法**的口径写进 `CONTRIBUTING.md` 的门禁小节（现在只出现在成功行与报错文案里） | §5.1-6 —— 本轮真的混用过一次，是这道门替我分清的 | 低 |
 | **C16-12** | 探针目录**收尾**纪律：每轮结束必须移除临时 `git worktree`，并加一条门核对 `git worktree list` 只剩主树 | 本轮 `git worktree list` 里躺着 **R61 / R62 两个遗留树**；R61 的已清干净，**R62 的还带着 311 行过期草稿**（`tests/test_matlabc.py` +83 / `tools/check_readme_parity.py` +235），且 `git worktree remove` **正当地拒绝**删除（不带 `--force`）—— 我没有单方面强删 | 中 |
+| **C16-13** | 让**探针自己两向自证**：`verify_remote_r66.py` 先对一棵「故意改一个字节」的克隆断言**必须报不同**；三台形态/值域探针各加一个「必须红」的坏样本 | §5.1-7 真踩到探针自身的 bug；§7-10 —— `tools/` 的 16 道门都强制两向自证，**探针却零自证** | **最高** |
 
 **仍未完成的旧项**：C15-1（`check_all --measure` 选修臂）· C15-2 / C14-2（README 表行的
 47 / 8 / 4 没有门的对手方）· C15-3（全量对照选修臂）· C15-4 · C15-5 · C15-6 ·
