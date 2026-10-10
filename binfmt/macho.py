@@ -18,12 +18,37 @@
 一个真实的歧义：Mach-O fat binary 的 magic 0xCAFEBABE 与 Java class 文件相同。
 本模块用「nfat_arch 合理性 + 每个 arch 的 offset/size 是否落在文件内」做消歧；
 消歧失败时**返回空并说明**，而不是硬认成 Mach-O。
+
+R68 起，本模块不再只读「容器」——它同时读**依赖形态**与**符号表**：
+
+    指令                        含义                       落到哪
+    ──────────────────────────  ─────────────────────────  ─────────────────────
+    LC_ID_DYLIB                 本库的 install name（身份）  Dependency(id_dylib)
+    LC_LOAD_DYLIB               强依赖                      Dependency(load_dylib)
+    LC_LOAD_WEAK_DYLIB          弱依赖（缺了也能跑）          Dependency(load_dylib)
+    LC_REEXPORT_DYLIB           再导出依赖                   Dependency(load_dylib)
+    LC_LOAD_UPWARD_DYLIB        向上依赖（同层互依赖）        Dependency(load_dylib)
+    LC_LAZY_LOAD_DYLIB          惰性依赖（已废弃）            Dependency(load_dylib)
+    LC_LOAD_DYLINKER            动态链接器（/usr/lib/dyld）   Dependency(load_dylinker)
+    LC_RPATH                    @rpath 搜索路径              Dependency(rpath)
+    LC_SYMTAB + nlist_64        外部符号表                   Symbol(export/import)
+    ──────────────────────────  ─────────────────────────  ─────────────────────
+
+  ⚠ 命名约定（**必须记住**）：Mach-O 里 C 符号带**前导下划线**
+    （源码写 `foo`，符号表里是 `_foo`）。本模块**原样保留**（`_foo`）；
+    归一（去掉那一个前导下划线再去和源码侧的名字对账）发生在 attribute.py，
+    且**只对 macho 容器**做 —— 别的容器上的 `_foo` 是合法的 C 名字，不能动它。
+
+  仍**不做**（诚实边界）：反汇编、重定位、运行期符号绑定（two-level namespace /
+  dyld shared cache 的解析）、以及 fat 切片内部的逐片解析（fat 目前只列切片清单）。
 """
 import io
 import struct
 
 from .model import (
-    CONTAINER_MACHO, MAX_CHUNK, Section, Symbol, BinaryReport, SYM_EXPORT,
+    CONTAINER_MACHO, DEP_ID_DYLIB, DEP_LOAD_DYLIB, DEP_LOAD_DYLINKER, DEP_RPATH,
+    MAX_CHUNK, Section, Symbol, BinaryReport, SYM_EXPORT, SYM_IMPORT,
+    Dependency,
 )
 
 MH_MAGIC = 0xFEEDFACE
@@ -44,6 +69,36 @@ FILETYPE = {
 
 LC_SEGMENT = 0x1
 LC_SEGMENT_64 = 0x19
+LC_SYMTAB = 0x2
+LC_LOAD_DYLIB = 0xC
+LC_ID_DYLIB = 0xD
+LC_LOAD_DYLINKER = 0xE
+LC_LAZY_LOAD_DYLIB = 0x20
+LC_REQ_DYLD = 0x80000000
+LC_LOAD_WEAK_DYLIB = 0x18 | LC_REQ_DYLD
+LC_REEXPORT_DYLIB = 0x1F | LC_REQ_DYLD
+LC_LOAD_UPWARD_DYLIB = 0x23 | LC_REQ_DYLD
+LC_RPATH = 0x1C | LC_REQ_DYLD
+
+# 「我依赖谁」的全部 dylib 命令（LC_ID_DYLIB 是**身份**，单独处理）
+DYLIB_LOAD_CMDS = {
+    LC_LOAD_DYLIB: "LC_LOAD_DYLIB",
+    LC_LOAD_WEAK_DYLIB: "LC_LOAD_WEAK_DYLIB",
+    LC_REEXPORT_DYLIB: "LC_REEXPORT_DYLIB",
+    LC_LOAD_UPWARD_DYLIB: "LC_LOAD_UPWARD_DYLIB",
+    LC_LAZY_LOAD_DYLIB: "LC_LAZY_LOAD_DYLIB",
+}
+
+MAX_CMD_BODY = 64 * 1024
+MAX_SYMTAB_SYMS = 200000
+MAX_STRTAB = 16 << 20
+
+# nlist n_type 位域
+N_STAB = 0xE0
+N_TYPE = 0x0E
+N_EXT = 0x01
+N_UNDF = 0x0
+N_SECT = 0x0E
 
 MAX_CMDS = 4096
 MAX_SECTS = 4096
@@ -174,6 +229,7 @@ def _parse_thin(f, rep, endian, head):
         rep.notes.append("Mach-O: ncmds=%d 超上限，截断" % ncmds)
         ncmds = MAX_CMDS
     off = 32 if is64 else 28
+    symtab = None
     for _ in range(ncmds):
         f.seek(off)
         b = f.read(8)
@@ -187,7 +243,27 @@ def _parse_thin(f, rep, endian, head):
             f.seek(off)
             body = f.read(min(cmdsize, 4096))
             _read_segment(f, rep, body, cmd, cmdsize, endian, is64)
+        elif cmd in DYLIB_LOAD_CMDS or cmd == LC_ID_DYLIB:
+            f.seek(off)
+            body = f.read(min(cmdsize, MAX_CMD_BODY))
+            _read_dylib_cmd(rep, body, cmd, endian)
+        elif cmd == LC_RPATH:
+            f.seek(off)
+            body = f.read(min(cmdsize, MAX_CMD_BODY))
+            _read_rpath_cmd(rep, body, endian)
+        elif cmd == LC_LOAD_DYLINKER:
+            f.seek(off)
+            body = f.read(min(cmdsize, MAX_CMD_BODY))
+            _read_dylinker_cmd(rep, body, endian)
+        elif cmd == LC_SYMTAB and symtab is None:
+            f.seek(off)
+            body = f.read(24)
+            if len(body) >= 24:
+                symtab = struct.unpack_from(endian + "IIII", body, 8)
         off += cmdsize
+    # 符号表在命令表**之后**读：strtab/symtab 的偏移是文件绝对偏移，与命令表无关
+    if symtab is not None:
+        _read_symtab(f, rep, symtab, endian, is64)
     return rep
 
 
@@ -230,3 +306,143 @@ def _read_segment(f, rep, body, cmd, cmdsize, endian, is64):
         rep.sections.append(Section(name="%s,%s" % (sname, sectname), vaddr=addr,
                                     vsize=size, file_off=soff, file_size=size,
                                     kind="section"))
+
+
+def _cstr_in(buf, off, limit=MAX_NAME):
+    """在**已读入内存**的字节串里取 NUL 结尾字符串（不碰文件指针）。"""
+    if off is None or off < 0 or off >= len(buf):
+        return ""
+    end = buf.find(b"\x00", off)
+    if end < 0:
+        end = len(buf)
+    return buf[off:end][:limit].decode("latin1", "replace")
+
+
+def _read_dylib_cmd(rep, body, cmd, endian):
+    """dylib_command: cmd(4) cmdsize(4) name.offset(4) ts(4) cur(4) compat(4) + name。
+
+    `name.offset` 是**相对本命令起始处**的偏移，按 ABI 必须 >= 24。
+    偏移非法时写 note 跳过，**不猜** —— 一个假的依赖名比没有依赖名更糟。
+    """
+    if len(body) < 24:
+        rep.notes.append("Mach-O: cmd=0x%x 命令体只有 %d 字节（<24），跳过"
+                         % (cmd, len(body)))
+        return
+    name_off = struct.unpack_from(endian + "I", body, 8)[0]
+    if name_off < 24 or name_off >= len(body):
+        rep.notes.append("Mach-O: cmd=0x%x 的 name.offset=%d 非法（命令体 %d 字节）"
+                         % (cmd, name_off, len(body)))
+        return
+    nm = _cstr_in(body, name_off)
+    if not nm:
+        return
+    if cmd == LC_ID_DYLIB:
+        rep.dependencies.append(Dependency(name=nm, kind=DEP_ID_DYLIB,
+                                          origin=rep.path, detail="install name"))
+        rep.notes.append("Mach-O: LC_ID_DYLIB=%s" % nm)
+    else:
+        rep.dependencies.append(Dependency(
+            name=nm, kind=DEP_LOAD_DYLIB, origin=rep.path,
+            detail=DYLIB_LOAD_CMDS.get(cmd, "cmd=0x%x" % cmd)))
+
+
+def _read_rpath_cmd(rep, body, endian):
+    """rpath_command: cmd(4) cmdsize(4) path.offset(4) + path。"""
+    if len(body) < 12:
+        rep.notes.append("Mach-O: LC_RPATH 命令体只有 %d 字节（<12），跳过"
+                         % len(body))
+        return
+    off = struct.unpack_from(endian + "I", body, 8)[0]
+    if off < 12 or off >= len(body):
+        rep.notes.append("Mach-O: LC_RPATH 的 path.offset=%d 非法" % off)
+        return
+    p = _cstr_in(body, off)
+    if p:
+        rep.dependencies.append(Dependency(name=p, kind=DEP_RPATH,
+                                           origin=rep.path, detail="LC_RPATH"))
+
+
+def _read_dylinker_cmd(rep, body, endian):
+    """dylinker_command: cmd(4) cmdsize(4) name.offset(4) + name —— 头只有 **12** 字节
+    （与 dylib_command 的 24 不同；混用会把链接器路径当成库名）。"""
+    if len(body) < 12:
+        rep.notes.append("Mach-O: LC_LOAD_DYLINKER 命令体 %d 字节（<12），跳过"
+                         % len(body))
+        return
+    off = struct.unpack_from(endian + "I", body, 8)[0]
+    if off < 12 or off >= len(body):
+        rep.notes.append("Mach-O: LC_LOAD_DYLINKER 的 name.offset=%d 非法" % off)
+        return
+    p = _cstr_in(body, off)
+    if p:
+        rep.dependencies.append(Dependency(name=p, kind=DEP_LOAD_DYLINKER,
+                                           origin=rep.path,
+                                           detail="LC_LOAD_DYLINKER"))
+
+
+def _read_symtab(f, rep, sym, endian, is64):
+    """LC_SYMTAB + nlist/nlist_64 -> 导出（N_EXT|N_SECT）与未定义（N_EXT|N_UNDF）。
+
+    只收**外部**符号（N_EXT）：内部/调试符号对「跨库归因」没有意义，收进来
+    只会把导出表灌满噪声。名字里的前导下划线**原样保留**（归一在 attribute.py）。
+    """
+    symoff, nsyms, stroff, strsize = sym
+    ent = 16 if is64 else 12
+    if nsyms <= 0:
+        return
+    if nsyms > MAX_SYMTAB_SYMS:
+        rep.notes.append("Mach-O: LC_SYMTAB 符号数 %d 超上限，截断到 %d"
+                         % (nsyms, MAX_SYMTAB_SYMS))
+        nsyms = MAX_SYMTAB_SYMS
+    if strsize > MAX_STRTAB:
+        rep.notes.append("Mach-O: 字符串表 %d 字节超上限，截断到 %d"
+                         % (strsize, MAX_STRTAB))
+        strsize = MAX_STRTAB
+    if strsize <= 0:
+        rep.notes.append("Mach-O: LC_SYMTAB 的 strsize=%d，符号名不可读，跳过"
+                         % strsize)
+        return
+    try:
+        f.seek(stroff)
+        strs = f.read(strsize)
+    except OSError as e:
+        rep.notes.append("Mach-O: 字符串表读取失败 %s" % e)
+        return
+    n_exp = n_imp = n_skip = 0
+    for i in range(nsyms):
+        try:
+            f.seek(symoff + i * ent)
+            b = f.read(ent)
+        except OSError:
+            break
+        if len(b) < ent:
+            rep.notes.append("Mach-O: 符号表在 idx=%d 处被截断" % i)
+            break
+        strx = struct.unpack_from(endian + "I", b, 0)[0]
+        n_type = b[4]
+        n_sect = b[5]
+        if is64:
+            value = struct.unpack_from(endian + "Q", b, 8)[0]
+        else:
+            value = struct.unpack_from(endian + "I", b, 8)[0]
+        if (n_type & N_STAB) or not (n_type & N_EXT):
+            n_skip += 1
+            continue
+        nm = _cstr_in(strs, strx)
+        if not nm:
+            continue
+        t = n_type & N_TYPE
+        if t == N_UNDF:
+            kind = SYM_IMPORT
+            n_imp += 1
+        elif t == N_SECT and n_sect != 0:
+            kind = SYM_EXPORT
+            n_exp += 1
+        else:
+            n_skip += 1
+            continue
+        rep.symbols.append(Symbol(name=nm, kind=kind, origin=rep.path,
+                                  address=value, section=".symtab"))
+    if n_skip:
+        rep.notes.append("Mach-O: LC_SYMTAB 跳过 %d 个非外部/调试符号" % n_skip)
+    rep.scanned_bytes += nsyms * ent + len(strs)

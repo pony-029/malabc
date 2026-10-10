@@ -192,3 +192,54 @@ def lib_flag_to_candidates(lib):
         out.append("lib" + l + ".dylib")
         out.append(l + ".lib")
     return out
+
+
+# ---- R68：库名归一（「同一个库的各种形式」的唯一事实源） ----
+RE_SO_FAMILY = re.compile(r"^(?P<base>.+?\.so)(?:\.\d+(?:\.\d+)*)?$")
+RE_DYLIB_FAMILY = re.compile(r"^(?P<base>.+?)(?:\.\d+)*\.dylib$")
+
+
+def library_family(name):
+    """把一个动态库名归一成**家族名**：判断两种写法是不是同一个库。
+
+    同一个库在磁盘上有许多「形式」，这正是 R68 要解决的那件事：
+
+        libfoo.so                     -> libfoo.so
+        libfoo.so.6                   -> libfoo.so
+        libfoo.so.1.2.3               -> libfoo.so
+        libfoo.1.dylib                -> libfoo.dylib
+        libfoo.1.2.3.dylib            -> libfoo.dylib
+        Foo.framework/Foo             -> foo.framework
+        Foo.framework/Versions/A/Foo  -> foo.framework
+        libfoo.dll                    -> libfoo.dll
+        /usr/lib/libz.so.1            -> libz.so
+        @rpath/libbar.dylib           -> libbar.dylib
+        @loader_path/../lib/lx.dylib  -> lx.dylib
+
+    三条纪律：
+      * **只做文件名归一，不猜路径** —— 不尝试在磁盘上找这个库。
+      * 认不出的形态**原样返回小写文件名**（不硬套模板，不把 `libfoo` 猜成
+        `libfoo.so` —— 猜错会把两个不同的库合并成一个）。
+      * 不做「`libfoo-1.2.dll` → `libfoo.dll`」这类更激进的猜测（见 §8 的
+        C18-3：那需要一份真实的 Windows 命名样本才敢做）。
+    """
+    if not name:
+        return ""
+    low = name.strip().replace("\\", "/").lower()
+    # ⚠ 顺序**必须**是「先判 .framework/、再取 basename」。
+    #   R68 的探针（`_r68/probe_r68_framework.py`）量出：反过来写时，
+    #   `@rpath/Foo.framework/Versions/A/Foo` 的 basename 是 `foo`，
+    #   到判断那一刻 `.framework/` 已不在串里 ⇒ 这一支**不可达**（死代码），
+    #   而它的文档字符串明写这一支是活的 ⇒ 行为与文档分叉。
+    #   前缀再取一次 basename：`/System/…/Frameworks/Bar.framework/Bar`
+    #   要的是 `bar.framework`，不是 `frameworks.bar.framework`。
+    if ".framework/" in low:
+        return low.split(".framework/", 1)[0].rsplit("/", 1)[-1] + ".framework"
+    low = low.rsplit("/", 1)[-1]          # @rpath/... 与普通目录一并去掉
+    m = RE_SO_FAMILY.match(low)
+    if m:
+        return m.group("base")
+    m = RE_DYLIB_FAMILY.match(low)
+    if m:
+        return m.group("base") + ".dylib"
+    return low

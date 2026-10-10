@@ -18961,3 +18961,366 @@ def test_r67_gate_g7_is_two_way():
     assert m, s_out[-500:]
     assert int(m.group(1)) == 0, s_out[-500:]
     assert int(m.group(2)) >= 29, s_out[-500:]
+
+
+# ===========================================================================
+# R68：跨各种形式的动态链接库 —— Mach-O 的依赖 / 符号 / 库名家族归一
+#
+# 三条回归各自对应本轮修掉的一个事实：
+#   1. Mach-O 解析器**一个依赖都没读**（LC_LOAD_DYLIB 一族整族缺席）；
+#   2. Mach-O 解析器**一个符号都没读**（LC_SYMTAB 缺席）；
+#   3. 库名不做**家族**归一 —— 提供了 `libfoo.so.1.2.3` 时 `libfoo.so.1` 仍被
+#      报成「你还要补上它」；而 `LC_RPATH` 这类**搜索路径**反倒被当成库。
+# 外加探针当场量出的第 4 条：`.framework` 那一支是**死代码**（见测试 3）。
+# ===========================================================================
+
+def _r68_load(modname):
+    """import 一个**产品包**里的模块（`binfmt.*`）—— 需要仓库根在 `sys.path` 上。
+
+    不动 `sys.path` 的增删平衡：`ROOT not in sys.path` 才插，插了不弹
+    （弹掉会把别处已经插好的那一份一起弹掉）。
+    """
+    import importlib
+    if ROOT not in sys.path:
+        sys.path.insert(0, ROOT)
+    return importlib.import_module(modname)
+
+
+_R68_DYLIB12 = (0x8000001C, 0xE)      # 头部 12 字节的两条命令：LC_RPATH / LC_LOAD_DYLINKER
+_R68_N_SECT_EXT = 0x0F                # nlist n_type：节内符号 + 外部 => export
+_R68_N_SECT = 0x0E                    # nlist n_type：节内符号，**无** N_EXT => 内部
+_R68_N_UNDF_EXT = 0x01                # nlist n_type：未定义 + 外部 => import
+
+
+def _r68_macho(path, deps=(), syms=(), pad=0x1200):
+    """R68：**测试自己**写一个最小 thin Mach-O 64（刻意不借用 tools/ 里的构造器）。
+
+    为什么要再写一份：护栏的夹具构造器与护栏的判据同源 —— 构造器若把布局写错，
+    判据与夹具会**一起**错，两边都看不见。这里用第二份手写布局，从**公开 CLI**
+    那一侧再验一次：两份布局只有在都对时才会同时通过。
+
+    deps: [(cmd, name)]；syms: [(name, n_type)]。`pad` 让文件 > 4096 字节 ——
+    与真实 dylib 的体量一致（小于 4096 曾是一条会**安静给错答案**的路径）。
+    """
+    import struct as _s
+    cmds = []
+    seg = bytearray()
+    seg += _s.pack("<II", 0x19, 72 + 80)          # LC_SEGMENT_64 + 1 个节
+    seg += b"__TEXT".ljust(16, b"\x00")
+    seg += _s.pack("<QQQQ", 0, 0x1000, 0, 0x1000)
+    seg += _s.pack("<IIII", 7, 5, 1, 0)
+    seg += b"__text".ljust(16, b"\x00") + b"__TEXT".ljust(16, b"\x00")
+    seg += _s.pack("<QQIIIIIIII", 0x1000, 0x100, 0x1000, 0, 0, 0, 0, 0, 0, 0)
+    cmds.append(bytes(seg))
+    for cmd, nm in deps:
+        head = 12 if cmd in _R68_DYLIB12 else 24   # 头长度按命令类型分，混用会读串
+        b = _s.pack("<II", cmd, 0) + _s.pack("<I", head)
+        if head == 24:
+            b += _s.pack("<III", 0, 0x10000, 0x10000)
+        b += nm.encode("latin1") + b"\x00"
+        while len(b) % 8:
+            b += b"\x00"
+        cmds.append(_s.pack("<II", cmd, len(b)) + b[8:])
+    sym_blob = str_blob = b""
+    symoff = stroff = 0
+    if syms:
+        sb = bytearray(b"\x00")
+        offs = []
+        for nm, _t in syms:
+            offs.append(len(sb))
+            sb += nm.encode("latin1") + b"\x00"
+        str_blob = bytes(sb)
+        sym_blob = b"".join(
+            _s.pack("<IBBHQ", offs[i], t, 1, 0, 0x1000 + i * 8)
+            for i, (_nm, t) in enumerate(syms))
+        cmds.append(b"\x00" * 24)                # 占位，偏移算完再回填
+    sizeofcmds = sum(len(c) for c in cmds)
+    body_len = 32 + sizeofcmds
+    while body_len % 8:
+        body_len += 1
+    if syms:
+        symoff = body_len
+        stroff = symoff + len(sym_blob)
+        cmds[-1] = _s.pack("<IIIIII", 0x2, 24, symoff, len(syms), stroff,
+                           len(str_blob))
+    out = bytearray(b"\xcf\xfa\xed\xfe")       # MH_MAGIC_64（little-endian）
+    out += _s.pack("<IIIIII", 0x01000007, 3, 6, len(cmds), sizeofcmds, 0)
+    out += _s.pack("<I", 0)                       # reserved
+    for c in cmds:
+        out += c
+    if syms:
+        while len(out) < symoff:
+            out += b"\x00"
+        out += sym_blob + str_blob
+    if len(out) < pad:
+        out += b"\x00" * (pad - len(out))
+    with open(path, "wb") as fh:
+        fh.write(bytes(out))
+    return len(out)
+
+
+def _r68_binary_json(files, tmp, tag):
+    """跑公开 CLI 的 `--binary ... --binary-json`，返回解析后的报告列表与 stdout。"""
+    jp = os.path.join(tmp, "b_%s.json" % tag)
+    r = _r31_run(["matlabc.py", "--binary", ",".join(files),
+                  "--binary-json", jp])
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[:800]
+    return json.loads(_read_text(jp)), out
+
+
+_R68_DEP_WANT = {
+    "libprobe.1.dylib": "id_dylib",           # LC_ID_DYLIB：库自己的 install name
+    "libSystem.B.dylib": "load_dylib",        # LC_LOAD_DYLIB
+    "@rpath/libbar.dylib": "load_dylib",      #   同族，名字带 @rpath
+    "libweak.dylib": "load_dylib",            # LC_LOAD_WEAK_DYLIB
+    "libreexp.dylib": "load_dylib",           # LC_REEXPORT_DYLIB
+    "libup.dylib": "load_dylib",              # LC_LOAD_UPWARD_DYLIB
+    "@loader_path/../lib": "rpath",           # LC_RPATH：搜索路径，**不是库**
+    "/usr/lib/dyld": "load_dylinker",         # LC_LOAD_DYLINKER
+}
+
+_R68_DEP_CMDS = [
+    (0x0D, "libprobe.1.dylib"),
+    (0x0C, "libSystem.B.dylib"),
+    (0x0C, "@rpath/libbar.dylib"),
+    (0x80000018, "libweak.dylib"),
+    (0x8000001F, "libreexp.dylib"),
+    (0x80000023, "libup.dylib"),
+    (0x8000001C, "@loader_path/../lib"),
+    (0x0E, "/usr/lib/dyld"),
+]
+
+
+def test_r68_macho_dylib_commands_are_read_end_to_end():
+    """R68-1：Mach-O 的依赖指令一族必须被**公开 CLI** 读出，且 kind 不许互串。
+
+    基线（R68 之前）实测：Mach-O 的依赖 **0/7** 读得出 —— 整个
+    `LC_LOAD_DYLIB` 一族没有任何代码在处理。四种 kind 各有归属：
+    `id_dylib`（身份，不是依赖）/ `load_dylib` / `rpath`（搜索路径）/
+    `load_dylinker`（链接器）。把它们混成一个名字，等于把「搜索路径」
+    当成「你还缺一个库」报给用户。
+    """
+    tmp = tempfile.mkdtemp(prefix="_t_r68a_")
+    try:
+        f = os.path.join(tmp, "libprobe.dylib")
+        _r68_macho(f, deps=_R68_DEP_CMDS)
+        data, _out = _r68_binary_json([f], tmp, "deps")
+        got = {}
+        for rep in data:
+            for d in rep["dependencies"]:
+                got[d["name"]] = d["kind"]
+        assert got == _R68_DEP_WANT, (
+            "得到的 = %r，期望 = %r" % (sorted(got.items()),
+                                       sorted(_R68_DEP_WANT.items())))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r68_macho_symtab_exports_and_internals_end_to_end():
+    """R68-2：`LC_SYMTAB` —— 外部符号成 export / import，**内部符号一个都不许进**。
+
+    基线（R68 之前）实测：Mach-O 的导出 **0 条**。收内部符号的诱惑很大
+    （它们是文件里最多的一类），但那会把导出表灌满噪声，于是「这个调用是
+    某个库的函数」这条归因**看起来**成立、实际指向一个不可见的私有符号 ——
+    那是把假阳性洗成结论，比不归因更糟。
+    """
+    tmp = tempfile.mkdtemp(prefix="_t_r68b_")
+    try:
+        f = os.path.join(tmp, "libsyms.dylib")
+        _r68_macho(f, syms=[("_export_one", _R68_N_SECT_EXT),
+                            ("_export_two", _R68_N_SECT_EXT),
+                            ("_private_helper", _R68_N_SECT),
+                            ("_undef_three", _R68_N_UNDF_EXT)])
+        data, _out = _r68_binary_json([f], tmp, "syms")
+        exports, imports, allnames = set(), set(), set()
+        for rep in data:
+            for s in rep["symbols"]:
+                allnames.add(s["name"])
+                if s["kind"] == "export":
+                    exports.add(s["name"])
+                elif s["kind"] == "import":
+                    imports.add(s["name"])
+        assert exports == set(["_export_one", "_export_two"]), sorted(exports)
+        assert "_undef_three" in imports, sorted(imports)
+        assert "_private_helper" not in allnames, sorted(allnames)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r68_library_family_normalisation_and_framework_branch():
+    """R68-3：库名**家族**归一 —— 同族必同、异族必异，`.framework` 那一支必须活着。
+
+    前一半是 R68 的产品事实；后一半来自**探针当场量出的缺陷**：
+    `library_family()` 的文档字符串明写
+    `Foo.framework/Foo -> foo.framework`，但实现里「取 basename」执行得比
+    「判 `.framework/`」**早** ⇒ 走到判断时 `.framework/` 已不在串里 ⇒
+    那一支**不可达**（死代码），实际返回 `foo`。
+    一个曾经不可达的分支，只有夹具能守住它第二次变死 —— 所以三个真实写法
+    一起钉在这里。
+    """
+    lf = _r68_load("binfmt.buildsys").library_family
+
+    groups = [
+        (["libfoo.so", "libfoo.so.1", "libfoo.so.1.2.3",
+          "/usr/lib/libfoo.so.6"], "libfoo.so"),
+        (["libfoo.dylib", "libfoo.1.dylib", "libfoo.1.2.3.dylib",
+          "@rpath/libfoo.2.dylib"], "libfoo.dylib"),
+        (["Foo.framework/Foo", "@rpath/Foo.framework/Versions/A/Foo",
+          "/System/Library/Frameworks/Foo.framework/Foo"], "foo.framework"),
+        (["C:/x/libz.so.1", "libz.so"], "libz.so"),
+    ]
+    for names, want in groups:
+        for nm in names:
+            assert lf(nm) == want, (nm, lf(nm), want)
+
+    # 异族可分：归一**过头**会把两个不同的库并成一个 —— 那是更危险的错
+    for a, b in (("libfoo.so", "libbar.so"), ("liba.dylib", "libb.dylib"),
+                 ("Foo.framework/Foo", "Bar.framework/Bar")):
+        assert lf(a) != lf(b), (a, b, lf(a))
+    # 跨容器不合并：`libfoo.so`（ELF）与 `libfoo.dylib`（Mach-O）是两个家族
+    assert lf("libfoo.so") != lf("libfoo.dylib"), "跨容器被并"
+    assert lf("") == "", lf("")
+    # 认不出的形态**原样返回小写**，不许硬套模板
+    assert lf("libplain") == "libplain", lf("libplain")
+    assert lf("FOO.DLL") == "foo.dll", lf("FOO.DLL")
+
+
+def test_r68_missing_dependencies_absorbs_family_two_way():
+    """R68-4：`missing_dependencies()` 的两向，且**变异体必须让它红**。
+
+    正向（真实文件 + 公开 CLI）：消费者要 `libfoo.1.dylib`，磁盘上的提供者叫
+    `libfoo.1.2.3.dylib` —— 它们是**同一个库的两种写法**，不许再报「你没提供」；
+    同时真缺的 `libmissing.4.dylib` 必须照报；`LC_RPATH` 这类搜索路径一律不算库。
+
+    反向（变异体）：把家族归一换成「只取小写 basename」（= R68 之前的行为），
+    同一个判据必须变红。只跑正向的断言在「产品什么都不产出」时也成立 ——
+    那是**空断言**。
+    """
+    tmp = tempfile.mkdtemp(prefix="_t_r68c_")
+    try:
+        consumer = os.path.join(tmp, "libconsumer.dylib")
+        _r68_macho(consumer, deps=[(0x0C, "libfoo.1.dylib"),
+                                   (0x0C, "libmissing.4.dylib"),
+                                   (0x8000001C, "@loader_path/../lib")])
+        provider = os.path.join(tmp, "libfoo.1.2.3.dylib")
+        _r68_macho(provider, deps=[(0x0D, "libfoo.1.2.3.dylib")])
+        _data, out = _r68_binary_json([consumer, provider], tmp, "miss")
+
+        needs = _r68_parse_missing_block(out)
+        assert "libfoo.1.dylib" not in needs, (needs, out[-1200:])
+        assert "libmissing.4.dylib" in needs, (needs, out[-1200:])
+        assert "@loader_path/../lib" not in needs, (needs, out[-1200:])
+
+        # ---- 反向：变异体 ----
+        _bs = _r68_load("binfmt.buildsys")
+        _at = _r68_load("binfmt.attribute")
+        mod = _r37_load("check_binfmt_fixtures")
+
+        def _identity(n):
+            return (n or "").strip().replace("\\", "/").lower().rsplit("/", 1)[-1]
+
+        saved = (_bs.library_family, _at.library_family)
+        try:
+            # ⚠ 必须**两处都换**：`attribute.py` 用的是模块级
+            #   `from .buildsys import library_family` —— 那是一个**独立的绑定**，
+            #   只改 `buildsys` 里的那个名，`missing_dependencies` 看不见。
+            _bs.library_family = _identity
+            _at.library_family = _identity
+
+            f1 = []
+            mod._c12_check(f1)
+            assert any(x.startswith("C12:") for x in f1), f1
+
+            f2 = []
+            mod._c12_missing_check(
+                f2,
+                mod._mk_reports(("/p/libconsumer.so",
+                                 [("libfoo.so.1", "needed")]),
+                                ("/p/libfoo.so.1.2.3",
+                                 [("libfoo.1.dylib", "id_dylib")])),
+                expect_absent=("libfoo.so.1",), expect_present=())
+            assert any(x.startswith("C12:") for x in f2), f2
+        finally:
+            _bs.library_family, _at.library_family = saved
+
+        # 还原之后判据必须回到全绿 —— 否则上面那次「红」可能来自别的原因
+        f3 = []
+        mod._c12_check(f3)
+        assert f3 == [], f3
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _r68_parse_missing_block(out):
+    """从 CLI 输出里**结构化**取出「被引用但未在本次提供」那一块的库名列。
+
+    只取每行的第一段（`needs` 列）、遇到下一节标题就停 —— 不许对整段做子串
+    搜索：`libfoo.1.dylib` 是 `libfoo.1.2.3.dylib` 的子串（反过来也成立），
+    子串搜索会把「来源列」里的名字读成「需求列」，报出**假红**。
+    """
+    lines = out.splitlines()
+    names = []
+    started = False
+    for ln in lines:
+        if "被引用但未在本次提供" in ln:
+            started = True
+            continue
+        if not started:
+            continue
+        if not ln.strip():
+            continue
+        if not ln.startswith("  "):
+            break
+        head = ln.strip().split("<-")[0].strip()
+        if head:
+            names.append(head)
+    return names
+
+
+def test_r68_binfmt_gate_c10_c11_c12_is_two_way():
+    """R68-5：判据 C10/C11/C12 的**看守**是否真的在册、且签名一路对得上。
+
+    这条测试存在的理由是本轮踩过的一次真事故：`check_help_contract.py` 的
+    `GUARD_CONTRACT` 里那行描述文本**落后两轮**（还写着 `C1–C6`），而**没有任何
+    门管它** —— 因为它只被用来核对退出码集合，描述文本没人读。
+    所以这里把「门的签名 == 契约描述里的签名」变成一条真断言。
+    """
+    gate = os.path.join(_R33_TOOLS, "check_binfmt_fixtures.py")
+    assert os.path.isfile(gate), "二进制约束护栏必须真存在"
+    mod = _r37_load("check_binfmt_fixtures")
+    sig = "C1\u2013C12"
+    assert mod.ROW_SIGNATURE == sig, mod.ROW_SIGNATURE
+
+    # ① 门本体 rc=0 且成功行带签名
+    r = _r31_run([gate], timeout=180)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[-1200:]
+    assert sig in out, out[-500:]
+
+    # ② 护栏退出码契约的**描述文本**必须带同一个签名（本轮修的那处落后）
+    hc = _r37_load("check_help_contract")
+    desc = " ".join(hc.GUARD_CONTRACT["tools/check_binfmt_fixtures.py"].values())
+    assert sig in desc, desc
+    assert set(hc.GUARD_CONTRACT["tools/check_binfmt_fixtures.py"]) == set([0, 1, 2]), \
+        hc.GUARD_CONTRACT["tools/check_binfmt_fixtures.py"]
+
+    # ③ 两侧 README 都要有这一行与这个签名
+    for rel in ("README.md", "README_CN.md"):
+        text = io.open(os.path.join(ROOT, rel), encoding="utf-8").read()
+        assert "check_binfmt_fixtures.py" in text, rel
+        assert sig in text, rel
+
+    # ④ 帮助体积棘轮**不许被放宽**（改披露只能更新快照，不能调带宽）
+    assert hc.HELP_DRIFT_BYTES == 64, hc.HELP_DRIFT_BYTES
+    assert hc.HELP_BYTES_SNAPSHOT["matlabc.py"] > 0
+    assert hc.HELP_CANON_SNAPSHOT["matlabc.py"] > 0
+
+    # ⑤ --selftest 两向自证（下界，绝不手写 N/M）
+    rs = _r31_run([gate, "--selftest"], timeout=180)
+    s_out = rs.stdout.decode("utf-8", "replace")
+    assert rs.returncode == 0, s_out[-800:]
+    m = re.search(r'SELFTEST COUNTS \{"bad": (\d+), "good": (\d+)\}', s_out)
+    assert m, s_out[-500:]
+    assert int(m.group(1)) >= 8, s_out[-500:]
+    assert int(m.group(2)) >= 8, s_out[-500:]

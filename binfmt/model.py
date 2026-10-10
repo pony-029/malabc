@@ -10,6 +10,7 @@
       │                 kind = export | import | dynamic | gpu_kernel
       ├─ dependencies: [Dependency(name, kind)]
       │                 kind = needed | import_module | rpath | runpath | link_flag
+      │                        | load_dylib | id_dylib | load_dylinker  （R68：Mach-O）
       ├─ gpu:        GpuBlob(parseable, reason, kernels, backends, ...)
       └─ notes:      ["..."]      ← 所有「没看懂的东西」都写这里，不许静默
 
@@ -52,6 +53,13 @@ DEP_IMPORT_MODULE = "import_module"
 DEP_RPATH = "rpath"
 DEP_RUNPATH = "runpath"
 DEP_LINK_FLAG = "link_flag"
+# ---- R68：Mach-O 的「依赖形态」单列 kind，不与 ELF/PE 混用一个名字 ----
+# 为什么单列而不复用 DEP_NEEDED：三种容器的「我依赖谁」是**不同机制**
+# （ELF 走 .dynamic 的 DT_NEEDED，PE 走导入表，Mach-O 走 LC_LOAD_DYLIB 一族），
+# 报告里混成一个词会让人以为它们可互换。归因逻辑不依赖 kind，所以单列无代价。
+DEP_LOAD_DYLIB = "load_dylib"          # LC_LOAD_DYLIB / _WEAK_ / _REEXPORT_ / _UPWARD_ / _LAZY_
+DEP_ID_DYLIB = "id_dylib"              # LC_ID_DYLIB：库自己的 install name（身份，不是依赖）
+DEP_LOAD_DYLINKER = "load_dylinker"    # LC_LOAD_DYLINKER（macOS 上通常是 /usr/lib/dyld）
 
 # ---- 归因结果（接入 renderers/unresolved.py 用） ----
 ATTR_SOURCE = "source"

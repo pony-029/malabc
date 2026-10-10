@@ -531,7 +531,7 @@ python tools/check_all.py        # 跑完 tools/check_*.py 全部护栏 + 各自
 | `check_doc_flags.py` | `NO_HELP_SCRIPTS` — 文档**或帮助正文**里宣传了一个**其实不存在**的命令行开关（真发生过：README 写过 `--check tainted_sink`，而 argparse 会以**歧义前缀**拒绝它） |
 | `check_operator_impl.py` | `_UNIMPLEMENTED_KINDS` — 「幻影算子」（出现在算子目录里、却没有任何代码路径会产出）、元表与未实现表自相矛盾，以及**「不做」这件事没写进 `--help`** |
 | `check_patch_ops.py` | `G0–G3` — 会**覆盖**目标行（而不是插在其前）的补丁算子 —— 那等于静默删源码 |
-| `check_binfmt_fixtures.py` | `C1–C9` — 二进制 / GPU 解析器回归 —— 合成 PE/ELF/Mach-O 夹具 + 契约断言 C1–C9 |
+| `check_binfmt_fixtures.py` | `C1–C12` — 二进制 / GPU 解析器回归 —— 合成 PE/ELF/Mach-O 夹具 + 契约断言 C1–C12。**R68**：一个动态库「我依赖谁」的三种机制现在都读得出来 —— ELF 的 `DT_NEEDED`、PE 的导入表、Mach-O 的 `LC_LOAD_DYLIB`（含 weak/reexport/upward/lazy）+ `LC_ID_DYLIB` + `LC_RPATH` + `LC_LOAD_DYLINKER`（C10）；Mach-O 的 `LC_SYMTAB` 外部符号读入，且内部 / 调试符号严格不混进导出表（C11）；库名**家族**归一，让 `libfoo.so.1`、`libfoo.so.1.2.3`、`libfoo.1.dylib` 算同一个库，而 rpath/runpath 绝不会被当成「你还得加进来的库」（C12）。**R68 还顺手量出一个缺陷**：那个归一函数的 `.framework` 支路**不可达** —— 取 basename 发生在判 `.framework/` **之前**，于是 `@rpath/Foo.framework/Versions/A/Foo` 返回 `foo`，而函数自己的文档字符串写的是 `foo.framework`；顺序已修正，三种 framework 写法由 C12 的夹具钉住 |
 | `check_py36_clean.py` | `--check-py36` — 本仓违背**自己**的 Python 3.6.5 承诺（已经发生过：`list[str]` 与 `from __future__ import annotations` 都曾提交进来） |
 | `check_subprocess_hygiene.py` | `S1–S5` — 任何「捕获输出却继承 stdin」或「可能永远挂住」的子进程调用 |
 | `check_help_contract.py` | `B0–B5` — 代码里有、`--help` 里没有的退出码（或反之）；帮助丢了用法示例 / 图示 / 退出码段；**示例命令其实跑不起来**；帮助**悄悄缩水或臃肿**（绝对界 **+** 对已批准快照的 **±64 B** 漂移带 **+** 对 `--help` **规范形**的**逐字节**比对 —— 规范形与解释器、终端宽度都无关，分辨率 **1 字节**）；`ci-examples/` 模板宣称的退出码；以及**散文里陈旧的「N 道护栏」数字** |

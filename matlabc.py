@@ -92,7 +92,8 @@ matlabc — 代码结构梳理与静态分析工具（纯 Python，零依赖，�
     `LD_DEBUG=bindings` —— 它们是运行期装置，静态分析原理上给不出这个答案。
   * GPU：CUDA kernel 名从 cubin 的 `.text._Z` 节名表提取；**PTX 路径基本提不出
     kernel 名**（真 entry 极少）。提不到时报告会写明原因，不静默给 0。
-  * Mach-O：解析器已实现，且已有**合成夹具**验证（LC_SEGMENT_64 段/节 + fat 切片），
+  * Mach-O：解析器已实现，且已有**合成夹具**验证（LC_SEGMENT_64 段/节 +
+    LC_LOAD_DYLIB 一族依赖 + LC_SYMTAB 外部符号 + fat 切片清单），
     但**本机无 Mach-O 真实语料**，所以报告里仍是 `verified: NO`。
     报告把「无真实语料」与「有合成夹具」分成两条轴写 —— 这不是一回事。
   * **跨语言算子有一个是「不做」的**：`py_undefined_name`（Python 未定义名）。
@@ -29910,7 +29911,10 @@ def main(argv=None):
                     default=cfg.get("binary"),
                     help="分析二进制文件（可逗号分隔多个），分析完即退出。"
                          "能读：容器（PE .exe/.dll、ELF .so、Mach-O）、"
-                         "动态依赖（DT_NEEDED / 导入表）、导出符号、"
+                         "动态依赖（ELF 的 DT_NEEDED / PE 的导入表 / "
+                         "Mach-O 的 LC_LOAD_DYLIB 一族）、"
+                         "导出符号（ELF 的 .dynsym / PE 的导出表 / "
+                         "Mach-O 的 LC_SYMTAB）、"
                          "以及嵌在里面的 GPU 内容（CUDA fatbin/cubin、"
                          "AMD HSA code object、Vulkan SPIR-V）。"
                          "典型用途：源码侧有调用解析不出来时，拿库文件对一下 —— "

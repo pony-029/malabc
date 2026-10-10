@@ -24,8 +24,10 @@ import io
 import json
 import os
 
+from .buildsys import library_family
 from .model import (
-    ATTR_GPU_KERNEL, ATTR_LIBRARY, ATTR_MISSING,
+    ATTR_GPU_KERNEL, ATTR_LIBRARY, ATTR_MISSING, CONTAINER_MACHO,
+    DEP_ID_DYLIB, DEP_LOAD_DYLINKER, DEP_RPATH, DEP_RUNPATH,
     SYM_DYNAMIC, SYM_EXPORT, SYM_GPU_KERNEL,
 )
 
@@ -38,6 +40,20 @@ def _strip_decor(name):
         if name.startswith(p):
             return name[len(p):]
     return name
+
+
+def _macos_alias(name, rep):
+    """macOS 的 C 符号在 Mach-O 里带**一个前导下划线**（源码 `foo` ⇒ 符号 `_foo`）。
+
+    只对 **macho 容器**生成这个别名：别的容器上 `_foo` 是合法的 C 标识符，
+    剥掉它会把两个不同的符号并成一个（假阳性比漏认更糟 —— 它会把真缺陷洗白）。
+    以 `__` 起手的（`__Z...` 等）是 Itanium C++ mangled 名，交给 demangler，不剥。
+    """
+    if getattr(rep, "container", "") != CONTAINER_MACHO:
+        return None
+    if len(name) > 1 and name[0] == "_" and name[1] != "_":
+        return name[1:]
+    return None
 
 
 class SymbolIndex:
@@ -54,6 +70,9 @@ class SymbolIndex:
         for s in rep.symbols:
             if s.kind in (SYM_EXPORT, SYM_DYNAMIC):
                 self.exports.setdefault(s.name, []).append(rep.path)
+                alt = _macos_alias(s.name, rep)      # R68：_foo ⇄ foo
+                if alt:
+                    self.exports.setdefault(alt, []).append(rep.path)
             elif s.kind == SYM_GPU_KERNEL:
                 self.kernels.setdefault(s.name, []).append((rep.path, s.backend))
                 if s.demangled:
@@ -116,19 +135,36 @@ def conflicts(reports):
             for k, v in sorted(owner.items()) if len(v) > 1]
 
 
+# R68：这三类依赖**不是库**，不该出现在「你还想加哪个库进来」这张表里
+_NOT_A_LIBRARY = (DEP_RPATH, DEP_RUNPATH, DEP_LOAD_DYLINKER)
+
+
 def missing_dependencies(reports):
-    """DT_NEEDED / Import 里引用了但没在本次提供的集合中出现的依赖名。
+    """DT_NEEDED / Import / LC_LOAD_DYLIB 里引用了但没在本次提供的集合中出现的依赖名。
 
     注意语义：返回的是「你可能还想一起分析哪些库」，不是「这些库不存在」。
+
+    R68 的三条收敛，全部来自「同一个库有许多形式」这个事实：
+      * 用**家族名**（`library_family`）比较：`libfoo.so.1` 与磁盘上的
+        `libfoo.so.1.2.3`、`libfoo.1.dylib` 与 `libfoo.1.2.3.dylib` 都算同一个库。
+        旧实现按**整名**比，于是「提供的明明就是它」也会被报成「未提供」。
+      * 库**自己的 install name**（LC_ID_DYLIB）也算「已提供」——它只是
+        `basename(path)` 的另一种写法。
+      * 搜索路径（rpath / runpath / dyld 链接器）不是库，不进这张表。
     """
     provided = set()
     for r in reports:
-        provided.add(os.path.basename(r.path).lower())
+        provided.add(library_family(os.path.basename(r.path)))
+        for d in r.dependencies:
+            if d.kind == DEP_ID_DYLIB:
+                provided.add(library_family(d.name))
     out = []
     for r in reports:
         for d in r.dependencies:
-            base = os.path.basename(d.name).lower()
-            if base and base not in provided:
+            if d.kind in _NOT_A_LIBRARY or d.kind == DEP_ID_DYLIB:
+                continue
+            fam = library_family(d.name)
+            if fam and fam not in provided:
                 out.append({"from": r.path, "needs": d.name, "kind": d.kind})
     return out
 

@@ -19,6 +19,16 @@
   C9  合成 Mach-O 夹具（LC_SEGMENT_64 段/节 + fat 切片）必须真解析出来；
       `fixture_verified`（有夹具）与 `verified`（有真实语料）**两轴分开**，
       报告措辞必须区分，不得把合成夹具冒充成真实语料验证
+  C10 Mach-O 的**依赖指令**必须被读出：LC_ID_DYLIB / LC_LOAD_DYLIB /
+      LC_LOAD_WEAK_DYLIB / LC_REEXPORT_DYLIB / LC_LOAD_UPWARD_DYLIB / LC_RPATH /
+      LC_LOAD_DYLINKER —— 一种形态漏读，就等于对一个平台瞎了；依赖名必须是
+      可打印 ASCII（与 C6 同款纪律）
+  C11 Mach-O 的 **LC_SYMTAB** 外部符号（导出 / 未定义）必须被读出，
+      且**内部与调试符号不得混进导出表**（混进去会让归因把私有符号当成对外接口）
+  C12 **家族名归一**（`buildsys.library_family`）两向：`libfoo.so.1` 与
+      `libfoo.so.1.2.3`、`libfoo.1.dylib` 与 `libfoo.1.2.3.dylib` 必须归一成
+      同一个家族名；不同库必须分得开；且 `missing_dependencies` 不得把
+      搜索路径（rpath / runpath / dyld）当成「你还想加哪个库」
 
 一图看懂（夹具是怎么造的，以及它证明了什么）：
 
@@ -55,7 +65,7 @@ import tempfile
 #   ① 本门的成功行（下面 main() 打印的那一行）；
 #   ② README.md / README_CN.md 里本门那一行。
 # 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
-ROW_SIGNATURE = "C1–C9"
+ROW_SIGNATURE = "C1–C12"
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
@@ -259,12 +269,34 @@ def _seg64(segname, vmaddr, vmsize, fileoff, filesize, sects):
     return bytes(body)
 
 
+def _mk_cmd(cmd, name):
+    """造一条「命令 + 尾部字符串」的 load command。
+
+    头长度**按命令类型**分（这是 R68 特意踩过的一个坑）：
+        dylib_command    （LC_ID_DYLIB / LC_LOAD_*_DYLIB）头 24 字节
+        rpath_command    （LC_RPATH）                     头 12 字节
+        dylinker_command （LC_LOAD_DYLINKER）             头 12 字节
+    用错长度 ⇒ name.offset 落在字符串中间 ⇒ 读出半截名字或直接跳过。
+    """
+    base = 12 if cmd in (0x8000001C, 0xE) else 24
+    raw = name.encode("latin1") + b"\x00"
+    body = struct.pack("<II", cmd, 0) + struct.pack("<I", base)
+    if base == 24:
+        body += struct.pack("<III", 0, 0x10000, 0x10000)
+    body += raw
+    while len(body) % 8:
+        body += b"\x00"
+    return struct.pack("<II", cmd, len(body)) + body[8:]
+
+
 def _make_macho(path, segments=None, cputype=0x01000007, filetype=6,
-                pad_to=0x2400):
+                pad_to=0x2400, dep_cmds=None, symtab=None):
     """构造一个最小但结构合法的 thin Mach-O 64（little-endian）。
 
     segments: [(segname, [(sectname, addr, size, fileoff), ...])]，默认
               `__TEXT`（含 `__text`）+ `__nv_fatbin`（用于打 GPU 段名提示）。
+    dep_cmds: [(cmd, name)] —— 依赖指令（R68 的 C10）
+    symtab  : (names, [n_type, ...]) —— LC_SYMTAB 外部符号（R68 的 C11）
 
     ⚠ 为什么刻意补零到 **> 4096 字节**（pad_to=0x2400）：
       旧实现里 `parse()` 先 `f.read(4096)`，`_parse_thin()` 又自己 `f.read(32)`，
@@ -285,13 +317,45 @@ def _make_macho(path, segments=None, cputype=0x01000007, filetype=6,
         sects3 = [(sn, segname, addr, size, off) for sn, addr, size, off in sects]
         cmds.append(_seg64(segname, vm, 0x1000, vm, 0x1000, sects3))
         vm += 0x1000
+    for cmd, name in (dep_cmds or []):
+        cmds.append(_mk_cmd(cmd, name))
+    # LC_SYMTAB 的 symoff/stroff 是**文件绝对偏移**，取决于命令表总长 ——
+    # 先放一个 24 字节占位命令，算完偏移再回填（两遍布局，别猜）。
+    sym_blob = str_blob = b""
+    symoff = stroff = 0
+    n_syms = 0
+    if symtab is not None:
+        names, types = symtab
+        n_syms = len(names)
+        _sb = bytearray(b"\x00")
+        offs = []
+        for n in names:
+            offs.append(len(_sb))
+            _sb += n.encode("latin1") + b"\x00"
+        str_blob = bytes(_sb)
+        sym_blob = b"".join(struct.pack("<IBBHQ", offs[i], types[i], 1, 0,
+                                        0x1000 + i * 0x10)
+                            for i in range(n_syms))
+        cmds.append(b"\x00" * 24)
     sizeofcmds = sum(len(c) for c in cmds)
+    if symtab is not None:
+        body_len = 32 + sizeofcmds
+        while body_len % 8:
+            body_len += 1
+        symoff = body_len
+        stroff = symoff + len(sym_blob)
+        cmds[-1] = struct.pack("<IIIIII", 0x2, 24, symoff, n_syms, stroff,
+                               len(str_blob))
     out = bytearray()
     out += b"\xcf\xfa\xed\xfe"                       # MH_MAGIC_64
     out += struct.pack("<IIIIII", cputype, 3, filetype, len(cmds), sizeofcmds, 0)
     out += struct.pack("<I", 0)                      # reserved
     for c in cmds:
         out += c
+    if symtab is not None:
+        while len(out) < symoff:
+            out += b"\x00"
+        out += sym_blob + str_blob
     if pad_to and len(out) < pad_to:
         out += b"\x00" * (pad_to - len(out))
     with io.open(path, "wb") as f:
@@ -332,6 +396,115 @@ def _check(findings, cond, msg):
     if not cond:
         findings.append(msg)
     return cond
+
+
+# ---------------------------------------------------------------- R68 判据（可被 analyze 与 selftest 共用的纯函数）
+
+# C10：Mach-O 依赖期望表（(名字, 期望 kind)），顺序无关
+DYLIB_EXPECT = (
+    ("libfoo.1.dylib", "id_dylib"),
+    ("libSystem.B.dylib", "load_dylib"),
+    ("@rpath/libbar.dylib", "load_dylib"),
+    ("libweak.dylib", "load_dylib"),
+    ("libreexp.dylib", "load_dylib"),
+    ("libup.dylib", "load_dylib"),
+    ("@loader_path/../lib", "rpath"),
+    ("/usr/lib/dyld", "load_dylinker"),
+)
+
+
+def _c10_check(findings, rep, expect=DYLIB_EXPECT):
+    """Mach-O 依赖：名字与 kind **都要**对，且名字必须可打印 ASCII。"""
+    got = {d.name: d.kind for d in rep.dependencies}
+    for nm, kind in expect:
+        if nm not in got:
+            findings.append("C10: Mach-O 依赖缺失 %r（得到 %r）"
+                            % (nm, sorted(got)))
+        elif got[nm] != kind:
+            findings.append("C10: Mach-O 依赖 %r 的 kind=%r（期望 %r）"
+                            % (nm, got[nm], kind))
+    for d in rep.dependencies:
+        if any(ord(c) < 32 or ord(c) > 126 for c in d.name):
+            findings.append("C10: Mach-O 依赖名含非可打印字符 %r" % d.name[:24])
+    return findings
+
+
+def _c11_check(findings, rep, must_export, must_not_appear):
+    """Mach-O 的 LC_SYMTAB：外部导出必须在，内部符号必须不在。"""
+    exports = [s.name for s in rep.symbols if s.kind == "export"]
+    for nm in must_export:
+        if nm not in exports:
+            findings.append("C11: Mach-O 导出符号缺失 %r（得到 %r）"
+                            % (nm, exports))
+    for nm in must_not_appear:
+        if nm in exports:
+            findings.append("C11: Mach-O 把**内部符号** %r 当成导出了" % nm)
+    return findings
+
+
+def _c12_check(findings):
+    """家族名归一：同族必须归一，异族必须分得开。
+
+    ⚠ 缺符号时**不许**让 traceback 冒出去：本门的两向证据就是「拿这一版门
+    跑 R68 之前的产品 ⇒ 必须红」，而那一刻产品里还没有 `library_family`。
+    traceback 也是 rc=1，但它把「C12 判据报了红」降级成「程序崩了」——
+    红得没有信息量。这里改成一条**能读的** finding。
+    """
+    try:
+        from binfmt.buildsys import library_family as lf
+    except ImportError as e:
+        findings.append("C12: 产品里没有 binfmt.buildsys.library_family（%s）"
+                        " —— 家族名归一尚未实现" % e)
+        return findings
+    same = [
+        (["libfoo.so", "libfoo.so.6", "libfoo.so.1.2.3"], "libfoo.so"),
+        (["libfoo.1.dylib", "libfoo.1.2.3.dylib", "libfoo.dylib"], "libfoo.dylib"),
+        (["@rpath/libbar.dylib", "libbar.1.dylib"], "libbar.dylib"),
+        (["/usr/lib/libz.so.1", "libz.so"], "libz.so"),
+        (["libc.so.6"], "libc.so"),
+        # R68 补：`.framework` 那一支曾经**不可达**（basename 取在判断之前）。
+        # 三种真实写法各一份，把这一支钉成活代码 —— 夹具是它唯一的看守。
+        (["Foo.framework/Foo",
+          "@rpath/Foo.framework/Versions/A/Foo",
+          "/System/Library/Frameworks/Foo.framework/Foo"], "foo.framework"),
+    ]
+    for group, want in same:
+        for n in group:
+            got = lf(n)
+            if got != want:
+                findings.append("C12: library_family(%r)=%r（期望 %r）"
+                                % (n, got, want))
+    diff = [("libfoo.so", "libbar.so"), ("liba.dylib", "libb.dylib"),
+            ("libx.dll", "liby.dll"),
+            ("Foo.framework/Foo", "Bar.framework/Bar")]
+    for a, b in diff:
+        if lf(a) == lf(b):
+            findings.append("C12: %r 与 %r 被误并成同一家族 %r" % (a, b, lf(a)))
+    if lf("") != "":
+        findings.append("C12: library_family('')=%r（期望空串）" % lf(""))
+    return findings
+
+
+def _c12_missing_check(findings, provided_reports, expect_absent, expect_present):
+    """missing_dependencies 的两向：该被家族名吸收的不出现，真缺的必须出现，
+    搜索路径一律不算库。"""
+    try:
+        from binfmt.attribute import missing_dependencies
+    except ImportError as e:
+        findings.append("C12: 产品里没有 binfmt.attribute.missing_dependencies"
+                        "（%s）" % e)
+        return findings
+    needs = [o["needs"] for o in missing_dependencies(provided_reports)]
+    for nm in expect_absent:
+        if nm in needs:
+            findings.append("C12: 已提供（同家族）的 %r 仍被报成「未提供」" % nm)
+    for nm in expect_present:
+        if nm not in needs:
+            findings.append("C12: 真缺的 %r 没被报出来（得到 %r）" % (nm, needs))
+    for nm in ("@loader_path/../lib", "/usr/lib/dyld"):
+        if nm in needs:
+            findings.append("C12: 搜索路径/链接器 %r 被当成库报出来了" % nm)
+    return findings
 
 
 def analyze(tmpdir):
@@ -506,7 +679,71 @@ def analyze(tmpdir):
     _check(findings, rep12.flavour == "fat",
            "C9: fat 标记缺失（flavour=%r）" % rep12.flavour)
 
+    # ---- C10（R68）：Mach-O 的依赖指令一族 ----
+    dep = os.path.join(tmpdir, "f_deps.dylib")
+    _make_macho(dep, segments=[("__TEXT", [("__text", 0x1000, 0x100, 0x1000)])],
+                dep_cmds=[
+                    (0xD, "libfoo.1.dylib"),              # LC_ID_DYLIB
+                    (0xC, "libSystem.B.dylib"),           # LC_LOAD_DYLIB
+                    (0xC, "@rpath/libbar.dylib"),         #   @rpath 形态
+                    (0x80000018, "libweak.dylib"),        # LC_LOAD_WEAK_DYLIB
+                    (0x8000001F, "libreexp.dylib"),       # LC_REEXPORT_DYLIB
+                    (0x80000023, "libup.dylib"),          # LC_LOAD_UPWARD_DYLIB
+                    (0x8000001C, "@loader_path/../lib"),  # LC_RPATH
+                    (0xE, "/usr/lib/dyld"),               # LC_LOAD_DYLINKER
+                ])
+    rep_dep = binfmt.parse(dep, with_gpu=False)
+    _check(findings, rep_dep.container == "macho",
+           "C10: 依赖夹具未被识别（%s）" % rep_dep.container)
+    _c10_check(findings, rep_dep)
+
+    # ---- C11（R68）：LC_SYMTAB 外部符号 ----
+    sa = os.path.join(tmpdir, "f_syms.dylib")
+    _make_macho(sa, segments=[("__TEXT", [("__text", 0x1000, 0x100, 0x1000)])],
+                symtab=(["_export_one", "_export_two",
+                         "_private_helper", "_undef_three"],
+                        [0x0F,                       # N_SECT|N_EXT -> export
+                         0x0F,                       # N_SECT|N_EXT -> export
+                         0x0E,                       # N_SECT      -> 内部，不收
+                         0x01]))                     # N_UNDF|N_EXT -> import
+    rep_sa = binfmt.parse(sa, with_gpu=False)
+    _c11_check(findings, rep_sa, ("_export_one", "_export_two"),
+               ("_private_helper",))
+    kinds = {s.name: s.kind for s in rep_sa.symbols}
+    _check(findings, kinds.get("_undef_three") == "import",
+           "C11: N_UNDF|N_EXT 未被记成 import（得到 %r）" % kinds.get("_undef_three"))
+
+    # ---- C12（R68）：家族名归一 + missing_dependencies 两向 ----
+    _c12_check(findings)
+    _c12_missing_check(
+        findings,
+        _mk_reports(("/p/libconsumer.so", [("libfoo.so.1", "needed"),
+                                           ("/opt/weird/libmissing.so.4", "needed"),
+                                           ("@loader_path/../lib", "rpath")]),
+                    ("/p/libfoo.so.1.2.3", [("libfoo.1.dylib", "id_dylib")])),
+        expect_absent=("libfoo.so.1",),
+        expect_present=("/opt/weird/libmissing.so.4",))
+
     return findings
+
+
+def _mk_reports(*specs):
+    """按 (path, [(dep_name, dep_kind), ...]) 造 BinaryReport（给 C12 的两向用）。
+
+    spec 里的 dep_kind 直接写字符串（"needed" / "id_dylib" / "rpath" ...），
+    免得在谓词里 import 一堆常量 —— 这些字符串就是 model.py 的取值。
+    """
+    from binfmt.model import BinaryReport as _B, Dependency as _D
+    out = []
+    for spec in specs:
+        if not spec:                     # 允许传 () 表示「没有提供任何报告」
+            continue
+        path, deps = spec
+        r = _B(path=path)
+        for nm, kind in deps:
+            r.dependencies.append(_D(name=nm, kind=kind, origin=path))
+        out.append(r)
+    return out
 
 
 def verify_real_corpus(findings):
@@ -604,7 +841,8 @@ def selftest():
         # 注意：与样本2同理 —— 合法输入构造不出违规（实现自身会标 False），
         # 所以自证对象是**断言函数本身**：喂一个 container=macho 但 verified=True
         # 的违规对象，断言必须变红。
-        from binfmt.model import BinaryReport as _BR
+        from binfmt.model import BinaryReport as _BR, Dependency as _Dep, \
+            Symbol as _Sym
         viol = _BR(path="x", container="macho", verified=True)
         c8find = []
         _check(c8find, getattr(viol, "verified", True) is False,
@@ -668,8 +906,73 @@ def selftest():
         else:
             print("  [selftest] 坏样本5 未触发（C9 夹具验证判据失去检测力）")
 
+        # ---- R68：C10 / C11 / C12 各自的两向自证 ----
+        # 样本10（坏）：一个**没解析出任何依赖**的 macho 报告必须让 C10 变红
+        f10 = []
+        _c10_check(f10, _BR(path="x", container="macho"))
+        if f10:
+            bad += 1
+        else:
+            print("  [selftest] 坏样本6 未触发（C10 对「零依赖」失去检测力）")
+
+        # 样本11（好）：期望表全部满足的报告必须过 C10
+        ok10 = _BR(path="x", container="macho")
+        for nm, kind in DYLIB_EXPECT:
+            ok10.dependencies.append(_Dep(name=nm, kind=kind, origin="x"))
+        g10 = []
+        _c10_check(g10, ok10)
+        if not g10:
+            good += 1
+        else:
+            print("  [selftest] 好样本9 被误伤（C10 过严）：%s" % g10[:1])
+
+        # 样本12（坏）：把内部符号塞进导出表必须让 C11 变红
+        f11 = _BR(path="x", container="macho")
+        f11.symbols.append(_Sym(name="_private_helper", kind="export"))
+        b11 = []
+        _c11_check(b11, f11, ("_export_one",), ("_private_helper",))
+        if b11:
+            bad += 1
+        else:
+            print("  [selftest] 坏样本7 未触发（C11 对「内部符号混入」失去检测力）")
+
+        # 样本13（好）：只含真导出的报告必须过 C11
+        ok11 = _BR(path="x", container="macho")
+        ok11.symbols.append(_Sym(name="_export_one", kind="export"))
+        g11 = []
+        _c11_check(g11, ok11, ("_export_one",), ("_private_helper",))
+        if not g11:
+            good += 1
+        else:
+            print("  [selftest] 好样本10 被误伤（C11 过严）：%s" % g11[:1])
+
+        # 样本14（坏）：**拆掉家族归一**必须让 C12 变红（两向：证明判据有牙齿）
+        f12a = []
+        _c12_missing_check(
+            f12a,
+            _mk_reports(("/p/libconsumer.so", [("libfoo.so.1", "needed")]), ()),
+            expect_absent=("libfoo.so.1",),      # 没人提供 -> 必然出现在 needs
+            expect_present=())
+        if f12a:
+            bad += 1
+        else:
+            print("  [selftest] 坏样本8 未触发（C12 的「该报不报」方向失去检测力）")
+
+        # 样本15（好）：提供同族文件的场景必须过（且搜索路径不出现）
+        g12 = []
+        _c12_missing_check(
+            g12,
+            _mk_reports(("/p/libconsumer.so", [("libfoo.so.1", "needed"),
+                                               ("@loader_path/../lib", "rpath")]),
+                        ("/p/libfoo.so.1.2.3", [])),
+            expect_absent=("libfoo.so.1",), expect_present=())
+        if not g12:
+            good += 1
+        else:
+            print("  [selftest] 好样本11 被误伤（C12 过严）：%s" % g12[:1])
+
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
-    return 0 if (bad >= 4 and good >= 4) else 1
+    return 0 if (bad >= 8 and good >= 8) else 1
 
 
 # ---------------------------------------------------------------- main
@@ -704,7 +1007,9 @@ def main(argv):
     print("check_binfmt_fixtures: OK（PE/ELF 解析、GPU 段识别、magic 兜底、"
           "契约 C1/C2/C3/C4/C5/C6 + R33 新增 C7(PTX .entry 括号判据)/"
           "C8(Mach-O 未验证传播) + R36 新增 C9(合成 Mach-O 夹具：LC_SEGMENT_64 "
-          "段/节解析、fat 切片、fixture_verified 两轴) 全部通过；"
+          "段/节解析、fat 切片、fixture_verified 两轴) + R68 新增 "
+          "C10(Mach-O 依赖指令七种形态) / C11(LC_SYMTAB 外部符号，内部不得混入) / "
+          "C12(库名家族归一 + 缺失依赖两向) 全部通过；"
           "判据族 %s）" % ROW_SIGNATURE)
     return 0
 

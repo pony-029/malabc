@@ -341,7 +341,9 @@ BOUNDARY_EXEMPT = {
                "R55 的第一版正因为只看标记词而**整条跳过**了它（R55 §8 C10-7）。"
                "它的行为对手方不在本门：`check_binfmt_fixtures.py` 的 C8 用合成"
                "夹具直接断言「Mach-O 的未验证状态必须传播成 verified=False 并"
-               "渲染进报告正文」，C9 断言合成夹具必须真解析出段/节与 fat 切片 ——"
+               "渲染进报告正文」，C9 断言合成夹具必须真解析出段/节与 fat 切片，"
+               "R68 起又多了 C10（Mach-O 的依赖指令七种形态）/ C11（LC_SYMTAB 的"
+               "外部符号，内部符号不得混入）—— 对手方始终在同一个文件里。"
                "那比走 CLI 更贴近失效点，本门再加一条只会重复。",
         "where": ("tools/check_binfmt_fixtures.py", "verified=False"),
     },

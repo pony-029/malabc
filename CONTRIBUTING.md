@@ -160,7 +160,8 @@ R55 的 V1 有个**准入条件**：只网罗措辞里带 `不识别` / `不做`
 R56 把准入条件删掉，口径改成「**每一条** bullet 都必须恰好被一条 case 认领
 **或**在一张豁免表里登记」，并给 `Mach-O：` 补上豁免（对手方是
 `check_binfmt_fixtures.py` 的 C8/C9：合成夹具直接断言 Mach-O 的未验证状态必须
-传播成 `verified=False` 并渲染进报告）。三处配套：
+传播成 `verified=False` 并渲染进报告；R68 起又多了 C10/C11 —— 依赖指令七种形态、
+`LC_SYMTAB` 外部符号 —— 对手方始终是同一个文件）。三处配套：
 
 | 配套 | 内容 |
 | --- | --- |
@@ -311,11 +312,15 @@ R63 写在了基线门上。
 
 R63 收尾时量出一件怪事：同一个 `matlabc.py`，`--help` 的字节数**不是一个数**。
 
-| 量法 | `--help` |
+| 量法（R63 收尾时的读数） | `--help` |
 | --- | --- |
 | Python **3.10.10** | **50481** |
-| Python **3.13.12** | **50451**（= 快照值） |
+| Python **3.13.12** | **50451**（= R64 时的快照值） |
 | 3.10 + `COLUMNS=200` | **45827** |
+
+同法在 R68 复量（Mach-O 的两处披露加长之后）：3.10 → **50706**、
+3.13 → **50676**（= 当前快照值），差值**仍然是** 30 B —— 即「解释器差 30 B」
+这条结论与披露内容无关，是 argparse 的行为差，不是被测对象的字节数在飘。
 
 R64 把根因量准了：
 
@@ -446,6 +451,115 @@ R66 量出「**不该认的却认了**」—— docstring / 块注释里**独占
 **新判据 G7**（判据族 6 → 7）：夹具里字符串 / 注释内的 `def ghost(a, b):` 与 `function ghostfn(a, b) {` **必须不被认出来**；夹具完备性 `R2` 与棘轮 `R1` 同时加维。**两向证据**：把新门拿到 **R66 之前的产品**（worktree）上跑 ⇒ **rc=1**（G7 ×2 + R1 ×2）；在本树上 ⇒ rc=0。
 
 ⚠ 级联时被 **P5** 当场抓住一次：签名推到 `G1–G7` 后与 `check_import_graph.py` **撞车**（它 R53 就占了 `G1–G7`）⇒ 本门签名改成 **`G1–G7 (py/js)`**。详见 `docs/SUPERPOWER_REVIEW_R67.md`。
+
+### R68：跨各种形式的动态链接库 —— Mach-O 的依赖 / 符号 / 库名家族归一
+
+R67 收尾时，`* Mach-O：` 这条边界只被**状态**断言守着（「解析器已实现、有合成夹具、
+但无真实语料 ⇒ `verified: NO`」）。R68 换了一个问法：**Mach-O 的解析器到底读到了什么？**
+答案是「比披露的少得多」—— 它只读段与节，**一个依赖都没读、一个符号都没读**。
+
+**装置**（`_r68/probe_r68_dylib_forms.py`，只走公开 CLI：
+`matlabc.py --binary … --binary-json --binfmt-scan-cap 0`，四个用例 A–D，
+每例**先断言前置条件**，前置不成立就报 `INDETERMINATE` 而不是 `OK`）：
+
+| 用例 | 问的是什么 |
+| --- | --- |
+| A | ELF 的 `DT_NEEDED` 依赖是否读得出（对照组，基线就该绿） |
+| B | Mach-O 的 `LC_LOAD_DYLIB` 一族（含 `_WEAK_` / `_REEXPORT_` / `_UPWARD_`）读不读得出 |
+| C | 库名**家族**：提供 `libfoo.so.1.2.3` 时，`libfoo.so.1` 还算不算「缺」 |
+| D | 同一个「家族」关系在 `.dylib` 写法上成不成立 |
+
+**基线读数**（`git archive HEAD` 净树）：`OK=0 BAD=3 INDETERMINATE=1`。
+具体是：Mach-O 依赖 **0/7 读得出**、Mach-O 导出 **0 个**、
+ELF 的版本号 soname **不认家族**、`.dylib` 版本号形态**不可判**
+（因为 Mach-O 依赖整块是空的 —— 这正是「INDETERMINATE」存在的理由：
+装置不许把「对象没产出」记成「对象对了」）。
+
+**三处产品缺陷**（都在 `binfmt/`）：
+
+| 缺陷 | 修法 |
+| --- | --- |
+| Mach-O 无依赖解析 | `macho.py` 补齐 `LC_LOAD_DYLIB` / `_WEAK_` / `_REEXPORT_` / `_UPWARD_` / `_LAZY_` / `LC_ID_DYLIB` / `LC_RPATH` / `LC_LOAD_DYLINKER` 七种形态。⚠ 三种命令的**头部长度不同**（`dylib_command` 24 B，`rpath_command` / `dylinker_command` 12 B）—— 混用会把链接器路径当库名 |
+| Mach-O 无符号解析 | 补 `LC_SYMTAB` + `nlist_64`：只收 `N_EXT` 且非 `N_STAB` 的符号（`N_UNDF`→import，`N_SECT`→export），**内部符号一个都不许混进导出**；C 符号的**前导下划线原样保留**，macOS 别名（`_main` ↔ `main`）只在 `attribute.py` 里、**只对 macho 容器**做 |
+| 库名不做**家族**归一 | `buildsys.py` 新增 `library_family()`（单一事实源）：`libfoo.so` / `libfoo.so.1` / `libfoo.so.1.2.3` → `libfoo.so`；`libfoo.1.dylib` → `libfoo.dylib`；`@rpath/…` 与目录前缀去掉。`attribute.py` 的 `missing_dependencies()` 改用它判定「提供 / 未提供」，并让**库自己的 install name**（`LC_ID_DYLIB`）也算「已提供」，同时把 `LC_RPATH` / `LC_RUNPATH` / `LC_LOAD_DYLINKER` 显式排除出「库」的范畴 |
+
+**复量**（同一装置、同一台机器、公开 CLI）：`OK=4 BAD=0 INDETERMINATE=0` —
+而且**真树上**的逐项读数与隔离树**逐项相同**。
+
+**判据 C10 / C11 / C12**（在 `tools/check_binfmt_fixtures.py` 里，
+签名 `C1–C9` → `C1–C12`）：
+
+| 判据 | 管辖范围 |
+| --- | --- |
+| C10 | 合成 Mach-O 的**八条**依赖命令实例（**七种**指令 kind：`LC_ID_DYLIB` / `LC_LOAD_DYLIB` / `_WEAK_` / `_REEXPORT_` / `_UPWARD_` / `LC_RPATH` / `LC_LOAD_DYLINKER`）：名字与 `kind` **都要**对（`id_dylib` / `load_dylib` / `rpath` / `load_dylinker` 四种 kind 不许混用），且读出来的名字必须是**可打印 ASCII**（防「把命令体当字符串读」） |
+| C11 | `LC_SYMTAB`：`N_SECT\|N_EXT` 必须成 export、`N_UNDF\|N_EXT` 必须成 import，而**纯内部符号**（`N_SECT` 无 `N_EXT`）**必须不出现在导出里** |
+| C12 | `library_family()` 的**同族归一 + 异族可分**（5 组同族、3 组异族、空串），加上 `missing_dependencies()` 的**两向**：被同族吸收的**不出现**、真缺的**必须出现**、`rpath` 这类搜索路径**一律不算库** |
+
+`--selftest` 从 `{"bad": 5, "good": 5}` 扩到 **`{"bad": 8, "good": 8}`**
+（每个新判据各配一好一坏），且**下界**断言（`bad >= 8 and good >= 8`）。
+
+**两向证据**（这一条是 R66 的老账 C16-13「装置自己不许撒谎」的延续）：
+把**新版门**放进 `git archive HEAD` 的**净树**（产品还是 R68 之前的）再跑 ⇒
+**rc=1 / 14 项违规**（C10 ×8、C11 ×3、C12 ×3，逐条都点名到具体依赖、符号或函数）；
+在本树上跑**同一份门** ⇒ rc=0。
+
+⚠ 第一版这次跑出来的是 `ImportError` traceback：rc 确实非 0，但**没说出哪条判据红了** ——
+红得没有信息量。于是补了 **H1**：`_c12_check` / `_c12_missing_check` 里的 import
+包上 try/except，缺符号时给一条**能读的** finding。
+**「非 0 退出」不等于「判据生效」** —— 这是本轮第二次踩同一个坑的形状
+（第一次是探针的两个假 OK / 一个假 BAD，见 `docs/SUPERPOWER_REVIEW_R68.md` §5）。
+
+**级联**：`matlabc.py` 里两处**已与行为分叉**的披露（`* Mach-O：` 的括号说明、
+`--binary` 的「能读什么」）同一提交改掉 —— 而 `matlabc.py` 的模块 docstring **就是**
+`--help` 正文 ⇒ 帮助体积棘轮的两条快照必须按**实测**更新：
+
+| 臂 | 口径 | 旧 | 新 |
+| --- | --- | --- | --- |
+| ①② | `COLUMNS=80` | `50451`（3.13 读数） | **`50676`**（3.13；3.10 为 `50706`，差仍 30 B） |
+| ③ | `COLUMNS=10000` 规范形 | `42053` | **`42223`** |
+
+`HELP_DRIFT_BYTES = 64` **不动** —— 改披露本来就该更新快照，不是放宽棘轮
+（那正是 R64 立这条的目的）。
+
+#### 第 4 个缺陷：`.framework` 那一支是**死代码**（补丁 L 之前不存在的发现）
+
+它不是计划里的一项，是**探针顺手打出来的**：给 `library_family()` 的输入表加进
+`@rpath/Foo.framework/Versions/A/Foo` 时，读数是 `foo`，而**那个函数自己的文档
+字符串**第 212–213 行明写应返回 `foo.framework`。根因是**语句顺序**：
+
+```python
+low = low.rsplit("/", 1)[-1]          # 先取 basename —— foo
+if ".framework/" in low:              # 到这里 ".framework/" 早就不在串里了
+    return low.split(".framework/", 1)[0] + ".framework"     # 恒不可达
+```
+
+**行为与文档分叉**，而这条路径上**没有任何门**（C12 当轮才建，且第一版夹具里
+根本没有 framework 样本）。修法是把判断提到取 basename 之前，并在前缀上再取一次
+basename（`/System/…/Frameworks/Bar.framework/Bar` 要 `bar.framework`，
+不是 `frameworks.bar.framework`）。夹具补三种写法 —— **一个曾经不可达的分支，
+只有夹具能守住它第二次变死**。
+
+顺带记一条**探针自己的**自伤（本轮第 3 次，见 `docs/SUPERPOWER_REVIEW_R68.md` §5）：
+我在探针里把 `libfoo.so` 与 `libfoo.1.dylib` 放进同一个「同族」集合，于是探针
+报出一个**假 BAD** —— 那是我的期望写错了（`libfoo.so` 是 ELF、`libfoo.dylib`
+是 Mach-O，按命名就是两个家族），不是产品错。**探针的期望也必须被量过**，
+否则它会把「我猜错了」记成「产品错了」。修正期望后 probe 报 `bad=0 / 23`。
+
+#### 新测试凭什么可信：4 个变异体全部把它打红
+
+新写的 5 条测试**第一次就全绿**是可疑的（空断言、路径写错、只要 rc=0 就放行，
+都以这种方式通过）。所以 `_r68/mutant_r68.py` 把整棵工作区复制到 `_r68/mut`
+（30 MB，**不动真树**），按批次注入 4 个变异体，每批跑一次 `pytest -k r68`：
+
+| 变异体 | 内容 | 期望 | 实测 |
+| --- | --- | --- | --- |
+| V1 | `macho.py`：从 `DYLIB_LOAD_CMDS` 删掉 `LC_LOAD_WEAK_DYLIB` | 红 | **2 failed** |
+| V2 | `macho.py`：`_read_symtab` 不再要求 `N_EXT`（内部符号也收） | 红 | **2 failed** |
+| V3 | `buildsys.py`：`.framework` 判断挪回 basename **之后** | 红 | **3 failed** |
+| V4 | `buildsys.py`：`library_family` 退化成「只取小写 basename」 | 红 | **3 failed** |
+| — | 还原 | 绿 | **5 passed** |
+
+一句话：**「测试通过」不是证据，「测试能红」才是**。
 
 ## 深度分析归档
 
