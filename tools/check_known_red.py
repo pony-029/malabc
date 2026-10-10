@@ -22,6 +22,9 @@
      并**两向**核对（多一条没登记 ⇒ 红；登记了却对不上 ⇒ 也红）；
   ③ 顺手把 **类 A「路径漂移」** 的残留钉住：`os.path.join(<根>, "<文件名>")`
      的单段写法若指向一个**在根与 `docs/` 都不存在**的文件，也必须登记。
+  ④ （R65 / C14-1）再补一条**实测半**：真跑登记过的 nodeid 集合，把「登记说的结局」
+     与「实测的结局」对账 —— 前三条全是**静态**的：它们管「有没有登记」，
+     不管「登记说的是不是真的」。
 
   它为什么不只是"把红记个账"：登记是**有反作用力**的 ——
   K2 要求登记过的产物**必须真的不存在**（哪天有人补上 `setup.py`，登记立刻变
@@ -42,7 +45,7 @@
     │ 仓库工作区        │            │ tests/test_matlabc.py   │
     └──────────────────┘            └────────────────────────┘
 
-判据（K1–K6，管辖范围互不重叠）：
+判据（K1–K6 静态，K7–K9 实测；管辖范围互不重叠）：
     K1 覆盖    扫描「引用了已登记产物的测试」⇒ 必须**恰好**等于登记集合（两向）
     K2 真缺失  每个已登记产物在仓库里必须**不存在**（存在 ⇒ 登记陈旧 ⇒ 红）
     K3 理由具名 每条理由必须逐字含该产物的 basename（理由得是关于**这个**文件的）
@@ -50,33 +53,66 @@
     K5 新缺口   `os.path.join(<根>, "<单段文件名>")` 指向的文件若在根与 docs/ 都
                 不存在、且未登记 ⇒ 红（把「新长出来一个引用缺失产物的测试」也罩住）
     K6 缺输入   `tests/test_matlabc.py` 不存在 ⇒ 红（不是"没有可检查对象 ⇒ 放行"）
+    K7 红不红   （实测半）RED 桶每条必须实测 failed/error —— 见下
+    K8 绿不绿   （实测半）GREEN_REFS 桶每条必须实测 passed
+    K9 跳不跳   （实测半）SKIP 桶每条必须实测 skipped
 
-两向自证：好样本（一致的合成树）必须放行；7 个坏样本（K1 未登记 / K1 陈旧 /
-K2 陈旧 / K3 理由无名字 / K4 伪装跳过 / K5 新缺口 / K6 缺输入）必须各被抓到。
+实测半（`--measure`，R65 / R64 §8 **C14-1**）——
+K1–K6 **全是静态的**：它们证明「登记与源码里的引用一致」，却**不证明登记说的结局是真的**。
+风险不是假想的（R65 用 `_r65/probe_r65a_measure.py` 真跑一遍量出来的）：
+
+    * 把一条红测试改成先 `pytest.skip` 再绕过断言 ⇒ K4 只查源码里**有** `pytest.skip`
+      字样，照样放行；
+    * 把某条红测试**真的修绿**（改用一个不需要缺失产物的路径）⇒ 只要它仍写着那个
+      basename，K1 全绿、K2 也不动。
+
+于是登记会慢慢变成一张**传说** —— 正是 R63 要杀死的那个东西。
+`--measure` 真跑登记的 nodeid 集合（**59** 个；实测墙钟 **5.8 秒**），用 pytest 自己的
+`--junit-xml` 取结局，再与三个桶**逐条**对照：
+
+    K7 红不红   RED 桶每条必须实测 failed/error。`passed` ⇒ **红变绿**（产品真被修好了？
+                那就把它从登记里摘掉、看它是不是真绿）；`skipped` ⇒ **红变跳过**
+                （它该进 SKIP 桶，K4 会要求它的源码里真的有 `pytest.skip`）；
+                收集不到 ⇒ 名字改了 / 测试没了（K1 的陈旧分支只覆盖「引用关系消失」）。
+    K8 绿不绿   GREEN_REFS 桶每条必须实测 passed，否则那条「其余绿」的前提破了（**绿变红**）。
+    K9 跳不跳   SKIP 桶每条必须实测 skipped，否则它**不再跳**了（跳过变绿 / 跳过变红）。
+
+分工一句话：K1/K5 管「有没有登记」，K7–K9 管「登记说的是不是真的」。
+⚠ 静态半**不依赖 pytest**（默认路径必须能被**没有 pytest 的解释器**跑通 ——
+`tools/check_all.py` 在远端克隆里就是用托管 3.13 跑的）；实测半是**选修**，
+缺 pytest 时返回 **rc=2**，**不是**静默放行（「测不了就当通过」的门等于没有门）。
+
+两向自证：好样本（一致的合成树 + 一致的实测分布）必须放行；12 个坏样本
+（K1 未登记 / K1 陈旧 / K2 陈旧 / K3 理由无名字 / K4 伪装跳过 / K5 新缺口 / K6 缺输入 /
+ K7 红变绿 / K7 红变跳过 / K7 收集不到 / K8 绿变红 / K9 跳过变绿）必须各被抓到。
 
 用法：
-    python tools/check_known_red.py             # 0=一致 1=有违规 2=缺输入
-    python tools/check_known_red.py --selftest  # 两向自证
+    python tools/check_known_red.py             # 静态半：0=一致 1=有违规 2=缺输入
+    python tools/check_known_red.py --selftest  # 两向自证（含实测半的纯函数样本）
+    python tools/check_known_red.py --measure   # 实测半：真跑登记的 nodeid 集合，报 K7–K9
 
-退出码：
-    0 = 登记与事实两向一致（K1–K6 全绿）
-    1 = 有违规（未登记 / 陈旧 / 理由不具名 / 伪装跳过 / 新缺口）
-    2 = 缺输入（找不到 tests/test_matlabc.py）
+退出码（静态半 / 实测半）：
+    0 = 登记与事实两向一致（K1–K6 全绿）/ 实测结局与三个登记桶逐条相符（K7–K9 全绿）
+    1 = 有违规（未登记 / 陈旧 / 理由不具名 / 伪装跳过 / 新缺口）/ 有实测漂移（K7–K9 任一红）
+    2 = 缺输入（找不到 tests/test_matlabc.py）/ 缺输入（pytest 跑不起来或没产出 junit XML）
 """
 import argparse
 import io
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
+import time
+import xml.etree.ElementTree as ET
 
 # R62/P5：「质量门表」里本门那一行的**签名**（本门自己的判据族，
 # 或本门独有的机制名）。它必须逐字出现在两处：
 #   ① 本门的成功行（下面 main() 打印的那一行）；
 #   ② README.md / README_CN.md 里本门那一行。
 # 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
-ROW_SIGNATURE = "K1–K6"
+ROW_SIGNATURE = "K1–K9"
 
 TESTS_REL = os.path.join("tests", "test_matlabc.py")
 
@@ -208,6 +244,13 @@ JOIN_ROOT_RE = re.compile(
     r"\s*\"([A-Za-z0-9_.\-]+\.[A-Za-z0-9_]+)\"\s*\)")
 TEST_DEF_RE = re.compile(r"^def (test_[A-Za-z0-9_]+)", re.M)
 
+# ---------------------------------------------------------------------------
+# 实测半（R65 / C14-1）：`--measure` 真跑登记的 nodeid 集合。
+# 机器可读行以 MEASURE_MARK 起头，供 tests/ 与后续工具解析。
+# ---------------------------------------------------------------------------
+MEASURE_MARK = "MEASURE COUNTS"
+MEASURE_TIMEOUT = 900        # 秒；59 个 nodeid 实测约 6 秒，留两个数量级余量
+
 
 def repo_root():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -324,6 +367,144 @@ def audit(root, missing, negative, red, skip, green, on_problem):
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# 实测半（R65 / C14-1）：真跑登记的 nodeid 集合，把结局与登记桶对照。
+#
+# 为什么用 junit XML 而不是解析 `-q` 的文本：本机实测 `-rf` **不打印** FAILED
+# 段（R63 记下的坑），解析文本会**静默少算**。junit XML 是 pytest 自己产出的
+# 结构，`<failure>` / `<error>` / `<skipped>` 子元素就是结局本身。
+# ---------------------------------------------------------------------------
+_MEASURE_ORDER = {"passed": 0, "skipped": 1, "failed": 2, "error": 3}
+
+
+def _k7_note(kind):
+    if kind == "passed":
+        return ("**红变绿** —— 要么产品真被修好了（那就把它从 RED 桶摘掉、看它是不是"
+                "真绿），要么它被改成不再依赖那个缺失产物")
+    if kind == "skipped":
+        return "**红变跳过** —— 它该进 SKIP 桶（K4 会要求源码里真的有 `pytest.skip`）"
+    if kind == "not-collected":
+        return "**收集不到** —— 名字改了或测试没了（K1 的陈旧分支只覆盖「引用关系消失」）"
+    return "结局异常"
+
+
+def _k8_note(kind):
+    if kind in ("failed", "error"):
+        return "**绿变红** —— 那条「其余绿」的前提破了：它引用了已登记产物，却真的失败了"
+    if kind == "skipped":
+        return "**绿变跳过** —— 它不该跳；跳过会掩盖真因"
+    if kind == "not-collected":
+        return "**收集不到** —— 名字改了或测试没了"
+    return "结局异常"
+
+
+def _k9_note(kind):
+    if kind == "passed":
+        return "**跳过变绿** —— 不再需要跳了（登记该挪进 GREEN_REFS）"
+    if kind in ("failed", "error"):
+        return "**跳过变红** —— 「优雅跳过」的伪装被实测揭穿"
+    if kind == "not-collected":
+        return "**收集不到** —— 名字改了或测试没了"
+    return "结局异常"
+
+
+def classify_measured(measured, red, skip, green):
+    """把**实测结局**与三个登记桶对照（纯函数；不碰文件、不起进程）。
+
+    返回 (problems, stats)。`measured` 是 {测试名: 结局}；登记里出现了但
+    `measured` 里没有的名字 ⇒ 结局记为 `not-collected`（收集不到）。
+    纯函数 = 可被 `--selftest` 用合成分布两向驱动，不需要 pytest。
+    """
+    probs = []
+
+    def kind_of(name):
+        return measured.get(name) or "not-collected"
+
+    for n in red:
+        k = kind_of(n)
+        if k not in ("failed", "error"):
+            probs.append("K7 `%s` 登记为「已知红」，实测结局 **%s**：%s"
+                         % (n, k, _k7_note(k)))
+    for n in green:
+        k = kind_of(n)
+        if k != "passed":
+            probs.append("K8 `%s` 登记为「其余绿」，实测结局 **%s**：%s"
+                         % (n, k, _k8_note(k)))
+    for n in skip:
+        k = kind_of(n)
+        if k != "skipped":
+            probs.append("K9 `%s` 登记为「优雅跳过」，实测结局 **%s**：%s"
+                         % (n, k, _k9_note(k)))
+
+    dist = {}
+    for n in list(red) + list(skip) + list(green):
+        k = kind_of(n)
+        dist[k] = dist.get(k, 0) + 1
+    stats = {"red": len(red), "skip": len(skip), "green": len(green),
+             "dist": dist}
+    return probs, stats
+
+
+def measure_outcomes(root, names, python=None, timeout=MEASURE_TIMEOUT):
+    """真跑 `tests/test_matlabc.py::<name>` 集合，返回 (结局 dict 或 None, info)。
+
+    结局取值：passed / failed / error / skipped。**收集不到的不会出现在 dict 里**
+    （由 `classify_measured` 判为 `not-collected`）—— 所以 dict 里"缺键"是信息，
+    不是错误。
+
+    `info` = {"rc": pytest 退出码或 None, "seconds": 墙钟, "raw": 输出尾部}。
+    第一个返回值为 None 时，info["raw"] 里有 pytest 说的话（缺 pytest / 起不来 /
+    XML 解析失败都会走这条）。注意：**测试红会让 pytest rc=1，那不是失败** ——
+    本模式的成败只看「实测结局与登记是否相符」。
+    """
+    py = python or sys.executable
+    tmp = tempfile.mkdtemp(prefix="knownred_measure_")
+    xml = os.path.join(tmp, "out.xml")
+    nodeids = [TESTS_REL.replace(os.sep, "/") + "::" + n for n in names]
+    cmd = [py, "-m", "pytest"] + nodeids + [
+        "-q", "--tb=no", "-p", "no:cacheprovider", "--junit-xml=" + xml]
+    t0 = time.time()
+    try:
+        p = subprocess.run(cmd, cwd=root, stdin=subprocess.DEVNULL,
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                           timeout=timeout)
+        rc = p.returncode
+        raw = p.stdout.decode("utf-8", "replace")
+    except (OSError, subprocess.SubprocessError) as exc:
+        shutil.rmtree(tmp, ignore_errors=True)
+        return None, {"rc": None, "seconds": time.time() - t0,
+                      "raw": "pytest 起不来：%s" % exc}
+    dt = time.time() - t0
+    if not os.path.exists(xml):
+        shutil.rmtree(tmp, ignore_errors=True)
+        return None, {"rc": rc, "seconds": dt, "raw": raw[-1500:]}
+    try:
+        root_el = ET.parse(xml).getroot()
+    except ET.ParseError as exc:
+        shutil.rmtree(tmp, ignore_errors=True)
+        return None, {"rc": rc, "seconds": dt,
+                      "raw": "junit XML 解析失败：%s" % exc}
+    shutil.rmtree(tmp, ignore_errors=True)
+
+    outcomes = {}
+    for tc in root_el.iter("testcase"):
+        name = (tc.get("name") or "").split("[")[0]
+        if not name:
+            continue
+        tags = set(ch.tag for ch in tc)
+        kind = "passed"
+        if "error" in tags:
+            kind = "error"
+        elif "failure" in tags:
+            kind = "failed"
+        elif "skipped" in tags:
+            kind = "skipped"
+        prev = outcomes.get(name)
+        if prev is None or _MEASURE_ORDER[kind] > _MEASURE_ORDER[prev]:
+            outcomes[name] = kind
+    return outcomes, {"rc": rc, "seconds": dt, "raw": raw[-1500:]}
+
+
 # 两向自证
 # ---------------------------------------------------------------------------
 _GOOD_TEST = '''# -*- coding: utf-8 -*-
@@ -478,6 +659,44 @@ def _selftest():
             else:
                 fails.append(tag)
                 print("  [反例] %-20s -> **未被抓到**！" % tag)
+        # ---- 实测半（`--measure`）的**纯函数**两向自证（不需要 pytest）----
+        m_red = {"t_missing": ("art.py",)}
+        m_skip = {"t_skips": ("art.py",)}
+        m_green = {"t_mentions": ("art.py",)}
+        ok_measured = {"t_missing": "failed", "t_skips": "skipped",
+                       "t_mentions": "passed"}
+        p, mst = classify_measured(ok_measured, m_red, m_skip, m_green)
+        if not p:
+            good += 1
+            print("  [正例] 实测结局与登记桶一致          -> 放行")
+        else:
+            fails.append("measure-good")
+            print("  [正例] 实测结局与登记桶一致          -> 误伤！%s" % p[:2])
+
+        mcases = [
+            ("K7-red-now-green",
+             {"t_missing": "passed", "t_skips": "skipped",
+              "t_mentions": "passed"}),
+            ("K7-red-now-skip",
+             {"t_missing": "skipped", "t_skips": "skipped",
+              "t_mentions": "passed"}),
+            ("K7-not-collected",
+             {"t_skips": "skipped", "t_mentions": "passed"}),
+            ("K8-green-now-red",
+             {"t_missing": "failed", "t_skips": "skipped",
+              "t_mentions": "failed"}),
+            ("K9-skip-now-green",
+             {"t_missing": "failed", "t_skips": "passed",
+              "t_mentions": "passed"}),
+        ]
+        for tag, mm in mcases:
+            p, _st2 = classify_measured(mm, m_red, m_skip, m_green)
+            if p:
+                bad += 1
+                print("  [反例] %-20s -> 抓到（%s）" % (tag, p[0][:72]))
+            else:
+                fails.append("measure-" + tag)
+                print("  [反例] %-20s -> **未被抓到**！" % tag)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
@@ -488,15 +707,57 @@ def _selftest():
     return 0
 
 
+def measure_names():
+    """登记的 nodeid 集合（三个桶的**并集**，顺序固定：红 → 跳过 → 绿）。"""
+    return list(RED_TESTS) + list(SKIP_TESTS) + list(GREEN_REFS)
+
+
+def measure_main(root):
+    """`--measure`：真跑登记集合，打印机器可读行，返回 rc。"""
+    names = measure_names()
+    measured, info = measure_outcomes(root, names)
+    if measured is None:
+        print("check_known_red: --measure 缺输入 —— pytest 跑不起来或没产出 junit "
+              "XML（rc=%r）。本模式需要**装了 pytest 的解释器**；"
+              "默认（静态）路径不依赖 pytest。" % info.get("rc"))
+        print(info.get("raw", "")[-600:])
+        return 2
+    probs, stats = classify_measured(measured, RED_TESTS, SKIP_TESTS, GREEN_REFS)
+    dist = stats["dist"]
+    print('%s {"failed": %d, "passed": %d, "skipped": %d, "error": %d, '
+          '"not_collected": %d}'
+          % (MEASURE_MARK, dist.get("failed", 0), dist.get("passed", 0),
+             dist.get("skipped", 0), dist.get("error", 0),
+             dist.get("not-collected", 0)))
+    if probs:
+        print("check_known_red: --measure 发现 %d 项漂移"
+              "（登记写的结局与实测不符）" % len(probs))
+        for p in probs:
+            print("  - " + p)
+        return 1
+    print("check_known_red: --measure OK（真跑 %d 个登记的 nodeid，%.1f 秒；"
+          "实测 红 %d / 绿 %d / 跳过 %d 与登记桶 %d/%d/%d 逐条相符；"
+          "判据族 K7–K9）"
+          % (len(names), info.get("seconds", 0.0), dist.get("failed", 0),
+             dist.get("passed", 0), dist.get("skipped", 0),
+             len(RED_TESTS), len(GREEN_REFS), len(SKIP_TESTS)))
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--measure", action="store_true",
+                    help="真跑登记的 nodeid 集合，报 K7–K9 漂移"
+                         "（需要装了 pytest 的解释器）")
     args = ap.parse_args(argv)
 
     if args.selftest:
         return _selftest()
 
     root = repo_root()
+    if args.measure:
+        return measure_main(root)
     probs = []
     st = audit(root, MISSING_ARTIFACTS, NEGATIVE_FIXTURES, RED_TESTS,
                SKIP_TESTS, GREEN_REFS, probs.append)

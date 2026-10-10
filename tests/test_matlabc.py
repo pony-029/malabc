@@ -18515,7 +18515,7 @@ def test_r63_read_doc_resolves_root_then_docs_two_way():
 def test_r63_known_red_guard_two_way():
     """R63：`check_known_red.py` 必须**自己先两向自证**，才允许宣布「真实仓库 0 违规」。
 
-    ① 主路径 rc=0，成功行含判据族 `K1–K6`；
+    ① 主路径 rc=0，成功行含判据族 `K1–K9`；
     ② `--selftest` 必须 PASSED，`SELFTEST COUNTS` 取**下界**断言（样本不许静默缩水）；
     ③ 反向：直接驱动 `audit()` —— 把「登记为缺失的产物**真的创建出来**」⇒ K2 红；
        理由不带 basename ⇒ K3 红；**新**冒出来的一条引用 ⇒ K5 红。
@@ -18524,7 +18524,7 @@ def test_r63_known_red_guard_two_way():
     r = _r31_run([os.path.join("tools", "check_known_red.py")], timeout=180)
     out = r.stdout.decode("utf-8", "replace")
     assert r.returncode == 0, out[-900:]
-    assert "K1–K6" in out, out[-400:]
+    assert "K1–K9" in out, out[-400:]
     s = _r31_run([os.path.join("tools", "check_known_red.py"), "--selftest"],
                  timeout=180)
     sout = s.stdout.decode("utf-8", "replace")
@@ -18536,7 +18536,7 @@ def test_r63_known_red_guard_two_way():
     assert "SELFTEST PASSED" in sout, sout[-300:]
 
     kr = _r37_load("check_known_red")
-    assert kr.ROW_SIGNATURE == "K1–K6", kr.ROW_SIGNATURE
+    assert kr.ROW_SIGNATURE == "K1–K9", kr.ROW_SIGNATURE
 
     tmp = tempfile.mkdtemp(prefix="r63_knownred_")
     try:
@@ -18606,3 +18606,92 @@ def test_r63_gate_registry_mentions_the_new_guard():
                    for x in probs), probs
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r65_measure_half_two_way():
+    """R65 / R64 §8 C14-1：给 `check_known_red` 补上**实测半**（`--measure`）。
+
+    那道门自 R63 起在成功行里写着「引用它们的测试按**实测**三分在册：红 47 /
+    优雅跳过 8 / 其余绿 4」，但它的 `main()` **从不跑 pytest** ——
+    那个「实测」的对手方**只是一句注释**（源码里的 `# 实测 47 条`）。
+    于是两种漂移在网外（R65 用仓库外探针 `_r65/probe_r65a_measure.py` 量过）：
+
+      * 把一条红测试改成先 `pytest.skip` 再绕过断言 ⇒ K4 只查源码里**有**
+        `pytest.skip` 字样，照样放行；
+      * 把某条红测试**真的修绿**（改用一条不需要缺失产物的路径）⇒ 只要它仍写着
+        那个 basename，K1 全绿、K2 也不动。
+
+    本测试钉住四层：
+      ① 端到端：`--measure` rc=0，机器可读行 `MEASURE COUNTS` 的三个数与三个
+         登记桶的**长度**逐项相等（红 == len(RED_TESTS)，依此类推）；
+      ② 真的在测（不是抄登记表）：直接驱动 `measure_outcomes` 拿**真结局**，
+         再用 `classify_measured` 对账 ⇒ 零漂移；然后把一条**实测为 passed**
+         的真测试谎报成「已知红」⇒ 必须报 K7；把一条**实测为 failed** 的真测试
+         谎报成「其余绿」⇒ 必须报 K8。这两条反例用的是**真测量数据**；
+      ③ 静态半**不依赖 pytest**：拿一个「import 就炸」的假 `pytest` 挡在
+         `PYTHONPATH` 前面，默认路径必须照样 rc=0 且不打 `MEASURE COUNTS`
+         —— `tools/check_all.py` 要在**没有 pytest 的托管 3.13** 上跑通；
+      ④ 缺 pytest 时 `--measure` 必须 **rc=2**（**不许**静默放行：
+         「测不了就当通过」的门等于没有门）。
+    """
+    kr = _r37_load("check_known_red")
+
+    r = _r31_run([os.path.join("tools", "check_known_red.py"), "--measure"],
+                 timeout=600)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[-1200:]
+    m = re.search(r'MEASURE COUNTS \{"failed": (\d+), "passed": (\d+), '
+                  r'"skipped": (\d+), "error": (\d+), "not_collected": (\d+)\}',
+                  out)
+    assert m, out[-800:]
+    assert int(m.group(1)) == len(kr.RED_TESTS), m.group(0)
+    assert int(m.group(2)) == len(kr.GREEN_REFS), m.group(0)
+    assert int(m.group(3)) == len(kr.SKIP_TESTS), m.group(0)
+    assert int(m.group(4)) == 0 and int(m.group(5)) == 0, m.group(0)
+
+    # ② 用**真结局**驱动纯函数：零漂移 + 两条谎报必须各自现形
+    names = list(kr.RED_TESTS) + list(kr.SKIP_TESTS) + list(kr.GREEN_REFS)
+    measured, info = kr.measure_outcomes(ROOT, names, timeout=600)
+    assert measured is not None, info.get("raw", "")[-600:]
+    probs, st = kr.classify_measured(measured, kr.RED_TESTS, kr.SKIP_TESTS,
+                                     kr.GREEN_REFS)
+    assert probs == [], probs
+    assert st["dist"].get("failed") == len(kr.RED_TESTS), st
+
+    liar = "test_syntax_color_tokens"
+    assert measured.get(liar) == "passed", measured.get(liar)
+    #    ⚠ 哑元产物名必须**不**落在 MISSING_ARTIFACTS / NEGATIVE_FIXTURES 里：
+    #    本门的 `scan_refs` 按 basename 扫全文（含 docstring），在测试里点名一个
+    #    已登记产物**本身就**是一条登记义务（R65 第一版就是这么被 K1 抓到的）。
+    #    这里判的是**测试名**，产物只是个占位。
+    p2, _ = kr.classify_measured(measured, {liar: ("dummy_art.py",)}, {}, {})
+    assert any(x.startswith("K7") and liar in x for x in p2), p2
+    liar2 = "test_min_pages_guard"
+    assert measured.get(liar2) in ("failed", "error"), measured.get(liar2)
+    p3, _ = kr.classify_measured(measured, {}, {}, {liar2: ("dummy_art.py",)})
+    assert any(x.startswith("K8") and liar2 in x for x in p3), p3
+
+    # ③④ 假 pytest：静态半照样 rc=0，实测半必须 rc=2
+    fake = tempfile.mkdtemp(prefix="r65_nopytest_")
+    try:
+        with io.open(os.path.join(fake, "pytest.py"), "w",
+                     encoding="utf-8", newline="") as fh:
+            fh.write("raise ImportError('r65: pytest 被本测试故意挡掉')\n")
+        env = dict(os.environ)
+        env["PYTHONPATH"] = fake + os.pathsep + env.get("PYTHONPATH", "")
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
+        s = subprocess.run([_PY, os.path.join("tools", "check_known_red.py")],
+                           cwd=ROOT, stdin=subprocess.DEVNULL,
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                           timeout=180, env=env)
+        sout = s.stdout.decode("utf-8", "replace")
+        assert s.returncode == 0, sout[-600:]
+        assert "MEASURE COUNTS" not in sout, sout[-300:]
+        q = subprocess.run([_PY, os.path.join("tools", "check_known_red.py"),
+                            "--measure"], cwd=ROOT, stdin=subprocess.DEVNULL,
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                           timeout=300, env=env)
+        qout = q.stdout.decode("utf-8", "replace")
+        assert q.returncode == 2, (q.returncode, qout[-600:])
+    finally:
+        shutil.rmtree(fake, ignore_errors=True)
