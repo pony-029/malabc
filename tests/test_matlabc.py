@@ -17871,6 +17871,10 @@ def _r55_cli(d, args, timeout=300):
 def test_r55_boundary_claims_have_reverse_criteria():
     """R55：`--help`「诚实的边界」的每条**否定式承诺**必须有一台能说「不」的判据。
 
+    （R56 起 V1 的准入条件已放宽为「**每一条** bullet」，见
+      `test_r56_every_boundary_bullet_has_a_counterparty`。本测试保持 R55 的原始
+      语义：它证的是「否定式承诺这一族也有人守」，两者互为补充。）
+
     修前的真缺陷（两条独立证据，见 docs/SUPERPOWER_REVIEW_R55.md §1）：
       ① 帮助「语言：」这条写的是「**扫到这些文件时**它会打出 [warn]」——**无条件**；
          仓库外装置 `_r55/probe_p6.py` 在 7 种情形下量出：`.c` 与 `.rs` **混放**时
@@ -17940,14 +17944,22 @@ def test_r55_boundary_claims_have_reverse_criteria():
     assert len(heads) == br.EXPECTED_BOUNDARY_BULLETS == 8, len(heads)
     assert n_neg == br.EXPECTED_NEGATION_BULLETS == 7, n_neg
     assert len(br.REVERSE_CASES) == br.MIN_REVERSE_CASES == 5
-    assert br.judge_ratchet(len(heads), n_neg, len(br.REVERSE_CASES)) == []
+    # R56：棘轮多了一维「有对手方的 bullet 数」——它按**全部** bullet 数，
+    # 不经过 V1 的任何准入条件，所以是「每条边界都要有对手方」的独立证人。
+    n_cov = len([h for h in heads
+                 if any(h.startswith(c.get("claim") or "\x00")
+                        for c in br.REVERSE_CASES)
+                 or any(h.startswith(k) for k in br.BOUNDARY_EXEMPT)])
+    assert n_cov == br.EXPECTED_COVERED_BULLETS == 8, n_cov
+    assert br.judge_ratchet(len(heads), n_neg, n_cov,
+                            len(br.REVERSE_CASES)) == []
 
     # 基线：真实仓库的登记表必须**零问题**
     def _j(cases, exempts):
         return br.judge_registry(texts, heads, cases, exempts,
                                  read_text_fn=br.read_text, root=ROOT)
 
-    assert _j(br.REVERSE_CASES, br.NEGATION_EXEMPT) == []
+    assert _j(br.REVERSE_CASES, br.BOUNDARY_EXEMPT) == []
 
     # ---------------- C 五条判据各自独立作证 ----------------
     def _only(probs, want):
@@ -17957,7 +17969,7 @@ def test_r55_boundary_claims_have_reverse_criteria():
     # ① 抽掉「语言：」那条 case ⇒ 那条否定式承诺无人认领
     c1 = tuple(c for c in br.REVERSE_CASES
                if c["id"] != "unsupported-language-warn")
-    p1 = _j(c1, br.NEGATION_EXEMPT)
+    p1 = _j(c1, br.BOUNDARY_EXEMPT)
     assert any(x.startswith("V1") for x in p1), p1
     assert _only(p1, "V1") == [], p1
 
@@ -17965,12 +17977,12 @@ def test_r55_boundary_claims_have_reverse_criteria():
     c2 = tuple(dict(c, help_must=("根本不存在的词",))
                if c["id"] == "c-frontend-shapes" else c
                for c in br.REVERSE_CASES)
-    p2 = _j(c2, br.NEGATION_EXEMPT)
+    p2 = _j(c2, br.BOUNDARY_EXEMPT)
     assert any(x.startswith("V2") for x in p2), p2
     assert _only(p2, "V2") == [], p2
 
     # ③ 豁免指向一条不存在的 bullet ⇒ 陈旧（与「登记了却不存在 → 也红」同源）
-    e3 = dict(br.NEGATION_EXEMPT)
+    e3 = dict(br.BOUNDARY_EXEMPT)
     e3["根本没有这条边界："] = {
         "why": "合成样本：理由足够长，但 head 在帮助正文里找不到",
         "where": ("tools/check_boundary_reverse.py", "REVERSE_CASES")}
@@ -17979,7 +17991,7 @@ def test_r55_boundary_claims_have_reverse_criteria():
     assert _only(p3, "V4") == [], p3
 
     # ④ 豁免的 where token 写错 ⇒ 逐字核对失败（豁免不是放行后门）
-    e4 = dict(br.NEGATION_EXEMPT)
+    e4 = dict(br.BOUNDARY_EXEMPT)
     e4["GPU："] = {"why": "合成样本：理由足够长，但 where 的 token 写错了",
                    "where": ("tools/check_binfmt_fixtures.py",
                              "这个 token 一定不在文件里")}
@@ -18005,15 +18017,18 @@ def test_r55_boundary_claims_have_reverse_criteria():
     assert any(x.startswith("V3") for x in p5), p5
     assert _only(p5, "V3") == [], p5
 
-    # ⑥ 棘轮被改动而不改常量 ⇒ V5（三种读数各试一次）
+    # ⑥ 棘轮被改动而不改常量 ⇒ V5（四种读数各试一次）
     assert any(x.startswith("V5")
-               for x in br.judge_ratchet(len(heads) - 1, n_neg,
+               for x in br.judge_ratchet(len(heads) - 1, n_neg, n_cov,
                                          len(br.REVERSE_CASES)))
     assert any(x.startswith("V5")
-               for x in br.judge_ratchet(len(heads), n_neg - 1,
+               for x in br.judge_ratchet(len(heads), n_neg, n_cov - 1,
                                          len(br.REVERSE_CASES)))
     assert any(x.startswith("V5")
-               for x in br.judge_ratchet(len(heads), n_neg,
+               for x in br.judge_ratchet(len(heads), n_neg - 1, n_cov,
+                                         len(br.REVERSE_CASES)))
+    assert any(x.startswith("V5")
+               for x in br.judge_ratchet(len(heads), n_neg, n_cov,
                                          len(br.REVERSE_CASES) - 1))
 
     # ---------------- B 端到端：门真的能跑 ----------------
@@ -18027,3 +18042,97 @@ def test_r55_boundary_claims_have_reverse_criteria():
     assert ca.MIN_GUARDS >= 13, (
         "新门必须被 check_all 的门数棘轮算进去（现 MIN_GUARDS=%d）"
         % ca.MIN_GUARDS)
+
+
+def test_r56_every_boundary_bullet_has_a_counterparty():
+    """R56（= R55 §8 C10-7）：V1 的准入条件曾是「含 `不识别`/`不做`/`不跟踪`/
+    `按兵不动`/`不保证`/`静默` 任一标记词」。
+
+    `* Mach-O：` 是一句**状态声明**（「解析器已实现 + 有合成夹具，但无真实语料，
+    所以报告里仍是 `verified: NO`」），一个标记词都没有 ⇒ 旧口径**整条跳过**它：
+    既没被认领、也没被豁免，而棘轮只记「8 条边界 / 7 条否定式」，那个差值 1
+    无人追（R55 §8 自己把它登记成 C10-7）。仓库外装置 `_r56/probe_c10_7.py`
+    的读数（两台互不共享的解析器交叉）：bullets 8 / 否定式 7 /
+    **有对手方 7** / UNCOVERED 1 = `Mach-O：`。
+
+    本测试钉四件事：
+      A 反例：合成一条**无标记词**的边界、无对手方 ⇒ 必须报 V1。
+        这条断言在 clean HEAD 上**失败**（旧口径静默放行）—— 它就是「修前红」。
+      B 真实仓库：8 条 bullet **全部**有对手方，覆盖数棘轮 == 8，门 rc=0
+        且输出里逐字写着「全部 8 条」。
+      C 抽掉 Mach-O 的豁免 ⇒ 恰好红在 V1（其余判据一条不响，说明它有独立证人）。
+      D 两台**互不共享**的 bullet 解析器（check_help_contract / 本门）给出同一份
+        8 条首行 —— 覆盖率的**分母**不是某一份解析器的产物。
+    """
+    br = _r37_load("check_boundary_reverse")
+    hc = _r37_load("check_help_contract")
+    src = io.open(os.path.join(ROOT, "matlabc.py"), "rb").read().decode("utf-8")
+    doc = br.module_docstring(src.replace("\r\n", "\n"))
+    bl = br.parse_boundary_bullets(doc)
+    assert bl, "帮助正文里必须有「诚实的边界」小节"
+    heads = [h for h, _t in bl]
+    texts = [t for _h, t in bl]
+
+    # ---------------- A 反例：无标记词的边界不许再静默通过 ----------------
+    synth = (
+        "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n"
+        "\u8bda\u5b9e\u7684\u8fb9\u754c\n"
+        "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n"
+        "\n"
+        "  * \u7532\uff1a\u8fd9\u91cc**\u4e0d\u8bc6\u522b**\u67d0\u7269\u3002\n"
+        "  * \u4e59\uff1a\u89e3\u6790\u5668\u5df2\u5b9e\u73b0\uff0c\u62a5\u544a\u91cc\u4ecd\u662f `verified: NO`\u3002\n"
+        "\n"
+    )
+    sb = br.parse_boundary_bullets(synth)
+    sh = [h for h, _t in sb]
+    st = [t for _h, t in sb]
+    assert len(st) == 2 and not br.is_negation(st[1]), (
+        "合成夹具的第 2 条必须**不带任何否定标记词**，否则它证不了这个盲区")
+    acases = ({"id": "c1", "claim": "甲：", "why": "理由足够长，说得清什么会红",
+               "runs": ({"expect_funcs": {"a.c": ["f"]},
+                         "stderr_must_not": ("[warn]",)},)},)
+    pa = br.judge_registry(st, sh, acases, {}, read_text_fn=None, root=None)
+    assert any(x.startswith("V1") for x in pa), (
+        "无标记词的边界 bullet 若既没认领也没豁免，**必须**报 V1；"
+        "旧口径（只认标记词）在这里返回空 —— 那正是 C10-7 的盲区（实测 %r）" % pa)
+    assert len([x for x in pa if x.startswith("V1")]) == 1, pa
+
+    # ---------------- B 真实仓库：8 条 bullet 全部有对手方 ----------------
+    def _j(_cases, _exempts):
+        return br.judge_registry(texts, heads, _cases, _exempts,
+                                 read_text_fn=br.read_text, root=ROOT)
+
+    assert _j(br.REVERSE_CASES, br.BOUNDARY_EXEMPT) == []
+    n_neg = len([t for t in texts if br.is_negation(t)])
+    n_cov = len([h for h in heads
+                 if any(h.startswith(c.get("claim") or "\x00")
+                        for c in br.REVERSE_CASES)
+                 or any(h.startswith(k) for k in br.BOUNDARY_EXEMPT)])
+    assert (n_neg, n_cov) == (7, 8), (n_neg, n_cov)
+    assert br.judge_ratchet(len(heads), n_neg, n_cov,
+                            len(br.REVERSE_CASES)) == []
+    assert br.EXPECTED_COVERED_BULLETS == 8 == n_cov, n_cov
+    assert "Mach-O\uff1a" in br.BOUNDARY_EXEMPT, (
+        "Mach-O 那条的对手方登记不许悄悄消失（它就是 R56 补上的缺口）")
+
+    r = _r31_run([os.path.join("tools", "check_boundary_reverse.py")],
+                 timeout=300)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[-1500:]
+    assert "V1\u2013V5 \u5168\u7eff" in out, out[-800:]
+    assert "**\u5168\u90e8 8 \u6761**\u90fd\u6709\u5bf9\u624b\u65b9" in out, out[-800:]
+
+    # ---------------- C 抽掉 Mach-O 的豁免 ⇒ 只红在 V1 ----------------
+    e = dict(br.BOUNDARY_EXEMPT)
+    del e["Mach-O\uff1a"]
+    pc = _j(br.REVERSE_CASES, e)
+    assert any(x.startswith("V1") for x in pc), pc
+    assert [x for x in pc if not x.startswith("V1")] == [], pc
+    assert len(pc) == 1, pc
+
+    # ---------------- D 分母：两台解析器必须一致 ----------------
+    ha = [h for h, _t in hc.parse_boundary_bullets(doc)]
+    assert ha == heads, (
+        "两台**互不共享**的 bullet 解析器必须给出同一份分母（否则覆盖率的"
+        "分母就是某一份解析器的产物）：%r vs %r" % (ha, heads))
+    assert len(heads) == 8, heads

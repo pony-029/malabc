@@ -18,11 +18,17 @@
 一句话：**承诺有人守着「在不在」，没人守着「还成不成立」。** 本门补的就是这一环。
 
 判据（V1–V5，每条先说清「什么会红」）：
-  V1 认领两向：`--help`「诚实的边界」里每条**否定式承诺** bullet
-     （含 `不识别` / `不做` / `不跟踪` / `按兵不动` / `不保证` / `静默` 任一标记）
-     必须**恰好**被 `REVERSE_CASES` 的一条认领，**或**在 `NEGATION_EXEMPT`
-     里登记（理由 ≥8 字符 + `where` 给「文件 + 逐字 token」）。
-     两者都没有 ⇒ 红（承诺没有对手方）；**又认领又豁免 ⇒ 也红**（歧义不许蒙对）。
+  V1 认领两向：`--help`「诚实的边界」里**每一条** bullet 都必须**恰好**被
+     `REVERSE_CASES` 的一条认领，**或**在 `BOUNDARY_EXEMPT` 里登记
+     （理由 ≥8 字符 + `where` 给「文件 + 逐字 token」）。
+     两者都没有 ⇒ 红（边界没有对手方）；**又认领又豁免 ⇒ 也红**（歧义不许蒙对）。
+     ⚠ R55 的第一版把准入条件写成「含 `不识别`/`不做`/`不跟踪`/`按兵不动`/
+     `不保证`/`静默` 任一标记词」—— 于是 `* Mach-O：`（一句**状态声明**，
+     一个标记词都没有）**整条不在网内**：它既没被认领也没被豁免，而棘轮只记
+     「8 条边界 / 7 条否定式」，那个差值 **1** 谁也没去追（R55 §8 自己把它登记成
+     C10-7）。R56 把准入条件**删掉**（口径改成「全部 bullet」），并给它补上豁免
+     （对手方在 `check_binfmt_fixtures.py` 的 C8/C9）。标记词分类器 `is_negation`
+     **保留但退居记录位**：它仍进 V5 棘轮，作用从「准入」变成「措辞漂移提醒」。
   V2 认领必须真实：认领的 head 必须是帮助正文某条 bullet 的**首行前缀**且唯一
      （两条 bullet 共用前缀 ⇒ 红）；`case["help_must"]` 的 token 必须**逐字**
      出现在它认领的那条 bullet 里；`case["docs"]` 声明的 (文件, token) 必须逐字存在
@@ -32,8 +38,12 @@
      它会在产品彻底坏掉时依然全绿。
   V4 陈旧：认领 / 豁免指向的 head 在帮助正文里找不到 ⇒ 红
      （与 `LAZY_CYCLES` / `BORROWED` 的「登记了却不存在 → 也红」同源）。
-  V5 棘轮：bullet 总数、否定式 bullet 数、case 数三个下限**必须等于真实值** ——
-     删掉一整条边界、或删掉一整族判据而不改数字 ⇒ 红（覆盖不许静默缩水）。
+  V5 棘轮：bullet 总数、**被覆盖的** bullet 数、否定式 bullet 数、case 数四个
+     下限**必须等于真实值** —— 删掉一整条边界、或删掉一整族判据而不改数字 ⇒ 红
+     （覆盖不许静默缩水）。其中「被覆盖数 == bullet 数」是 R56 加的**独立证人**：
+     它按**全部** bullet 数对手方（不经过任何准入条件），所以「某条边界失去
+     对手方」这件事无论 V1 的循环怎么写都会红 —— 而那正是旧口径掩盖住的情形
+     （旧口径下 Mach-O 既无对手方、又不参与判定，两条路都看不见它）。
 
 为什么行为判据走**公开 CLI 子进程**而不是 `import matlabc`：
   ① 与 R54 立下的纪律一致（`tools/` 不 import 产品模块，宁可另写同义实现）；
@@ -42,18 +52,23 @@
 
 一图看懂（承诺 ⇄ 判据 的两向）：
 
-    --help「诚实的边界」              REVERSE_CASES / NEGATION_EXEMPT
-    ┌──────────────────┐             ┌──────────────────────────┐
-    │ * 语言：… 静默 …   │◀── V1 ─────▶│ 语言： ⇒ 两个分支都跑 CLI │
-    │ * 前端实现：不识别…│◀── V1 ─────▶│ 前端实现：⇒ K&R/指针返回  │
-    │ * 预处理：按兵不动…│◀── V1 ─────▶│ 预处理：⇒ #ifdef/#if 0    │
-    │ * C++：不保证…     │◀── V1 ─────▶│ C++：⇒ 模板不得算作函数   │
-    │ * …「不做」…       │◀── V1 ─────▶│ … ⇒ py_undefined_name 不产出│
-    │ * 动态库：不跟踪…  │── V2 ──▶ NEGATION_EXEMPT（where 逐字核对）│
-    │ * GPU：不静默给 0… │── V2 ──▶ NEGATION_EXEMPT（同上）        │
-    └──────────────────┘             └──────────────────────────┘
+    --help「诚实的边界」              REVERSE_CASES / BOUNDARY_EXEMPT
+    ┌──────────────────────────┐      ┌──────────────────────────────┐
+    │ * 语言：…                 │◀ V1 ▶│ 语言： ⇒ 两个分支都跑 CLI      │
+    │ * 前端实现：…             │◀ V1 ▶│ 前端实现：⇒ K&R/指针返回       │
+    │ * 预处理：…               │◀ V1 ▶│ 预处理：⇒ #ifdef / #if 0       │
+    │ * C++：…                  │◀ V1 ▶│ C++：⇒ 模板不得算作函数        │
+    │ * 跨语言算子…「不做」…    │◀ V1 ▶│ ⇒ py_undefined_name 不产出     │
+    │ * 动态库：…               │─ V2 ▶│ BOUNDARY_EXEMPT（where 逐字核对）│
+    │ * GPU：…                  │─ V2 ▶│ BOUNDARY_EXEMPT（同上）         │
+    │ * Mach-O：…（旧版漏掉）   │─ V2 ▶│ BOUNDARY_EXEMPT（R56 补）       │
+    └──────────────────────────┘      └──────────────────────────────┘
               ▲                                    │
               └──────── V4 首行前缀唯一 ────────────┘
+
+    R56 的关键差别：左侧**每一条**（不是「带否定词的每一条」）都必须落到右侧两个
+    箱子之一。`* Mach-O：` 一个标记词都没有，旧版直接把它**跳过**了 —— 盲区不在
+    「判据写错了」，而在「判据根本没看它」。
 
 退出码：
     0 = 承诺 ⇄ 判据 全部对齐，且行为判据全绿
@@ -85,8 +100,13 @@ NEGATION_MARKERS = ("不识别", "不做", "不跟踪", "按兵不动", "不保�
 MIN_REASON = 8
 CLI_TIMEOUT = 300.0
 
-# 真实读数（R55 定标；help 正文 8 条边界，其中 7 条是否定式承诺）
+# 真实读数（R56 重新定标；help 正文 8 条边界，其中 7 条带否定标记词，
+# 8 条**全部**有对手方 —— 3 条豁免 + 5 条 case 认领）
 EXPECTED_BOUNDARY_BULLETS = 8
+EXPECTED_COVERED_BULLETS = 8
+# 标记词分类器的读数。R56 起它**不参与 V1 准入**，只作为「措辞漂移提醒」：
+# 若谁把这 7 条里的否定词改写掉，这个数字会变 ⇒ 红，逼人回头确认
+# 「那条承诺还算不算否定式承诺」——而不是让口径在无人察觉处漂移。
 EXPECTED_NEGATION_BULLETS = 7
 
 SEP_CHARS = set("─-=~—")
@@ -287,11 +307,14 @@ REVERSE_CASES = (
 )
 
 # ---------------------------------------------------------------------------
-# 豁免登记（证伪式，不是放行后门）：这两条承诺的对手方**不在本门里**。
+# 豁免登记（证伪式，不是放行后门）：这三条边界的对手方**不在本门里**。
 # 每条必须给出 ① 理由（≥8 字符） ② `where` = (相对路径, 逐字 token)，
-# 且那个文件里必须**真的**有那个 token（V2 核对）—— 写错就红。
+# 且那个文件里必须**真的**有那个 token（V4 核对）—— 写错就红。
+#
+# ⚠ R55 里它叫 `NEGATION_EXEMPT`（只管否定式承诺）。R56 起 V1 的口径是
+# 「全部 bullet」，这个名字就**说谎了**，故改名 `BOUNDARY_EXEMPT`。
 # ---------------------------------------------------------------------------
-NEGATION_EXEMPT = {
+BOUNDARY_EXEMPT = {
     "动态库：": {
         "why": "这条承诺的是「帮助与两侧 README 必须逐字点名三个运行期替代装置」——"
                "它本身就是一条**文本层**契约，对手方是 R51 的 B3/B5，"
@@ -304,6 +327,16 @@ NEGATION_EXEMPT = {
                "左括号）与 C8（未验证必须传播进报告），它们用**合成夹具**"
                "直接喂 binfmt 解析器，比走 CLI 更贴近失效点。",
         "where": ("tools/check_binfmt_fixtures.py", ".entry <ident>("),
+    },
+    "Mach-O：": {
+        "why": "这条是**状态声明**（「解析器已实现 + 有合成夹具，但无真实语料，"
+               "所以报告里仍是 verified: NO」），措辞里一个否定标记词都没有 ——"
+               "R55 的第一版正因为只看标记词而**整条跳过**了它（R55 §8 C10-7）。"
+               "它的行为对手方不在本门：`check_binfmt_fixtures.py` 的 C8 用合成"
+               "夹具直接断言「Mach-O 的未验证状态必须传播成 verified=False 并"
+               "渲染进报告正文」，C9 断言合成夹具必须真解析出段/节与 fat 切片 ——"
+               "那比走 CLI 更贴近失效点，本门再加一条只会重复。",
+        "where": ("tools/check_binfmt_fixtures.py", "verified=False"),
     },
 }
 
@@ -477,10 +510,11 @@ def judge_registry(bullet_texts, bullet_heads, cases, exempts,
                     probs.append("V4 豁免登记「%s」的 where token 在 %s 里找不到"
                                  "（逐字核对）：%r" % (head, rel, tok))
 
-    # ---- V1：每条否定式承诺必须被**恰好一个**对手方认领 ----
+    # ---- V1：**每一条** bullet 必须被**恰好一个**对手方认领或豁免 ----
+    # ⚠ R56 删掉的那两行（`if not is_negation(full): continue`）就是 C10-7 的
+    # 现场：它让「不带否定词的边界」完全不参与判定。删掉它之后，新增一条
+    # 措辞任意的边界 bullet、却既不认领也不豁免 ⇒ 立刻红。
     for head, full in zip(bullet_heads, bullet_texts):
-        if not is_negation(full):
-            continue
         owner_cases = [cid for (hl, ids) in claims.items()
                        for cid in ids if head.startswith(hl or "\x00")]
         exempted = [h for h in exempts if head.startswith(h)]
@@ -489,9 +523,11 @@ def judge_registry(bullet_texts, bullet_heads, cases, exempts,
                          "歧义：两种语义同时成立时读数不可信"
                          % (head, owner_cases, exempted))
         elif not owner_cases and not exempted:
-            probs.append("V1 bullet「%s」是一条**否定式承诺**，却既没有反向判据、"
-                         "也没有豁免登记 —— 承诺没有对手方（R55 起因：`语言：` 曾"
-                         "无条件承诺 warn，实测只在 0 源文件时才成立）" % head)
+            probs.append("V1 bullet「%s」是一条边界 bullet（措辞含不含否定词都"
+                         "一样，R56 起不再按标记词网罗），却既没有反向判据、也没有"
+                         "豁免登记 —— 边界没有对手方（R55 起因：`语言：` 曾无条件"
+                         "承诺 warn，实测只在 0 源文件时才成立；R56 补的另一半："
+                         "`Mach-O：` 因为不带否定词而**整条被跳过**）" % head)
         elif len(owner_cases) > 1:
             probs.append("V1 bullet「%s」被 %d 条 case 同时认领（%r）—— 认领必须唯一"
                          % (head, len(owner_cases), owner_cases))
@@ -544,20 +580,28 @@ def judge_case_shape(cases):
     return probs
 
 
-def judge_ratchet(n_bullets, n_negation, n_cases):
+def judge_ratchet(n_bullets, n_negation, n_covered, n_cases):
     probs = []
     if n_bullets != EXPECTED_BOUNDARY_BULLETS:
         probs.append("V5 帮助正文「诚实的边界」有 %d 条 bullet，棘轮记的是 %d —— "
                      "要么你真的增删了一条边界（同步常量），要么解析器漂移了"
                      % (n_bullets, EXPECTED_BOUNDARY_BULLETS))
+    if n_covered != EXPECTED_COVERED_BULLETS:
+        probs.append("V5 有对手方的 bullet 是 %d 条，棘轮记的是 %d —— "
+                     "覆盖数不许静默缩水。这个数字按**全部** bullet 数"
+                     "（不经过 V1 的任何准入条件），所以它是「每一条边界都要有"
+                     "对手方」的独立证人：旧口径下 `Mach-O：` 失去对手方时，"
+                     "V1 与棘轮**两条路都看不见它**（R56 补的就是这个）"
+                     % (n_covered, EXPECTED_COVERED_BULLETS))
     if n_negation != EXPECTED_NEGATION_BULLETS:
-        probs.append("V5 否定式承诺有 %d 条，棘轮记的是 %d —— 同理"
+        probs.append("V5 否定式承诺有 %d 条，棘轮记的是 %d —— 这个数字 R56 起"
+                     "不参与 V1 准入，只作措辞漂移提醒；改了措辞就必须来改它"
                      % (n_negation, EXPECTED_NEGATION_BULLETS))
     if n_cases != MIN_REVERSE_CASES:
         probs.append("V5 反向判据有 %d 条 case，棘轮记的是 %d —— "
                      "删掉一整族判据而不改数字必须红" % (n_cases, MIN_REVERSE_CASES))
     n_claims = len([1 for c in REVERSE_CASES
-                    if c.get("claim") not in NEGATION_EXEMPT])
+                    if c.get("claim") not in BOUNDARY_EXEMPT])
     if n_claims < MIN_NEGATION_CLAIMS:
         probs.append("V5 认领了 %d 条否定式承诺，下限是 %d"
                      % (n_claims, MIN_NEGATION_CLAIMS))
@@ -751,11 +795,15 @@ def main(argv):
         return 2
 
     heads, texts = sc["heads"], sc["texts"]
+    claim_heads = [c.get("claim") or "\x00" for c in REVERSE_CASES]
+    covered = len([1 for h in heads
+                   if any(h.startswith(k) for k in claim_heads)
+                   or any(h.startswith(k) for k in BOUNDARY_EXEMPT)])
     probs = []
     probs += judge_ratchet(len(heads), len([1 for t in texts if is_negation(t)]),
-                           len(REVERSE_CASES))
+                           covered, len(REVERSE_CASES))
     probs += judge_case_shape(REVERSE_CASES)
-    probs += judge_registry(texts, heads, REVERSE_CASES, NEGATION_EXEMPT,
+    probs += judge_registry(texts, heads, REVERSE_CASES, BOUNDARY_EXEMPT,
                             read_text_fn=read_text, root=root)
     probs += check_all_cases(root, sys.executable)
 
@@ -766,13 +814,13 @@ def main(argv):
         return 1
 
     n_neg = len([1 for t in texts if is_negation(t)])
-    print("check_boundary_reverse: OK（帮助正文 %d 条边界 / %d 条是否定式承诺；"
-          "反向判据 %d 条 case 认领 %d 条、豁免登记 %d 条（where 逐字核对）；"
-          "行为判据 %d 组公开 CLI 全绿；V1–V5 全绿）"
-          % (len(heads), n_neg, len(REVERSE_CASES),
+    print("check_boundary_reverse: OK（帮助正文 %d 条边界，其中带否定词 %d 条；"
+          "**全部 %d 条**都有对手方：%d 条 case 认领 + %d 条豁免登记（where 逐字"
+          "核对）；行为判据 %d 组公开 CLI 全绿；V1–V5 全绿）"
+          % (len(heads), n_neg, covered,
              len([1 for c in REVERSE_CASES
-                  if c["claim"] not in NEGATION_EXEMPT]),
-             len(NEGATION_EXEMPT),
+                  if c["claim"] not in BOUNDARY_EXEMPT]),
+             len(BOUNDARY_EXEMPT),
              sum(len(c.get("runs") or ()) for c in REVERSE_CASES)))
     return 0
 
@@ -836,11 +884,26 @@ def _selftest():
                               exempts if exempts is not None else {},
                               read_text_fn=reader, root=("R" if reader else None))
 
-    # ---- 好样本：两条否定式承诺都被认领，第三条普通 bullet 不需要 ----
-    green("好样本：两条否定式承诺都被认领", lambda: _judge(_DOC_GOOD))
+    # ---- 好样本：三条 bullet **每一条**都落到两个箱子之一 ----
+    # 丙：**刻意不带任何否定标记词**、也刻意用豁免登记（而不是 case）——
+    # 这条好样本本身就是 R56 那条新口径的证人：旧版（只认标记词）下它也会绿，
+    # 但绿的理由是「丙根本不在网内」；新版下它绿的理由是「丙被豁免了」。
+    # ⚠ where 必须指向 `_fake_docs` 里真有的文件与 token —— 挂上 reader 之后
+    # 它会被逐字核对；占位串 `("x", "y")` 当场 KeyError（补丁 2 的自伤）。
+    _EX_C = {"丙：": {"why": "这条理由足够长，说明丙的对手方不在本门",
+                      "where": ("README.md", "no such phrase")}}
+    green("好样本：三条 bullet 都有对手方",
+          lambda: _judge(_DOC_GOOD, exempts=_EX_C))
 
-    # ---- 坏样本 V1：一条否定式承诺没人认领 ----
-    red("坏样本 V1 未认领", lambda: _judge(_DOC_GOOD, cases=(GOOD_CASES[0],)),
+    # ---- 坏样本 V1：一条 bullet 没人认领（否定式） ----
+    red("坏样本 V1 未认领", lambda: _judge(_DOC_GOOD, cases=(GOOD_CASES[0],),
+                                          exempts=_EX_C),
+        "V1")
+
+    # ---- 坏样本 V1（R56 新增）：**无标记词**的 bullet 没人认领 -------------
+    # 这条就是 C10-7 的反例：旧版会**静默放行**（它是 R56 修的那个盲区）。
+    red("坏样本 V1 无标记词的 bullet 被漏掉",
+        lambda: _judge(_DOC_GOOD, cases=(GOOD_CASES[0], GOOD_CASES[1])),
         "V1")
 
     # ---- 坏样本 V1：同时被认领又被豁免（歧义） ----
@@ -891,7 +954,7 @@ def _selftest():
                "why": "这条理由足够长且 docs 里的 token 真的存在",
                "docs": (("README.md", "no such phrase"),),
                "runs": ({"expect_funcs": {"a": ["f"]}},)}),
-                        reader=_fake_read))
+                        exempts=_EX_C, reader=_fake_read))
 
     # ---- 坏样本 V4：豁免指向不存在的 bullet ----
     red("坏样本 V4 陈旧豁免",
@@ -937,16 +1000,24 @@ def _selftest():
     # ---- V5：三个棘轮各自要能红 ----
     red("坏样本 V5 bullet 数不符",
         lambda: judge_ratchet(EXPECTED_BOUNDARY_BULLETS - 1,
-                              EXPECTED_NEGATION_BULLETS, MIN_REVERSE_CASES), "V5")
+                              EXPECTED_NEGATION_BULLETS, EXPECTED_COVERED_BULLETS,
+                              MIN_REVERSE_CASES), "V5")
+    red("坏样本 V5 覆盖数缩水（= 某条 bullet 失去对手方）",
+        lambda: judge_ratchet(EXPECTED_BOUNDARY_BULLETS,
+                              EXPECTED_NEGATION_BULLETS, EXPECTED_COVERED_BULLETS - 1,
+                              MIN_REVERSE_CASES), "V5")
     red("坏样本 V5 否定式 bullet 数不符",
         lambda: judge_ratchet(EXPECTED_BOUNDARY_BULLETS,
-                              EXPECTED_NEGATION_BULLETS - 1, MIN_REVERSE_CASES), "V5")
+                              EXPECTED_NEGATION_BULLETS - 1, EXPECTED_COVERED_BULLETS,
+                              MIN_REVERSE_CASES), "V5")
     red("坏样本 V5 case 数不符",
         lambda: judge_ratchet(EXPECTED_BOUNDARY_BULLETS,
-                              EXPECTED_NEGATION_BULLETS, MIN_REVERSE_CASES - 1), "V5")
+                              EXPECTED_NEGATION_BULLETS, EXPECTED_COVERED_BULLETS,
+                              MIN_REVERSE_CASES - 1), "V5")
     green("好样本 V5 棘轮相等",
           lambda: judge_ratchet(EXPECTED_BOUNDARY_BULLETS,
-                                EXPECTED_NEGATION_BULLETS, MIN_REVERSE_CASES))
+                                EXPECTED_NEGATION_BULLETS, EXPECTED_COVERED_BULLETS,
+                                MIN_REVERSE_CASES))
 
     # ---- 行为层：JSON 解析失败 / 期望不符要红 ----
     red("坏样本 V6 JSON 不可解析",
