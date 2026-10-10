@@ -334,8 +334,14 @@ LICENSE（7,168 B / 126 行）                         LICENSE_CN（6,745 B / 10
 | [8] | 克隆内 `pytest -k r69`（**3.10**，见 §4.2b） | rc=0 —— `1 passed, 474 deselected in 2.57s` |
 
 ```
->>> REMOTE_VERIFY OK（HEAD=b93dc9b9bbc4 tree=75053f92dfad 条目=253）
+>>> REMOTE_VERIFY OK（HEAD=b93dc9b9bbc4 tree=75053f92dfad 条目=253）   ← 主提交
+>>> REMOTE_VERIFY OK（HEAD=6f0dcb3c9126 tree=9dc8c8f53578 条目=253）   ← 附 2 之后复跑
 ```
+
+**跑了两次**（"×2"）：第一次在**主提交** `b93dc9b` 上，第二次在**附 2** `6f0dcb3` 上。
+两次都是 **8/8 全过**、都是 **253 条 / sha256 差异 0**、克隆侧 `check_all` 与
+`pytest -k r69` 都 rc=0 —— 唯一变的是 `HEAD` 与 `tree`（因为复盘文档本身又长了）。
+这也说明**每落一个提交就复跑一次**是对的：数字与文档的一致性不靠记忆维持。
 
 **第一次真跑是 `FAILED（1 项）`** —— 原因见 §4.2b：脚本让**托管 3.13** 去跑 pytest，
 而它**没装 pytest**。那是**量具的 bug**，不是远端或产品的问题；改成系统 3.10 后 8/8 全过。
