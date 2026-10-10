@@ -20,7 +20,7 @@ python tests/test_matlabc.py
 # 3) 对示例做静态分析，确认主流程无回归
 python matlabc.py tests/sample_m -o demo.md --html demo.html --browse --offline
 
-# 4) 登记制护栏（14 道，各自还会跑 --selftest；门数少于下限也会红）
+# 4) 登记制护栏（15 道，各自还会跑 --selftest；门数少于下限也会红）
 python tools/check_all.py
 ```
 
@@ -185,7 +185,7 @@ R49 把 C 前端的函数定义识别从**行锚定正则**换成**词法 + 括�
 在**产品里零调用点**（只有一条测试调它）。于是 `check_all.py` 跑完全部护栏，
 仍然没有任何东西能对 C 前端形态说「不」。
 
-R61 新增第 14 道护栏 `tools/check_c_frontend_shapes.py`：纯合成夹具 + 公开 CLI
+R61 新增了 `tools/check_c_frontend_shapes.py` —— 仓库里**第一道**能对 C 前端形态说「不」的护栏：纯合成夹具 + 公开 CLI
 （`--lang c --json`，不 `import matlabc`），六条判据**管辖范围互不重叠**：
 
 | 判据 | 对手方（什么会红） |
@@ -212,7 +212,7 @@ R61 新增第 14 道护栏 `tools/check_c_frontend_shapes.py`：纯合成夹具 
 ### 质量门表的**内容** ⇄ 那道门（R62 / P5）
 
 R61 的 **P4** 把质量门表的对手方从「另一侧文件」换成了「事实」：每一侧的表必须
-**恰好**列出 `tools/check_*.py` 的真实清单。但它只证「14 行都在」，**不证那一行
+**恰好**列出 `tools/check_*.py` 的真实清单。但它只证「那些行都在」，**不证那一行
 说的是不是那道门** —— 把一行整段换到另一行上，行的**集合**没变，P4 一声不响。
 
 R62 给这个空档接上 **P5**：每道护栏在自己的源码里声明一个 `ROW_SIGNATURE`
@@ -233,7 +233,7 @@ R62 给这个空档接上 **P5**：每道护栏在自己的源码里声明一个
 * **静态半**在 `tools/check_readme_parity.py` 里（读源码，不 import 门、也不
   spawn 门 —— 否则本门会把全套护栏再跑一遍）；
 * **行为半**（门真的把签名打进了成功行）在 `tests/test_matlabc.py::test_r62_*`
-  里，用 14 个子进程真跑每道门。
+  里，为**每一道**门起一个子进程真跑（门数变了它自己跟着变，不写死）。
 
 反向判据：把某一行整段换成另一行的描述 ⇒ P5 红、**P4 仍然绿**（这条同时证明
 P5 不是装饰）。另外 `--selftest` 里 8 个 P5 坏样本各红在自己的子判据上。
@@ -242,6 +242,70 @@ P5 不是装饰）。另外 `--selftest` 里 8 个 P5 坏样本各红在自己�
 而签名本身就在源码里（`F1` 是 `"F1–F6"` 的子串）⇒ 这条判据**恒真**。是
 `--selftest` 的 `P5 anchor` 坏样本（本该红却放行）当场把它顶出来的：**门全绿
 ≠ 门有效**；修法是在返回源码时把声明那一行的字面量抹掉。
+
+### 「永久红」做成两向登记（R63 / K1–K6）
+
+十几轮以来各轮审查文档反复写「`tests/` 里有一批**永久红**」，但那个数字先是「7」、
+后是「25」，**从来没有人真的量过**。R63 第一次把它量准，并把它变成一道门
+（第 15 道，`tools/check_known_red.py`）。量出来的事实分三类：
+
+| 类别 | 内容 | 数量 |
+| --- | --- | --- |
+| **A 路径漂移** | `matlabc_README.md` / `matlabc_STRUCTURE.md` / `matlabc_JSON_SCHEMA.md` / `matlabc_DELIVERY_REPORT.md` / `matlabc_FRONTEND_GUIDE.md` —— 它们**在 `docs/` 下、且已提交**，测试却只找仓库根 | 5 |
+| **B 从未提交** | `fe_audit.py` / `fe_dom_check.js` / `.github/workflows/frontend-gate.yml` / `_fe_capability.json` / `setup.py` / `analyzer_config.example.json` —— 整台机器上没有任何副本（`git log --all` 全空） | 6 |
+| **C 刻意负样本** | `no_such_lib_xyz.so` —— 它**本来就该不存在** | 1 |
+
+A 类当场修好（`_read_doc()` 候选路径解析：根 → `docs/`，两处都没有则**断言失败**）：
+`test_p59_json_schema_doc` / `test_readme_doc_sync_partial` / `test_p271_frontend_guide_matches_impl` 三条**真变绿**，另外 3 条失败也终于说出**真因**
+（缺 `setup.py` / 交付报告版本未同步 / 缺 `analyzer_config.example.json`），而不是统一死在 `matlabc_README.md` 上。
+
+六条判据 `K1–K6`：
+
+| 判据 | 对手方（什么会红） |
+| --- | --- |
+| K1 覆盖 | 引用了缺失产物的测试**没登记** ⇒ 红；登记了却不存在（陈旧）⇒ 也红 |
+| K2 真缺失 | 登记为「缺」的产物**其实在盘上** ⇒ 红（登记必须与事实一致） |
+| K3 理由具名 | 理由里没出现那个产物自己的 basename ⇒ 红（否则理由是套话） |
+| K4 跳过为真 | 登记为「优雅跳过」的测试**其实通过了** ⇒ 红（伪装的跳过） |
+| K5 新缺口 | **新**冒出引用不存在产物的测试 ⇒ 红（红集只许缩，不许长） |
+| K6 缺输入 | 找不到 `tests/test_matlabc.py` ⇒ rc=2 |
+
+反向判据：把某个「从未提交」的产物**真的创建出来** ⇒ K2 立刻红（证明登记不是装饰）；
+把某条红测试**改成绿** ⇒ 覆盖口径必须跟着动。
+
+同一轮顺带堵上一个**真实空档**：`tools/` 下**存在却没被 `GUARD_CONTRACT` 登记**的
+`check_*.py`。G0 只管「登记了却不存在」；R63 加本门时实测「盘上有、登记表里没有」
+**没有任何门报警** —— 于是新加一道护栏可以**完全跳过退出码契约**而 rc 依然是 0。
+新增 **G0b**（外加它自己的自证坏样本）。
+
+### `--full` 在「加了测试」的轮次里**必然红** —— 判据 T1（R63）
+
+第一次真跑 `check_baseline.py --full`（R62 没跑过它）拿到
+`{"regressions": 0, "fixed": 5, "common": 122}`：**零回归**，却有 4 条 `fixed`
+被 **B2** 判成「未解释」。逐条查下来它们**不是一类**：
+
+| nodeid | 真因 | 处置 |
+| --- | --- | --- |
+| `test_r62_gate_row_signatures_two_way` | 它 spawn **每一道**护栏，其中 `check_baseline.py` 默认模式需要 `.git`，而 before 侧永远是 `git archive` 导出树 ⇒ 必然红（与已登记的 `test_r30…` **同根同源**） | **登记**（永久） |
+| `test_r61_gate_registry_mentions_the_new_guard` / `test_r63_*` ×2 | 本轮**新增或改动过**，且断言了本轮新增的产品事实 | **T1**（不能登记） |
+
+关键在最后一行：`--full` 的前提是「同测试集」—— 把**当前** `tests/` 复制进导出树，
+而树里的 `tools/` 还是**上一个提交**的 ⇒ 断言本轮产品事实的测试在 before 侧
+**构造性**地红。于是 `KNOWN_BASELINE_NOISE` 在这里是**错的工具**：
+
+* 登记它 ⇒ 提交后导出树就带上产品了 ⇒ 下一轮它不再出现在 `fixed` 里
+  ⇒ **当场变成陈旧登记（B3）**；
+* 不登记 ⇒ B2 报「未解释」⇒ `--full` 的 **rc 恒为 1**；
+* 静默掉 B2 ⇒ 又分不清「本轮改动的测试」与「真被修好的测试」。
+
+⇒ 新增判据 **T1**：用「HEAD 自己那份 `tests/`」与「当前 `tests/`」逐测试比
+**函数源码片段**（按行首 `def test_` 切分，与 `check_known_red.py` 同口径），
+把「本轮新增/改动过」的 nodeid 单列一类，**打印**出来、**不判红**。
+`ROW_SIGNATURE` 因此从 `P1–P4` 变成 **`P1–P4/T1`**，`--selftest` 从
+`{"bad": 11, "good": 13}` 变成 `{"bad": 12, "good": 19}`。
+
+一句话：**一条「常态就红」的门等于没有门** —— 这条教训 R41 写在散文数字上，
+R63 写在了基线门上。
 
 ## 深度分析归档
 

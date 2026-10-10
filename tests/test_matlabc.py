@@ -63,6 +63,25 @@ def _read_text(path):
     return io.open(path, encoding="utf-8").read()
 
 
+def _read_doc(name):
+    """按候选路径读一份「已归档到 docs/」的文档（`matlabc_*.md` 系列）。
+
+    R62-R30 起这些文档从仓库根移入 `docs/`。测试若继续只找根目录，就会在
+    **未改动基线**上抛 FileNotFoundError —— 一道长期失效的**假红**，而且它还会
+    **掩盖真因**（例如 test_p54 真正缺的是 `setup.py`，却先死在
+    `matlabc_README.md` 上）。
+
+    改为「根 → docs/」候选解析；**两个都没有 ⇒ 断言失败**（文档缺失必须红，
+    不放宽「文档滞后要被抓到」的原意）。
+    """
+    cands = [os.path.join(ROOT, name), os.path.join(ROOT, "docs", name)]
+    for c in cands:
+        if os.path.isfile(c):
+            return _read_text(c)
+    raise AssertionError("未找到 %s（候选：%s）—— 文档缺失同样必须红"
+                         % (name, cands))
+
+
 def _glob_file(base, name_sub, suffix=".html"):
     for root, _dirs, files in os.walk(base):
         for f in files:
@@ -2364,7 +2383,7 @@ def test_p54_docs_consistency():
     assert m and m.group(1) == ma.VERSION, \
         "setup.py 版本 %r 应等于 VERSION %r" % (m.group(1) if m else None, ma.VERSION)
     # ② README 版本历史最新版本 == VERSION
-    readme_txt = _read_text(os.path.join(ROOT, "matlabc_README.md"))
+    readme_txt = _read_doc("matlabc_README.md")
     m2 = re.search(r'^\| (\d+\.\d+\.\d+) \|', readme_txt, re.M)
     assert m2 and m2.group(1) == ma.VERSION, \
         "README 版本历史最新 %r 应等于 VERSION %r" % (m2.group(1) if m2 else None, ma.VERSION)
@@ -2378,7 +2397,7 @@ def test_p54_docs_consistency():
     cfg_txt = _read_text(os.path.join(ROOT, "analyzer_config.example.json"))
     assert "reproducible" in cfg_txt, "analyzer_config.example.json 缺少 reproducible"
     # ⑥ STRUCTURE.md 版本 == VERSION
-    struct_txt = _read_text(os.path.join(ROOT, "matlabc_STRUCTURE.md"))
+    struct_txt = _read_doc("matlabc_STRUCTURE.md")
     assert ("**版本**: %s" % ma.VERSION) in struct_txt, "STRUCTURE.md 版本未同步"
 
 
@@ -2481,9 +2500,7 @@ def test_p59_json_schema_doc():
     """P59 回归：JSON schema 文档化——文档存在、覆盖 render_json 输出的关键字段，
     且与实测输出契约一致（防止文档漂移）。"""
     import json as _json
-    schema_path = os.path.join(ROOT, "matlabc_JSON_SCHEMA.md")
-    assert os.path.exists(schema_path), "缺少 JSON schema 文档"
-    schema_txt = _read_text(schema_path)
+    schema_txt = _read_doc("matlabc_JSON_SCHEMA.md")
     # 文档覆盖关键字段
     for field in ("version", "generated_at", "root", "stats", "edges", "files",
                   "call_graph", "folder_edges", "ambiguous", "cross_file"):
@@ -2827,9 +2844,9 @@ def test_p70_coupling_heatmap_and_doc_sync():
     page2 = ma.render_directory_page("a", ma.coerce_analysis_files([mf_a2, mf_b2, mf_c2, mf_d2, mf_e2]), calls2)
     assert "tag-high" in page2, "扇出 4 目录应高耦合色阶"
     # ③ 交付报告 + JSON schema 版本同步
-    dr = _read_text(os.path.join(ROOT, "matlabc_DELIVERY_REPORT.md"))
+    dr = _read_doc("matlabc_DELIVERY_REPORT.md")
     assert ("v%s" % ma.VERSION) in dr, "交付报告版本应同步"
-    js = _read_text(os.path.join(ROOT, "matlabc_JSON_SCHEMA.md"))
+    js = _read_doc("matlabc_JSON_SCHEMA.md")
     assert ("v%s" % ma.VERSION) in js, "JSON schema 版本应同步"
 
 
@@ -2897,12 +2914,12 @@ def test_p72_incremental_stats_and_doc_sync():
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     # 文档同步
-    readme = _read_text(os.path.join(ROOT, "matlabc_README.md"))
+    readme = _read_doc("matlabc_README.md")
     assert "--incremental" in readme, "README 命令参数表应含 --incremental"
     assert "`incremental`" in readme, "README 配置字段表应含 incremental"
     cfg = _read_text(os.path.join(ROOT, "analyzer_config.example.json"))
     assert "incremental" in cfg, "示例 JSON 应含 incremental"
-    js = _read_text(os.path.join(ROOT, "matlabc_JSON_SCHEMA.md"))
+    js = _read_doc("matlabc_JSON_SCHEMA.md")
     assert "cache_hits" in js, "JSON schema 应含 cache_hits"
 
 
@@ -12628,9 +12645,7 @@ def test_p271_frontend_guide_matches_impl():
     这类问题不会让任何测试变红，只能在文档与实现之间加断言来兜底。
     """
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    guide_path = os.path.join(here, "matlabc_FRONTEND_GUIDE.md")
-    assert os.path.exists(guide_path), "应存在前端使用指南"
-    guide = _read_module_source_abs(guide_path)
+    guide = _read_doc("matlabc_FRONTEND_GUIDE.md")
 
     # ① 指南列出的全局快捷键，KBD_JS 里必须真有对应分支
     for key, needle in (("t", "e.key==='t'"), ("g", "e.key==='g'"),
@@ -15182,10 +15197,11 @@ def test_matlab_builtin_desc_coverage():
 
 
 def test_readme_doc_sync_partial():
-    """收尾回归（R19）：README 须记录 --init-header 的「头注释不完整」检测能力（防文档再次滞后）。"""
-    import io
-    head = io.open(os.path.join(ROOT, "matlabc_README.md"),
-                   encoding="utf-8").read()
+    """收尾回归（R19）：README 须记录 --init-header 的「头注释不完整」检测能力（防文档再次滞后）。
+
+    R63：该文档已归档到 `docs/`，改走 `_read_doc` 候选路径解析。原写法只在
+    仓库根查找，在**未改动基线**上就抛 FileNotFoundError —— 一道假红。"""
+    head = _read_doc("matlabc_README.md")
     assert "头注释不完整" in head, "README 缺 init-header 残缺头注释检测说明"
 
 
@@ -15196,16 +15212,7 @@ def test_readme_doc_sync_flags():
     在**未改动基线**上就因 FileNotFoundError 常红 —— 一道长期失效的门。
     改为「按候选路径解析 + 找不到必须红」，保持原意（文档滞后要被抓到）
     而不放宽判据。"""
-    import io
-    cands = [os.path.join(ROOT, "matlabc_README.md"),
-             os.path.join(ROOT, "docs", "matlabc_README.md")]
-    head = None
-    for c in cands:
-        if os.path.isfile(c):
-            head = io.open(c, encoding="utf-8").read()
-            break
-    assert head is not None, \
-        "未找到 matlabc_README.md（候选：%s）—— 文档缺失同样必须红" % cands
+    head = _read_doc("matlabc_README.md")
     assert "--init-header" in head, "README 缺 --init-header 说明"
     assert "--check-py36" in head, "README 缺 --check-py36 说明"
 
@@ -18252,7 +18259,9 @@ def test_r61_gate_registry_mentions_the_new_guard():
       ③ 两侧 README 的质量门表（由 P4 两向核对，见上一条测试）。
     """
     ca = _r37_load("check_all")
-    assert ca.MIN_GUARDS == 14, ca.MIN_GUARDS
+    # R63：护栏数 14 → 15（新增 `tools/check_known_red.py`）。这个字面量**故意**
+    # 写死 —— 它就是门数棘轮：谁改了门数，谁就得在这里露面。
+    assert ca.MIN_GUARDS == 15, ca.MIN_GUARDS
     hc = _r37_load("check_help_contract")
     assert "tools/check_c_frontend_shapes.py" in hc.GUARD_CONTRACT
     assert hc.real_guard_count() == ca.MIN_GUARDS, (
@@ -18340,3 +18349,144 @@ def test_r62_parity_gate_p5_end_to_end():
     rp = _r37_load("check_readme_parity")
     assert rp.ROW_SIGNATURE == "P1/P2/P4/P5", rp.ROW_SIGNATURE
     assert "P5" in (rp.__doc__ or "")
+
+
+def test_r63_read_doc_resolves_root_then_docs_two_way():
+    """R63 / R44 §8 C13-0：`_read_doc` 的「根 → `docs/`」两向都要成立。
+
+    十几轮以来各轮审查文档把「`tests/` 里有一批永久红」写成 7、又写成 25，
+    **从来没有人真的量过**。R63 真量了一遍，发现最大的一类（A 类）根本不是缺文件，
+    而是**路径漂移**：`matlabc_README.md` / `matlabc_STRUCTURE.md` /
+    `matlabc_JSON_SCHEMA.md` / `matlabc_DELIVERY_REPORT.md` /
+    `matlabc_FRONTEND_GUIDE.md` 都在 `docs/` 下、且已提交，测试却只找仓库根
+    ⇒ 一条长期失效的**假红**；它还会**掩盖真因**（`test_p54` 真正缺的是
+    `setup.py`，却先死在 `matlabc_README.md` 上）。
+
+    两向：
+      ① 好样本：5 份文档 `_read_doc` 都读得到、非空，且**实测**只在 `docs/` 下；
+      ② 反向：两处都不存在的名字 ⇒ **必须** `AssertionError`
+         （「文档缺失要被抓到」的原意一点没放宽）。
+    另外钉住「修法真的落地」：旧写法 `os.path.join(ROOT, "matlabc_*.md")`
+    必须在本测试文件里**清零**。
+    """
+    names = ("matlabc_README.md", "matlabc_STRUCTURE.md",
+             "matlabc_JSON_SCHEMA.md", "matlabc_DELIVERY_REPORT.md",
+             "matlabc_FRONTEND_GUIDE.md")
+    only_docs = []
+    for name in names:
+        root_p = os.path.join(ROOT, name)
+        docs_p = os.path.join(ROOT, "docs", name)
+        assert os.path.isfile(root_p) or os.path.isfile(docs_p), name
+        assert _read_doc(name).strip(), name
+        if not os.path.isfile(root_p) and os.path.isfile(docs_p):
+            only_docs.append(name)
+    assert sorted(only_docs) == sorted(names), only_docs
+
+    try:
+        _read_doc("no_such_doc_xyz_r63.md")
+    except AssertionError as exc:
+        assert "no_such_doc_xyz_r63.md" in str(exc), str(exc)
+    else:
+        raise AssertionError("_read_doc 对不存在的文档放行了 —— 判据退化成恒真")
+
+    src = _read_text(os.path.abspath(__file__))
+    assert "def _read_doc(name):" in src, "共享辅助不存在"
+    assert len(re.findall(r"_read_doc\(", src)) >= 10, "调用点被改回去了"
+    assert re.search(r'os\.path\.join\(ROOT,\s*"matlabc_[A-Z_]+\.md"\)',
+                     src) is None, "旧写法（只找仓库根）又回来了"
+
+
+def test_r63_known_red_guard_two_way():
+    """R63：`check_known_red.py` 必须**自己先两向自证**，才允许宣布「真实仓库 0 违规」。
+
+    ① 主路径 rc=0，成功行含判据族 `K1–K6`；
+    ② `--selftest` 必须 PASSED，`SELFTEST COUNTS` 取**下界**断言（样本不许静默缩水）；
+    ③ 反向：直接驱动 `audit()` —— 把「登记为缺失的产物**真的创建出来**」⇒ K2 红；
+       理由不带 basename ⇒ K3 红；**新**冒出来的一条引用 ⇒ K5 红。
+       三条都必须红 —— 这就是「登记不是装饰」的证人。
+    """
+    r = _r31_run([os.path.join("tools", "check_known_red.py")], timeout=180)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[-900:]
+    assert "K1–K6" in out, out[-400:]
+    s = _r31_run([os.path.join("tools", "check_known_red.py"), "--selftest"],
+                 timeout=180)
+    sout = s.stdout.decode("utf-8", "replace")
+    assert s.returncode == 0, sout[-900:]
+    m = re.search(r'SELFTEST COUNTS \{"bad": (\d+), "good": (\d+)\}', sout)
+    assert m, sout[-400:]
+    assert int(m.group(1)) >= 7, m.group(0)
+    assert int(m.group(2)) >= 1, m.group(0)
+    assert "SELFTEST PASSED" in sout, sout[-300:]
+
+    kr = _r37_load("check_known_red")
+    assert kr.ROW_SIGNATURE == "K1–K6", kr.ROW_SIGNATURE
+
+    tmp = tempfile.mkdtemp(prefix="r63_knownred_")
+    try:
+        base = kr._mkbase(tmp)
+        args = (kr._GOOD_MISSING, kr._GOOD_NEGATIVE, kr._GOOD_RED,
+                kr._GOOD_SKIP, kr._GOOD_GREEN)
+        # 好样本：一致的合成树必须放行
+        probs, st = kr._run(base, *args)
+        assert probs == [], probs
+        assert st["red"] == len(kr._GOOD_RED), st
+
+        # 反向一：把「登记为缺失」的产物**真的补上** ⇒ K2 红
+        with io.open(os.path.join(base, "missing_art.py"), "w",
+                     encoding="utf-8", newline="") as fh:
+            fh.write("# now it exists\n")
+        p2, _ = kr._run(base, *args)
+        assert any(x.startswith("K2") for x in p2), p2
+        os.remove(os.path.join(base, "missing_art.py"))
+
+        # 反向二：理由不带 basename ⇒ K3 红
+        p3, _ = kr._run(base, {"missing_art.py": "某个合成产物"},
+                        kr._GOOD_NEGATIVE, kr._GOOD_RED, kr._GOOD_SKIP,
+                        kr._GOOD_GREEN)
+        assert any(x.startswith("K3") for x in p3), p3
+
+        # 反向三：新冒出来的一条引用 ⇒ K5 红
+        with io.open(os.path.join(base, kr.TESTS_REL), "a",
+                     encoding="utf-8", newline="") as fh:
+            fh.write("\r\n\r\ndef test_r63_new_hole():\r\n"
+                     "    p = os.path.join(ROOT, \"r63_brand_new.json\")\r\n"
+                     "    return p\r\n")
+        p5, _ = kr._run(base, *args)
+        assert any(x.startswith("K5") for x in p5), p5
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r63_gate_registry_mentions_the_new_guard():
+    """R63：第 15 道护栏必须同时进三张登记表，另加一条**新判据** G0b。
+
+      ① `check_all.py::MIN_GUARDS`（门数棘轮）；
+      ② `check_help_contract.py::GUARD_CONTRACT`（退出码契约 {0,1,2}）；
+      ③ 两侧 README 的质量门表（P4 / P5 两向核对）；
+      ④ **G0b**：`tools/` 下**存在却没登记**的 `check_*.py` 必须能被抓。
+         没有它，新加一道护栏可以**完全跳过退出码契约**而 rc 依然是 0
+         —— R63 加本门时实测「盘上有、登记表里没有」没有任何门报警。
+    """
+    ca = _r37_load("check_all")
+    hc = _r37_load("check_help_contract")
+    assert "tools/check_known_red.py" in hc.GUARD_CONTRACT, \
+        sorted(k for k in hc.GUARD_CONTRACT if "known_red" in k)
+    assert set(hc.GUARD_CONTRACT["tools/check_known_red.py"]) == set([0, 1, 2]), \
+        hc.GUARD_CONTRACT["tools/check_known_red.py"]
+    assert hc.real_guard_count() == ca.MIN_GUARDS, (
+        hc.real_guard_count(), ca.MIN_GUARDS)
+    assert ca.MIN_GUARDS >= 15, ca.MIN_GUARDS
+
+    tmp = tempfile.mkdtemp(prefix="r63_g0b_")
+    try:
+        os.makedirs(os.path.join(tmp, "tools"))
+        with io.open(os.path.join(tmp, "tools", "check_orphan_r63.py"), "w",
+                     encoding="utf-8", newline="") as fh:
+            fh.write("# orphan guard: on disk but not in GUARD_CONTRACT\n")
+        probs = []
+        hc.audit_guards(tmp, probs.append)
+        assert any("check_orphan_r63.py" in x and "没有登记它" in x
+                   for x in probs), probs
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)

@@ -73,7 +73,7 @@ import time
 #   ① 本门的成功行（下面 main() 打印的那一行）；
 #   ② README.md / README_CN.md 里本门那一行。
 # 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
-ROW_SIGNATURE = "P1–P4"
+ROW_SIGNATURE = "P1–P4/T1"
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
@@ -335,16 +335,79 @@ KNOWN_BASELINE_NOISE = {
     "tests/test_matlabc.py::test_r30_static_guards_all_clean":
         "导出树不是 git 仓库 ⇒ 树内 check_baseline.py 的前置条件 P1（需要 .git）"
         "必然红一次；只出现在 before 侧，属环境差异而非回归",
+    # R63 实测补登：下面这条与上一条**同根同源**，只是 R62 加它时没有跑过
+    # `--full`，所以直到 R63 才第一次露面。它把**每一道**护栏都 spawn 一遍，
+    # 其中 `check_baseline.py` 默认模式需要 `.git`（导出树没有）⇒ before 侧必然红。
+    # 这是**永久**噪声：before 侧永远是 `git archive` 导出树 ⇒ 下一轮它仍然出现
+    # ⇒ 这条登记**不会**变陈旧。（反例见 T1：本轮新增/改动的测试**不能**这样登记。）
+    "tests/test_matlabc.py::test_r62_gate_row_signatures_two_way":
+        "该测试会 spawn **每一道**护栏，其中 check_baseline.py 默认模式的前置"
+        "条件 P1（需要 .git）在导出树里必然红 ⇒ 只出现在 before 侧；"
+        "与 test_r30 那条同根同源，属环境差异而非回归",
 }
 
 
-def classify_fixed(fixed, registered=None):
-    """把 fixed 拆成 (已解释, 未解释, 陈旧登记)。纯函数，便于自证。"""
+# ── T1（R63）：本轮**新增或改动过**的测试 ─────────────────────────────────
+#
+# `--full` 的前提是「**同测试集**」——`copy_current_tests` 把**当前** `tests/`
+# 覆盖进导出树，而导出树里的 `tools/` 还是**上一个提交**的。于是必然出现一类
+# 既不是「修复」也不是「环境噪声」的 before 侧失败：
+#
+#     测试断言了**本轮新增的产品事实**（新护栏存在 / 门数变成 15 / 新门能跑通），
+#     而导出树里的产品还是旧的 ⇒ before 侧红、after 侧绿。
+#
+# 这一类的正确处置**既不是** B2（登记）**也不是**静默：
+#   * 登记它 ⇒ 提交之后导出树就带上产品了 ⇒ 下一轮它不再出现在 fixed 里
+#     ⇒ **当场变成陈旧登记（B3）**。也就是说「登记」在这里是**错的**。
+#   * 静默 ⇒ 就分不清「本轮改动的测试」与「真被修好的测试」。
+# 所以单列一类 T1，并把它们**打印**出来（信息性，不判红）。
+#
+# 口径：只比**测试函数自己的源码片段**（按行首 `def test_` 切分，与
+# `check_known_red.py` 的 `test_spans` 同一套切法），不比行号、不比空白。
+_TEST_DEF_RE = re.compile(r"^def (test_[A-Za-z0-9_]+)", re.M)
+
+
+def test_sources(text):
+    """{测试函数名: 源码片段}。"""
+    hits = [(m.start(), m.group(1)) for m in _TEST_DEF_RE.finditer(text)]
+    out = {}
+    for i, (off, name) in enumerate(hits):
+        end = hits[i + 1][0] if i + 1 < len(hits) else len(text)
+        out[name] = text[off:end]
+    return out
+
+
+def new_or_changed_tests(head_text, cur_text):
+    """本轮**新增或改动过**的测试 nodeid（`tests/test_matlabc.py::name`）。
+
+    两个字符串都必须是**未做换行翻译**的原文（读时 `newline=""`）：否则
+    CRLF 被静默翻成 LF，两侧的「不同」就变成假阳性。
+    """
+    h = test_sources(head_text)
+    c = test_sources(cur_text)
+    prefix = SUITE.replace(os.sep, "/") + "::"
+    return set(prefix + n for n, src in c.items()
+               if n not in h or h[n] != src)
+
+
+def classify_fixed(fixed, registered=None, new_or_changed=None):
+    """把 fixed 拆成 (已解释, 未解释, 陈旧登记)。纯函数，便于自证。
+
+    `new_or_changed`（T1）里的 nodeid 不算「未解释」——理由见上面 T1 的说明。
+    """
     reg = KNOWN_BASELINE_NOISE if registered is None else registered
+    tr = frozenset() if new_or_changed is None else frozenset(new_or_changed)
     explained = [x for x in fixed if x in reg]
-    unexplained = [x for x in fixed if x not in reg]
+    unexplained = [x for x in fixed if x not in reg and x not in tr]
     stale = sorted(k for k in reg if k not in fixed)
     return explained, unexplained, stale
+
+
+def transition_fixed(fixed, registered=None, new_or_changed=None):
+    """T1：本轮新增/改动过的测试里 before 侧红、after 侧绿的那些（信息性）。"""
+    reg = KNOWN_BASELINE_NOISE if registered is None else registered
+    tr = frozenset() if new_or_changed is None else frozenset(new_or_changed)
+    return [x for x in fixed if x not in reg and x in tr]
 
 
 def run_full(repo, work, kfilter, py, on_problem):
@@ -352,6 +415,17 @@ def run_full(repo, work, kfilter, py, on_problem):
     print("[1/4] git archive HEAD -> %s\\head-*（唯一目录，不删旧目录）" % work)
     head_tree = export_head(repo, work)
     print("      -> %s" % head_tree)
+    # T1（R63）：**复制之前**先留一份 HEAD 自己的 `tests/` —— 否则「哪些测试属于
+    # 本轮（新增或改动）」这个事实会被 `copy_current_tests` 覆盖掉，而它正是 T1
+    # 唯一需要的输入。两侧都按 `newline=""` 读，保证 CRLF 不被静默翻译。
+    with io.open(os.path.join(head_tree, SUITE), "r", encoding="utf-8",
+                 errors="replace", newline="") as fh:
+        head_tests_text = fh.read()
+    with io.open(os.path.join(repo, SUITE), "r", encoding="utf-8",
+                 errors="replace", newline="") as fh:
+        cur_tests_text = fh.read()
+    noc = new_or_changed_tests(head_tests_text, cur_tests_text)
+    print("      T1 输入：本轮新增/改动的测试 %d 个" % len(noc))
     print("[2/4] 把当前 %s 复制进导出树（同测试集）" % SUITE)
     copy_current_tests(repo, head_tree)
 
@@ -378,13 +452,21 @@ def run_full(repo, work, kfilter, py, on_problem):
     if res["fixed"]:
         print("  不再失败 %d 个（前 %d -> 后 %d）"
               % (len(res["fixed"]), res["n_before"], res["n_after"]))
-    explained, unexplained, stale = classify_fixed(res["fixed"])
+    explained, unexplained, stale = classify_fixed(
+        res["fixed"], new_or_changed=noc)
+    trans = transition_fixed(res["fixed"], new_or_changed=noc)
     for x in explained:
         print("  [已登记的环境噪声] %s\n      %s" % (x, KNOWN_BASELINE_NOISE[x]))
+    for x in trans:
+        print("  [过渡 T1] %s\n      本轮**新增或改动过**的测试：它在 before 侧"
+              "失败是「同测试集 + 旧产品」的**构造性**结果 —— 既不是修复，也不是"
+              "环境噪声，而且**不该登记**（提交后导出树就带上产品了，登记会在下一轮"
+              "立刻变陈旧）。故只作信息性列出，不判红" % x)
     for x in unexplained:
         on_problem("B2 %s 不再失败，却没有登记原因 —— **新噪声必须解释**："
                    "它可能掩盖同一 nodeid 上真实的修复，也可能说明两侧环境不同"
-                   "（例如导出树不是 git 仓库）" % x)
+                   "（例如导出树不是 git 仓库）。注意：**本轮新增/改动过**的测试"
+                   "走 T1，不会落到这里" % x)
     for x in stale:
         on_problem("B3 登记了「%s」但这次它没有出现 —— **陈旧登记**：原因已经"
                    "消失，说明这条登记是假的（或环境变了），必须删掉或改写" % x)
@@ -490,6 +572,29 @@ def selftest():
     e, u, s = classify_fixed([], {"x::t": "原因"})
     _expect("R43 坏样本：登记了却没出现 -> 陈旧登记，必须报（抓到）",
             bool(s), True, tally)
+
+    # ---- T1（R63）：本轮**新增或改动过**的测试（纯函数） ----
+    _ht = "def test_a():\n    pass\n\ndef test_b():\n    return 1\n"
+    _ct = ("def test_a():\n    pass\n\ndef test_b():\n    return 2\n\n"
+           "def test_c():\n    return 3\n")
+    _noc = new_or_changed_tests(_ht, _ct)
+    _p = SUITE.replace(os.sep, "/") + "::"
+    _expect("T1 好样本：没改动的 test_a 不算本轮改动",
+            (_p + "test_a") in _noc, False, tally)
+    _expect("T1 好样本：改过的 test_b 被认出",
+            (_p + "test_b") not in _noc, False, tally)
+    _expect("T1 好样本：新加的 test_c 被认出",
+            (_p + "test_c") not in _noc, False, tally)
+    _e, _u, _s = classify_fixed(["n::t"], {}, new_or_changed=set(["n::t"]))
+    _expect("T1 好样本：本轮改动过的测试不再算「未解释」", bool(_u), False, tally)
+    _e, _u, _s = classify_fixed(["n::t"], {}, new_or_changed=set(["z::t"]))
+    _expect("T1 坏样本：不在本轮改动集合里的照样算「未解释」（抓到）",
+            bool(_u), True, tally)
+    _expect("T1 好样本：transition_fixed 把它单列（信息性，不判红）",
+            transition_fixed(["n::t"], {}, set(["n::t"])) != ["n::t"], False, tally)
+    _expect("T1 好样本：已登记的优先按「已解释」，不再进 T1",
+            bool(transition_fixed(["n::t"], {"n::t": "原因"}, set(["n::t"]))),
+            False, tally)
 
     # ---- R54：`_is_git_repo` 必须接受 **worktree 形态**（`.git` 是文件） ----
     #

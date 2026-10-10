@@ -231,6 +231,11 @@ GUARD_CONTRACT = {
         1: "有违规（未认领 / 歧义 / 空断言 / 陈旧 / 棘轮不符 / 行为不符）",
         2: "缺输入（找不到 matlabc.py / 工具脚本，或公开 CLI 跑不起来）",
     },
+    "tools/check_known_red.py": {
+        0: "登记与事实两向一致（K1–K6：覆盖 / 真缺失 / 理由具名 / 跳过为真 / 新缺口 / 缺输入）",
+        1: "有违规（未登记 / 陈旧 / 理由不具名 / 伪装跳过 / 新缺口）",
+        2: "缺输入（找不到 tests/test_matlabc.py）",
+    },
 }
 
 GUARD_SCRIPTS = tuple(sorted(GUARD_CONTRACT))
@@ -1077,7 +1082,8 @@ def audit(root, on_problem, cache=None):
 
 
 def audit_guards(root, on_problem):
-    """R33（C'7）：对护栏脚本施加 R1（+反向+陈旧）与 R2。返回核对过的脚本数。"""
+    """R33（C'7）+ R63（G0b）：对护栏脚本施加 R1（+反向+陈旧）与 R2，
+    并核对「存在 ⇄ 登记」。返回核对过的脚本数。"""
     n = 0
     for script in GUARD_SCRIPTS:
         registered = set(GUARD_CONTRACT[script])
@@ -1107,6 +1113,17 @@ def audit_guards(root, on_problem):
             on_problem("G2 %s: 帮助与登记表不一致（少写 %s / 多写 %s）"
                        % (script, sorted(registered - declared) or "无",
                           sorted(declared - registered) or "无"))
+    # G0b（R63）：`tools/` 下每一个 `check_*.py` 都必须被 GUARD_CONTRACT 登记。
+    # G0 管「登记了却不存在」；这一条管**反方向** —— 存在却没登记。
+    # 没有它，新加一道护栏时可以**完全跳过退出码契约**而 rc 依然是 0：
+    # R63 加 `check_known_red.py` 时实测「磁盘上有、登记表里没有」没有任何门报警。
+    tdir = os.path.join(root, "tools")
+    if os.path.isdir(tdir):
+        on_disk = set("tools/" + f for f in os.listdir(tdir)
+                      if f.startswith("check_") and f.endswith(".py"))
+        for orphan in sorted(on_disk - set(GUARD_SCRIPTS)):
+            on_problem("G0b %s 存在，但 GUARD_CONTRACT 没有登记它 —— "
+                       "它的退出码契约没有任何人在核对" % orphan)
     return n
 
 
@@ -1393,6 +1410,18 @@ def _selftest():
             # 所以这里断言的是「判据确实能对'缺依据'报问题」，而不是只报 0 个。
             expect("C'7 护栏缺退出码依据（抓到）",
                    any("check_bad.py" in x and "找不到依据" in x for x in gb), True)
+            # R63/G0b：磁盘上**存在却没登记**的护栏也必须被抓到
+            with io.open(os.path.join(gdir, "check_orphan.py"), "w",
+                         encoding="utf-8") as fh:
+                fh.write('"""x\n\n退出码：\n    0 = a\n"""\n'
+                         "import sys\n"
+                         "def main():\n    return 0\n"
+                         "sys.exit(main())\n")
+            gb2 = []
+            audit_guards(gtd, on_problem_collector(gb2))
+            expect("R63 G0b 存在却未登记的护栏（抓到）",
+                   any("check_orphan.py" in x and "没有登记它" in x
+                       for x in gb2), True)
         finally:
             GUARD_CONTRACT.clear()
             GUARD_CONTRACT.update(saved)
