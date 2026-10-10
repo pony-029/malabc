@@ -18375,9 +18375,10 @@ def test_r61_gate_registry_mentions_the_new_guard():
       ③ 两侧 README 的质量门表（由 P4 两向核对，见上一条测试）。
     """
     ca = _r37_load("check_all")
-    # R63：护栏数 14 → 15（新增 `tools/check_known_red.py`）。这个字面量**故意**
-    # 写死 —— 它就是门数棘轮：谁改了门数，谁就得在这里露面。
-    assert ca.MIN_GUARDS == 15, ca.MIN_GUARDS
+    # R63：护栏数 14 → 15（新增 `tools/check_known_red.py`）。R66：15 → 16
+    # （新增 `tools/check_py_js_frontend_shapes.py`）。这个字面量**故意**写死 ——
+    # 它就是门数棘轮：谁改了门数，谁就得在这里露面。
+    assert ca.MIN_GUARDS == 16, ca.MIN_GUARDS
     hc = _r37_load("check_help_contract")
     assert "tools/check_c_frontend_shapes.py" in hc.GUARD_CONTRACT
     assert hc.real_guard_count() == ca.MIN_GUARDS, (
@@ -18695,3 +18696,163 @@ def test_r65_measure_half_two_way():
         assert q.returncode == 2, (q.returncode, qout[-600:])
     finally:
         shutil.rmtree(fake, ignore_errors=True)
+
+
+def test_r66_py_js_frontend_shapes_two_way():
+    """R66：Python / JS 前端形态的**两向判据**（静态半 + 判据本体 + 端到端）。
+
+    背景（仓库外装置实测，见 docs/SUPERPOWER_REVIEW_R66.md §1）：
+      同一台探针量三条语言前端 —— C 六形态 **0 漏**，Python 八形态 **漏 4**
+      （单行体 / `async def` / 返回注解 / 参数表跨行），JS 十形态 **漏 8**
+      （async / export / export default / 生成器 / 三种箭头）；
+      第二台探针量出形参是用 `\\(([^)]*)\\)` 取的，而它**不能含 `)`** ——
+      默认值里的嵌套括号（`x=(1, 2)` / `b = g(1, 2)`）会把参数截断，
+      严重时**整个定义都认不出来**。R66 把两处修掉，并把判据固化进
+      `tools/check_py_js_frontend_shapes.py`（第 16 道护栏）。
+    """
+    gate = os.path.join(_R33_TOOLS, "check_py_js_frontend_shapes.py")
+    assert os.path.isfile(gate), "新护栏必须真存在"
+
+    # ① 静态半：rc=0，且成功行里带本门自己的签名
+    r = _r31_run([gate], timeout=180)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[-900:]
+    assert "G1\u2013G6" in out, out[-400:]
+
+    # ② 自证：下界断言（`bad` / `good` 两个数绝不手写）
+    rs = _r31_run([gate, "--selftest"], timeout=180)
+    s_out = rs.stdout.decode("utf-8", "replace")
+    assert rs.returncode == 0, s_out[-700:]
+    m = re.search(r'SELFTEST COUNTS \{"bad": (\d+), "good": (\d+)\}', s_out)
+    assert m, s_out[-500:]
+    assert int(m.group(1)) == 0, s_out[-500:]
+    assert int(m.group(2)) >= 18, s_out[-500:]
+
+    # ③ 判据本体（纯函数 judge）：先证**手写期望自己全绿**，再逐条证**能红**
+    mod = _r37_load("check_py_js_frontend_shapes")
+
+    def _base():
+        return dict((k, dict(v)) for k, v in mod.WANT.items())
+
+    assert mod.judge(_base()) == [], "手写期望本身必须全绿（否则是夹具与判据串了）"
+
+    def _only(probs, tag):
+        hit = [p for p in probs if p.startswith(tag)]
+        others = [p for p in probs
+                  if p[:2] in mod.CRITERIA_IDS and not p.startswith(tag)]
+        assert hit, (tag, probs)
+        assert not others, (tag, others)
+
+    # ③a  Python 四形态：R66 之前**这四个每一个都认不出来**
+    for name in mod.G1_NAMES_PY:
+        d = _base()
+        d["shapes.py"].pop(name)
+        _only(mod.judge(d), "G1")
+
+    # ③b  JS 七形态：同上
+    for name in mod.G2_NAMES_JS:
+        d = _base()
+        d["shapes.js"].pop(name)
+        _only(mod.judge(d), "G2")
+
+    # ③c  值域：注解没剥掉（老实现的真实行为）与嵌套括号被切碎，都必须红在 G3
+    d = _base()
+    d["shapes.py"]["typed"] = {"params": ["a: int", "b: str"], "line": 9}
+    _only(mod.judge(d), "G3")
+    d = _base()
+    d["shapes.py"]["deep"] = {"params": ["x=(1", "2)", "y=g2(3", "4)"], "line": 26}
+    _only(mod.judge(d), "G3")
+    d = _base()
+    d["shapes.js"]["h2"] = {"params": ["a", "b = g2(1, 2"], "line": 35}
+    _only(mod.judge(d), "G3")
+
+    # ③d  假阳陷阱：把控制语句 / 调用当成函数 ⇒ G4
+    d = _base()
+    d["neg.js"]["switch"] = {"params": [], "line": 4}
+    _only(mod.judge(d), "G4")
+    d = _base()
+    d["neg.py"]["lam"] = {"params": [], "line": 1}
+    _only(mod.judge(d), "G4")
+
+    # ③e  已披露边界被认出来 ⇒ G5；neg 空掉 ⇒ G5 的**正向半边**必须红
+    for name in mod.BOUNDARY_TRAPS_JS:
+        d = _base()
+        d["neg.js"][name] = {"params": ["a"], "line": 11}
+        _only(mod.judge(d), "G5")
+    d = _base()
+    d["neg.py"] = {}
+    _only(mod.judge(d), "G5")
+
+    # ③f  行号漂移（跨行参数表少算一行）⇒ G6
+    d = _base()
+    d["shapes.py"]["wide"] = {"params": ["a", "b", "c"], "line": 13}
+    _only(mod.judge(d), "G6")
+
+    # ③g  棘轮：真实读数必须等于登记值（缩水就红）
+    pyc = sum(len(v) for k, v in mod.WANT.items() if k.endswith(".py"))
+    jsc = sum(len(v) for k, v in mod.WANT.items() if k.endswith(".js"))
+    assert mod.judge_ratchet(pyc, jsc) == []
+    assert mod.judge_ratchet(pyc - 1, jsc)
+
+    # ④ 端到端：真跑公开 CLI 打一份临时夹具，确认修好的形态**真被认出来**
+    tmp = tempfile.mkdtemp(prefix="mar66_")
+    try:
+        src = os.path.join(tmp, "src")
+        os.makedirs(src)
+        io.open(os.path.join(src, "a.py"), "w", encoding="utf-8",
+                newline="").write(
+            "def one(): return 1\n"
+            "async def afetch(url):\n    return url\n"
+            "def typed(a: int, b: str = \"x\") -> bool:\n    return True\n"
+            "def wide(a,\n         b):\n    return a\n"
+            "def deep(x=(1, 2), y=g2(3, 4)):\n    return x\n")
+        io.open(os.path.join(src, "b.js"), "w", encoding="utf-8",
+                newline="").write(
+            "async function fetchIt(url) {\n  return url;\n}\n"
+            "export function exp(a) {\n  return a;\n}\n"
+            "const f = (a) => {\n  return a;\n};\n"
+            "const g = (a) => a + 1;\n"
+            "function h2(a, b = g2(1, 2)) {\n  return a;\n}\n")
+        pj = os.path.join(tmp, "py.json")
+        rc, _o, _e = _run([src, "--lang", "py", "--json", pj], tmp)
+        assert rc == 0, "python 前端跑失败"
+        got = set()
+        for pf in json.loads(_read_text(pj))["files"]:
+            for fn in pf["functions"]:
+                got.add(fn["name"])
+        for name in ("one", "afetch", "typed", "wide", "deep"):
+            assert name in got, (name, sorted(got))
+        jj = os.path.join(tmp, "js.json")
+        rc2, _o2, _e2 = _run([src, "--lang", "js", "--json", jj], tmp)
+        assert rc2 == 0, "js 前端跑失败"
+        got2 = {}
+        for pf in json.loads(_read_text(jj))["files"]:
+            for fn in pf["functions"]:
+                got2[fn["name"]] = fn["params"]
+        for name in ("fetchIt", "exp", "f", "g", "h2"):
+            assert name in got2, (name, sorted(got2))
+        # 嵌套括号里的默认值必须**完整**保留，不能被切在 `g(1, 2`
+        assert got2["h2"] == ["a", "b = g2(1, 2)"], got2["h2"]
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r66_gate_registry_mentions_the_new_guard():
+    """R66：第 16 道护栏必须同时进三张登记表，否则「加了门」只是加了一个文件。
+
+      ① `check_all.py::MIN_GUARDS`（门数棘轮）；
+      ② `check_help_contract.py::GUARD_CONTRACT`（退出码契约，R2 两向核对）；
+      ③ 两侧 README 的质量门表（由 P4 / P5 两向核对）。
+    """
+    ca = _r37_load("check_all")
+    assert ca.MIN_GUARDS >= 16, ca.MIN_GUARDS
+    hc = _r37_load("check_help_contract")
+    assert "tools/check_py_js_frontend_shapes.py" in hc.GUARD_CONTRACT
+    assert set(hc.GUARD_CONTRACT["tools/check_py_js_frontend_shapes.py"]) == set([0, 1, 2]), \
+        hc.GUARD_CONTRACT["tools/check_py_js_frontend_shapes.py"]
+    assert hc.real_guard_count() == ca.MIN_GUARDS, (
+        hc.real_guard_count(), ca.MIN_GUARDS)
+    for rel in ("README.md", "README_CN.md"):
+        text = io.open(os.path.join(ROOT, rel), encoding="utf-8").read()
+        assert "check_py_js_frontend_shapes.py" in text, rel
+        assert "G1\u2013G6" in text, rel

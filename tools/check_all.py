@@ -12,6 +12,7 @@
         ├─▶ check_help_contract.py        退出码在代码↔帮助双向一致；示例能真跑
         ├─▶ check_import_graph.py         模块级 import 必须无环；回边只能走登记过的惰性通道
         ├─▶ check_c_frontend_shapes.py    C 前端函数定义形态（四形态/指针返回/体界/行号）各有对手方
+        ├─▶ check_py_js_frontend_shapes.py Python/JS 前端形态（单行/async/注解/跨行/箭头）各有对手方
         ├─▶ check_ir_attribution.py       「解析不到的调用」只有一个判定点，归因吃的就是它
         ├─▶ check_operator_impl.py        算子元表里不得有「只声明不产出」的幻影
         ├─▶ check_patch_ops.py            补丁编辑算子唯一事实源（禁止覆盖式赋值）
@@ -113,7 +114,11 @@ GUARD_TIMEOUT = 600.0
 # 源码里真有 pytest.skip（K4）、单段 os.path.join 指向的新缺口也要登记（K5），
 # 另登记一个负样本。至此「红变成背景色、真红没人看见」第一次有了对手方），
 # 故 14 → 15。
-MIN_GUARDS = 15
+# R66 新增 check_py_js_frontend_shapes.py（R64 §8 C14-1 之外的一条：R66 实测
+# Python / JS 前端 8+10 个真实形态里漏 4+8 个，且形参表里的嵌套括号会被
+# `\(([^)]*)\)` 截断；修完之后把判据固化进仓库 —— G1–G6 六条互不重叠、
+# 各有突变体，另加夹具完备性与棘轮），故 15 → 16。
+MIN_GUARDS = 16
 
 
 def _write_help(text):

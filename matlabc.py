@@ -108,7 +108,7 @@ matlabc — 代码结构梳理与静态分析工具（纯 Python，零依赖，�
 质量门（改代码前先看这里）
 ────────────────────────────────────────────────────────────────────────
 
-  python tools/check_all.py     # 一次跑完 15 道登记制护栏，各自还会跑 --selftest
+  python tools/check_all.py     # 一次跑完 16 道登记制护栏，各自还会跑 --selftest
 
   每道护栏都要求**两向自证**：坏样本必须变红、好样本必须放行，并打印
   机器可读的 `SELFTEST COUNTS {"bad": N, "good": M}`。只会在好天气下变绿的
@@ -8513,7 +8513,10 @@ def gen_tests_for_lang(lang, model, out_dir, root):
 _RE_PY_FROM = re.compile(r"^\s*from\s+([A-Za-z_][\w\.]*)\s+import\s+(.+)")
 _RE_PY_IMPORT = re.compile(r"^\s*import\s+([A-Za-z_][\w\.]*)"
                            r"(?:\s+as\s+([A-Za-z_]\w*))?")
-_RE_PY_DEF = re.compile(r"^def\s+([A-Za-z_]\w*)\s*\(([^)]*)\)\s*:\s*$")
+_RE_PY_REST = re.compile(r"^\s*(?:->\s*[^:]+)?:\s*(.*)$")
+# R66:`def` 头(名字 + 左括号)单独一个正则,供 `_scan_py_defs` 做**跨行参数表**累积;
+# 形参不在这里用正则取 —— 它走 `_paren_span` 的**深度配平**(见该函数 docstring)。
+_RE_PY_DEF_HEAD = re.compile(r"^(?:async\s+)?def\s+([A-Za-z_]\w*)\s*\(")
 _RE_PY_CALL = re.compile(r"\b([A-Za-z_]\w*)\s*\(")
 _PY_KEYWORDS = set(("and as assert break class continue def del elif else "
                     "except finally for from global if import in is lambda "
@@ -8522,9 +8525,22 @@ _PY_KEYWORDS = set(("and as assert break class continue def del elif else "
                     "set tuple type open input isinstance super self "
                     "object repr len max min abs sum sorted filter map zip "
                     "enumerate any all format").split())
-_RE_JS_FN_DECL = re.compile(r"^function\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*\{?")
-_RE_JS_FN_ASSIGN = re.compile(r"^([A-Za-z_$][\w$]*)\s*=\s*(?:function\s*)?"
-                              r"\(([^)]*)\)\s*(?:=>)?\s*\{?")
+# R66:老实现把「声明 / 赋值 / 箭头」塞进两条正则,且用 `\(([^)]*)\)` 取形参 ——
+# 于是 ① `const f = (a) => {` 整类看不见(`const` 挡住 `^ident\s*=`),
+#      ② `b = g(1, 2)` 这种嵌套括号把形参截断。
+# 现在拆成四个**只认头**的正则,形参统一走 `_paren_span` 深度配平。
+_RE_JS_HEAD_DECL = re.compile(
+    r"^(?:export\s+(?:default\s+)?)?(?:async\s+)?function\s*\*?\s*"
+    r"([A-Za-z_$][\w$]*)\s*\(")
+_RE_JS_HEAD_FNASSIGN = re.compile(
+    r"^(?:(?:const|let|var)\s+)?([A-Za-z_$][\w$]*)\s*=\s*"
+    r"(?:async\s+)?function\s*\*?\s*\(")
+_RE_JS_HEAD_ARROW_PARENS = re.compile(
+    r"^(?:(?:const|let|var)\s+)?([A-Za-z_$][\w$]*)\s*=\s*"
+    r"(?:async\s+)?\(")
+_RE_JS_HEAD_ARROW_BARE = re.compile(
+    r"^(?:(?:const|let|var)\s+)?([A-Za-z_$][\w$]*)\s*=\s*"
+    r"(?:async\s+)?([A-Za-z_$][\w$]*)\s*=>")
 _RE_JS_CALL = re.compile(r"\b([A-Za-z_$][\w$]*)\s*\(")
 _JS_KEYWORDS = set(("var let const function return if else for while do "
                     "switch case default break continue new this typeof "
@@ -8533,6 +8549,103 @@ _JS_KEYWORDS = set(("var let const function return if else for while do "
                     "undefined null true false console process JSON Math "
                     "Object Array String Number Promise async await "
                     "document window parseInt parseFloat isNaN").split())
+
+
+def _split_top_commas(raw):
+    """R66:按**顶层逗号**切分(py / js 形参表共用)。
+
+    老实现对形参表直接 `raw.split(",")`,于是 `x=(1, 2)` / `cb=g(1, 2)` 这类
+    默认值会被从中间切开 —— 切出来的第二段根本不是参数名。
+    这里按括号 / 方括号 / 花括号的**深度**切:只有 depth==0 的逗号才是分隔符。
+    """
+    out = []
+    depth = 0
+    cur = ""
+    for ch in (raw or ""):
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            if depth > 0:
+                depth -= 1
+        if ch == "," and depth == 0:
+            out.append(cur)
+            cur = ""
+            continue
+        cur += ch
+    out.append(cur)
+    return out
+
+
+def _py_split_params(raw):
+    """R66:切 Python 形参名 —— 剥默认值**与类型注解**,丢弃 `/` 与裸 `*` 标记。
+
+    老实现只做 `split("=")[0]`,于是 `def f(a: int)` 的参数名会变成 `a: int`
+    (把注解当成名字的一部分)。这是 P93 起就存在的**值域缺陷**,只是从没有判据
+    看过 Python 前端的 `params`(守它的 check_py_js_frontend_shapes.py 是 R66 才有)。
+    """
+    out = []
+    for p in _split_top_commas(raw):
+        p = p.strip()
+        if not p or p in ("/", "*"):
+            continue
+        p = p.split("=")[0].strip()
+        star = ""
+        while p.startswith("*"):
+            star += "*"
+            p = p[1:].strip()
+        if ":" in p:
+            p = p.split(":", 1)[0].strip()
+        p = star + p
+        if p:
+            out.append(p)
+    return out
+
+
+def _scan_py_defs(text):
+    """R66:词法层扫出全部 `def` / `async def` 定义(**参数表可跨行**)。
+
+    与 C 前端的 `_scan_c_definitions` 同构:先一次性扫出定义
+    ([{"name", "params", "line"}] —— line = **声明起点行号**),再在逐行循环里按行挂
+    active。于是 P1 单行 / P2 返回注解 / P3 单行体 / P4 参数表跨行 四种形态统一,
+    而逐行的调用收集 / 复杂度记账**一字未改**。
+
+    形参用 `_paren_span` 的**深度配平**取(老实现的 `\\(([^)]*)\\)` 遇到
+    `x=(1, 2)` 就截断,严重时整个定义认不出来)。
+
+    ⚠ 只做括号配平,**不做字符串状态机** ⇒ 文档字符串里写的 `def` 仍会被误认。
+    这是**已披露边界**(守它的 check_py_js_frontend_shapes.py 的 G5),不是遗漏。
+    """
+    defs = []
+    lines = text.split("\n")
+    n = len(lines)
+    i = 0
+    while i < n:
+        s = lines[i].strip()
+        if not s or s.startswith("#"):
+            i += 1
+            continue
+        m = _RE_PY_DEF_HEAD.match(s)
+        if not m:
+            i += 1
+            continue
+        buf = s
+        j = i
+        # 参数表跨行:只要 `(` 多于 `)` 就把下一行接上(上限 40 行,让畸形输入退化成
+        # 「一行一个定义」而不是把整份文件吃掉)。
+        while j + 1 < n and buf.count("(") > buf.count(")") and j - i < 40:
+            j += 1
+            buf = buf + " " + lines[j].strip()
+        inner, close = _paren_span(buf, m.end() - 1)
+        if inner is None:
+            i += 1
+            continue
+        if not _RE_PY_REST.match(buf[close + 1:]):
+            i += 1
+            continue
+        defs.append({"name": m.group(1), "params": _py_split_params(inner),
+                     "line": i + 1})
+        i = j + 1
+    return defs
 
 
 def _parse_py_source(text, rel, path):
@@ -8545,6 +8658,10 @@ def _parse_py_source(text, rel, path):
     funcs = []
     imports = []
     stack = []
+    # R66:定义先由 `_scan_py_defs` 一次性扫出(含跨行参数表),这里只按行挂 active。
+    _defs_by_line = {}
+    for _d in _scan_py_defs(text):
+        _defs_by_line.setdefault(_d["line"], []).append(_d)
     for idx, raw in enumerate(src_lines):
         ln = idx + 1
         line = raw
@@ -8567,11 +8684,11 @@ def _parse_py_source(text, rel, path):
         cur_ind = len(line) - len(line.lstrip())
         if stack and cur_ind <= stack[-1]["indent"]:
             stack.pop()
-        dm = _RE_PY_DEF.match(s)
-        if dm:
-            params = [p.strip().split("=")[0].strip()
-                      for p in dm.group(2).split(",") if p.strip()]
-            fn = {"name": dm.group(1), "line": ln, "params": params,
+        _pend = _defs_by_line.get(ln)
+        if _pend:
+            _d0 = _pend[0]
+            fn = {"name": _d0["name"], "line": ln,
+                  "params": list(_d0["params"]),
                   "ret": "None", "complexity": 1, "calls": [],
                   "body_start": ln, "body_end": ln, "indent": cur_ind}
             funcs.append(fn)
@@ -8594,6 +8711,85 @@ def _parse_py_source(text, rel, path):
     return {"rel": rel, "path": path, "functions": funcs, "imports": imports}
 
 
+def _paren_span(s, open_idx):
+    """R66:s[open_idx] 必须是 `(`。返回 (括号内文, 右括号下标);未配平返回 (None, None)。
+
+    为什么需要它:正则的 `\\(([^)]*)\\)` **不能含 `)`** —— 形参表里任何嵌套括号
+    (`x=(1, 2)` / `b = g(1, 2)`)都会把参数截断,严重时整个定义认不出来。
+    """
+    if not s or open_idx >= len(s) or s[open_idx] != "(":
+        return None, None
+    depth = 0
+    for j in range(open_idx, len(s)):
+        ch = s[j]
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return s[open_idx + 1:j], j
+    return None, None
+
+
+def _js_split_params(raw):
+    """R66:切 JS 形参表(顶层逗号切分 + 去空白)。"""
+    return [p.strip() for p in _split_top_commas(raw) if p.strip()]
+
+
+def _scan_js_defs(text):
+    """R66:词法层扫出 JS 函数定义(声明 / 赋值 / 三种箭头 / async / export / 生成器)。
+
+    与 `_scan_py_defs` 同构:先扫出定义,再在逐行循环里按行挂 active;
+    形参同样走 `_paren_span` 深度配平。
+
+    已披露**不识别**(守它的是 check_py_js_frontend_shapes.py 的 G5):
+      * 对象 / 类里的方法简写 `greet(a) { ... }`;
+      * 匿名 `export default function (a) {}`(没有名字可登记);
+      * `module.exports.foo = function (a) {}`(左值不是裸标识符)。
+    """
+    defs = []
+    lines = text.split("\n")
+    n = len(lines)
+    i = 0
+    while i < n:
+        s = lines[i].strip()
+        if not s or s.startswith(("//", "/*", "*", "#")):
+            i += 1
+            continue
+        buf = s
+        j = i
+        while j + 1 < n and buf.count("(") > buf.count(")") and j - i < 40:
+            j += 1
+            buf = buf + " " + lines[j].strip()
+        ln = i + 1
+        m = _RE_JS_HEAD_DECL.match(buf)
+        if not m:
+            m = _RE_JS_HEAD_FNASSIGN.match(buf)
+        if m:
+            inner, _c = _paren_span(buf, m.end() - 1)
+            if inner is not None:
+                defs.append({"name": m.group(1),
+                             "params": _js_split_params(inner), "line": ln})
+                i = j + 1
+                continue
+        else:
+            ap = _RE_JS_HEAD_ARROW_PARENS.match(buf)
+            if ap:
+                inner, close = _paren_span(buf, ap.end() - 1)
+                if (inner is not None
+                        and buf[close + 1:].lstrip().startswith("=>")):
+                    defs.append({"name": ap.group(1),
+                                 "params": _js_split_params(inner), "line": ln})
+                    i = j + 1
+                    continue
+            else:
+                ab = _RE_JS_HEAD_ARROW_BARE.match(buf)
+                if ab:
+                    defs.append({"name": ab.group(1), "params": [ab.group(2)],
+                                 "line": ln})
+        i += 1
+    return defs
+
 def _parse_js_source(text, rel, path):
     """P93：轻量 JavaScript 解析——function/箭头函数、调用边、import 列表。"""
     if text.startswith(u"\ufeff"):
@@ -8602,6 +8798,10 @@ def _parse_js_source(text, rel, path):
     funcs = []
     imports = []
     stack = []
+    # R66:定义先由 `_scan_js_defs` 一次性扫出(含跨行参数表),这里只按行挂 active。
+    _defs_by_line = {}
+    for _d in _scan_js_defs(text):
+        _defs_by_line.setdefault(_d["line"], []).append(_d)
     for idx, raw in enumerate(src_lines):
         ln = idx + 1
         line = raw
@@ -8624,17 +8824,11 @@ def _parse_js_source(text, rel, path):
         cur_ind = len(line) - len(line.lstrip())
         if stack and cur_ind <= stack[-1]["indent"]:
             stack.pop()
-        dm = None
-        m1 = _RE_JS_FN_DECL.match(s)
-        if m1:
-            dm = m1
-        else:
-            m2 = _RE_JS_FN_ASSIGN.match(s)
-            if m2:
-                dm = m2
-        if dm:
-            params = [p.strip() for p in dm.group(2).split(",") if p.strip()]
-            fn = {"name": dm.group(1), "line": ln, "params": params,
+        _pend = _defs_by_line.get(ln)
+        if _pend:
+            _d0 = _pend[0]
+            fn = {"name": _d0["name"], "line": ln,
+                  "params": list(_d0["params"]),
                   "ret": "void", "complexity": 1, "calls": [],
                   "body_start": ln, "body_end": ln, "indent": cur_ind}
             funcs.append(fn)
