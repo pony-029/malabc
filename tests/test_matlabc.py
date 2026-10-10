@@ -16807,13 +16807,18 @@ def test_r37_baseline_gate_is_registered_and_self_proving():
 
 
 def test_r38_help_volume_ratchet_has_a_relative_arm():
-    """R38/C''8：帮助体积棘轮必须**两臂取严** —— 绝对界 + 相对界。
+    """R38/C''8：帮助体积棘轮必须有**独立于绝对界**的第二臂。
 
     只有绝对界时两头都不够：辅助入口（上界 16 KiB）等于没设界，可以悄悄胖 8 倍；
-    旗舰入口又太紧。相对臂（相对已批准快照 ±30%，最少 512 B 宽容）补上这一课，
-    而且**必须在绝对界毫无反应时**就能抓住。
+    旗舰入口又太紧。第二臂（漂移带）补上这一课，而且**必须在绝对界毫无反应时**
+    就能抓住。
 
-    这里既测纯函数，也在真实仓库上验证相对臂真的会红（只改进程内存里的快照）。
+    R64/C13-9 改的是**第二臂的分辨率**：容差从 `max(30% × 快照, 512)` 换成
+    绝对字节带 `HELP_DRIFT_BYTES`（64 B）—— 旧带对 matlabc.py 是 15135 B，
+    30 B 的漂移整个看不见。因此本测试里的两条**旧正例**（+250 B / +400 B）
+    现在必须变红；这是「分辨率真的提高了」的判据，不是回归。
+
+    这里既测纯函数，也在真实仓库上验证第二臂真的会红（只改进程内存里的快照）。
     """
     hc = _r37_load("check_help_contract")
     v = hc._r5_verdict
@@ -16824,12 +16829,18 @@ def test_r38_help_volume_ratchet_has_a_relative_arm():
     assert v("x.py", 99999, 400, 16384, None) is not None
     assert v("x.py", 999999, 0, 0, 0) is None, "(0,0) 表示显式不设界"
 
-    # 臂 B：绝对界**无反应**（3000 远在 400..16384 之内），相对界必须抓住
+    # 臂 B：绝对界**无反应**（3000 远在 400..16384 之内），漂移带必须抓住
     assert v("x.py", 3000, 400, 16384, 1000) is not None, \
-        "绝对界够不着时相对界没反应 —— 第二臂形同虚设"
+        "绝对界够不着时漂移带没反应 —— 第二臂形同虚设"
     assert v("x.py", 1000, 400, 16384, 2000) is not None      # 缩水
-    assert v("x.py", 1250, 400, 16384, 1000) is None          # +25% 放行
-    assert v("x.py", 1400, 400, 16384, 1000) is None          # 512 B 宽容
+    # R64/C13-9：容差是**绝对字节带**，不是百分比（分辨率 15135 B → 64 B）。
+    assert hc.HELP_DRIFT_BYTES == 64, hc.HELP_DRIFT_BYTES
+    assert v("x.py", 1250, 400, 16384, 1000) is not None, \
+        "+250 B 在旧的 ±30%（512 B 宽容）下放行，新的 ±64 B 必须抓到"
+    assert v("x.py", 1400, 400, 16384, 1000) is not None, \
+        "+400 B 在旧的 512 B 宽容下放行，新的 ±64 B 必须抓到"
+    assert v("x.py", 1000 + hc.HELP_DRIFT_BYTES, 400, 16384, 1000) is None
+    assert v("x.py", 1001 + hc.HELP_DRIFT_BYTES, 400, 16384, 1000) is not None
     # 快照必须覆盖每一个设了绝对界的入口（否则第二臂对它是空的）
     for s, (lo, hi) in hc.HELP_BYTES.items():
         if hi > 0:
@@ -16852,6 +16863,111 @@ def test_r38_help_volume_ratchet_has_a_relative_arm():
     r5b = [p for p in probs2 if p.startswith("R5")]
     assert any("matlabc_flow.py" in p for p in r5b), \
         "帮助悄悄膨胀 3 倍时，相对棘轮没有变红：%r" % probs2
+
+
+def test_r64_help_ratchet_is_reproducible_two_way():
+    """R64/C13-9：帮助体积棘轮必须**可复现**，且分辨率必须说得出数。
+
+    动因（R63 §7.8 首次量出、R64 量准）：同一个 `matlabc.py` 的 `--help` 字节数
+    随两件**与被测对象无关**的事变 —— 解释器（3.10 → 50481 / 3.13 → 50451，
+    差 30 B）与终端宽度（`COLUMNS=200` → 45827，差 −4654 B）；而旧容差
+    `max(30% × 快照, 512)` 对 matlabc.py 是 **15135 B** ⇒ 30 B 的漂移整个被吞掉。
+
+    本测试钉四件事，每件都两向：
+      ① 测量口径钉死了：父进程 `COLUMNS` 变了，读数**不变**（修复前会变）；
+      ② 容差是绝对字节带，且**带边界两向**（±64 B 放行 / ±65 B 变红）；
+      ③ 第三臂（规范形）容差 0 ⇒ 1 字节的内容改动就红，且**布局差不算内容**；
+      ④ 真实仓库三臂全绿；**篡改规范形快照**立刻红（对手方真的在）。
+    """
+    hc = _r37_load("check_help_contract")
+
+    # ① 钉死测量口径：真起子进程验，不靠读代码
+    tmp = tempfile.mkdtemp(prefix="r64w_")
+    try:
+        with io.open(os.path.join(tmp, "w.py"), "w", encoding="utf-8") as fh:
+            fh.write("import os\n"
+                     "print('C=' + os.environ.get('COLUMNS', 'unset'))\n")
+        saved_cols = os.environ.get("COLUMNS")
+        os.environ["COLUMNS"] = "200"
+        try:
+            _rc1, leak = hc._run_safe_example(tmp, "w.py", [])
+            _rc2, pin = hc._run_safe_example(
+                tmp, "w.py", [], env_extra={"COLUMNS": "80"})
+        finally:
+            if saved_cols is None:
+                os.environ.pop("COLUMNS", None)
+            else:
+                os.environ["COLUMNS"] = saved_cols
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    assert b"C=200" in leak, \
+        "父进程的 COLUMNS 竟然没漏进子进程 —— 这条两向判据的前提不成立：%r" % leak
+    assert b"C=80" in pin, "env_extra 没有钉死子进程的 COLUMNS：%r" % pin
+
+    # ①b 真实仓库层面：父进程 COLUMNS 变了，**三臂的结论都不变**
+    # （修复前臂 ② 会读到 45827；它没变红只是因为旧容差 15135 B 太粗）。
+    saved2 = os.environ.get("COLUMNS")
+    os.environ["COLUMNS"] = "200"
+    try:
+        probs200 = []
+        hc.audit(ROOT, probs200.append, cache={})
+        # 反事实：**不**钉死时同一个 --help 会读到另一个数（现场量）
+        _rcx, outx = hc._run_safe_example(ROOT, "matlabc.py", ["--help"])
+    finally:
+        if saved2 is None:
+            os.environ.pop("COLUMNS", None)
+        else:
+            os.environ["COLUMNS"] = saved2
+    r5 = [p for p in probs200 if p.startswith("R5")]
+    assert not r5, "父进程 COLUMNS=200 时帮助体积臂变红了 —— 口径没钉死：%r" % r5
+    n_unpinned = len(outx)
+    assert n_unpinned != hc.HELP_BYTES_SNAPSHOT["matlabc.py"], \
+        "COLUMNS=200 竟然没改变读数 —— 这条反事实判据的前提不成立"
+    assert hc._r5_verdict("matlabc.py", n_unpinned, 400, 64 * 1024,
+                          hc.HELP_BYTES_SNAPSHOT["matlabc.py"]) is not None, \
+        (">±64 B 的环境漂移没被判红 ⇒ 「钉死口径」不是承重的。"
+         "读数=%d 快照=%d" % (n_unpinned,
+                            hc.HELP_BYTES_SNAPSHOT["matlabc.py"]))
+
+    # ② 容差：绝对字节带，边界两向
+    v = hc._r5_verdict
+    assert hc.HELP_DRIFT_BYTES == 64, hc.HELP_DRIFT_BYTES
+    assert v("x.py", 1000 + hc.HELP_DRIFT_BYTES, 400, 16384, 1000) is None
+    assert v("x.py", 1001 + hc.HELP_DRIFT_BYTES, 400, 16384, 1000) is not None
+    assert not hasattr(hc, "HELP_DRIFT_MAX"), \
+        "百分比带还在 —— 它的分辨率随快照大小变，正是 R64 要拆掉的东西"
+
+    # ③ 规范形：容差 0；解释器差异被规范化掉；布局差异不算内容
+    h310 = (b"  -o OUTPUT, --output OUTPUT\r\n"
+            b"                        output path\r\n")
+    h313 = b"  -o, --output OUTPUT   output path\r\n"
+    assert hc._canon_help(h310) == hc._canon_help(h313), \
+        "3.10 与 3.13 的两种渲染没有折成同一个规范形：%r / %r" \
+        % (hc._canon_help(h310), hc._canon_help(h313))
+    assert hc._canon_help(h310) == b"-o, --output OUTPUT output path"
+    assert hc._canon_help(b"a b\r\nc\r\n") == hc._canon_help(b"a b c\r\n")
+    assert hc._r5c_verdict("x.py", 100, 100) is None
+    assert hc._r5c_verdict("x.py", 101, 100) is not None
+    assert hc._r5c_verdict("x.py", 123, None) is None
+
+    # ④ 真实仓库：三臂全绿；篡改规范形快照必须红
+    probs = []
+    hc.audit(ROOT, probs.append, cache={})
+    assert not [p for p in probs if p.startswith("R5")], \
+        [p for p in probs if p.startswith("R5")]
+    saved = hc.HELP_CANON_SNAPSHOT["matlabc.py"]
+    hc.HELP_CANON_SNAPSHOT["matlabc.py"] = saved + 1
+    try:
+        probs2 = []
+        hc.audit(ROOT, probs2.append, cache={})
+    finally:
+        hc.HELP_CANON_SNAPSHOT["matlabc.py"] = saved
+    assert any(p.startswith("R5c") for p in probs2), \
+        "规范形快照只改了 1 字节，臂 ③ 却没红：%r" % probs2
+    # 规范形对**每一个**在册入口都真的比过（不是只比了 matlabc.py）
+    assert set(hc.HELP_CANON_SNAPSHOT) == set(hc.HELP_BYTES), \
+        "规范形在册入口与体积登记表不是同一批：%r" % (
+            set(hc.HELP_CANON_SNAPSHOT) ^ set(hc.HELP_BYTES))
 
 
 def test_r39_ci_examples_exit_codes_are_under_contract():

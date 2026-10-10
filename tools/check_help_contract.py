@@ -37,8 +37,19 @@
         这类会**真的写盘**的命令 —— 让护栏去跑它们，等于让检查本身产生副作用。
         宁可不跑，也不能跑错。
 
-R5 「帮助体积棘轮」：`--help` 字节数受**绝对界**与**相对已批准快照（±30%）**
-    两臂取严；合法增长要在同一提交里更新快照，不许放宽 `HELP_DRIFT_MAX`。
+R5 「帮助体积棘轮」（**三臂**，R64/C13-9 重构）：`--help` 受
+    ① **绝对界**（读得完 / 没缩水）
+    ② **漂移带** `±HELP_DRIFT_BYTES`（对已批准快照，分辨率 **64 B**）
+    ③ **规范形逐字节相等**（容差 **0**，分辨率 **1 字节**）
+    三臂取严；合法增长要在同一提交里更新快照，不许放宽 `HELP_DRIFT_BYTES`。
+    测量口径**钉死**（见 `HELP_MEASURE_COLUMNS`）：读数不再随调用方的终端宽度变。
+
+    R5c（R64/C13-9）「可复现」：为什么必须有第三臂 —— 实测发现 `--help` 的字节数
+    随两件**与被测对象无关**的事变（解释器 3.10/3.13 差 30 B；`COLUMNS=200`
+    差 −4654 B），而旧容差 `max(30%×快照, 512)` 对 matlabc.py 是 **15,135 B**
+    ⇒ 30 B 的漂移**整个被吞掉**。第三臂把 `--help` 折成**版本 + 宽度双无关**的
+    规范形（`_canon_help`）再做**逐字节相等**断言 ⇒ 分辨率 15,135 B → **1 B**。
+    诚实声明：规范形**看不见布局**（缩进、折行位置），布局由臂 ①② 兜。
 
 R51（C''''2）「诚实的边界」逐字契约：`--help` 的「诚实的边界」小节里每一条
     bullet 必须被登记表 `BOUNDARY_CLAIMS` **恰好一条**认领（未登记 → 红；
@@ -46,7 +57,7 @@ R51（C''''2）「诚实的边界」逐字契约：`--help` 的「诚实的边�
     **逐字**出现在它认领的 bullet 里；带 `docs` 的登记还要求 `docs_must` 在
     README 两侧逐字出现（防「帮助说了、README 没说」这条新缝）。
 
-两向自证：R1/R2/R3/R4/R51 各配独立坏样本（必须红）与好样本（必须过），
+两向自证：R1/R2/R3/R4/R5/R5c/R51 各配独立坏样本（必须红）与好样本（必须过），
 并对真实仓库做一次整体核对。
 
 退出码：
@@ -181,7 +192,7 @@ GUARD_CONTRACT = {
     },
     "tools/check_help_contract.py": {
         0: "全部一致",
-        1: "发现不一致（R1/R1b/R2/R3/R4/R5/R51 任一红）",
+        1: "发现不一致（R1/R1b/R2/R3/R4/R5/R5c/R51 任一红）",
         2: "缺输入（入口脚本缺失 / 解析不到 docstring）",
     },
     "tools/check_import_graph.py": {
@@ -483,10 +494,13 @@ HELP_BYTES = {
 #   * 对旗舰入口又太紧：合法地加三个功能就可能顶到 64 KiB，于是界要么被随手
 #     放宽（等于取消），要么逼着把帮助拆走（可读性反而变差）。
 #
-# 相对界的做法：记一份**已批准快照**，实测值相对快照的漂移不得超过 ±30%
-# （并给 512 B 最小宽容，免得小文件被几个字符就判红）。两臂**取严**：
-#   matlabc.py：64 KiB 绝对上界 vs 48593×1.3≈63 KiB 相对上界 ⇒ 相对界先起作用
-#   matlabc_ask.py：16 KiB 绝对上界 vs 919×1.3≈1.2 KiB 相对上界 ⇒ 相对界先起作用
+# 相对界的做法：记一份**已批准快照**，实测值相对快照的漂移不得超过
+# ±HELP_DRIFT_BYTES。为什么是**绝对字节带**而不是百分比：百分比带的分辨率
+# 随快照大小变（30% × 50451 = 15135 B），于是「一个自称精确的棘轮，分辨率
+# 比它记录的数字粗 500 倍」—— 这正是 R63 §7.8 量出、R64 修掉的那件事。
+#   matlabc.py：64 KiB 绝对上界 vs 50451±64 B ⇒ 漂移带先起作用
+#   matlabc_ask.py：16 KiB 绝对上界 vs 919±64 B ⇒ 漂移带先起作用
+# 三条臂的分工与账见下面的 HELP_DRIFT_BYTES 一节。
 #
 # 为什么用「已批准快照」而不是 C''8 原文的「上一 tag」：
 # 本仓**至今没有任何 tag**（`git tag` 为空），那个基线根本不存在。
@@ -501,8 +515,46 @@ HELP_BYTES_SNAPSHOT = {
     "matlabc_mcp.py": 0,
     "gui.py": 2651,
 }
-HELP_DRIFT_MAX = 0.30
-HELP_DRIFT_FLOOR = 512
+# R64/C13-9：棘轮的**分辨率必须说得出数**，而且读数必须**可复现**。
+#
+# 实测（R63 §7.8 首次量出、R64 量准，见 docs/SUPERPOWER_REVIEW_R64.md §1）：
+# 同一个 `matlabc.py` 的 `--help` 字节数随两件**与被测对象无关**的事变：
+#   * 解释器：3.10 -> 50481 / 3.13 -> 50451（差 30 B）
+#   * 终端宽度：3.10 下 COLUMNS=200 -> 45827（差 −4654 B）
+# 而旧容差 max(30% × 50451, 512) = **15135 B** ⇒ 30 B 的漂移整个被吞掉。
+#
+# R64 的三条修正：
+#   ① **钉死测量口径**：跑 `--help` 时固定 COLUMNS（HELP_MEASURE_COLUMNS）。
+#      这一条修的是**真 bug** —— 修复前从 200 列的终端跑这道门，结论与 80 列不同。
+#   ② **容差改成说得出分辨率的绝对字节带** HELP_DRIFT_BYTES。
+#      为什么是 64：实测**唯一**的跨解释器差是 matlabc.py 的 30 B（argparse 3.10
+#      会把 metavar 同时印在短选项上、3.13 起不印，正好多一行 30 B），
+#      64 = 2 倍余量。分辨率因此从 15135 B 提到 **64 B**（236 倍）。
+#   ③ **再加一条精确臂**（见 _canon_help / HELP_CANON_SNAPSHOT）：在同一份帮助的
+#      **规范形**上做**逐字节相等**断言，容差 0 ⇒ 分辨率 **1 字节**。
+HELP_DRIFT_BYTES = 64
+
+# 臂 ①② 的测量宽度：80 列（终端里真读得到的口径）。**必须钉死** ——
+# 子进程里的 argparse 会读 `COLUMNS`（shutil.get_terminal_size 优先看它，
+# 与是不是 tty 无关），不钉就随调用方终端宽度变，见上面的 ①。
+HELP_MEASURE_COLUMNS = 80
+
+# 臂 ③ 的测量宽度：宽到**不再折行**（实测 500 列起规范形已稳定，取 10000 留余量）。
+HELP_CANON_COLUMNS = 10000
+
+# 臂 ③ 的已批准快照：`_canon_help(<script> --help @ HELP_CANON_COLUMNS)` 的字节数。
+# 这些数是**规范化之后**的读数，与解释器、终端宽度**都无关**
+# （实测 {3.10, 3.13} × {500, 4000, 10000} 共 6 个读数逐字节相同），
+# 因此可以用**容差 0** 断言 —— 分辨率 1 字节。
+# 注意 matlabc_mcp.py 也在册：它的 HELP_BYTES 界是 (0, 0)（按设计零输出），
+# 但「内容必须一直是空的」是一条真断言，不该因为「没设体积界」而漏掉。
+HELP_CANON_SNAPSHOT = {
+    "matlabc.py": 42053,
+    "matlabc_flow.py": 1701,
+    "matlabc_ask.py": 756,
+    "matlabc_mcp.py": 0,
+    "gui.py": 2290,
+}
 
 # 真跑示例的墙钟上限。实测这些命令都是 0.2–1.0s 返回（探针 probe_safe_flags），
 # 60s 有 ~100 倍余量；上限的意义是「让挂死变成红，而不是让门永远等着」。
@@ -843,7 +895,7 @@ def _code_has_evidence(src, code):
     return False
 
 
-def _run_safe_example(root, script, argv):
+def _run_safe_example(root, script, argv, env_extra=None):
     """真跑一条登记的示例命令，返回 (rc, out_bytes) 或 (None, b"") 表示超时。
 
     纪律（与 check_subprocess_hygiene.py 的要求一致，这里是它的对手方）：
@@ -851,13 +903,22 @@ def _run_safe_example(root, script, argv):
         server 在继承的 stdin 上等满 180s 的事故（R62-R31e）。
       * `timeout=RUN_TIMEOUT`：挂死必须变成红，而不是让门永远等着。
       * 捕获输出，因为要断言「rc 与字节数」这两个事实。
+      * `env_extra`（R64/C13-9）：在**继承来的**环境之上追加/覆盖几个变量。
+        R5 用它钉死 `COLUMNS` —— 不钉的话，子进程里的 argparse 会去读
+        `COLUMNS`（`shutil.get_terminal_size` 优先看它，与是不是 tty 无关），
+        于是这道门的结论会随**调用方终端有多宽**变（实测差 −4654 B）。
     """
     import subprocess
     p = os.path.join(root, script)
+    env = None
+    if env_extra:
+        env = dict(os.environ)
+        env.update(env_extra)
     try:
         r = subprocess.run([sys.executable, p] + list(argv), cwd=root,
                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                           stderr=subprocess.STDOUT, timeout=RUN_TIMEOUT)
+                           stderr=subprocess.STDOUT, timeout=RUN_TIMEOUT,
+                           env=env)
     except subprocess.TimeoutExpired:
         return None, b""
     except OSError as e:
@@ -925,13 +986,41 @@ def _r4_verdict(script, target, argv, rc, out, expect_blank):
     return None
 
 
-def _r5_verdict(script, n_bytes, lo, hi, snapshot):
-    """R5 的判定，抽成**纯函数**（自证不必起进程）。
+# argparse 3.10 会把 metavar 同时印在短选项上（多一行 `  -o OUTPUT, --output OUTPUT`），
+# 3.13 起不再印 —— 这是两个解释器之间**唯一**的渲染差异（实测，见审查文档 §1）。
+# 规则必须**窄**：两个 metavar 逐字相同（反向引用 \3）才算，免得误伤正文。
+_CANON_DEDUP_RE = re.compile(rb"(?m)^(  )-(\w) (\S+), (--[\w\-]+) \3(\r?)$")
+_CANON_WS_RE = re.compile(rb"[ \t\r\n]+")
 
-    两条臂，**取严**：
+
+def _canon_help(raw):
+    """把 `--help` 的原始字节折成**版本 + 宽度双无关**的规范形。
+
+    两步（纯文本操作，不 import argparse、不起进程）：
+      ① 去掉 argparse 3.10 的 metavar 重复（见 _CANON_DEDUP_RE）；
+      ② 把所有空白串（含 CR/LF）折叠成一个空格 —— 这一条同时抹掉「折行」与
+         「帮助是换行到下一行、还是接在同一行」两种**布局**差。
+    剩下的只有**内容**：实测 {3.10, 3.13} × {500, 4000, 10000} = 6 个读数
+    逐字节相同（见 docs/SUPERPOWER_REVIEW_R64.md §1）。
+
+    诚实声明：规范形**看不见布局**（缩进、折行位置改了它不知道）——
+    布局由臂 ①② 的绝对界与字节带兜。本条只守内容，且分辨率是 1 字节。
+    """
+    t = _CANON_DEDUP_RE.sub(rb"\1-\2, \4 \3\5", raw)
+    return _CANON_WS_RE.sub(b" ", t).strip()
+
+
+def _r5_verdict(script, n_bytes, lo, hi, snapshot):
+    """R5 臂 ①② 的判定，抽成**纯函数**（自证不必起进程）。
+
+    两条臂，**取严**（R64/C13-9 起 `allow` 是绝对字节带）：
       臂 A 绝对界：lo <= n_bytes <= hi
-      臂 B 相对界：|n_bytes - snapshot| <= max(HELP_DRIFT_MAX*snapshot, FLOOR)
+      臂 B 漂移带：|n_bytes - snapshot| <= HELP_DRIFT_BYTES
     返回问题字符串，或 None 表示通过。
+
+    ⚠ 分辨率 = HELP_DRIFT_BYTES（64 B）。旧实现用 max(30% × 快照, 512)，
+    对 matlabc.py 是 15135 B —— 即 30 B 的漂移整个被吞掉。收紧是**故意的**：
+    两条旧「好样本」（+250 B / +400 B）在新带下**必须**变红。
     """
     if hi <= 0:
         return None            # (0, 0) = 显式「不设界」（stdio server 按设计零输出）
@@ -943,22 +1032,40 @@ def _r5_verdict(script, n_bytes, lo, hi, snapshot):
                 "应拆分到 docs/ 独立文档" % (script, n_bytes, hi))
     if snapshot is None:
         return None
-    allow = max(int(HELP_DRIFT_MAX * snapshot), HELP_DRIFT_FLOOR)
+    allow = HELP_DRIFT_BYTES
     drift = n_bytes - snapshot
     if abs(drift) <= allow:
         return None
     how = "膨胀" if drift > 0 else "缩水"
-    return ("R5 %s: --help %d 字节相对已批准快照 %d 漂移 %+d 字节（%s %.0f%%，"
-            "允许 ±%d）—— 若是**合法增长**，请在同一个提交里把 "
+    return ("R5 %s: --help %d 字节相对已批准快照 %d 漂移 %+d 字节（%s；"
+            "本臂分辨率 ±%d B）—— 若是**合法增长**，请在同一个提交里把 "
             "HELP_BYTES_SNAPSHOT['%s'] 更新为 %d 并在提交信息里说明理由；"
-            "不要放宽 HELP_DRIFT_MAX"
-            % (script, n_bytes, snapshot, drift, how,
-               100.0 * drift / snapshot if snapshot else 0.0, allow,
+            "不要放宽 HELP_DRIFT_BYTES"
+            % (script, n_bytes, snapshot, drift, how, allow,
                script, n_bytes))
 
 
+def _r5c_verdict(script, canon_bytes, canon_snapshot):
+    """R5c（臂 ③）的判定，纯函数：规范形**逐字节相等**（容差 0 ⇒ 1 字节）。
+
+    为什么容差写 0 而不是一个小数字：规范形已经与解释器、终端宽度**都无关**
+    （见 _canon_help 的实测），剩下的差异只可能来自**内容改动**。
+    返回问题字符串，或 None 表示通过。
+    """
+    if canon_snapshot is None:
+        return None
+    if canon_bytes == canon_snapshot:
+        return None
+    return ("R5c %s: `--help` 的**规范形**变了（%d 字节，快照 %d，差 %+d）—— "
+            "规范形与解释器、终端宽度都无关，所以这就是一次真实的内容改动；"
+            "若为**合法**改动，请在同一提交里把 HELP_CANON_SNAPSHOT['%s'] "
+            "更新为 %d 并在提交信息里说明理由"
+            % (script, canon_bytes, canon_snapshot,
+               canon_bytes - canon_snapshot, script, canon_bytes))
+
+
 def audit(root, on_problem, cache=None):
-    """对真实仓库施加 R1/R2/R3/R4；返回检查过的脚本数。
+    """对真实仓库施加 R1/R2/R3/R4/R5/R5c；返回检查过的脚本数。
 
     cache: {script: (rc, out)} 的运行结果缓存 —— 多个入口可能共用同一条示例
     （如 agent_loop 的示例挂在 matlabc_flow.py 上），只跑一次即可。
@@ -1063,12 +1170,18 @@ def audit(root, on_problem, cache=None):
                 on_problem("R4 %s: 已验证可跑的 `%s` 没有原样出现在文档里 —— "
                            "能跑但抄不到，等于没写" % (script, literal))
 
-        # ---- R5：帮助体积棘轮（R33/C'8 立，R38/C''8 改成**两臂取严**） ----
+        # ---- R5：帮助体积棘轮（R33/C'8 立，R38/C''8 加相对臂，R64/C13-9 三臂） ----
+        # 臂 ①② 走**钉死 80 列**的读数（终端里真读得到），臂 ③ 走**钉死 10000 列**
+        # 的读数（宽到不再折行 ⇒ 规范形只与内容有关）。
+        # 两条读数用**不同缓存键**：键里若不写测量口径，两条臂会互相污染
+        # —— 这正是 R64 顺手堵掉的一个隐患（旧键 `script + "::--help"` 不区分口径）。
         lo, hi = HELP_BYTES.get(script, (0, 0))
         if hi > 0:
-            hk = script + "::--help"
+            hk = "%s::--help@C%d" % (script, HELP_MEASURE_COLUMNS)
             if hk not in cache:
-                cache[hk] = _run_safe_example(root, script, ["--help"])
+                cache[hk] = _run_safe_example(
+                    root, script, ["--help"],
+                    env_extra={"COLUMNS": str(HELP_MEASURE_COLUMNS)})
             _rc, _out = cache[hk]
             n_bytes = len(_out)
             if _rc is None:
@@ -1076,6 +1189,22 @@ def audit(root, on_problem, cache=None):
             else:
                 msg = _r5_verdict(script, n_bytes, lo, hi,
                                   HELP_BYTES_SNAPSHOT.get(script))
+                if msg:
+                    on_problem(msg)
+        # 臂 ③：规范形逐字节相等（R64/C13-9）。对**每一个**在册的入口都查，
+        # 包括 HELP_BYTES 显式不设界的那一个（stdio server）—— 它也有内容可守。
+        if script in HELP_CANON_SNAPSHOT:
+            ck = "%s::--help@C%d" % (script, HELP_CANON_COLUMNS)
+            if ck not in cache:
+                cache[ck] = _run_safe_example(
+                    root, script, ["--help"],
+                    env_extra={"COLUMNS": str(HELP_CANON_COLUMNS)})
+            _rc2, _out2 = cache[ck]
+            if _rc2 is None:
+                on_problem("R5c %s: `--help` 超时，拿不到规范形" % script)
+            else:
+                msg = _r5c_verdict(script, len(_canon_help(_out2)),
+                                   HELP_CANON_SNAPSHOT[script])
                 if msg:
                     on_problem(msg)
     return n
@@ -1362,20 +1491,73 @@ def _selftest():
            _r5_verdict("x.py", 100, 400, 16384, None) is not None, True)
     expect("R5 高于绝对上界（抓到）",
            _r5_verdict("x.py", 99999, 400, 16384, None) is not None, True)
-    # 臂 B：相对快照。这条是 R38 新加的核心 —— 它必须在**绝对界毫无反应**时抓住。
-    expect("坏样本：绝对界无反应但相对界抓到膨胀",
+    # 臂 B：漂移带。这条是 R38 新加的核心 —— 它必须在**绝对界毫无反应**时抓住。
+    expect("坏样本：绝对界无反应但漂移带抓到膨胀",
            _r5_verdict("x.py", 3000, 400, 16384, 1000) is not None, True)
-    expect("坏样本：相对界抓到缩水（−50%，超出 512 B 宽容）",
+    expect("坏样本：漂移带抓到缩水",
            _r5_verdict("x.py", 1000, 400, 16384, 2000) is not None, True)
-    # 好样本：漂移在允许范围内（含 512 B 最小宽容对小文件的保护）
-    expect("好样本：漂移 +25% 放行（正处在允许内）",
-           _r5_verdict("x.py", 1250, 400, 16384, 1000) is not None, False)
-    expect("好样本：小文件 ±512 B 宽容生效",
-           _r5_verdict("x.py", 1400, 400, 16384, 1000) is not None, False)
+    # R64/C13-9：容差从 max(30%, 512) 换成**绝对字节带** HELP_DRIFT_BYTES。
+    # 下面两条在旧带下是**正例**，在新带下必须变**反例** —— 这就是「分辨率提高」
+    # 被自证抓到的那一刻（旧带对 matlabc.py 是 15135 B）。
+    expect("坏样本：+250 B（旧 ±30% 会放行）现在必须抓到",
+           _r5_verdict("x.py", 1250, 400, 16384, 1000) is not None, True)
+    expect("坏样本：+400 B（旧 512 B 宽容会放行）现在必须抓到",
+           _r5_verdict("x.py", 1400, 400, 16384, 1000) is not None, True)
+    expect("好样本：恰好 +HELP_DRIFT_BYTES（带边界，放行）",
+           _r5_verdict("x.py", 1000 + HELP_DRIFT_BYTES, 400, 16384, 1000)
+           is not None, False)
+    expect("坏样本：+HELP_DRIFT_BYTES+1（越界 1 字节，抓到）",
+           _r5_verdict("x.py", 1001 + HELP_DRIFT_BYTES, 400, 16384, 1000)
+           is not None, True)
     expect("好样本：无快照 = 只有绝对界",
            _r5_verdict("x.py", 9999, 400, 16384, None) is not None, False)
     expect("好样本：(0,0) = 显式不设界（stdio server 放行）",
            _r5_verdict("x.py", 999999, 0, 0, 0) is not None, False)
+
+    # ---- R5c：规范形（容差 0，分辨率 1 字节） ----
+    # _H310 / _H313 是**同一件事**的两种 argparse 渲染（3.10 会多印一行 metavar）。
+    _H310 = (b"  -o OUTPUT, --output OUTPUT\r\n"
+             b"                        output path\r\n")
+    _H313 = b"  -o, --output OUTPUT   output path\r\n"
+    expect("R5c 好样本：3.10 与 3.13 的两种渲染折成同一个规范形",
+           _canon_help(_H310) != _canon_help(_H313), False)
+    expect("R5c 好样本：同一个规范形两次相等（放行）",
+           _r5c_verdict("x.py", len(_canon_help(_H313)),
+                        len(_canon_help(_H313))) is not None, False)
+    expect("R5c 坏样本：内容差 1 字节必须抓到",
+           _r5c_verdict("x.py", len(_canon_help(_H313)) + 1,
+                        len(_canon_help(_H313))) is not None, True)
+    expect("R5c 好样本：无快照 = 不判",
+           _r5c_verdict("x.py", 123, None) is not None, False)
+    expect("R5c 好样本：折行位置不同 ⇒ 规范形相同（布局不算内容）",
+           _canon_help(b"aaa bbb\r\nccc ddd\r\n")
+           != _canon_help(b"aaa bbb ccc ddd\r\n"), False)
+
+    # ---- R64/C13-9：钉死 COLUMNS 的前后两向实测（真起子进程，不靠读代码） ----
+    import tempfile as _tf64
+    with _tf64.TemporaryDirectory() as _wtd:
+        with io.open(os.path.join(_wtd, "w.py"), "w", encoding="utf-8") as _fh:
+            _fh.write("import os\n"
+                      "print('C=' + os.environ.get('COLUMNS', 'unset'))\n")
+        _saved_cols = os.environ.get("COLUMNS")
+        os.environ["COLUMNS"] = "200"
+        try:
+            _rc_l, _leak = _run_safe_example(_wtd, "w.py", [])
+            _rc_p, _pin = _run_safe_example(
+                _wtd, "w.py", [], env_extra={"COLUMNS": "80"})
+        finally:
+            if _saved_cols is None:
+                os.environ.pop("COLUMNS", None)
+            else:
+                os.environ["COLUMNS"] = _saved_cols
+    # 反例：不钉 env 时调用方的 COLUMNS **真的会漏**进子进程（差异是实的）
+    expect("R64 反例：不钉 env 时子进程继承了调用方的 COLUMNS（漏是真的）",
+           b"C=200" in _leak, True)
+    # 正例：钉了 env_extra 之后子进程只看得到钉死值 ⇒ 判据「钉死没生效」为 False。
+    # 注意方向：expect 的第二个参数是**判据的检测结果**，不是「我的断言成立」
+    # —— 首版写成 `b"C=80" in _pin`，于是它报「抓到」而期望「放行」，自证当场变红。
+    expect("R64 正例：钉 env_extra 后子进程看到的是钉死值",
+           b"C=80" not in _pin, False)
 
     # ---- C'7：护栏退出码契约（真实仓库核对已覆盖；再补一条纯函数反例） ----
     import tempfile as _tf
@@ -1640,8 +1822,11 @@ def main(argv=None):
           "一致（其中 %d 处为带理由的显式历史引用豁免，理由过短或陈旧的标记也会"
           "被反向抓出）；入口帮助骨架齐备；%d 条示例命令已真跑且 rc=0；"
           "「诚实的边界」%d 条承诺与登记表逐字互为对手方（%d 份文档同源核对）；"
-          "判据族 %s）"
-          % (n, ng, nc, nd, n_ex, len(RUNNABLE), nb, nbd, ROW_SIGNATURE))
+          "帮助体积三臂（绝对界 / 漂移带 ±%d B / 规范形容差 0）在钉死 %d / %d 列下"
+          "实测；判据族 %s）"
+          % (n, ng, nc, nd, n_ex, len(RUNNABLE), nb, nbd,
+             HELP_DRIFT_BYTES, HELP_MEASURE_COLUMNS, HELP_CANON_COLUMNS,
+             ROW_SIGNATURE))
     return 0
 
 
