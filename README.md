@@ -21,13 +21,17 @@ conclusion into a **CI quality gate**.
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 ![Offline](https://img.shields.io/badge/offline-first-yes-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
+![Branding](https://img.shields.io/badge/name%20%26%20branding-all%20rights%20reserved-critical)
 ![CI](https://github.com/pony-029/malabc/actions/workflows/ci.yml/badge.svg)
-![Version](https://img.shields.io/badge/version-1.16.71-informational)
+![Version](https://img.shields.io/badge/version-1.16.72-informational)
 
 [Quick Start](#quick-start) · [Core Capabilities](#core-capabilities) · [Architecture](#architecture)
 · [Binary & GPU](#binary--gpu-analysis---binary) · [Command Cheatsheet](#command-cheatsheet)
 · [CI Gate](#ci-quality-gate) · [Quality Gates](#quality-gates-self-verifying) · [中文文档](README_CN.md)
 · [License](#license)
+
+**Author & copyright holder: 冯磊 (Feng Lei)** — © 2026 冯磊 (Feng Lei).
+**侵权必究**: the **code** is MIT — the **name and branding** are not. See [LICENSE](LICENSE) §6.
 
 </div>
 
@@ -559,6 +563,7 @@ python tools/check_all.py        # runs every tools/check_*.py AND its --selftes
 | `check_c_frontend_shapes.py` | `F1–F6` — The C frontend's **function-definition shapes** losing a case that was already fixed once. R49 replaced the line-anchored `_RE_C_FUNC` with a lexical brace-matching scanner and proved it on glibc (missed definitions 15,471 → 4, all inside `#if 0`), but that evidence lived **outside the repo** (`_r49/`) and the product's own `_scan_c_definitions_selftest()` has **zero call sites in the product** — so `check_all.py` could run every gate it had and still nothing could say "no" to a C-shape regression. This gate drives the **public CLI** on three synthetic fixtures and pins six **disjoint** criteria: the P1/P2/P3/P4 writing shapes (F1), a pointer return type glued to the function name (F2), the parameter / return value domain (F3), the body boundary when a **string literal** contains braces (F4), the declaration-start line (F5), and both "no false positives" and the disclosed "we do not recognise K&R definitions or function-pointer returns" boundary (F6, which carries a positive half so it cannot pass vacuously). Fixture completeness (`R2`) and five ratchets (`R1`) stop the criteria from silently shrinking |
 | `check_py_js_frontend_shapes.py` | `G1–G7 (py/js)` — The **Python / JS** frontends losing a definition shape that is already handled once. A standalone probe (`_r66/probe_r66a_forms.py`) measured that of **8** real Python shapes **4 were missed** (`def one(): return 1`, `async def`, a `-> bool` return annotation, a parameter list spanning lines) and that of **10** JS shapes **8 were missed** (`async function`, `export function`, `export default function`, `function*`, the three arrow forms) — while the same probe measured the **C** frontend at **0 missed**. A second probe (`_r66/probe_r66b_domain.py`) found the parameter tuple was captured with `\(([^)]*)\)`, which **cannot contain `)`**, so a nested pair inside a default value (`x=(1, 2)` / `b = g(1, 2)`) truncated the parameters or hid the definition entirely. R66 fixed both (re-measured: Python 0/8, JS 1/10, value domain 0/8, false positives 0/7 — the one left is the **deliberately disclosed** object-method shorthand). This gate drives the **public CLI** on four synthetic fixtures and pins seven **disjoint** criteria: the four Python shapes (G1), the seven JS shapes (G2), the parameter value domain including annotation stripping and nested parentheses (G3), no false positives (G4), the disclosed "we do not recognise object-method shorthand or an anonymous default export" boundary **and its positive half** (G5), the declaration-start line (G6), and no **over**-recognition of a definition that only appears on its own line inside a triple-quoted string, a block comment or a template literal (G7). Fixture completeness (`R2`) and the ratchets (`R1`) stop the criteria from silently shrinking |
 | `check_readme_parity.py` | `P1/P2/P4/P5` — The English and Chinese READMEs drifting apart structurally — section count, and per-section table-row / code-block / mermaid counts. It deliberately does **not** compare line counts, because Chinese is more compact. **P4 (R61)** points the criterion at *reality* instead of at the other file: the quality-gate table in **each** README must name exactly the scripts present in `tools/check_*.py` — a missing row, an extra row, a duplicated row, or a stray continuation line right after the table is red. Parity alone could never see that bug: both READMEs lost the **same** row, so the per-section counts still matched **P5 (R62)** points the criterion at **that gate itself**: every guard declares a `ROW_SIGNATURE` (its own criterion family, or a mechanism only it owns) and prints it in its own success line, and the matching row in **each** README must carry it verbatim — swapping two rows' descriptions leaves the row *set* unchanged, so P4 alone cannot see it. |
+| `check_legal_parity.py` | `L1–L7` — The **dual-track licence** rotting silently. R69 turned the licence into “MIT for the code, reserved for the name and branding”, and that arrangement has three ways to go wrong that **no other gate could see**: (i) the MIT body getting “tidied up” — GitHub's licensee detects the licence from that **body**, so one reworded sentence silently turns the `license-MIT` badge into a lie, and no existing gate read LICENSE at all; (ii) only one of `LICENSE` / `LICENSE_CN` receiving the new copyright holder, leaving two files that describe the *same* grant contradicting each other while both still exist and rc stays 0; (iii) the README version badge going stale — **R69 measured exactly that**: both READMEs said `1.16.71` while `matlabc.py`'s `VERSION` was already `1.16.72`, and nothing had ever watched it. L1 keeps the MIT body verbatim (the precondition of a dual track: the **code** side must still be MIT); L2 makes the copyright holder a single source of truth across both licence files; L3 requires the “all rights reserved” notice to be visible in the licence texts **and** in every reader entry point (both READMEs, CONTRIBUTING); L4 requires the two READMEs' badge sets to match item for item while the `license` badge stays `MIT`; L5 pins the `version` badge to the `VERSION` constant; L6 keeps the numbered sections of `LICENSE` and `LICENSE_CN` equal; L7 requires the dual track to be visible **inside** the READMEs' licence sections. Why it matters: the project's own notices deliberately live in an *Appendix* **after** the MIT grant, precisely so the grant body stays untouched — that promise had no counterparty until this gate existed |
 | `check_known_red.py` | `K1–K9` — "the suite is permanently red" turned from folklore into a **two-way register**. Six artifacts that were **never committed** (`fe_audit.py`, `fe_dom_check.js`, `.github/workflows/frontend-gate.yml`, `_fe_capability.json`, `setup.py`, `analyzer_config.example.json`) plus one intentional negative fixture; every test that references them is classified into red (**47**) / gracefully skipped (**8**) / green (**4**). An unregistered hole, a stale registration, a reason that does not name its own artifact, a fake skip, or a **new** reference to a missing artifact → red. **K7–K9 (R65)** add the *measured* half: `--measure` really runs the registered 59 nodeids (~6 s) and compares each observed outcome against its bucket — a registered red that now passes, a registered green that now fails, or a registered skip that no longer skips is red; with pytest unavailable it returns rc=2 rather than silently passing |
 
 **"How many tests fail" proves nothing here — the baseline gate exists to say so.** Because the
@@ -632,7 +637,7 @@ python matlabc_flow.py --help     # repair loop: five-station pipeline + five re
 python matlabc_ask.py --help      # grounded Q&A: how facts become an answer
 python matlabc_mcp.py --help      # MCP server: the five tools + why stdin must be cut
 python gui.py --help              # GUI: which CLI flag each form field maps to
-python tools/check_all.py --help  # gates: what each of the 16 gates stops
+python tools/check_all.py --help  # gates: what each of the 17 gates stops
 ```
 
 This is not a verbal promise — `check_help_contract.py` and `check_doc_flags.py` watch it, and
@@ -773,8 +778,25 @@ steps are in [`flow/FLOW_REPORT.md`](flow/FLOW_REPORT.md) and [`flow/INDEX.md`](
 
 ## License
 
-[MIT](LICENSE) — see [LICENSE](LICENSE) (English original, the sole legally binding text) and
-[LICENSE_CN](LICENSE_CN) (Chinese translation for reference only).
+**Dual-track: the code is MIT — the name and branding are not.**
+
+* **Code — MIT, verbatim.** [LICENSE](LICENSE) is the English original and the **sole
+  legally binding text**; [LICENSE_CN](LICENSE_CN) is a Chinese translation provided for
+  convenience. The MIT body is kept **word for word** — GitHub's licensee detection reads
+  that body, so not a character of it has been altered. This is also why this project's own
+  notices live in the *Appendix* **after** the grant, which states explicitly that it does
+  not modify the MIT terms.
+* **Name and branding — ALL RIGHTS RESERVED.** `malabc` / `matlabc`, the logo and the
+  banner were **never** licensed by MIT, and are not licensed here. Attribution is
+  mandatory (MIT already required it); a fork may not pass itself off as this project, may
+  not imply that the author endorses it, and the names may not be registered as anyone
+  else's trademark. See **§6** of [LICENSE](LICENSE) / [LICENSE_CN](LICENSE_CN):
+  **侵权必究** — infringement will be pursued.
+* **What is still fully permitted.** Use, copy, modify, merge, publish, distribute,
+  sublicense and **sell** the Software, including commercially. Selling a product that
+  *uses* this Software is fine; presenting your product *as* this project is not.
+
+Author and copyright holder: **冯磊 (Feng Lei)** — © 2026 冯磊 (Feng Lei).
 
 ---
 

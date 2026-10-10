@@ -252,6 +252,14 @@ GUARD_CONTRACT = {
         1: "有违规（某条判据红 / 棘轮不符 / 夹具被改瘦）",
         2: "缺输入（找不到 matlabc.py / 公开 CLI 跑不起来 / JSON 不可解析）",
     },
+    "tools/check_legal_parity.py": {
+        0: "许可与署名双轨对上（L1–L7：MIT 正文逐字保留 / 版权人单一事实源 / "
+           "必究条款在场 / 双侧徽章一致 / 版本徽章==VERSION / 两份许可小节对等 / "
+           "许可证节可见）",
+        1: "有违规（正文缺段 / 版权人不符 / 必究标记缺失 / 徽章集合分叉 / "
+           "版本陈旧 / 编号小节不等 / 许可证节看不到双轨）",
+        2: "缺输入（任一在册文件缺失或读不到，或读不到 matlabc.py 的 VERSION）",
+    },
 }
 
 GUARD_SCRIPTS = tuple(sorted(GUARD_CONTRACT))

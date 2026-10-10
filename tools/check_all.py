@@ -6,7 +6,7 @@
     python tools/check_all.py
         │
         ├─▶ check_baseline.py             公平基线：按 nodeid 集合比失败（--full 才真跑）
-        ├─▶ check_binfmt_fixtures.py      合成夹具 + 契约 C1..C9 + 两向自证
+        ├─▶ check_binfmt_fixtures.py      合成夹具 + 契约 C1..C12 + 两向自证
         ├─▶ check_doc_flags.py            文档/帮助里写的 CLI 开关必须真的存在
         ├─▶ check_flow_diagrams.py        图的引用 ↔ 文件 ↔ 候选声明，两两对齐且双向
         ├─▶ check_help_contract.py        退出码在代码↔帮助双向一致；示例能真跑
@@ -19,6 +19,7 @@
         ├─▶ check_py36_clean.py           本仓源码必须通过本仓自己的 3.6.5 门
         ├─▶ check_readme_parity.py        中英 README 逐节结构对等
         ├─▶ check_known_red.py            「永久红」必须两向登记在册，红集只缩不长
+        ├─▶ check_legal_parity.py        许可与署名双轨：MIT 正文 ⇄ 版权人 ⇄ 必究 ⇄ 徽章 ⇄ 版本
         └─▶ check_subprocess_hygiene.py   子进程必须切 stdin 且不会永久挂住
         │
         ├─ 每道护栏都要能跑通（rc=0）
@@ -118,11 +119,18 @@ GUARD_TIMEOUT = 600.0
 # Python / JS 前端 8+10 个真实形态里漏 4+8 个，且形参表里的嵌套括号会被
 # `\(([^)]*)\)` 截断；修完之后把判据固化进仓库 —— G1–G6 六条互不重叠、
 # 各有突变体，另加夹具完备性与棘轮），故 15 → 16。
-# R67 没有加门：给第 16 道门补了判据 G7（不**过度**识别 —— 字符串 / 注释 / 模板串里
+# R67 没有加门：给 `check_py_js_frontend_shapes.py` 补了判据 G7（不**过度**识别 —— 字符串 / 注释 / 模板串里
 # 独占一行的定义必须不被认出），并给 py / js 扫描器（`_scan_py_defs` / `_scan_js_defs`）
 # 加了字符串 / 注释状态机（`_py_code_mask` / `_js_code_mask`）。基线与复量见
 # `docs/SUPERPOWER_REVIEW_R67.md`。门数不变，仍是 16。
-MIN_GUARDS = 16
+# R68 没有加门：把 Mach-O 的依赖指令 / 符号表与库名家族归一接上，
+# 判据族 C1–C9 → C1–C12。门数不变，仍是 16。
+# R69 新增 check_legal_parity.py（许可从「MIT」改成「**双轨**：代码 MIT +
+# 品牌必究」，而此前**没有任何门看过 LICENSE 的正文** —— GitHub 的
+# licensee 靠正文识别，一句「顺手润色」就能把 README 上那枚 license-MIT
+# 徽章变成假话；本轮还量出 README 双侧的版本徽章写 1.16.71 而
+# VERSION 已是 1.16.72。L1–L7 七条互不重叠、各有突变体），故 16 → 17。
+MIN_GUARDS = 17
 
 
 def _write_help(text):

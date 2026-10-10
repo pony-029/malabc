@@ -19,10 +19,14 @@
 ![平台](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 ![离线](https://img.shields.io/badge/offline-first-yes-orange)
 ![许可](https://img.shields.io/badge/license-MIT-green)
+![品牌](https://img.shields.io/badge/name%20%26%20branding-all%20rights%20reserved-critical)
 ![CI](https://github.com/pony-029/malabc/actions/workflows/ci.yml/badge.svg)
-![版本](https://img.shields.io/badge/version-1.16.71-informational)
+![版本](https://img.shields.io/badge/version-1.16.72-informational)
 
 [快速开始](#快速开始) · [核心能力](#核心能力) · [架构](#架构) · [二进制与 GPU](#二进制与-gpu-分析---binary) · [命令速查](#命令速查) · [CI 门禁](#ci-质量门禁) · [自验证质量门](#自验证质量门quality-gates) · [English](README.md) · [许可证](#许可证)
+
+**作者与版权持有人：冯磊 (Feng Lei)** —— © 2026 冯磊 (Feng Lei)。
+**侵权必究**：**代码**是 MIT，**名称与品牌**不是。详见 [LICENSE](LICENSE) §6。
 
 </div>
 
@@ -542,6 +546,7 @@ python tools/check_all.py        # 跑完 tools/check_*.py 全部护栏 + 各自
 | `check_c_frontend_shapes.py` | `F1–F6` — C 前端的**函数定义形态**丢掉一个已经修过一次的 case。R49 把行锚定正则 `_RE_C_FUNC` 换成词法 + 括号配平扫描，并在 glibc 上证过（漏识 15,471 → 4，且全在 `#if 0` 死区），但那份证据**只活在仓库外**（`_r49/`），而产品的 `_scan_c_definitions_selftest()` 在**产品里零调用点** —— 于是 `check_all.py` 跑完全部护栏，仍然没有任何东西能对 C 前端形态说「不」。本门用**公开 CLI** 跑三个合成夹具，钉住六条**互不重叠**的判据：P1/P2/P3/P4 四种书写形态（F1）、指针返回类型紧贴函数名（F2）、参数 / 返回类型值域（F3）、**字符串字面量**里的花括号不得干扰函数体边界（F4）、声明起点行号（F5），以及「不假阳」与帮助正文已披露的「不识别 K&R / 返回函数指针」边界（F6 带正向半边，所以不会是空断言）。夹具完备性（`R2`）与五个棘轮（`R1`）挡住「判据悄悄缩水」 |
 | `check_py_js_frontend_shapes.py` | `G1–G7 (py/js)` — Python / JS 前端丢掉一个已经处理过一次的定义形态。独立装置（`_r66/probe_r66a_forms.py`）实测：Python 的 **8** 个真实形态里**漏 4 个**（`def one(): return 1`、`async def`、`-> bool` 返回注解、参数表跨行），JS 的 **10** 个里**漏 8 个**（`async function`、`export function`、`export default function`、`function*`、三种箭头）—— 同一台装置量 **C** 前端是 **0 漏**。第二台装置（`_r66/probe_r66b_domain.py`）量出形参是用 `\(([^)]*)\)` 取的，而它**不能含 `)`** —— 默认值里的嵌套括号（`x=(1, 2)` / `b = g(1, 2)`）会把参数截断、严重时整个定义都认不出来。R66 已把两处修掉（同装置复量：Python 0/8、JS 1/10、值域 0/8、假阳 0/7；剩的那 1 个是**有意披露**的对象方法简写）。本门用**公开 CLI** 跑四个合成夹具，钉住七条互不重叠的判据：Python 四形态（G1）、JS 七形态（G2）、形参值域含注解剥离与嵌套括号（G3）、不假阳（G4）、已披露的「不识别对象方法简写 / 匿名 default」边界**及其正向半边**（G5）、声明起点行号（G6）、不**过度**识别（三引号字符串 / 块注释 / 模板串里独占一行的定义必须不被认出，G7）。夹具完备性（`R2`）与棘轮（`R1`）挡住「判据悄悄缩水」 |
 | `check_readme_parity.py` | `P1/P2/P4/P5` — 中英 README 的结构分叉 —— 小节数，以及逐节的表行 / 代码块 / mermaid 图数。它**故意不比对行数**，因为中文比英文紧凑。**P4（R61）** 把对手方从「另一侧文件」换成**事实**：每一侧 README 的「质量门表」都必须逐行列出 `tools/check_*.py` 里真实存在的脚本 —— 漏列 / 多列 / 重复行 / 表后紧跟悬空续行，都要红。光靠对等门**永远看不见**那个缺陷：两侧**同时**少了一行，逐节计数当然还相等 **P5（R62）**再把对手方换成「**那道门自己**」：每道护栏在源码里声明 `ROW_SIGNATURE`（本门自己的判据族，或只有它在用的机制名），并把它打进自己的成功行；两侧 README 的对应表行必须逐字含它 —— 把两行的描述整段对调，行的**集合**并没有变，所以光靠 P4 看不见。 |
+| `check_legal_parity.py` | `L1–L7` — 把「双轨许可」的隐形腐烂接上对手方。R69 把许可从「MIT」改成「**代码 MIT + 名称与品牌保留**」，而这个安排有三条其他任何门都看不见的腐烂方式：① MIT 正文被「顺手润色」—— GitHub 的 licensee 靠**正文**识别许可，一句改写就能让那枚 `license-MIT` 徽章变成假话，而此前**没有任何现有门读过 LICENSE 的正文**；② `LICENSE` 与 `LICENSE_CN` 只改了一侧的版权人，两份描述**同一份**授权的文件互相矛盾，而两份都还在、rc 依然是 0；③ README 的版本徽章陈旧 —— **R69 实测就是这个**：两侧 README 写着 `1.16.71`，而 `matlabc.py` 的 `VERSION` 已经是 `1.16.72`，此前完全无人管。L1 把 MIT 正文逐字保留（双轨的前提：**代码侧**必须仍是 MIT）；L2 让版权人在两份许可文件里成为单一事实源；L3 要求「侵权必究」不仅写进许可正文，还要在**每一个读者入口**（两侧 README、CONTRIBUTING）可见；L4 要求两侧 README 的徽章集合逐条相等，且 `license` 徽章仍是 `MIT`；L5 把 `version` 徽章钉在 `VERSION` 常量上；L6 保持 `LICENSE` 与 `LICENSE_CN` 的编号小节相等；L7 要求双轨在 README 的**许可证节内部**可见。为什么重要：本项目的专属说明刻意放在 MIT 授权**之后**的 *附录*里，正是为了让授权正文一字不动 —— 这个承诺在本门出现之前没有任何对手方 |
 | `check_known_red.py` | `K1–K9` — 把「这套测试永远是红的」从口头传说变成**两向登记**。6 个**从未提交**的产物（`fe_audit.py`、`fe_dom_check.js`、`.github/workflows/frontend-gate.yml`、`_fe_capability.json`、`setup.py`、`analyzer_config.example.json`）+ 1 个刻意负样本；引用它们的测试三分在册：红 **47** / 优雅跳过 **8** / 其余绿 **4**。未登记的缺口、陈旧的登记、理由里没点名自己那个产物、伪装的跳过、或**新**冒出来的「引用不存在产物」→ 都要红。**K7–K9（R65）**补上**实测半**：`--measure` 真跑登记的 59 个 nodeid（约 6 秒），把每条的**实测结局**与它的桶对账 —— 登记为红却通过了 / 登记为绿却失败了 / 登记为跳过却不再跳，都要红；缺 pytest 时返回 rc=2 而**不是**静默放行 |
 
 **「多少个测试失败」在本仓证明不了任何事 —— 基线门存在的意义就是说出这一点。** 因为这套
@@ -609,7 +614,7 @@ python matlabc_flow.py --help     # 修复闭环：五站点流水线图 + 五�
 python matlabc_ask.py --help      # 问答式理解：事实底座如何装配成答案
 python matlabc_mcp.py --help      # MCP 服务：五个工具 + 「为什么 stdin 必须切断」
 python gui.py --help              # 图形界面：表单每一格等价于哪个命令行开关
-python tools/check_all.py --help  # 护栏总纲：16 道门各自拦什么
+python tools/check_all.py --help  # 护栏总纲：17 道门各自拦什么
 ```
 
 这不是口头承诺，而是被 `check_help_contract.py` 与 `check_doc_flags.py` 同时盯着的 ——
@@ -743,8 +748,22 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 
 ## 许可证
 
-[MIT](LICENSE) —— 详见 [LICENSE](LICENSE)（英文正本，唯一具法律效力的文本）与
-[LICENSE_CN](LICENSE_CN)（中文译本，仅供参考）。
+**双轨：代码是 MIT —— 名称与品牌不是。**
+
+* **代码 —— MIT，逐字保留。** [LICENSE](LICENSE) 是英文正本，也是**唯一具法律效力
+  的文本**；[LICENSE_CN](LICENSE_CN) 是为阅读便利提供的中文译本。MIT 正文**一字未改**
+  —— GitHub 的 licensee 识别读的正是这段正文，所以正文里一个字符都没有被改动。这也
+  是本项目专属说明一律放在授权条款**之后**的 *附录* 里、并明确声明「不修改上述条款」
+  的原因。
+* **名称与品牌 —— 保留全部权利。** `malabc` / `matlabc`、Logo 与 banner **从未**被
+  MIT 许可，也不在此被许可。署名是强制的（MIT 本来就要求）；分支不得冒充本项目、不得
+  暗示作者为其背书、也不得把这两个名称注册成别人的商标。详见
+  [LICENSE](LICENSE) / [LICENSE_CN](LICENSE_CN) 的**第 6 节**：**侵权必究**。
+* **依然完全允许的事。** 使用、复制、修改、合并、发布、分发、再许可和**销售**本软件，
+  包括商业用途，都依然允许。销售一个**使用**本软件的产品是可以的；把你的产品**当成**
+  本项目来展示，则不可以。
+
+作者与版权持有人：**冯磊 (Feng Lei)** —— © 2026 冯磊 (Feng Lei)。
 
 ---
 

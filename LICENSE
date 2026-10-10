@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 pony-029 (malabc / matlabc — https://github.com/pony-029/malabc)
+Copyright (c) 2026 冯磊 (Feng Lei) — malabc / matlabc — https://github.com/pony-029/malabc
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -22,15 +22,24 @@ SOFTWARE.
 
 ================================================================================
 Appendix — notices specific to this project
-Informational only. This appendix does NOT modify the MIT terms above, and it
-grants no rights and imposes no conditions beyond them. It exists so that the
-scope of the grant, and what this repository does and does not contain, are
-stated in the same file as the licence itself.
+Two different kinds of text live below. They must not be confused with each
+other, because they do different things.
+
+  * Sections 1–5 are INFORMATIONAL ONLY. They do NOT modify the MIT terms
+    above, and they grant no rights and impose no conditions beyond them.
+
+  * Section 6 is a RESERVATION OF RIGHTS — deliberately not a condition.
+    The MIT terms above license the **Software**. They were never a licence
+    of the project's **name or branding**, which this project has always
+    retained. Section 6 simply writes that boundary down. It takes nothing
+    away from the rights the MIT terms already grant you in the Software;
+    it only states out loud what was never granted.
 ================================================================================
 
 1. SCOPE OF THE GRANT
    The MIT terms above apply to every file in this repository authored by the
-   copyright holder, including but not limited to:
+   copyright holder — 冯磊 (Feng Lei) — including but not
+   limited to:
      matlabc.py, matlabc_boot.py, matlabc_ask.py, matlabc_flow.py, matlabc_mcp.py,
      ai_cli.py, gui.py, the binfmt/ package, the renderers/ package, the tools/
      check_*.py gates, the tests/ suite, the docs/ tree and the ci-examples/
@@ -75,3 +84,43 @@ stated in the same file as the licence itself.
    safety or fitness for any purpose. The specific, measured boundaries of what
    each capability can and cannot detect are documented in the "honest limits"
    sections of README.md and in the reports under docs/analysis/.
+
+6. NAME, BRANDING AND ATTRIBUTION — ALL RIGHTS RESERVED
+
+   Author and copyright holder: 冯磊 (Feng Lei)
+   Project: malabc / matlabc — https://github.com/pony-029/malabc
+
+   This section is a **reservation**, not an extra condition on the MIT grant
+   above. The MIT terms license the Software; they never licensed this
+   project's name, logo or banner, and no such licence should be inferred.
+   To the fullest extent permitted by law:
+
+   6.1 ATTRIBUTION IS MANDATORY — AND IT ALREADY IS UNDER MIT.
+       MIT already requires the copyright notice and this permission notice to
+       be kept in all copies or substantial portions of the Software. That is
+       not optional and never was: removing, obscuring, shortening or replacing
+       the copyright notice, the author's name, or the link back to this
+       repository is an infringement of both the MIT terms and applicable
+       copyright law. 侵权必究 — infringement will be pursued.
+
+   6.2 NO ENDORSEMENT, NO PASSING-OFF.
+       The names "malabc" and "matlabc", the project's logo and its banner
+       may NOT be used to suggest that a modified or partial copy **is** this
+       project, nor that its author endorses, sponsors, reviews or maintains
+       your fork or your product, without prior written permission.
+
+   6.3 NO TRADEMARK LICENCE, NO REGISTRATION.
+       Nothing in this file grants a trademark licence. Do not register
+       "malabc" or "matlabc", or a mark confusingly similar to them, as your
+       own trademark or service mark in any jurisdiction.
+
+   6.4 WHAT REMAINS FULLY PERMITTED.
+       So that this reservation cannot be misread as a restriction on the
+       code: using, copying, modifying, merging, publishing, distributing,
+       sublicensing and/or **selling** the Software all remain permitted by
+       the MIT terms above, including commercially, provided 6.1–6.3 are
+       respected. Selling a product that *uses* this Software is fine.
+       Presenting your product *as* this project is not.
+
+   Copyright (c) 2026 冯磊 (Feng Lei). 侵权必究. ALL RIGHTS RESERVED
+   in the project's name and branding, as set out in 6.1–6.3.

@@ -18376,9 +18376,10 @@ def test_r61_gate_registry_mentions_the_new_guard():
     """
     ca = _r37_load("check_all")
     # R63：护栏数 14 → 15（新增 `tools/check_known_red.py`）。R66：15 → 16
-    # （新增 `tools/check_py_js_frontend_shapes.py`）。这个字面量**故意**写死 ——
+    # （新增 `tools/check_py_js_frontend_shapes.py`）。R69：16 → 17
+    # （新增 `tools/check_legal_parity.py`）。这个字面量**故意**写死 ——
     # 它就是门数棘轮：谁改了门数，谁就得在这里露面。
-    assert ca.MIN_GUARDS == 16, ca.MIN_GUARDS
+    assert ca.MIN_GUARDS == 17, ca.MIN_GUARDS
     hc = _r37_load("check_help_contract")
     assert "tools/check_c_frontend_shapes.py" in hc.GUARD_CONTRACT
     assert hc.real_guard_count() == ca.MIN_GUARDS, (
@@ -19324,3 +19325,77 @@ def test_r68_binfmt_gate_c10_c11_c12_is_two_way():
     assert m, s_out[-500:]
     assert int(m.group(1)) >= 8, s_out[-500:]
     assert int(m.group(2)) >= 8, s_out[-500:]
+
+
+def test_r69_legal_parity_gate_two_way():
+    """R69：许可与署名的「双轨」必须**先两向自证**，才允许宣布「真实仓库 0 违规」。
+
+    ① 主路径 rc=0，成功行含判据族 `L1–L7`；
+    ② `--selftest` 通过，`SELFTEST COUNTS` 取**下界**断言（样本不许静默缩水）；
+    ③ 反向：直接驱动 `audit()` —— 删掉 MIT 正文一段 ⇒ L1 红；把一侧版权人改掉
+       ⇒ L2 红；把源码 `VERSION` 改掉而徽章不动 ⇒ L5 红。三条都必须红 ——
+       这就是「双轨不是写在对话里的一句话」的证人；
+    ④ 三张登记表（`MIN_GUARDS` / `GUARD_CONTRACT` / 两侧 README 门表）都必须在场。
+    """
+    gate = os.path.join(ROOT, "tools", "check_legal_parity.py")
+    r = _r31_run([gate], timeout=180)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[-900:]
+    assert "L1–L7" in out, out[-400:]
+
+    s = _r31_run([gate, "--selftest"], timeout=180)
+    sout = s.stdout.decode("utf-8", "replace")
+    assert s.returncode == 0, sout[-900:]
+    m = re.search(r'SELFTEST COUNTS \{"bad": (\d+), "good": (\d+)\}', sout)
+    assert m, sout[-500:]
+    assert int(m.group(1)) >= 8, m.group(0)
+    assert int(m.group(2)) >= 2, m.group(0)
+
+    lp = _r37_load("check_legal_parity")
+    assert lp.ROW_SIGNATURE == "L1–L7", lp.ROW_SIGNATURE
+
+    # ④ 三张登记表都在场（缺任何一张，「加了门」就只是加了一个文件）
+    hc = _r37_load("check_help_contract")
+    assert "tools/check_legal_parity.py" in hc.GUARD_CONTRACT, "GUARD_CONTRACT 缺本门"
+    assert set(hc.GUARD_CONTRACT["tools/check_legal_parity.py"]) == set([0, 1, 2]), \
+        hc.GUARD_CONTRACT["tools/check_legal_parity.py"]
+    for rel in ("README.md", "README_CN.md"):
+        text = io.open(os.path.join(ROOT, rel), encoding="utf-8").read()
+        assert "check_legal_parity.py" in text, rel
+        assert lp.ROW_SIGNATURE in text, rel
+
+    # ③ 反向：合成树上的三种破坏都必须被抓到
+    tmp = tempfile.mkdtemp(prefix="r69_legal_")
+    try:
+        assert lp._problems(lp._mk_repo(tmp)) == [], "好样本被误伤"
+
+        def _mut(fn):
+            files = lp._good_files()
+            fn(files)
+            root = tempfile.mkdtemp(dir=tmp)
+            for rel, body in sorted(files.items()):
+                with io.open(os.path.join(root, rel), "w", encoding="utf-8",
+                             newline="") as fh:
+                    fh.write(body)
+            return lp._problems(root)
+
+        def _drop_mit(f):
+            f["LICENSE"] = f["LICENSE"].replace(lp.MIT_MARKERS[0] + "\n", "", 1)
+
+        probs = _mut(_drop_mit)
+        assert any(x.startswith("L1") for x in probs), probs
+
+        def _bump_owner(f):
+            f["LICENSE_CN"] = f["LICENSE_CN"].replace(lp.COPYRIGHT_HOLDER,
+                                                      "someone else", 1)
+
+        probs = _mut(_bump_owner)
+        assert any(x.startswith("L2") for x in probs), probs
+
+        def _stale_version(f):
+            f["matlabc.py"] = 'VERSION = "0.0.1"\n'
+
+        probs = _mut(_stale_version)
+        assert any(x.startswith("L5") for x in probs), probs
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)

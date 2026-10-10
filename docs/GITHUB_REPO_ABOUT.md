@@ -113,6 +113,6 @@ GitHub 会为仓库生成一张社交卡片。若想自定义，在仓库里放
 | 面板项 | 状态 | 依据 |
 | --- | --- | --- |
 | **Readme** | ✅ 已满足 | `README.md` 存在（中文版 `README_CN.md`，两版按章节一一对应） |
-| **MIT license** | ✅ 已满足 | 根目录 `LICENSE` 为 MIT 正文（英文正本，逐字未改）；`LICENSE_CN` 为中文译本。GitHub 的 licensee 靠 **许可正文**识别，所以正文一个字都不能动 —— 本项目专属说明一律放在正文之后的 *Appendix* 里，并明确标注「不修改上述条款」 |
+| **MIT license（双轨）** | ✅ 已满足 | 根目录 `LICENSE` 为 MIT 正文（英文正本，逐字未改）；`LICENSE_CN` 为中文译本。GitHub 的 licensee 靠 **许可正文**识别，所以正文一个字都不能动 —— 本项目专属说明一律放在正文之后的 *Appendix* 里，并明确标注「不修改上述条款」。**R69 起为「双轨」**：**代码**照旧是 MIT；**名称与品牌保留全部权利** —— `malabc` / `matlabc`、Logo 与 banner 从未被 MIT 许可，署名强制、不得冒充原作、不得暗示作者背书、不得抢注商标（见两份许可**第 6 节**）。**侵权必究**；版权持有人 **冯磊 (Feng Lei)** |
 | **Contributing** | ✅ 已满足 | `CONTRIBUTING.md` 存在 |
 | **Description / Website / Topics** | ⬜ **待填** | 本文件第 1–3 节即现成文案 |

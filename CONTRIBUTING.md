@@ -20,7 +20,7 @@ python tests/test_matlabc.py
 # 3) 对示例做静态分析，确认主流程无回归
 python matlabc.py tests/sample_m -o demo.md --html demo.html --browse --offline
 
-# 4) 登记制护栏（16 道，各自还会跑 --selftest；门数少于下限也会红）
+# 4) 登记制护栏（17 道，各自还会跑 --selftest；门数少于下限也会红）
 python tools/check_all.py
 ```
 
@@ -66,7 +66,11 @@ python tools/check_all.py
 ## 提交约定
 
 - 提交信息建议 `类型: 简述`，类型如 `feat` / `fix` / `docs` / `refactor` / `test` / `ci`。
-- **LICENSE**：英文 `LICENSE` 为唯一法律效力文本，中文 `LICENSE_CN` 仅为译本，改动版权人请同步两文件。
+- **LICENSE（双轨）**：英文 `LICENSE` 为唯一法律效力文本，中文 `LICENSE_CN` 仅为译本；
+  **代码是 MIT（正文逐字未改 —— GitHub 的 licensee 读的正是这段正文），名称与品牌不是**：
+  `malabc` / `matlabc`、Logo 与 banner 从未被 MIT 许可，署名强制、不得冒充原作、不得抢注商标
+  （见两份许可的**第 6 节**）。版权持有人：**冯磊 (Feng Lei)**；**侵权必究**。
+  改动版权人请**同步两文件**（`LICENSE` 与 `LICENSE_CN` 的版权行必须一致）。
 - 增量/分析缓存（`.analyzer_*`、`*.sarif`、`dist_bin/`、`_build/`）已被 `.gitignore` 忽略，勿手提交。
 
 ## 代码风格
@@ -417,7 +421,7 @@ R66 的修法（两处，都在 `matlabc.py`）：
 复量（同一台装置、同一台机器）：Python 形态 **0/8**、JS **1/10**、值域 **0/8**、假阳性 **0/7**。
 剩的那 1 个（JS 对象方法简写 `greet(a) { }`）是**有意披露不识别**的边界。
 
-**修完就得有东西守着它** —— 这就是第 16 道门 `tools/check_py_js_frontend_shapes.py`
+**修完就得有东西守着它** —— 这就是 `tools/check_py_js_frontend_shapes.py`（R66 新增）
 （`ROW_SIGNATURE` 为 `G1–G7 (py/js)`）：四个纯合成夹具 + 公开 CLI 子进程，七条**管辖范围互不重叠**的判据。
 
 | 判据 | 管辖范围 |
