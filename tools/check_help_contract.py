@@ -203,14 +203,19 @@ GUARD_CONTRACT = {
         2: "缺输入",
     },
     "tools/check_readme_parity.py": {
-        0: "两侧结构对等",
-        1: "发现不对等（P1/P2 任一红）",
+        0: "两侧结构对等，且两侧质量门表 == tools/check_*.py 真实清单",
+        1: "发现不对等 / 质量门表与真实护栏清单不符（P1/P2/P4 任一红）",
         2: "缺输入（任一 README 不存在）",
     },
     "tools/check_subprocess_hygiene.py": {
         0: "子进程卫生全部合规",
         1: "有违规（捕获输出却继承 stdin / 缺 timeout / 未登记）",
         2: "缺输入",
+    },
+    "tools/check_c_frontend_shapes.py": {
+        0: "C 前端函数定义形态六条判据（F1–F6）全绿，且夹具完备性与棘轮全绿",
+        1: "有违规（某条判据红 / 棘轮不符 / 夹具被改瘦）",
+        2: "缺输入（找不到 matlabc.py / 公开 CLI 跑不起来 / JSON 不可解析）",
     },
     "tools/check_boundary_reverse.py": {
         0: "「诚实的边界」的每条否定式承诺都有反向判据，且公开 CLI 行为全绿（V1–V5）",

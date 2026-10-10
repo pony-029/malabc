@@ -18136,3 +18136,124 @@ def test_r56_every_boundary_bullet_has_a_counterparty():
         "两台**互不共享**的 bullet 解析器必须给出同一份分母（否则覆盖率的"
         "分母就是某一份解析器的产物）：%r vs %r" % (ha, heads))
     assert len(heads) == 8, heads
+
+
+# ======================================================================
+# R61：C 前端「函数定义形态」判据固化进仓库（第 14 道护栏）
+# ======================================================================
+
+def test_r61_c_frontend_shapes_gate_two_way():
+    """R61 / R49 §8 C'''''1：仓库外 `_r49/` 那批判据必须固化进 `tools/`。
+
+    三部分，缺一不可：
+      ① **门真的能说不**：对门的纯函数 `judge()` 喂合成结果，每个坏样本必须红在
+         **它该红的**那条判据上、且**只**红那一条（`others == []`）—— 这条纪律
+         来自 R52，防的是「一条判据红、别的陪红」把独立证人变成一笔糊涂账。
+      ② **夹具完备性两向**：把陷阱从夹具源码里删掉，`R2` 必须红 ——
+         否则「不得出现 `if`」会退化成**空断言**（R56 的自伤）。
+      ③ **端到端**：真的把门跑起来，rc=0 且打印 F1–F6 全绿；`--selftest` 打印计数。
+    反向判据：在本仓 `HEAD`（`24a2803`）上，`tools/check_c_frontend_shapes.py`
+    **不存在** ⇒ ① 的 `_r37_load` 直接 ImportError ⇒ 本测试必红。
+    """
+    g = _r37_load("check_c_frontend_shapes")
+
+    def _mk(sh=None, sb=None, ng=None):
+        return {"shapes.c": dict(g.WANT["shapes.c"] if sh is None else sh),
+                "sbraces.c": dict(g.WANT["sbraces.c"] if sb is None else sb),
+                "neg.c": dict(g.WANT["neg.c"] if ng is None else ng)}
+
+    def _red(per, want):
+        probs = g.judge(per)
+        assert any(p.startswith(want) for p in probs), (want, probs)
+        others = [p for p in probs if p[:2] in g.CRITERIA_IDS
+                  and not p.startswith(want)]
+        assert others == [], (want, others)
+
+    # ① 好样本 + 六个坏样本各红在自己那条判据上
+    assert g.judge(_mk()) == []
+    d = _mk()
+    d["shapes.c"].pop("p3_sub")                      # 退回 R49 之前的行锚定行为
+    _red(d, "F1")
+    d = _mk()
+    d["shapes.c"]["pi"] = ("int", ["int a"], 15, 15, 15)
+    _red(d, "F2")
+    d = _mk()
+    d["shapes.c"]["p4_many"] = ("void", ["int a int b"], 11, 13, 14)
+    _red(d, "F3")
+    d = _mk()
+    d["sbraces.c"]["a"] = ("void", ["void"], 1, 2, 8)   # 退回行计数
+    _red(d, "F4")
+    d = _mk()
+    d["shapes.c"]["p3_sub"] = ("int", ["int a", "int b"], 7, 8, 10)
+    _red(d, "F5")
+    d = _mk()
+    d["neg.c"]["if"] = ("int", ["x"], 5, 5, 5)
+    _red(d, "F6")
+    for _t in g.BOUNDARY_TRAPS:                      # 已披露边界各有独立证人
+        d = _mk()
+        d["neg.c"][_t] = ("int", ["a"], 11, 13, 15)
+        _red(d, "F6")
+
+    # ② 夹具完备性两向
+    assert g.judge_fixtures() == []
+    assert g.judge_fixtures(neg_c="int x;\n"), "陷阱删掉后 R2 不红 = 空断言"
+    assert g.judge_fixtures(shapes_c="int f(void) { return 0; }\n")
+
+    # ③ 端到端：门本体 + 自证
+    r = _r31_run([os.path.join("tools", "check_c_frontend_shapes.py")],
+                 timeout=180)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[-1200:]
+    assert "F1–F6 全绿" in out, out[-600:]
+    s = _r31_run([os.path.join("tools", "check_c_frontend_shapes.py"), "--selftest"],
+                 timeout=180)
+    sout = s.stdout.decode("utf-8", "replace")
+    assert s.returncode == 0, sout[-800:]
+    assert "SELFTEST COUNTS" in sout, sout[-300:]
+
+
+def test_r61_readme_gate_table_lists_every_guard():
+    """R61：两侧 README 的「质量门表」必须与 `tools/check_*.py` 的真实清单一致。
+
+    R56 的真缺陷（本轮由 `git show 24a2803 -- README.md` 与仓库外装置一起量出）：
+    它往这张表里补两行时锚点落错，把 `` `check_readme_parity.py` `` 那一行**整行
+    覆盖**掉了，只留下尾段悬在最后一行之后（不再以 `|` 开头 ⇒ 已不是表行）。而
+    `check_readme_parity.py` 的 P2 只看「每节的表行数」：两侧**同时**少一行 ⇒
+    计数依然相等 ⇒ 门 rc=0。**两侧一起坏掉时，对等门永远看不见。**
+
+    这条断言换一个对手方：不比两侧，比「表 ↔ 真实护栏清单」。
+    """
+    rp = _r37_load("check_readme_parity")
+    guards = rp.guard_scripts(ROOT)
+    assert guards, "tools/check_*.py 一个都没扫到（判据本身失效）"
+    assert "check_c_frontend_shapes.py" in guards
+    assert "check_all.py" not in guards, "runner 不该进清单"
+    probs = []
+    for name in (rp.EN, rp.CN):
+        rp.judge_table(rp._read(os.path.join(ROOT, name)), guards,
+                       rp.on_problem_collector(probs), name)
+    assert probs == [], probs
+    # 反向：把本门那一行的首列换掉 ⇒ 必须红（且点名漏了哪一行）
+    en = rp._read(os.path.join(ROOT, rp.EN))
+    row = "| `check_c_frontend_shapes.py` |"
+    assert row in en, "表里找不到本门那一行（P4 的锚点失效）"
+    bad = []
+    rp.judge_table(en.replace(row, "| `check_x.py` |"), guards,
+                   rp.on_problem_collector(bad), rp.EN)
+    assert any(x.startswith("P4") for x in bad), bad
+    assert any("check_c_frontend_shapes.py" in x for x in bad), bad
+
+
+def test_r61_gate_registry_mentions_the_new_guard():
+    """R61：新门必须**同时**进三张登记表，否则「加了门」只是加了一个文件。
+
+      ① `check_all.py::MIN_GUARDS`（门数棘轮）；
+      ② `check_help_contract.py::GUARD_CONTRACT`（退出码契约，R2 两向核对）；
+      ③ 两侧 README 的质量门表（由 P4 两向核对，见上一条测试）。
+    """
+    ca = _r37_load("check_all")
+    assert ca.MIN_GUARDS == 14, ca.MIN_GUARDS
+    hc = _r37_load("check_help_contract")
+    assert "tools/check_c_frontend_shapes.py" in hc.GUARD_CONTRACT
+    assert hc.real_guard_count() == ca.MIN_GUARDS, (
+        hc.real_guard_count(), ca.MIN_GUARDS)

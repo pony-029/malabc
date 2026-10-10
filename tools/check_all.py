@@ -11,6 +11,7 @@
         ├─▶ check_flow_diagrams.py        图的引用 ↔ 文件 ↔ 候选声明，两两对齐且双向
         ├─▶ check_help_contract.py        退出码在代码↔帮助双向一致；示例能真跑
         ├─▶ check_import_graph.py         模块级 import 必须无环；回边只能走登记过的惰性通道
+        ├─▶ check_c_frontend_shapes.py    C 前端函数定义形态（四形态/指针返回/体界/行号）各有对手方
         ├─▶ check_ir_attribution.py       「解析不到的调用」只有一个判定点，归因吃的就是它
         ├─▶ check_operator_impl.py        算子元表里不得有「只声明不产出」的幻影
         ├─▶ check_patch_ops.py            补丁编辑算子唯一事实源（禁止覆盖式赋值）
@@ -101,7 +102,11 @@ GUARD_TIMEOUT = 600.0
 # bullet」，并补上覆盖数棘轮 —— 于是 `* Mach-O：` 那种一个标记词都没有的
 # **状态声明**也不再能整条溜过去（R55 §8 C10-7）。门数不变，仍是 13。
 # 新增护栏时**必须**同步上调这个数字 —— 这正是棘轮的作用。
-MIN_GUARDS = 13
+# R61 新增 check_c_frontend_shapes.py（R49 §8 C'''''1：把 C 前端的
+# 「函数定义形态」判据从仓库外 `_r49/` 固化进仓库 —— 四形态 / 指针返回类型 /
+# 值域 / 字符串花括号不干扰体界 / 声明起点行号 / 不假阳且已披露边界保持不识别，
+# 六条判据互不重叠、各有突变体；另加夹具完备性与五个棘轮），故 13 → 14。
+MIN_GUARDS = 14
 
 
 def _write_help(text):
