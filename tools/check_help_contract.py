@@ -57,7 +57,14 @@ R51（C''''2）「诚实的边界」逐字契约：`--help` 的「诚实的边�
     **逐字**出现在它认领的 bullet 里；带 `docs` 的登记还要求 `docs_must` 在
     README 两侧逐字出现（防「帮助说了、README 没说」这条新缝）。
 
-两向自证：R1/R2/R3/R4/R5/R5c/R51 各配独立坏样本（必须红）与好样本（必须过），
+H1（R70）「护栏的描述文本 ⇄ 它自己声明的签名」：`GUARD_CONTRACT` 里每一条护栏
+    （runner `check_all.py` 除外）的 `rc=0` 描述**必须逐字含**该护栏源码里的
+    `ROW_SIGNATURE`。起因：这段描述长期是**只写不读**的散文 —— R68 实测它落后
+    两轮（写着 `C1–C6` 而事实是 `C1–C12`）且没有任何门看得见，R69 只能靠手改。
+    签名一旦随判据族长上去，描述没跟上就红（描述陈旧 → 红 / 护栏没有可读的
+    `ROW_SIGNATURE` → 红）。
+
+两向自证：R1/R2/R3/R4/R5/R5c/R51/H1 各配独立坏样本（必须红）与好样本（必须过），
 并对真实仓库做一次整体核对。
 
 退出码：
@@ -171,7 +178,7 @@ GUARD_CONTRACT = {
         2: "找不到护栏（缺输入）",
     },
     "tools/check_baseline.py": {
-        0: "通过（默认模式：前置条件 + 门自身两向自证；--full：无回归）",
+        0: "通过（P1–P4/T1：默认模式＝前置条件 + 门自身两向自证；--full＝无回归）",
         1: "门自身两向自证失败，或 --full 发现回归",
         2: "缺输入 / 环境不可用（非 git 仓库 / 无 git / 测试集不在）",
     },
@@ -181,7 +188,7 @@ GUARD_CONTRACT = {
         2: "缺输入 / 环境不可用（无法导入 binfmt）",
     },
     "tools/check_doc_flags.py": {
-        0: "文档/帮助正文的开关全部真实存在",
+        0: "文档/帮助正文的开关全部真实存在（NO_HELP_SCRIPTS）",
         1: "有文档宣传了不存在的开关",
         2: "缺输入",
     },
@@ -191,7 +198,7 @@ GUARD_CONTRACT = {
         2: "缺输入（缺文档 / 缺 flow/diagrams/ / 一个候选都找不到）",
     },
     "tools/check_help_contract.py": {
-        0: "全部一致",
+        0: "全部一致（B0–B5 + R1/R2/R3/R4/R5/R5c/R51 + G0/G0b/G1/G2 + N1/N3/N4 + H1）",
         1: "发现不一致（R1/R1b/R2/R3/R4/R5/R5c/R51 任一红）",
         2: "缺输入（入口脚本缺失 / 解析不到 docstring）",
     },
@@ -201,34 +208,34 @@ GUARD_CONTRACT = {
         2: "缺输入（扫不到 .py / 缺 CONTRIBUTING.md）",
     },
     "tools/check_ir_attribution.py": {
-        0: "唯一判定点 + 归因来源 + 语言登记 + 扩展名事实源四方一致（八条静态 + 十条纯函数判据）",
+        0: "I0–I7：唯一判定点 + 归因来源 + 语言登记 + 扩展名事实源四方一致（八条静态 + 十条纯函数判据）",
         1: "有违规（写点未登记/形状漂移/判定点出包/接线缺失/归因自算/谓词未登记）",
         2: "缺输入（找不到 frontends/ir.py 或 matlabc.py，或导不进 frontends 包）",
     },
     "tools/check_operator_impl.py": {
-        0: "无幻影算子",
+        0: "无幻影算子（元表的算子 ∩ _UNIMPLEMENTED_KINDS = 空集）",
         1: "有幻影算子 / 缺原因",
         2: "缺输入（源文件或元表找不到）",
     },
     "tools/check_patch_ops.py": {
-        0: "补丁算子集合合法",
+        0: "补丁算子集合合法（G0–G3）",
         1: "有违规（发出 ins / 覆盖式赋值 / 未知算子被静默吞掉）",
         2: "缺输入",
     },
     "tools/check_py36_clean.py": {
-        0: "本仓源码全部通过 3.6.5 语法门",
+        0: "本仓源码全部通过 3.6.5 语法门（--check-py36）",
         1: "有源码违反 3.6.5 承诺",
         2: "缺输入",
     },
     "tools/check_readme_parity.py": {
-        0: "两侧结构对等，且两侧质量门表 == tools/check_*.py 真实清单，"
-           "表里每一行都含那道门自己声明的 ROW_SIGNATURE",
+        0: "两侧结构对等，且两侧质量门表 == tools/check_*.py 真实清单"
+           "（P1/P2/P4/P5：表里每一行都含那道门自己声明的 ROW_SIGNATURE）",
         1: "发现不对等 / 质量门表与真实护栏清单不符 / 表行缺本门签名"
            "（P1/P2/P4/P5 任一红）",
         2: "缺输入（任一 README 不存在）",
     },
     "tools/check_subprocess_hygiene.py": {
-        0: "子进程卫生全部合规",
+        0: "子进程卫生全部合规（S1–S5）",
         1: "有违规（捕获输出却继承 stdin / 缺 timeout / 未登记）",
         2: "缺输入",
     },
@@ -243,12 +250,12 @@ GUARD_CONTRACT = {
         2: "缺输入（找不到 matlabc.py / 工具脚本，或公开 CLI 跑不起来）",
     },
     "tools/check_known_red.py": {
-        0: "登记与事实两向一致（静态 K1–K6 + 实测 K7–K9：覆盖 / 真缺失 / 理由具名 / 跳过为真 / 新缺口 / 缺输入 / 红不红 / 绿不绿 / 跳不跳）",
+        0: "登记与事实两向一致（K1–K9：静态 K1–K6 覆盖/真缺失/理由具名，实测 K7–K9 红不红/绿不绿/跳不跳）",
         1: "有违规（未登记 / 陈旧 / 理由不具名 / 伪装跳过 / 新缺口）",
         2: "缺输入（找不到 tests/test_matlabc.py）",
     },
     "tools/check_py_js_frontend_shapes.py": {
-        0: "Python / JS 前端函数定义形态七条判据（G1–G7）全绿，且夹具完备性与棘轮全绿",
+        0: "Python / JS 前端函数定义形态七条判据 G1–G7 (py/js) 全绿，且夹具完备性与棘轮全绿",
         1: "有违规（某条判据红 / 棘轮不符 / 夹具被改瘦）",
         2: "缺输入（找不到 matlabc.py / 公开 CLI 跑不起来 / JSON 不可解析）",
     },
@@ -1230,6 +1237,56 @@ def audit(root, on_problem, cache=None):
     return n
 
 
+def _load_row_signature(path):
+    """读一个护栏脚本自己的 `ROW_SIGNATURE`（纯读；取不到返回 None）。
+
+    刻意**不导入**被核对象：签名就是源码里的一个字面量，`ast` 求值即可；
+    导入会跑 package 级副作用，还会把「门读门」变成一条隐式耦合。
+    """
+    try:
+        with io.open(path, "r", encoding="utf-8", errors="replace") as fh:
+            src = fh.read()
+    except OSError:
+        return None
+    m = re.search(r"^ROW_SIGNATURE\s*=\s*(.+?)\s*$", src, re.M)
+    if not m:
+        return None
+    try:
+        val = ast.literal_eval(m.group(1))
+    except (ValueError, SyntaxError):
+        return None
+    return val if isinstance(val, str) else None
+
+
+def guard_signature_problems(contract, sig_by_script,
+                             runner="tools/check_all.py"):
+    """H1（R70）：描述文本 ⇄ 签名。纯函数 —— 自证不必造文件、不必起进程。
+
+    对 `contract` 里每一条护栏（`runner` 除外）：
+      * 必须在源码里声明可读的 `ROW_SIGNATURE`（取不到 → 红）；
+      * `rc=0` 那一条的描述必须**逐字**含该签名（找不到 → 红：描述陈旧）。
+    返回问题串列表（空 = 过）。
+    """
+    probs = []
+    for script in sorted(contract):
+        if script == runner:
+            continue
+        sig = sig_by_script.get(script)
+        if not sig:
+            probs.append("H1 %s: 源码里没有可读的 ROW_SIGNATURE —— 这道护栏的"
+                         "判据族没有任何机器可读的声明（缺声明 → 红）" % script)
+            continue
+        rc0 = contract[script].get(0)
+        if rc0 is None:
+            probs.append("H1 %s: GUARD_CONTRACT 里没有 rc=0 那一条 —— "
+                         "无从核对签名" % script)
+            continue
+        if sig not in rc0:
+            probs.append("H1 %s: rc=0 的描述里逐字找不到签名 %r —— 描述文本与它"
+                         "自己声明的判据族脱节了（描述陈旧 → 红）" % (script, sig))
+    return probs
+
+
 def audit_guards(root, on_problem):
     """R33（C'7）+ R63（G0b）：对护栏脚本施加 R1（+反向+陈旧）与 R2，
     并核对「存在 ⇄ 登记」。返回核对过的脚本数。"""
@@ -1273,6 +1330,12 @@ def audit_guards(root, on_problem):
         for orphan in sorted(on_disk - set(GUARD_SCRIPTS)):
             on_problem("G0b %s 存在，但 GUARD_CONTRACT 没有登记它 —— "
                        "它的退出码契约没有任何人在核对" % orphan)
+    # H1（R70）：描述文本 ⇄ 签名。给只写不读的 GUARD_CONTRACT 散文配一个对手方。
+    sig_by_script = {}
+    for script in sorted(GUARD_SCRIPTS):
+        sig_by_script[script] = _load_row_signature(os.path.join(root, script))
+    for msg in guard_signature_problems(GUARD_CONTRACT, sig_by_script):
+        on_problem(msg)
     return n
 
 
@@ -1628,6 +1691,24 @@ def _selftest():
             GUARD_CONTRACT.clear()
             GUARD_CONTRACT.update(saved)
             globals()["GUARD_SCRIPTS"] = saved_scripts
+
+    # ---- H1（R70）：描述文本 ⇄ 签名（纯函数，不读文件、不起进程） ----
+    _h1_c = {"tools/check_x.py": {0: "契约 X1–X3 全部通过", 1: "有违规"}}
+    expect("H1 好样本：rc=0 描述逐字含签名（放行）",
+           bool(guard_signature_problems(_h1_c, {"tools/check_x.py": "X1–X3"})),
+           False)
+    expect("H1 坏样本：rc=0 描述里的签名陈旧（写着 X1–X2）（抓到）",
+           bool(guard_signature_problems(
+               {"tools/check_x.py": {0: "契约 X1–X2 全部通过"}},
+               {"tools/check_x.py": "X1–X3"})), True)
+    expect("H1 坏样本：护栏没有可读的 ROW_SIGNATURE（抓到）",
+           bool(guard_signature_problems(
+               {"tools/check_y.py": {0: "全部通过"}},
+               {"tools/check_y.py": None})), True)
+    expect("H1 好样本：runner（check_all.py）豁免，不要求签名（放行）",
+           bool(guard_signature_problems(
+               {"tools/check_all.py": {0: "全部通过"}},
+               {"tools/check_all.py": None})), False)
 
     # ---- R39（C''9）：ci-examples 退出码契约（纯函数 + 临时文件，不起进程） ----
     with _tf.TemporaryDirectory() as ctd:

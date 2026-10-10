@@ -19399,3 +19399,75 @@ def test_r69_legal_parity_gate_two_way():
         assert any(x.startswith("L5") for x in probs), probs
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r70_guard_contract_desc_carries_own_signature():
+    """R70 / R68 §8 C18-2（= R69 §7 C19-1）：`GUARD_CONTRACT` 的**描述文本**
+    必须逐字含那道护栏自己声明的 `ROW_SIGNATURE`。
+
+    这段描述长期是**只写不读**的散文：R68 实测它落后两轮（写着 `C1–C6` 而事实
+    是 `C1–C12`）且没有任何门看得见，R69 只能靠手改。H1 给它配了一个对手方。
+    本测试钉住五层：
+
+      ① 主路径 rc=0，成功行含本门判据族 `B0–B5`；
+      ② `--selftest` 通过，`SELFTEST COUNTS` 取**下界**断言（样本不许静默缩水）；
+      ③ **真判据**（纯函数）：描述含签名 ⇒ 放行；描述里的签名陈旧 ⇒ 抓到；
+         护栏没有可读签名 ⇒ 抓到；runner 豁免；
+      ④ **真仓库**：17 道护栏（runner 除外）逐条读源码签名，各自 rc=0 描述
+         都含它 —— 修前这里会红 **11** 项（R70 基线实测），修后必须为 0；
+      ⑤ **反向**：真的驱动 `audit_guards()` —— 把一道护栏 rc=0 描述里的签名
+         抹掉，必须报 `H1` 并**点名**那道护栏。没有这一层，判据就可能只是
+         纯函数自娱，管不到真树。
+    """
+    gate = os.path.join(ROOT, "tools", "check_help_contract.py")
+    r = _r31_run([gate], timeout=180)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[-900:]
+    assert "B0–B5" in out, out[-400:]
+
+    s = _r31_run([gate, "--selftest"], timeout=180)
+    sout = s.stdout.decode("utf-8", "replace")
+    assert s.returncode == 0, sout[-900:]
+    m = re.search(r'SELFTEST COUNTS \{"bad": (\d+), "good": (\d+)\}', sout)
+    assert m, sout[-500:]
+    assert int(m.group(1)) >= 42, m.group(0)
+    assert int(m.group(2)) >= 39, m.group(0)
+
+    hc = _r37_load("check_help_contract")
+
+    # ③ 纯函数真判据（好 / 坏各半）
+    assert hc.guard_signature_problems(
+        {"tools/check_x.py": {0: "契约 X1–X3 全部通过"}},
+        {"tools/check_x.py": "X1–X3"}) == []
+    stale = hc.guard_signature_problems(
+        {"tools/check_x.py": {0: "契约 X1–X2 全部通过"}},
+        {"tools/check_x.py": "X1–X3"})
+    assert any(x.startswith("H1") for x in stale), stale
+    nosig = hc.guard_signature_problems(
+        {"tools/check_y.py": {0: "全部通过"}}, {"tools/check_y.py": None})
+    assert any(x.startswith("H1") for x in nosig), nosig
+    assert hc.guard_signature_problems(
+        {"tools/check_all.py": {0: "全部通过"}},
+        {"tools/check_all.py": None}) == []
+
+    # ④ 真仓库：逐条读源码签名，rc=0 描述必须含它
+    sig_by = {}
+    for script in hc.GUARD_SCRIPTS:
+        sig_by[script] = hc._load_row_signature(os.path.join(ROOT, script))
+    real = hc.guard_signature_problems(hc.GUARD_CONTRACT, sig_by)
+    assert real == [], real
+    n_signed = len([s for s in sig_by
+                    if os.path.basename(s) != "check_all.py" and sig_by[s]])
+    assert n_signed == 17, n_signed
+
+    # ⑤ 反向：真驱动 audit_guards —— 抹掉一道护栏 rc=0 描述里的签名
+    victim = "tools/check_binfmt_fixtures.py"
+    assert victim in hc.GUARD_CONTRACT, victim
+    saved = hc.GUARD_CONTRACT[victim][0]
+    try:
+        hc.GUARD_CONTRACT[victim][0] = "契约（签名被抹去）"
+        probs = []
+        hc.audit_guards(ROOT, hc.on_problem_collector(probs))
+        assert any(x.startswith("H1") and victim in x for x in probs), probs
+    finally:
+        hc.GUARD_CONTRACT[victim][0] = saved
