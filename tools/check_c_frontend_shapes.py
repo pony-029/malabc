@@ -20,7 +20,7 @@
   ② 公开 CLI（`--lang c --json`）才是用户真正看到的那一面：内部函数对了、
      组装错了（行号算错 / body_end 没落进 JSON），一样是缺陷。
 
-判据（F1–F7；七条判据的**管辖范围互不重叠**，每条各有自己的突变体作独立证人）：
+判据（F1–F9；九条判据的**管辖范围互不重叠**，每条各有自己的突变体作独立证人）：
   F1 四形态全覆盖：`shapes.c` 里 P1 同行 / P2 Allman（花括号换行）/
      P3 返回类型独占一行（GNU）/ P4 参数表跨行 四个定义必须**全部被认出**。
      删掉任一种形态的支持（退回 R49 之前的行锚定行为）⇒ 红。
@@ -49,7 +49,9 @@
        F7a **两本账对账**：同一份产物里 `call_relations.edges_total` 必须==
            `--json` 载荷里 `edges` 的长度。两个独立容器数同一件事，对不上就是
            其中一本算错了（口径类缺陷：两边一起错时会永远自洽，所以必须**并列**）。
-       F7b **环，两向**：`cg_cyc.c` 里 `hub ⇄ leaf` 必须被报成 1 个 size=2 的环；
+       F7b **环，两向**：`cg_cyc.c` 里 `hub ⇄ leaf` 必须被报成 1 个 size=2 的环
+           （R88：比较的是**名字投影** —— 默认 `definition-site` 口径下成员渲染成
+           `名字 @ 定义文件`；**落点本身由 F9e 守**，所以这不是放宽）；
            `cg_acy.c` 必须报 `cycles == []` 且 `cycles_computed` 为真
            （只断言「有环」会让「永远报空」也绿）。
        F7c **有界且诚恳**：`--callgraph-max-nodes 2` ⇒ 节点恰 2 个且
@@ -59,9 +61,25 @@
            （否则那个开关是个摆设，而摆设型开关没有任何东西会告诉你它是摆设）。
        F7e **未知扩展名不许静默降级**：`--callgraph x.txt` 必须**非零退出**，
            且**不得**产出该文件（静默改成 JSON 就是「没听懂却假装听懂」）。
-       F7f **口径写成字面量**：`identity == "callee-name"`，`limitations` 至少 3 条
-           且非空，其中必须有「同名合并 ⇒ 假阳性」这一条 —— 节点身份是**名字**不是
-           **定义落点**，这是本投影最容易被人误读的地方。
+       F7f **口径与它的局限必须一起写下来**（R88 改）：`identity` 必须是声明的
+           两个字面量之一；`limitations` 至少 3 条且非空，**并且必须说清**本口径
+           自己的局限 —— 名字级必须明说「同名合并 ⇒ 环可能含假阳性」，定义落点必须
+           明说「被调侧的歧义**判不出来**（不猜）⇒ 经过它的环会**漏报**」。
+           口径换了而局限没换 ⇒ 红（那是「把旧口径的免责声明贴在新口径上」）。
+  F9 节点身份口径（R88）：F7f 管「口径与局限都写下来了」，这一族管口径**行为本身**。
+     内核实测：名字级口径下 `cross_file.ambiguous` 占 72.9%，最大「调用环」有 37,775
+     个成员 —— 那不是真环，是**同名合并**（同名 `static` 函数分处不同文件）造出来的。
+     跨区域语料实测：最大环 1750 -> 36，而**边数一条不变**（68030 -> 68030）。
+     五个半边，各有自己的坏样本：
+       F9a **默认口径 = `definition-site`**（静默换口径 ⇒ 红）。
+       F9b 老口径 `callee-name` **仍可显式选中**且如实回显；未知值**非零退出且不产
+           文件**（静默退回默认 = 没听懂却假装听懂）；形状版本随键集合一起涨；
+           焦点子图的 `focus_candidates` 在两口径下都在。
+       F9c **反向**：两条口径的 `edges_total` 相等且都等于 `--json` 里的边数 ——
+           拆节点**不许吃掉任何一条边**（这是 F9d 的对手方）。
+       F9d **活性**：同名不同文件的夹具上最大环必须**塌**、节点数必须**更多**。
+       F9e **惰性**：没有同名可拆的夹具上两口径必须**逐位相同**，且环成员必须
+           **带落点**（否则同名不同文件的成员分不开）。
 
 为什么 `neg.c` 的「已披露边界」不单开一条判据：它与「不假阳」在实现上是**同一个
   集合比较**（`neg.c` 的名字集合必须恰为 `{real_fn}`）。硬拆两条会让同一个突变体
@@ -87,7 +105,7 @@
               └──── 手写期望 WANT（独立于产品）────────┘
 
 退出码：
-    0 = F1–F7 全绿，且棘轮与夹具完备性全绿
+    0 = F1–F9 全绿，且棘轮与夹具完备性全绿
     1 = 有违规（某条判据红 / 棘轮不符 / 夹具被改瘦）
     2 = 缺输入（找不到 matlabc.py / 公开 CLI 跑不起来 / JSON 不可解析）
 
@@ -110,13 +128,18 @@ import tempfile
 #   ① 本门的成功行（下面 main() 打印的那一行）；
 #   ② README.md / README_CN.md 里本门那一行。
 # 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
-ROW_SIGNATURE = "F1–F8"
+ROW_SIGNATURE = "F1–F9"
 
 # H3（R73）：越出签名族、但仍由本门发出的判据前缀。
 ROW_EXTRA = "R1,R2"
 # 公开 CLI 的墙钟上限。实测一次 ≈0.5s，300s 是给「机器正忙」留的量级余量；
 # 它的意义是「让挂死变成红，而不是让门永远等着」。
 CLI_TIMEOUT = 300.0
+
+# F7f 要核的**口径字面量**（与 `callrel.py` 的常量同义；这里写成自己的字面量，
+# 因为 `tools/` 不 import 产品模块 —— 宁可另写同义实现，R54/R55 的纪律）。
+# 写成元组而不是集合：报错时要按声明顺序印出来。
+DECLARED_IDENTITIES = ("callee-name", "definition-site")
 
 # ---------------------------------------------------------------------------
 # 夹具：纯合成，不联网、不建 GUI、不读仓库里任何 .c
@@ -196,8 +219,51 @@ CG_ACY_C = (
 
 CG_FIXTURES = (("cg_cyc.c", CG_CYC_C), ("cg_acy.c", CG_ACY_C))
 
-# F7b 的期望环（手写，独立于产品）：成员集合必须恰是这两个
+# ---------------------------------------------------------------------------
+# F9（R88）夹具：**同名不同文件**的 `static` 函数 —— 名字级口径会把它们合并成
+# 一个节点，于是两份文件之间凭空长出一个跨文件环。
+#
+# 为什么这个小夹具能把两种口径**分开**（手推，独立于产品）：
+#   名级：调用点 4 个，但 `h(...)` 在 func_index 里有**两份定义** ⇒ 每个 h 调用点
+#         各扇出 2 条边（a→h ×2、b→h ×2），再加 h→a、h→b ⇒ **边 6 条**
+#         ⇒ 节点 {a,h,b} 全在一个 SCC 里 ⇒ 最大环 3
+#         ⚠ 「4」与「6」的差**是实测出来的**：`_r82/append_rounds_r88.py` 现跑夹具读到
+#         名字级 `edges_total=6`。手推若只数「调用点」就会漏掉**扇出** —— 这正是
+#         F7a/F9c 要并列两本账（载荷 `edges` 长度 vs `call_relations.edges_total`）
+#         的理由：口径错时两边一起错，只有并列才看得见。
+#   落点：h 有两份定义（dup_a.c / dup_b.c）⇒ **被调侧**判不出是哪一份 ⇒ K_AMB 汇点
+#         ⇒ K_DEF(a.c,h)→K_DEF(a.c,a)→K_AMB(h)；K_DEF(b.c,h)→K_DEF(b.c,b)→K_AMB(h)
+#         ⇒ 一个环都没有 ⇒ 最大环 0，而节点数 5 > 3（拆开了）
+#   ⇒ F9d 的两个半边（**环必须塌** + **节点必须更多**）各有实物。
+#   而 F9e 用上面已有的 cg_cyc.c 当**惰性**对照（那里没有同名不同文件 ⇒ 必须逐位相同）。
+# 少了任一侧，两条判据里就有一条变成空断言（永远绿且没人告诉你）。
+# ---------------------------------------------------------------------------
+CG_DUP_FIXTURES = (
+    ("cg_dup_a.c",
+     "static void a(void) { h(); }\n"
+     "static void h(void) { a(); }\n"),
+    ("cg_dup_b.c",
+     "static void b(void) { h(); }\n"
+     "static void h(void) { b(); }\n"),
+)
+
+# F7b 的期望环（手写，独立于产品）：成员集合必须恰是这两个。
 CG_WANT_CYCLE = ("hub", "leaf")
+
+
+def _cycle_names(members):
+    """把环成员投影成**名字**（`名字 @ 定义文件` ⇒ `名字`）。
+
+    ⚠ R88：默认口径 `definition-site` 下成员带**落点**（`hub @ cg_cyc.c`）。
+    F7b 问的是「哪两个函数成环」，所以只比名字；**落点由 F9e 单独守**
+    （那里断言定义落点报出的封环成员必须**带**落点）。这条投影因此有它自己的
+    对手方 —— 不是「看不见就当成没有」。
+    """
+    out = []
+    for m in members:
+        s = str(m)
+        out.append(s.split(" @ ", 1)[0] if " @ " in s else s)
+    return out
 
 # ---------------------------------------------------------------------------
 # F8（R87）夹具：GNU **属性说明符** `__attribute__((…))` 既不是定义、也不是调用。
@@ -328,15 +394,17 @@ CRITERIA = (
     ("F6", "不假阳（控制语句 / 调用 / 宏 / 初值），且已披露的 K&R / 返回函数指针保持不识别"),
     ("F7", "调用关系的有界投影：两本账对账 / 环两向 / 有界且诚恳 / 深度有效 / 未知格式不降级 / 口径字面量"),
     ("F8", "属性说明符 `__attribute__`：类型定义不产函数 / 真函数不丢 / 组内参数不算调用 / 未解析两向 / 产物零出现 / 文档显式声明"),
+    ("F9", "节点身份口径：默认定义落点 / 老口径可选且非法值报错 / 两口径边账相同 / 同名不同文件处环必须塌（活性）/ 无同名可拆处逐位相同（惰性）且成员带落点"),
 )
 CRITERIA_IDS = tuple(c[0] for c in CRITERIA)
 
 # ---------------------------------------------------------------------------
 # 棘轮：全部是「事实的读数」，不是可调参数。覆盖不许静默缩水。
 # ---------------------------------------------------------------------------
-EXPECTED_CRITERIA = 8
+EXPECTED_CRITERIA = 9
 EXPECTED_FIXTURES = 3
 EXPECTED_CG_FIXTURES = 2
+EXPECTED_DUP_FIXTURES = 2
 EXPECTED_ATTR_FIXTURES = 1
 EXPECTED_SHAPE_NAMES = 4
 EXPECTED_BOUNDARY_TRAPS = 2
@@ -422,7 +490,7 @@ def judge(per):
 
 
 def judge_fixtures(fixtures=None, neg_c=None, shapes_c=None, sbraces_c=None,
-                   cg_cyc=None, cg_acy=None, attr_c=None):
+                   cg_cyc=None, cg_acy=None, attr_c=None, cg_dup=None):
     """夹具完备性：每条陷阱必须在夹具源码里**逐字**出现。
 
     为什么这是必需的一环（R56 的自伤教训：**口径变一次，样本完备性就得跟着重算**）：
@@ -440,6 +508,7 @@ def judge_fixtures(fixtures=None, neg_c=None, shapes_c=None, sbraces_c=None,
     cgy = CG_CYC_C if cg_cyc is None else cg_cyc
     cga = CG_ACY_C if cg_acy is None else cg_acy
     atr = ATTR_C if attr_c is None else attr_c
+    dup = CG_DUP_FIXTURES if cg_dup is None else cg_dup
     probs = []
     for name in FALSE_POSITIVE_TRAPS + BOUNDARY_TRAPS:
         if name not in neg:
@@ -467,6 +536,22 @@ def judge_fixtures(fixtures=None, neg_c=None, shapes_c=None, sbraces_c=None,
     for rel, text in fixtures:
         if not text.strip():
             probs.append("R2 夹具 %s 是空的" % rel)
+    # F9 夹具完备性：四条边**逐条**必须在（少一条，F9d 的「环必须塌」就变成
+    # 另一件事 —— 它可能只是因为没有环可塌而绿，那是空断言）。
+    dtxt = "".join(text for _rel, text in dup)
+    for marker, why in (
+            ("static void h(void) {", "被调侧那份同名定义"),
+            ("static void a(void) { h(); }", "环的正向边 a→h"),
+            ("static void h(void) { a(); }", "环的反向边 h→a"),
+            ("static void b(void) { h(); }", "第二份文件里的 a→h 同形边"),
+            ("static void h(void) { b(); }", "第二份文件里的 h→b")):
+        if marker not in dtxt:
+            probs.append("R2 重复定义夹具里找不到 %s（`%s`）—— F9d 的「同名不同"
+                         "文件 ⇒ 环必须塌」变成空断言" % (why, marker))
+    if dtxt.count("static void h(void) {") != 2:
+        probs.append("R2 重复定义夹具里 `static void h(void) {` 出现 %d 次"
+                     "（要求恰 2 次）—— 少了就没有「同名不同文件」这个前提"
+                     % dtxt.count("static void h(void) {"))
     # F8 夹具完备性：四类类型定义与三类真函数**都必须在**。
     # 少了任一侧，F8a/F8b 就退化成空断言（永远绿，且没人告诉你）。
     for marker, why in (
@@ -498,6 +583,8 @@ def judge_ratchet(n_funcs):
                            ("夹具数", len(FIXTURES), EXPECTED_FIXTURES),
                            ("调用关系夹具数", len(CG_FIXTURES),
                             EXPECTED_CG_FIXTURES),
+                           ("重复定义夹具数", len(CG_DUP_FIXTURES),
+                            EXPECTED_DUP_FIXTURES),
                            ("属性夹具数", len(ATTR_FIXTURES),
                             EXPECTED_ATTR_FIXTURES),
                            ("形态名数", len(SHAPE_NAMES), EXPECTED_SHAPE_NAMES),
@@ -603,17 +690,17 @@ def judge_callrel(obs):
         probs.append("F7a 两本账对不上：--json 的 edges=%s，"
                      "call_relations.edges_total=%s" % (ne, et))
 
-    # F7b 环，两向
+    # F7b 环，两向（R88：比较**名字投影**，见 `_cycle_names`）
     cyc = obs.get("cycles_cyc")
     mem = []
     if isinstance(cyc, list):
         for c in cyc:
             if isinstance(c, dict) and c.get("size") == 2:
-                mem.append(tuple(sorted(c.get("members") or [])))
+                mem.append(tuple(sorted(_cycle_names(c.get("members") or []))))
     if not mem:
         probs.append("F7b 有环夹具里找不到 size=2 的环（读到的 cycles=%r）" % (cyc,))
     elif tuple(sorted(CG_WANT_CYCLE)) not in mem:
-        probs.append("F7b 报出的 size=2 环是 %r，期望里没有 %r"
+        probs.append("F7b 报出的 size=2 环（名字投影）是 %r，期望里没有 %r"
                      % (mem, tuple(sorted(CG_WANT_CYCLE))))
     if obs.get("cycles_acy") != []:
         probs.append("F7b 无环夹具必须报 cycles == []，读到 %r"
@@ -657,16 +744,101 @@ def judge_callrel(obs):
     if obs.get("bad_exists"):
         probs.append("F7e 未知扩展名居然还是写出了文件 —— 不许静默改成 JSON")
 
-    # F7f 口径写成字面量
-    if obs.get("identity") != "callee-name":
-        probs.append("F7f identity 必须是字面量 'callee-name'，读到 %r"
-                     % (obs.get("identity"),))
+    # F7f 口径与它的局限必须**一起**写下来（R88：口径换了，局限也得换）
+    ident = obs.get("identity")
     lim = obs.get("limitations")
+    if ident not in DECLARED_IDENTITIES:
+        probs.append("F7f identity 必须是声明的两个字面量之一 %r，读到 %r"
+                     % (list(DECLARED_IDENTITIES), ident))
     if not isinstance(lim, list) or len(lim) < 3 or not all(lim):
         probs.append("F7f limitations 必须至少 3 条且非空，读到 %r" % (lim,))
-    elif not any("假阳性" in str(x) for x in lim):
-        probs.append("F7f 必须明说「同名合并 ⇒ 环可能含假阳性」—— "
-                     "这是本投影最容易被误读的地方")
+    else:
+        _ltxt = " ".join(str(x) for x in lim)
+        if ident == "callee-name" and "假阳性" not in _ltxt:
+            probs.append("F7f 名字级口径必须明说「同名合并 ⇒ 调用环可能含假阳性」"
+                         "—— 这是它最容易被误读的地方")
+        elif ident == "definition-site":
+            if "不猜" not in _ltxt:
+                probs.append("F7f 定义落点口径必须明说「被调侧的歧义**判不出来**"
+                             "（不猜）」—— 否则读者会以为同名多定义也消歧了")
+            if "漏" not in _ltxt:
+                probs.append("F7f 定义落点口径必须明说它**会漏**（K_AMB 是汇点 ⇒"
+                             "经过同名多定义的环不再被报出）—— 只报好处不报代价")
+    return probs
+
+
+def judge_identity(obs):
+    """F9（R88）的**纯函数**判据：节点身份口径（definition-site ⇄ callee-name）。
+
+    与 F7f 的分工：F7f 管「口径与它的局限**都写下来了**」，这一族管口径**行为本身**。
+    五个半边各有自己的坏样本（自证里逐条点名），互不重叠：
+
+      F9a **默认口径必须是 `definition-site` 这个字面量** —— 口径被静默换掉是
+          R83 说的那类「所有读数一起错且都自洽」的缺陷，必须有一个对手方。
+      F9b 老口径**仍可显式选中**并如实回显（不许删），**未知值必须非零退出且
+          不产出文件**（静默退回默认就是「没听懂却假装听懂」）；形状版本号必须
+          跟着口径一起涨（键集合变了 ⇒ 下游按它判兼容）；焦点子图的
+          `focus_candidates` 在两口径下都必须存在（定义落点下一个名字可以映到
+          多个节点 ⇒ 这个键是**必须**的）。
+      F9c **反向**：两条口径的 `edges_total` 必须相等，且都等于 `--json` 载荷里
+          `edges` 的长度 —— 拆节点**不许吃掉任何一条边**。这一条是 F9d 的对手方：
+          只断言「环塌了」可以由「整类不报」刷出来。
+      F9d **活性**：同名不同文件的夹具上，定义落点的最大环必须**小于**名字级，
+          且节点数**更多**（真把同名拆开了）。
+      F9e **惰性**：没有同名不同文件的夹具上，两条口径的最大环与节点数必须
+          **逐位相同**，且定义落点报出的环成员必须**带落点**（可区分）——
+          没有东西可拆时口径不许无中生有，拆开时又必须让人分得清。
+    """
+    probs = []
+    if not isinstance(obs, dict):
+        return ["F9 判据载体不是字典（scan_identity 的返回值坏了）"]
+
+    if obs.get("id_default") != "definition-site":
+        probs.append("F9a 默认节点身份必须是字面量 'definition-site'，读到 %r"
+                     % (obs.get("id_default"),))
+    if obs.get("id_legacy") != "callee-name":
+        probs.append("F9b `--callgraph-identity callee-name` 必须仍被支持并如实"
+                     "回显，读到 %r" % (obs.get("id_legacy"),))
+    if obs.get("bad_id_rc") in (0, None):
+        probs.append("F9b 未知口径值竟然退出了 %r —— 静默退回默认口径"
+                     % (obs.get("bad_id_rc"),))
+    if obs.get("bad_id_exists"):
+        probs.append("F9b 未知口径值还是写出了文件")
+    ver = obs.get("cg_version")
+    if not isinstance(ver, int) or ver < 2:
+        probs.append("F9b 形状版本必须是 >= 2 的整数（键集合变了 ⇒ 版本要涨），"
+                     "读到 %r" % (ver,))
+    for _k in ("default_focus_candidates", "legacy_focus_candidates"):
+        if not isinstance(obs.get(_k), int):
+            probs.append("F9b 焦点子图的候选数键 %s 必须在（定义落点下一个名字可以"
+                         "映到多个节点），读到 %r" % (_k, obs.get(_k)))
+    ed, el, ej = (obs.get("dup_edges_default"), obs.get("dup_edges_legacy"),
+                  obs.get("dup_n_edges_json"))
+    if None in (ed, el, ej) or not (ed == el == ej):
+        probs.append("F9c 两条口径的边账必须相等且都等于载荷里的边数，读到 "
+                     "默认=%r 老口径=%r 载荷=%r" % (ed, el, ej))
+    bd, bl = obs.get("dup_big_default"), obs.get("dup_big_legacy")
+    nd, nl = obs.get("dup_nodes_default"), obs.get("dup_nodes_legacy")
+    if bd is None or bl is None or not bd < bl:
+        probs.append("F9d 同名不同文件的夹具上，定义落点的最大环必须**小于**"
+                     "名字级，读到 %r / %r（环塌不下来 ⇒ 这条口径没起作用）"
+                     % (bd, bl))
+    if nd is None or nl is None or not nd > nl:
+        probs.append("F9d 同名不同文件的夹具上，定义落点的节点数必须**更多**"
+                     "（拆开了），读到 %r / %r" % (nd, nl))
+    if (obs.get("inert_big_default") != obs.get("inert_big_legacy")
+            or obs.get("inert_nodes_default") != obs.get("inert_nodes_legacy")):
+        probs.append("F9e 没有同名不同文件的夹具上，两条口径必须**逐位相同**，"
+                     "读到 最大环 %r/%r、节点 %r/%r"
+                     % (obs.get("inert_big_default"), obs.get("inert_big_legacy"),
+                        obs.get("inert_nodes_default"),
+                        obs.get("inert_nodes_legacy")))
+    imem = obs.get("inert_cycle_members")
+    if not isinstance(imem, list) or not imem:
+        probs.append("F9e 拿不到定义落点报出的环成员，读到 %r" % (imem,))
+    elif not all(" @ " in str(m) for m in imem):
+        probs.append("F9e 定义落点报出的环成员必须**带落点**（否则同名不同文件的"
+                     "两个成员分不开），读到 %r" % (imem,))
     return probs
 
 
@@ -954,6 +1126,108 @@ def _write_help(text):
         return True
 
 
+def scan_identity(root, python_exe):
+    """F9 的**载体**：跑公开 CLI，把「节点身份口径」这一族量出来。
+
+    两个夹具目录、五趟 CLI（各有理由，缺一趟就有半边没被量到）：
+      dup  × 默认           ⇒ 默认口径是什么（F9a）
+      dup  × callee-name    ⇒ 老口径还在不在（F9b）
+      dup  × 未知值          ⇒ 会不会静默降级（F9b）
+      cyc  × 默认 / 老口径   ⇒ 惰性对照（F9e）：没有同名可拆时不许动
+
+    返回 ``(probs, n_runs)``；``probs is None`` = **缺输入**
+    （不许把「跑不起来」当成「没问题」）。
+    """
+    base = tempfile.mkdtemp(prefix="r88id_")
+    try:
+        dup = os.path.join(base, "dup")
+        cyc = os.path.join(base, "cyc")
+        os.makedirs(dup)
+        os.makedirs(cyc)
+        for rel, text in CG_DUP_FIXTURES:
+            with io.open(os.path.join(dup, rel), "w", encoding="utf-8",
+                         newline="") as fh:
+                fh.write(text)
+        rel0, txt0 = CG_FIXTURES[0]
+        with io.open(os.path.join(cyc, rel0), "w", encoding="utf-8",
+                     newline="") as fh:
+            fh.write(txt0)
+
+        def run(work, extra):
+            argv = [python_exe, "matlabc.py", work, "--lang", "c",
+                    "--checks", "none"] + list(extra)
+            p = subprocess.run(argv, cwd=root, stdin=subprocess.DEVNULL,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               timeout=CLI_TIMEOUT)
+            return p.returncode
+
+        def load(path):
+            if not os.path.isfile(path):
+                return None
+            with io.open(path, "rb") as fh:
+                try:
+                    return json.loads(fh.read().decode("utf-8", "replace"))
+                except ValueError:
+                    return None
+
+        def one(work, tag, extra):
+            j = os.path.join(base, "%s.j.json" % tag)
+            c = os.path.join(base, "%s.c.json" % tag)
+            if run(work, ["--json", j, "--callgraph", c] + list(extra)) != 0:
+                return None, None
+            return load(j), load(c)
+
+        _jd, c_def = one(dup, "dup_def", [])
+        _jl, c_leg = one(dup, "dup_leg", ["--callgraph-identity", "callee-name"])
+        _ji, c_inert_def = one(cyc, "inert_def", [])
+        _jn, c_inert_leg = one(cyc, "inert_leg",
+                               ["--callgraph-identity", "callee-name"])
+        if not all(isinstance(x, dict) for x in
+                   (c_def, c_leg, c_inert_def, c_inert_leg)):
+            return None, 0
+        bad = os.path.join(base, "bad_id.json")
+        bad_rc = run(dup, ["--callgraph", bad, "--callgraph-identity", "nope"])
+
+        def rel_of(pay):
+            return (pay or {}).get("call_relations") or {}
+
+        def big(pay):
+            return (rel_of(pay).get("cycle_stats") or {}).get("biggest")
+
+        def cyc_members(pay):
+            cs = rel_of(pay).get("cycles") or []
+            return list(cs[0].get("members") or []) if cs else []
+
+        def focus_cands(pay):
+            return ((pay or {}).get("focus_subgraph") or {}).get(
+                "focus_candidates")
+
+        obs = {
+            "id_default": rel_of(c_def).get("identity"),
+            "id_legacy": rel_of(c_leg).get("identity"),
+            "cg_version": rel_of(c_def).get("version"),
+            "bad_id_rc": bad_rc,
+            "bad_id_exists": os.path.exists(bad),
+            "dup_edges_default": rel_of(c_def).get("edges_total"),
+            "dup_edges_legacy": rel_of(c_leg).get("edges_total"),
+            "dup_n_edges_json": len((_jd or {}).get("edges") or []),
+            "dup_big_default": big(c_def),
+            "dup_big_legacy": big(c_leg),
+            "dup_nodes_default": rel_of(c_def).get("nodes_total"),
+            "dup_nodes_legacy": rel_of(c_leg).get("nodes_total"),
+            "inert_big_default": big(c_inert_def),
+            "inert_big_legacy": big(c_inert_leg),
+            "inert_nodes_default": rel_of(c_inert_def).get("nodes_total"),
+            "inert_nodes_legacy": rel_of(c_inert_leg).get("nodes_total"),
+            "inert_cycle_members": cyc_members(c_inert_def),
+            "default_focus_candidates": focus_cands(c_def),
+            "legacy_focus_candidates": focus_cands(c_leg),
+        }
+        return judge_identity(obs), 5
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+
+
 def main(argv):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--help", "-h", action="store_true")
@@ -1004,17 +1278,29 @@ def main(argv):
               "（--json / --callgraph / %s 都是 F8 的载体 → 缺输入）" % ATTR_DOC)
         return 2
 
+    try:
+        id_probs, _n_id = scan_identity(root, sys.executable)
+    except (OSError, subprocess.SubprocessError) as e:
+        print("check_c_frontend_shapes: 身份口径夹具的公开 CLI 跑不起来：%s"
+              "（缺输入 → 红）" % e)
+        return 2
+    if id_probs is None:
+        print("check_c_frontend_shapes: 身份口径没有产出可解析的 JSON"
+              "（--callgraph 是 F9 的载体 → 缺输入）")
+        return 2
+
     probs = (list(probs) + judge_fixtures() + judge_ratchet(n_funcs)
-             + cg_probs + at_probs)
+             + cg_probs + at_probs + id_probs)
     if probs:
         for p in probs:
             print("check_c_frontend_shapes: " + p)
         print("check_c_frontend_shapes: %d 项违规" % len(probs))
         return 1
     print("check_c_frontend_shapes: OK（%d 个形态夹具 + %d 个调用关系夹具 + "
-          "%d 个属性夹具 / 公开 CLI 认出 %d 个函数 / %s 全绿 + 夹具完备性 + 棘轮）"
-          % (len(FIXTURES), len(CG_FIXTURES), len(ATTR_FIXTURES), n_funcs,
-             ROW_SIGNATURE))
+          "%d 个重复定义夹具 + %d 个属性夹具 / 公开 CLI 认出 %d 个函数 / %s 全绿 + "
+          "夹具完备性 + 棘轮）"
+          % (len(FIXTURES), len(CG_FIXTURES), len(CG_DUP_FIXTURES),
+             len(ATTR_FIXTURES), n_funcs, ROW_SIGNATURE))
     return 0
 
 
@@ -1108,10 +1394,10 @@ def _selftest():
         """好观测：F7 六条子判据必须**全部**在这份观测上绿。"""
         return {
             "n_edges_json": 6, "edges_total": 6,
-            "identity": "callee-name",
-            "limitations": ["甲：同名合并 ⇒ 调用环可能含**假阳性**",
-                            "乙：unresolved 不在图里",
-                            "丙：截断是显式的"],
+            "identity": "definition-site",
+            "limitations": ["甲：被调侧歧义判不出来 ⇒ 不猜（K_AMB 是汇点）",
+                            "乙：真环也可能**漏**，上界 = 指向 K_AMB 的边数",
+                            "丙：unresolved 不在图里；截断是显式的"],
             "cycles_cyc": [{"size": 2, "members": ["hub", "leaf"]}],
             "cycles_acy": [], "computed_acy": True,
             "cap_hit_default": False, "fan_in_shown": 4, "fan_in_top_len": 4,
@@ -1157,9 +1443,11 @@ def _selftest():
              {"depth1_nodes": ["hub", "leaf"], "depth2_nodes": ["hub", "other"]}),
             ("F7e 未知扩展名静默降级（rc=0）", {"bad_rc": 0}),
             ("F7e 未知扩展名还是写出了文件", {"bad_exists": True}),
-            ("F7f 身份口径被悄悄换掉", {"identity": "definition-site"}),
+            ("F7f 冒出未声明的口径字面量", {"identity": "name"}),
+            ("F7f 口径与它的局限分家（老口径配着新口径的局限）",
+             {"identity": "callee-name"}),
             ("F7f limitations 缩水到 2 条", {"limitations": ["甲", "乙"]}),
-            ("F7f 没明说「同名合并 ⇒ 假阳性」",
+            ("F7f 没明说本口径的局限",
              {"limitations": ["甲：不跟踪运行期绑定", "乙：不展开运行期", "丙：有上限"]}),
     ):
         d = _obs()
@@ -1248,6 +1536,69 @@ def _selftest():
             print("  [selftest] F8 的子判据 %s 没有自己的坏样本（子覆盖静默缩水）"
                   % letter)
 
+    # ---- F9：节点身份口径（R88；同样吃纯 dict） ----
+    def _obs_id():
+        """好观测：F9 五条子判据必须**全部**在这份观测上绿。
+
+        数字取的是**真实夹具的手推值**（见 `CG_DUP_FIXTURES` 的注释）：
+        名级 4 边 ⇒ SCC 3；落点 5 节点 ⇒ 0 环；惰性对照 cyc 两口径都是 2 环 / 3 节点。
+        """
+        return {"id_default": "definition-site", "id_legacy": "callee-name",
+                "cg_version": 2, "bad_id_rc": 1, "bad_id_exists": False,
+                "dup_edges_default": 4, "dup_edges_legacy": 4,
+                "dup_n_edges_json": 4,
+                "dup_big_default": 0, "dup_big_legacy": 3,
+                "dup_nodes_default": 5, "dup_nodes_legacy": 3,
+                "inert_big_default": 2, "inert_big_legacy": 2,
+                "inert_nodes_default": 3, "inert_nodes_legacy": 3,
+                "inert_cycle_members": ["hub @ cg_cyc.c", "leaf @ cg_cyc.c"],
+                "default_focus_candidates": 1, "legacy_focus_candidates": 1}
+
+    def red_id(tag, obs, want):
+        probs = judge_identity(obs)
+        hit = [p for p in probs if p.startswith(want)]
+        others = [p for p in probs
+                  if p[:2] in CRITERIA_IDS and not p.startswith(want)]
+        for p in hit:
+            witnessed_sub.add(p[:3])
+        if not hit:
+            bad[0] += 1
+            print("  [selftest] %s 未被 %s 抓到（实得 %r）" % (tag, want, probs))
+        elif others:
+            bad[0] += 1
+            print("  [selftest] %s 红在了别的判据上：%r" % (tag, others))
+        else:
+            good[0] += 1
+            witnessed.add(want)
+
+    green("好样本：F9 观测五条子判据全绿", judge_identity(_obs_id()))
+    for tag, patch in (
+            ("F9a 默认口径被悄悄换成老口径", {"id_default": "callee-name"}),
+            ("F9b 老口径被删（不再可选）", {"id_legacy": "definition-site"}),
+            ("F9b 未知口径值静默退回默认（rc=0）", {"bad_id_rc": 0}),
+            ("F9b 未知口径值还是写出了文件", {"bad_id_exists": True}),
+            ("F9b 形状版本没跟着口径一起涨", {"cg_version": 1}),
+            ("F9b 候选数这个键在老口径下没了",
+             {"legacy_focus_candidates": None}),
+            ("F9c 拆节点吃掉了边", {"dup_edges_default": 3}),
+            ("F9c 载荷那边少一条（两本账对不上）", {"dup_n_edges_json": 5}),
+            ("F9d 同名不同文件处环没塌", {"dup_big_default": 3}),
+            ("F9d 同名不同文件没被拆开（节点数没涨）",
+             {"dup_nodes_default": 3}),
+            ("F9e 没有同名可拆时口径无中生有", {"inert_big_default": 9}),
+            ("F9e 没有同名可拆时节点数变了", {"inert_nodes_default": 4}),
+            ("F9e 环成员没带落点（同名分不开）",
+             {"inert_cycle_members": ["hub", "leaf"]}),
+    ):
+        d = _obs_id()
+        d.update(patch)
+        red_id("坏样本 %s" % tag, d, "F9")
+    for letter in ("F9a", "F9b", "F9c", "F9d", "F9e"):
+        if letter not in witnessed_sub:
+            bad[0] += 1
+            print("  [selftest] F9 的子判据 %s 没有自己的坏样本（子覆盖静默缩水）"
+                  % letter)
+
     # ---- ① 每条判据都必须被至少一个坏样本点名（覆盖不许静默缩水） ----
     if witnessed == set(CRITERIA_IDS):
         good[0] += 1
@@ -1313,6 +1664,13 @@ def _selftest():
     else:
         bad[0] += 1
         print("  [selftest] attr.c 被抽掉「组内有函数样参数」形态后 R2 不报红")
+    if judge_fixtures(cg_dup=(("cg_dup_a.c", "static void a(void) { h(); }\n"),
+                              ("cg_dup_b.c", "static void h(void) { b(); }\n"))):
+        good[0] += 1
+    else:
+        bad[0] += 1
+        print("  [selftest] 重复定义夹具被抽掉「同名两份定义」后 R2 不报红"
+              "（F9d 的『环必须塌』退化成空断言）")
     if judge_fixtures(attr_c=ATTR_C.replace("DPT(typedef)\n", "")):
         good[0] += 1
     else:

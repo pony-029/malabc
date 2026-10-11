@@ -10615,27 +10615,14 @@ def _apply_unified_gates(model, heuristics, args, root, lang):
     return ok, msgs
 
 
-def _callrel_hub(rel):
-    """不给 `--callgraph-focus` 时的默认根：取**枢纽分数**最高的节点。
-
-    分数 = 2×扇入 + 扇出 —— 与 MATLAB 侧首页力导向图的选点口径**同一套**
-    （`_render_callgraph_section` 里的 `x[2]*2 + x[3]`），不为第二处再发明一个：
-    「一个量一份实现」（R82 教训）。
-
-    为什么不用「扇入第一」：同分时按名字排序会挑到 `helper` 这种**没有出边**的
-    叶子，默认子图当场退化成 1 个节点 0 条边 —— 一个看起来像「这里没有关系」的
-    空结果，而它对用户要问的问题一点信息量都没有（探针在 Python 夹具上实测过）。
-    """
-    score = {}
-    for r in (rel.get("fan_in_top") or []):
-        n = r.get("callee")
-        score[n] = score.get(n, 0) + 2 * (r.get("n") or 0)
-    for r in (rel.get("fan_out_top") or []):
-        n = r.get("caller")
-        score[n] = score.get(n, 0) + (r.get("n") or 0)
-    if not score:
-        return None
-    return sorted(score.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+# R88：`_callrel_hub` 已**移进** `callrel.hub_of`，并顺手修掉一个真缺陷 ——
+# 老实现同分时按名字排序，会挑到 `helper` 这种**扇入高但没有出边**的叶子
+# （探针 D1 实测：扇入 100 / 出边 0），默认子图当场退化成「1 节点 / 0 边」。
+# 新口径是「**有出边的优先**，一个都没有才退回纯分数」。
+# 移动的理由不是「整理代码」，而是**口径与它的读数必须住同一个模块**：
+# `definition-site` 口径下 `hub_of` 返回的是**节点名**（如 `real @ h.c`），
+# 而 `focus_subgraph` 的匹配规则也在 callrel 里 —— 两处分居会让默认根认不出
+# 自己的子图（探针 D3 就是为把这条钉住）。
 
 
 def _emit_call_relations(model, args, label="C"):
@@ -10662,6 +10649,8 @@ def _emit_call_relations(model, args, label="C"):
     focus_name = (getattr(args, "callgraph_focus", None) or "").strip()
     depth = getattr(args, "callgraph_depth", None)
     max_nodes = getattr(args, "callgraph_max_nodes", None)
+    identity = (getattr(args, "callgraph_identity", None)
+                or callrel.DEFAULT_IDENTITY)
     if depth is None:
         depth = callrel.DEFAULT_DEPTH
     if max_nodes is None:
@@ -10672,20 +10661,31 @@ def _emit_call_relations(model, args, label="C"):
                   file=sys.stderr)
             return False
         return True
+    # R88：未知口径值 ⇒ **非零退出且不产出任何文件**。静默退回默认就是
+    # 「没听懂却假装听懂」（与 `--lib-resolve` 的三态、`--callgraph` 扩展名同源）。
+    # argparse 的 choices 已经挡了一层，这里是**第二层**：程序化调用/配置注入
+    # 绕过 argparse 时仍然要红。
+    if identity not in callrel.IDENTITIES:
+        print("[ERROR] --callgraph-identity：认识的口径只有 %s，拿到的是 %r "
+              "—— 不静默退回默认。" % (" / ".join(callrel.IDENTITIES), identity),
+              file=sys.stderr)
+        return False
 
     edges = list(model.get("edges") or [])
     unresolved = list(model.get("unresolved") or [])
     func_index = model.get("func_index") or {}
     rel = callrel.call_relations(edges, func_index=func_index,
                                  unresolved_total=len(unresolved),
-                                 with_cycles=True)
+                                 with_cycles=True, identity=identity)
     sub = None
     if edges:
-        root_name = focus_name or _callrel_hub(rel)
+        # R88：默认根的取法住在 callrel 里（它必须知道节点身份的编码方式）。
+        root_name = focus_name or callrel.hub_of(rel)
         sub = callrel.focus_subgraph(edges, root_name, depth=depth,
                                      max_nodes=max_nodes,
                                      func_index=func_index,
-                                     direction="both" if focus_name else "callee")
+                                     direction="both" if focus_name else "callee",
+                                     identity=identity)
     ext = os.path.splitext(out)[1].lower()
     payload = {"call_relations": rel}
     if sub is not None:
@@ -10715,6 +10715,13 @@ def _emit_call_relations(model, args, label="C"):
         print("  焦点子图：以 %s 为根，方向=%s，深度=%d ⇒ %d 节点 / %d 边"
               % (sub["focus"], sub["direction"], sub["depth"],
                  len(sub["nodes"]), len(sub["edges"])))
+        _cands = sub.get("focus_candidates")
+        if _cands and _cands > 1:
+            # R88：一个名字在 `definition-site` 口径下映到多个节点时**必须报出来**
+            # —— 静默挑一个就是「悄悄换掉了你问的东西」。
+            print("    ⚠ 名字 %r 在 %s 口径下映到 %d 个节点，这里取度数最高的一个；"
+                  "要精确定位请写 `函数名 @ 文件`"
+                  % (focus_name or sub["focus"], identity, _cands))
         if sub["truncated"]["hit_node_cap"]:
             print("    ⚠ %s" % sub["truncated"]["reason"])
     print("[OK] 调用关系投影已写入：%s" % out)
@@ -31238,7 +31245,7 @@ def main(argv=None):
                          "扩展名决定格式：.json（结构化：扇入/扇出 TOP-N、调用环 "
                          "SCC、跨文件/跨目录计数、焦点子图）/ .dot（Graphviz）"
                          "/ .mmd（Mermaid）。"
-                         "为什么必须「有界」：内核整树实测 7,065,831 条调用边，"
+                         "为什么必须「有界」：内核整树实测 7,060,966 条调用边，"
                          "全量 JSON 是 GB 级 —— 顶层只给**结构的形状**，"
                          "被丢掉的部分在 truncated 里如实报出"
                          "（「我没展开」≠「没有关系」）；要逐点看完整关系，"
@@ -31259,6 +31266,19 @@ def main(argv=None):
                          "并在 JSON 的 truncated.hit_node_cap 标 True —— "
                          "「未展开」不会被说成「无关系」"
                          % callrel.DEFAULT_MAX_NODES)
+    ap.add_argument("--callgraph-identity", metavar="MODE",
+                    default=cfg.get("callgraph_identity"),
+                    choices=list(callrel.IDENTITIES),
+                    help="R88：图的**节点身份**口径。%s（默认）= 节点是「函数名 @ "
+                         "定义文件」—— 同名不同文件的 static 函数各成节点，跨文件"
+                         "**假环当场散开**；%s = 老口径，节点就是函数名（同名**合并**，"
+                         "报出的「调用环」里可能含假阳性）。"
+                         "为什么默认换掉：内核整树实测名字级口径下 5,149,101 条"
+                         "（72.9%%）边指向「同名多定义」，最大「调用环」37,775 个成员 "
+                         "—— 那不是真环，是同名合并造出来的。"
+                         "换口径**一条边都不删**（两条口径 edges_total 相等）。"
+                         "未知取值 ⇒ 非零退出且不产出文件（不静默退回默认）。"
+                         % (callrel.IDENTITY_DEFSITE, callrel.IDENTITY_NAME))
     ap.add_argument("--operator-impact-out", metavar="FILE", default=None,
                     help="R62：把「检测算子工程影响分析」单独写入 FILE（Markdown 或 .csv）；"
                          "算子按命中数×严重度×波及系数排名，定位对整个工程影响最大的检测类别。"

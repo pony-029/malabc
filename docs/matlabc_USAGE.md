@@ -402,7 +402,7 @@ python matlabc.py myproj/ --lib-resolve 2 --lib-path /opt/sdk/lib --json out.jso
 
 ### 3.15 调用关系（R86-3）—— 谁调用谁
 
-**为什么单独一组开关**：调用边一直在算（内核整树实测 7,065,831 条），但
+**为什么单独一组开关**：调用边一直在算（内核整树实测 7,060,966 条），但
 `--json-level summary` 的载荷**结构上不含 `edges` 数组**（只有计数），而全量数组在内核
 规模下是 GB 级。没有这一组开关，就**没有任何产物**能让「谁调用谁」可见。
 
@@ -412,16 +412,19 @@ python matlabc.py myproj/ --lib-resolve 2 --lib-path /opt/sdk/lib --json out.jso
 | `--callgraph-focus` | 函数名 | 无 | 以该函数为根做 BFS **双向**展开（它调了谁、谁调了它）。不给则取扇入最高的枢纽，按被调方向展开 |
 | `--callgraph-depth` | 整数 | 2 | 焦点子图展开层数 |
 | `--callgraph-max-nodes` | 整数 | 300 | 焦点子图节点上限。撞上限即停止展开并置 `truncated.hit_node_cap=true` |
+| `--callgraph-identity` | `definition-site` / `callee-name` | `definition-site` | 图的**节点身份**口径（R88）。`definition-site` = 节点是「函数名 @ 定义文件」⇒ 同名不同文件的函数各成节点、跨文件假环散开；`callee-name` = 老口径，节点就是函数名（同名**合并**，`cycles` 可能含假阳性）。未知取值 ⇒ **非零退出**且不产出文件 |
 
-`.json` 里有什么：`fan_in_top` / `fan_out_top`（枢纽排行）、`cycles`（**名字级**强连通
+`.json` 里有什么：`fan_in_top` / `fan_out_top`（枢纽排行）、`cycles`（**定义落点**级强连通
 分量 = 互为递归）、`cross_file` / `cross_dir`（内部 / 跨文件 / 同名多定义 / 无定义四桶）、
 `focus_subgraph`（逐层邻域）、`truncated`（`*_total` 与 `*_shown` 并列）、`limitations`
 （三条口径限制，逐字）。
 
-**三条口径写出来而不是让人猜**：① 节点身份是**被调函数的名字**（`identity:
-"callee-name"`），不是定义落点 ⇒ 跨文件同名会合并，`cycles` 可能含**假阳性**；
-② 未解析调用**不在图里**（没有 callee 节点），只并列报计数 —— 「没解析出来」不是
-「没有关系」；③ 截断永远显式上报 —— 「我没展开」不等于「没有关系」。
+**三条口径写出来而不是让人猜**：① 节点身份默认是**定义落点**（`identity:
+"definition-site"`，R88）—— 节点是「函数名 @ 定义文件」，同名不同文件**不合并**；老口径
+`callee-name` 仍在（`--callgraph-identity callee-name`），在它下面 `cycles` 可能含
+**假阳性**。换口径**一条边都不删**；被调侧同名多定义时**不猜**（并成汇点节点），代价是
+**经过它的环不报**；② 未解析调用**不在图里**（没有 callee 节点），只并列报计数 ——
+「没解析出来」不是「没有关系」；③ 截断永远显式上报 —— 「我没展开」不等于「没有关系」。
 
 ```bash
 # 全图形状：度数排行 + 递归环 + 跨文件计数

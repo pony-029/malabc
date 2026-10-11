@@ -18277,7 +18277,7 @@ def test_r61_c_frontend_shapes_gate_two_way():
          来自 R52，防的是「一条判据红、别的陪红」把独立证人变成一笔糊涂账。
       ② **夹具完备性两向**：把陷阱从夹具源码里删掉，`R2` 必须红 ——
          否则「不得出现 `if`」会退化成**空断言**（R56 的自伤）。
-      ③ **端到端**：真的把门跑起来，rc=0 且打印 F1–F8 全绿；`--selftest` 打印计数。
+      ③ **端到端**：真的把门跑起来，rc=0 且打印 F1–F9 全绿；`--selftest` 打印计数。
     反向判据：在本仓 `HEAD`（`24a2803`）上，`tools/check_c_frontend_shapes.py`
     **不存在** ⇒ ① 的 `_r37_load` 直接 ImportError ⇒ 本测试必红。
     """
@@ -18421,7 +18421,7 @@ def test_r61_c_frontend_shapes_gate_two_way():
                  timeout=180)
     out = r.stdout.decode("utf-8", "replace")
     assert r.returncode == 0, out[-1200:]
-    assert "F1–F8 全绿" in out, out[-600:]
+    assert "F1–F9 全绿" in out, out[-600:]
     s = _r31_run([os.path.join("tools", "check_c_frontend_shapes.py"), "--selftest"],
                  timeout=180)
     sout = s.stdout.decode("utf-8", "replace")

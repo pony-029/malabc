@@ -268,8 +268,8 @@ GUARD_CONTRACT = {
         2: "缺输入",
     },
     "tools/check_c_frontend_shapes.py": {
-        0: "C 前端函数定义形态 + 调用关系有界投影 + 属性说明符八条判据"
-           "（F1–F8）全绿，且夹具完备性与棘轮全绿",
+        0: "C 前端函数定义形态 + 调用关系有界投影 + 属性说明符 + 节点身份"
+           "口径九条判据（F1–F9）全绿，且夹具完备性与棘轮全绿",
         1: "有违规（某条判据红 / 棘轮不符 / 夹具被改瘦）",
         2: "缺输入（找不到 matlabc.py / 公开 CLI 跑不起来 / JSON 不可解析）",
     },
@@ -589,8 +589,15 @@ HELP_BYTES = {
 # （那本账被 `docs/KERNEL_RUN.md` 的 provenance 钉着，加块会把「分析结果没变」
 # 与「帮变长了」两件事混在一个数字里）。同一次提交里更新本表与下面的
 # `HELP_CANON_SNAPSHOT`，`HELP_DRIFT_BYTES` 一个字不动。
+# R88 的一次合法批准（记账）：`matlabc.py` 新增一个开关
+# （`--callgraph-identity`，图的**节点身份**口径 definition-site / callee-name）
+# 进帮助正文 ⇒ 臂 ①② 从 56566 → **57451**（+885；3.10 读 57481，差**仍是** 30 B，
+# 落在 ±64 带内）。与 R86-2/R86-3 同一纪律：这一片的增长**全部**来自帮助正文，
+# 产品分析路径的产物字节一个没动 —— `--callgraph` 是**另一条出口**，
+# 而且它新长的键 `identity` 是**新增**的，老口径读数由
+# `call_relations(identity="callee-name")` 逐位复现（门 F9 的两个半边就是这条）。
 HELP_BYTES_SNAPSHOT = {
-    "matlabc.py": 56566,
+    "matlabc.py": 57451,
     "matlabc_flow.py": 2075,
     "matlabc_ask.py": 919,
     "matlabc_mcp.py": 0,
@@ -638,8 +645,10 @@ HELP_CANON_COLUMNS = 10000
 # 但「内容必须一直是空的」是一条真断言，不该因为「没设体积界」而漏掉。
 # R86-2：`matlabc.py` 43765 → **45630**（+1865）。这一臂与解释器无关 ——
 # 3.10 与 3.13 都读 45630，正是「规范形」这个名字在起作用的反证。
+# R88：同一笔批准的臂 ③ —— 规范形 46929 → **47659**（+730；两个解释器读数
+# **相同**，与「规范形与解释器无关」这条声明一致）。
 HELP_CANON_SNAPSHOT = {
-    "matlabc.py": 46929,
+    "matlabc.py": 47659,
     "matlabc_flow.py": 1701,
     "matlabc_ask.py": 756,
     "matlabc_mcp.py": 0,
