@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>malabc · Linux 内核全量分析</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --panel2:#f1f3f6; --bd:rgba(0,0,0,.12);
+    --fg:#16181d; --fg2:#5b6270; --fg3:#8b93a1;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#14161a; --panel:#1c1f25; --panel2:#23272e; --bd:rgba(255,255,255,.14);
+           --fg:#eef1f5; --fg2:#a7b0bd; --fg3:#7d8695; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:400 14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 20px 64px}
+  header{border-bottom:1px solid var(--bd);padding-bottom:18px;margin-bottom:24px}
+  h1{margin:0 0 6px;font-size:22px;font-weight:600;letter-spacing:.2px}
+  h2{margin:34px 0 14px;font-size:16px;font-weight:600}
+  h2 .tag{font-size:12px;font-weight:400;color:var(--fg3);margin-left:8px}
+  .sub{color:var(--fg2);font-size:13px}
+  code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12.5px;
+       background:var(--panel2);padding:1px 5px;border-radius:4px}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:12px}
+  .kpi{background:var(--panel);border:1px solid var(--bd);border-radius:12px;padding:14px 16px}
+  .kpi .l{color:var(--fg2);font-size:12.5px;margin:0 0 2px}
+  .kpi .v{font-size:22px;font-weight:600;margin:0;font-variant-numeric:tabular-nums}
+  .kpi .u{font-size:12.5px;font-weight:400;color:var(--fg2)}
+  .panel{background:var(--panel);border:1px solid var(--bd);border-radius:12px;padding:16px 18px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media (max-width:840px){.two{grid-template-columns:1fr}}
+  svg{display:block;width:100%;height:auto}
+  svg text{fill:var(--fg2);font-size:12px}
+  svg .big{fill:var(--fg);font-size:22px;font-weight:600}
+  svg .sm{font-size:11.5px;fill:var(--fg3)}
+  svg .grid{stroke:var(--bd);stroke-width:1}
+  svg .axl{stroke:var(--bd);stroke-width:1}
+  .lgd{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:12.5px;color:var(--fg2)}
+  .lgd i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:middle}
+  .alist{display:flex;flex-direction:column;gap:8px;font-size:12.5px}
+  .arow{display:flex;align-items:center;gap:8px}
+  .arow .nm{flex:1;color:var(--fg2)}
+  .arow b{font-variant-numeric:tabular-nums}
+  .arow .pc{width:62px;text-align:right;color:var(--fg3)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--bd);white-space:nowrap;
+        font-variant-numeric:tabular-nums}
+  th{position:sticky;top:0;background:var(--panel);color:var(--fg2);font-weight:600;font-size:12.5px;z-index:1}
+  th:first-child,td:first-child{text-align:left}
+  td.d{white-space:normal;min-width:120px}
+  td.hi{font-weight:600}
+  .sub2{color:var(--fg3);font-size:11.5px}
+  .scroll{max-height:560px;overflow:auto;border:1px solid var(--bd);border-radius:12px;background:var(--panel)}
+  .fprow{display:flex;align-items:center;gap:10px;margin:3px 0;font-size:13px}
+  .nmb{width:76px;flex:none;color:var(--fg2)}
+  .track{flex:1;height:14px;border-radius:4px;background:var(--panel2);overflow:hidden}
+  .fill{display:block;height:100%;border-radius:4px}
+  .num{width:74px;flex:none;text-align:right;font-variant-numeric:tabular-nums}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px}
+  .card{background:var(--panel);border:1px solid var(--bd);border-left-width:3px;border-radius:10px;padding:12px 14px}
+  .card h3{margin:0 0 4px;font-size:13.5px;font-weight:600}
+  .card p{margin:0;color:var(--fg2);font-size:12.5px}
+  .fix{border-left-color:#1D9E75}
+  .open{border-left-color:#E24B4A}
+  footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--bd);color:var(--fg3);font-size:12.5px}
+  .warn{background:var(--panel2);border:1px solid var(--bd);border-radius:10px;padding:12px 14px;
+        color:var(--fg2);font-size:12.5px;margin-top:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>malabc · Linux 内核全量静态分析</h1>
+  <p class="sub">
+    语料 <code>linux-6.19.14</code> · 全部 C 系源码 · 调用方式 <code>malabc --lang c --checks all</code><br>
+    tarball sha256 <code>cde8bf67…f185</code>（比中镜像 <code>sha256sums.asc</code>）· 本页<b>无 JS、无外链</b>，可离线打开
+  </p>
+</header>
+
+<div class="kpis"><div class="kpi"><p class="l">C 系文件</p><p class="v">62,704<span class="u"></span></p></div>
+<div class="kpi"><p class="l">代码行</p><p class="v">36.2<span class="u"> 百万行</span></p></div>
+<div class="kpi"><p class="l">识别函数</p><p class="v">743,518<span class="u"></span></p></div>
+<div class="kpi"><p class="l">调用边</p><p class="v">7.07<span class="u"> 百万</span></p></div>
+<div class="kpi"><p class="l">全树耗时</p><p class="v">661.2<span class="u"> s</span></p></div>
+<div class="kpi"><p class="l">峰值内存</p><p class="v">10.55<span class="u"> GB</span></p></div>
+<div class="kpi"><p class="l">告警总数</p><p class="v">1,295,032<span class="u"></span></p></div>
+<div class="kpi"><p class="l">超时 / 崩溃</p><p class="v">0 / 0<span class="u"></span></p></div></div>
+
+<h2>性能与规模<span class="tag">左：代码行数前 12 个顶层目录 · 右：规模 vs 耗时 / 峰值内存</span></h2>
+<div class="two">
+  <div class="panel"><svg viewBox="0 0 560 372" role="img" aria-label="各顶层目录代码行数（KLOC）条形图">
+<rect x="92" y="6.0" width="394.00" height="15" rx="3" fill="#378ADD"/>
+<text x="84" y="18.0" text-anchor="end">drivers</text>
+<text x="493.0" y="18.0" class="sm">25,310</text>
+<rect x="92" y="36.0" width="34.02" height="15" rx="3" fill="#378ADD"/>
+<text x="84" y="48.0" text-anchor="end">arch</text>
+<text x="133.0" y="48.0" class="sm">2,185</text>
+<rect x="92" y="66.0" width="25.29" height="15" rx="3" fill="#378ADD"/>
+<text x="84" y="78.0" text-anchor="end">sound</text>
+<text x="124.3" y="78.0" class="sm">1,624</text>
+<rect x="92" y="96.0" width="24.42" height="15" rx="3" fill="#378ADD"/>
+<text x="84" y="108.0" text-anchor="end">fs</text>
+<text x="123.4" y="108.0" class="sm">1,569</text>
+<rect x="92" y="126.0" width="21.97" height="15" rx="3" fill="#378ADD"/>
+<text x="84" y="138.0" text-anchor="end">include</text>
+<text x="121.0" y="138.0" class="sm">1,411</text>
+<rect x="92" y="156.0" width="20.39" height="15" rx="3" fill="#378ADD"/>
+<text x="84" y="168.0" text-anchor="end">net</text>
+<text x="119.4" y="168.0" class="sm">1,310</text>
+<rect x="92" y="186.0" width="19.90" height="15" rx="3" fill="#378ADD"/>
+<text x="84" y="198.0" text-anchor="end">tools</text>
+<text x="118.9" y="198.0" class="sm">1,279</text>
+<rect x="92" y="216.0" width="8.28" height="15" rx="3" fill="#378ADD"/>
+<text x="84" y="228.0" text-anchor="end">kernel</text>
+<text x="107.3" y="228.0" class="sm">532</text>
+<rect x="92" y="246.0" width="4.25" height="15" rx="3" fill="#378ADD"/>
+<text x="84" y="258.0" text-anchor="end">lib</text>
+<text x="103.2" y="258.0" class="sm">273</text>
+<rect x="92" y="276.0" width="3.35" height="15" rx="3" fill="#378ADD"/>
+<text x="84" y="288.0" text-anchor="end">mm</text>
+<text x="102.4" y="288.0" class="sm">215</text>
+<rect x="92" y="306.0" width="1.91" height="15" rx="3" fill="#378ADD"/>
+<text x="84" y="318.0" text-anchor="end">security</text>
+<text x="100.9" y="318.0" class="sm">123</text>
+<rect x="92" y="336.0" width="1.69" height="15" rx="3" fill="#378ADD"/>
+<text x="84" y="348.0" text-anchor="end">crypto</text>
+<text x="100.7" y="348.0" class="sm">109</text>
+</svg></div>
+  <div class="panel"><svg viewBox="0 0 560 430" role="img" aria-label="代码规模与耗时、峰值内存的散点图">
+<line class="grid" x1="58" y1="16.0" x2="492" y2="16.0"/>
+<text x="52" y="20.0" text-anchor="end" class="sm">363</text>
+<text x="498" y="20.0" class="sm">6,508</text>
+<line class="grid" x1="58.0" y1="16" x2="58.0" y2="384"/>
+<text x="58.0" y="402" text-anchor="middle" class="sm">0</text>
+<line class="grid" x1="58" y1="89.6" x2="492" y2="89.6"/>
+<text x="52" y="93.6" text-anchor="end" class="sm">290</text>
+<text x="498" y="93.6" class="sm">5,206</text>
+<line class="grid" x1="144.8" y1="16" x2="144.8" y2="384"/>
+<text x="144.8" y="402" text-anchor="middle" class="sm">5,366</text>
+<line class="grid" x1="58" y1="163.2" x2="492" y2="163.2"/>
+<text x="52" y="167.2" text-anchor="end" class="sm">218</text>
+<text x="498" y="167.2" class="sm">3,905</text>
+<line class="grid" x1="231.6" y1="16" x2="231.6" y2="384"/>
+<text x="231.6" y="402" text-anchor="middle" class="sm">10,731</text>
+<line class="grid" x1="58" y1="236.8" x2="492" y2="236.8"/>
+<text x="52" y="240.8" text-anchor="end" class="sm">145</text>
+<text x="498" y="240.8" class="sm">2,603</text>
+<line class="grid" x1="318.4" y1="16" x2="318.4" y2="384"/>
+<text x="318.4" y="402" text-anchor="middle" class="sm">16,097</text>
+<line class="grid" x1="58" y1="310.4" x2="492" y2="310.4"/>
+<text x="52" y="314.4" text-anchor="end" class="sm">73</text>
+<text x="498" y="314.4" class="sm">1,302</text>
+<line class="grid" x1="405.2" y1="16" x2="405.2" y2="384"/>
+<text x="405.2" y="402" text-anchor="middle" class="sm">21,463</text>
+<line class="grid" x1="58" y1="384.0" x2="492" y2="384.0"/>
+<text x="52" y="388.0" text-anchor="end" class="sm">0</text>
+<text x="498" y="388.0" class="sm">0</text>
+<line class="grid" x1="492.0" y1="16" x2="492.0" y2="384"/>
+<text x="492.0" y="402" text-anchor="middle" class="sm">26,829</text>
+<text x="275" y="422" text-anchor="middle" class="sm">代码规模 (KLOC)</text>
+<text x="14" y="200" text-anchor="middle" class="sm" transform="rotate(-90 14 200)">耗时 (s)</text>
+<text x="548" y="200" text-anchor="middle" class="sm" transform="rotate(90 548 200)">峰值内存 (MB)</text>
+<circle cx="58.0" cy="383.9" r="4" fill="#EF9F27" fill-opacity="0.85"/>
+<circle cx="93.3" cy="338.0" r="4" fill="#EF9F27" fill-opacity="0.85"/>
+<circle cx="59.2" cy="378.5" r="4" fill="#EF9F27" fill-opacity="0.85"/>
+<circle cx="58.0" cy="383.9" r="4" fill="#EF9F27" fill-opacity="0.85"/>
+<circle cx="59.8" cy="377.6" r="4" fill="#EF9F27" fill-opacity="0.85"/>
+<circle cx="467.4" cy="55.4" r="4" fill="#EF9F27" fill-opacity="0.85"/>
+<circle cx="83.4" cy="356.2" r="4" fill="#EF9F27" fill-opacity="0.85"/>
+<circle cx="80.8" cy="367.9" r="4" fill="#EF9F27" fill-opacity="0.85"/>
+<circle cx="58.1" cy="383.9" r="4" fill="#EF9F27" fill-opacity="0.85"/>
+<circle cx="58.4" cy="378.5" r="4" fill="#EF9F27" fill-opacity="0.85"/>
+<circle cx="58.2" cy="383.9" r="4" fill="#EF9F27" fill-opacity="0.85"/>
+<circle cx="66.6" cy="370.4" r="4" fill="#EF9F27" fill-opacity="0.85"/>
+<circle cx="62.4" cy="376.4" r="4" fill="#EF9F27" fill-opacity="0.85"/>
+<circle cx="61.5" cy="375.4" r="4" fill="#EF9F27" fill-opacity="0.85"/>
+<circle cx="79.2" cy="358.5" r="4" fill="#EF9F27" fill-opacity="0.85"/>
+<circle cx="58.0" cy="383.9" r="4" fill="#EF9F27" fill-opacity="0.85"/>
+<circle cx="58.6" cy="378.4" r="4" fill="#EF9F27" fill-opacity="0.85"/>
+<circle cx="58.9" cy="378.4" r="4" fill="#EF9F27" fill-opacity="0.85"/>
+<circle cx="60.0" cy="377.1" r="4" fill="#EF9F27" fill-opacity="0.85"/>
+<circle cx="84.3" cy="361.2" r="4" fill="#EF9F27" fill-opacity="0.85"/>
+<circle cx="78.7" cy="360.1" r="4" fill="#EF9F27" fill-opacity="0.85"/>
+<circle cx="58.0" cy="383.9" r="4" fill="#EF9F27" fill-opacity="0.85"/>
+<circle cx="58.2" cy="383.9" r="4" fill="#EF9F27" fill-opacity="0.85"/>
+<circle cx="58.0" cy="383.6" r="4" fill="#1D9E75"/>
+<circle cx="93.3" cy="343.7" r="4" fill="#1D9E75"/>
+<circle cx="59.2" cy="383.0" r="4" fill="#1D9E75"/>
+<circle cx="58.0" cy="383.7" r="4" fill="#1D9E75"/>
+<circle cx="59.8" cy="382.9" r="4" fill="#1D9E75"/>
+<circle cx="467.4" cy="55.4" r="4" fill="#1D9E75"/>
+<circle cx="83.4" cy="353.6" r="4" fill="#1D9E75"/>
+<circle cx="80.8" cy="367.6" r="4" fill="#1D9E75"/>
+<circle cx="58.1" cy="383.7" r="4" fill="#1D9E75"/>
+<circle cx="58.4" cy="383.4" r="4" fill="#1D9E75"/>
+<circle cx="58.2" cy="383.6" r="4" fill="#1D9E75"/>
+<circle cx="66.6" cy="374.3" r="4" fill="#1D9E75"/>
+<circle cx="62.4" cy="381.2" r="4" fill="#1D9E75"/>
+<circle cx="61.5" cy="381.4" r="4" fill="#1D9E75"/>
+<circle cx="79.2" cy="356.6" r="4" fill="#1D9E75"/>
+<circle cx="58.0" cy="383.7" r="4" fill="#1D9E75"/>
+<circle cx="58.6" cy="383.3" r="4" fill="#1D9E75"/>
+<circle cx="58.9" cy="383.2" r="4" fill="#1D9E75"/>
+<circle cx="60.0" cy="382.5" r="4" fill="#1D9E75"/>
+<circle cx="84.3" cy="356.9" r="4" fill="#1D9E75"/>
+<circle cx="78.7" cy="355.8" r="4" fill="#1D9E75"/>
+<circle cx="58.0" cy="383.7" r="4" fill="#1D9E75"/>
+<circle cx="58.2" cy="383.6" r="4" fill="#1D9E75"/>
+</svg>
+    <div class="lgd" style="margin-top:10px">
+      <span><i style="background:#1D9E75"></i>耗时 s（左轴）</span>
+      <span><i style="background:#EF9F27"></i>峰值内存 MB（右轴）</span>
+    </div>
+  </div>
+</div>
+<div class="warn"><b>读数随分析范围变</b>：全树一次跑出调用边 <b>7,065,831</b> 条，而 23 个顶层目录分别跑完再求和只有 <b>2,427,644</b> 条（差约 2.9×）。内存模型 <code>峰值(MB) ≈ 0.298 × KLOC + 24</code> ⇒ 全树需要 <b>≥16 GB</b> 内存；16 GB 机器请按顶层目录分批。<br>低信噪三类（文档 / 未初始化 / 未用静态）占 <b>96.5%</b>，安全相关四类合计仅 <b>0.22%</b> —— 告警数量不是质量指标。</div>
+
+<h2>告警构成<span class="tag">1,295,032 条 · 10 类</span></h2>
+<div class="two">
+  <div class="panel"><svg viewBox="0 0 300 300" role="img" aria-label="告警类型构成环形图" style="max-width:300px;margin:0 auto">
+<circle cx="150" cy="150" r="92" fill="none" stroke="#888780" stroke-width="30" stroke-dasharray="250.283 327.770" stroke-dashoffset="-0.000" transform="rotate(-90 150 150)"/>
+<circle cx="150" cy="150" r="92" fill="none" stroke="#EF9F27" stroke-width="30" stroke-dasharray="204.581 373.472" stroke-dashoffset="-250.283" transform="rotate(-90 150 150)"/>
+<circle cx="150" cy="150" r="92" fill="none" stroke="#639922" stroke-width="30" stroke-dasharray="102.693 475.360" stroke-dashoffset="-454.864" transform="rotate(-90 150 150)"/>
+<circle cx="150" cy="150" r="92" fill="none" stroke="#D85A30" stroke-width="30" stroke-dasharray="14.852 563.201" stroke-dashoffset="-557.557" transform="rotate(-90 150 150)"/>
+<circle cx="150" cy="150" r="92" fill="none" stroke="#7F77DD" stroke-width="30" stroke-dasharray="3.477 574.576" stroke-dashoffset="-572.408" transform="rotate(-90 150 150)"/>
+<circle cx="150" cy="150" r="92" fill="none" stroke="#378ADD" stroke-width="30" stroke-dasharray="0.906 577.147" stroke-dashoffset="-575.885" transform="rotate(-90 150 150)"/>
+<circle cx="150" cy="150" r="92" fill="none" stroke="#D4537E" stroke-width="30" stroke-dasharray="0.549 577.504" stroke-dashoffset="-576.791" transform="rotate(-90 150 150)"/>
+<circle cx="150" cy="150" r="92" fill="none" stroke="#1D9E75" stroke-width="30" stroke-dasharray="0.293 577.760" stroke-dashoffset="-577.340" transform="rotate(-90 150 150)"/>
+<circle cx="150" cy="150" r="92" fill="none" stroke="#E24B4A" stroke-width="30" stroke-dasharray="0.284 577.769" stroke-dashoffset="-577.633" transform="rotate(-90 150 150)"/>
+<circle cx="150" cy="150" r="92" fill="none" stroke="#A32D2D" stroke-width="30" stroke-dasharray="0.136 577.917" stroke-dashoffset="-577.917" transform="rotate(-90 150 150)"/>
+<text x="150" y="148" text-anchor="middle" class="big">1,295,032</text>
+<text x="150" y="168" text-anchor="middle" class="sm">条告警</text>
+</svg></div>
+  <div class="panel"><div class="alist"><span class="arow"><i style="background:#888780"></i><span class="nm">c_missing_doc</span><b>560,718</b><span class="pc">43.30%</span></span>
+<span class="arow"><i style="background:#EF9F27"></i><span class="nm">c_uninit_pointer</span><b>458,329</b><span class="pc">35.39%</span></span>
+<span class="arow"><i style="background:#639922"></i><span class="nm">c_unused_static</span><b>230,066</b><span class="pc">17.77%</span></span>
+<span class="arow"><i style="background:#D85A30"></i><span class="nm">c_missing_return</span><b>33,273</b><span class="pc">2.57%</span></span>
+<span class="arow"><i style="background:#7F77DD"></i><span class="nm">c_too_many_params</span><b>7,789</b><span class="pc">0.60%</span></span>
+<span class="arow"><i style="background:#378ADD"></i><span class="nm">c_missing_guard</span><b>2,029</b><span class="pc">0.16%</span></span>
+<span class="arow"><i style="background:#D4537E"></i><span class="nm">c_buffer_overflow</span><b>1,230</b><span class="pc">0.09%</span></span>
+<span class="arow"><i style="background:#1D9E75"></i><span class="nm">c_use_after_free</span><b>657</b><span class="pc">0.05%</span></span>
+<span class="arow"><i style="background:#E24B4A"></i><span class="nm">c_array_oob</span><b>636</b><span class="pc">0.05%</span></span>
+<span class="arow"><i style="background:#A32D2D"></i><span class="nm">c_double_free</span><b>305</b><span class="pc">0.02%</span></span></div></div>
+</div>
+
+<h2>顶层目录明细<span class="tag">23 个 · 按代码行数降序</span></h2>
+<div class="scroll">
+<table>
+  <thead><tr><th>目录</th><th>C 文件</th><th>代码行</th><th>函数</th><th>调用边</th><th>告警</th><th>耗时 s</th><th>峰值 MB</th><th>告警前三类</th></tr></thead>
+  <tbody>
+<tr><td class=d><b>drivers</b></td><td>33,286</td><td>25,310,004</td><td>465,643</td><td>1,474,743</td><td class=hi>868,348</td><td>324.1</td><td>5810.7</td><td class=sub2>missing_doc 357,188 · uninit_pointer 331,497 · unused_static 161,073</td></tr>
+<tr><td class=d><b>arch</b></td><td>9,192</td><td>2,185,156</td><td>61,379</td><td>298,583</td><td class=hi>84,040</td><td>39.8</td><td>813.5</td><td class=sub2>missing_doc 46,286 · unused_static 16,925 · uninit_pointer 14,208</td></tr>
+<tr><td class=d><b>sound</b></td><td>2,669</td><td>1,624,441</td><td>33,812</td><td>64,979</td><td class=hi>71,241</td><td>26.7</td><td>403.1</td><td class=sub2>uninit_pointer 26,967 · missing_doc 26,824 · unused_static 16,688</td></tr>
+<tr><td class=d><b>fs</b></td><td>2,085</td><td>1,568,919</td><td>38,439</td><td>116,031</td><td class=hi>59,726</td><td>30.0</td><td>492.3</td><td class=sub2>uninit_pointer 25,945 · missing_doc 23,658 · unused_static 7,446</td></tr>
+<tr><td class=d><b>include</b></td><td>6,555</td><td>1,411,396</td><td>24,150</td><td>11,796</td><td class=hi>46,565</td><td>16.2</td><td>284.7</td><td class=sub2>unused_static 19,253 · missing_doc 17,617 · missing_return 6,962</td></tr>
+<tr><td class=d><b>net</b></td><td>1,813</td><td>1,309,547</td><td>38,446</td><td>72,868</td><td class=hi>70,593</td><td>27.0</td><td>451.8</td><td class=sub2>missing_doc 29,025 · uninit_pointer 28,848 · unused_static 10,939</td></tr>
+<tr><td class=d><b>tools</b></td><td>4,650</td><td>1,278,509</td><td>36,114</td><td>298,422</td><td class=hi>51,882</td><td>27.8</td><td>422.1</td><td class=sub2>missing_doc 30,263 · uninit_pointer 10,941 · unused_static 6,309</td></tr>
+<tr><td class=d><b>kernel</b></td><td>606</td><td>531,958</td><td>19,078</td><td>41,248</td><td class=hi>25,360</td><td>9.6</td><td>240.3</td><td class=sub2>missing_doc 12,434 · uninit_pointer 7,454 · unused_static 4,063</td></tr>
+<tr><td class=d><b>lib</b></td><td>651</td><td>272,900</td><td>6,141</td><td>12,701</td><td class=hi>7,744</td><td>2.8</td><td>134.2</td><td class=sub2>missing_doc 3,921 · unused_static 1,591 · uninit_pointer 1,463</td></tr>
+<tr><td class=d><b>mm</b></td><td>190</td><td>215,359</td><td>7,209</td><td>13,454</td><td class=hi>9,087</td><td>2.6</td><td>152.8</td><td class=sub2>missing_doc 4,677 · uninit_pointer 2,532 · unused_static 1,406</td></tr>
+<tr><td class=d><b>security</b></td><td>258</td><td>122,720</td><td>3,694</td><td>7,002</td><td class=hi>4,734</td><td>1.5</td><td>122.8</td><td class=sub2>uninit_pointer 1,762 · missing_doc 1,610 · unused_static 1,117</td></tr>
+<tr><td class=d><b>crypto</b></td><td>174</td><td>108,733</td><td>2,248</td><td>3,625</td><td class=hi>4,271</td><td>1.1</td><td>112.9</td><td class=sub2>missing_doc 1,810 · uninit_pointer 1,331 · unused_static 1,046</td></tr>
+<tr><td class=d><b>block</b></td><td>95</td><td>71,501</td><td>2,417</td><td>4,360</td><td class=hi>3,625</td><td>1.0</td><td>97.9</td><td class=sub2>missing_doc 1,640 · uninit_pointer 1,324 · unused_static 525</td></tr>
+<tr><td class=d><b>scripts</b></td><td>119</td><td>52,876</td><td>1,585</td><td>3,934</td><td class=hi>2,281</td><td>0.8</td><td>98.2</td><td class=sub2>missing_doc 1,117 · uninit_pointer 604 · unused_static 406</td></tr>
+<tr><td class=d><b>samples</b></td><td>174</td><td>35,900</td><td>868</td><td>1,194</td><td class=hi>1,382</td><td>0.7</td><td>98.3</td><td class=sub2>missing_doc 727 · unused_static 312 · uninit_pointer 273</td></tr>
+<tr><td class=d><b>io_uring</b></td><td>76</td><td>25,137</td><td>930</td><td>1,380</td><td class=hi>1,763</td><td>0.6</td><td>97.9</td><td class=sub2>missing_doc 831 · uninit_pointer 683 · unused_static 136</td></tr>
+<tr><td class=d><b>virt</b></td><td>15</td><td>11,047</td><td>436</td><td>533</td><td class=hi>590</td><td>0.4</td><td>2.1</td><td class=sub2>missing_doc 350 · uninit_pointer 153 · unused_static 75</td></tr>
+<tr><td class=d><b>ipc</b></td><td>12</td><td>9,889</td><td>326</td><td>559</td><td class=hi>548</td><td>0.4</td><td>2.1</td><td class=sub2>missing_doc 238 · uninit_pointer 166 · unused_static 86</td></tr>
+<tr><td class=d><b>init</b></td><td>13</td><td>4,754</td><td>171</td><td>185</td><td class=hi>250</td><td>0.3</td><td>2.2</td><td class=sub2>missing_doc 141 · unused_static 66 · uninit_pointer 26</td></tr>
+<tr><td class=d><b>rust</b></td><td>59</td><td>2,656</td><td>372</td><td>0</td><td class=hi>345</td><td>0.3</td><td>2.1</td><td class=sub2>missing_doc 322 · missing_return 21 · missing_guard 2</td></tr>
+<tr><td class=d><b>certs</b></td><td>5</td><td>996</td><td>32</td><td>12</td><td class=hi>31</td><td>0.3</td><td>2.1</td><td class=sub2>missing_doc 13 · unused_static 9 · uninit_pointer 5</td></tr>
+<tr><td class=d><b>usr</b></td><td>3</td><td>795</td><td>19</td><td>27</td><td class=hi>28</td><td>0.3</td><td>2.2</td><td class=sub2>missing_doc 19 · unused_static 6 · missing_return 1</td></tr>
+<tr><td class=d><b>Documentation</b></td><td>4</td><td>708</td><td>9</td><td>8</td><td class=hi>9</td><td>0.4</td><td>2.6</td><td class=sub2>missing_doc 7 · missing_guard 2</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>误报量化：<code>c_missing_return</code><span class="tag">四个子系统 · 修前 → 修后</span></h2>
+<div class="panel">
+  <div class="lgd" style="margin-bottom:12px">
+    <span><i style="background:#E24B4A"></i>修前告警数</span>
+    <span><i style="background:#1D9E75"></i>修后告警数</span>
+    <span>合计 <b>2,315 → 10</b></span>
+  </div>
+<div class=fprow><span class=nmb>fs/ext4</span><span class=track><span class=fill style='width:6.92%;background:#E24B4A'></span></span><span class=num>75</span></div>
+<div class=fprow><span class=nmb></span><span class=track><span class=fill style='width:0.60%;background:#1D9E75'></span></span><span class=num>0</span></div>
+<div class=fprow><span class=nmb>kernel</span><span class=track><span class=fill style='width:100.00%;background:#E24B4A'></span></span><span class=num>1,084</span></div>
+<div class=fprow><span class=nmb></span><span class=track><span class=fill style='width:0.60%;background:#1D9E75'></span></span><span class=num>5</span></div>
+<div class=fprow><span class=nmb>mm</span><span class=track><span class=fill style='width:31.27%;background:#E24B4A'></span></span><span class=num>339</span></div>
+<div class=fprow><span class=nmb></span><span class=track><span class=fill style='width:0.60%;background:#1D9E75'></span></span><span class=num>3</span></div>
+<div class=fprow><span class=nmb>net</span><span class=track><span class=fill style='width:75.37%;background:#E24B4A'></span></span><span class=num>817</span></div>
+<div class=fprow><span class=nmb></span><span class=track><span class=fill style='width:0.60%;background:#1D9E75'></span></span><span class=num>2</span></div>
+  <p class="sub" style="margin-top:12px">
+    修前 fp_a_void 判据为 <code>re.search(r"\bvoid\b(?!\s*\*)", ret)</code>；修后为 <code>^(?!.*\*).*\bvoid\b</code>，
+    并在全部 3,036 个真实内核返回类型上复验（纠正 86 类型 / 2,871 函数，0 误判 0 漏判）。
+  </p>
+</div>
+
+<h2>R75 取证出的五条真缺陷<span class="tag">绿=已修 · 红=已知未修</span></h2>
+<div class="cards">
+  <div class="card fix"><h3>F1 行文本加载被独门把守</h3><p><code>matlabc.py:~8248</code>：不开 <code>c_missing_doc</code> 时，未初始化指针 / 数组越界 / use-after-free / missing-return 静默全空。<b>已修</b></p></div>
+  <div class="card fix"><h3>F2 void 判据漏限定符</h3><p><code>~8327</code>：<code>static inline void __init f()</code> 被当成有返回值 ⇒ 假报。<b>已修</b></p></div>
+  <div class="card fix"><h3>F3 body 切片下标错位</h3><p><code>~8365</code>：1-based <code>def_line</code> 被当 0-based 下标，漏掉函数定义行。<b>已修</b></p></div>
+  <div class="card open"><h3>B4 括号调用被误判为 cast</h3><p><code>matlabc.py:7604</code>：<code>if (foo())</code> / <code>while (foo())</code> 丢调用边。<b>未修（根因已定位）</b></p></div>
+  <div class="card open"><h3>B5 多行宏污染返回类型</h3><p>词法层抽取的 <code>ret</code> 串被多行宏吞并 ⇒ 少数 missing-return 假报。<b>未修</b></p></div>
+</div>
+
+<footer>
+  数据目录 <code>E:\matlabc\_kernel\out\</code> · 全树读数 <code>WHOLE_TREE.summary.json</code> ·
+  目录聚合 <code>AGG_toplevel.json</code> · 误报量化 <code>fp_*.json</code> / <code>out_after/fp_*.json</code><br>
+  本页面由 <code>E:\matlabc\_kernel\make_kernel_ui.py</code> 生成（图表在 Python 侧算成 SVG）；所有数字均从上述 JSON 读出，未手写。
+</footer>
+</div>
+</body>
+</html>
