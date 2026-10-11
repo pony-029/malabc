@@ -21,6 +21,7 @@
         ├─▶ check_readme_parity.py        中英 README 逐节结构对等
         ├─▶ check_known_red.py            「永久红」必须两向登记在册，红集只缩不长
         ├─▶ check_legal_parity.py        许可与署名双轨：MIT 正文 ⇄ 版权人 ⇄ 必究 ⇄ 徽章 ⇄ 版本
+        ├─▶ check_unified_graph.py       统一图四条恒等式 + T1 图前提（含「注入一条边即破」）
         └─▶ check_subprocess_hygiene.py   子进程必须切 stdin 且不会永久挂住
         │
         ├─ 每道护栏都要能跑通（rc=0）
@@ -135,7 +136,12 @@ GUARD_TIMEOUT = 600.0
 # **逐片**解析 —— 依赖/符号/段表都要从每一片读、同名片去重且点名、片内偏移重基、
 # 读不懂的片必须被点名、GPU 段名提示不被 `slice[i]:` 前缀打瞎），
 # 判据族 C1–C12 → C1–C13。门数不变，仍是 16。
-MIN_GUARDS = 17
+# R82 新增 check_unified_graph.py（R82 Phase 0 / R82-0-3）。它是 Phase 0 的**唯一产物**：
+# 先把「统一图」的四条恒等式与 T1 的图前提立起来，因为 T1–T4 都要往同一张图上加东西
+# （T1 加边种类、T2 加跳、T3 加算子对齐、T4 加规则节点）—— 模型晚定稿就要拆两遍。
+# 判据族 U1–U5，其中 U3 是 R82-0-2 验收判据「**注入一条边即破**」的**执行版**
+# （把一句注释变成一条真跑的探针）。故 17 → 18。
+MIN_GUARDS = 18
 
 
 def _write_help(text):

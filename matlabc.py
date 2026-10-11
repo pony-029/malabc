@@ -109,7 +109,7 @@ matlabc — 代码结构梳理与静态分析工具（纯 Python，零依赖，�
 质量门（改代码前先看这里）
 ────────────────────────────────────────────────────────────────────────
 
-  python tools/check_all.py     # 一次跑完 17 道登记制护栏，各自还会跑 --selftest
+  python tools/check_all.py     # 一次跑完 18 道登记制护栏，各自还会跑 --selftest
 
   每道护栏都要求**两向自证**：坏样本必须变红、好样本必须放行，并打印
   机器可读的 `SELFTEST COUNTS {"bad": N, "good": M}`。只会在好天气下变绿的
@@ -30856,7 +30856,10 @@ def main(argv=None):
     ap.add_argument("--operator-impact-out", metavar="FILE", default=None,
                     help="R62：把「检测算子工程影响分析」单独写入 FILE（Markdown 或 .csv）；"
                          "算子按命中数×严重度×波及系数排名，定位对整个工程影响最大的检测类别。"
-                         "不指定时仅在控制台摘要与 --json/--output 中附带")
+                         "不指定时仅在控制台摘要与 --json/--output 中附带。"
+                         "【术语】本组开关的「算子」= 静态检查类别（如 c_unused_static），"
+                         "与 GPU 的 kernel（CUDA/HIP 内核，见 binfmt/gpu.py）不是一回事；"
+                         "R82 起 GPU 侧一律用 kernel 一词")
     ap.add_argument("--operator-impact-threshold", metavar="FLOAT", type=float,
                     default=0.0,
                     help="R62：仅保留工程影响分 ≥ FLOAT 的算子，过滤低影响噪点（默认 0=不过滤）")

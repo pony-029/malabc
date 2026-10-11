@@ -295,6 +295,11 @@ GUARD_CONTRACT = {
            "版本陈旧 / 编号小节不等 / 许可证节看不到双轨）",
         2: "缺输入（任一在册文件缺失或读不到，或读不到 matlabc.py 的 VERSION）",
     },
+    "tools/check_unified_graph.py": {
+        0: "统一图四条恒等式 + T1 图前提全绿（U1–U5：形状/前提/注入即破/装置登记/往返）",
+        1: "有违规（形状非法 / T1 前提缺失 / 守恒判定器抓不到注入 / 未登记装置 / 往返漂移）",
+        2: "缺输入（导不到 unified_graph 或 binhops 或 concurrency —— 缺输入 → 红）",
+    },
 }
 
 GUARD_SCRIPTS = tuple(sorted(GUARD_CONTRACT))
@@ -557,7 +562,7 @@ HELP_BYTES = {
 # 漂移超限时的正当做法**不是**放宽这两个数，而是同步更新快照
 # （那是一次显式的、可评审的批准动作 —— 这正是棘轮的意义）。
 HELP_BYTES_SNAPSHOT = {
-    "matlabc.py": 52418,
+    "matlabc.py": 52679,
     "matlabc_flow.py": 2075,
     "matlabc_ask.py": 919,
     "matlabc_mcp.py": 0,
@@ -604,7 +609,7 @@ HELP_CANON_COLUMNS = 10000
 # 注意 matlabc_mcp.py 也在册：它的 HELP_BYTES 界是 (0, 0)（按设计零输出），
 # 但「内容必须一直是空的」是一条真断言，不该因为「没设体积界」而漏掉。
 HELP_CANON_SNAPSHOT = {
-    "matlabc.py": 43560,
+    "matlabc.py": 43765,
     "matlabc_flow.py": 1701,
     "matlabc_ask.py": 756,
     "matlabc_mcp.py": 0,
