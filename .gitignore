@@ -27,6 +27,11 @@ matlabc_browse/
 tests/_t_*/
 tests/_t_xf_out/
 
+# 会话 / 自动化的工作目录（WorkBuddy 在**当前工作目录**下建它；
+# 仓库里出现时只是噪声：不是项目产物，且会随会话漂移。
+# 依据：git status 显示 `?? .workbuddy/`、git ls-files 为 0 条。）
+.workbuddy/
+
 # 操作系统
 .DS_Store
 Thumbs.db

@@ -61,6 +61,35 @@
 
 ## 2. 各阶段的**原子任务**（来自 R82 §8，不重复展开，只标注轮次归属）
 
+### Phase 0 / 0b · **机器可读**轮次表（`_r82/evolve_loop.py` 从这里解析）
+
+> **这一块是 PLAN 的单一事实源。** 环路不再硬编码轮次 —— 它解析下面这个围栏块。
+> 于是「360 轮」与这份路线图是**同一份东西**，改一处即生效（H7 的修法）。
+>
+> **纪律**（照本仓已付过的学费）：
+> * 解析不到这个块 ⇒ **缺输入 ⇒ 红**（不许静默地"没有轮次可跑"就退出 0）；
+> * `_r82/rounds.jsonl` 里**已执行的轮次必须 ⊆ 本表登记的轮次**，否则红
+>   （防止台账里冒出计划外的轮次）；
+> * 本表是**计划**，`rounds.jsonl` 才是**事实**。两者绝不互相填写。
+
+```
+# ROUNDS:PLAN v1 —— 分隔符是 `|`；`-` 表示"无"；行首 `#` 为注释
+# round | phase | line | action | objective | blocked_reason
+# ⚠ 轮号与 rounds.jsonl 的**已执行轮次**对齐 —— 台账是不可改的事实，计划只能让路。
+#   第 3 轮历史上已试过 R82-A1 并 blocked，所以 Phase 0b 两项顺延到 4/5。
+0  | 0  | base | phase0_acceptance       | Phase 0 验收：门数 17→18 全绿 + U1–U5 两向自证 | -
+1  | 0  | base | conservation_two_way    | 统一图守恒判定器两向成立（干净 0 / 注入 ≥1 / 还原 0） | -
+2  | 0  | base | py36_census             | 3.6.5 语法门在新增模块上仍绿 | -
+3  | A  | t1   | -                       | R82-A1 concurrency.py 新词法提取 AsyncSite | Phase A 的产品代码尚未落地（历史：第 3 轮已试并 blocked）
+4  | 0b | base | u7_selftest             | 判据族扩到 U1–U7 且逐条两向自证 | -
+5  | 0b | base | concurrency_denominator | 并发站点数下界（第一个真分母；unknown 首次非零） | -
+6  | A  | t1   | -                       | R82-A2 C/C++ 并发原语后端 | 未实现
+7  | A  | t1   | -                       | R82-A3 Py/JS 后端（await 必须不产生 async 边） | 未实现
+8  | A  | t1   | -                       | R82-A4 MATLAB 后端（parfor/parfeval/batch/timer） | 未实现
+9  | A  | t1   | -                       | R82-A5 asm 间接跳转 ⇒ unknown（不猜） | 未实现
+10 | A  | t1   | -                       | R82-A6 站点/报告新增「异步」列 + 未识别并发站点计数 | 未实现
+```
+
 ### Phase A · T1 异步调用链（轮 1–60）
 
 | ID | 任务 | 轮次预算 | 出口判据 |

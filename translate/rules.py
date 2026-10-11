@@ -16,15 +16,22 @@ R82 白帽实测（§2.2）：`matlab2c` / `c2matlab` / `mexFunction` 全 **0** 
                   ▼
               ③ 双语对照执行器 ──▶ verified | unverified（**默认 unverified**）
 
-本表的两条**对手方**（护栏 `tools/check_translate_rules.py` 钉住）：
+本表的**对手方**（护栏 `tools/check_unified_graph.py` 的 U7 钉住 ——
+⚠ 此处曾写成 `tools/check_translate_rules.py`，那个文件**不存在**：
+一个指空的指针看起来完全正常，因为它没写错任何东西）：
   * B1  命中了**未登记**的规则 ID ⇒ 红（不许发明规则）
   * B2  登记了却**从未命中**的规则 ⇒ 红（陈旧声明）
+  * B3  ID 重复 ⇒ 红
+  * U7  **验证分母**：三分必须构成划分，且「已支持」⊆「已验证」
+        （`verified_by` 为空 ⇒ **不得**以「已支持」出现）
 
 规则条目字段（最小集）：
     id            唯一，形如 `IDX-1`
     from_ / to_  语义两端，形如 `matlab:1-based` / `c:0-based`
     note          一句话说清差异
-    verified_by   哪组夹具/测试能证明它（**空 = 未验证**，Phase D 会要求非空）
+    verified_by   哪组夹具/测试能证明它。**空 = 未验证**，是一等状态：
+                  它可以存在、必须可枚举、**不得**被当成「已支持」
+                  （`verification_census()` 报它的分母；Phase D 收敛它）
 """
 
 RULES_VERSION = "1.0"
@@ -59,6 +66,44 @@ def rule_ids(rules=None):
         if r["id"] not in out:
             out.append(r["id"])
     return out
+
+
+def verified_rule_ids(rules=None):
+    """**已验证**的规则 ID（`verified_by` 非空）。派生量。"""
+    return tuple(r["id"] for r in (RULES if rules is None else rules)
+                 if r.get("verified_by"))
+
+
+def unverified_rule_ids(rules=None):
+    """**未验证**的规则 ID。它是**一等状态**，不是缺陷 —— 但必须可见、
+    必须有分母（R82 §5.4：「未验证」的度量是它的**分母与可见性**，
+    不是它的**消失**）。"""
+    return tuple(r["id"] for r in (RULES if rules is None else rules)
+                 if not r.get("verified_by"))
+
+
+def verification_census(rules=None):
+    """验证状态的**三分普查**（H6 的分母）。派生量，绝不手写。
+
+    `verified + unverified == total` 必须成立 —— 判据（U7）会断言这一点：
+    「看不清」不得被折进任何一边（判据设计纪律 #3）。
+    """
+    rs = list(RULES if rules is None else rules)
+    v = [r for r in rs if r.get("verified_by")]
+    return {"total": len(rs), "verified": len(v),
+            "unverified": len(rs) - len(v)}
+
+
+def supported_rule_ids(rules=None, claimed=None):
+    """**「已支持」的规则** —— 判定口径写在这里，且只有一处。
+
+    口径：`已支持 == 已验证`。未验证的规则**不得**出现在这个集合里。
+    `claimed` 可注入：它模拟「某份报告/CLI 声称支持了哪些规则」，
+    用来给 U7 造反例（谎报 ⇒ 红）。
+    """
+    if claimed is not None:
+        return tuple(claimed)
+    return verified_rule_ids(rules)
 
 
 def rule_problems(rules=None, hit_ids=(), used_ids=None):

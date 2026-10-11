@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""登记制静态护栏：统一图模型的**四条恒等式** + T1 的图前提（R82-0-3）。
+"""登记制静态护栏：统一图模型的**恒等式** + 三张**登记表**的自洽性（R82-0b）。
 
 R82 方案 §11/1 说 Phase 0 是「唯一不做就白做的一步」—— 因为 T1–T4 都要往
 同一张图上加东西。但「先立模型」这句话本身**没有对手方**：模型写完没人知道
-它守没守住。本门就是它的对手方，判据族 **U1–U5**。
+它守没守住。本门就是它的对手方，判据族 **U1–U7**。
 
 一图看懂（每条判据拦什么）：
 
@@ -12,27 +12,43 @@ R82 方案 §11/1 说 Phase 0 是「唯一不做就白做的一步」—— 因�
                                 == SITE_OUTCOMES − NON_EDGE_OUTCOMES
                                 （**两张表各写一份必然漂移** —— 建门时真撞到过）
     U2  T1 的图前提             async / callback ∈ EDGE_KINDS；
-                                unknown **与** join ∈ SITE_OUTCOMES；
-                                五语言并发表非空，且 **await 是 join 不是 async**
-    U3  **注入一条边即破**      真造图、真跑 conservation_problems：
-                                干净图 0 问题；注入一条边 ⇒ A1 红；
-                                补上对应站点 ⇒ 又归零（证明判据抓的是恒等式本身，
-                                不是「有边就算坏」）。另含 A2 / A3 / A4 子探针。
+                                unknown **与** join ∈ SITE_OUTCOMES
+    U2b 五语言原语表            **逐条**比对一张**显式期望表**（不读被测对象
+                                自己的结局，否则是自证）：20 条一条不对即红；
+                                表里多出未审原语也红；且 async ∩ join == ∅
+    U3  **注入即破**（执行版）   真造图、真跑 conservation_problems。
+                                A1a 注入一条边 ⇒ 红；补站点+同步声明 ⇒ 归零；
+                                **A1b** 把声明量少报 1 ⇒ 红（第二个分母）。
+                                另含 A2 / A3 / A4 子探针，且**每个子探针
+                                只许触发自己那一维**（反例不得污染别的维）
     U4  binhop 装置登记         未登记的 via_device ⇒ A3 红
     U5  序列化往返              from_dict(to_dict(g)) 与原图逐节点逐边等价
+                                （含 declared_sites）
+    U6  **站点先行**            没有站点额度时 add_edge 必须**拒绝**（构造期，
+                                不是事后审计）；有额度时通过；额度用完即拒绝
+    U7  互转规则的验证分母      三分（verified/unverified/total）必须构成划分，
+                                且「已支持」⊆「已验证」—— 未验证的不得以
+                                「已支持」出现（H6：一个会一直空下去的字段）
 
-为什么 U3 是本门的心脏：R82-0-2 的验收判据字面就是「**注入一条边即破**」。
-把这句话写成注释是**没有对手方**的；把它写成一条**真跑**的探针，它才是判据
+**U3 为什么是本门的心脏**（R82-0-2 的验收判据字面就是「注入一条边即破」）：
+把那句话写成注释是**没有对手方**的；写成一条**真跑**的探针，它才是判据
 （本仓纪律 §4k-2：「一个从未被触发的分支不是判据」）。
+
+**U3 为什么要两条守恒式**（H2，上一轮黑帽判为最严重）：
+`Σ(产出边的站点) == |edges|` 的两个量**都来自同一个对象** ⇒ 只要识别器写成
+「先造边、再顺手 `add_site`」，它**永远成立**，而绿灯与现在**一模一样**。
+所以加了 A1b（`Σ(全部站点) == declared_sites`，声明量是**独立来源**），
+并把「站点先行」做成 **U6 的构造期拒绝** —— 一个写不出来的形状，
+比一条抓不住它的判据可靠。
 
 用法：
     python tools/check_unified_graph.py            # 检查仓库 0=干净 1=有违规 2=缺输入
     python tools/check_unified_graph.py --selftest # 两向自证
 
 退出码：
-    0  = 模型形状合法、T1 前提在场、守恒判定器两向成立、装置登记两向、往返无损
-    1  = 有违规（形状非法 / 前提缺失 / 守恒判定器抓不到注入 / 未登记装置 / 往返漂移）
-    2  = 缺输入（导不到 unified_graph / binhops / concurrency —— 缺输入 → 红）
+    0  = 形状合法、前提在场、守恒判定器两向、装置登记两向、往返无损、站点先行、验证分母成划分
+    1  = 有违规（形状非法 / 前提缺失 / 判定器抓不到注入 / 未登记装置 / 往返漂移 / 额度失效 / 未验证报成已支持）
+    2  = 缺输入（导不到 unified_graph / binhops / concurrency / translate.rules）
 """
 import argparse
 import os
@@ -42,7 +58,7 @@ import sys
 #   ① 本门的成功行（下面 main() 打印的那一行）；
 #   ② README.md / README_CN.md 里本门那一行。
 # 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
-ROW_SIGNATURE = "U1–U5"
+ROW_SIGNATURE = "U1–U7"
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
@@ -51,14 +67,15 @@ if _ROOT not in sys.path:
 
 
 def _load():
-    """导入三个被测模块。任何一个导不到 ⇒ 缺输入（返回 None）。"""
+    """导入被测模块。任何一个导不到 ⇒ 缺输入（返回 None）。"""
     try:
         import unified_graph as ug
         import binhops as bh
         import concurrency as cc
+        import translate.rules as tr
     except ImportError:
         return None
-    return ug, bh, cc
+    return ug, bh, cc, tr
 
 
 # ── U1：单一事实源的形状（**两张表必须绑死**）────────────────────────────
@@ -88,12 +105,12 @@ def model_shape_problems(node_kinds, edge_kinds, site_outcomes,
     if tuple(edge_kinds) != tuple(edge_producing):
         probs.append("U1 EDGE_KINDS 与 EDGE_PRODUCING_OUTCOMES 不等："
                      "每种边都必须有一个**产出它的站点结局**，否则那条边"
-                     "无法被 A1 计账（得到 %s vs %s）"
+                     "无法被 A1a 计账（得到 %s vs %s）"
                      % (list(edge_kinds), list(edge_producing)))
     return probs
 
 
-# ── U2：T1 的图前提 + 并发表的区分 ──────────────────────────────────────
+# ── U2：T1 的图前提 ────────────────────────────────────────────────────
 def t1_premise_problems(edge_kinds, site_outcomes):
     """异步必须是一等的**边种类**；汇合与未识别必须是一等的**站点结局**。"""
     probs = []
@@ -111,24 +128,80 @@ def t1_premise_problems(edge_kinds, site_outcomes):
     return probs
 
 
-def primitives_problems(primitives, languages):
-    """五语言表非空；且 `await` 必须是 **join**（不是 async）。"""
+# ── U2b：五语言原语表**逐条**比对期望 ───────────────────────────────────
+# ⚠ 这是**判据自己的**期望表，**不读 `concurrency.PRIMITIVES` 的结局**
+#   —— 从被测对象读自己的期望，那是自证不是判据（本仓纪律 §4m-4 的精神）。
+EXPECTED_OUTCOMES = {
+    "c": (("pthread_create", "async"), ("fork", "async"),
+          ("pthread_join", "join"), ("signal", "callback")),
+    "cpp": (("std::thread", "async"), ("std::async", "async"),
+            ("std::future", "join"), ("std::condition_variable", "callback")),
+    "py": (("asyncio.create_task", "async"), ("asyncio.ensure_future", "async"),
+           ("await", "join"), ("loop.call_later", "callback")),
+    "js": (("new Promise", "async"), (".then(", "callback"),
+           ("addEventListener", "callback"), ("setTimeout", "callback")),
+    "matlab": (("parfeval", "async"), ("parfor", "async"),
+               ("batch", "async"), ("timer", "callback")),
+}
+VALID_OUTCOMES = ("async", "join", "callback", "unknown")
+
+
+def primitives_problems(primitives, languages, expected=None,
+                        async_pairs=(), join_pairs=()):
+    """五语言原语表：**逐条**比对期望表 + 查「多出来的」+ 查 async∩join。
+
+    为什么要逐条（H4）：上一版只钉住 `await` 一条，20 条映射里另外 19 条
+    改错（例如把 `pthread_join` 挪进 async）**不会有任何东西变红**。
+    而「把 join 记成 async」正是这张表存在的全部理由。
+    """
+    exp = EXPECTED_OUTCOMES if expected is None else expected
     probs = []
     if not languages:
-        probs.append("U2 并发原语表没有任何语言 —— 空表")
+        probs.append("U2b 并发原语表没有任何语言 —— 空表")
     for lg in languages:
         rows = primitives.get(lg)
         if not rows:
-            probs.append("U2 语言 %s 的并发原语表为空（缺输入不得视为通过）" % lg)
+            probs.append("U2b 语言 %s 的并发原语表为空（缺输入不得视为通过）" % lg)
             continue
-        for tok, outcome, _note in rows:
-            if outcome not in ("async", "join", "callback", "unknown"):
-                probs.append("U2 %s/%s 的结局 %r 未登记" % (lg, tok, outcome))
+        got = dict((t, o) for t, o, _n in rows)
+        want = dict(exp.get(lg, ()))
+        if not want:
+            probs.append("U2b 期望表里没有语言 %s —— 期望表本身漏了"
+                         "（判据的分母必须自证）" % lg)
+        for tok in sorted(want):
+            if tok not in got:
+                probs.append("U2b %s 表里缺了 %r（期望结局 %s）"
+                             % (lg, tok, want[tok]))
+            elif got[tok] != want[tok]:
+                probs.append("U2b %s/%s 的结局是 %r，期望 %r%s"
+                             % (lg, tok, got[tok], want[tok],
+                                "—— **join 记成 async 会让「谁先谁后」整体反向**"
+                                if want[tok] == "join" else ""))
+        for tok in sorted(set(got) - set(want)):
+            probs.append("U2b %s 表里多出未审原语 %r（结局 %s）—— 新增原语"
+                         "必须同时进期望表，否则它永不被告" % (lg, tok, got[tok]))
+        for tok, outcome, _n in rows:
+            if outcome not in VALID_OUTCOMES:
+                probs.append("U2b %s/%s 的结局 %r 未登记" % (lg, tok, outcome))
+
+    # 反向前提：汇合原语**不得**同时出现在「产出 async 边」的名单里
+    # ⚠ 身份是 **(语言, 原语)** 这一对，不是语言名 —— 取错元素会让这个断言
+    #   在真实仓库上恒真/恒假（本轮真踩到过：取语言名 ⇒ 交集恒非空）。
+    a_set = set(tuple(x) for x in async_pairs)
+    j_set = set(tuple(x) for x in join_pairs)
+    both = sorted(a_set & j_set)
+    if both:
+        probs.append("U2b 同一个原语同时被算作 async 与 join：%s"
+                     "（一个站点不能既发起又汇合 —— 这两条边方向相反）" % both)
+    if not j_set:
+        probs.append("U2b 汇合原语集合为空 —— 反向前提在空集上恒真"
+                     "（§4h-2：反例不能是空集）")
+
     py = dict((t, o) for t, o, _n in primitives.get("py", ()))
     if "await" not in py:
-        probs.append("U2 py 表里没有 'await' —— 汇合原语是全表最关键的一条")
+        probs.append("U2b py 表里没有 'await' —— 汇合原语是全表最关键的一条")
     elif py["await"] != "join":
-        probs.append("U2 py 表把 'await' 记成 %r —— 它必须是 'join'："
+        probs.append("U2b py 表把 'await' 记成 %r —— 它必须是 'join'："
                      "await 等的是已存在的任务，本身不发起并行工作；"
                      "记成 async 会让「谁先谁后」整体反向" % py["await"])
     return probs
@@ -149,43 +222,147 @@ def hop_device_problems(hop_devices, unregistered_fn, registered_fn):
     return probs
 
 
+# ── U6：站点先行（**构造期**拒绝，不是事后审计）────────────────────────
+def scheduling_precedence_problems(ug, make_graph=None, make_node=None,
+                                   make_edge=None):
+    """U6：`add_edge` 在没有站点额度时必须拒绝。
+
+    三条断言，缺一不可：
+      ① 没额度 ⇒ **拒绝**（这是 H2 的解药：先造边后补站点必须写不出来）
+      ② 有额度 ⇒ **通过**（正例：否则"一律拒绝"也能骗过 ①）
+      ③ 额度**只能消费一次** ⇒ 同类第二条边必须再被拒
+
+    构造器可注入（本仓 §4o-4：「判据必须可注入」）—— 否则夹具拿不到
+    一个「不检查额度的假图」，第 ①③ 条就无法两向自证。
+    """
+    mk_g = make_graph or ug.UnifiedGraph
+    mk_n = make_node or ug.Node
+    mk_e = make_edge or ug.Edge
+    probs = []
+
+    g = mk_g()
+    g.add_node(mk_n("f:a.m", "file", "a.m"))
+    g.add_node(mk_n("fn:a.m:foo", "function", "foo"))
+
+    # ① 先造边（没有站点额度）⇒ 必须拒绝
+    raised = False
+    try:
+        g.add_edge(mk_e("f:a.m", "fn:a.m:foo", "direct"))
+    except ug.GraphError:
+        raised = True
+    if not raised:
+        probs.append("U6 「站点先行」没有生效：没有站点额度时 add_edge "
+                     "**照样接受** —— 先造边后补站点会让 A1a 退化成恒真式（H2）")
+
+    # ② 正例：先 add_site 再 add_edge ⇒ 必须通过
+    g.add_site("direct", 1)
+    try:
+        g.add_edge(mk_e("f:a.m", "fn:a.m:foo", "direct"))
+    except ug.GraphError as e:
+        probs.append("U6 正例被误拦：先 add_site 再 add_edge 应当通过，却抛了 %s" % e)
+
+    # ③ 额度只能消费一次：另一类边（async 无站点）仍须被拒
+    raised2 = False
+    try:
+        g.add_edge(mk_e("f:a.m", "fn:a.m:foo", "async"))
+    except ug.GraphError:
+        raised2 = True
+    if not raised2:
+        probs.append("U6 额度没有被消费：另一类没有站点的边仍被接受"
+                     "（额度检查必须**按 kind** 而非全局）")
+    return probs
+
+
+# ── U7：互转规则的验证分母 ─────────────────────────────────────────────
+def rule_registry_problems(census, rule_ids, supported_ids, verified_ids):
+    """纯函数（数据进、问题出）。
+
+    U7 三条：
+      ① 普查的分母必须等于真实规则数（不能自报一个好看的数）
+      ② verified + unverified == total（三分必须构成**划分**，
+         不许出现第 4 种去向 —— 「看不清」不得折进任何一边）
+      ③ 「已支持」⊆「已验证」（H6 的正面修法）
+
+    `supported_ids` **可注入**：它模拟的是「某份报告/CLI 声称支持了哪些规则」，
+    真值在 `verified_ids`（来自 rules.py 登记表）。两者分开，判据才有对手方。
+    """
+    probs = []
+    rule_ids = tuple(rule_ids)
+    if not rule_ids:
+        probs.append("U7 规则表为空 —— 空白登记表下「验证了什么」无从谈起")
+        return probs
+    if census.get("total") != len(rule_ids):
+        probs.append("U7 验证普查的分母不对：census total=%r，真实规则 %d 条"
+                     % (census.get("total"), len(rule_ids)))
+    if census.get("verified", 0) + census.get("unverified", 0) != census.get("total"):
+        probs.append("U7 三分不构成划分：verified %r + unverified %r != total %r"
+                     "（「看不清」不得被折进任何一边）"
+                     % (census.get("verified"), census.get("unverified"),
+                        census.get("total")))
+    stray = sorted(set(supported_ids) - set(verified_ids))
+    if stray:
+        probs.append("U7 未验证的规则被报成「已支持」：%s —— 未验证是一等状态，"
+                     "不是通过" % stray)
+    outside = sorted((set(supported_ids) | set(verified_ids)) - set(rule_ids))
+    if outside:
+        probs.append("U7 出现了不存在于规则表的 id：%s" % outside)
+    return probs
+
+
 # ── U3/U5：真跑守恒判定器（注入即破 / 往返无损）────────────────────────
 def _injection_probe(ug, hop_devices):
-    """返回 dict：每个子探针的 (干净, 注入后) 问题列表。"""
+    """返回 dict：每个子探针的 (干净, 注入后) 问题列表。
+
+    ⚠ 除被测那一维外**其余各维都必须保持干净**：否则 `startswith(tag)` 会被
+    「别的维也在报」满足（§4k-3：反例必须**只**触发被测的那一条，本轮由
+    `audit()` 里的 `stray` 断言把这件事锁死）。
+    """
     out = {}
     clean = ug.conservation_problems(ug.demo_graph(), hop_devices)
 
-    # A1：直接往 edges 里 append 一条边（绕过 add_edge），站点不动
+    # A1a：往 edges 里 append 一条边（绕过 add_edge），站点与声明都不动
     g = ug.demo_graph()
     g.edges.append(ug.Edge("f:a.m", "fn:a.m:bar", "direct"))
-    out["A1"] = (clean, ug.conservation_problems(g, hop_devices))
-    # A1-restore：补上对应站点 ⇒ 必须重新归零
-    g.add_site("direct", 1)
-    out["A1_restore"] = (clean, ug.conservation_problems(g, hop_devices))
+    out["A1a"] = (clean, ug.conservation_problems(g, hop_devices))
 
-    # A2：端点不存在
+    # A1a_restore：补上同类站点 **且** 同步声明量 ⇒ 必须重新归零。
+    #   ⚠ 只补站点不同步声明 ⇒ A1b 会红（这正是第二个分母在起作用的证据，
+    #   本轮落地时它当场抓到过一次）。
+    g.add_site("direct", 1)
+    g.set_declared_sites(g.all_site_count())
+    out["A1a_restore"] = (clean, ug.conservation_problems(g, hop_devices))
+
+    # A1b：站点与边都对得上，但**声明量**故意少报 1（独立分母动手）
+    g5 = ug.demo_graph()
+    g5.set_declared_sites(g5.all_site_count() - 1)
+    out["A1b"] = (clean, ug.conservation_problems(g5, hop_devices))
+
+    # A2：端点不存在（站点与声明**先**补齐，只留 A2 一维）
     g2 = ug.demo_graph()
-    g2.edges.append(ug.Edge("f:missing", "fn:a.m:foo", "direct"))
     g2.add_site("direct", 1)
+    g2.edges.append(ug.Edge("f:missing", "fn:a.m:foo", "direct"))
+    g2.set_declared_sites(g2.all_site_count())
     out["A2"] = (clean, ug.conservation_problems(g2, hop_devices))
 
-    # A3：binhop 边用了未登记的装置（binhop 现在是合法的站点结局）
+    # A3：binhop 边用了未登记的装置（binhop 是合法的站点结局）
     g3 = ug.demo_graph()
+    g3.add_site("binhop", 1)
     g3.edges.append(ug.Edge("f:a.m", "fn:a.m:foo", "binhop",
                             hop=ug.Hop("__no_such_device__")))
-    g3.add_site("binhop", 1)
+    g3.set_declared_sites(g3.all_site_count())
     out["A3"] = (clean, ug.conservation_problems(g3, hop_devices))
 
     # A4：同一条边造两遍
     g4 = ug.demo_graph()
-    g4.edges.append(ug.Edge("f:a.m", "fn:a.m:foo", "direct"))
     g4.add_site("direct", 1)
+    g4.edges.append(ug.Edge("f:a.m", "fn:a.m:foo", "direct"))
+    g4.set_declared_sites(g4.all_site_count())
     out["A4"] = (clean, ug.conservation_problems(g4, hop_devices))
     return out
 
 
 def roundtrip_problems(ug):
-    """to_dict → from_dict 后，节点与边必须逐条等价（顺序也算）。"""
+    """to_dict → from_dict 后，节点、边与声明量必须逐条等价。"""
     g = ug.demo_graph()
     try:
         g2 = ug.UnifiedGraph.from_dict(g.to_dict())
@@ -201,6 +378,10 @@ def roundtrip_problems(ug):
     if dict(g.site_census()) != dict(g2.site_census()):
         probs.append("U5 往返后站点结局分布变了：%s → %s"
                      % (g.site_census(), g2.site_census()))
+    if getattr(g, "declared_sites", None) != getattr(g2, "declared_sites", None):
+        probs.append("U5 往返后 declared_sites 漂移：%r → %r"
+                     % (getattr(g, "declared_sites", None),
+                        getattr(g2, "declared_sites", None)))
     for e1, e2 in zip(g.edges, g2.edges):
         if (e1.hop is None) != (e2.hop is None):
             probs.append("U5 往返后 hop 有无漂移：%s" % (e1.key(),))
@@ -209,30 +390,43 @@ def roundtrip_problems(ug):
     return probs
 
 
-def audit(ug, bh, cc):
+def audit(ug, bh, cc, tr):
     """返回问题列表（空 = 干净）。缺模块由调用方先拦。"""
     probs = []
     probs += model_shape_problems(ug.NODE_KINDS, ug.EDGE_KINDS, ug.SITE_OUTCOMES,
                                   ug.NON_EDGE_OUTCOMES, ug.EDGE_PRODUCING_OUTCOMES)
     probs += t1_premise_problems(ug.EDGE_KINDS, ug.SITE_OUTCOMES)
-    probs += primitives_problems(cc.PRIMITIVES, cc.LANGUAGES)
+    probs += primitives_problems(cc.PRIMITIVES, cc.LANGUAGES,
+                                 async_pairs=cc.async_tokens(),
+                                 join_pairs=cc.join_tokens())
     probs += hop_device_problems(bh.HOP_DEVICES, bh.unregistered_devices,
                                  bh.is_registered)
+    probs += scheduling_precedence_problems(ug)
+    probs += rule_registry_problems(tr.verification_census(), tr.rule_ids(),
+                                    tr.supported_rule_ids(),
+                                    tr.verified_rule_ids())
 
-    # U3：注入即破（这是 R82-0-2 验收判据的**执行版**）
+    # U3：注入即破（R82-0-2 验收判据的**执行版**）
     probe = _injection_probe(ug, bh.HOP_DEVICES)
     for tag in sorted(probe):
         clean, injected = probe[tag]
         if clean:
             probs.append("U3 子探针 %s：干净图竟然不守恒 %s" % (tag, clean))
             continue
-        if tag == "A1_restore":
+        if tag.endswith("_restore"):
             if injected:
-                probs.append("U3 A1 还原失败：补上站点后仍不守恒 %s" % injected)
+                probs.append("U3 %s 还原失败：补上站点与声明后仍不守恒 %s"
+                             % (tag, injected))
             continue
         if not injected:
             probs.append("U3 子探针 %s：注入后**仍判守恒** —— 判据在空转" % tag)
-        elif not any(p.startswith(tag) for p in injected):
+            continue
+        # 反例只许触发被测那一维（§4k-3）
+        stray = [p for p in injected if not p.startswith(tag)]
+        if stray:
+            probs.append("U3 子探针 %s 污染了别的维：%s"
+                         "（反例必须**只**触发被测的那一条）" % (tag, stray))
+        if not any(p.startswith(tag) for p in injected):
             probs.append("U3 子探针 %s：注入后报的是别的问题 %s"
                          "（判据没打在它那一维）" % (tag, injected))
 
@@ -244,9 +438,10 @@ def _selftest():
     """两向自证：好样本必须放行，坏样本必须抓到，且**每条判据都被触发过**。"""
     loaded = _load()
     if loaded is None:
-        print("SELFTEST 无法自证：导不到 unified_graph / binhops / concurrency")
+        print("SELFTEST 无法自证：导不到 unified_graph / binhops / concurrency / "
+              "translate.rules")
         return 2
-    ug, bh, cc = loaded
+    ug, bh, cc, tr = loaded
 
     bad = good = 0
     fails = []
@@ -255,7 +450,7 @@ def _selftest():
         nonlocal bad, good
         ok = bool(probs) == want_problem
         label = "反例" if want_problem else "正例"
-        print("  [%s] %-44s -> %s%s"
+        print("  [%s] %-46s -> %s%s"
               % (label, tag, "抓到" if probs else "放行",
                  "" if ok else "   *** 不符预期 ***"))
         if not ok:
@@ -266,7 +461,7 @@ def _selftest():
             good += 1
 
     # ── 正例：真实仓库必须干净 ──
-    expect("真实仓库（U1–U5 全量）", audit(ug, bh, cc), False)
+    expect("真实仓库（U1–U7 全量）", audit(ug, bh, cc, tr), False)
     expect("守恒判定器：干净 demo 图",
            ug.conservation_problems(ug.demo_graph(), bh.HOP_DEVICES), False)
 
@@ -300,14 +495,46 @@ def _selftest():
            t1_premise_problems(ug.EDGE_KINDS,
                                tuple(k for k in ug.SITE_OUTCOMES if k != "join")),
            True)
-    expect("U2 py 表把 await 记成 async",
-           primitives_problems(
-               dict(cc.PRIMITIVES,
-                    py=tuple(("await", "async", "x") if t == "await"
-                             else (t, o, n) for t, o, n in cc.PRIMITIVES["py"])),
-               cc.LANGUAGES), True)
-    expect("U2 某语言表为空",
-           primitives_problems(dict(cc.PRIMITIVES, js=()), cc.LANGUAGES), True)
+
+    # ── 反例：U2b 逐条映射（每条都要有**能单独打红它**的变异）──
+    def _cc_with(lang, tok, outcome):
+        rows = tuple((t, outcome if t == tok else o, n)
+                     for t, o, n in cc.PRIMITIVES[lang])
+        return dict(cc.PRIMITIVES, **{lang: rows})
+
+    def _cc_drop(lang, tok):
+        rows = tuple((t, o, n) for t, o, n in cc.PRIMITIVES[lang] if t != tok)
+        return dict(cc.PRIMITIVES, **{lang: rows})
+
+    def _cc_add(lang, extra, outcome):
+        return dict(cc.PRIMITIVES,
+                    **{lang: cc.PRIMITIVES[lang] + ((extra, outcome, ""),)})
+
+    def _u2b(prims, a=None, j=None):
+        return primitives_problems(prims, cc.LANGUAGES,
+                                   async_pairs=cc.async_tokens() if a is None else a,
+                                   join_pairs=cc.join_tokens() if j is None else j)
+
+    expect("U2b py 表把 await 记成 async",
+           _u2b(_cc_with("py", "await", "async")), True)
+    expect("U2b c 表把 pthread_join 记成 async（**H4 的原缺口**）",
+           _u2b(_cc_with("c", "pthread_join", "async")), True)
+    expect("U2b cpp 表把 std::future 记成 async",
+           _u2b(_cc_with("cpp", "std::future", "async")), True)
+    expect("U2b matlab 表把 parfor 记成 callback",
+           _u2b(_cc_with("matlab", "parfor", "callback")), True)
+    expect("U2b js 表删掉 setTimeout（期望表里的缺失）",
+           _u2b(_cc_drop("js", "setTimeout")), True)
+    expect("U2b 表里多出未审原语",
+           _u2b(_cc_add("matlab", "spmd", "async")), True)
+    expect("U2b 某语言表为空",
+           _u2b(dict(cc.PRIMITIVES, js=())), True)
+    expect("U2b 同一原语同时算 async 与 join",
+           _u2b(cc.PRIMITIVES,
+                a=list(cc.async_tokens()) + [("py", "await")],
+                j=cc.join_tokens()), True)
+    expect("U2b 汇合集合为空（反例不能是空集）",
+           _u2b(cc.PRIMITIVES, j=()), True)
 
     # ── 反例：U4 装置登记 ──
     expect("U4 HOP_DEVICES 为空",
@@ -315,13 +542,57 @@ def _selftest():
     expect("U4 unregistered_devices 被改成空转",
            hop_device_problems(bh.HOP_DEVICES, lambda ids: [], lambda d: True), True)
 
+    # ── U6 站点先行：正例 + 反例（假图**不检查额度**）──
+    expect("U6 真实模型：站点先行三条全过",
+           scheduling_precedence_problems(ug), False)
+
+    class _LaxGraph(object):
+        """假图：add_edge **不检查站点额度** —— 用来证明 U6 能被打红。"""
+
+        def __init__(self):
+            self.nodes = {}
+            self.sites = {}
+            self.edges = []
+
+        def add_node(self, n):
+            self.nodes[n.nid] = n
+
+        def add_site(self, k, n=1):
+            self.sites[k] = self.sites.get(k, 0) + int(n)
+
+        def add_edge(self, e):
+            self.edges.append(e)
+
+    expect("U6 假图不检查额度 ⇒ 必须被抓到",
+           scheduling_precedence_problems(ug, make_graph=_LaxGraph), True)
+
+    # ── U7 验证分母：正例 + 三种反例 ──
+    expect("U7 真实登记表：三分成划分且 supported ⊆ verified",
+           rule_registry_problems(tr.verification_census(), tr.rule_ids(),
+                                  tr.supported_rule_ids(), tr.verified_rule_ids()),
+           False)
+    expect("U7 未验证的规则被报成「已支持」",
+           rule_registry_problems(
+               tr.verification_census(), tr.rule_ids(),
+               tuple(tr.rule_ids()),                       # 谎报：全部「已支持」
+               tr.verified_rule_ids()), True)
+    expect("U7 三分不构成划分（分母对不上）",
+           rule_registry_problems({"total": len(tr.RULES), "verified": 0,
+                                   "unverified": 0},
+                                  tr.rule_ids(), (), ()), True)
+    expect("U7 普查分母自报了一个好看的小数",
+           rule_registry_problems({"total": 1, "verified": 1, "unverified": 0},
+                                  tr.rule_ids(), (), tr.rule_ids()[:1]), True)
+
     # ── 反例：U3 注入即破（逐维）+ 还原 ──
     probe = _injection_probe(ug, bh.HOP_DEVICES)
-    for tag in ("A1", "A2", "A3", "A4"):
+    for tag in ("A1a", "A1b", "A2", "A3", "A4"):
         _c, injected = probe[tag]
         expect("U3 注入 %s 必须被守恒判定器抓到" % tag, injected, True)
-    _c, restored = probe["A1_restore"]
-    expect("U3 A1 补上站点后必须重新守恒", restored, False)
+        expect("U3 %s 不得污染别的维" % tag,
+               [p for p in injected if not p.startswith(tag)], False)
+    _c, restored = probe["A1a_restore"]
+    expect("U3 A1a 补站点+同步声明后必须重新守恒", restored, False)
 
     # ── 反例：U5 往返漂移 ──
     g = ug.demo_graph()
@@ -330,6 +601,12 @@ def _selftest():
     got = [(e.src, e.dst, e.kind) for e in ug.UnifiedGraph.from_dict(d).edges]
     want = [(e.src, e.dst, e.kind) for e in g.edges]
     expect("U5 往返后边集合漂移", ["x"] if got != want else [], True)
+
+    d2 = ug.demo_graph().to_dict()
+    d2["declared_sites"] = (d2.get("declared_sites") or 0) + 7
+    got2 = getattr(ug.UnifiedGraph.from_dict(d2), "declared_sites", None)
+    want2 = getattr(ug.demo_graph(), "declared_sites", None)
+    expect("U5 往返后 declared_sites 漂移", ["x"] if got2 != want2 else [], True)
 
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     if fails:
@@ -347,17 +624,17 @@ def main(argv=None):
         return _selftest()
     loaded = _load()
     if loaded is None:
-        print("check_unified_graph: 导不到 unified_graph / binhops / concurrency"
-              "（缺输入 → 红）")
+        print("check_unified_graph: 导不到 unified_graph / binhops / concurrency / "
+              "translate.rules（缺输入 → 红）")
         return 2
-    ug, bh, cc = loaded
-    probs = audit(ug, bh, cc)
+    ug, bh, cc, tr = loaded
+    probs = audit(ug, bh, cc, tr)
     if probs:
         print("check_unified_graph: %d 项违规" % len(probs))
         for p in probs:
             print("  - " + p)
         return 1
-    print("check_unified_graph: OK（统一图四条恒等式 + T1 图前提全绿；"
+    print("check_unified_graph: OK（统一图恒等式 + 三张登记表自洽 + 站点先行生效；"
           "判据族 %s）" % ROW_SIGNATURE)
     return 0
 

@@ -17,7 +17,7 @@ T4 加的是 **rule 节点**。四条线若各自长出一套边表示，之后�
     │ dynamic  n5   │   │                              │ rule         │
     │ binhop   n6   │   │        A2 引用完整性          └──────────────┘
     ├───────────────┤   │
-    │ join      n7  │   └──▶ A1  Σ(产出边的站点) == |edges|
+    │ join      n7  │   └──▶ A1a Σ(产出边的站点) == |edges| ；A1b Σ(全部站点) == declared_sites（**独立分母**）
     │ unknown   n8  │
     └───────────────┘
          │
@@ -34,8 +34,18 @@ T4 加的是 **rule 节点**。四条线若各自长出一套边表示，之后�
 `EDGE_PRODUCING_OUTCOMES` 从 `SITE_OUTCOMES` **派生** —— 两张表各写一份必然漂移，
 护栏 U1 直接断言 `EDGE_KINDS == EDGE_PRODUCING_OUTCOMES`。
 
-A1 是 R82-0-2 的验收判据「**注入一条边即破**」：往 `edges` 里塞一条边而不塞
+A1a 是 R82-0-2 的验收判据「**注入一条边即破**」：往 `edges` 里塞一条边而不塞
 对应站点，左边立刻小于右边，差值恰好是注入的条数。
+
+**为什么还必须有 A1b（一个独立的分母）**：A1a 的两个量**都来自本对象**
+（`sites` 与 `edges`）⇒ 只要识别器写成「先造边、再顺手 `add_site`」，A1a
+**永远成立**，而它的绿灯与现在**一模一样** —— 判据退化成恒真式。所以本模块
+要求一个**独立于 sites 表**的声明量 `declared_sites`（解析器/扫描器报出的候选
+站点总数），由 A1b 断言两者相等。
+
+**「站点先行」是构造期要求，不是事后审计**：`add_edge()` 要求该 `kind` 还有
+**剩余站点额度**（`sites[kind]` 减去已产出的同类边数 ≥ 1），否则抛 `GraphError`
+—— 让「先造边后补站点」这种写法**写不出来**，而不是等 A1a 事后发现（它发现不了）。
 
 **本模块不做识别**：不发边、不读源码、不解析二进制。它只回答
 「一张图守恒吗」。造边的装置在 T1–T4 各自的模块里。
@@ -153,13 +163,17 @@ class UnifiedGraph(object):
     """节点 / 边 / 站点结局的容器。`add_*` 走构造期校验，`from_dict` 不走 ——
     这样守恒判定器能**报出**畸形图，而不是让反序列化先抛（R82 §6「声明⇄实装对账」）。
     """
-    __slots__ = ("nodes", "edges", "sites", "meta")
+    __slots__ = ("nodes", "edges", "sites", "meta", "declared_sites")
 
     def __init__(self):
         self.nodes = {}      # nid -> Node
         self.edges = []      # list[Edge]
         self.sites = {}      # outcome -> 计数
         self.meta = {}
+        # 第二个分母：解析器/扫描器报出的**候选站点总数**。None = 本次没有
+        # 独立来源 ⇒ A1b **不参与判定**（报告里必须显式写「未行使」，
+        # 而不是静默跳过 —— 缺席不能同时也是信号）。
+        self.declared_sites = None
 
     # ── 构造 ────────────────────────────────────────────────────────────
     def add_node(self, node):
@@ -176,12 +190,36 @@ class UnifiedGraph(object):
         return self.sites[outcome]
 
     def add_edge(self, edge):
-        """加入一条边。构造期即要求端点已登记（A2 的构造期版本）。"""
+        """加入一条边。构造期**两道**校验：端点已登记（A2）+ 站点额度够（站点先行）。
+
+        「站点先行」若留到事后审计就晚了：A1a 的两个量同源，先造边再补站点
+        会让它**恒真**（H2）。所以在**这里**拒绝 —— 一个写不出来的形状，
+        比一条抓不住它的判据可靠。
+        """
         for nid in (edge.src, edge.dst):
             if nid not in self.nodes:
                 raise GraphError("边的端点 %r 不是已登记节点（引用完整性）" % nid)
+        have = self.sites.get(edge.kind, 0)
+        used = self.edge_census().get(edge.kind, 0)
+        if have - used < 1:
+            raise GraphError(
+                "站点先行被违反：边 (%s→%s, %s) 没有可用的站点额度"
+                "（该 kind 站点 %d 条、同类边已 %d 条）—— 每条边都必须先有一个"
+                "产出它的候选站点；先造边后补站点会让 A1a 退化成恒真式"
+                % (edge.src, edge.dst, edge.kind, have, used))
         self.edges.append(edge)
         return edge
+
+    def set_declared_sites(self, n):
+        """登记「候选站点总数」—— A1b 的**第二个分母**，必须是独立来源。
+
+        **不得**用 `all_site_count()` 当参数：那是从 `sites` 派生的，与 A1a
+        同源 ⇒ 一起失效。传 None 表示本次没有独立来源。
+        """
+        if n is not None and int(n) < 0:
+            raise GraphError("declared_sites 不得为负：%r" % (n,))
+        self.declared_sites = None if n is None else int(n)
+        return self.declared_sites
 
     # ── 统计 ────────────────────────────────────────────────────────────
     def edge_census(self):
@@ -205,7 +243,11 @@ class UnifiedGraph(object):
         return sum(self.sites.get(k, 0) for k in NON_EDGE_OUTCOMES)
 
     def all_site_count(self):
-        """全部候选站点数（= 产出边的 + join + unknown，构造上恒等）。"""
+        """全部候选站点数（= 产出边的 + join + unknown，构造上恒等）。
+
+        ⚠ 它是**派生量**，所以**不能**拿来当 A1b 的右边（那会让 A1b 恒真）。
+        A1b 的右边是 `declared_sites` —— 外部给的。
+        """
         return self.produced_site_count() + self.non_edge_site_count()
 
     # ── 序列化 ──────────────────────────────────────────────────────────
@@ -214,7 +256,8 @@ class UnifiedGraph(object):
                 "nodes": [self.nodes[k].to_dict() for k in sorted(self.nodes)],
                 "edges": [e.to_dict() for e in self.edges],
                 "sites": self.site_census(),
-                "edge_census": self.edge_census()}
+                "edge_census": self.edge_census(),
+                "declared_sites": self.declared_sites}
 
     def to_json(self, indent=1):
         return json.dumps(self.to_dict(), ensure_ascii=False, indent=indent)
@@ -232,6 +275,7 @@ class UnifiedGraph(object):
         for ed in d.get("edges", []):
             g.edges.append(Edge.from_dict(ed))
         g.sites = dict(d.get("sites", {}))
+        g.declared_sites = d.get("declared_sites")
         return g
 
 
@@ -241,18 +285,30 @@ def conservation_problems(g, hop_devices=None):
     **不抛异常** —— 它要能报出问题，而不是自己先炸（R82 §4k-2：一个从未被
     触发的分支不是判据；所以每条 A* 都必须在自证里被真触发过）。
 
-    A1 站点-边守恒：Σ(产出边的站点) == |edges|
+    A1a 站点-边守恒：Σ(产出边的站点) == |edges|
+    A1b 站点总数对账：Σ(全部站点) == declared_sites（**独立分母**；
+        declared_sites 为 None ⇒ 本判据**未行使**，报告里必须显式说出来）
     A2 引用完整性：每条边的 src / dst 都是已登记节点
     A3 hop 可追溯：每条 binhop 边有 hop；via_device 非空且（给了表时）已登记
     A4 边唯一：同一 (src, dst, kind) 只许出现一次（重复 = 同一条边被造了两遍）
     """
     probs = []
 
-    # A1 —— 「注入一条边即破」的那条
+    # A1a —— 「注入一条边即破」的那条
     produced = g.produced_site_count()
     if produced != len(g.edges):
-        probs.append("A1 站点-边守恒被破坏：产出边的站点 %d 条，实际边 %d 条（差 %+d）"
+        probs.append("A1a 站点-边守恒被破坏：产出边的站点 %d 条，实际边 %d 条（差 %+d）"
                      % (produced, len(g.edges), len(g.edges) - produced))
+
+    # A1b —— 第二个分母。**不能**从 sites 派生，否则与 A1a 同源。
+    declared = getattr(g, "declared_sites", None)
+    if declared is not None:
+        total = g.all_site_count()
+        if total != declared:
+            probs.append(
+                "A1b 站点总数与声明不符：全部站点 %d 条，声明 %d 条（差 %+d）"
+                "—— 声明量是独立来源，不等即说明有站点被漏记或重复记"
+                % (total, declared, declared - total))
 
     # A2
     for i, e in enumerate(g.edges):
@@ -287,7 +343,7 @@ def conservation_problems(g, hop_devices=None):
 
 
 def demo_graph():
-    """自证用的小图：2 节点 + 2 边 + 4 类站点（2 产出边、1 join、1 unknown）。
+    """自证用的小图：3 节点 + 2 边 + 4 类站点（2 产出边、1 join、1 unknown）。
 
     护栏 `tools/check_unified_graph.py` 的 U3/U5 直接复用本函数 ——
     「被测图」与「判据」用**同一份**夹具，免得两边各写一份而互相漂移。
@@ -303,6 +359,9 @@ def demo_graph():
                     evidence="parfeval @foo at line 9"))
     g.add_site("join", 1)       # 汇合：**不**产出边
     g.add_site("unknown", 1)    # 诚实：没识别出来
+    # demo 图自洽：声明量与 sites 由构造一致。A1b 的**红**由护栏的子探针制造
+    # （真造一个「声明 5 而实际 4」的图），并断言它被抓到。
+    g.set_declared_sites(g.all_site_count())
     return g
 
 
