@@ -300,6 +300,13 @@ GUARD_CONTRACT = {
         1: "有违规（形状非法 / T1 前提缺失 / 守恒判定器抓不到注入 / 未登记装置 / 往返漂移）",
         2: "缺输入（导不到 unified_graph / binhops / concurrency / site_matching / translate.rules —— 缺输入 → 红）",
     },
+    "tools/check_kernel_snapshot.py": {
+        0: "全树规模读数登记表自洽（W1–W5：出处+口径钉住 / 两档分母并列 / "
+           "汇总↔明细恒等式 / 与 R81 基线逐位且逐类对照 / 唯一事实源指针与跨文档分母一致）",
+        1: "有违规（缺键 / 出处或口径陈旧 / 两档分母合一或反向 / 恒等式破 / "
+           "与基线不等 / 指针缺失或跨文档分母不一致）",
+        2: "缺输入（docs/KERNEL_RUN.md 或 matlabc.py 不在，或块不可解析）",
+    },
 }
 
 GUARD_SCRIPTS = tuple(sorted(GUARD_CONTRACT))
