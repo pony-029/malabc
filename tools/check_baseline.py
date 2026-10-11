@@ -75,6 +75,8 @@ import time
 # 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
 ROW_SIGNATURE = "P1–P4/T1"
 
+# H3（R73）：越出签名族、但仍由本门发出的判据前缀。
+ROW_EXTRA = "B2,B3"
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
 

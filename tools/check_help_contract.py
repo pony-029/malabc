@@ -115,6 +115,8 @@ import sys
 #   ② README.md / README_CN.md 里本门那一行。
 # 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
 ROW_SIGNATURE = "B0–B5"
+# H3（R73）：越出签名族、但仍由本门发出的判据前缀（O1 的两向对手方）。
+ROW_EXTRA = "C1–C3/G1–G2/H1–H2/N1–N4/O1–O4/R1–R5"
 
 # ---------------------------------------------------------------------------
 # 退出码契约的唯一事实源。每个码都要在 evidence 指的文件里有真实依据
@@ -1501,6 +1503,206 @@ def ascii_tree_signature_problems(tree_src, sig_by_script):
     return probs
 
 
+# ---------------------------------------------------------------------------
+# H3（R73）「族级所有权」：每道门声明它**越出签名**还能说哪些判据前缀，并且
+#            任何一个判据前缀**只能有一个主人**。
+#
+# 起因（R72 §7 的 C22-1 / C22-3）：R72 的 A 腿**只认同族前缀**（按命名空间过滤），
+# 所以「一道门跑到别的族里发判据」它结构性地看不见。R73 的仓库外装置
+# `_r73/probe_r73_family.py`（10 条前置自证）把两种口径各量了一遍（真树 R72 定稿）：
+#   * WIDE（R72 口径：任何用引号包起来的判据字面量）=> 7/18 道门「跨族」；
+#   * NARROW（只认 on_problem / append / print 的实参）=> **4/18** 道门跨族。
+# 差出的 3 道全是**散文噪声**（轮次引用、夹具名）—— 这正是 R72 记下的
+# 「A 宁松勿漏 => 会多报」的方向，R73 给它一个数。
+#
+# 四条判据（纯函数，不读文件、不起进程）：
+#   O1「不许隐形判据（跨族）」：NARROW 口径下发出的前缀（去掉辅助前缀）必须 ⊆
+#      签名 ∪ ROW_EXTRA。多出来 = 跑到别的族里发了判据却没声明。
+#   O2「不许幽灵扩展」：ROW_EXTRA 里声明的每个前缀都必须在 NARROW 口径下真的发得出。
+#   O3「全局唯一所有权」：18 道门的（签名 ∪ 扩展）并起来做「前缀 -> 主人」映射；
+#      一个前缀有多个主人 => 必须登记进 PREFIX_OWNERSHIP_SHARED 并写清两种含义
+#      （否则「某前缀失败了」这句话有歧义）。
+#   O4「所有权登记两向」：登记了却不再冲突 => 红；理由 < 8 字符 => 红；
+#      登记的前缀没有任何门声明 => 红。
+#
+# 三条口径与一条边界（**写下来**，否则下一轮各写一套）：
+#   1. NARROW 的定义就在这里：调用名属于 NARROW_REPORT_CALLS 的**实参**（含嵌套，
+#      例如 on_problem 套一层百分号格式化）里、以字面量开头的判据前缀。裸字面量
+#      （赋值、容器元素、docstring）不算。
+#   2. 为什么不用 WIDE：轮次散文与夹具名会污染它（实测多报 3/18）。
+#   3. 为什么不用「去注释与 docstring 的全部字面量」：它把代码里的轮次引用也算进来
+#      （实测污染 12 道门），比 NARROW 更差。
+#   边界：NARROW 看不见**表驱动**的判据标签 —— 例如 check_binfmt_fixtures.py 有
+#   7 个判据的标签只出现在**表**里、不在报告调用里，NARROW 因此漏看。所以 O1 只
+#   保证「发出的都被声明了」，**不**保证「声明的都发得出」—— 后者是 H2b（WIDE）
+#   的活。两条腿互补，各自的方向都写下。
+# ---------------------------------------------------------------------------
+ROW_EXTRA_ATTR = "ROW_EXTRA"
+
+# NARROW 口径认的「报告调用」名。**改这里就是改口径**，改完必须重跑装置。
+NARROW_REPORT_CALLS = ("on_problem", "print", "append")
+
+# NARROW 口径的判据头：以字面量开头、后跟一个分隔符。
+_JUDGE_HEAD_RE = re.compile(r"^([A-Z]{1,3}\d+[a-z]?)([ :：　])")
+
+# 全局所有权的**登记制**共享前缀（理由 >= 8 字符）。两向核对见 O4。
+# 这些前缀本来是「同一个字母、两道门各有一条判据」：登记下来才无歧义。
+PREFIX_OWNERSHIP_SHARED = {
+    "B2": "基线门与帮助契约门各有一条 B2，含义不同（基线 vs 帮助契约）",
+    "B3": "基线门与帮助契约门各有一条 B3，含义不同（基线 vs 帮助契约）",
+    "C1": "binfmt 夹具门与帮助契约门各有一条 C1，含义不同（夹具 vs 帮助契约）",
+    "C2": "binfmt 夹具门与帮助契约门各有一条 C2，含义不同（夹具 vs 帮助契约）",
+    "C3": "binfmt 夹具门与帮助契约门各有一条 C3，含义不同（夹具 vs 帮助契约）",
+    "G1": "四个门各有一条 G1（帮助契约 / 导入图 / 补丁算子 / py-js 前端），含义不同",
+    "G2": "四个门各有一条 G2（帮助契约 / 导入图 / 补丁算子 / py-js 前端），含义不同",
+    "G3": "三个门各有一条 G3（导入图 / 补丁算子 / py-js 前端），含义不同",
+    "G4": "两个门各有一条 G4（导入图 / py-js 前端），含义不同",
+    "G5": "两个门各有一条 G5（导入图 / py-js 前端），含义不同",
+    "G6": "两个门各有一条 G6（导入图 / py-js 前端），含义不同",
+    "G7": "两个门各有一条 G7（导入图 / py-js 前端），含义不同",
+    "P1": "基线门与 README 对等门各有一条 P1，含义不同（基线 vs 门表）",
+    "P2": "基线门与 README 对等门各有一条 P2，含义不同（基线 vs 门表）",
+    "P4": "基线门与 README 对等门各有一条 P4，含义不同（基线 vs 门表）",
+    "R1": "三个门各有一条 R1（C 前端 / 帮助契约 / py-js 前端），含义不同",
+    "R2": "三个门各有一条 R2（C 前端 / 帮助契约 / py-js 前端），含义不同",
+}
+
+
+def _str_const(node):
+    """取字符串常量节点的值（3.6 的 ast.Str / 3.8+ 的 ast.Constant 都认）。"""
+    if isinstance(node, ast.Str):
+        return node.s
+    if hasattr(ast, "Constant") and isinstance(node, ast.Constant) \
+            and isinstance(node.value, str):
+        return node.value
+    return None
+
+
+def _load_row_extra(path):
+    """读护栏源码里的 ROW_EXTRA（可选的第二签名：越出签名族、仍由它发出的前缀）。
+
+    三种返回：字符串（读到了） / 空串（**没有这一行**，多数门的正常状态）
+    / None（**声明坏了**：有这一行，但求值不出字符串 => 红）。
+    """
+    try:
+        with io.open(path, "r", encoding="utf-8", errors="replace") as fh:
+            src = fh.read()
+    except OSError:
+        return None
+    m = re.search(r"^ROW_EXTRA\s*=\s*(.+?)\s*$", src, re.M)
+    if not m:
+        return ""
+    try:
+        val = ast.literal_eval(m.group(1))
+    except (ValueError, SyntaxError):
+        return None
+    return val if isinstance(val, str) else None
+
+
+def narrow_judgement_prefixes(src):
+    """NARROW 口径：报告调用实参里的判据前缀集合。源码读不到或解析失败 => None。
+
+    **不导入被核对象**：装置与产品读同一份源码文本，不制造「门读门」的隐式耦合。
+    """
+    if src is None:
+        return None
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return None
+    found = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        fn = node.func
+        name = fn.id if isinstance(fn, ast.Name) else (
+            fn.attr if isinstance(fn, ast.Attribute) else None)
+        if name not in NARROW_REPORT_CALLS:
+            continue
+        for sub in ast.walk(node):
+            s = _str_const(sub)
+            if not s:
+                continue
+            m = _JUDGE_HEAD_RE.match(s)
+            if m:
+                found.add(m.group(1))
+    return found
+
+
+def _prefix_sort_key(p):
+    """按 (族, 数字) 排序 —— `C10` 不许排在 `C2` 前面。"""
+    m = re.match(r"^([A-Z]{1,3})(\d+)", p)
+    return (m.group(1), int(m.group(2))) if m else (p, 0)
+
+
+def family_ownership_problems(contract, sig_by_script, extra_by_script,
+                              narrow_by_script, registry=None):
+    """H3 O1-O4：族级所有权。返回问题串列表（空 = 过）。
+
+    纯函数：所有输入都是「已读好的文本/集合」，不读文件、不起进程。
+    """
+    if registry is None:
+        registry = PREFIX_OWNERSHIP_SHARED
+    probs = []
+    declared_all = {}
+    for script in sorted(contract):
+        base = expand_row_signature(sig_by_script.get(script)) or set()
+        raw = extra_by_script.get(script, "")
+        extra = set()
+        if raw is None:
+            probs.append("O1 %s: ROW_EXTRA 求值不出字符串 —— 扩展签名声明坏了"
+                         % script)
+        elif raw:
+            extra = expand_row_signature(raw)
+            if extra is None:
+                probs.append("O1 %s: ROW_EXTRA %r 展开不出判据前缀（不是 Xn 族写法）"
+                             % (script, raw))
+                extra = set()
+        declared_all[script] = base | extra
+        nar = narrow_by_script.get(script)
+        if nar is None:
+            probs.append("O1 %s: 源码读不到或 AST 解析失败（缺输入 => 红）" % script)
+            continue
+        emitted = set(p for p in nar if not _is_aux_prefix(p))
+        invisible = sorted(emitted - declared_all[script], key=_prefix_sort_key)
+        if invisible:
+            probs.append(
+                "O1 %s: 真判据上下文里发了 %s，签名与 ROW_EXTRA 都没声明 —— 隐形判据"
+                "（跨族）；要么补进 ROW_EXTRA，要么把前缀挪回签名族"
+                % (script, "/".join(invisible)))
+        phantom = sorted(extra - emitted, key=_prefix_sort_key)
+        if phantom:
+            probs.append(
+                "O2 %s: ROW_EXTRA 里的 %s 在真判据上下文里发不出 —— 幽灵扩展"
+                "（要么删掉它，要么让它真的被发出）" % (script, "/".join(phantom)))
+    # O3：全局唯一所有权
+    owners = {}
+    for script in sorted(declared_all):
+        for p in declared_all[script]:
+            owners.setdefault(p, set()).add(script)
+    for p in sorted(owners, key=_prefix_sort_key):
+        if len(owners[p]) > 1 and p not in registry:
+            probs.append(
+                "O3 判据前缀 %s 有 %d 个主人（%s），却没有登记 —— 「%s 失败了」这句话"
+                "有歧义；请登记进 PREFIX_OWNERSHIP_SHARED 并写清两种含义"
+                % (p, len(owners[p]),
+                   ", ".join(os.path.basename(s) for s in sorted(owners[p])), p))
+    # O4：登记表两向
+    for p in sorted(registry, key=_prefix_sort_key):
+        if len(str(registry[p]).strip()) < 8:
+            probs.append("O4 共享前缀登记 %s 的理由少于 8 字符 —— 登记要写清为什么"
+                         % p)
+        if p not in owners:
+            probs.append("O4 共享前缀登记 %s 没有任何门声明 —— 陈旧登记（该删了）" % p)
+        elif len(owners[p]) < 2:
+            probs.append(
+                "O4 共享前缀登记 %s 现在只有 %d 个主人（%s）—— 陈旧登记：冲突没了"
+                "就该删掉登记，让 O3 重新能管它"
+                % (p, len(owners[p]),
+                   ", ".join(os.path.basename(s) for s in sorted(owners[p]))))
+    return probs
+
+
 def audit_guards(root, on_problem):
     """R33（C'7）+ R63（G0b）：对护栏脚本施加 R1（+反向+陈旧）与 R2，
     并核对「存在 ⇄ 登记」。返回核对过的脚本数。"""
@@ -1571,6 +1773,18 @@ def audit_guards(root, on_problem):
     else:
         for msg in ascii_tree_signature_problems(tree_src, sig_by_script):
             on_problem(msg)
+    # H3（R73）：族级所有权 O1-O4。H2 的 A 腿只认同族前缀，跨族实发它看不见。
+    extra_by_script = {}
+    narrow_by_script = {}
+    for script in sorted(GUARD_SCRIPTS):
+        path = os.path.join(root, script)
+        extra_by_script[script] = _load_row_extra(path)
+        nav = src_by_script.get(script)
+        narrow_by_script[script] = None if nav is None else \
+            narrow_judgement_prefixes(nav)
+    for msg in family_ownership_problems(GUARD_CONTRACT, sig_by_script,
+                                         extra_by_script, narrow_by_script):
+        on_problem(msg)
     return n
 
 
@@ -2164,6 +2378,83 @@ def _selftest():
     expect("R51 坏样本：帮助里没有「诚实的边界」小节（B0 抓到）",
            any(x.startswith("B0") for x in
                boundary_verdict("# 没有这一节\n", BOUNDARY_CLAIMS)[0]), True)
+
+    # ---- H3（R73）O1-O4：族级所有权 ----
+    # 合成样本刻意不用真实门名；O1/O2 一律显式 registry={}，避免回落到真实登记表
+    # （R72 的 exempt=None 就是摔在这里：回落让好样本变红、坏样本变空转）。
+    def _fo(contract, sigs, extras, narrows, registry=None):
+        return family_ownership_problems(contract, sigs, extras, narrows,
+                                         registry=registry)
+
+    _cx = {"tools/check_x.py": {0: "全部通过"}}
+    _sig_x = {"tools/check_x.py": "X1–X3"}
+    _ex_none = {"tools/check_x.py": ""}
+    # O1 正例：签名覆盖实发
+    expect("O1 正例：签名 X1–X3 覆盖实发 X1/X2",
+           any(x.startswith("O1") for x in _fo(
+               _cx, _sig_x, _ex_none,
+               {"tools/check_x.py": {"X1", "X2"}}, registry={})), False)
+    # O1 反例：发了 Y1 却越出签名族
+    expect("O1 反例：实发 Y1 越出签名族（隐形判据）",
+           any(x.startswith("O1") for x in _fo(
+               _cx, _sig_x, _ex_none,
+               {"tools/check_x.py": {"X1", "Y1"}}, registry={})), True)
+    # O1 正例：越出的 Y1 已用 ROW_EXTRA 声明
+    expect("O1 正例：越出的 Y1 已用 ROW_EXTRA 声明 ⇒ 放行",
+           any(x.startswith("O1") for x in _fo(
+               _cx, _sig_x, {"tools/check_x.py": "Y1"},
+               {"tools/check_x.py": {"X1", "Y1"}}, registry={})), False)
+    # O2 反例：ROW_EXTRA 声明了 Y1 却没发
+    expect("O2 反例：ROW_EXTRA 的 Y1 发不出（幽灵扩展）",
+           any(x.startswith("O2") for x in _fo(
+               _cx, _sig_x, {"tools/check_x.py": "Y1"},
+               {"tools/check_x.py": {"X1"}}, registry={})), True)
+    # O2 正例：ROW_EXTRA 的 Y1 真的发了
+    expect("O2 正例：ROW_EXTRA 的 Y1 真的发了 ⇒ 放行",
+           any(x.startswith("O2") for x in _fo(
+               _cx, _sig_x, {"tools/check_x.py": "Y1"},
+               {"tools/check_x.py": {"X1", "Y1"}}, registry={})), False)
+    # O3 反例：同一个前缀两个主人、未登记
+    _cxy = {"tools/check_x.py": {0: "a"}, "tools/check_y.py": {0: "b"}}
+    _sig_xy = {"tools/check_x.py": "Z1", "tools/check_y.py": "Z1"}
+    _nar_xy = {"tools/check_x.py": {"Z1"}, "tools/check_y.py": {"Z1"}}
+    expect("O3 反例：前缀 Z1 有两个主人却没登记 ⇒ 有歧义",
+           any(x.startswith("O3") for x in _fo(
+               _cxy, _sig_xy, {"tools/check_x.py": "", "tools/check_y.py": ""},
+               _nar_xy, registry={})), True)
+    # O3 正例：同上的冲突已登记 ⇒ 放行
+    expect("O3 正例：同上的冲突已登记 ⇒ 放行",
+           any(x.startswith("O3") for x in _fo(
+               _cxy, _sig_xy, {"tools/check_x.py": "", "tools/check_y.py": ""},
+               _nar_xy, registry={"Z1": "两个门各有一条含义不同的 Z1，登记说明"})),
+           False)
+    # O4 反例之一：理由过短
+    expect("O4 反例：共享登记的理由只有 2 字符",
+           any(x.startswith("O4") for x in _fo(
+               _cxy, _sig_xy, {"tools/check_x.py": "", "tools/check_y.py": ""},
+               _nar_xy, registry={"Z1": "短"})), True)
+    # O4 反例之二：陈旧登记（没有人声明这个前缀）
+    expect("O4 反例：登记的前缀 Q9 没有人声明（陈旧）",
+           any(x.startswith("O4") for x in _fo(
+               _cx, _sig_x, _ex_none,
+               {"tools/check_x.py": {"X1"}},
+               registry={"Q9": "这条冲突早就没了，登记该删掉"})), True)
+    # O4 反例之三：陈旧登记（冲突没了，只剩一个主人）
+    expect("O4 反例：登记的前缀 Z1 现在只剩一个主人（陈旧）",
+           any(x.startswith("O4") for x in _fo(
+               _cx, {"tools/check_x.py": "Z1"}, _ex_none,
+               {"tools/check_x.py": {"Z1"}},
+               registry={"Z1": "这条冲突早就没了，登记该删掉"})), True)
+    # 口径两向（写死 NARROW 的边界）：
+    expect("口径：裸字面量（赋值）不算判据",
+           narrow_judgement_prefixes('v = "X7 not in a call"') != set(), False)
+    expect("口径：docstring 里的判据字样不算",
+           narrow_judgement_prefixes(
+               'def f():\n    """X7 doc"""\n    pass\n') != set(), False)
+    expect("口径：三种报告调用的实参都算（含嵌套）",
+           narrow_judgement_prefixes(
+               'print("X7 a")\nb.append("X8 b")\n'
+               'on_problem("X9 %s" % v)\n') != {"X7", "X8", "X9"}, False)
 
     # ---- 真实仓库整体核对 ----
     root = repo_root()

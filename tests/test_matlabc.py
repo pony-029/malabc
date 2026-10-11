@@ -19926,7 +19926,8 @@ _R72_EXTRA_NS = {
     "tools/check_baseline.py": {"B", "R"},
     "tools/check_boundary_reverse.py": {"R"},
     "tools/check_c_frontend_shapes.py": {"R"},
-    "tools/check_help_contract.py": {"C", "G", "H", "N", "R", "X"},
+    # R73 起多一族 O（新增判据 O1–O4）；缺口长大要走这一步
+    "tools/check_help_contract.py": {"C", "G", "H", "N", "O", "R", "X"},
     "tools/check_import_graph.py": {"B", "R"},
     "tools/check_ir_attribution.py": {"C"},
     "tools/check_py_js_frontend_shapes.py": {"R"},
@@ -19958,3 +19959,107 @@ def test_r72_cross_namespace_families_are_registered():
         "少一族 = 有人修好了（请来改表并写清是哪一轮修的）。实测：%r" % (got,))
     # 表里不许有陈旧键（登记了却不存在 ⇒ 也红）
     assert set(_R72_EXTRA_NS) <= set(hc.GUARD_SCRIPTS), sorted(_R72_EXTRA_NS)
+
+
+def test_r73_family_ownership_is_two_way():
+    """R73 H3：判据前缀的**族级所有权**（O1–O4）必须真管真树。
+
+    钉住五层：
+
+      ① 主路径 rc=0，成功行仍含本门 `ROW_SIGNATURE`（`B0–B5`）；
+      ② `--selftest` 通过，`SELFTEST COUNTS` 取**下界**断言（R73 加了 13 例）；
+      ③ 纯函数四条腿各配好/坏样本；O1/O2 一律**显式** `registry={}` ——
+         回落真实登记表会让好样本变红、坏样本变空转（R72 的 `exempt=None` 摔过
+         同一个坑，所以这一条在 R73 的用例里被写死）；
+      ④ **真仓库**：18 个护栏逐条 0 项；且 `PREFIX_OWNERSHIP_SHARED` **恰好**等于
+         实测的「多主人前缀」集合（多一个 = 陈旧登记；少一个 = 有冲突没登记）；
+      ⑤ **接线**：用**真仓库的输入**调一遍（必须 0 项），再临时删掉一条登记 ——
+         同一次调用必须报 `O3`。没有这一层，登记表就可能只是装饰。
+    """
+    gate = os.path.join("tools", "check_help_contract.py")
+    r = _r31_run([gate], timeout=180)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[-900:]
+    assert "B0" + "\u2013" + "B5" in out, out[-400:]
+
+    s = _r31_run([gate, "--selftest"], timeout=180)
+    sout = s.stdout.decode("utf-8", "replace")
+    assert s.returncode == 0, sout[-900:]
+    m = re.search(r'SELFTEST COUNTS \{"bad": (\d+), "good": (\d+)\}', sout)
+    assert m, sout[-500:]
+    assert int(m.group(1)) >= 57, m.group(0)
+    assert int(m.group(2)) >= 50, m.group(0)
+
+    hc = _r37_load("check_help_contract")
+
+    # ③ 纯函数：O1/O2 各两向，O3/O4 反例（好样本在 selftest 里）
+    _cx = {"tools/check_x.py": {0: "全部通过"}}
+    _sx = {"tools/check_x.py": "X1" + "\u2013" + "X3"}
+    _ex = {"tools/check_x.py": ""}
+    p = hc.family_ownership_problems(
+        _cx, _sx, _ex, {"tools/check_x.py": {"X1", "Y1"}}, registry={})
+    assert any(x.startswith("O1") for x in p), p
+    assert hc.family_ownership_problems(
+        _cx, _sx, {"tools/check_x.py": "Y1"},
+        {"tools/check_x.py": {"X1", "Y1"}}, registry={}) == []
+    p = hc.family_ownership_problems(
+        _cx, _sx, {"tools/check_x.py": "Y1"},
+        {"tools/check_x.py": {"X1"}}, registry={})
+    assert any(x.startswith("O2") for x in p), p
+    _cxy = {"tools/check_x.py": {0: "a"}, "tools/check_y.py": {0: "b"}}
+    _sxy = {"tools/check_x.py": "Z1", "tools/check_y.py": "Z1"}
+    _nxy = {"tools/check_x.py": {"Z1"}, "tools/check_y.py": {"Z1"}}
+    p = hc.family_ownership_problems(
+        _cxy, _sxy, {"tools/check_x.py": "", "tools/check_y.py": ""},
+        _nxy, registry={})
+    assert any(x.startswith("O3") for x in p), p
+    p = hc.family_ownership_problems(
+        _cxy, _sxy, {"tools/check_x.py": "", "tools/check_y.py": ""},
+        _nxy, registry={"Z1": "短"})
+    assert any(x.startswith("O4") for x in p), p
+    # 口径：NARROW 只认报告调用实参
+    assert hc.narrow_judgement_prefixes('v = "X7 bare"') == set()
+    assert hc.narrow_judgement_prefixes('on_problem("X9 %s" % v)') == {"X9"}
+
+    # ④ 真仓库：登记表恰好等于实测的「多主人前缀」集合
+    declared = {}
+    for script in hc.GUARD_SCRIPTS:
+        path = os.path.join(ROOT, script)
+        base = hc.expand_row_signature(hc._load_row_signature(path)) or set()
+        raw = hc._load_row_extra(path)
+        ext = hc.expand_row_signature(raw) if raw else set()
+        declared[script] = base | (ext or set())
+    owners = {}
+    for script, ps in declared.items():
+        for pf in ps:
+            owners.setdefault(pf, set()).add(script)
+    multi = set(pf for pf, o in owners.items() if len(o) > 1)
+    assert multi == set(hc.PREFIX_OWNERSHIP_SHARED), (
+        "共享登记表与实测多主人前缀不一致"
+        "（多 = 陈旧登记；少 = 有冲突没登记）："
+        "实测 %r / 登记 %r"
+        % (sorted(multi), sorted(hc.PREFIX_OWNERSHIP_SHARED)))
+    assert len(multi) >= 17, sorted(multi)
+
+    # ⑤ 接线：真仓库输入 0 项；临时删一条登记必须报 O3（用完即还原）
+    sigs = {s: hc._load_row_signature(os.path.join(ROOT, s))
+            for s in hc.GUARD_SCRIPTS}
+    extras = {s: hc._load_row_extra(os.path.join(ROOT, s))
+              for s in hc.GUARD_SCRIPTS}
+    narrows = {}
+    for s in hc.GUARD_SCRIPTS:
+        with open(os.path.join(ROOT, s), "r", encoding="utf-8",
+                  errors="replace") as fh:
+            narrows[s] = hc.narrow_judgement_prefixes(fh.read())
+    assert hc.family_ownership_problems(
+        hc.GUARD_CONTRACT, sigs, extras, narrows) == []
+    saved = dict(hc.PREFIX_OWNERSHIP_SHARED)
+    assert "G1" in saved, sorted(saved)
+    try:
+        del hc.PREFIX_OWNERSHIP_SHARED["G1"]
+        p = hc.family_ownership_problems(
+            hc.GUARD_CONTRACT, sigs, extras, narrows)
+        assert any(x.startswith("O3") for x in p), p
+    finally:
+        hc.PREFIX_OWNERSHIP_SHARED.clear()
+        hc.PREFIX_OWNERSHIP_SHARED.update(saved)

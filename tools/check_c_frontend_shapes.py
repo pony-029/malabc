@@ -94,6 +94,8 @@ import tempfile
 # 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
 ROW_SIGNATURE = "F1–F6"
 
+# H3（R73）：越出签名族、但仍由本门发出的判据前缀。
+ROW_EXTRA = "R1,R2"
 # 公开 CLI 的墙钟上限。实测一次 ≈0.5s，300s 是给「机器正忙」留的量级余量；
 # 它的意义是「让挂死变成红，而不是让门永远等着」。
 CLI_TIMEOUT = 300.0
