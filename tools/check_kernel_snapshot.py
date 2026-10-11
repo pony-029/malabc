@@ -171,12 +171,60 @@ def _num(kv, key, probs, integer=True):
         return None
 
 
+def _delta_verdict(declared, key, va, vb, tail=""):
+    """W5 的「已声明变化」裁决。返回 problems 列表（可能为空）。
+
+    R87 起，W5 不再无条件要求「与 R81 逐位全等」—— 门自己的措辞早就留了出口：
+    「或分析逻辑真的变了，那就必须写出原因」。出口落在登记表的 KERNEL-DELTA 块。
+
+    ⚠ 出口必须**三向**都有对手方，否则它只是把「逐位全等」换成一张通行证：
+      * 两侧相等却仍被登记 ⇒ **陈旧登记**（变化已不存在，登记该撤）
+      * 两侧不等却没登记   ⇒ **未登记**（必须写出原因）
+      * 登记了但数字或原因对不上 ⇒ 登记与实测不符 / 空原因
+    """
+    probs = []
+    d = declared.get(key) if declared else None
+    try:
+        diff = "%+d" % (va - vb)
+    except TypeError:
+        diff = "n/a"
+    if va == vb:
+        if d is not None:
+            probs.append(
+                "W5 %s 被登记成「已声明变化」，但两侧都是 %s —— **陈旧登记**"
+                "（变化已不存在，登记必须一起撤；否则这张表会退化成"
+                "「永远可以解释任何差异」的通行证）%s" % (key, va, tail))
+        return probs
+    if d is None:
+        probs.append(
+            "W5 %s: 本轮 %s != R81 基线 %s（差 %s）—— **未登记**。"
+            "`matlabc.py` 自 R81 起若只有纯文档改动，计数器本应逐位复现，"
+            "不等说明解析**非确定**；若分析逻辑**真的**变了，就必须在 %s 的"
+            " `%s` 块里写下原因（键 `%s.base`/`%s.cur`/`%s.reason`）%s"
+            % (key, va, vb, diff, DOC, DELTA_OPEN, key, key, key, tail))
+        return probs
+    db, dc, rn = d.get("base"), d.get("cur"), d.get("reason")
+    dbn, dcn = _ival(d, "base"), _ival(d, "cur")
+    if dbn is None or dcn is None:
+        probs.append("W5 %s 登记的 base/cur 不是整数：%r / %r" % (key, db, dc))
+    elif dbn != vb or dcn != va:
+        probs.append("W5 %s 登记的是 %s→%s，实测 %s→%s —— 登记与实测不符"
+                     "（数字现算，不许手抄）%s" % (key, db, dc, vb, va, tail))
+    if not (rn or "").strip():
+        probs.append("W5 %s 变了（%s→%s）但 `%s.reason` 是空的 —— "
+                     "「写出原因」是这条的出口，空原因等于没写%s"
+                     % (key, vb, va, key, tail))
+    return probs
+
+
 # --------------------------------------------------------------- 判据
 def audit(kv, doc_text, matlabc_sha=None, matlabc_bytes=None,
-          unknown_doc_denominator=None, readmes=None):
+          unknown_doc_denominator=None, readmes=None, declared=None):
     """返回 problems 列表（空 = 全过）。所有外部事实都可注入 ⇒ 可两向自证。
 
     `readmes` = {显示名: 文本}；为 None 表示「这一条未行使」（自证的多数用例）。
+    `declared` = {读数键: {"base":…, "cur":…, "reason":…}}（R87）；为 None 时
+    W5 退化为原始的「逐位全等」判据 —— 即「这一条未行使」。
     """
     probs = []
 
@@ -299,11 +347,8 @@ def audit(kv, doc_text, matlabc_sha=None, matlabc_bytes=None,
             va, vb = _num(kv, a, probs), _num(kv, b, probs)
             if va is None or vb is None:
                 continue
-            if va != vb:
-                probs.append(
-                    "W5 %s: 本轮 %d != R81 基线 %d（差 %+d）—— `matlabc.py` 自 R81 起"
-                    "只有纯文档改动，计数器本应逐位复现；不等说明解析**非确定**"
-                    "（或分析逻辑真的变了，那就必须写出原因）" % (k, va, vb, va - vb))
+            probs.extend(_delta_verdict(declared, "arm_%s.%s" % (arm, k),
+                                        va, vb))
     if base_kinds and "base_c.heuristics" in kv:
         bh = _ival(kv, "base_c.heuristics")
         if bh is not None:
@@ -319,10 +364,10 @@ def audit(kv, doc_text, matlabc_sha=None, matlabc_bytes=None,
     bk = dict((k[len("base_c.kind."):], _ival(kv, k)) for k in base_kinds)
     for name in sorted(set(ak) | set(bk)):
         if ak.get(name) != bk.get(name):
-            probs.append(
-                "W5 启发式分解逐类不一致：%s 本轮 %s vs R81 基线 %s"
-                "（总和相同也照样红 —— 只比总和会让「一好一坏顶替」静默通过）"
-                % (name, ak.get(name), bk.get(name)))
+            probs.extend(_delta_verdict(
+                declared, "arm_c.kind.%s" % name, ak.get(name), bk.get(name),
+                tail="（总和相同也照样红 —— 只比总和会让「一好一坏顶替」"
+                     "静默通过）"))
 
     if unknown_doc_denominator is not None:
         v = _num(kv, "crossdoc.unknown_sites_files", probs)
@@ -343,6 +388,26 @@ def audit(kv, doc_text, matlabc_sha=None, matlabc_bytes=None,
                     "W5 %s 没有指向 %s —— 缺少唯一事实源指针时，"
                     "两个都对的读数无法分辨；请在 README 里补上指向该登记表的一行"
                     % (label, SNAPSHOT_POINTER))
+
+    # KERNEL-DELTA 的**幽灵登记**：登记了本轮根本不存在的读数（键名拼错，或该
+    # 读数已从块里消失）⇒ 红。缺登记由上面的循环判（「未登记」）。
+    #
+    # ⚠ `live` 必须用「块里真实存在的 `arm_*` 键」来算，**不能**拿 `ARM_KEYS` 现拼：
+    # 直方图键（`arm_c.kind.*`）不在 `ARM_KEYS` 里，第一版用 `ARM_KEYS` 拼，
+    # 结果把**每一个**直方图登记都判成了幽灵 —— 门当场报「登记了本轮不存在的读数」
+    # 三条（其中两条其实存在）。**判据自己的口径也要有对手方。**
+    if declared:
+        live = set()
+        for _k in kv:
+            if not (_k.startswith("arm_c.") or _k.startswith("arm_asm.")):
+                continue
+            if _k.rsplit(".", 1)[-1] in CLOCK_KEYS:
+                continue
+            live.add(_k)
+        ghost = sorted(set(declared) - live)
+        if ghost:
+            probs.append("W5 KERNEL-DELTA 登记了本轮不存在的读数 %r —— "
+                         "幽灵登记（键名拼错，或该读数已不在块里）" % (ghost,))
     return probs
 
 
@@ -377,6 +442,15 @@ def _unknown_doc_denominator(path):
 # 就会**就地覆盖对照基线**。
 PIPELINE_OPEN = "<!-- KERNEL-PIPELINE v1 -->"
 PIPELINE_CLOSE = "<!-- /KERNEL-PIPELINE -->"
+# R87：第三个块 —— 「与 R81 的**已声明变化**」。W5 的原始断言是「逐位全等」，
+# 而门自己的措辞早就留了出口：「或分析逻辑真的变了，那就必须写出原因」。
+# 这个块就是那个「原因」的唯一事实源；格式与另外两块一致（`键 | 值`，
+# 值内不许出现 `|`），所以**同一个解析器**（parse_block）照样服务它：
+#     arm_c.funcs.base    | 743518
+#     arm_c.funcs.cur     | 743509
+#     arm_c.funcs.reason  | C 前端修掉 GNU 属性说明符缺陷族：7 处假定义…
+DELTA_OPEN = "<!-- KERNEL-DELTA v1 -->"
+DELTA_CLOSE = "<!-- /KERNEL-DELTA -->"
 PIPELINE_DOC = os.path.join("docs", "KERNEL_RUN.md")
 
 # 闭集的意义不是分类癖：**开放集合上，拼错的 role 会被当成一个新类型静静收下**
@@ -553,9 +627,27 @@ def main(argv=None):
         _p = os.path.join(_ROOT, _name)
         readmes[_name] = (io.open(_p, encoding="utf-8", errors="replace").read()
                           if os.path.isfile(_p) else "")
+    # ---- 第三块：与 R81 的「已声明变化」（R87）----
+    # 缺块 ⇒ 红（与流程块同一个口径：登记表是生成器产出的，生成器一定会写这块；
+    # 不在说明有人手删或生成器坏了，绝不当作「没有变化」而静默放宽 W5）。
+    declared, dprobs = parse_block(text, DELTA_OPEN, DELTA_CLOSE, tag="W5d")
+    probs.extend(dprobs)
+    declared_map = None
+    if declared:
+        declared_map = {}
+        for _k, _v in declared.items():
+            if _k.endswith(".reason"):
+                declared_map.setdefault(_k[:-len(".reason")], {})["reason"] = _v
+            elif _k.endswith(".base") or _k.endswith(".cur"):
+                _b, _, _f = _k.rpartition(".")
+                declared_map.setdefault(_b, {})[_f] = _v
+            else:
+                probs.append("W5d KERNEL-DELTA 键 %r 既不是 `.base`/`.cur` 也不是 "
+                             "`.reason`" % (_k,))
     probs.extend(audit(kv, text, matlabc_sha=sha256_file(mc_p),
                        matlabc_bytes=os.path.getsize(mc_p),
-                       unknown_doc_denominator=unk, readmes=readmes))
+                       unknown_doc_denominator=unk, readmes=readmes,
+                       declared=declared_map))
 
     # ---- W6：流程块（**同一个文件里的第二个围栏块**）----
     # 「缺输入必须能红」：流程块不在 ⇒ rc=2，绝不当成「没有流程要核」而静默放行。
@@ -587,7 +679,8 @@ def main(argv=None):
               % (len(probs), ROW_SIGNATURE))
         return 1
     print("check_kernel_snapshot: OK（全树规模读数：出处+口径钉住 + 两档分母并列 + "
-          "汇总↔明细恒等式 + 与 R81 基线逐位/逐类对照 + 唯一事实源指针；"
+          "汇总↔明细恒等式 + 与 R81 基线逐位/逐类对照（R87：差异必须登记、"
+          "写明原因，陈旧登记与幽灵登记同样红）+ 唯一事实源指针；"
           "流程登记：站表形状 + 恰一个 current 驱动 + 产物链拓扑 + 仓内落点存在；"
           "判据族 %s）" % ROW_SIGNATURE)
     return 0
@@ -933,6 +1026,33 @@ def _selftest():
     expect("W6e 两个仓内落点都存在",
            _p6(_mkpipe(extra={"pipeline.repo_artifacts":
                               "matlabc.py,tools/check_kernel_snapshot.py"})), False)
+
+    # ---- R87：W5 的「已声明变化」出口**三向都有对手方**（否则它只是把
+    # 「逐位全等」换成一张「永远可以解释任何差异」的通行证）----
+    _ok = {"base": "20", "cur": "19", "reason": "分析逻辑真的变了（探针可复现）"}
+    expect("W5d 不等 + 已登记（数字对得上、原因非空）",
+           _delta_verdict({"arm_c.funcs": _ok}, "arm_c.funcs", 19, 20), False)
+    expect("W5d 相等 + 未登记（原本的判据）",
+           _delta_verdict({}, "arm_c.funcs", 20, 20), False)
+    expect("W5d 不等却未登记",
+           _delta_verdict({}, "arm_c.funcs", 19, 20), True)
+    expect("W5d 相等却仍被登记（陈旧登记）",
+           _delta_verdict({"arm_c.funcs": _ok}, "arm_c.funcs", 20, 20), True)
+    expect("W5d 登记数字与实测不符",
+           _delta_verdict({"arm_c.funcs": {"base": "20", "cur": "18",
+                                           "reason": "x"}},
+                          "arm_c.funcs", 19, 20), True)
+    expect("W5d 变了但原因栏是空的",
+           _delta_verdict({"arm_c.funcs": {"base": "20", "cur": "19",
+                                           "reason": "   "}},
+                          "arm_c.funcs", 19, 20), True)
+    expect("W5d 登记的 base/cur 不是整数（幽灵登记落盘的样子）",
+           _delta_verdict({"arm_c.funcs": {"reason": "x"}},
+                          "arm_c.funcs", 19, 20), True)
+    expect("W5d 块未行使时退回逐位全等（不等 ⇒ 红）",
+           _delta_verdict(None, "arm_c.funcs", 19, 20), True)
+    expect("W5d 逐类出现 None（本轮有 / 基线无）也不许崩",
+           _delta_verdict({}, "arm_c.kind.x", 3, None), True)
 
     # 反例 W6：流程块缺失（缺输入必须能红，不许静默当成「没有流程要核」）
     expect("W6 流程块整块缺失", _p6("正文里没有流程块\n"), True)

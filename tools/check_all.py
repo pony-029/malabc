@@ -12,7 +12,7 @@
         ├─▶ check_help_contract.py        退出码在代码↔帮助双向一致；示例能真跑
         ├─▶ check_boundary_reverse.py     「诚实的边界」每条承诺都要有对手方（契约 V1..V6 + 两向自证）
         ├─▶ check_import_graph.py         模块级 import 必须无环；回边只能走登记过的惰性通道
-        ├─▶ check_c_frontend_shapes.py    C 前端函数定义形态（四形态/指针返回/体界/行号）+ 调用关系有界投影，各有对手方
+        ├─▶ check_c_frontend_shapes.py    C 前端函数定义形态（四形态/指针返回/体界/行号）+ 调用关系有界投影 + 属性说明符不是定义也不是调用，各有对手方
         ├─▶ check_py_js_frontend_shapes.py Python/JS 前端形态（单行/async/注解/跨行/箭头）各有对手方
         ├─▶ check_ir_attribution.py       「解析不到的调用」只有一个判定点，归因吃的就是它
         ├─▶ check_operator_impl.py        算子元表里不得有「只声明不产出」的幻影

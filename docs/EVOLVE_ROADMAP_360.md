@@ -94,6 +94,10 @@
 #   Phase A 的四条 blocked 轮次再由 13/14/15/16 挪到 14/15/16/17。**门数仍是 19** ——
 #   0h 只给 `check_c_frontend_shapes.py` 加判据族 F7（F1–F6 → F1–F7），不加闸门
 #   （「缺口为 0 时加闸 = churn」，R85 已定论）。仍走 `t2`。
+#   R87 的 Phase 0i（C 前端**属性说明符**缺陷族）同理插在 0h 之后、Phase A 之前：
+#   0h 的第 13 轮不动，Phase A 的四条 blocked 轮次再由 14/15/16/17 挪到 15/16/17/18。
+#   **门数仍是 19** —— 0i 只给 `check_c_frontend_shapes.py` 加判据族 F8
+#   （F1–F7 → F1–F8），不加闸门。仍走 `t2`（这是**被测物本身**的缺陷，不是新能力）。
 0  | 0  | base | phase0_acceptance       | Phase 0 验收：门数 17→18 全绿 + U1–U5 两向自证 | -
 1  | 0  | base | conservation_two_way    | 统一图守恒判定器两向成立（干净 0 / 注入 ≥1 / 还原 0） | -
 2  | 0  | base | py36_census             | 3.6.5 语法门在新增模块上仍绿 | -
@@ -108,10 +112,11 @@
 11 | 0f | t2   | rea_binfmt_mitigations  | REA 移植第一片：`Segment`（只读，perms）+ 静态缓解措施两档（ELF `inferred` / PE `observed`；`None` ≠ `False`） | -
 12 | 0g | t2   | rea_lib_resolution      | REA 移植第二片：**库名 → 磁盘文件 → 依赖下钻**（`binfmt/resolve.py` + `--lib-resolve/--lib-path/--lib-max-nodes` + GUI 卡片）+ C14/C15 | -
 13 | 0h | t2   | call_relations_proj     | 调用关系的**有界投影**（`callrel.py` + `--callgraph` 系列 + 判据族 F7）：度数 TOP-N / 名字级 SCC / 跨文件四桶 / 焦点 BFS / 截断显式 | -
-14 | A  | t1   | -                       | R82-A3 Py/JS 后端（await 必须不产生 async 边） | 未实现
-15 | A  | t1   | -                       | R82-A4 MATLAB 后端（parfor/parfeval/batch/timer） | 未实现
-16 | A  | t1   | -                       | R82-A5 asm 间接跳转 ⇒ unknown（不猜） | 未实现
-17 | A  | t1   | -                       | R82-A6 站点/报告新增「异步」列 + 未识别并发站点计数 | 未实现
+14 | 0i | t2   | c_attr_spec_family      | C 前端**属性说明符**缺陷族（`__attribute__` 既不是定义也不是调用）：类型定义不产假函数 / 属性头与组内参数不产假调用 / 判据族 **F1–F7 → F1–F8** | -
+15 | A  | t1   | -                       | R82-A3 Py/JS 后端（await 必须不产生 async 边） | 未实现
+16 | A  | t1   | -                       | R82-A4 MATLAB 后端（parfor/parfeval/batch/timer） | 未实现
+17 | A  | t1   | -                       | R82-A5 asm 间接跳转 ⇒ unknown（不猜） | 未实现
+18 | A  | t1   | -                       | R82-A6 站点/报告新增「异步」列 + 未识别并发站点计数 | 未实现
 ```
 
 ### Phase 0f · REA 能力移植 Ⅰ：静态缓解措施（轮 11 · `t2`）
@@ -155,6 +160,31 @@
 
 **Phase 0h 出口**：用户能拿到一份**打开就能看「谁调用谁」**的产物，且它**有界、截断显式、
 口径写成字面量**（节点身份 = 名字 ⇒ 假阳性风险明说；未解析不在图里 ⇒ 并列计数）。
+
+### Phase 0i · C 前端**属性说明符**缺陷族（轮 14 · `t2`）
+
+**动因**：用户的调用图交付物里出现了**假的**节点与边。隔离探针把它拆成**三个各走各的**
+泄漏通道（全部由探针跑出来，不是读代码读出来的）—— 这也解释了为什么「读」不出来：
+
+| 通道 | 现场（内核真实语料） | 后果 |
+|---|---|---|
+| **定义侧** | `typedef struct __attribute__((packed, aligned(4))) {`（**7 处 / 2 文件**） | 产出名叫 `__attribute__` 的**假函数**；那两个文件的函数表 **100% 为假** |
+| **调用侧·头** | `__attribute__((weak,unused,section(…)))` 独占一行夹在声明与定义之间（`tools/include/nolibc/string.h` **21 个函数每个一条**） | 假调用 ⇒ 假边（每条 × 同名定义数 = 14 条进焦点子图） |
+| **调用侧·组内参数** | `((packed, aligned(4)))` 里的 `aligned(`（前一个字符是「逗号 + 空格」） | 假调用 ⇒ 进 `unresolved`，**直接抬高对外读数** |
+
+| ID | 任务 | 轮次预算 | 出口判据 |
+|---|---|---|---|
+| R87a | 定义侧：`_is_type_decl()` —— `typedef` 前缀 / 名字紧跟 `struct`·`union`·`enum` ⇒ 类型定义不是函数定义（两条都是 C 语法硬约束） | 14 | 四形态夹具 **0 个定义**；`struct foo *get(void){}` 照常认出 |
+| R87b | 调用侧：`_mask_c_attrs()` **整组屏蔽**（往名字表里加是堵不住的 —— 属性名是开放集合） | 14 | 组内 `aligned(4)` 不再变成**假未解析**；`get_attribute` / `aligned_fn` 照常算调用 |
+| R87c | 判据族 **F1–F7 → F1–F8**（F8a–F8f 六个半边，含「产物正文零出现」与「文档显式声明」）+ `--selftest` 子判据级覆盖；**五处级联** | 14 | `SELFTEST COUNTS {"bad": 0, "good": 52}`；门 rc=0 且成功行含 `F1–F8` |
+| R87d | 仓外探针 `_r87/probe_attr.py` **两向**（`before` / `after`）+ 变异体 `_r87/mutate_attr.py` | 14 | `after` 全绿；完整还原（M0）⇒ `before` 全绿 ⇒ **探针测的是产品行为**；M1/M2 注入即红且可追溯 |
+| R87e | 内核整树**重跑**（新旧读数**并列**，不许只报新值） | 14 | 函数数 / 边数 / 未解析的 **delta 与预测一致**；`__attribute__` 假节点从交付产物里消失 |
+| R87f | 文档：README ×2 门表行 + `docs/matlabc_FEATURES.md` §3.15 + `docs/matlabc_USAGE.md` §3.16 | 14 | `check_readme_parity` / `check_doc_flags` 全绿（F8f 的判据载体就是 FEATURES.md） |
+| R87g | **修掉自己引入的误伤**：`_is_type_decl` 的区间扫描必须带**括号深度** —— 宏实参位置上的 `typedef`（`BTF_ID(typedef,S)` / `DEFINE_PROCESS_TYPE(typedef)`）不是声明的存储类；无分号宏调用会把 `decl_start` 钉在远处，不带深度就会吃掉真函数 | 14 | 丢掉的假定义 **11 → 9**（剩下的 2 个是 `enum <宏调用>(...)`，该丢）；`process_subrange_type` / `__resolve_symbol` 回到函数表；夹具加 A7/A8 两形态；变异体 **M3** 注入即红 |
+| R87h | 第 19 道门的 **W5 出口**：登记表新增「与 R81 的**已声明变化**」块（数字现算 / 原因人写 / **空原因照样落盘 ⇒ 门红**）；W5 由「逐位全等」改为「**计数相等 ⇔ 未声明变化**」 | 14 | `--selftest` 9 条 W5d 用例全过（含陈旧登记 / 幽灵登记 / 数字不符 / 空原因）；**门数仍 19**（只提分辨率，不加闸） |
+
+**Phase 0i 出口**：交付产物里**不含任何**由属性语法造出的节点或边；`unresolved` 里
+不含属性名；真函数一个不丢；且这条边界在文档里**显式写着**（不是只在代码注释里）。
 
 ### Phase A · T1 异步调用链（轮 1–60）
 

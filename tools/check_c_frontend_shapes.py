@@ -110,7 +110,7 @@ import tempfile
 #   ① 本门的成功行（下面 main() 打印的那一行）；
 #   ② README.md / README_CN.md 里本门那一行。
 # 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
-ROW_SIGNATURE = "F1–F7"
+ROW_SIGNATURE = "F1–F8"
 
 # H3（R73）：越出签名族、但仍由本门发出的判据前缀。
 ROW_EXTRA = "R1,R2"
@@ -199,6 +199,99 @@ CG_FIXTURES = (("cg_cyc.c", CG_CYC_C), ("cg_acy.c", CG_ACY_C))
 # F7b 的期望环（手写，独立于产品）：成员集合必须恰是这两个
 CG_WANT_CYCLE = ("hub", "leaf")
 
+# ---------------------------------------------------------------------------
+# F8（R87）夹具：GNU **属性说明符** `__attribute__((…))` 既不是定义、也不是调用。
+# 与 F1–F6 / F7 两组**再分开放**（同一条理由：棘轮钉死在各自那一组上，
+# 混在一起会让「F8 改动」与「别的覆盖缩水」在读数上分不开）。
+#
+# 夹具里四类**类型定义**与三类**真函数**必须同时在，否则判据会退化成空断言：
+#   ① `typedef struct __attribute__((…)) {` …… 内核里真实存在的形态（7 处）
+#   ② `struct __attribute__((…)) {`（**匿名**，属性紧贴 `{`）
+#   ③ `union __attribute__((…)) {` / ④ `enum __attribute__((…)) {`
+#   ⑤ 属性行**独占一行**、夹在声明与定义之间（`decl_then_attr`）
+#   ⑥ 属性组**在真函数的声明行内**（`get_attribute`）—— 属性头泄漏
+#   ⑦ 属性组内有**函数样参数**（`aligned(4)`，`aligned_fn`）—— 组内参数泄漏
+# ⑦ 是探针实测才发现的**第三条**泄漏通道：`aligned(` 前面是空格，于是
+# `_RE_C_CALL` 把它当调用，而 `aligned` 没有同名定义 ⇒ 直接抬高 `unresolved`。
+# ---------------------------------------------------------------------------
+ATTR_C = (
+    "typedef struct __attribute__((packed, aligned(4))) {\n"      # 1
+    "    unsigned int tf_a;\n"                                    # 2
+    "} attr_rec_t;\n"                                             # 3
+    "\n"                                                          # 4
+    "struct __attribute__((packed)) {\n"                          # 5
+    "    unsigned int tf_b;\n"                                    # 6
+    "};\n"                                                        # 7
+    "\n"                                                          # 8
+    "union __attribute__((aligned(8))) {\n"                       # 9
+    "    int tf_c;\n"                                             # 10
+    "};\n"                                                        # 11
+    "\n"                                                          # 12
+    "enum __attribute__((packed)) {\n"                            # 13
+    "    ATTR_D = 1,\n"                                           # 14
+    "};\n"                                                        # 15
+    "\n"                                                          # 16
+    "void decl_then_attr(void *p);\n"                             # 17
+    "__attribute__((weak,unused,section(\".text.attr_probe\")))\n"  # 18
+    "void *decl_then_attr(void *p)\n"                             # 19
+    "{\n"                                                         # 20
+    "    return p;\n"                                             # 21
+    "}\n"                                                         # 22
+    "\n"                                                          # 23
+    "static __attribute__((unused)) int get_attribute(void)\n"    # 24
+    "{\n"                                                         # 25
+    "    return 1;\n"                                             # 26
+    "}\n"                                                         # 27
+    "\n"                                                          # 28
+    "static __attribute__((aligned(4))) int aligned_fn(void)\n"   # 29
+    "{\n"                                                         # 30
+    "    return 0;\n"                                             # 31
+    "}\n"                                                         # 32
+    "\n"                                                          # 33
+    "void attr_caller(void)\n"                                    # 34
+    "{\n"                                                         # 35
+    "    (void)get_attribute();\n"                                # 36
+    "    missing_extern();\n"                                     # 37
+    "}\n"                                                         # 38
+    # ⚠ R87g **防过度收窄**：无分号宏调用把 `decl_start` 钉在远处，其实参里的
+    # `typedef`（括号深度 > 0）不得把后面的真函数一起吃掉。真实内核里踩到的
+    # 两处分别是 `DEFINE_PROCESS_TYPE(typedef)` 与 `BTF_ID(typedef, S)`；
+    # 这里保留「无分号 ID(...) 序列 + 实参 typedef」这个**形状**，宏体简化。
+    "#define DPT(t) proc_##t##_type\n"                           # 39
+    "DPT(typedef)\n"                                              # 40
+    "static void process_subrange_type(void)\n"                   # 41
+    "{\n"                                                         # 42
+    "}\n"                                                         # 43
+    "BTF_ID(typedef, S)\n"                                        # 44
+    "static int\n"                                                # 45
+    "__resolve_symbol(void)\n"                                    # 46
+    "{\n"                                                         # 47
+    "    return 0;\n"                                             # 48
+    "}\n")                                                        # 49
+
+ATTR_FIXTURES = (("attr.c", ATTR_C),)
+
+# 手写期望（**独立于产品**）：这些名字必须**恰好**是函数表全体 —— 既排除
+# `__attribute__`，也排除「靠整类不报把类型定义连真函数一起丢掉」。
+# 后两个（`__resolve_symbol` / `process_subrange_type`）是 R87g 的**回归守卫**：
+# 它们前面压着一串无分号宏调用，实参里恰好有 `typedef`。
+ATTR_WANT_FUNCS = ("__resolve_symbol", "aligned_fn", "attr_caller",
+                   "decl_then_attr", "get_attribute", "process_subrange_type")
+# 夹具里唯一的真调用边（`attr_caller` 调它）
+ATTR_WANT_EDGE = ("attr_caller", "get_attribute")
+# ⚠ 别把上面那个元组的**长度**当边数：它是「一条边的两个端点」。
+ATTR_WANT_N_EDGES = 1
+# 夹具里唯一的**真**未解析调用；`aligned` / `__attribute__` 都不许出现在这里
+ATTR_WANT_UNRESOLVED = ("missing_extern",)
+# 已登记的「噪声」未解析读数：夹具里那两条**宏调用**（`DPT(...)` / `BTF_ID(...)`）。
+# 词法前端不展开宏 ⇒ 宏调用与函数调用**同形**，必然落进 unresolved。这与属性
+# 说明符泄漏是**两回事**，所以分开登记，并要求「噪声不多不少」：产品行为一旦
+# 变了（宏被展开了、或又漏了别的东西）就报红，而不是被一个大数字吞掉。
+ATTR_KNOWN_UNRESOLVED_NOISE = ("BTF_ID", "DPT")
+# F8f：帮助/文档必须**显式声明**这条边界（「不做也不静默」的口径落到文档上）
+ATTR_DOC = "docs/matlabc_FEATURES.md"
+ATTR_DOC_MARKERS = ("__attribute__", "不是调用")
+
 # 手写期望 —— **独立于产品**（不是跑产品得到的结果），也不来自任何 tools/ 装置。
 # 值 = (ret, params, line, body_start, body_end)
 WANT = {
@@ -234,15 +327,17 @@ CRITERIA = (
     ("F5", "声明起点行号逐字段相等"),
     ("F6", "不假阳（控制语句 / 调用 / 宏 / 初值），且已披露的 K&R / 返回函数指针保持不识别"),
     ("F7", "调用关系的有界投影：两本账对账 / 环两向 / 有界且诚恳 / 深度有效 / 未知格式不降级 / 口径字面量"),
+    ("F8", "属性说明符 `__attribute__`：类型定义不产函数 / 真函数不丢 / 组内参数不算调用 / 未解析两向 / 产物零出现 / 文档显式声明"),
 )
 CRITERIA_IDS = tuple(c[0] for c in CRITERIA)
 
 # ---------------------------------------------------------------------------
 # 棘轮：全部是「事实的读数」，不是可调参数。覆盖不许静默缩水。
 # ---------------------------------------------------------------------------
-EXPECTED_CRITERIA = 7
+EXPECTED_CRITERIA = 8
 EXPECTED_FIXTURES = 3
 EXPECTED_CG_FIXTURES = 2
+EXPECTED_ATTR_FIXTURES = 1
 EXPECTED_SHAPE_NAMES = 4
 EXPECTED_BOUNDARY_TRAPS = 2
 EXPECTED_REAL_FUNCS = 8          # 5（shapes）+ 2（sbraces）+ 1（neg）
@@ -327,7 +422,7 @@ def judge(per):
 
 
 def judge_fixtures(fixtures=None, neg_c=None, shapes_c=None, sbraces_c=None,
-                   cg_cyc=None, cg_acy=None):
+                   cg_cyc=None, cg_acy=None, attr_c=None):
     """夹具完备性：每条陷阱必须在夹具源码里**逐字**出现。
 
     为什么这是必需的一环（R56 的自伤教训：**口径变一次，样本完备性就得跟着重算**）：
@@ -336,6 +431,7 @@ def judge_fixtures(fixtures=None, neg_c=None, shapes_c=None, sbraces_c=None,
 
     `cg_cyc` / `cg_acy` 是 R86-3 加的**可注入**参数：F7 的夹具完备性也要能被
     两向自证（传一份被抽掉环边的夹具，必须报红），否则它自己就是空断言。
+    `attr_c` 同理（R87，F8）。
     """
     fixtures = FIXTURES if fixtures is None else fixtures
     neg = NEG_C if neg_c is None else neg_c
@@ -343,6 +439,7 @@ def judge_fixtures(fixtures=None, neg_c=None, shapes_c=None, sbraces_c=None,
     sbr = SBRACES_C if sbraces_c is None else sbraces_c
     cgy = CG_CYC_C if cg_cyc is None else cg_cyc
     cga = CG_ACY_C if cg_acy is None else cg_acy
+    atr = ATTR_C if attr_c is None else attr_c
     probs = []
     for name in FALSE_POSITIVE_TRAPS + BOUNDARY_TRAPS:
         if name not in neg:
@@ -370,6 +467,27 @@ def judge_fixtures(fixtures=None, neg_c=None, shapes_c=None, sbraces_c=None,
     for rel, text in fixtures:
         if not text.strip():
             probs.append("R2 夹具 %s 是空的" % rel)
+    # F8 夹具完备性：四类类型定义与三类真函数**都必须在**。
+    # 少了任一侧，F8a/F8b 就退化成空断言（永远绿，且没人告诉你）。
+    for marker, why in (
+            ("typedef struct __attribute__((packed, aligned(4))) {",
+             "F8a 的 typedef+struct 形态"),
+            ("struct __attribute__((packed)) {\n",
+             "F8a 的匿名 struct 形态"),
+            ("union __attribute__((aligned(8))) {", "F8a 的 union 形态"),
+            ("enum __attribute__((packed)) {", "F8a 的 enum 形态"),
+            ("__attribute__((weak,unused,section", "F8 的「属性行独占一行」形态"),
+            ("static __attribute__((unused)) int get_attribute(void)",
+             "F8b 的「名字里带 attribute」对手方"),
+            ("static __attribute__((aligned(4))) int aligned_fn(void)",
+             "F8c 的「组内有函数样参数」形态"),
+            ("missing_extern();", "F8d 的「真未解析调用」对手方"),
+            ("DPT(typedef)", "F8b 的「无分号宏调用 + 实参 typedef」形态"
+                             "（防过度收窄：不得吃掉后面的真函数）"),
+            ("BTF_ID(typedef, S)", "F8b 的同族第二形态")):
+        if marker not in atr:
+            probs.append("R2 attr.c 里找不到 %s（`%s`）—— 那条判据变成空断言"
+                         % (why, marker))
     return probs
 
 
@@ -380,6 +498,8 @@ def judge_ratchet(n_funcs):
                            ("夹具数", len(FIXTURES), EXPECTED_FIXTURES),
                            ("调用关系夹具数", len(CG_FIXTURES),
                             EXPECTED_CG_FIXTURES),
+                           ("属性夹具数", len(ATTR_FIXTURES),
+                            EXPECTED_ATTR_FIXTURES),
                            ("形态名数", len(SHAPE_NAMES), EXPECTED_SHAPE_NAMES),
                            ("已披露边界陷阱数", len(BOUNDARY_TRAPS),
                             EXPECTED_BOUNDARY_TRAPS),
@@ -550,6 +670,92 @@ def judge_callrel(obs):
     return probs
 
 
+def judge_attr(obs):
+    """F8（R87）的**纯函数**判据：属性说明符既不是定义、也不是调用。
+
+    同样「读产物说了什么」，不读代码里写了什么 —— 每一条都能被一个只改
+    产物的突变体点亮。
+    """
+    probs = []
+    if not isinstance(obs, dict):
+        return ["F8 判据载体不是字典（scan_attr 的返回值坏了）"]
+
+    names = obs.get("names")
+    # F8a 类型定义不产函数
+    if names is None:
+        probs.append("F8a 拿不到函数名表（--json 载荷坏了）")
+    elif "__attribute__" in names:
+        probs.append("F8a `typedef struct __attribute__((…)) {` 被当成了函数"
+                     "定义 —— 实得名字表 %r" % (sorted(names),))
+    # F8b 真函数一个不丢（含名字里带 attribute 的、含属性组内参数的）
+    if names is not None and sorted(names) != sorted(ATTR_WANT_FUNCS):
+        probs.append("F8b 真函数集合应当恰为 %r，实得 %r"
+                     % (sorted(ATTR_WANT_FUNCS), sorted(names)))
+
+    # F8c 属性组内**任何**名字都不许算调用
+    calls = obs.get("calls")
+    if not isinstance(calls, dict):
+        probs.append("F8c 拿不到每个函数的调用表")
+    else:
+        bad = sorted(set(
+            c for cs in calls.values() for c in cs
+            if c in ("__attribute__", "__attribute", "aligned")))
+        if bad:
+            probs.append("F8c 属性说明符/组内参数被算成了调用：%r —— "
+                         "`aligned(4)` 这类参数在正则层与调用同形，只能整组屏蔽"
+                         % (bad,))
+
+    # F8d 未解析：属性泄漏一条不许有、真对手方一条不许少、噪声必须被登记、
+    # 两本账必须互相对上（**不写死数字** ⇒ 断言自维持）
+    un = obs.get("unresolved")
+    ut = obs.get("unresolved_total")
+    if un is None or ut is None:
+        probs.append("F8d 拿不到未解析读数的两本账")
+    else:
+        us = set(un)
+        leak = sorted(n for n in us
+                      if n in ("__attribute__", "__attribute", "aligned"))
+        if leak:
+            probs.append("F8d 属性说明符/组内参数泄漏进了未解析：%r —— "
+                         "假的（属性泄漏）与真的（外部函数）必须能分开" % (leak,))
+        for w in ATTR_WANT_UNRESOLVED:
+            if w not in us:
+                probs.append("F8d %r 这条**真**未解析调用丢了（对手方消失）"
+                             % (w,))
+        noise = sorted(us - set(ATTR_WANT_UNRESOLVED))
+        if noise != sorted(ATTR_KNOWN_UNRESOLVED_NOISE):
+            probs.append("F8d 未登记的未解析读数 %r（登记的是 %r）—— "
+                         "宏调用未展开是已知边界，但**变化必须被看见**"
+                         % (noise, sorted(ATTR_KNOWN_UNRESOLVED_NOISE)))
+        if ut != len(un):
+            probs.append("F8d 两本账对不上：投影计数 %r vs 明细 %d 条"
+                         % (ut, len(un)))
+
+    # F8e 产物级：图／投影正文里**一个字**都不许出现（交付物而非代码）
+    for key, want, why in (("cg_text_attr", 0, "`__attribute__`"),
+                           ("cg_text_aligned", 0, "属性组内参数 `aligned`")):
+        got = obs.get(key)
+        if got is None:
+            probs.append("F8e 拿不到 %s 在产物正文里的出现次数" % why)
+        elif got != want:
+            probs.append("F8e 调用关系产物正文里出现了 %d 次 %s —— "
+                         "这是用户直接看到的东西" % (got, why))
+    ne, et = obs.get("n_edges_json"), obs.get("edges_total")
+    if ne != ATTR_WANT_N_EDGES or et != ATTR_WANT_N_EDGES:
+        probs.append("F8e 边数应当恰为 %d（夹具里只有一条真边），"
+                     "实得 --json=%r / call_relations=%r"
+                     % (ATTR_WANT_N_EDGES, ne, et))
+
+    # F8f 边界必须被**显式声明**（判据在文档里，不是代码里）
+    miss = obs.get("doc_missing")
+    if miss is None:
+        probs.append("F8f 拿不到文档检查结果")
+    elif miss:
+        probs.append("F8f %s 里缺少边界声明 %r —— 「不做也不静默」这条口径"
+                     "要求边界落在文档上" % (ATTR_DOC, list(miss)))
+    return probs
+
+
 def scan_callrel(root, python_exe):
     """建两组调用关系夹具 → 跑公开 CLI → 取产物 → 交给 `judge_callrel`。
 
@@ -652,6 +858,79 @@ def scan_callrel(root, python_exe):
         shutil.rmtree(base, ignore_errors=True)
 
 
+def scan_attr(root, python_exe):
+    """建 F8 夹具 → 跑公开 CLI（`--json` + `--callgraph`）→ 交给 `judge_attr`。
+
+    返回 ``(probs, n_runs)``；``probs is None`` 表示**缺输入**。
+    文档声明（F8f）也在这里读 —— 它和夹具一样是判据的**载体**：
+    载体读不到就是缺输入，不能算「没问题」。
+    """
+    base = tempfile.mkdtemp(prefix="r87attr_")
+    try:
+        src = os.path.join(base, "src")
+        os.makedirs(src)
+        for rel, text in ATTR_FIXTURES:
+            with io.open(os.path.join(src, rel), "w", encoding="utf-8",
+                         newline="") as fh:
+                fh.write(text)
+        j = os.path.join(base, "attr.json")
+        c = os.path.join(base, "attr_cg.json")
+        argv = [python_exe, "matlabc.py", src, "--lang", "c",
+                "--checks", "none", "--json", j, "--callgraph", c]
+        p = subprocess.run(argv, cwd=root, stdin=subprocess.DEVNULL,
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           timeout=CLI_TIMEOUT)
+        if p.returncode != 0:
+            return None, 0
+        pay_j = _load_json(j)
+        pay_c = _load_json(c)
+        if not isinstance(pay_j, dict) or not isinstance(pay_c, dict):
+            return None, 0
+
+        dpath = os.path.join(root, ATTR_DOC)
+        if not os.path.isfile(dpath):
+            return None, 0
+        with io.open(dpath, "rb") as fh:
+            dtext = fh.read().decode("utf-8", "replace")
+        with io.open(c, "rb") as fh:
+            raw = fh.read().decode("utf-8", "replace")
+
+        names = []
+        calls = {}
+        for pf in (pay_j.get("files") or []):
+            for fn in (pf.get("functions") or []):
+                names.append(fn.get("name"))
+                calls[fn.get("name")] = [x[0] for x in (fn.get("calls") or [])
+                                         if x]
+        rel = pay_c.get("call_relations") or {}
+        obs = {
+            "names": names,
+            "calls": calls,
+            "unresolved": [u.get("callee")
+                           for u in (pay_j.get("unresolved") or [])],
+            "unresolved_total": rel.get("unresolved_total"),
+            "n_edges_json": len(pay_j.get("edges") or []),
+            "edges_total": rel.get("edges_total"),
+            "cg_text_attr": raw.count("__attribute__"),
+            "cg_text_aligned": raw.count("aligned"),
+            "doc_missing": [m for m in ATTR_DOC_MARKERS if m not in dtext],
+        }
+        return judge_attr(obs), 2
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+
+
+def _load_json(path):
+    """读 JSON；坏输入返回 None（**不许**把「读不到」当成「没问题」）。"""
+    if not os.path.isfile(path):
+        return None
+    with io.open(path, "rb") as fh:
+        try:
+            return json.loads(fh.read().decode("utf-8", "replace"))
+        except ValueError:
+            return None
+
+
 # ---------------------------------------------------------------------------
 # 主流程
 # ---------------------------------------------------------------------------
@@ -714,16 +993,28 @@ def main(argv):
               "（--callgraph 是 F7 的载体 → 缺输入）")
         return 2
 
+    try:
+        at_probs, _n_attr = scan_attr(root, sys.executable)
+    except (OSError, subprocess.SubprocessError) as e:
+        print("check_c_frontend_shapes: 属性夹具的公开 CLI 跑不起来：%s"
+              "（缺输入 → 红）" % e)
+        return 2
+    if at_probs is None:
+        print("check_c_frontend_shapes: 属性夹具/文档声明没产出可解析的载体"
+              "（--json / --callgraph / %s 都是 F8 的载体 → 缺输入）" % ATTR_DOC)
+        return 2
+
     probs = (list(probs) + judge_fixtures() + judge_ratchet(n_funcs)
-             + cg_probs)
+             + cg_probs + at_probs)
     if probs:
         for p in probs:
             print("check_c_frontend_shapes: " + p)
         print("check_c_frontend_shapes: %d 项违规" % len(probs))
         return 1
-    print("check_c_frontend_shapes: OK（%d 个形态夹具 + %d 个调用关系夹具 / "
-          "公开 CLI 认出 %d 个函数 / %s 全绿 + 夹具完备性 + 棘轮）"
-          % (len(FIXTURES), len(CG_FIXTURES), n_funcs, ROW_SIGNATURE))
+    print("check_c_frontend_shapes: OK（%d 个形态夹具 + %d 个调用关系夹具 + "
+          "%d 个属性夹具 / 公开 CLI 认出 %d 个函数 / %s 全绿 + 夹具完备性 + 棘轮）"
+          % (len(FIXTURES), len(CG_FIXTURES), len(ATTR_FIXTURES), n_funcs,
+             ROW_SIGNATURE))
     return 0
 
 
@@ -735,6 +1026,7 @@ def _selftest():
     bad = [0]
     good = [0]
     witnessed = set()
+    witnessed_sub = set()
 
     def _mk(sh=None, sb=None, ng=None):
         return {"shapes.c": dict(WANT["shapes.c"] if sh is None else sh),
@@ -874,6 +1166,88 @@ def _selftest():
         d.update(patch)
         red_cg("坏样本 %s" % tag, d, "F7")
 
+    # ---- F8：属性说明符既不是定义、也不是调用（同样吃纯 dict） ----
+    def _obs_attr():
+        """好观测：F8 六条子判据必须**全部**在这份观测上绿。"""
+        return {
+            "names": list(ATTR_WANT_FUNCS),
+            "calls": {"decl_then_attr": [], "get_attribute": [],
+                      "aligned_fn": [],
+                      "attr_caller": ["get_attribute", "missing_extern"]},
+            "unresolved": (list(ATTR_KNOWN_UNRESOLVED_NOISE)
+                           + list(ATTR_WANT_UNRESOLVED)),
+            "unresolved_total": (len(ATTR_WANT_UNRESOLVED)
+                                 + len(ATTR_KNOWN_UNRESOLVED_NOISE)),
+            "n_edges_json": ATTR_WANT_N_EDGES,
+            "edges_total": ATTR_WANT_N_EDGES,
+            "cg_text_attr": 0, "cg_text_aligned": 0,
+            "doc_missing": [],
+        }
+
+    def red_at(tag, obs, want):
+        """坏样本必须红在 `want` 上，且不红在**别的判据族**上。
+
+        ⚠ 粒度是**族**：F8a/F8b 读的是同一份 `names`，改它必然同时点亮两条，
+        要求逐条互斥会造出一个永远失败的自证装置（量具自伤，不是对象错）。
+        """
+        probs = judge_attr(obs)
+        hit = [p for p in probs if p.startswith(want)]
+        others = [p for p in probs
+                  if p[:2] in CRITERIA_IDS and not p.startswith(want)]
+        for p in hit:
+            witnessed_sub.add(p[:3])
+        if not hit:
+            bad[0] += 1
+            print("  [selftest] %s 未被 %s 抓到（实得 %r）" % (tag, want, probs))
+        elif others:
+            bad[0] += 1
+            print("  [selftest] %s 红在了别的判据上：%r" % (tag, others))
+        else:
+            good[0] += 1
+            witnessed.add(want)
+
+    green("好样本：F8 观测六条子判据全绿", judge_attr(_obs_attr()))
+
+    for tag, patch in (
+            ("F8a 类型定义产出了假函数",
+             {"names": ["__attribute__"] + list(ATTR_WANT_FUNCS)}),
+            ("F8b 真函数被整类丢掉（只剩两个）",
+             {"names": ["get_attribute", "attr_caller"]}),
+            ("F8b 过度收窄：宏实参里的 typedef 吃掉两个真函数",
+             {"names": [n for n in ATTR_WANT_FUNCS
+                        if n not in ("__resolve_symbol",
+                                     "process_subrange_type")]}),
+            ("F8c 属性头被算成调用",
+             {"calls": {"decl_then_attr": [], "aligned_fn": [],
+                        "get_attribute": ["__attribute__"],
+                        "attr_caller": ["get_attribute", "missing_extern"]}}),
+            ("F8c 组内参数被算成调用",
+             {"calls": {"decl_then_attr": [], "get_attribute": [],
+                        "aligned_fn": ["aligned"],
+                        "attr_caller": ["get_attribute", "missing_extern"]}}),
+            ("F8d 属性泄漏进了未解析",
+             {"unresolved": ["missing_extern", "aligned"]}),
+            ("F8d 两本账对不上（载荷说 1，投影说 0）",
+             {"unresolved_total": 0}),
+            ("F8d 未登记的噪声跑进了未解析",
+             {"unresolved": ["BTF_ID", "DPT", "missing_extern",
+                             "unknown_macro"],
+              "unresolved_total": 4}),
+            ("F8e 产物正文里出现属性名", {"cg_text_attr": 3}),
+            ("F8e 产物正文里出现组内参数名", {"cg_text_aligned": 1}),
+            ("F8e 边数被算多（假边进了图）", {"edges_total": 3}),
+            ("F8f 文档没声明这条边界", {"doc_missing": ["不是调用"]}),
+    ):
+        d = _obs_attr()
+        d.update(patch)
+        red_at("坏样本 %s" % tag, d, "F8")
+
+    for letter in ("F8a", "F8b", "F8c", "F8d", "F8e", "F8f"):
+        if letter not in witnessed_sub:
+            bad[0] += 1
+            print("  [selftest] F8 的子判据 %s 没有自己的坏样本（子覆盖静默缩水）"
+                  % letter)
+
     # ---- ① 每条判据都必须被至少一个坏样本点名（覆盖不许静默缩水） ----
     if witnessed == set(CRITERIA_IDS):
         good[0] += 1
@@ -919,6 +1293,32 @@ def _selftest():
     else:
         bad[0] += 1
         print("  [selftest] cg_acy.c 的形状被改后 R2 不报红")
+    # F8 夹具完备性**两向**：抽掉类型定义 / 抽掉真未解析对手方 ⇒ 各自必须报红
+    if judge_fixtures(attr_c=ATTR_C.replace(
+            "typedef struct __attribute__((packed, aligned(4))) {\n", "")):
+        good[0] += 1
+    else:
+        bad[0] += 1
+        print("  [selftest] attr.c 被抽掉 `typedef struct __attribute__` 后"
+              " R2 不报红（F8a 的「类型定义不产函数」退化成空断言）")
+    if judge_fixtures(attr_c=ATTR_C.replace("missing_extern();\n", "")):
+        good[0] += 1
+    else:
+        bad[0] += 1
+        print("  [selftest] attr.c 被抽掉真未解析调用后 R2 不报红"
+              "（F8d 的对手方消失）")
+    if judge_fixtures(attr_c=ATTR_C.replace(
+            "static __attribute__((aligned(4))) int aligned_fn(void)", "")):
+        good[0] += 1
+    else:
+        bad[0] += 1
+        print("  [selftest] attr.c 被抽掉「组内有函数样参数」形态后 R2 不报红")
+    if judge_fixtures(attr_c=ATTR_C.replace("DPT(typedef)\n", "")):
+        good[0] += 1
+    else:
+        bad[0] += 1
+        print("  [selftest] attr.c 被抽掉「宏实参 typedef」形态后 R2 不报红"
+              "（F8b 的防过度收窄对手方消失）")
 
     # ---- ④ 棘轮 R1 两向：正确读数不报红，缩水读数必须报红 ----
     green("好样本：棘轮在正确读数上全绿", judge_ratchet(EXPECTED_REAL_FUNCS))

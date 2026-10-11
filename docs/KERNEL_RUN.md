@@ -106,7 +106,7 @@ pipeline.stations | 13
 |---|---|---|
 | `661 s / 10.8 GB` | R75（`_kernel/analyze_kernel.py`） | `cwd=REPO` ⇒ 记录到的路径退化成 basename |
 | `793.4 s / 13.1 GB` | R81（`_kernel/rerun_kernel_r81.py`） | `cwd=CORPUS` ⇒ 真相对路径 |
-| `534.4 s / 12.8 GB` | R84（本轮，`_r82/probe_kernel_r84.py`） | `cwd=CORPUS`（与 R81 同口径） |
+| `630.9 s / 12.8 GB` | R84（本轮，`_r82/probe_kernel_r84.py`） | `cwd=CORPUS`（与 R81 同口径） |
 
 三者**都不是错的** —— 错的是「把它们混着引用而不写出口径」。
 所以本表第一件要登记的东西不是数字，是**口径**（`provenance.cwd_convention`），
@@ -134,15 +134,15 @@ W2 会对它做非空断言。
 |---|---|---|---|---|---|---|
 | `files` | 62704 | 62704 | ✅ | | | |
 | `lines` | 36155901 | 36155901 | ✅ | | | |
-| `funcs` | 743518 | 743518 | ✅ | | | |
-| `edges` | 7065831 | 7065831 | ✅ | | | |
-| `unresolved` | 1295146 | 1295146 | ✅ | | | |
+| `funcs` | 743509 | 743518 | **不同** | | | |
+| `edges` | 7060966 | 7065831 | **不同** | | | |
+| `unresolved` | 1295143 | 1295146 | **不同** | | | |
 | `includes` | 3762589 | 3762589 | ✅ | | | |
-| `heuristics` | 1262829 | 1262829 | ✅ | | | |
-| `json_bytes` | 11355505 | 11355505 | ✅ | | | |
+| `heuristics` | 1262817 | 1262829 | **不同** | | | |
+| `json_bytes` | 11355506 | 11355505 | **不同** | | | |
 | `rc` | 0 | 0 | ✅ | | | |
-| `peak_mb` | 13137 | 13136.5 | 不可裁决 | 142.6 | 128.3 | 不可裁决 |
-| `seconds` | 534.4 | 793.4 | 不可裁决 | 2.6 | 2.4 | 不可裁决 |
+| `peak_mb` | 13135.4 | 13136.5 | 不可裁决 | 139.8 | 128.3 | 不可裁决 |
+| `seconds` | 630.9 | 793.4 | 不可裁决 | 2.6 | 2.4 | 不可裁决 |
 
 汇编臂（`--lang asm`）的规模：**1369** 文件 / **381729** 行。
 
@@ -158,14 +158,14 @@ W5 只比**与时钟无关**的计数器，且**逐类**比对启发式分解：
 | `c_array_oob` | 636 | 636 |
 | `c_buffer_overflow` | 1230 | 1230 |
 | `c_double_free` | 305 | 305 |
-| `c_missing_doc` | 560718 | 560718 |
+| `c_missing_doc` | 560713 | 560718 |
 | `c_missing_guard` | 2029 | 2029 |
-| `c_missing_return` | 1070 | 1070 |
+| `c_missing_return` | 1062 | 1070 |
 | `c_too_many_params` | 7789 | 7789 |
-| `c_uninit_pointer` | 458329 | 458329 |
+| `c_uninit_pointer` | 458330 | 458329 |
 | `c_unused_static` | 230066 | 230066 |
 | `c_use_after_free` | 657 | 657 |
-| **合计** | **1262829** | **1262829** |
+| **合计** | **1262817** | **1262829** |
 
 恒等式 `Σ类别 == heuristics` 是**真计数**，不是调出来的阈值（W4）。
 
@@ -173,9 +173,9 @@ W5 只比**与时钟无关**的计数器，且**逐类**比对启发式分解：
 
 | 项 | 值 |
 |---|---|
-| 被测物 `matlabc.py` sha256 | `95fabb12976167ee4f19f1038846d56d8a895e1c2bd2881cfae772fd2dd62cdc` |
-| 被测物字节数 | 1647973 |
-| 生成时 HEAD | `4ed0bcd0d7d25a9e84b661de12584c8f1d8e33a1` |
+| 被测物 `matlabc.py` sha256 | `16661548f6fbe356f68891a60753dda5d2fdd74678d8c0e0064e26ea1572bd07` |
+| 被测物字节数 | 1654447 |
+| 生成时 HEAD | `2911e4bf80ad19fe48e8a73ee63bbe291c4a26d6` |
 | 基线 `AGG_r81.json` sha256 | `c6ba4cab681edd521cd674126a80b3716ff56a479de6d3463cab4a31b6e19374` |
 | 跨文档 | `docs/UNKNOWN_SITES.md` 那档分母 = 340（本表同值） |
 
@@ -183,9 +183,62 @@ W5 只比**与时钟无关**的计数器，且**逐类**比对启发式分解：
 
 | 产物 | 字节 | sha256 前 16 位 |
 |---|---|---|
-| `kernel_c_summary.json` | 11355505 | `03e444a1ce925792` |
+| `kernel_c_summary.json` | 11355506 | `9a6bd04cfd6c7341` |
 | `kernel_asm_summary.json` | 486229 | `dff8383318922938` |
-| `kernel_callgraph.json` | 1313559 | `a94016b5139ada70` |
+| `kernel_callgraph.json` | 3567011 | `cf1f67b4a3cbd41a` |
+
+### 与 R81 的已声明变化（R87）
+
+第 19 道门 W5 原本要求本表读数与 R81 基线**逐位全等**。R87 起 C 前端的
+分析逻辑**真的变了**（GNU 属性说明符缺陷族被修掉），逐位全等不再成立 ——
+门自己留的出口是「那就必须写出原因」。本节就是那个原因的唯一事实源：
+数字由生成器**现算**，原因由人写；**没写就是空串、照样落盘 ⇒ 门报红**。
+
+| 读数键 | R81 基线 | 本轮 | 差 | 原因 |
+|---|---|---|---|---|
+| `arm_c.edges` | 7065831 | 7060966 | -4865 | 两个方向叠加：① 属性族假调用消失（`__attribute__(` / 组内 `format` / `aligned`，合计 710 条调用点）；② **反向** —— R87g 从误伤里找回的 2 个真函数（`process_subrange_type` / `__resolve_symbol`）把它们的**整段出边**一并带回（单文件实测：两个 caller 出边合计 36 条，`_r87/probe_roots.py` 可复现）。幅值被「同名合并」放大 —— 所以不按「找回 2 个函数就该 +2」来读 |
+| `arm_c.funcs` | 743518 | 743509 | -9 | C 前端修掉 GNU 属性说明符缺陷族：`__attribute__` 假定义（7 处）与 `enum <宏调用>(...)` 假定义（2 处）不再产出（`_r87/explain_delta.py` 逐名字可复现） |
+| `arm_c.heuristics` | 1262829 | 1262817 | -12 | 假调用此前抬高了启发式分支的命中数（随假调用一起回落）；找回的 2 个 caller 又带回一部分 —— 两股方向相反 |
+| `arm_c.json_bytes` | 11355505 | 11355506 | +1 | 载荷体积近乎抵消：少掉的假函数/假调用记录与新增字段在字节上几乎持平 |
+| `arm_c.kind.c_missing_doc` | 560718 | 560713 | -5 | 同族分桶（返回类型缺失的启发式）。对账：R87g 找回的 2 个 caller 让本桶从上一轮（含误伤）的 −7 回到 −5 —— 净 +2 |
+| `arm_c.kind.c_missing_return` | 1070 | 1062 | -8 | 同族分桶。本桶本轮 −8，与上一轮**相同** ⇒ 不受 R87g 影响；它的变化全部来自属性族修复。所以判据必须**逐类**对照：只比总和会让「一好一坏顶替」静默通过 |
+| `arm_c.kind.c_uninit_pointer` | 458329 | 458330 | +1 | 随 R87g 找回的 2 个 caller（`process_subrange_type` / `__resolve_symbol`）的**函数体重新进入分析**而来。对账：本轮 Σkind = −5 − 8 + 1 = −12，与 `heuristics` 总 delta 逐位一致；上一轮（含误伤）Σkind = −7 − 8 = −15 ⇒ R87g 对启发式桶的净影响 = **+3**。⚠ 「为什么落在 `uninit_pointer` 而不是别的桶」**未归因**（没有单独探针）—— 依据是两次完整跑批的差分，不是推断 |
+| `arm_c.unresolved` | 1295146 | 1295143 | -3 | 同两个方向：假 unresolved（属性组内参数）消失；找回的 2 个 caller 的出边里「callee 无定义」的部分重新落回 unresolved。净效果由两侧共同决定 |
+
+时序键 `peak_mb` / `seconds` **不在此列** —— 单次墙钟不可裁决（§4c-1）。
+上门的是机器可读块；**标记本身在正文里不得重复**（门的解析器要求每个
+标记恰好一次，重号会让切片落错地方）。
+
+<!-- KERNEL-DELTA v1 -->
+
+```text
+arm_c.edges.base | 7065831
+arm_c.edges.cur | 7060966
+arm_c.edges.reason | 两个方向叠加：① 属性族假调用消失（`__attribute__(` / 组内 `format` / `aligned`，合计 710 条调用点）；② **反向** —— R87g 从误伤里找回的 2 个真函数（`process_subrange_type` / `__resolve_symbol`）把它们的**整段出边**一并带回（单文件实测：两个 caller 出边合计 36 条，`_r87/probe_roots.py` 可复现）。幅值被「同名合并」放大 —— 所以不按「找回 2 个函数就该 +2」来读
+arm_c.funcs.base | 743518
+arm_c.funcs.cur | 743509
+arm_c.funcs.reason | C 前端修掉 GNU 属性说明符缺陷族：`__attribute__` 假定义（7 处）与 `enum <宏调用>(...)` 假定义（2 处）不再产出（`_r87/explain_delta.py` 逐名字可复现）
+arm_c.heuristics.base | 1262829
+arm_c.heuristics.cur | 1262817
+arm_c.heuristics.reason | 假调用此前抬高了启发式分支的命中数（随假调用一起回落）；找回的 2 个 caller 又带回一部分 —— 两股方向相反
+arm_c.json_bytes.base | 11355505
+arm_c.json_bytes.cur | 11355506
+arm_c.json_bytes.reason | 载荷体积近乎抵消：少掉的假函数/假调用记录与新增字段在字节上几乎持平
+arm_c.kind.c_missing_doc.base | 560718
+arm_c.kind.c_missing_doc.cur | 560713
+arm_c.kind.c_missing_doc.reason | 同族分桶（返回类型缺失的启发式）。对账：R87g 找回的 2 个 caller 让本桶从上一轮（含误伤）的 −7 回到 −5 —— 净 +2
+arm_c.kind.c_missing_return.base | 1070
+arm_c.kind.c_missing_return.cur | 1062
+arm_c.kind.c_missing_return.reason | 同族分桶。本桶本轮 −8，与上一轮**相同** ⇒ 不受 R87g 影响；它的变化全部来自属性族修复。所以判据必须**逐类**对照：只比总和会让「一好一坏顶替」静默通过
+arm_c.kind.c_uninit_pointer.base | 458329
+arm_c.kind.c_uninit_pointer.cur | 458330
+arm_c.kind.c_uninit_pointer.reason | 随 R87g 找回的 2 个 caller（`process_subrange_type` / `__resolve_symbol`）的**函数体重新进入分析**而来。对账：本轮 Σkind = −5 − 8 + 1 = −12，与 `heuristics` 总 delta 逐位一致；上一轮（含误伤）Σkind = −7 − 8 = −15 ⇒ R87g 对启发式桶的净影响 = **+3**。⚠ 「为什么落在 `uninit_pointer` 而不是别的桶」**未归因**（没有单独探针）—— 依据是两次完整跑批的差分，不是推断
+arm_c.unresolved.base | 1295146
+arm_c.unresolved.cur | 1295143
+arm_c.unresolved.reason | 同两个方向：假 unresolved（属性组内参数）消失；找回的 2 个 caller 的出边里「callee 无定义」的部分重新落回 unresolved。净效果由两侧共同决定
+```
+
+<!-- /KERNEL-DELTA -->
 
 ## 6. 复现
 
@@ -196,11 +249,13 @@ python _r82/gen_kernel_run_doc.py              # 重生成本表
 python tools/check_kernel_snapshot.py          # 门（W1–W6）
 ```
 
-## 7. 两块的分工
+## 7. 三块的分工
 
-本文件里有**两个围栏块**，各自用一对 HTML 注释标记包着：一个登记**读数**
-（跑出来的数），另一个登记**结构**（有哪几站、谁产出谁）。分开的理由很实际：
-合成的块里没人分得清「哪些键归哪一条判据管」，而门的 W6 只读 `pipeline.*`。
+本文件里有**三个围栏块**，各自用一对 HTML 注释标记包着：一个登记**读数**
+（跑出来的数），一个登记**结构**（有哪几站、谁产出谁），还有一个登记**与
+R81 的已声明变化**（哪些读数变了、为什么变）。分开的理由很实际：合成的块
+里没人分得清「哪些键归哪一条判据管」—— 门的 W6 只读 `pipeline.*`，W5 的
+出口只读变化块。
 
 ⚠ **标记本身不得在正文里重复出现** —— 门的解析器要求每个标记**恰好一次**
 （重号会让切片落错地方，§4z-15）。本节因此刻意**不写出标记的字面量**：
@@ -212,30 +267,30 @@ python tools/check_kernel_snapshot.py          # 门（W1–W6）
 arm_asm.files | 1369
 arm_asm.json_bytes | 486229
 arm_asm.lines | 381729
-arm_asm.peak_mb | 142.6
+arm_asm.peak_mb | 139.8
 arm_asm.rc | 0
 arm_asm.seconds | 2.6
-arm_c.edges | 7065831
+arm_c.edges | 7060966
 arm_c.files | 62704
-arm_c.funcs | 743518
-arm_c.heuristics | 1262829
+arm_c.funcs | 743509
+arm_c.heuristics | 1262817
 arm_c.includes | 3762589
-arm_c.json_bytes | 11355505
+arm_c.json_bytes | 11355506
 arm_c.kind.c_array_oob | 636
 arm_c.kind.c_buffer_overflow | 1230
 arm_c.kind.c_double_free | 305
-arm_c.kind.c_missing_doc | 560718
+arm_c.kind.c_missing_doc | 560713
 arm_c.kind.c_missing_guard | 2029
-arm_c.kind.c_missing_return | 1070
+arm_c.kind.c_missing_return | 1062
 arm_c.kind.c_too_many_params | 7789
-arm_c.kind.c_uninit_pointer | 458329
+arm_c.kind.c_uninit_pointer | 458330
 arm_c.kind.c_unused_static | 230066
 arm_c.kind.c_use_after_free | 657
 arm_c.lines | 36155901
-arm_c.peak_mb | 13137
+arm_c.peak_mb | 13135.4
 arm_c.rc | 0
-arm_c.seconds | 534.4
-arm_c.unresolved | 1295146
+arm_c.seconds | 630.9
+arm_c.unresolved | 1295143
 base_asm.files | 1369
 base_asm.json_bytes | 486229
 base_asm.lines | 381729
@@ -272,8 +327,8 @@ corpus.files_repo_plus_oss | 340
 corpus.path | E:\matlabc\_kernel\corpus\linux-6.19.14
 crossdoc.unknown_sites_files | 340
 provenance.cwd_convention | cwd=corpus (target=.)
-provenance.git_head | 4ed0bcd0d7d25a9e84b661de12584c8f1d8e33a1
-provenance.matlabc_bytes | 1647973
-provenance.matlabc_sha256 | 95fabb12976167ee4f19f1038846d56d8a895e1c2bd2881cfae772fd2dd62cdc
+provenance.git_head | 2911e4bf80ad19fe48e8a73ee63bbe291c4a26d6
+provenance.matlabc_bytes | 1654447
+provenance.matlabc_sha256 | 16661548f6fbe356f68891a60753dda5d2fdd74678d8c0e0064e26ea1572bd07
 ```
 <!-- /KERNEL-RUN -->

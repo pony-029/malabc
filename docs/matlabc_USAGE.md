@@ -434,6 +434,22 @@ python matlabc.py linux/ --lang c --callgraph cg.dot \
 
 ---
 
+### 3.16 读调用图前该知道的一件事：GNU 属性说明符（R87）
+
+`__attribute__((…))` 在词法层与函数调用**同形**（`名字(`），所以它曾经同时污染
+**两本账**。R87 已在 C 前端修掉，读历史产物或自己写解析器时值得记住：
+
+| 别把什么当函数 / 调用 | 现场 |
+| --- | --- |
+| `__attribute__` **不是函数** | `typedef struct __attribute__((packed, aligned(4))) { … }` —— 内核实测 7 处（2 个 AMD PMFW 头文件） |
+| `__attribute__` **不是调用** | `__attribute__((weak,unused,section(…)))` 独占一行夹在声明与定义之间 —— `tools/include/nolibc/string.h` 的 21 个函数**每个**一条 |
+| 属性**组内参数**也不是调用 | `__attribute__((packed, aligned(4)))` 里的 `aligned(`；它若没有同名定义会直接抬 `unresolved` 计数 |
+
+**但不要因此矫枉过正**：名字里含 `attribute` 的真函数（`get_attribute`）、以及带属性组
+的真函数都必须照常认出。属性组**跨行**是**已声明的边界**（行内机制不保证覆盖）。
+
+---
+
 ## 4. 配置文件 `analyzer_config.json`
 
 CLI 与配置文件**键名一致**（配置文件用蛇形/短横线均可，CLI 显式值覆盖配置）。最小示例（对照 `analyzer_config.example.json`）：

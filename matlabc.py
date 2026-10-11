@@ -6972,6 +6972,10 @@ _RE_C_FUNC = re.compile(
     r"[A-Za-z_][A-Za-z0-9_ \t\*]*?[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\("
     r"([^;{}()]*)\)[ \t]*\{")
 _RE_C_CALL = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+# R87：GNU 属性说明符的**头**（`__attribute__((…))` / `__attribute((…))`）。
+# 双下划线开头是 C 的**保留标识符**（实现命名空间）⇒ 这个名字不可能是一个
+# 真函数，屏蔽它**不是启发式**。用途见 `_mask_c_attrs`。
+_RE_C_ATTR_HEAD = re.compile(r"\b__attribute_{1,2}\s*\(")
 # R75：C 返回类型是否「本质上是 void」。三个条件缺一不可：
 #   1) 含独立单词 void（容忍限定词/属性：`void __init`、
 #      `void __softirq_entry`、`notrace void __weak`、`static __always_inline void`）；
@@ -7190,6 +7194,12 @@ def _scan_unsupported_sources_selftest(tmpdir):
 #   * 返回函数指针 `int (*f(int))(void)`：`)` 后面是 `(` ⇒ 不识别
 #   * 宏体里的伪定义：`#` 开头的整条指令（含反斜杠续行）折叠成一个 token
 #     被跳过，且定义起点被重置
+#   * **类型定义**（R87 新增）：`typedef struct __attribute__(…) {` /
+#     `struct|union|enum __attribute__(…) {` 是**类型**不是函数 —— 二者在
+#     词法层同形（IDENT `(` … `)` `{`），只能靠声明前缀分开（`_is_type_decl`）。
+#     ⚠ 「不识别」的同时必须堵住**调用侧**：属性行落在函数行范围内时，
+#     `__attribute__(` 会被当成一次调用，**组内**的 `aligned(4)` 之类参数
+#     还会变成第二条（`_mask_c_attrs` 整组屏蔽）。
 
 
 def _c_lex(text):
@@ -8161,6 +8171,58 @@ def _c_split_params(raw):
     return [" ".join(p.split()) for p in parts if p.strip()]
 
 
+def _is_type_decl(toks, decl_start, i):
+    """候选名之前的**声明前缀**是否表明这是一条**类型定义**而非函数定义。
+
+    R87：`typedef struct __attribute__((packed, aligned(4))) {` 与函数定义的
+    词法形状**完全同形**（IDENT `(` … `)` `{`），差异只在**声明前缀**：
+
+        typedef struct __attribute__((packed, aligned(4))) {   ← 类型定义
+        int            foo(int a, int b)                   {   ← 函数定义
+
+    两条判据都是 C 语法的**硬约束**，不是启发式：
+
+      ① 前缀的**括号深度 0 处**出现 `typedef` —— 函数定义的声明说明符里不允许
+         存储类 `typedef`，所以前缀含 `typedef` 就不可能是函数定义。带深度是
+         必须的：宏实参位置上的 `typedef`（`BTF_ID(typedef, S)` /
+         `DEFINE_PROCESS_TYPE(typedef)`）不在声明层，不收窄就会误伤真函数。
+      ② 候选名**紧跟在** `struct` / `union` / `enum` 后面 —— 那是 struct 标签
+         的位置。`struct foo bar(void){}` 里函数名是 `bar`（紧跟在标签 `foo`
+         之后），C 里没有任何合法函数定义把函数名放在紧跟 `struct`/`union`/
+         `enum` 的位置上；而 `struct __attribute__((packed)) { … }`（**匿名**
+         结构体）恰好把 `__attribute__` 摆在那儿。
+
+    ⚠ 只排除**类型定义**这一件事，不碰别的：`struct foo *get(void){}`（返回
+    结构体指针）前缀有 `struct` 但名字前是 `*`，两条都不触发 ⇒ 照常认出。
+    """
+    if decl_start is None:
+        return False
+    if i > 0:
+        p = toks[i - 1]
+        if p[0] == "id" and p[1] in ("struct", "union", "enum"):
+            return True
+    # ⚠ R87g：区间扫描**必须带括号深度**。`decl_start` 只在 `;` / `{` / `}` /
+    # 预处理行处重置，而内核里成串的**无分号宏调用**（`DEFINE_PROCESS_TYPE(x)`、
+    # `BTF_ID(typedef, S)`）会把 `decl_start` 长期钉在远处 —— 实参位置上的
+    # `typedef` 于是被当成声明的存储类 ⇒ **误伤真函数**。实测被吃掉的：
+    #   `process_subrange_type` @ scripts/gendwarfksyms/dwarf.c:398（前面 396 行
+    #   是 `DEFINE_PROCESS_TYPE(typedef)`）、
+    #   `__resolve_symbol` @ tools/testing/selftests/bpf/prog_tests/resolve_btfids.c:66
+    #   （前面 49 行是 `BTF_ID(typedef, S)`）。
+    # 真类型定义的 `typedef` 永远在括号深度 0（属性组的 `(` 在它**之后**）。
+    depth = 0
+    for k in range(decl_start, i):
+        t = toks[k]
+        if t[0] == "punct":
+            if t[1] == "(":
+                depth += 1
+            elif t[1] == ")":
+                depth -= 1
+        elif depth == 0 and t[1] == "typedef":
+            return True
+    return False
+
+
 def _scan_c_definitions(text):
     """扫出全部 C 函数定义，按出现顺序返回：
 
@@ -8171,6 +8233,13 @@ def _scan_c_definitions(text):
     = 函数体 `{` 所在行 —— 旧实现里这三者恒相等。
     `end_line` = 配对 `}` 所在行（**词法层判定**，不受字符串/注释里的花括号
     干扰）；未闭合时为 None，调用方退回行计数。
+
+    R87：**类型定义**不是函数定义（判据见 `_is_type_decl`）。于是
+    `typedef struct __attribute__((packed, aligned(4))) { … }` 不再产出一个
+    名叫 `__attribute__` 的假函数；反面照常：`struct foo *get(void){}` 仍认出。
+    ⚠ `line` 的语义**保持不变**：属性说明符属于声明，所以
+    `__attribute__((weak))\nvoid *f(void)\n{` 的 `line` 是**属性那一行**。
+    这是**故意的**（属性行确在声明里），并已在门 F8 里钉住；改了要显式改钉。
     """
     toks = _c_lex(text)
     out = []
@@ -8199,7 +8268,8 @@ def _scan_c_definitions(text):
                 decl_start = i
             if (kind == "id" and txt.lower() not in _C_KEYWORDS
                     and i + 1 < n and toks[i + 1][0] == "punct"
-                    and toks[i + 1][1] == "("):
+                    and toks[i + 1][1] == "("
+                    and not _is_type_decl(toks, decl_start, i)):
                 p = prev
                 # 名字前一个 token 是 `(`/`)`/`,`/`=`/`;` ⇒ 这是调用/初值，
                 # 不是定义；`prev is None` 同样排除（文件开头孤零零一个名字）。
@@ -8390,12 +8460,53 @@ def _scan_c_definitions_selftest():
     return bad, good
 
 
+def _mask_c_attrs(line):
+    """把 `__attribute__((…))` / `__attribute((…))` 整组**屏蔽成空格**（保长度）。
+
+    R87：属性说明符与函数调用在正则层同形（`名字(`），而**组内**还有一层
+    泄漏 —— `__attribute__((aligned(4)))` 里的 `aligned(` 前面是空格，于是
+    `_RE_C_CALL` 会把它算成一次**调用**。实测（内核 `tools/include/nolibc/
+    string.h`，21 个函数）：**每个**函数都多一条假调用；属性参数若在本文件
+    里没有同名定义（`aligned` 就是），就进一步变成**假未解析调用**，
+    直接抬高 `unresolved` 这个对外读数。
+
+    往名字表里加是堵不住的：属性名是**开放集合**（用户可自定义
+    `__attribute__((my_attr(1)))`）⇒ 只能**整组屏蔽**。
+
+    长度保持不变 ⇒ `cm.start()` 的偏移量在屏蔽前后一致，`prev` 也照旧可用。
+    行内找不到配对 `)`（属性组跨行）时屏蔽到行尾 —— 下一行的组身**不再**
+    含 `__attribute` 头，属于**已声明的边界**（见门 F8 的说明）。
+    """
+    if "__attribute" not in line:
+        return line
+    parts = []
+    pos = 0
+    for m in _RE_C_ATTR_HEAD.finditer(line):
+        parts.append(line[pos:m.start()])
+        depth, j, n = 1, m.end(), len(line)
+        while j < n and depth:
+            c = line[j]
+            if c == "(":
+                depth += 1
+            elif c == ")":
+                depth -= 1
+            j += 1
+        parts.append(" " * (j - m.start()))
+        pos = j
+    parts.append(line[pos:])
+    return "".join(parts)
+
+
 def _parse_c_source(text, rel, path):
     """P87：轻量 C 源码解析——提取函数定义、函数调用、include 依赖。
 
     R49：函数定义识别改走 `_scan_c_definitions()`（词法 + 括号配平），
     所以 `名字(参数) {` **跨行**（Allman / 返回类型独占一行 / 参数表
     跨行）的定义同样可见；逐行的调用收集 / 复杂度 / 花括号记账未改动。
+
+    R87：调用收集前先**整组屏蔽** GNU 属性说明符（`_mask_c_attrs`）——
+    `__attribute__((weak, unused))` 既不是定义也不是调用，它**组内**的
+    `aligned(4)` 之类参数同样不是。
 
     返回 {"rel": rel, "path": path, "functions": [CFunction dict], 
          "includes": [头文件名], "macros": 宏定义数}。"""
@@ -8458,7 +8569,10 @@ def _parse_c_source(text, rel, path):
             if not is_def:
                 brace_depth += line.count("{") - line.count("}")
             # 收集调用（排除声明/控制关键字）
-            for cm in _RE_C_CALL.finditer(line):
+            # R87：属性组先整组屏蔽（`__attribute__((aligned(4)))` 里的
+            # `aligned(` 否则会被当成调用）。屏蔽保长度 ⇒ 偏移量不变。
+            _cline = _mask_c_attrs(line)
+            for cm in _RE_C_CALL.finditer(_cline):
                 cname = cm.group(1)
                 if cname.lower() in _C_KEYWORDS:
                     continue
@@ -8466,7 +8580,7 @@ def _parse_c_source(text, rel, path):
                     continue
                 # 跳过常见声明：`int x = foo(` 中 foo 是调用，保留；
                 # 跳过 `#` 宏行与类型强转 `(int)`——强转 `(` 前是类型，非调用。
-                prev = line[max(0, cm.start() - 1):cm.start()]
+                prev = _cline[max(0, cm.start() - 1):cm.start()]
                 if prev in ("*", "&", "(", ","):
                     continue
                 active["calls"].append((cname, ln))

@@ -18277,7 +18277,7 @@ def test_r61_c_frontend_shapes_gate_two_way():
          来自 R52，防的是「一条判据红、别的陪红」把独立证人变成一笔糊涂账。
       ② **夹具完备性两向**：把陷阱从夹具源码里删掉，`R2` 必须红 ——
          否则「不得出现 `if`」会退化成**空断言**（R56 的自伤）。
-      ③ **端到端**：真的把门跑起来，rc=0 且打印 F1–F7 全绿；`--selftest` 打印计数。
+      ③ **端到端**：真的把门跑起来，rc=0 且打印 F1–F8 全绿；`--selftest` 打印计数。
     反向判据：在本仓 `HEAD`（`24a2803`）上，`tools/check_c_frontend_shapes.py`
     **不存在** ⇒ ① 的 `_r37_load` 直接 ImportError ⇒ 本测试必红。
     """
@@ -18361,6 +18361,47 @@ def test_r61_c_frontend_shapes_gate_two_way():
         _o.update(_patch)
         _red_cg(_o, "F7")
 
+    # ①'' R87 / F8：属性说明符**既不是定义、也不是调用**。同一套 `_red` 纪律。
+    #      三个泄漏通道各要一个独立证人（类型定义 / 属性头 / 组内参数）。
+    def _obs_attr():
+        return {"names": list(g.ATTR_WANT_FUNCS),
+                "calls": {"decl_then_attr": [], "get_attribute": [],
+                          "aligned_fn": [],
+                          "attr_caller": ["get_attribute", "missing_extern"]},
+                "unresolved": list(g.ATTR_WANT_UNRESOLVED),
+                "unresolved_total": len(g.ATTR_WANT_UNRESOLVED),
+                "n_edges_json": g.ATTR_WANT_N_EDGES,
+                "edges_total": g.ATTR_WANT_N_EDGES,
+                "cg_text_attr": 0, "cg_text_aligned": 0,
+                "doc_missing": []}
+
+    def _red_at(obs, want):
+        probs = g.judge_attr(obs)
+        assert any(p.startswith(want) for p in probs), (want, probs)
+        others = [p for p in probs if p[:2] in g.CRITERIA_IDS
+                  and not p.startswith(want)]
+        assert others == [], (want, others)
+
+    assert g.judge_attr(_obs_attr()) == []
+    for _patch in (
+            {"names": ["__attribute__"] + list(g.ATTR_WANT_FUNCS)},  # F8a
+            {"names": ["get_attribute", "attr_caller"]},             # F8b
+            {"calls": {"decl_then_attr": [], "aligned_fn": [],       # F8c 属性头
+                       "get_attribute": ["__attribute__"],
+                       "attr_caller": ["get_attribute", "missing_extern"]}},
+            {"calls": {"decl_then_attr": [], "get_attribute": [],    # F8c 组内
+                       "aligned_fn": ["aligned"],
+                       "attr_caller": ["get_attribute", "missing_extern"]}},
+            {"unresolved": ["missing_extern", "aligned"]},           # F8d 假未解析
+            {"unresolved_total": 0},                                 # F8d 两本账
+            {"cg_text_attr": 3},                                     # F8e 产物
+            {"cg_text_aligned": 1},                                  # F8e 产物
+            {"edges_total": 3},                                      # F8e 假边进图
+            {"doc_missing": ["不是调用"]}):                          # F8f 文档
+        _a = _obs_attr()
+        _a.update(_patch)
+        _red_at(_a, "F8")
+
     # ② 夹具完备性两向
     assert g.judge_fixtures() == []
     assert g.judge_fixtures(neg_c="int x;\n"), "陷阱删掉后 R2 不红 = 空断言"
@@ -18368,13 +18409,19 @@ def test_r61_c_frontend_shapes_gate_two_way():
     # R86-3：F7 的夹具完备性也要两向，否则它自己是空断言
     assert g.judge_fixtures(cg_cyc="void hub(void) { helper(); leaf(); }\n")
     assert g.judge_fixtures(cg_acy="void a(void) { }\n")
+    # R87：F8 同理 —— 抽掉类型定义形态 / 抽掉真未解析对手方，各自必须报红
+    assert g.judge_fixtures(attr_c=g.ATTR_C.replace(
+        "typedef struct __attribute__((packed, aligned(4))) {\n", ""))
+    assert g.judge_fixtures(attr_c=g.ATTR_C.replace("missing_extern();\n", ""))
+    assert g.judge_fixtures(attr_c=g.ATTR_C.replace(
+        "static __attribute__((aligned(4))) int aligned_fn(void)", ""))
 
     # ③ 端到端：门本体 + 自证
     r = _r31_run([os.path.join("tools", "check_c_frontend_shapes.py")],
                  timeout=180)
     out = r.stdout.decode("utf-8", "replace")
     assert r.returncode == 0, out[-1200:]
-    assert "F1–F7 全绿" in out, out[-600:]
+    assert "F1–F8 全绿" in out, out[-600:]
     s = _r31_run([os.path.join("tools", "check_c_frontend_shapes.py"), "--selftest"],
                  timeout=180)
     sout = s.stdout.decode("utf-8", "replace")

@@ -153,6 +153,36 @@ Markdown 报告、Mermaid 图、Graphviz DOT、HTML 报告、可点击浏览站�
 
 ---
 
+### 3.15 属性说明符：既不是函数定义、也不是调用（R87）
+
+GNU 属性说明符 `__attribute__((…))` 在**词法层与函数调用完全同形**（`名字(`），
+因此它同时污染了两本账 —— 而且**三处泄漏各走各的通道**（全部由隔离探针跑出来，
+不是读代码读出来的）：
+
+| 泄漏 | 现场 | 后果 |
+|---|---|---|
+| **类型定义被当成函数** | `typedef struct __attribute__((packed, aligned(4))) { … }`（内核实测 **7 处 / 2 文件**） | 产出一个名叫 `__attribute__` 的**假函数**，那两个文件的函数表 **100% 为假** |
+| **属性头被当成调用** | `__attribute__((weak,unused,section(…)))` 独占一行、夹在声明与定义之间（`tools/include/nolibc/string.h` 21 个函数**每个**一条） | 假调用 ⇒ 假边（每条 × 同名定义数） |
+| **组内参数被当成调用** | `__attribute__((packed, aligned(4)))` 里的 `aligned(`（前面是「逗号 + 空格」） | 假调用 ⇒ 进 `unresolved` 计数，**抬高对外读数** |
+
+- **定义侧**：`typedef` / `struct` / `union` / `enum` 前缀或名字紧跟 `struct`/`union`/`enum` ⇒
+  是**类型定义**，不是函数定义（两条都是 C 语法硬约束，不是启发式）。
+- **调用侧**：属性组**整组屏蔽**后才扫调用。往名字表里加关键字是堵不住的 ——
+  属性名是**开放集合**（可以自定义 `__attribute__((my_attr(1)))`）。
+- ⚠ **定义侧的一个自身缺陷（R87g 修掉）**：`typedef` 的判定**不能**扫「整段声明前缀」——
+  内核里成串的**无分号宏调用**（`BTF_ID(typedef, S)`、`DEFINE_PROCESS_TYPE(typedef)`）
+  会把声明起点钉在很远的地方，实参位置上的 `typedef` 于是被当成存储类 ⇒ **吃掉真函数**。
+  判据是**括号深度 0**：类型定义的 `typedef` 在属性组的 `(` **之前**，
+  宏实参的 `typedef` 在 `(` **之后**。修前实测吃掉 `process_subrange_type`
+  （`scripts/gendwarfksyms/dwarf.c:398`）与 `__resolve_symbol`
+  （`tools/testing/selftests/bpf/prog_tests/resolve_btfids.c:66`）。
+- **不误伤**：名字里**仅仅含** `attribute` 的函数（`get_attribute`）、以及带属性组的真函数
+  （`aligned_fn`）都必须照常认出；真正的未解析调用（`missing_extern`）照常计数。
+  判据 **F8a–F8f** 把两侧都钉住，其中 F8d 一条断言同时覆盖两向。
+- ⚠ **已声明的边界**：属性组**跨行**时，组身所在行不再含 `__attribute__` 头，
+  不保证屏蔽到（`_mask_c_attrs` 是**行内**机制）。
+
+
 ## 4. 架构（单文件分层）
 
 ```
