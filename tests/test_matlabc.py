@@ -18277,7 +18277,7 @@ def test_r61_c_frontend_shapes_gate_two_way():
          来自 R52，防的是「一条判据红、别的陪红」把独立证人变成一笔糊涂账。
       ② **夹具完备性两向**：把陷阱从夹具源码里删掉，`R2` 必须红 ——
          否则「不得出现 `if`」会退化成**空断言**（R56 的自伤）。
-      ③ **端到端**：真的把门跑起来，rc=0 且打印 F1–F6 全绿；`--selftest` 打印计数。
+      ③ **端到端**：真的把门跑起来，rc=0 且打印 F1–F7 全绿；`--selftest` 打印计数。
     反向判据：在本仓 `HEAD`（`24a2803`）上，`tools/check_c_frontend_shapes.py`
     **不存在** ⇒ ① 的 `_r37_load` 直接 ImportError ⇒ 本测试必红。
     """
@@ -18320,17 +18320,61 @@ def test_r61_c_frontend_shapes_gate_two_way():
         d["neg.c"][_t] = ("int", ["a"], 11, 13, 15)
         _red(d, "F6")
 
+    # ①' R86-3 / F7：调用关系的有界投影。与上面的形态判据**同一套** `_red` 纪律 ——
+    #     坏样本必须红在 F7 上、且**只**红 F7。
+    def _obs():
+        return {"n_edges_json": 6, "edges_total": 6,
+                "identity": "callee-name",
+                "limitations": ["甲：同名合并 ⇒ 调用环可能含**假阳性**",
+                                "乙：unresolved 不在图里", "丙：截断是显式的"],
+                "cycles_cyc": [{"size": 2, "members": ["hub", "leaf"]}],
+                "cycles_acy": [], "computed_acy": True,
+                "cap_hit_default": False, "fan_in_shown": 4, "fan_in_top_len": 4,
+                "depth1_nodes": ["hub", "leaf"],
+                "depth2_nodes": ["hub", "leaf", "helper"],
+                "nodes_cap": 2, "cap_hit_cap": True,
+                "bad_rc": 1, "bad_exists": False}
+
+    def _red_cg(obs, want):
+        probs = g.judge_callrel(obs)
+        assert any(p.startswith(want) for p in probs), (want, probs)
+        others = [p for p in probs if p[:2] in g.CRITERIA_IDS
+                  and not p.startswith(want)]
+        assert others == [], (want, others)
+
+    assert g.judge_callrel(_obs()) == []
+    for _patch in ({"n_edges_json": 5},                    # F7a 两本账对不上
+                   {"cycles_cyc": []},                     # F7b 环整类消失
+                   {"cycles_acy": [{"size": 2, "members": ["a", "b"]}]},  # F7b
+                   {"computed_acy": False},                # F7b 没算 ≠ 没有
+                   {"nodes_cap": 3},                       # F7c 越界
+                   {"cap_hit_cap": False},                 # F7c 截断不说
+                   {"cap_hit_default": True},              # F7c 无截断却说
+                   {"fan_in_shown": 9},                    # F7c 数字与实物不符
+                   {"depth2_nodes": ["hub", "leaf"]},      # F7d 深度不生效
+                   {"bad_rc": 0},                          # F7e 静默降级
+                   {"bad_exists": True},                   # F7e 还是写了文件
+                   {"identity": "definition-site"},        # F7f 口径被换
+                   {"limitations": ["甲", "乙"]},          # F7f 缩水
+                   {"limitations": ["甲", "乙", "丙"]}):   # F7f 没明说假阳性
+        _o = _obs()
+        _o.update(_patch)
+        _red_cg(_o, "F7")
+
     # ② 夹具完备性两向
     assert g.judge_fixtures() == []
     assert g.judge_fixtures(neg_c="int x;\n"), "陷阱删掉后 R2 不红 = 空断言"
     assert g.judge_fixtures(shapes_c="int f(void) { return 0; }\n")
+    # R86-3：F7 的夹具完备性也要两向，否则它自己是空断言
+    assert g.judge_fixtures(cg_cyc="void hub(void) { helper(); leaf(); }\n")
+    assert g.judge_fixtures(cg_acy="void a(void) { }\n")
 
     # ③ 端到端：门本体 + 自证
     r = _r31_run([os.path.join("tools", "check_c_frontend_shapes.py")],
                  timeout=180)
     out = r.stdout.decode("utf-8", "replace")
     assert r.returncode == 0, out[-1200:]
-    assert "F1–F6 全绿" in out, out[-600:]
+    assert "F1–F7 全绿" in out, out[-600:]
     s = _r31_run([os.path.join("tools", "check_c_frontend_shapes.py"), "--selftest"],
                  timeout=180)
     sout = s.stdout.decode("utf-8", "replace")
@@ -19638,17 +19682,21 @@ def test_r71_binfmt_gate_c13_is_two_way():
     """R71-3：判据 C13 的**看守**是否在册，且签名一路对得上。
 
     五层，照 R68/R70 的样式：
-      ① 门本体 rc=0 且成功行带签名 `C1–C13`；
+      ① 门本体 rc=0 且成功行带签名 `C1–C15`；
       ② `GUARD_CONTRACT` 的 `rc=0` 描述含同一签名（H1 的对手方）—— R70 起的门；
       ③ 两侧 README 的门行含同一签名（P5 的对手方）；
       ④ **纯函数两向**：一片不读的 fat 报告 ⇒ 抓到；只读首片的报告 ⇒ 抓到；
          真产品在完整两片夹具上 ⇒ 放行；
-      ⑤ `--selftest` 的下界（`11/10`）—— 样本不许静默缩水。
+      ⑤ `--selftest` 的下界（`13/12`）—— 样本不许静默缩水。
+
+    ⚠ 签名常量随**判据族扩容**一起走：R71 是 `C1–C13`，R86-2 起是 `C1–C15`
+    （新增 C14 = 库引用解析三态 / C15 = PE 静态缓解措施）。这一行要是忘了改，
+    它就变成一道**陈旧的红**（门读了新磁盘、断言还钉着旧签名）。
     """
     gate = os.path.join(_R33_TOOLS, "check_binfmt_fixtures.py")
     assert os.path.isfile(gate), "二进制约束护栏必须真存在"
     mod = _r37_load("check_binfmt_fixtures")
-    sig = "C1\u2013C13"
+    sig = "C1\u2013C15"
     assert mod.ROW_SIGNATURE == sig, mod.ROW_SIGNATURE
 
     # ①
@@ -19706,8 +19754,8 @@ def test_r71_binfmt_gate_c13_is_two_way():
     assert rs.returncode == 0, s_out[-800:]
     m = re.search(r'SELFTEST COUNTS \{"bad": (\d+), "good": (\d+)\}', s_out)
     assert m, s_out[-500:]
-    assert int(m.group(1)) >= 11, s_out[-500:]
-    assert int(m.group(2)) >= 10, s_out[-500:]
+    assert int(m.group(1)) >= 13, s_out[-500:]
+    assert int(m.group(2)) >= 12, s_out[-500:]
 
 
 # ===========================================================================
@@ -19738,8 +19786,9 @@ def test_r72_signature_census_is_two_way():
       ② `--selftest` 通过，`SELFTEST COUNTS` 取**下界**断言（样本不许静默缩水）；
       ③ 纯函数四条腿各配好/坏样本，含**豁免登记两向**与**展开器**本身
          （`G1–G7 (py/js)` 要能展开；`X1–Y5` 这种跨族写法必须拒）；
-      ④ **真仓库**：18 个护栏脚本逐条对账必须 0 项；`18 = 14 个 Xn 族 + 4 个显式
-         豁免`，且豁免表**恰好**是那 4 个（一个不多一个不少）；
+      ④ **真仓库**：全部护栏脚本逐条对账必须 0 项；脚本数 = 可展开 Xn 族 + 显式
+         豁免（**自维持**：与 `real_guard_count()` 对账，不写死个数），且豁免表
+         **恰好**是那几个（一个不多一个不少）；
       ⑤ **接线**：H2 必须真管真树。先确认真树上 `H2*` 安静，再临时往豁免登记表塞
          一条**陈旧登记**、并把树对账换成「会说话」的替身 —— 两次都必须报出 H2。
          没有这一层，判据就可能只是纯函数自娱（R70 给 H1 配过同样的反向层）。
@@ -19856,13 +19905,19 @@ def test_r72_signature_census_is_two_way():
         tree = fh.read()
     assert hc.ascii_tree_signature_problems(tree, sig_by) == [], \
         hc.ascii_tree_signature_problems(tree, sig_by)
-    # 树行必须列全 17 道门（runner 是树根不算行）—— D5 的直接对手方
+    # 树行必须列全**每一道**门（runner 是树根不算行）—— D5 的直接对手方
     rows = set(x.group(1) for x in hc._TREE_ROW_RE.finditer(tree))
     assert rows == set(os.path.basename(x) for x in sig_by) - {"check_all.py"}, \
         sorted(rows)
     xn = [x for x in sig_by if hc.expand_row_signature(sig_by[x]) is not None]
-    assert len(sig_by) == 18, len(sig_by)
-    assert len(xn) == 14, sorted(xn)
+    # R86-2：这两个数**不再写死**。写死的后果实测过 —— R84 加了第 19 道门
+    # （`check_kernel_snapshot.py`，签名 `W1–W6`）之后，原先写死的 `18`/`14`
+    # 双双变成**陈旧的红**，而陈旧的红与真坏长得一样（R83 复盘 ④ 的原话）。
+    # 改成与**另一套机制**对账：`real_guard_count()` 的底账是
+    # `check_all.py` 的 `MIN_GUARDS`（门数棘轮）+ `GUARD_CONTRACT` 的存在/登记两向。
+    # 这样「加了一道门却忘了改这里」不再制造假红，而「门真的丢了」仍旧红。
+    assert len(sig_by) == hc.real_guard_count() + 1, len(sig_by)  # +1 = runner
+    assert len(xn) == len(sig_by) - len(hc.SIGNATURE_CENSUS_EXEMPT), sorted(xn)
     assert set(hc.SIGNATURE_CENSUS_EXEMPT) == set(sig_by) - set(xn), \
         sorted(hc.SIGNATURE_CENSUS_EXEMPT)
 
@@ -19974,7 +20029,7 @@ def test_r73_family_ownership_is_two_way():
       ③ 纯函数四条腿各配好/坏样本；O1/O2 一律**显式** `registry={}` ——
          回落真实登记表会让好样本变红、坏样本变空转（R72 的 `exempt=None` 摔过
          同一个坑，所以这一条在 R73 的用例里被写死）；
-      ④ **真仓库**：18 个护栏逐条 0 项；且 `PREFIX_OWNERSHIP_SHARED` **恰好**等于
+      ④ **真仓库**：全部护栏逐条 0 项；且 `PREFIX_OWNERSHIP_SHARED` **恰好**等于
          实测的「多主人前缀」集合（多一个 = 陈旧登记；少一个 = 有冲突没登记）；
       ⑤ **接线**：用**真仓库的输入**调一遍（必须 0 项），再临时删掉一条登记 ——
          同一次调用必须报 `O3`。没有这一层，登记表就可能只是装饰。

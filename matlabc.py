@@ -86,10 +86,12 @@ matlabc — 代码结构梳理与静态分析工具（纯 Python，零依赖，�
     告警严重得多。判据是行首匹配，写在多行字符串里、恰好独占一行的 `#if 0`
     会被误判成指令（所有「按行」工具的同一处近似）。
   * 动态库：**不跟踪运行期绑定** —— `dlopen` / `LoadLibrary` / `dlsym` /
-    `LD_PRELOAD` 一律在范围外，也不解析 Makefile/CMakeLists 的链接意图
-    （`-lfoo` 只作为候选名提示）。要看**运行期**谁加载了谁、符号绑定到哪个
-    DSO，请用外部装置：`ltrace`、`strace -e openat`、glibc 的
-    `LD_DEBUG=bindings` —— 它们是运行期装置，静态分析原理上给不出这个答案。
+    `LD_PRELOAD` 一律在范围外。构建脚本的链接意图只读**字面量**：`-lfoo` 是
+    `--lib-resolve` 的解析**种子**（库名 → 磁盘文件），不做变量展开、也不据此
+    推断运行期加载顺序（含变量的 `-l$(X)` 以 note 记出，不猜）。要看**运行期**
+    谁加载了谁、符号绑定到哪个 DSO，请用外部装置：`ltrace`、`strace -e openat`、
+    glibc 的 `LD_DEBUG=bindings` —— 它们是运行期装置，静态分析原理上给不出
+    这个答案。
   * GPU：CUDA kernel 名从 cubin 的 `.text._Z` 节名表提取；**PTX 路径基本提不出
     kernel 名**（真 entry 极少）。提不到时报告会写明原因，不静默给 0。
   * Mach-O：解析器已实现，且已有**合成夹具**验证（LC_SEGMENT_64 段/节 +
@@ -10499,6 +10501,112 @@ def _apply_unified_gates(model, heuristics, args, root, lang):
     return ok, msgs
 
 
+def _callrel_hub(rel):
+    """不给 `--callgraph-focus` 时的默认根：取**枢纽分数**最高的节点。
+
+    分数 = 2×扇入 + 扇出 —— 与 MATLAB 侧首页力导向图的选点口径**同一套**
+    （`_render_callgraph_section` 里的 `x[2]*2 + x[3]`），不为第二处再发明一个：
+    「一个量一份实现」（R82 教训）。
+
+    为什么不用「扇入第一」：同分时按名字排序会挑到 `helper` 这种**没有出边**的
+    叶子，默认子图当场退化成 1 个节点 0 条边 —— 一个看起来像「这里没有关系」的
+    空结果，而它对用户要问的问题一点信息量都没有（探针在 Python 夹具上实测过）。
+    """
+    score = {}
+    for r in (rel.get("fan_in_top") or []):
+        n = r.get("callee")
+        score[n] = score.get(n, 0) + 2 * (r.get("n") or 0)
+    for r in (rel.get("fan_out_top") or []):
+        n = r.get("caller")
+        score[n] = score.get(n, 0) + (r.get("n") or 0)
+    if not score:
+        return None
+    return sorted(score.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+
+
+def _emit_call_relations(model, args, label="C"):
+    """R86-3：调用关系的**有界投影**出口（`--callgraph` 系列）。
+
+    为什么单独一个出口，而不是把这块塞进 JSON 载荷
+    ------------------------------------------------
+    `--json-level summary` 的 C 载荷键集合是**已批准的**，而且被一道有对手方的
+    对账钉着（`docs/KERNEL_RUN.md` 的 provenance 记着 `kernel_c_summary.json`
+    的 `json_bytes`，`check_kernel_snapshot.py` 会拿它跟 R81 逐位比）。往里加一块
+    会把那本账**当场改数**，而那本账要证明的是「分析结果没变」——两件事混在一个
+    文件里，谁都说不清是哪一个动了。
+
+    所以：调用关系是**另一件产物**，走另一条出口。载荷那本账一个字节不动。
+
+    三态语义（与 `--lib-resolve` 同源）
+    ----------------------------------
+      * 没给 `--callgraph` ⇒ 本函数是**无操作**（不做任何计算，不打印任何东西）；
+      * 给了但扩展名不认识 ⇒ **报错并返回 False**（不静默改成 JSON —— 静默改格式
+        是「我没听懂却假装听懂了」）；
+      * 给了且格式认识 ⇒ 落盘 + 在终端打一份人读的投影。
+    """
+    out = getattr(args, "callgraph", None)
+    focus_name = (getattr(args, "callgraph_focus", None) or "").strip()
+    depth = getattr(args, "callgraph_depth", None)
+    max_nodes = getattr(args, "callgraph_max_nodes", None)
+    if depth is None:
+        depth = callrel.DEFAULT_DEPTH
+    if max_nodes is None:
+        max_nodes = callrel.DEFAULT_MAX_NODES
+    if not out:
+        if focus_name:
+            print("[WARN] 给了 --callgraph-focus 却没有 --callgraph，什么都没做。",
+                  file=sys.stderr)
+            return False
+        return True
+
+    edges = list(model.get("edges") or [])
+    unresolved = list(model.get("unresolved") or [])
+    func_index = model.get("func_index") or {}
+    rel = callrel.call_relations(edges, func_index=func_index,
+                                 unresolved_total=len(unresolved),
+                                 with_cycles=True)
+    sub = None
+    if edges:
+        root_name = focus_name or _callrel_hub(rel)
+        sub = callrel.focus_subgraph(edges, root_name, depth=depth,
+                                     max_nodes=max_nodes,
+                                     func_index=func_index,
+                                     direction="both" if focus_name else "callee")
+    ext = os.path.splitext(out)[1].lower()
+    payload = {"call_relations": rel}
+    if sub is not None:
+        payload["focus_subgraph"] = sub
+    if ext == ".json":
+        text = json.dumps(payload, ensure_ascii=False, indent=2)
+    elif ext == ".dot":
+        if sub is None:
+            print("[ERROR] --callgraph：图里没有边，DOT 无从生成。", file=sys.stderr)
+            return False
+        text = callrel.to_dot(sub, title="%s call relations" % label)
+    elif ext == ".mmd":
+        if sub is None:
+            print("[ERROR] --callgraph：图里没有边，Mermaid 无从生成。",
+                  file=sys.stderr)
+            return False
+        text = callrel.to_mermaid(sub, title="%s 调用关系" % label)
+    else:
+        print("[ERROR] --callgraph：认识的扩展名只有 .json / .dot / .mmd，"
+              "拿到的是 %r —— 不静默改成 JSON。" % (ext or out), file=sys.stderr)
+        return False
+    text = text if text.endswith("\n") else text + "\n"
+    if not _write_output(out, text, "调用关系投影"):
+        return False
+    print("\n" + callrel.format_report(rel))
+    if sub is not None:
+        print("  焦点子图：以 %s 为根，方向=%s，深度=%d ⇒ %d 节点 / %d 边"
+              % (sub["focus"], sub["direction"], sub["depth"],
+                 len(sub["nodes"]), len(sub["edges"])))
+        if sub["truncated"]["hit_node_cap"]:
+            print("    ⚠ %s" % sub["truncated"]["reason"])
+    print("[OK] 调用关系投影已写入：%s" % out)
+    return True
+
+
 def _run_c_only(c_model, root, args):
     """P87/P90：纯 C 分析入口（--lang c）。
 
@@ -10655,6 +10763,10 @@ def _run_c_only(c_model, root, args):
     n_funcs = sum(len(pf["functions"]) for pf in c_model.get("files", []))
     n_edges = len(c_model.get("edges", []) or [])
     n_inc = len(c_model.get("include_edges", []) or [])
+    # R86-3：调用关系的有界投影（--callgraph）。刻意放在**所有 JSON/SARIF 写盘之后** ——
+    # 它和那些产物互不依赖，但它是本轮唯一会在终端打「谁调用谁」的东西，放最后最显眼。
+    if not _emit_call_relations(c_model, args, label="C"):
+        ok = False
     print("\n===== C 语言前端分析摘要 =====")
     print("C 文件 %d | C 函数 %d | 调用边 %d | 未解析 %d | include 依赖边 %d"
           % (n_files, n_funcs, n_edges,
@@ -10751,6 +10863,9 @@ def _run_ext_only(model, root, args, lang):
         ok = False
     n_files = len(model.get("files", []) or [])
     n_funcs = sum(len(pf["functions"]) for pf in model.get("files", []))
+    # R86-3：调用关系的有界投影 —— 与 C 路径同一个出口（语义不许分叉）。
+    if not _emit_call_relations(model, args, label=fe.display):
+        ok = False
     print("\n===== %s 语言前端分析摘要 =====" % fe.display)
     print("%s 文件 %d | %s 函数 %d | 调用边 %d | 未解析 %d | import 引用 %d"
           % (fe.display, n_files, fe.display, n_funcs,
@@ -30448,7 +30563,8 @@ def _emit_gen_tests(args, files, root, c_model):
         print("      ... 其余 %d 个省略" % (len(rels) - 15))
 
 
-def _attribute_unresolved_with_binaries(binary_csv, unresolved_names):
+def _attribute_unresolved_with_binaries(binary_csv, unresolved_names,
+                                        extra_reports=None, allow_names=False):
     """R33/C'3：把源码侧「解析不到的调用名」拿到二进制里对账。
 
     返回 (attribution_rows, summary_dict, error_message_or_None)。
@@ -30459,21 +30575,33 @@ def _attribute_unresolved_with_binaries(binary_csv, unresolved_names):
 
     设计纪律（**不许猜**）：只依赖调用方显式给出的二进制。没给的库一律 missing。
     一个假阳性会把真缺陷洗白成「来自某个库」，比不归因更糟。
+
+    R86-2 追加两个参数（默认值让旧行为**逐字不变**）：
+      * `extra_reports` —— 由 `binfmt.resolve` 替我们找到并解析好的库报告，
+        与显式给出的文件**合并**进同一个符号索引（归因口径不变，只是证据变多）；
+      * `allow_names` —— True 时，CSV 里**不是文件**的项不再直接报「文件不存在」，
+        而是交由解析器处理（`--lib-resolve` 打开时才为 True）。
     """
     binfmt = _load_binfmt()
     if binfmt is None:
         return None, None, "无法导入 binfmt 包（--binary-attach 需要它）"
     paths = [p.strip() for p in str(binary_csv).split(",") if p.strip()]
-    if not paths:
+    reports = list(extra_reports or [])
+    if not paths and not reports:
         return None, None, "--binary-attach 需要至少一个文件路径"
-    reports = []
     for p in paths:
         if not os.path.isfile(p):
+            if allow_names:
+                continue        # 交给 binfmt.resolve（找不到会如实记进 not_found）
             return None, None, "--binary-attach 指向的文件不存在：%s" % p
         try:
             reports.append(binfmt.parse(p, scan_cap=None))
         except OSError as e:
             return None, None, "读取失败 %s：%s" % (p, e)
+    if not reports:
+        return None, None, ("--binary-attach 的 %d 项里既没有可读文件，"
+                           "解析也没找到任何库（试试加大 --lib-resolve "
+                           "或补 --lib-path）" % len(paths))
     names = sorted({n for n in unresolved_names if n})
     rows = binfmt.attribute.attribute_names(names, reports)
     summary = {}
@@ -30482,6 +30610,69 @@ def _attribute_unresolved_with_binaries(binary_csv, unresolved_names):
         summary[key] = summary.get(key, 0) + 1
     return rows, {"index": binfmt.attribute.build_index(reports),
                   "summary": summary}, None
+
+
+def _resolve_attach_refs(args, csv, root):
+    """R86-2：把「代码里引用的库」解析成磁盘文件并沿依赖下钻。
+
+    三个来源，没有一个是猜的：
+
+        ① 用户给的项      路径直接命中（不查目录）/ 名字走搜索目录
+        ② 构建脚本字面量  Makefile 的 `-lfoo`、CMake 的 target_link_libraries
+                          —— 这就是「代码里涉及的库」最直接的证据
+        ③ 已解析二进制自己的 DT_NEEDED / 导入表 / LC_LOAD_DYLIB
+                          —— 由 resolve_graph 逐层下钻自动带出
+
+    返回 `(reports, payload_or_None, error_or_None)`。`payload` 里带完整的三态
+    读数（含每个 not_found 的 `searched`），**直接进 JSON**。
+    """
+    binfmt = _load_binfmt()
+    if binfmt is None:
+        return None, None, "无法导入 binfmt 包（--lib-resolve 需要它）"
+    rmod = getattr(binfmt, "resolve", None)
+    if rmod is None:
+        try:
+            from binfmt import resolve as rmod      # 兼容未导出的旧包
+        except Exception as e:
+            return None, None, "binfmt.resolve 不可用：%s" % e
+    depth = max(1, int(getattr(args, "lib_resolve", 0) or 0))
+    refs = [{"name": p.strip(), "kind": "explicit"}
+            for p in str(csv or "").split(",") if p.strip()]
+    src_refs = 0
+    if root is not None:
+        bs = getattr(binfmt, "buildsys", None)
+        if bs is None:
+            try:
+                from binfmt import buildsys as bs
+            except Exception:
+                bs = None
+        deps = []
+        if bs is not None:
+            try:
+                deps, _notes = bs.scan(str(root))
+            except Exception:
+                deps = []
+        for d in deps:
+            if getattr(d, "kind", "") != binfmt.DEP_LINK_FLAG:
+                continue
+            nm = getattr(d, "name", "") or ""
+            org = getattr(d, "origin", "") or ""
+            if not nm or nm.startswith("-"):
+                continue      # -L 搜索路径不是库名，交给 --lib-path
+            refs.append({"name": nm, "kind": "link_flag", "origin": org,
+                         "base_dir": os.path.dirname(org) or None})
+            src_refs += 1
+    lib_paths = [x.strip() for x in str(getattr(args, "lib_path", "") or "").split(",")
+                 if x.strip()]
+    rep = rmod.resolve_graph(
+        refs, depth=depth,
+        max_nodes=max(1, int(getattr(args, "lib_max_nodes", 64) or 64)),
+        lib_paths=lib_paths,
+        scan_cap=getattr(args, "binfmt_scan_cap", None))
+    payload = rep.to_dict()
+    payload["source_refs"] = src_refs
+    payload["depth"] = depth
+    return rep.reports, payload, None
 
 
 def _buildsys_link_hints(root, missing_names=None):
@@ -30575,18 +30766,32 @@ def _emit_binary_attach_names(args, names, label="未解析调用", root=None):
     返回 (json_payload_or_None, ok_bool)。
     不短路：这是「正常分析 + 额外对账」，与 --binary 的「分析完就退」不同。
     R35/C''3：`root` 用于把构建脚本的链接意图接到 `missing` 上（有装置没接线）。
+    R86-2：**`--lib-resolve` 也能单独触发同一条流水线** —— 此时种子不是用户给的
+           文件，而是「代码里引用的库名」（构建脚本字面量 + 依赖逐层下钻）。
     """
     csv = getattr(args, "binary_attach", None)
-    if not csv:
+    depth = int(getattr(args, "lib_resolve", 0) or 0)
+    if not csv and depth <= 0:
         return None, True
-    rows, meta, err = _attribute_unresolved_with_binaries(csv, names)
+    extra_reports, res_payload, res_err = None, None, None
+    if depth > 0:
+        extra_reports, res_payload, res_err = _resolve_attach_refs(args, csv, root)
     print("")
     print("=" * 78)
+    if res_err:
+        print("[ERROR] --lib-resolve：%s" % res_err)
+        return None, False
+    if res_payload is not None:
+        print("库引用解析（--lib-resolve %d；解析出 %d 个文件）"
+              % (depth, len(extra_reports or [])))
+        print(_render_resolution_text(res_payload))
+    rows, meta, err = _attribute_unresolved_with_binaries(
+        csv, names, extra_reports=extra_reports, allow_names=(depth > 0))
     if err:
         print("[ERROR] --binary-attach：%s" % err)
         return None, False
-    print("%s的二进制归因（待归因 %d 个名字；只依据你显式给出的二进制）"
-          % (label, len(names)))
+    print("%s的二进制归因（待归因 %d 个名字；只依据你显式给出的二进制"
+          "与解析到的库）" % (label, len(names)))
     print(_render_binary_attribution_text(rows))
     missing = [r["name"] for r in rows if r.get("attribution") == "missing"]
     hints = _buildsys_link_hints(root, missing) if missing else None
@@ -30599,12 +30804,73 @@ def _emit_binary_attach_names(args, names, label="未解析调用", root=None):
                          "detail": r["detail"]} for r in rows]}
     if hints is not None:
         payload["build_link_hints"] = hints
+    if res_payload is not None:
+        payload["library_resolution"] = res_payload
     return payload, True
 
 
+def _render_resolution_text(res_payload):
+    """把 `binfmt.resolve` 的 JSON 载荷渲染成终端表。
+
+    ⚠ 这里**重新渲染 JSON**而不是复用 `ResolveReport` 对象：JSON 是这条链对外的
+      唯一契约（它进 --json、进报告），让终端与 JSON **读同一份数据**，
+      就不会出现「终端说我找到了、JSON 里没有」这种两本账。
+    """
+    binfmt = _load_binfmt()
+    if binfmt is None or getattr(binfmt, "resolve", None) is None:
+        return "(binfmt.resolve 不可用)"
+    st = res_payload.get("stats") or {}
+    lines = ["  搜索目录（%d）：%s"
+             % (len(res_payload.get("search_dirs") or []),
+                ", ".join(res_payload.get("search_dirs") or []) or "(无)")]
+    lines.append("  节点 %d 个：%s"
+                 % (len(res_payload.get("nodes") or []),
+                    "  ".join("%s=%d" % kv for kv in sorted(st.items())) or "(空)"))
+    lines.append("  %-10s %-14s %-34s %s"
+                 % ("status", "kind", "name", "path / 原因"))
+    lines.append("  " + "-" * 74)
+    for n in (res_payload.get("nodes") or [])[:40]:
+        right = n.get("path") or n.get("detail") or ""
+        lines.append("  %-10s %-14s %-34s %s"
+                     % (n.get("status", ""), n.get("kind", ""),
+                        str(n.get("name", ""))[:34], right[:64]))
+    nf = res_payload.get("not_found") or []
+    if nf:
+        lines.append("  未找到 %d 个 —— 每条都列出**找过的目录**，"
+                     "便于判断是「真没有」还是「没找对地方」：" % len(nf))
+        for x in nf[:10]:
+            lines.append("    %s（搜过 %d 个目录：%s）"
+                         % (str(x.get("name", ""))[:40], len(x.get("searched") or []),
+                            ", ".join((x.get("searched") or [])[:3]) + "…"))
+    am = res_payload.get("ambiguous") or []
+    if am:
+        lines.append("  有歧义 %d 个 —— 同名不同文件，**不猜**：" % len(am))
+        for x in am[:10]:
+            lines.append("    %s -> %s%s"
+                         % (str(x.get("name", ""))[:30],
+                            ", ".join(os.path.basename(h)
+                                      for h in (x.get("hits") or [])[:4]),
+                            ("（已按位数排除 %d 份）" % len(x.get("rejected") or []))
+                            if x.get("rejected") else ""))
+    if res_payload.get("truncated_by_depth"):
+        lines.append("  因深度上限未展开 %d 项（加大 --lib-resolve 可继续）"
+                     % len(res_payload["truncated_by_depth"]))
+    if res_payload.get("truncated_by_nodes"):
+        lines.append("  因节点上限未解析 %d 项（加大 --lib-max-nodes 可继续）"
+                     % len(res_payload["truncated_by_nodes"]))
+    for n in (res_payload.get("notes") or []):
+        lines.append("  [note] %s" % n)
+    return "\n".join(lines)
+
+
 def _emit_binary_attach(args, files, root):
-    """R33/C'3：MATLAB 主流程的 --binary-attach（名字取自 _collect_unresolved_calls）。"""
-    if not getattr(args, "binary_attach", None):
+    """R33/C'3：MATLAB 主流程的 --binary-attach（名字取自 _collect_unresolved_calls）。
+
+    R86-2：`--lib-resolve` 单独给出时也走这条路 —— 归因的名字仍然取自
+    「源码侧解析不到的调用」，只是**证据来源**换成了自动解析到的库。
+    """
+    if not getattr(args, "binary_attach", None) and \
+            int(getattr(args, "lib_resolve", 0) or 0) <= 0:
         return None, True
     unresolved_rows = _collect_unresolved_calls(files)
     names = [r["name"] for r in unresolved_rows]
@@ -30853,6 +31119,32 @@ def main(argv=None):
                     help="强制 .m 文件编码（默认自动探测 utf-8-sig/utf-8/gb18030/gbk/latin-1）")
     ap.add_argument("--json", metavar="FILE", default=cfg.get("json"),
                     help="输出结构化 JSON（函数/类/调用边/编码等全量数据）")
+    ap.add_argument("--callgraph", metavar="PATH", default=cfg.get("callgraph"),
+                    help="R86-3：导出**调用关系的有界投影**（谁调用谁）。"
+                         "扩展名决定格式：.json（结构化：扇入/扇出 TOP-N、调用环 "
+                         "SCC、跨文件/跨目录计数、焦点子图）/ .dot（Graphviz）"
+                         "/ .mmd（Mermaid）。"
+                         "为什么必须「有界」：内核整树实测 7,065,831 条调用边，"
+                         "全量 JSON 是 GB 级 —— 顶层只给**结构的形状**，"
+                         "被丢掉的部分在 truncated 里如实报出"
+                         "（「我没展开」≠「没有关系」）；要逐点看完整关系，"
+                         "配 --callgraph-focus <函数名>。注意 --json-level summary "
+                         "的载荷**结构上不含 edges**（只有计数），"
+                         "所以调用关系只能从这里拿。"
+                         "例：python matlabc.py ./linux --lang c --callgraph cg.json")
+    ap.add_argument("--callgraph-focus", metavar="NAME", default=None,
+                    help="R86-3：以 NAME 为中心做 BFS 展开子图（**双向**：它调了谁、"
+                         "谁调了它）。不给则自动取扇入最高的枢纽函数，"
+                         "并按**被调方向**展开。")
+    ap.add_argument("--callgraph-depth", type=int, metavar="N",
+                    default=cfg.get("callgraph_depth"),
+                    help="R86-3：焦点子图的展开层数（默认 %d）" % callrel.DEFAULT_DEPTH)
+    ap.add_argument("--callgraph-max-nodes", type=int, metavar="N",
+                    default=cfg.get("callgraph_max_nodes"),
+                    help="R86-3：焦点子图的节点上限（默认 %d）。到上限即**停止展开**，"
+                         "并在 JSON 的 truncated.hit_node_cap 标 True —— "
+                         "「未展开」不会被说成「无关系」"
+                         % callrel.DEFAULT_MAX_NODES)
     ap.add_argument("--operator-impact-out", metavar="FILE", default=None,
                     help="R62：把「检测算子工程影响分析」单独写入 FILE（Markdown 或 .csv）；"
                          "算子按命中数×严重度×波及系数排名，定位对整个工程影响最大的检测类别。"
@@ -30967,12 +31259,42 @@ def main(argv=None):
                          "R35/C''3：当出现 missing 时，还会读工程里的 Makefile / CMakeLists.txt，"
                          "把**字面量**链接意图（-lblas 等）列成「候选文件名」提示"
                          "（含变量的 -l 不猜），帮你知道该再传哪个库进来。"
+                         "R86-2 起，`--lib-resolve N` 会把这些名字（以及 ELF 的 "
+                         "DT_NEEDED、PE 的导入模块）**直接解析成磁盘文件**并沿依赖"
+                         "逐层分析 —— 不必手工挨个传。"
                          "例：python matlabc.py ./myproj --binary-attach libfoo.so")
     ap.add_argument("--binfmt-scan-cap", type=int,
                     default=cfg.get("binfmt_scan_cap", 64),
                     help="单个文件里 GPU 内容的扫描上限（单位 MiB，0=不限，默认 64）。"
                          "真实的 GPU 库动辄几百 MB，设上限避免命令行卡很久。"
                          "一旦被截断，报告里会显式标注 [TRUNCATED]，不会假装扫全了")
+    ap.add_argument("--lib-resolve", type=int, metavar="N",
+                    default=cfg.get("lib_resolve", 0),
+                    help="R86-2：把「代码里引用的库**名字**」解析成磁盘文件并分析，"
+                         "沿依赖逐层下钻 N 层（0=关，默认）。开启后 "
+                         "`--binary-attach` 的每一项既可以是路径、也可以是库名；"
+                         "**不写 --binary-attach 也可以单独用** —— 此时种子直接来自"
+                         "构建脚本的字面量链接意图（Makefile 的 -lfoo、"
+                         "CMakeLists 的 target_link_libraries），这正是"
+                         "「代码里涉及的二进制都要被处理」的第一层。"
+                         "三态语义：resolved(唯一命中) / ambiguous(同名多份，"
+                         "**不猜**，但会按候选自己的位数排除 32/64 位孪生) / "
+                         "not_found(未找到，**并列列出搜索过的目录**)。"
+                         "例：python matlabc.py ./myproj --lib-resolve 2")
+    ap.add_argument("--lib-path", metavar="DIR[,DIR...]",
+                    default=cfg.get("lib_path"),
+                    help="R86-2：追加库搜索目录（逗号分隔），**排在平台默认目录之前**"
+                         "（--lib-path 是追加，不是替换；平台默认目录仍会搜）。"
+                         "不存在的目录会被跳过并记账。给绝对路径；"
+                         "跨平台分析（例如在 Windows 上看一棵 Linux 树）时，"
+                         "用它指向解压出来的 lib/ 目录即可。"
+                         "系统目录空、又没给本开关时，一切解析只能是 not_found，"
+                         "此时报告里会显式说出来")
+    ap.add_argument("--lib-max-nodes", type=int,
+                    default=cfg.get("lib_max_nodes", 64),
+                    help="R86-2：引用解析一次最多解析多少个文件（默认 64，防爆）。"
+                         "达到上限而未解析的节点状态是 skipped —— 与 not_found "
+                         "**严格区分**（前者是「我没看」，后者是「找不到」）")
     ap.add_argument("--mixed", action="store_true", default=cfg.get("mixed", False),
                     help="混合分析：同时分析 .m 与 .c/.h，MATLAB 外部调用命中 C 函数时"
                          "建立跨语言 MEX 桥接（P87）")
@@ -32682,6 +33004,9 @@ from renderers.creport import render_c_report, render_c_index_html
 from renderers.csite import render_c_site
 from renderers.sarif import render_sarif, render_sarif_diff_md
 from renderers.hotspot import render_html_hotspot_callgraphs
+# R86-3：调用关系的**有界投影**。与 `frontends/ir.py` 同源的边定义复用，
+# 不为 C/JS/ASM 各写一套（R82 教训：一个量一份实现）。
+import callrel
 
 
 # 直接运行入口：支持 `python matlabc.py ...` 与 `python -m matlabc ...`。

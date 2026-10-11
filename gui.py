@@ -84,7 +84,23 @@ matlabc GUI —— 把命令行开关收敛成一张表单，一键分析并打�
     │ 语言           │ auto / matlab / c / py / js，等价于 --lang   │
     │ CI 与增量      │ --git-diff / --gate / --max-warnings /       │
     │                │ --sarif-base（只分析本次变更、或按阈值卡口） │
+    │ 二进制诊断     │ --lib-resolve / --lib-path /                 │
+    │                │ --lib-max-nodes：库名→文件→递归分析依赖      │
+    │                │ --binary-attach：额外点名库文件或库名        │
     └────────────────┴────────────────────────────────────────────┘
+
+二进制诊断（R86-2 · 移植 REA 的静态证据契约）：
+    填上之后，分析器会把「代码里引用的库名字」（Makefile 的 -lfoo、
+    CMakeLists 的 target_link_libraries、ELF 的 DT_NEEDED）解析成磁盘上的
+    真实文件并逐个分析，再沿依赖逐层下钻。三态语义：resolved（唯一命中）/
+    ambiguous（同名多份，不猜，但按候选自己的位数排除 32/64 位孪生）/
+    not_found（未找到，并列列出搜索过的目录）。
+      - 库引用解析深度：下钻层数，0=关（默认）。
+      - 额外指定库：库名或路径（等价于 --binary-attach）；留空则由构建脚本推断。
+      - 追加库搜索目录：追加，不替换平台默认目录（等价于 --lib-path）。
+      - 一次最多解析文件数：达到上限的节点记 skipped，与 not_found 严格区分：
+        「我没看」不等于「找不到」（等价于 --lib-max-nodes）。
+    只看一个 .so/.dll、不跑源码分析：python matlabc.py --binary libfoo.so
 
 配置文件（可加载/可另存）：把上面这张表单存成 JSON，下次直接回填。
     加载：界面「加载配置」→ 选 JSON → 表单被填好
@@ -155,6 +171,10 @@ def build_cli_args(form):
         gate_baseline str 门禁基线文件（留空=.debt_trend.json）
         max_warnings int  最大告警数阈值（None=不限制）
         sarif_base   str  基线 SARIF 文件（启用增量、仅保留新增告警）
+        binary_attach str  额外点名要分析的库（库名或路径，逗号分隔）
+        lib_resolve  int  库引用解析下钻层数（None=不传；0=显式关闭）
+        lib_path     str  追加库搜索目录（逗号分隔；追加而非替换）
+        lib_max_nodes int 引用解析一次最多分析几个文件（None=不传）
     """
     args = []
     config = form.get("config")
@@ -221,6 +241,18 @@ def build_cli_args(form):
         args += ["--max-warnings", str(form["max_warnings"])]
     if form.get("sarif_base"):
         args += ["--sarif-base", form["sarif_base"]]
+    # ---- 二进制诊断 / 库引用解析（R86-2）----
+    # 这一段是「代码里涉及的二进制都要被处理」的界面入口：深度 0=关，
+    # 其余三格只在用户真填了才进命令行 —— 保持命令行精简，也保证默认行为逐字不变。
+    if form.get("binary_attach"):
+        args += ["--binary-attach", form["binary_attach"]]
+    if form.get("lib_resolve") is not None:
+        args += ["--lib-resolve", str(form["lib_resolve"])]
+    lib_path = (form.get("lib_path") or "").strip()
+    if lib_path:
+        args += ["--lib-path", lib_path.replace("\\", "/")]
+    if form.get("lib_max_nodes") is not None:
+        args += ["--lib-max-nodes", str(form["lib_max_nodes"])]
     return args
 
 
@@ -299,6 +331,17 @@ def config_to_form(cfg):
         form["max_warnings"] = str(cfg["max_warnings"])
     if cfg.get("sarif_base"):
         form["sarif_base"] = str(cfg["sarif_base"])
+    # R86-2：二进制诊断四格（与 CLI 的配置键同名，可从 JSON 回填界面）。
+    # 少了这一段的后果是**沉默的**：配置里写了 lib_resolve，界面却显示空白，
+    # 用户以为没生效 —— 与分析器实际行为不符（回填与真正下发是两件事，必须都做）。
+    if cfg.get("binary_attach"):
+        form["binary_attach"] = str(cfg["binary_attach"])
+    if cfg.get("lib_resolve") is not None and cfg["lib_resolve"] != "":
+        form["lib_resolve"] = str(cfg["lib_resolve"])
+    if cfg.get("lib_path"):
+        form["lib_path"] = str(cfg["lib_path"])
+    if cfg.get("lib_max_nodes") is not None and cfg["lib_max_nodes"] != "":
+        form["lib_max_nodes"] = str(cfg["lib_max_nodes"])
     return form
 
 
@@ -587,6 +630,10 @@ def _launch_gui():
         "gate_baseline": tk.StringVar(value=""),
         "max_warnings": tk.StringVar(value=""),
         "sarif_base": tk.StringVar(value=""),
+        "binary_attach": tk.StringVar(value=""),
+        "lib_resolve": tk.StringVar(value=""),
+        "lib_path": tk.StringVar(value=""),
+        "lib_max_nodes": tk.StringVar(value=""),
     }
 
     def collect():
@@ -612,6 +659,10 @@ def _launch_gui():
             "gate_baseline": form["gate_baseline"].get().strip(),
             "max_warnings": int(form["max_warnings"].get()) if form["max_warnings"].get().strip() else None,
             "sarif_base": form["sarif_base"].get().strip(),
+            "binary_attach": form["binary_attach"].get().strip(),
+            "lib_resolve": int(form["lib_resolve"].get()) if form["lib_resolve"].get().strip() else None,
+            "lib_path": form["lib_path"].get().strip(),
+            "lib_max_nodes": int(form["lib_max_nodes"].get()) if form["lib_max_nodes"].get().strip() else None,
         }
 
     def apply_form(values):
@@ -625,7 +676,8 @@ def _launch_gui():
         for key in ("browse", "html", "json", "sarif", "md", "reproducible"):
             if key in values:
                 form[key].set(bool(values[key]))
-        for key in ("lang", "provider", "ai_mode", "depth", "max_nodes"):
+        for key in ("lang", "provider", "ai_mode", "depth", "max_nodes",
+                    "lib_resolve", "lib_max_nodes"):
             if key in values:
                 form[key].set(values[key])
         if "checks" in values:
@@ -633,7 +685,8 @@ def _launch_gui():
         for key in ("git_diff", "gate"):
             if key in values:
                 form[key].set(bool(values[key]))
-        for key in ("git_diff_base", "gate_baseline", "max_warnings", "sarif_base"):
+        for key in ("git_diff_base", "gate_baseline", "max_warnings", "sarif_base",
+                    "lib_path", "binary_attach"):
             if key in values and values[key] is not None:
                 form[key].set(str(values[key]))
 
@@ -701,6 +754,15 @@ def _launch_gui():
             cfg["max_warnings"] = f["max_warnings"]
         if f["sarif_base"]:
             cfg["sarif_base"] = f["sarif_base"]
+        # R86-2：二进制诊断 —— 只写用户实际填了的项，保持配置精简
+        if f["binary_attach"]:
+            cfg["binary_attach"] = f["binary_attach"]
+        if f["lib_resolve"] is not None:
+            cfg["lib_resolve"] = f["lib_resolve"]
+        if f["lib_path"]:
+            cfg["lib_path"] = f["lib_path"]
+        if f["lib_max_nodes"] is not None:
+            cfg["lib_max_nodes"] = f["lib_max_nodes"]
         if f["ai_mode"] in ("ask", "auto") and f["provider"]:
             cfg["ai"] = {"default_provider": f["provider"]}
         try:
@@ -1028,7 +1090,7 @@ def _launch_gui():
 
     # CI 与增量卡片（P0 增强：把 CLI 的 CI 能力搬到界面，勾选即用）
     cibox = ttk.LabelFrame(body, text="CI 与增量（可选 · 面向流水线）")
-    cibox.grid(row=5, column=0, sticky="we", pady=5)
+    cibox.grid(row=6, column=0, sticky="we", pady=5)
     cibox.columnconfigure(1, weight=1)
     cibox.columnconfigure(3, weight=1)
     ttk.Checkbutton(cibox, text="仅分析 git 变更文件（PR 增量）",
@@ -1052,6 +1114,21 @@ def _launch_gui():
               style="CardMuted.TLabel", wraplength=760, justify="left").grid(
         row=3, column=0, columnspan=4, sticky="w", padx=8, pady=(2, 6))
 
+    # 二进制诊断卡片（R86-2：把 REA 的「码里涉及的库都要被处理」搬进界面）
+    binbox = ttk.LabelFrame(body, text="二进制诊断 / 库引用解析（R86-2）")
+    binbox.grid(row=5, column=0, sticky="we", pady=5)
+    binbox.columnconfigure(3, weight=1)
+    ttk.Label(binbox, text="额外指定库（库名或路径，逗号分隔）").grid(row=0, column=0, sticky="w", padx=8, pady=6)
+    ttk.Entry(binbox, textvariable=form["binary_attach"]).grid(row=0, column=1, columnspan=3, sticky="we", padx=(0, 8))
+    ttk.Label(binbox, text="库引用解析深度").grid(row=1, column=0, sticky="w", padx=8, pady=6)
+    ttk.Entry(binbox, textvariable=form["lib_resolve"], width=8).grid(row=1, column=1, sticky="w")
+    ttk.Label(binbox, text="一次最多解析文件数").grid(row=1, column=2, sticky="w", padx=8)
+    ttk.Entry(binbox, textvariable=form["lib_max_nodes"], width=8).grid(row=1, column=3, sticky="w")
+    ttk.Label(binbox, text="追加库搜索目录（逗号分隔）").grid(row=2, column=0, sticky="w", padx=8, pady=6)
+    ttk.Entry(binbox, textvariable=form["lib_path"]).grid(row=2, column=1, columnspan=3, sticky="we", padx=(0, 8))
+    ttk.Label(binbox, text="留空=不做库解析。深度 0=关。「追加目录」是**追加**，平台默认目录仍会搜。三态：唯一命中 / 同名多份（不猜，按位数排除 32/64 位孪生）/ 未找到（并列列出搜过的目录）；「上限内没轮到」的节点记 skipped，与 not_found 严格区分。",
+              style="CardMuted.TLabel", wraplength=760, justify="left").grid(
+        row=3, column=0, columnspan=4, sticky="w", padx=8, pady=(2, 6))
     # 底部：操作按钮 + 状态 + 日志
     actions = ttk.Frame(root)
     actions.pack(fill="x", padx=12, pady=(8, 2))
@@ -1181,6 +1258,39 @@ def main(argv=None):
         # 打开不存在的文件必须安全返回 False，不得抛异常
         assert open_in_browser("C:/definitely/not/exist_zzz.html") is False
         assert open_output("") is False
+        # R86-2：二进制诊断四格 -> --binary-attach / --lib-resolve / --lib-path /
+        # --lib-max-nodes。三件事都要钉：填了必须原样进命令行；没填必须**一个都不出现**
+        # （否则默认行为被界面悄悄改掉）；深度 0 要**显式写 0**（语义是「关」，
+        # 不是「缺省」—— 两者在报告里分得开）。
+        bin_sample = dict(sample)
+        bin_sample.update({"binary_attach": "libfoo.so,kernel32.dll",
+                           "lib_resolve": 2, "lib_path": "D:/libs,D:/more",
+                           "lib_max_nodes": 128})
+        bin_args = build_cli_args(bin_sample)
+        assert _val("--binary-attach", bin_args) == "libfoo.so,kernel32.dll", bin_args
+        assert _val("--lib-resolve", bin_args) == "2", bin_args
+        assert _val("--lib-path", bin_args) == "D:/libs,D:/more", bin_args
+        assert _val("--lib-max-nodes", bin_args) == "128", bin_args
+        for _f in ("--binary-attach", "--lib-resolve", "--lib-path",
+                   "--lib-max-nodes"):
+            assert _f not in args, (_f, args)
+        zb = build_cli_args({"src": "C:/p", "lib_resolve": 0})
+        assert _val("--lib-resolve", zb) == "0", zb
+        # 反斜杠统一成正斜杠：Windows 下 "C:/a\b" 这种混合分隔符易被误解析
+        wb = build_cli_args({"src": "C:/p", "lib_path": "D:\\libs"})
+        assert _val("--lib-path", wb) == "D:/libs", wb
+        # 往返那一半：配置 JSON -> 表单。只测「表单 -> 命令行」会漏掉
+        # 「加载了配置但界面空白」这类沉默故障（与分析器行为不符，却不报错）。
+        g = config_to_form({"dir": "C:/p", "binary_attach": "libfoo.so",
+                            "lib_resolve": 2, "lib_path": "D:/libs",
+                            "lib_max_nodes": 128})
+        assert g["binary_attach"] == "libfoo.so", g
+        assert g["lib_resolve"] == "2", g
+        assert g["lib_path"] == "D:/libs", g
+        assert g["lib_max_nodes"] == "128", g
+        g0 = config_to_form({"dir": "C:/p", "lib_resolve": 0})
+        assert g0["lib_resolve"] == "0", g0
+        assert "lib_max_nodes" not in config_to_form({"dir": "C:/p"}), "未填不该造出键"
         print("GUI selftest OK:", " ".join(args))
         return 0
     # 单例守卫：防止重复双击启动多个 GUI 主进程（与 RunGate 同类「多实例」病根）。

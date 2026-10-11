@@ -120,6 +120,37 @@ Markdown 报告、Mermaid 图、Graphviz DOT、HTML 报告、可点击浏览站�
 - **图形界面启动器（P225-G）**：`gui.py`——基于标准库 tkinter 的**零依赖桌面 GUI**（跨 Windows/Linux/macOS），把庞大命令行收敛为友好表单：选工程目录、勾选输出（浏览站点/HTML/JSON/SARIF/MD）、选择 AI 时机、一键分析并流式显示日志、点击打开结果。`build_cli_args(form)` 为纯函数，表单→CLI 映射可无界面单测。
 - **一键打包发布（P225-H）**：`build_dist.py`（PyInstaller 单文件）+ `build_release.bat`（Windows）/ `build_release.sh`（Linux·macOS）把工具打成免 Python 的**单个**可执行程序 `matlabc(.exe)`（双击=GUI、带参数=CLI，统一入口 `matlabc_boot.py`），自动打包 `renderers/assets` 资源；PyInstaller 不能交叉编译，故在各目标平台分别"一键发布"。
 
+### 3.13 二进制 / 动态库 / 静态缓解措施（R86）
+
+`binfmt/` 是零依赖的容器分析层（PE32+ / ELF64-32 / Mach-O / GPU 段）。R86 往前接了两段：
+
+- **静态缓解措施（R86-1）**：ELF 的 PIE / NX / exec-stack / canary / RELRO 由「构件的有无」**推**出（`inferred`）；PE 的 ASLR / CFG / NX / SEH / 强制完整性 / AppContainer 直接读头部字段（`observed`）。两档**并列**，绝不合并；`None`（判据构件缺失）与 `False`（观测到且为否）严格区分；PE 上 RELRO / exec-stack 恒为 `null`（概念不存在）；`LOAD_CONFIG` 声明大小够不到 `SecurityCookie` 时**拒绝越界读**。
+- **库名 → 磁盘文件 → 依赖下钻（R86-2）**：`binfmt/resolve.py` + `--lib-resolve` / `--lib-path` / `--lib-max-nodes`，把「代码里涉及的二进制」从**名字**推进到**真文件**。三态 `resolved` / `ambiguous`（不猜，按候选**自己**的位数排除 32/64 位孪生，被排除项留在 `rejected`）/ `not_found`（**必带** `searched`）；上限触发记 `skipped`，与 `not_found` 严格区分（「我没看」≠「找不到」）；依赖成环会终止；`platform="none"` 刻意不给平台默认目录，换「任何机器同一答案」的确定性。
+- **GUI 入口（R86-2）**：`gui.py` 新增「二进制诊断 / 库引用解析」卡片四格（额外指定库 / 解析深度 / 一次最多解析文件数 / 追加搜索目录），支持存进配置 JSON 与从配置回填。
+
+### 3.14 调用关系 —— 谁调用谁（R86-3）
+
+**问题**：调用边一直在算（内核整树实测 **7,065,831** 条），但**没有任何产物承载它** ——
+`--json-level summary` 的载荷结构上**不含 `edges` 数组**（只有 `summary.edges` 这个计数），
+而全量数组在内核规模下是 GB 级（7.07M 条 × ~130 B ≈ 919 MB，加明细外推 ~2.6 GB）。
+于是拿到「结果」的人只能看到数字，看不到关系。
+
+- **有界投影（`callrel.py` + `--callgraph`）**：规模无关，输出恒为 KB 级。给出
+  `fan_in_top` / `fan_out_top`（枢纽排行）、`cycles`（**名字级**强连通分量 = 互为递归，
+  迭代 Tarjan，不吃递归栈）、`cross_file` / `cross_dir`（内部 / 跨文件 / 同名多定义
+  **不猜** / 无定义四桶，四桶之和 == 边数）、`focus_subgraph`（BFS 逐层邻域）。
+  内存上用 `array('i')` 的 CSR，**不再加一份 O(E) 的 Python 对象层**（分析峰值已到 13 GB）。
+- **截断必须显式**：`truncated` 里给 `*_total` 与 `*_shown` 两对数；焦点 BFS 撞上限置
+  `hit_node_cap`。与 `--lib-resolve` 的 `skipped ≠ not_found` 同源 —— **「我没展开」不等于
+  「没有关系」**。
+- **三条口径写成字面量**：`identity: "callee-name"`（节点身份是**名字**不是定义落点 ⇒
+  跨文件同名会合并、`cycles` 可能含**假阳性**）；未解析调用**不在图里**（没有 callee
+  节点），只并列报计数；截断现式上报。三条都进 `limitations`，且被判据 F7 钉住。
+- **格式与降级**：`.json` / `.dot` / `.mmd`；扩展名不认识 ⇒ **非零退出**，不静默退回 JSON。
+- **不污染既有账本**：`--callgraph` 走**另一条出口**，不往 `--json-level summary` 的载荷里
+  加块 —— 那本账被 `docs/KERNEL_RUN.md` 的 provenance 钉着（`json_bytes` 与 R81 逐位对账），
+  往里加块会把「分析结果没变」与「产物变长」混成同一个数字。
+
 ---
 
 ## 4. 架构（单文件分层）

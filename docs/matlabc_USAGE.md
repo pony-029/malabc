@@ -380,6 +380,58 @@ matlabc flow ./myproj --auto-apply-loop --draft-pr
 | `--config` | 文件 | 无 | 从 JSON 配置文件读取参数（CLI 显式优先） |
 | `--version` | 开关 | — | 打印版本号并退出 |
 
+### 3.14 二进制 / 动态库分析（R86）
+
+| 参数 | 取值 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `--binary` | `FILE[,FILE...]` | 无 | 只看二进制：段/节、依赖、导出符号、GPU 内容、静态缓解措施（看完即退出） |
+| `--binary-symbols` | 文件 | 无 | 取上一次 `--json` 里的 unresolved 调用，逐个报出归到哪个库 |
+| `--binary-json` | 文件 / `-` | 无 | 把 `--binary` 的结果写成 JSON（`-` 表示 stdout） |
+| `--binary-attach` | `FILE[,FILE...]` | 无 | **不短路**：正常分析源码，再把源码侧解析不到的调用归因掉 |
+| `--binfmt-scan-cap` | MiB | 64 | 单文件 GPU 内容扫描上限（0=不限；截断时报告打印 `[TRUNCATED]`） |
+| `--lib-resolve` | 整数 N | 0 | 库名 → 磁盘文件 → 顺依赖下钻 N 层（0=关）。**不写 `--binary-attach` 也能单独用**（种子取自构建脚本的字面量） |
+| `--lib-path` | `DIR[,DIR...]` | 无 | 追加库搜索目录，**排在平台默认目录之前**（追加而非替换；读不动的目录会记账） |
+| `--lib-max-nodes` | 整数 | 64 | 一次最多解析多少个文件；撞上限的节点状态是 `skipped`（与 `not_found` 严格区分） |
+
+三态语义（`--lib-resolve` / `--binary-attach` 共用）：`resolved` 唯一命中 / `ambiguous` 同名多份（**不猜**，仅按候选**自己**的位数排除 32/64 位孪生，被排除项留在 `rejected` 里）/ `not_found` 未找到（**并列列出真搜过的目录**）。
+
+```bash
+# 一次搞定：分析工程 + 解析库名并顺依赖下钻 2 层 + 写 JSON
+python matlabc.py myproj/ --lib-resolve 2 --lib-path /opt/sdk/lib --json out.json
+```
+
+### 3.15 调用关系（R86-3）—— 谁调用谁
+
+**为什么单独一组开关**：调用边一直在算（内核整树实测 7,065,831 条），但
+`--json-level summary` 的载荷**结构上不含 `edges` 数组**（只有计数），而全量数组在内核
+规模下是 GB 级。没有这一组开关，就**没有任何产物**能让「谁调用谁」可见。
+
+| 参数 | 取值 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `--callgraph` | `PATH` | 无 | 导出**有界**调用关系投影。扩展名决定格式：`.json`（结构化）/ `.dot`（Graphviz）/ `.mmd`（Mermaid）。**扩展名不认识 ⇒ 非零退出**，不静默退回 JSON |
+| `--callgraph-focus` | 函数名 | 无 | 以该函数为根做 BFS **双向**展开（它调了谁、谁调了它）。不给则取扇入最高的枢纽，按被调方向展开 |
+| `--callgraph-depth` | 整数 | 2 | 焦点子图展开层数 |
+| `--callgraph-max-nodes` | 整数 | 300 | 焦点子图节点上限。撞上限即停止展开并置 `truncated.hit_node_cap=true` |
+
+`.json` 里有什么：`fan_in_top` / `fan_out_top`（枢纽排行）、`cycles`（**名字级**强连通
+分量 = 互为递归）、`cross_file` / `cross_dir`（内部 / 跨文件 / 同名多定义 / 无定义四桶）、
+`focus_subgraph`（逐层邻域）、`truncated`（`*_total` 与 `*_shown` 并列）、`limitations`
+（三条口径限制，逐字）。
+
+**三条口径写出来而不是让人猜**：① 节点身份是**被调函数的名字**（`identity:
+"callee-name"`），不是定义落点 ⇒ 跨文件同名会合并，`cycles` 可能含**假阳性**；
+② 未解析调用**不在图里**（没有 callee 节点），只并列报计数 —— 「没解析出来」不是
+「没有关系」；③ 截断永远显式上报 —— 「我没展开」不等于「没有关系」。
+
+```bash
+# 全图形状：度数排行 + 递归环 + 跨文件计数
+python matlabc.py linux/ --lang c --callgraph cg.json
+
+# 钻进一个函数：向外两层，最多 50 个节点，同时给出 DOT 图
+python matlabc.py linux/ --lang c --callgraph cg.dot \
+       --callgraph-focus __schedule --callgraph-depth 2 --callgraph-max-nodes 50
+```
+
 ---
 
 ## 4. 配置文件 `analyzer_config.json`

@@ -46,21 +46,29 @@ from .model import (
     CONTAINER_ELF, CONTAINER_MACHO, CONTAINER_PE,
     DEP_ID_DYLIB, DEP_IMPORT_MODULE, DEP_LINK_FLAG, DEP_LOAD_DYLIB,
     DEP_LOAD_DYLINKER, DEP_NEEDED, DEP_RPATH, DEP_RUNPATH,
-    BinaryReport, Dependency, GpuBlob, Section, Symbol,
+    BinaryReport, Dependency, GpuBlob, Section, Segment, Symbol,
+    EVIDENCE_INFERRED, EVIDENCE_OBSERVED,
+    MIT_PIE, MIT_ASLR, MIT_NX, MIT_EXECSTACK, MIT_CANARY, MIT_RELRO,
+    MIT_CFG, MIT_HIGH_ENTROPY_VA, MIT_SEH, MIT_FORCE_INTEGRITY,
+    MIT_APPCONTAINER,
     SYM_DYNAMIC, SYM_EXPORT, SYM_GPU_KERNEL, SYM_IMPORT,
 )
-from . import attribute, buildsys, gpu
+from . import attribute, buildsys, gpu, resolve
 from .report import to_summary_line, to_text
 
 __version__ = "1.0.0"
 
 __all__ = [
     "parse", "sniff", "to_text", "to_summary_line", "gpu", "attribute",
-    "buildsys",
-    "BinaryReport", "GpuBlob", "Section", "Symbol", "Dependency",
+    "buildsys", "resolve",
+    "BinaryReport", "GpuBlob", "Section", "Segment", "Symbol", "Dependency",
     "CONTAINER_PE", "CONTAINER_ELF", "CONTAINER_MACHO",
     "SYM_EXPORT", "SYM_IMPORT", "SYM_DYNAMIC", "SYM_GPU_KERNEL",
     "DEP_NEEDED", "DEP_IMPORT_MODULE", "DEP_RPATH", "DEP_RUNPATH", "DEP_LINK_FLAG",
     "DEP_LOAD_DYLIB", "DEP_ID_DYLIB", "DEP_LOAD_DYLINKER",
     "ATTR_SOURCE", "ATTR_LIBRARY", "ATTR_GPU_KERNEL", "ATTR_MISSING",
+    "EVIDENCE_INFERRED", "EVIDENCE_OBSERVED",
+    "MIT_PIE", "MIT_ASLR", "MIT_NX", "MIT_EXECSTACK", "MIT_CANARY", "MIT_RELRO",
+    "MIT_CFG", "MIT_HIGH_ENTROPY_VA", "MIT_SEH", "MIT_FORCE_INTEGRITY",
+    "MIT_APPCONTAINER",
 ]

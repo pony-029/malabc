@@ -6,13 +6,13 @@
     python tools/check_all.py
         │
         ├─▶ check_baseline.py             公平基线：按 nodeid 集合比失败（--full 才真跑）
-        ├─▶ check_binfmt_fixtures.py      合成夹具 + 契约 C1..C13 + 两向自证
+        ├─▶ check_binfmt_fixtures.py      合成夹具 + 契约 C1..C15 + 两向自证
         ├─▶ check_doc_flags.py            文档/帮助里写的 CLI 开关必须真的存在
         ├─▶ check_flow_diagrams.py        图的引用 ↔ 文件 ↔ 候选声明，两两对齐且双向
         ├─▶ check_help_contract.py        退出码在代码↔帮助双向一致；示例能真跑
         ├─▶ check_boundary_reverse.py     「诚实的边界」每条承诺都要有对手方（契约 V1..V6 + 两向自证）
         ├─▶ check_import_graph.py         模块级 import 必须无环；回边只能走登记过的惰性通道
-        ├─▶ check_c_frontend_shapes.py    C 前端函数定义形态（四形态/指针返回/体界/行号）各有对手方
+        ├─▶ check_c_frontend_shapes.py    C 前端函数定义形态（四形态/指针返回/体界/行号）+ 调用关系有界投影，各有对手方
         ├─▶ check_py_js_frontend_shapes.py Python/JS 前端形态（单行/async/注解/跨行/箭头）各有对手方
         ├─▶ check_ir_attribution.py       「解析不到的调用」只有一个判定点，归因吃的就是它
         ├─▶ check_operator_impl.py        算子元表里不得有「只声明不产出」的幻影
@@ -137,6 +137,13 @@ GUARD_TIMEOUT = 600.0
 # **逐片**解析 —— 依赖/符号/段表都要从每一片读、同名片去重且点名、片内偏移重基、
 # 读不懂的片必须被点名、GPU 段名提示不被 `slice[i]:` 前缀打瞎），
 # 判据族 C1–C12 → C1–C13。门数不变，仍是 16。
+# R86-2 也没有加门：给 `check_binfmt_fixtures.py` 补判据族 C14/C15
+# （C14 引用解析：库名 → 磁盘文件 → 沿依赖逐层下钻；三态 + 环必须终止 + 上限触发必须是
+# skipped 而不是 not_found + not_found 必带 searched + 32/64 位孪生按**候选自己的位数**
+# 消歧且排除项留在 rejected + 同位数两份必须 ambiguous；
+# C15 PE 缓解措施为 observed 档、与 ELF 的 inferred **并存**、None≠False、
+# PE 无 RELRO/exec-stack 一律置 null、LOAD_CONFIG 声明大小不够时**拒绝越界读**），
+# 判据族 C1–C13 → C1–C15。门数不变，仍是 19。
 # R82 新增 check_unified_graph.py（R82 Phase 0 / R82-0-3）。它是 Phase 0 的**唯一产物**：
 # 先把「统一图」的四条恒等式与 T1 的图前提立起来，因为 T1–T4 都要往同一张图上加东西
 # （T1 加边种类、T2 加跳、T3 加算子对齐、T4 加规则节点）—— 模型晚定稿就要拆两遍。

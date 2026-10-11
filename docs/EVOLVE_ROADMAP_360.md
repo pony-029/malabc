@@ -86,6 +86,14 @@
 #   R85 的 Phase 0e（分析流程登记 + 判据族 W6）同理：0d 的第 9 轮不动，Phase A 的三条
 #   blocked 轮次再由 10/11/12/13 挪到 11/12/13/14。**门数不变（19）** —— 这一轮只给第 19
 #   道门加判据族（W1–W5 → W1–W6），不给棘轮加数（「缺口为 0 时加闸 = churn」）。
+#   R86 的 Phase 0f / 0g（REA 能力移植）同理插在 Phase A 之前：0e 的第 10 轮不动，
+#   Phase A 的四条 blocked 轮次由 11/12/13/14 挪到 13/14/15/16。**门数仍为 19** ——
+#   0f/0g 只给既有的第 19 道门加判据 C14/C15（C1–C13 → C1–C15），不加闸门。
+#   这两轮走 `t2` 线（二进制符号图），与 `t1`（异步调用链）互不阻塞。
+#   R86-3 的 Phase 0h（调用关系有界投影）同理插在 Phase A 之前：0g 的第 12 轮不动，
+#   Phase A 的四条 blocked 轮次再由 13/14/15/16 挪到 14/15/16/17。**门数仍是 19** ——
+#   0h 只给 `check_c_frontend_shapes.py` 加判据族 F7（F1–F6 → F1–F7），不加闸门
+#   （「缺口为 0 时加闸 = churn」，R85 已定论）。仍走 `t2`。
 0  | 0  | base | phase0_acceptance       | Phase 0 验收：门数 17→18 全绿 + U1–U5 两向自证 | -
 1  | 0  | base | conservation_two_way    | 统一图守恒判定器两向成立（干净 0 / 注入 ≥1 / 还原 0） | -
 2  | 0  | base | py36_census             | 3.6.5 语法门在新增模块上仍绿 | -
@@ -97,11 +105,56 @@
 8  | 0c | base | declared_source_gate    | declared_sites 必须带**已登记的独立来源**（含 from_dict 侧门） | -
 9  | 0d | base | kernel_snapshot_gate    | 全树规模读数登记表：出处+口径 / 三档分母并列 / 汇总↔明细恒等式 / 与 R81 逐位**且逐类**（第 19 道门 W1–W5） | -
 10 | 0e | base | kernel_pipeline_gate    | 分析流程登记：13 站站表形状 / 恰一个 current 驱动 / 产物链拓扑 / 仓内落点存在（第 19 道门 W1–W5 → W1–W6） | -
-11 | A  | t1   | -                       | R82-A3 Py/JS 后端（await 必须不产生 async 边） | 未实现
-12 | A  | t1   | -                       | R82-A4 MATLAB 后端（parfor/parfeval/batch/timer） | 未实现
-13 | A  | t1   | -                       | R82-A5 asm 间接跳转 ⇒ unknown（不猜） | 未实现
-14 | A  | t1   | -                       | R82-A6 站点/报告新增「异步」列 + 未识别并发站点计数 | 未实现
+11 | 0f | t2   | rea_binfmt_mitigations  | REA 移植第一片：`Segment`（只读，perms）+ 静态缓解措施两档（ELF `inferred` / PE `observed`；`None` ≠ `False`） | -
+12 | 0g | t2   | rea_lib_resolution      | REA 移植第二片：**库名 → 磁盘文件 → 依赖下钻**（`binfmt/resolve.py` + `--lib-resolve/--lib-path/--lib-max-nodes` + GUI 卡片）+ C14/C15 | -
+13 | 0h | t2   | call_relations_proj     | 调用关系的**有界投影**（`callrel.py` + `--callgraph` 系列 + 判据族 F7）：度数 TOP-N / 名字级 SCC / 跨文件四桶 / 焦点 BFS / 截断显式 | -
+14 | A  | t1   | -                       | R82-A3 Py/JS 后端（await 必须不产生 async 边） | 未实现
+15 | A  | t1   | -                       | R82-A4 MATLAB 后端（parfor/parfeval/batch/timer） | 未实现
+16 | A  | t1   | -                       | R82-A5 asm 间接跳转 ⇒ unknown（不猜） | 未实现
+17 | A  | t1   | -                       | R82-A6 站点/报告新增「异步」列 + 未识别并发站点计数 | 未实现
 ```
+
+### Phase 0f · REA 能力移植 Ⅰ：静态缓解措施（轮 11 · `t2`）
+
+| ID | 任务 | 轮次预算 | 出口判据 |
+|---|---|---|---|
+| R86-1a | `binfmt/model.py`：`Segment`（只读，`perms`）+ `MIT_*` / `EVIDENCE_*` 常量 | 11 | 导出面自洽；`Segment` 不可写 |
+| R86-1b | `elf.py` / `pe.py`：缓解措施读法（ELF 由 `PT_GNU_*` 有无**推**；PE 由 `DllCharacteristics` / `LOAD_CONFIG` **读**） | 11 | `None`（判据构件缺失）与 `False`（观测到且为否）在夹具上**分得开** |
+| R86-1c | `report.py`：改数据驱动渲染；未登记键以原名印出，不静默丢 | 11 | 未登记键 ⇒ 报告里带 `[未登记显示名]` |
+| R86-1d | 仓外探针 `_r82/probe_elf_mitigations.py`（真 ELF + 合成夹具） | 11 | 断言全绿，且**真缺陷**被抓出（`SYM_IMPORT` 未导入 ⇒ 真 ELF 走导入符号分支必 `NameError`） |
+
+**Phase 0f 出口**：`--binary` 在真实 PE 上给出 `observed` 档缓解措施、在真实 ELF 上给出 `inferred` 档，且 RELRO / exec-stack 在 PE 上恒 `null`（概念不存在，不是「观测到为否」）。
+
+### Phase 0g · REA 能力移植 Ⅱ：库名 → 磁盘文件 → 依赖下钻（轮 12 · `t2`）
+
+| ID | 任务 | 轮次预算 | 出口判据 |
+|---|---|---|---|
+| R86-2a | 新建 `binfmt/resolve.py`：三态 + `searched` + `skipped` + 环终止 + **位数消歧** | 12 | 仓外探针 84/84；「只剩一份候选也要缩小集合」由**自维持断言**逼出 |
+| R86-2b | `matlabc.py` 三开关 + `_resolve_attach_refs`（三来源：显式项 / 构建脚本字面量 / 已解析二进制自己的依赖） | 12 | 端到端 rc=0；JSON 里 `library_resolution` 的 `stats` 落盘 |
+| R86-2c | 第 19 道门判据 **C14/C15** + 六处级联（门 / `check_all` 树行 / `GUARD_CONTRACT` / README ×2 / `tests/`） | 12 | `--selftest` 下界 `13/12`；`ROW_SIGNATURE` == 实发前缀集合 |
+| R86-2d | `gui.py`「二进制诊断 / 库引用解析」卡片四格 + 配置往返 | 12 | `--selftest` 钉住「填了就进命令行 / 没填一个都不出现 / 深度 0 显式写 0 / 反斜杠归一 / 配置回填」 |
+| R86-2e | README ×2 功能小节 + `docs/matlabc_USAGE.md` §3.14 + `docs/matlabc_FEATURES.md` §3.13 | 12 | `check_readme_parity` / `check_doc_flags` 全绿 |
+
+**Phase 0g 出口**：`--lib-resolve N` 能把「代码里涉及的二进制」从**名字**推到**真文件**（三态无一是猜），并且内核整树读数在**新版** `matlabc.py` 上仍与 R81 基线**逐位且逐类**全等 —— 重跑本身就是这条的证据（`docs/KERNEL_RUN.md` 的 `provenance.matlabc_sha256` 随之更新）。
+
+### Phase 0h · 调用关系的**有界投影**（轮 13 · `t2`）
+
+**动因是用户实测反馈**（不是自查出来的）：「内核分析结果并没有体现出函数之间的调用关系」。
+白帽核查把根因钉到**一行**：`--json-level summary` 的 C 载荷**结构上不含 `edges` 数组**
+（只写 `summary.edges` 这个计数），而全量数组在内核规模下是 GB 级 ⇒ **此前不存在任何产物**
+承载「谁调用谁」。这是**呈现/档位语义**缺陷，不是数据缺失。
+
+| ID | 任务 | 轮次预算 | 出口判据 |
+|---|---|---|---|
+| R86-3a | 新建 `callrel.py`：CSR（`array('i')`，不加 O(E) 的 Python 对象层）+ 迭代 Tarjan SCC + 度数 TOP-N + 跨文件四桶 + 焦点 BFS + 截断显式 | 13 | 仓外探针 41/41；**变异体 5/5 注入即红且可追溯**，还原即绿 |
+| R86-3b | `matlabc.py` 四开关（`--callgraph/-focus/-depth/-max-nodes`）+ 两条路径同一个出口（C 与 Py/JS/ASM 语义不许分叉） | 13 | 未知扩展名 ⇒ 非零退出**且不产出文件**；不给 `--callgraph` ⇒ **零计算零输出** |
+| R86-3c | `check_c_frontend_shapes.py` 判据族 **F1–F6 → F1–F7**（六个半边）+ `--selftest` 两向；五处级联 | 13 | `SELFTEST COUNTS {"bad": 0, "good": 38}`；门 rc=0 且成功行含 `F1–F7` |
+| R86-3d | **不污染既有账本**：`--callgraph` 走另一条出口，`--json-level summary` 载荷一个字节不动 | 13 | 两档载荷顶层键集合**逐字不变**；内核 `kernel_c_summary.json` 与 R81 对账仍全等 |
+| R86-3e | 文档：README ×2 功能小节 + `docs/matlabc_USAGE.md` §3.15 + `docs/matlabc_FEATURES.md` §3.14 | 13 | `check_readme_parity` / `check_doc_flags` / 帮助体积三臂全绿（快照同步 + 记账） |
+| R86-3f | 内核整树真跑 `--callgraph`，交付**能看见调用关系**的产物 | 13 | `edges_total` 与 `summary.edges` **两本账对账**相等 |
+
+**Phase 0h 出口**：用户能拿到一份**打开就能看「谁调用谁」**的产物，且它**有界、截断显式、
+口径写成字面量**（节点身份 = 名字 ⇒ 假阳性风险明说；未解析不在图里 ⇒ 并列计数）。
 
 ### Phase A · T1 异步调用链（轮 1–60）
 

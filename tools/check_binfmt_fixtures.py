@@ -46,6 +46,8 @@
           ├─ .hip_fat  段（AMD 侧同款）        ──▶ C2
           ├─ SPIR-V 模块（藏在通用数据段里）    ──▶ C3
           ├─ fat 头 + 两片**完整** thin Mach-O  ──▶ C13（逐片依赖/符号/段表）
+          ├─ 目录里若干**互相引用**的合成 PE   ──▶ C14（引用解析：三态/环/上限）
+          ├─ PE 的 DllCharacteristics / LOAD_CONFIG ──▶ C15（observed 档 + None≠False）
           └─ "parseable=False 但不给 reason"   ──▶ C1 必须红（反例）
           │
           ▼
@@ -72,7 +74,7 @@ import tempfile
 #   ① 本门的成功行（下面 main() 打印的那一行）；
 #   ② README.md / README_CN.md 里本门那一行。
 # 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
-ROW_SIGNATURE = "C1–C13"
+ROW_SIGNATURE = "C1–C15"
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
@@ -88,15 +90,27 @@ except ImportError:
 
 # ---------------------------------------------------------------- 夹具生成
 
-def _make_pe(path, sections=(), imports=(), exports=(), machine=0x8664):
-    """构造一个最小但结构合法的 PE32+。
+def _make_pe(path, sections=(), imports=(), exports=(), machine=0x8664,
+             dllchar=0, opt_size=240, load_config=None, magic=None):
+    """构造一个最小但结构合法的 PE32/PE32+。
 
     sections: [(name(<=8B), payload_bytes)]
     imports : [dll_name, ...]
     exports : [symbol_name, ...]
+    machine : 0x8664/0xAA64 = 64 位（PE32+），其余 = 32 位（PE32）。
+              **magic 与 ImageBase 的偏移随位数一起变** —— 夹具自洽优先于省事。
+    dllchar : DllCharacteristics（Optional Header 偏移 0x46，PE32/PE32+ **同偏移**）
+    opt_size: Optional Header 声明长度。C15 用它造「读不到 DllCharacteristics」
+              的负例（声明长度 < 0x48 时该字段不可读）。
+    load_config: (cookie_or_None, declared_size) 或 None。
+              非 None 时在映像里造一个 LOAD_CONFIG 目录并写进 DataDirectory[10]，
+              cookie 写在 64 位的 0x58 / 32 位的 0x3C 处；
+              **declared_size 由调用方给** —— C15 正是要用「声明大小够不到
+              SecurityCookie 字段」这一情形去验证实现不做越界读。
     """
     sec_payloads = list(sections)
-    n_extra = (1 if imports else 0) + (1 if exports else 0)
+    n_extra = (1 if imports else 0) + (1 if exports else 0) + \
+              (1 if load_config else 0)
     blob = bytearray()
 
     # --- 先把 section 数据按 RVA 顺序排好 ---
@@ -108,9 +122,21 @@ def _make_pe(path, sections=(), imports=(), exports=(), machine=0x8664):
         laid.append((nm, rva, ptr, payload))
         rva += max(len(payload), 0x1000)
         ptr += max(len(payload), 0x200)
-    imp_rva = exp_rva = 0
+    imp_rva = exp_rva = lc_rva = 0
     imp_data = b""
     exp_data = b""
+    lc_data = b""
+    lc_declared = 0
+    if load_config is not None:
+        cookie, lc_declared = load_config
+        lc_rva = rva
+        payload = bytearray(max(int(lc_declared), 4))
+        struct.pack_into("<I", payload, 0, int(lc_declared))
+        co = 0x58 if machine in (0x8664, 0xAA64) else 0x3C
+        if cookie is not None and len(payload) >= co + (8 if co == 0x58 else 4):
+            struct.pack_into("<Q" if co == 0x58 else "<I", payload, co, cookie)
+        lc_data = bytes(payload)
+        rva += 0x1000
 
     # 导入表：每个描述符 20B，末尾一个全 0 描述符；名字紧跟其后
     if imports:
@@ -164,6 +190,8 @@ def _make_pe(path, sections=(), imports=(), exports=(), machine=0x8664):
         all_secs.append((".rdata", imp_rva, 0x800, imp_data))
     if exports:
         all_secs.append((".edata", exp_rva, 0xA00, exp_data))
+    if load_config is not None:
+        all_secs.append((".rdata", lc_rva, 0xC00, lc_data))
     for nm, srva, sptr, payload in all_secs:
         nmb = nm.encode("latin1")[:8].ljust(8, b"\x00")
         sec_headers.append(nmb + struct.pack(
@@ -171,7 +199,6 @@ def _make_pe(path, sections=(), imports=(), exports=(), machine=0x8664):
             sptr, 0, 0, 0, 0, 0x60000020))
 
     nsec = len(sec_headers)
-    opt_size = 240
     pe_off = 0x40
     opt_off = pe_off + 4 + 20
     sec_off = opt_off + opt_size
@@ -184,11 +211,29 @@ def _make_pe(path, sections=(), imports=(), exports=(), machine=0x8664):
     struct.pack_into("<HHIIIHH", out, pe_off + 4, machine, nsec, 0, 0, 0,
                      opt_size, 0x2000)
     opt = bytearray(b"\x00" * opt_size)
-    struct.pack_into("<H", opt, 0, 0x20B)
-    struct.pack_into("<Q", opt, 24, 0x180000000)
-    struct.pack_into("<I", opt, 108, 16)
-    struct.pack_into("<II", opt, 112 + 0 * 8, exp_rva, 0x400)
-    struct.pack_into("<II", opt, 112 + 1 * 8, imp_rva, 20 * (len(imports) + 1) if imports else 0)
+    is64 = machine in (0x8664, 0xAA64)
+    magic = (0x20B if is64 else 0x10B) if magic is None else magic
+    # ⚠ magic 不是 0x20B/0x10B 时解析器**不再去读 DataDirectory**
+    #   （`dd_off = 0`）。这正是 C15 造「DllCharacteristics 不可读」负例的唯一
+    #   现实途径：PE32+ 里 `_u32(opt, dd_off - 4)` 会先于 DllCharacteristics
+    #   被读，所以**只要解析走到那一步，DllCharacteristics 就一定在**
+    #   （它在布局上排在 DataDirectory 之前）。这个事实由 R86-2 的门实测得到。
+    dd_off = 112 if is64 else 96
+    struct.pack_into("<H", opt, 0, magic)
+    if is64:
+        struct.pack_into("<Q", opt, 24, 0x180000000)
+    else:
+        struct.pack_into("<II", opt, 24, 0, 0x400000)      # BaseOfData, ImageBase
+    if opt_size >= dd_off:
+        struct.pack_into("<I", opt, dd_off - 4, 16)
+    if opt_size >= 0x48:
+        struct.pack_into("<H", opt, 0x46, dllchar)         # DllCharacteristics
+    if opt_size >= dd_off + 8:
+        struct.pack_into("<II", opt, dd_off + 0 * 8, exp_rva, 0x400)
+        struct.pack_into("<II", opt, dd_off + 1 * 8, imp_rva,
+                         20 * (len(imports) + 1) if imports else 0)
+    if load_config is not None and opt_size >= dd_off + 11 * 8:
+        struct.pack_into("<II", opt, dd_off + 10 * 8, lc_rva, lc_declared)
     out[opt_off:opt_off + opt_size] = opt
     for i, h in enumerate(sec_headers):
         out[sec_off + i * 40: sec_off + (i + 1) * 40] = h
@@ -762,6 +807,249 @@ def _c13_check_gpu_hint(findings, tmpdir, tag="C13"):
     return findings
 
 
+# ---- C14（R86-2）：引用解析 —— 三态、「不猜」、上限语义 ----
+
+def _c14_check(findings, tmpdir):
+    """C14：`binfmt.resolve` 把「库名」变成「磁盘文件」的那一步。
+
+    全部用**现场合成的 PE** 当靶子：PE 的导入表最容易合成，而且它的 `machine`
+    字段**就是**位数判据本身（0x8664 = 64 位 / 0x014C = 32 位）。
+
+    ⚠ 搜索目录只给 tmpdir 下的子目录，并显式 `platform="none"`。
+      否则开发机上恰好存在的 `/usr/lib/libz.so` 会让结论随机器而变 ——
+      那是「只在开发机上绿」的门（L59）。`search_dirs == [a]` 这条断言正是
+      在守这个：**解析器说出了它搜过哪儿，而那个清单必须就是我们给的清单**。
+    """
+    rv = getattr(binfmt, "resolve", None)
+    if rv is None:
+        findings.append("C14: binfmt.resolve 未导出（引用解析能力不在）")
+        return
+
+    # ---- 候选名两支：已经是文件名 vs -l 简名 ----
+    got = rv.candidate_names("libfoo.so.1")
+    _check(findings, got == ["libfoo.so.1", "libfoo.so"],
+           "C14-候选名: libfoo.so.1 -> %r（期望不含 .so.1.so 噪音）" % (got,))
+    got = rv.candidate_names("blas")
+    _check(findings, "libblas.so" in got and "blas.dll" in got,
+           "C14-候选名: blas 没走 -l 支（得到 %r）" % (got,))
+
+    a = os.path.join(tmpdir, "c14_a")
+    if not os.path.isdir(a):
+        os.makedirs(a)
+    root = os.path.join(a, "root.dll")
+    _make_pe(root, imports=["dep.dll"])
+    _make_pe(os.path.join(a, "dep.dll"), imports=["leaf.dll"])
+    _make_pe(os.path.join(a, "leaf.dll"))
+
+    def graph(seed, depth, max_nodes=16):
+        return rv.resolve_graph([{"name": seed, "kind": "explicit"}],
+                                lib_paths=[a], platform="none",
+                                depth=depth, max_nodes=max_nodes)
+
+    r = graph(root, 2)
+    _check(findings, len(r.reports) == 3,
+           "C14-下钻: depth=2 解析出 %d 个文件（期望 3）" % len(r.reports))
+    _check(findings, len(r.edges) == 2,
+           "C14-下钻: 边数 %d（期望 2）" % len(r.edges))
+    _check(findings, r.search_dirs == [a],
+           "C14-确定性: platform=none 时搜索目录应为 [%s]，得到 %r"
+           % (a, r.search_dirs))
+
+    r = graph(root, 0)
+    _check(findings, len(r.reports) == 1,
+           "C14-深度: depth=0 应只解析种子（得到 %d）" % len(r.reports))
+    _check(findings, any(t["name"] == "dep.dll" for t in r.truncated_by_depth),
+           "C14-深度: depth=0 未把 dep.dll 记进 truncated_by_depth")
+
+    r = graph(root, 2, max_nodes=1)
+    st = [n["status"] for n in r.nodes]
+    _check(findings, "skipped" in st and "not_found" not in st,
+           "C14-上限: max_nodes=1 的状态应含 skipped 且不含 not_found（得到 %r）"
+           % (st,))
+
+    # ---- not_found 必须带 searched（否则用户无法反驳） ----
+    gone = os.path.join(a, "gone.dll")
+    _make_pe(gone, imports=["definitely-not-here.dll"])
+    r = graph(gone, 1)
+    _check(findings, len(r.not_found) == 1,
+           "C14-未找到: not_found 数 %d（期望 1）" % len(r.not_found))
+    if r.not_found:
+        _check(findings, r.not_found[0]["searched"] == [a],
+               "C14-未找到: searched=%r（期望 [%s]）"
+               % (r.not_found[0]["searched"], a))
+
+    # ---- 环：A<->B 必须终止且各解析一次 ----
+    ca = os.path.join(a, "ca.dll")
+    _make_pe(ca, imports=["cb.dll"])
+    _make_pe(os.path.join(a, "cb.dll"), imports=["ca.dll"])
+    r = graph(ca, 8)
+    _check(findings, len(r.reports) == 2,
+           "C14-环: 解析出 %d 个文件（期望 2 —— 环必须终止且不重复解析）"
+           % len(r.reports))
+
+    # ---- 歧义 + 位数消歧（**两向**） ----
+    p1 = os.path.join(tmpdir, "c14_64")
+    p2 = os.path.join(tmpdir, "c14_32")
+    p3 = os.path.join(tmpdir, "c14_64b")
+    for d in (p1, p2, p3):
+        if not os.path.isdir(d):
+            os.makedirs(d)
+    _make_pe(os.path.join(p1, "twin.dll"), machine=0x8664)
+    _make_pe(os.path.join(p2, "twin.dll"), machine=0x014C)
+    _make_pe(os.path.join(p3, "twin.dll"), machine=0x8664)
+    u64 = os.path.join(tmpdir, "c14_user64.dll")
+    u32 = os.path.join(tmpdir, "c14_user32.dll")
+    _make_pe(u64, machine=0x8664, imports=["twin.dll"])
+    _make_pe(u32, machine=0x014C, imports=["twin.dll"])
+
+    def twin_of(seed, dirs):
+        r = rv.resolve_graph([{"name": seed, "kind": "explicit"}],
+                             lib_paths=list(dirs), platform="none", depth=1)
+        got = [x for x in r.nodes if x["name"] == "twin.dll"]
+        return r, (got[0] if got else None)
+
+    r, n = twin_of(u64, (p1, p2))
+    _check(findings, n is not None and n["status"] == "resolved",
+           "C14-消歧: 64 位请求方未唯一命中（%r）" % (n and n["status"],))
+    if n is not None and n["status"] == "resolved":
+        _check(findings, os.path.dirname(n["path"]) == p1,
+               "C14-消歧: 64 位请求方选了 %s（期望 %s）" % (n["path"], p1))
+        _check(findings, len(n["rejected"]) == 1 and
+               n["rejected"][0]["bits"] == 32,
+               "C14-消歧: 被排除的那份（32 位）未留在 rejected 里：%r"
+               % (n["rejected"],))
+
+    r, n = twin_of(u32, (p1, p2))
+    _check(findings, n is not None and n["status"] == "resolved" and
+           os.path.dirname(n["path"]) == p2,
+           "C14-消歧(反向): 32 位请求方结果 %r" % (n and n["path"],))
+
+    r, n = twin_of(u64, (p1, p3))
+    _check(findings, n is not None and n["status"] == "ambiguous",
+           "C14-不猜: 两份同为 64 位时应 ambiguous（得到 %r）"
+           % (n and n["status"],))
+    _check(findings, len(r.ambiguous) == 1 and len(r.ambiguous[0]["hits"]) == 2,
+           "C14-不猜: ambiguous 桶 %r" % (r.ambiguous,))
+
+    kept, rej = rv.disambiguate_by_bits(
+        [(os.path.join(p1, "twin.dll"), "rp1"),
+         (os.path.join(p2, "twin.dll"), "rp2")], None)
+    _check(findings, len(kept) == 2 and not rej,
+           "C14-消歧: want_bits=None 时不该动候选（kept=%d rej=%d）"
+           % (len(kept), len(rej)))
+
+
+# ---- C15（R86-2）：PE 静态缓解措施是**观测值**，且 None ≠ False ----
+
+def _c15_check(findings, tmpdir):
+    """C15：PE 侧的缓解措施读数（`evidence_kind=observed`）。
+
+    守三件事：
+      ① 头部字段可读 ⇒ 布尔值（且 ELF 侧仍是 `inferred` —— **两档并存**，
+         不许被同化成一个词）；
+      ② **「没读到」与「读到且为否」严格分开**（`None` vs `False`）；
+      ③ 与 RELRO / exec-stack 这些 PE **没有的**构件，一律置 `None`，
+         绝不用 `False` 冒充（那会把「概念不适用」说成「观测到没有」）。
+    """
+    pe_mod = getattr(binfmt, "pe", None)
+    if pe_mod is None:
+        findings.append("C15: binfmt.pe 未导出")
+        return
+    d = os.path.join(tmpdir, "c15")
+    if not os.path.isdir(d):
+        os.makedirs(d)
+
+    # ① dllchar=0x4160：DYNAMIC_BASE | NX_COMPAT | HIGH_ENTROPY_VA | GUARD_CF
+    p = os.path.join(d, "mit.dll")
+    _make_pe(p, sections=[(".text", b"\x90" * 32)], dllchar=0x4160)
+    m = binfmt.parse(p, with_gpu=False).mitigations
+    _check(findings, m.get("evidence_kind") == "observed",
+           "C15-档位: PE 的 evidence_kind=%r（期望 observed）"
+           % m.get("evidence_kind"))
+    _check(findings, m.get("dynamic_base") is True and
+           m.get("nx_indicator") is True and
+           m.get("control_flow_guard") is True,
+           "C15: dllchar=0x4160 的读数为 %r/%r/%r"
+           % (m.get("dynamic_base"), m.get("nx_indicator"),
+              m.get("control_flow_guard")))
+    _check(findings, m.get("relro") is None,
+           "C15: PE 无 RELRO，必须是 None 而不是 False（得到 %r）" % m.get("relro"))
+    _check(findings, m.get("executable_stack_indicator") is None,
+           "C15: PE 无 exec-stack 构件，必须是 None（得到 %r）"
+           % m.get("executable_stack_indicator"))
+    _check(findings, bool(m.get("limitations")),
+           "C15: 缺 limitations（不许只给一组 yes/no）")
+
+    # ② dllchar=0 ⇒ **观测到且为否** ⇒ False（不是 None）
+    p0 = os.path.join(d, "mit0.dll")
+    _make_pe(p0, sections=[(".text", b"\x90" * 32)], dllchar=0)
+    m0 = binfmt.parse(p0, with_gpu=False).mitigations
+    _check(findings, m0.get("dynamic_base") is False and
+           m0.get("nx_indicator") is False,
+           "C15: dllchar=0 必须给出 False（得到 %r/%r）"
+           % (m0.get("dynamic_base"), m0.get("nx_indicator")))
+
+    # ③ Optional Header 太短 ⇒ 判据构件缺失 ⇒ None（与 ② 严格分开）
+    # ⚠ 这个负例**只能**这样造：见 `_make_pe` 里 magic 的注释 ——
+    #   PE32+ 若 magic 合法，`_u32(opt, dd_off-4)` 会先崩，根本走不到
+    #   DllCharacteristics 那一行，所以「短头部」不是现实途径。真相是：
+    #   **解析能走到那一步 ⇒ 该字段一定可读**。用未知 magic 才是诚实的负例。
+    ps = os.path.join(d, "mitshort.dll")
+    _make_pe(ps, sections=[(".text", b"\x90" * 32)], dllchar=0x0140,
+             opt_size=64, magic=0x0001)
+    reps = binfmt.parse(ps, with_gpu=False)
+    ms = reps.mitigations
+    _check(findings, ms.get("nx_indicator") is None and
+           ms.get("dynamic_base") is None,
+           "C15-缺失: Optional Header 截断时 NX/ASLR 必须是 None（得到 %r/%r）"
+           % (ms.get("nx_indicator"), ms.get("dynamic_base")))
+    _check(findings, any("DllCharacteristics" in n for n in reps.notes),
+           "C15-缺失: 读不到 DllCharacteristics 却没留 note（静默）")
+
+    # ④ LOAD_CONFIG 的 SecurityCookie：够大读到 / 太小**拒绝越界读**
+    pz = os.path.join(d, "mitzerocookie.dll")
+    _make_pe(pz, sections=[(".text", b"\x90" * 32)], load_config=(0, 0x70))
+    mz = binfmt.parse(pz, with_gpu=False).mitigations
+    _check(findings, mz.get("stack_canary_indicator") is False,
+           "C15-cookie: 读到 0 cookie 应为 **False**（得到 %r）"
+           % mz.get("stack_canary_indicator"))
+    pc = os.path.join(d, "mitcookie.dll")
+    _make_pe(pc, sections=[(".text", b"\x90" * 32)],
+             load_config=(0xDEADBEEF, 0x70))
+    mc = binfmt.parse(pc, with_gpu=False).mitigations
+    _check(findings, mc.get("stack_canary_indicator") is True,
+           "C15-cookie: 读到非 0 cookie 应为 True（得到 %r）"
+           % mc.get("stack_canary_indicator"))
+    psmall = os.path.join(d, "mitsmall.dll")
+    _make_pe(psmall, sections=[(".text", b"\x90" * 32)],
+             load_config=(0xDEAD, 0x40))
+    rsmall = binfmt.parse(psmall, with_gpu=False)
+    _check(findings, rsmall.mitigations.get("stack_canary_indicator") is None,
+           "C15-cookie: 声明大小够不到 cookie 字段时必须是 None（得到 %r）"
+           % rsmall.mitigations.get("stack_canary_indicator"))
+    _check(findings, any("声明大小" in n for n in rsmall.notes),
+           "C15-cookie: 拒绝越界读时未留 note")
+
+    # ⑤ RELOCS_STRIPPED 与 DYNAMIC_BASE 的矛盾必须**并列陈述**
+    from binfmt.model import BinaryReport
+    fake = BinaryReport(path="x", container="pe")
+    mconf = pe_mod._compute_mitigations(fake, 0x0040,
+                                        pe_mod.COFF_RELOCS_STRIPPED, 0, "x")
+    _check(findings, mconf.get("dynamic_base") is True,
+           "C15-矛盾: 观测到的事实读数不许被抹掉")
+    _check(findings, any("RELOCS_STRIPPED" in x
+                         for x in mconf.get("limitations") or []),
+           "C15-矛盾: RELOCS_STRIPPED 的拉扯未写进 limitations")
+
+    # ⑥ ELF 侧仍是 inferred（**两档并存**）
+    elf = os.path.join(d, "mit.so")
+    _make_elf(elf, machine=62, etype=3, sections=[(".text", b"\x90" * 32)])
+    me = binfmt.parse(elf, with_gpu=False).mitigations
+    _check(findings, me.get("evidence_kind") == "inferred",
+           "C15-档位: ELF 的 evidence_kind=%r（期望 inferred）"
+           % me.get("evidence_kind"))
+
+
 def analyze(tmpdir):
     """跑全部夹具，返回 findings 列表（空 = 通过）。"""
     findings = []
@@ -986,6 +1274,10 @@ def analyze(tmpdir):
     _c13_check_report(findings, rep13, fat_table, fat_data)
     _c13_check_broken_slice(findings, tmpdir)
     _c13_check_gpu_hint(findings, tmpdir)
+
+    # ---- C14/C15（R86-2）：REA 能力移植第二片 ----
+    _c14_check(findings, tmpdir)
+    _c15_check(findings, tmpdir)
 
     return findings
 
@@ -1292,10 +1584,62 @@ def selftest():
         else:
             print("  [selftest] 好样本13 被误伤（坏片真被点名了却没认出来）")
 
+        # 样本21（坏）：**同位数**的两份候选必须**不许**被消歧掉 ——
+        # 一旦实现「凑不够 1 个就硬挑一个」，这条立刻红。
+        _rv = getattr(binfmt, "resolve", None)
+        if _rv is None:
+            print("  [selftest] 坏样本14 未能触发（binfmt.resolve 不在，C14 失去对象）")
+        else:
+            keep, _rej = _rv.disambiguate_by_bits(
+                [("same_a.dll", "rp_a"), ("same_b.dll", "rp_b")], 64)
+            if len(keep) == 2:
+                bad += 1
+            else:
+                print("  [selftest] 坏样本14 未触发（同位数两份被错误地消歧成 %d 份）"
+                      % len(keep))
+
+        # 样本22（好）：位数未知时**同样**不许动候选（两向的另一半）
+        if _rv is not None:
+            keep2, rej2 = _rv.disambiguate_by_bits(
+                [("same_a.dll", "rp_a"), ("same_b.dll", "rp_b")], None)
+            if len(keep2) == 2 and not rej2:
+                good += 1
+            else:
+                print("  [selftest] 好样本14 被误伤（want_bits=None 时动了候选）")
+
+        # 样本23（坏）：`None`（判据构件缺失）不许被伪造成 `False`。
+        # 自证对象与样本2/5 同类：**断言函数本身** —— 合法夹具构造不出违规，
+        # 因为实现自己就会置 None。
+        from binfmt.model import BinaryReport as _BR2
+        _pe = getattr(binfmt, "pe", None)
+        if _pe is None:
+            print("  [selftest] 坏样本15 未能触发（binfmt.pe 不在）")
+        else:
+            _mn = _pe._compute_mitigations(_BR2(path="x", container="pe"),
+                                           None, 0, None, None)
+            if _mn.get("nx_indicator") is None and \
+                    _mn.get("stack_canary_indicator") is None:
+                bad += 1
+            else:
+                print("  [selftest] 坏样本15 未触发（构件缺失被写成了 %r）"
+                      % _mn.get("nx_indicator"))
+
+        # 样本24（好）：读到了、且为否 ⇒ **必须**是 False（不是 None）
+        if _pe is not None:
+            _my = _pe._compute_mitigations(_BR2(path="x", container="pe"),
+                                           0x0000, 0, 0, "cookie=0x0")
+            if _my.get("nx_indicator") is False and \
+                    _my.get("stack_canary_indicator") is False:
+                good += 1
+            else:
+                print("  [selftest] 好样本15 被误伤（读到且为否却给了 %r）"
+                      % _my.get("nx_indicator"))
+
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     # 下界是**棘轮**：样本不许静默缩水。R71 从 8/8 提到 11/10（C13 加了两向各三条），
-    # 提到实测值之后，谁删掉一个样本都会立刻红 —— 而不是「少了一条也没人知道」。
-    return 0 if (bad >= 11 and good >= 10) else 1
+    # R86-2 再提到 13/12（C14/C15 各加两向两条）—— 提到实测值之后，
+    # 谁删掉一个样本都会立刻红，而不是「少了一条也没人知道」。
+    return 0 if (bad >= 13 and good >= 12) else 1
 
 
 # ---------------------------------------------------------------- main
@@ -1334,7 +1678,14 @@ def main(argv):
           "C10(Mach-O 依赖指令七种形态) / C11(LC_SYMTAB 外部符号，内部不得混入) / "
           "C12(库名家族归一 + 缺失依赖两向) + R71 新增 "
           "C13(fat 逐片解析：依赖/符号/段表两片都要读到、同名片去重且点名、"
-          "片内偏移重基、读不懂的片必须被点名、GPU 段名提示不被前缀打瞎) 全部通过；"
+          "片内偏移重基、读不懂的片必须被点名、GPU 段名提示不被前缀打瞎) + "
+          "R86-2 新增 C14(引用解析：候选名两支、depth=0/2 语义、环必须终止、"
+          "skipped≠not_found、not_found 必带 searched、平台默认目录可为空以保证"
+          "确定性、32/64 位孪生按**候选自己的位数**消歧且排除项留在 rejected、"
+          "同位数两份必须 ambiguous) / C15(PE 缓解措施为 observed 档且与 ELF 的 "
+          "inferred 并存、None≠False、PE 无 RELRO/exec-stack 一律置 null、"
+          "LOAD_CONFIG 声明大小不够时**拒绝越界读**、RELOCS_STRIPPED 与 "
+          "DYNAMIC_BASE 的矛盾并列陈述) 全部通过；"
           "判据族 %s）" % ROW_SIGNATURE)
     return 0
 

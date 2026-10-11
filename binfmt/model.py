@@ -67,6 +67,58 @@ ATTR_LIBRARY = "library"
 ATTR_GPU_KERNEL = "gpu_kernel"
 ATTR_MISSING = "missing"
 
+# ---- R86：ELF 静态缓解措施（对标 REA `inspect_binary_layout` 的 mitigations） ----
+# 三条纪律，与 verified/fixture_verified 是**同一条**：
+#   * 整组读数一律标 evidence_kind="inferred" —— 它们是**静态推断**，
+#     不是运行时保护，更不是「这个程序安全」的结论。
+#   * **「没观测到」与「观测到且为否」必须分开**：`None` = 根本没读到判据构件
+#     （例如程序头里没有 PT_GNU_STACK），与 `False` 是两句不同的话。
+#     REA 原文（binary-diagnostics.md）："an absent canary symbol does not
+#     prove every function unprotected."
+#   * 每条读数都带 `basis`（来自哪个构件）与 `limitations`（它证明不了什么），
+#     不许只给一个裸布尔。
+EVIDENCE_INFERRED = "inferred"
+MIT_PIE = "position_independent"
+MIT_NX = "nx_indicator"
+MIT_EXECSTACK = "executable_stack_indicator"
+MIT_CANARY = "stack_canary_indicator"
+MIT_RELRO = "relro"
+RELRO_NONE = "none"
+RELRO_PARTIAL = "partial"
+RELRO_FULL = "full"
+
+# ---- R86-2：PE 侧的缓解措施是**观测值**（observed），不是推断值 ----
+# 与 ELF 的 inferred 是**两档不同的证据**，必须能分辨：
+#   ELF：靠「有没有 PT_GNU_STACK / 有没有 __stack_chk_fail 符号」去**推** ⇒ inferred；
+#   PE ：DllCharacteristics 与 LOAD_CONFIG 是**头部里直接写着**的字段 ⇒ observed。
+# 两档都报，且**不许混** —— 把两者写成同一个词，等于把「读到的事实」和
+# 「由读到的东西推出的话」混为一谈（R83 的定论：口径错了，所有读数一起错）。
+#
+# ⚠ 即便 observed，也仍是**构建期声明**而非运行时保护：
+#   * 没声明 NX_COMPAT **不证明**运行时栈一定可执行（系统级强制可能仍生效）；
+#   * 声明了 DYNAMIC_BASE 也可能被 COFF 的 RELOCS_STRIPPED 抵消。
+#   两条都写进 limitations，不许只给一组漂亮的 yes/no。
+EVIDENCE_OBSERVED = "observed"
+MIT_ASLR = "dynamic_base"                    # DllCharacteristics & 0x0040
+MIT_CFG = "control_flow_guard"               # DllCharacteristics & 0x4000
+MIT_HIGH_ENTROPY_VA = "high_entropy_va"      # DllCharacteristics & 0x0020
+MIT_SEH = "structured_exception_handling"    # NOT (DllCharacteristics & 0x0400)
+MIT_FORCE_INTEGRITY = "force_integrity"      # DllCharacteristics & 0x0080
+MIT_APPCONTAINER = "appcontainer"            # DllCharacteristics & 0x1000
+
+# 程序段类型（只列本模块真的用到的；不解析 PT_LOAD 内容，只登记它的存在与权限）
+PT_LOAD = 1
+PT_INTERP = 3
+PT_GNU_STACK = 0x6474E551
+PT_GNU_RELRO = 0x6474E552
+PT_TYPE_NAMES = {
+    0: "PT_NULL", 1: "PT_LOAD", 2: "PT_DYNAMIC", 3: "PT_INTERP",
+    4: "PT_NOTE", 6: "PT_PHDR", 7: "PT_TLS", 0x6474E550: "PT_GNU_EH_FRAME",
+    PT_GNU_STACK: "PT_GNU_STACK", PT_GNU_RELRO: "PT_GNU_RELRO",
+    0x6474E553: "PT_GNU_PROPERTY",
+}
+PF_X, PF_W, PF_R = 0x1, 0x2, 0x4
+
 
 class Section(object):
     """容器的一个段/节。PE 的 section 与 ELF 的 section 都归一到这个形状。
@@ -109,6 +161,64 @@ class Section(object):
             "file_size": self.file_size,
             "kind": self.kind,
             "gpu_hint": self.gpu_hint,
+        }
+
+
+class Segment(object):
+    """ELF 程序段（PT_*）。R86 新增。
+
+    为什么要有它：此前 `elf.py` 读了 `e_phoff/e_phnum` 却**从未使用** ——
+    于是「这个文件怎么被加载」这件事在报告里是**空白**，而 NX / 可执行栈 /
+    RELRO 三条判据的**唯一观测构件**恰好就是程序头里的 PT_GNU_STACK 与
+    PT_GNU_RELRO。没有段表，缓解措施就只能靠猜 —— 而猜是禁止的。
+
+    只读，字段与 REA `inspect_binary_layout` 的 `segments[]` 对齐（子集）。
+    """
+
+    __slots__ = ("index", "type", "flags", "offset", "vaddr", "filesz",
+                 "memsz", "align")
+
+    def __init__(self, index=0, type="", flags=0, offset=0, vaddr=0,
+                 filesz=0, memsz=0, align=0):
+        object.__setattr__(self, "index", index)
+        object.__setattr__(self, "type", type)
+        object.__setattr__(self, "flags", flags)
+        object.__setattr__(self, "offset", offset)
+        object.__setattr__(self, "vaddr", vaddr)
+        object.__setattr__(self, "filesz", filesz)
+        object.__setattr__(self, "memsz", memsz)
+        object.__setattr__(self, "align", align)
+
+    def __setattr__(self, key, value):
+        raise AttributeError("Segment 是只读对象")
+
+    def __delattr__(self, key):
+        raise AttributeError("Segment 是只读对象")
+
+    @property
+    def perms(self):
+        """rwx 三字符，未置位写 `-`。与 `readelf -l` 的 Flg 列同义。"""
+        return ("r" if self.flags & PF_R else "-") + \
+               ("w" if self.flags & PF_W else "-") + \
+               ("x" if self.flags & PF_X else "-")
+
+    def __repr__(self):
+        return ("Segment(index=%r, type=%r, flags=%#x, offset=%#x, vaddr=%#x, "
+                "filesz=%r, memsz=%r, align=%r)"
+                % (self.index, self.type, self.flags, self.offset, self.vaddr,
+                   self.filesz, self.memsz, self.align))
+
+    def to_dict(self):
+        return {
+            "index": self.index,
+            "type": self.type,
+            "flags": self.flags,
+            "perms": self.perms,
+            "offset": self.offset,
+            "vaddr": self.vaddr,
+            "filesz": self.filesz,
+            "memsz": self.memsz,
+            "align": self.align,
         }
 
 
@@ -236,7 +346,8 @@ class BinaryReport(object):
     def __init__(self, path="", container="", arch="", bits=0, endian="",
                  flavour="", sections=None, symbols=None, dependencies=None,
                  gpu_blobs=None, notes=None, scanned_bytes=0, truncated=False,
-                 verified=True, fixture_verified=True):
+                 verified=True, fixture_verified=True, segments=None,
+                 mitigations=None):
         self.path = path
         self.container = container    # pe / elf / macho
         self.arch = arch              # x86_64 / aarch64 / amdgpu / cuda / unknown
@@ -247,6 +358,11 @@ class BinaryReport(object):
         self.symbols = [] if symbols is None else symbols
         self.dependencies = [] if dependencies is None else dependencies
         self.gpu_blobs = [] if gpu_blobs is None else gpu_blobs
+        # R86：ELF 程序段（空 = 该容器无段表概念，或本文件里没读到）
+        self.segments = [] if segments is None else segments
+        # R86：静态缓解措施读数。`{}` = **未分析**（不是「全都没有」）——
+        # 这两件事必须分开，否则「没看」会被读成「没有保护」。
+        self.mitigations = {} if mitigations is None else mitigations
         # 诚实记账：扫描被截断、字段存疑等
         self.notes = [] if notes is None else notes
         self.scanned_bytes = scanned_bytes
@@ -291,6 +407,8 @@ class BinaryReport(object):
             "symbols": [s.to_dict() for s in self.symbols],
             "dependencies": [d.to_dict() for d in self.dependencies],
             "gpu_blobs": [b.to_dict() for b in self.gpu_blobs],
+            "segments": [s.to_dict() for s in self.segments],
+            "mitigations": dict(self.mitigations),
             "notes": list(self.notes),
             "scanned_bytes": self.scanned_bytes,
             "truncated": self.truncated,

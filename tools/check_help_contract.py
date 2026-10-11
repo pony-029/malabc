@@ -211,7 +211,7 @@ GUARD_CONTRACT = {
         2: "缺输入 / 环境不可用（非 git 仓库 / 无 git / 测试集不在）",
     },
     "tools/check_binfmt_fixtures.py": {
-        0: "契约 C1–C13 全部通过",
+        0: "契约 C1–C15 全部通过",
         1: "发现违规",
         2: "缺输入 / 环境不可用（无法导入 binfmt）",
     },
@@ -268,7 +268,8 @@ GUARD_CONTRACT = {
         2: "缺输入",
     },
     "tools/check_c_frontend_shapes.py": {
-        0: "C 前端函数定义形态六条判据（F1–F6）全绿，且夹具完备性与棘轮全绿",
+        0: "C 前端函数定义形态 + 调用关系有界投影七条判据（F1–F7）全绿，"
+           "且夹具完备性与棘轮全绿",
         1: "有违规（某条判据红 / 棘轮不符 / 夹具被改瘦）",
         2: "缺输入（找不到 matlabc.py / 公开 CLI 跑不起来 / JSON 不可解析）",
     },
@@ -569,12 +570,31 @@ HELP_BYTES = {
 # 等本仓开始打 tag 时，这道门一行都不用改。
 # 漂移超限时的正当做法**不是**放宽这两个数，而是同步更新快照
 # （那是一次显式的、可评审的批准动作 —— 这正是棘轮的意义）。
+#
+# R86-2 的一次合法批准（记账）：`matlabc.py` 新增三个开关
+# （`--lib-resolve` / `--lib-path` / `--lib-max-nodes`）进模块 docstring，
+# **并**顺手修掉一条与行为分叉的边界散文（「也不解析 Makefile/CMakeLists 的
+# 链接意图（-lfoo 只作为候选名提示）」——R86-2 起 `-lfoo` 真的是解析种子了，
+# 那句话当场变成假的）⇒ `--help` 从 52679 → **54935**（3.13 读数；3.10 读
+# 54965，差**仍是** 30 B，落在 ±64 带内）。同一片里 `gui.py` 也长了：
+# 二进制诊断卡片 + 帮助表三行 + 一段说明 ⇒ 2651 → **3979**（两个解释器读数
+# **相同** —— 它是纯 docstring，没有 argparse 的 metavar 差）。同一次提交里
+# 更新本表与下面的 `HELP_CANON_SNAPSHOT`，`HELP_DRIFT_BYTES` 一个字不动 ——
+# 这就是「加功能要更新快照、而不是放宽棘轮」。
+# R86-3 的一次合法批准（记账）：`matlabc.py` 新增四个开关
+# （`--callgraph` / `--callgraph-focus` / `--callgraph-depth` /
+# `--callgraph-max-nodes`）进模块 docstring ⇒ `--help` 从 54935 → **56566**。
+# 这一片的增长**全部**来自帮助正文，产品分析路径的**产物字节一个没动**：
+# `--callgraph` 是**另一条出口**，不往 `--json-level summary` 的载荷里加块
+# （那本账被 `docs/KERNEL_RUN.md` 的 provenance 钉着，加块会把「分析结果没变」
+# 与「帮变长了」两件事混在一个数字里）。同一次提交里更新本表与下面的
+# `HELP_CANON_SNAPSHOT`，`HELP_DRIFT_BYTES` 一个字不动。
 HELP_BYTES_SNAPSHOT = {
-    "matlabc.py": 52679,
+    "matlabc.py": 56566,
     "matlabc_flow.py": 2075,
     "matlabc_ask.py": 919,
     "matlabc_mcp.py": 0,
-    "gui.py": 2651,
+    "gui.py": 3979,
 }
 # R64/C13-9：棘轮的**分辨率必须说得出数**，而且读数必须**可复现**。
 #
@@ -616,12 +636,14 @@ HELP_CANON_COLUMNS = 10000
 # 因此可以用**容差 0** 断言 —— 分辨率 1 字节。
 # 注意 matlabc_mcp.py 也在册：它的 HELP_BYTES 界是 (0, 0)（按设计零输出），
 # 但「内容必须一直是空的」是一条真断言，不该因为「没设体积界」而漏掉。
+# R86-2：`matlabc.py` 43765 → **45630**（+1865）。这一臂与解释器无关 ——
+# 3.10 与 3.13 都读 45630，正是「规范形」这个名字在起作用的反证。
 HELP_CANON_SNAPSHOT = {
-    "matlabc.py": 43765,
+    "matlabc.py": 46929,
     "matlabc_flow.py": 1701,
     "matlabc_ask.py": 756,
     "matlabc_mcp.py": 0,
-    "gui.py": 2290,
+    "gui.py": 3471,
 }
 
 # 真跑示例的墙钟上限。实测这些命令都是 0.2–1.0s 返回（探针 probe_safe_flags），

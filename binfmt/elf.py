@@ -23,8 +23,11 @@ import io
 import struct
 
 from .model import (
-    CONTAINER_ELF, DEP_NEEDED, DEP_RPATH, DEP_RUNPATH, Section, Symbol,
-    BinaryReport, Dependency, SYM_DYNAMIC, SYM_EXPORT,
+    CONTAINER_ELF, DEP_NEEDED, DEP_RPATH, DEP_RUNPATH, Section, Segment,
+    Symbol, BinaryReport, Dependency, SYM_DYNAMIC, SYM_EXPORT, SYM_IMPORT,
+    EVIDENCE_INFERRED, MIT_PIE, MIT_NX, MIT_EXECSTACK, MIT_CANARY, MIT_RELRO,
+    RELRO_NONE, RELRO_PARTIAL, RELRO_FULL, PT_TYPE_NAMES, PT_LOAD, PT_INTERP,
+    PT_GNU_STACK, PT_GNU_RELRO, PF_X, PF_W, PF_R,
 )
 
 MACHINE = {
@@ -52,6 +55,15 @@ PT_DYNAMIC = 2
 
 DT_NULL, DT_NEEDED, DT_SONAME, DT_RPATH, DT_RUNPATH = 0, 1, 14, 15, 29
 DT_STRTAB, DT_SYMTAB, DT_STRSZ = 5, 6, 10
+# R86：RELRO 的「Full」判据 —— 绑定必须**立即**发生才叫 Full RELRO。
+# 两个入口都要看：老的 DT_BIND_NOW，与 DT_FLAGS/DT_FLAGS_1 里的位。
+DT_BIND_NOW, DT_FLAGS = 24, 30
+DT_FLAGS_1 = 0x6FFFFFFB
+DF_BIND_NOW = 0x8
+DF_1_NOW = 0x1
+# 栈保护的**唯一**静态观测构件：符号表里有没有 __stack_chk_fail。
+# ⚠ 反过来不成立：缺这个符号**不能**证明每个函数都没保护（REA 原文）。
+CANARY_SYMBOL = "__stack_chk_fail"
 
 ELFOSABI_CUDA = 51
 ELFOSABI_AMDGPU_HSA = 64
@@ -161,8 +173,16 @@ def parse(path, scan_cap=None):
         secs, shstr = _read_sections(f, e_shoff, e_shnum, e_shentsize, e_shstrndx,
                                      cls, endian, rep)
         rep.sections = secs
-        _read_dynamic(f, secs, cls, endian, rep)
+        dyn_ents = _read_dynamic(f, secs, cls, endian, rep)
+        # R86：程序头。此前 e_phoff/e_phnum 读了却从未使用 —— 于是 NX /
+        # 可执行栈 / RELRO 三条判据的**唯一观测构件**在报告里是空白。
+        rep.segments = _read_phdrs(f, e_phoff, e_phnum, e_phentsize, cls,
+                                   endian, rep)
         _read_dynsym(f, secs, cls, endian, rep)
+        # R86：缓解措施必须在 .dynamic 与 .dynsym 之后算 ——
+        # Full RELRO 要同时看 PT_GNU_RELRO（程序头）与 DT_BIND_NOW（动态段），
+        # canary 要看 .dynsym 里有没有 __stack_chk_fail。
+        rep.mitigations = _compute_mitigations(rep, e_type, e_machine, dyn_ents)
         return rep
     except (OSError, struct.error) as e:
         rep.notes.append("ELF: 解析中断 %s: %s" % (type(e).__name__, e))
@@ -259,7 +279,7 @@ def _read_dynamic(f, secs, cls, endian, rep):
     if dsec is None:
         if any(s.name == ".dynstr" for s in secs):
             rep.notes.append("ELF: 发现 .dynstr 但未定位 .dynamic，跳过依赖解析")
-        return
+        return []
     step = 16 if cls == 2 else 8
     limit = min(dsec.file_size // step if step else 0, MAX_DYNAMIC)
     ents = []
@@ -303,6 +323,123 @@ def _read_dynamic(f, secs, cls, endian, rep):
                 rep.dependencies.append(Dependency(
                     name=nm, kind=DEP_RPATH if tag == DT_RPATH else DEP_RUNPATH,
                     origin=rep.path))
+    return ents
+
+
+def _read_phdrs(f, e_phoff, e_phnum, e_phentsize, cls, endian, rep):
+    """读程序头表（PT_*）。R86 新增。
+
+    只登记**存在性与权限**，不解析段内容 —— 缓解措施需要的恰好就是这些：
+    PT_GNU_STACK 的 PF_X 位决定 NX/可执行栈，PT_GNU_RELRO 的**存在与否**
+    决定 RELRO 档位。
+    """
+    if not e_phoff or not e_phnum:
+        return []
+    if e_phnum > MAX_PHNUM:
+        rep.notes.append("ELF: 程序头数 %d 超上限，截断到 %d" % (e_phnum, MAX_PHNUM))
+        e_phnum = MAX_PHNUM
+    ent = e_phentsize or (56 if cls == 2 else 32)
+    out = []
+    for i in range(e_phnum):
+        f.seek(e_phoff + i * ent)
+        b = f.read(ent)
+        if len(b) < ent:
+            rep.notes.append("ELF: 程序头表在 idx=%d 处被截断" % i)
+            break
+        if cls == 2:
+            p_type, p_flags = struct.unpack_from(endian + "II", b, 0)
+            p_offset, p_vaddr = struct.unpack_from(endian + "QQ", b, 8)
+            p_filesz, p_memsz, p_align = struct.unpack_from(endian + "QQQ", b, 32)
+        else:
+            p_type = struct.unpack_from(endian + "I", b, 0)[0]
+            p_offset, p_vaddr, p_paddr, p_filesz, p_memsz = \
+                struct.unpack_from(endian + "IIIII", b, 4)
+            p_flags, p_align = struct.unpack_from(endian + "II", b, 24)
+        out.append(Segment(index=i,
+                           type=PT_TYPE_NAMES.get(p_type, "PT_%#x" % p_type),
+                           flags=p_flags, offset=p_offset, vaddr=p_vaddr,
+                           filesz=p_filesz, memsz=p_memsz, align=p_align))
+    rep.scanned_bytes += len(out) * ent
+    return out
+
+
+def _compute_mitigations(rep, e_type, e_machine, dyn_ents):
+    """R86：由**已观测到的构件**推出静态缓解措施读数。
+
+    本函数**不做任何启发式猜测** —— 每个值都点名它来自哪个构件（basis），
+    并且每个值都可能是 `None`，含义是「判据构件没读到」，与 `False` 严格分开。
+
+    ⚠ 整组读数是**静态推断**（evidence_kind=inferred），不是运行时保护。
+       ET_DYN 可能是共享库而不是可执行文件；缺 __stack_chk_fail 符号
+       **不能**证明每个函数都没保护（REA binary-diagnostics.md 原文）。
+    """
+    segs = rep.segments
+    stack = [s for s in segs if s.type == "PT_GNU_STACK"]
+    relro_seg = [s for s in segs if s.type == "PT_GNU_RELRO"]
+    basis = {}
+    lim = [
+        "缓解措施是**上游静态推断**，不是运行时保护；ET_DYN 不证明它是可执行文件。",
+        "缺少 %s 符号**不能**证明每个函数都没保护。" % CANARY_SYMBOL,
+    ]
+
+    # ---- PIE / position-independent ----
+    if e_type == 3:       # ET_DYN
+        pie, basis[MIT_PIE] = True, "e_type=ET_DYN"
+    elif e_type == 2:     # ET_EXEC
+        pie, basis[MIT_PIE] = False, "e_type=ET_EXEC"
+    else:
+        pie = None
+        basis[MIT_PIE] = "e_type 既非 ET_EXEC 也非 ET_DYN（无判据）"
+
+    # ---- NX / 可执行栈：只看 PT_GNU_STACK 的 PF_X 位 ----
+    if stack:
+        exec_bit = bool(stack[0].flags & PF_X)
+        nx = not exec_bit
+        basis[MIT_NX] = "PT_GNU_STACK flags=%#x" % stack[0].flags
+        basis[MIT_EXECSTACK] = "PT_GNU_STACK flags=%#x" % stack[0].flags
+    else:
+        nx = None
+        exec_bit = None
+        basis[MIT_NX] = "无 PT_GNU_STACK（判据构件缺失，不等于不保护）"
+        basis[MIT_EXECSTACK] = "无 PT_GNU_STACK"
+        lim.append("无 PT_GNU_STACK：NX 与可执行栈**不可判定**（置 null，不猜）。")
+
+    # ---- RELRO：PT_GNU_RELRO（存在性） × DT_BIND_NOW（立即绑定） ----
+    if not relro_seg:
+        relro = RELRO_NONE
+        basis[MIT_RELRO] = "无 PT_GNU_RELRO"
+    else:
+        now = False
+        for tag, val in dyn_ents:
+            # ⚠ DT_BIND_NOW 的 d_val 在真实 ELF 里是 0 —— **存在即生效**，
+            # 不能写成 `and val`（那样任何真二进制都判不出 Full RELRO）。
+            if tag == DT_BIND_NOW:
+                now = True
+            elif tag == DT_FLAGS and (val & DF_BIND_NOW):
+                now = True
+            elif tag == DT_FLAGS_1 and (val & DF_1_NOW):
+                now = True
+        relro = RELRO_FULL if now else RELRO_PARTIAL
+        basis[MIT_RELRO] = ("PT_GNU_RELRO + 立即绑定" if now
+                            else "PT_GNU_RELRO（无 DT_BIND_NOW ⇒ 惰性绑定）")
+        if not now:
+            lim.append("RELRO=partial：重定位在启动后才冻结，GOT 在窗口期内仍可写。")
+
+    # ---- Stack canary：.dynsym 里有没有 __stack_chk_fail ----
+    canary = any(s.name == CANARY_SYMBOL for s in rep.symbols)
+    basis[MIT_CANARY] = ("符号表含 %s" % CANARY_SYMBOL if canary
+                         else "符号表**未见** %s" % CANARY_SYMBOL)
+
+    return {
+        "evidence_kind": EVIDENCE_INFERRED,
+        MIT_PIE: pie,
+        MIT_NX: nx,
+        MIT_EXECSTACK: exec_bit,
+        MIT_CANARY: canary,
+        MIT_RELRO: relro,
+        "basis": basis,
+        "limitations": lim,
+    }
 
 
 def _vaddr_to_off(secs, vaddr):

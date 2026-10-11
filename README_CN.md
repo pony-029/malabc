@@ -176,8 +176,10 @@ python matlabc.py --binary a.dll,b.so --binary-json -
   绝不静默给 0 个 kernel。
 - **截断一定可见。** `--binfmt-scan-cap`（默认 64 MiB）限制扫描量；一旦截断，报告打印
   `[TRUNCATED]`。
-- **运行期绑定不在范围内。** 不追踪 `dlopen` / `LoadLibrary` / `dlsym` / `LD_PRELOAD`，
-  也不解析 `Makefile` / `CMakeLists.txt` 的链接意图（`-lfoo` 只作为候选名提示）。
+- **运行期绑定不在范围内。** 不追踪 `dlopen` / `LoadLibrary` / `dlsym` / `LD_PRELOAD`。
+  构建脚本的链接意图**只按字面量读**：`-lfoo` 是 `--lib-resolve` 的解析**种子**
+  （名字 → 磁盘文件），不做变量展开、也不据此推断运行期加载顺序 —— 含变量的 `-l$(X)`
+  会被记成一条明确的 note，绝不猜。
   要看运行期谁加载了谁，请用外部装置：`ltrace` / `strace -e openat` / `LD_DEBUG=bindings`
   —— 它们是运行期装置，静态分析原理上给不出这个答案。
 
@@ -217,6 +219,70 @@ python matlabc.py myproj/ --binary-attach libblas.so --json out.json
 名字仍然落在 `missing` 时，它还会再走一步：读工程里的 `Makefile` / `CMakeLists.txt`，
 把其中**字面量**的链接意图列出来（`-lblas` → 候选 `libblas.so`，`find_package(BLAS)` 也算线索），
 让你看到**下一步该把哪个库传进来**。含变量的 `-l$(X)` 只会被记成一条明确的 note，绝不猜。
+
+#### 从「库名」到磁盘上的「文件」：`--lib-resolve`
+
+`--binary-attach` 仍然要**你**把文件交上来。`--lib-resolve` 去掉的就是这最后一道手工步骤：
+名字本来就在你的工程里 —— `Makefile` 的 `-lfoo`、`CMakeLists.txt` 的 `target_link_libraries`、
+ELF 的 `DT_NEEDED`、PE 的导入表 —— 它把这些名字解析到文件系统上，再沿依赖链逐层往下走。
+
+```bash
+# 分析 myproj，把它提到的每个库名都解析出来，并顺依赖往下走 2 层
+python matlabc.py myproj/ --lib-resolve 2 --lib-path /opt/sdk/lib --json out.json
+```
+
+每一条引用都恰好落在三种状态之一，而且**没有一种是猜的**：
+
+| 状态 | 含义 | 报告里带着什么 |
+| --- | --- | --- |
+| `resolved` | 精确命中唯一一个文件 | 路径，以及是哪条匹配规则命中的（`exact` / `exact_ci` / `family` / `path`） |
+| `ambiguous` | 同名文件有多个 | **全部**候选 + 一份 `rejected` 列表 —— 32/64 位孪生**只**按**候选自己**的位数排除，被排除的那份仍可复述 |
+| `not_found` | 一个都没命中 | **真的搜过的那些目录** —— 绝不是一个光秃秃的「没找到」 |
+
+**有上限，并且对「有上限」这件事说实话。** `--lib-resolve` 最多下钻 N 层，`--lib-max-nodes`
+（默认 64）限制一次解析多少个文件；撞上限的节点状态是 `skipped`，与 `not_found` **严格区分**
+—— 「我没看」不等于「我找不到」。依赖成环会终止，每个文件只解析一次。`--lib-path` 是把目录
+**追加**在平台默认目录**之前**，不是替换；读不动的目录会自己说出来。
+
+**两档证据并存，绝不合并。** ELF 的缓解措施读数（PIE / NX / canary / RELRO）是 `inferred`
+—— 由构件的有无**推**出；PE 的（ASLR / CFG / NX / SEH / …）是 `observed`，直接从头部字段读。
+`None` 表示**判据构件缺失**，`False` 表示**观测到且为否**；RELRO 与 exec-stack 在 PE 上恒为
+`null`，因为那两个概念在 PE 上不存在；而声明的结构大小够不到 `SecurityCookie` 的 `LOAD_CONFIG`
+一律**拒绝越界读**，而不是硬读出来。
+
+#### 谁调用谁：`--callgraph`
+
+调用边一直在算 —— 光 Linux 内核整树就有 **7,065,831** 条。但 `--json-level summary` 的载荷
+**结构上不含 `edges` 数组**（只有一个计数），而全量数组在内核规模下是 GB 级。于是**此前没有
+任何产物**能打开来回答「谁调用谁」。
+
+`--callgraph` 就是那个产物，而且**在构造上有界**：
+
+```bash
+# 全图形状：度数排行、递归环、跨文件 / 跨目录计数
+python matlabc.py linux/ --lang c --callgraph cg.json
+
+# 钻进某个函数：向外两层，最多 50 个节点
+python matlabc.py linux/ --lang c --callgraph cg.dot \
+       --callgraph-focus __schedule --callgraph-depth 2 --callgraph-max-nodes 50
+```
+
+| 块 | 回答什么 |
+| --- | --- |
+| `fan_in_top` / `fan_out_top` | 枢纽函数 —— **被调用最多的是谁**（改动会波及什么） |
+| `cycles` | **名字级**强连通分量，也就是互为递归 |
+| `cross_file` / `cross_dir` | 内部 / 跨文件 / **同名多定义（不猜）** / 无定义 |
+| `focus_subgraph` | 某个函数的 BFS 邻域，逐层给出 |
+| `truncated` | `*_total` 与 `*_shown` 并列 —— **「我没展开」不等于「没有关系」** |
+
+`.json` 是结构化形态；`.dot` 与 `.mmd` 渲染焦点子图。扩展名不认识时**直接失败**，
+绝不悄悄退回 JSON。
+
+**三条口径，写出来而不是让人猜。** 节点身份是**被调函数的名字**（`identity: "callee-name"`），
+不是定义落点 —— 跨文件同名（C 里最常见的 `static` 重名）会合并成一个节点，所以 `cycles`
+**可能含假阳性**。未解析调用**不在图里**（它们没有 callee 节点），并列报出计数，因为
+「没解析出来」不是「没有关系」。上限永远被上报：焦点 BFS 撞到节点上限会置
+`truncated.hit_node_cap`。
 
 ### 静态检查规则
 
@@ -301,10 +367,12 @@ malabc/
 │  └─ __init__.py      #   对外接口 + IR_LANG_OWNERS（哪种语言归谁）
 ├─ binfmt/             # 二进制与 GPU 容器分析（零依赖）
 │  ├─ model.py         #   统一 IR：Section / Symbol / Dependency / GpuBlob / BinaryReport
+│  │                   #   + Segment（权限）与静态缓解措施 —— None ≠ False
 │  ├─ pe.py  elf.py    #   PE32+ 与 ELF64/32 流式解析（含 CUDA/AMDGPU 判别）
 │  ├─ macho.py         #   Mach-O（⚠ 已实现但未经实测 —— 开发机无样本）
 │  ├─ gpu.py           #   CUDA fatbin/cubin · HSA code object · SPIR-V entry point
 │  ├─ attribute.py     #   归因：未解析名字 → library / gpu_kernel / missing
+│  ├─ resolve.py       #   库名 → 磁盘文件 → 依赖逐层下钻（R86-2）
 │  ├─ buildsys.py      #   Makefile / CMakeLists.txt 链接意图提示
 │  └─ report.py        #   文本报告（绝不隐藏负面状态）
 ├─ tools/              # 自验证静态护栏（见「自验证质量门」一节）
@@ -535,7 +603,7 @@ python tools/check_all.py        # 跑完 tools/check_*.py 全部护栏 + 各自
 | `check_doc_flags.py` | `NO_HELP_SCRIPTS` — 文档**或帮助正文**里宣传了一个**其实不存在**的命令行开关（真发生过：README 写过 `--check tainted_sink`，而 argparse 会以**歧义前缀**拒绝它） |
 | `check_operator_impl.py` | `_UNIMPLEMENTED_KINDS` — 「幻影算子」（出现在算子目录里、却没有任何代码路径会产出）、元表与未实现表自相矛盾，以及**「不做」这件事没写进 `--help`** |
 | `check_patch_ops.py` | `G0–G3` — 会**覆盖**目标行（而不是插在其前）的补丁算子 —— 那等于静默删源码 |
-| `check_binfmt_fixtures.py` | `C1–C13` — 二进制 / GPU 解析器回归 —— 合成 PE/ELF/Mach-O 夹具 + 契约断言 C1–C13。**R68**：一个动态库「我依赖谁」的三种机制现在都读得出来 —— ELF 的 `DT_NEEDED`、PE 的导入表、Mach-O 的 `LC_LOAD_DYLIB`（含 weak/reexport/upward/lazy）+ `LC_ID_DYLIB` + `LC_RPATH` + `LC_LOAD_DYLINKER`（C10）；Mach-O 的 `LC_SYMTAB` 外部符号读入，且内部 / 调试符号严格不混进导出表（C11）；库名**家族**归一，让 `libfoo.so.1`、`libfoo.so.1.2.3`、`libfoo.1.dylib` 算同一个库，而 rpath/runpath 绝不会被当成「你还得加进来的库」（C12）。**R68 还顺手量出一个缺陷**：那个归一函数的 `.framework` 支路**不可达** —— 取 basename 发生在判 `.framework/` **之前**，于是 `@rpath/Foo.framework/Versions/A/Foo` 返回 `foo`，而函数自己的文档字符串写的是 `foo.framework`；顺序已修正，三种 framework 写法由 C12 的夹具钉住。**R71**：`fat`（universal）Mach-O 现在**逐片**解析 —— 在这之前 fat 只列出切片清单，于是「这个 universal dylib 依赖谁」的答案**恒为空**。依赖、导出符号、段表现在都从**每一片**读（判据用「只在一片里出现的名字」当证人，证明两片都读了），同名片**去重但保留切片下标**，片内偏移**重基**成容器绝对偏移，读不懂的片会被**点名**而不是静默丢掉，`slice[i]:` 段名前缀也不再打瞎 GPU 段名提示表（C13） |
+| `check_binfmt_fixtures.py` | `C1–C15` — 二进制 / GPU 解析器回归 —— 合成 PE/ELF/Mach-O 夹具 + 契约断言 C1–C15。**R68**：一个动态库「我依赖谁」的三种机制现在都读得出来 —— ELF 的 `DT_NEEDED`、PE 的导入表、Mach-O 的 `LC_LOAD_DYLIB`（含 weak/reexport/upward/lazy）+ `LC_ID_DYLIB` + `LC_RPATH` + `LC_LOAD_DYLINKER`（C10）；Mach-O 的 `LC_SYMTAB` 外部符号读入，且内部 / 调试符号严格不混进导出表（C11）；库名**家族**归一，让 `libfoo.so.1`、`libfoo.so.1.2.3`、`libfoo.1.dylib` 算同一个库，而 rpath/runpath 绝不会被当成「你还得加进来的库」（C12）。**R68 还顺手量出一个缺陷**：那个归一函数的 `.framework` 支路**不可达** —— 取 basename 发生在判 `.framework/` **之前**，于是 `@rpath/Foo.framework/Versions/A/Foo` 返回 `foo`，而函数自己的文档字符串写的是 `foo.framework`；顺序已修正，三种 framework 写法由 C12 的夹具钉住。**R86-2**：「代码里提到的**名字**」与「磁盘上的**文件**」之间那一步，由 `binfmt/resolve.py` 补上 —— 引用（构建脚本的 `-lfoo` 字面量、`DT_NEEDED`、PE 导入表、`LC_LOAD_DYLIB`）先在搜索目录里解析成文件，再沿依赖逐层下钻。三态，不猜：`resolved`（恰好一个文件）/ `ambiguous`（同名不同文件 —— 全部列出；32/64 位孪生只能用**候选自己**的位数分开，被排除的那份留在 `rejected` 里）/ `not_found`（**必带**实际搜过的目录清单）。有界且诚实：深度 / 节点上限触发的是 `skipped`，与 `not_found` **严格区分**；依赖环必须终止，且每个文件只解析一次。PE 侧缓解措施现为 `observed`（来自头部字段），ELF 侧仍为 `inferred` —— **两档并存**；`None`（判据构件缺失）与 `False`（观测到且为否）严格分开；不属于 PE 的 RELRO / exec-stack 一律置 `null`；`LOAD_CONFIG` 声明大小够不到 `SecurityCookie` 时**拒绝越界读**（C14/C15） —— 在这之前 fat 只列出切片清单，于是「这个 universal dylib 依赖谁」的答案**恒为空**。依赖、导出符号、段表现在都从**每一片**读（判据用「只在一片里出现的名字」当证人，证明两片都读了），同名片**去重但保留切片下标**，片内偏移**重基**成容器绝对偏移，读不懂的片会被**点名**而不是静默丢掉，`slice[i]:` 段名前缀也不再打瞎 GPU 段名提示表（C13） |
 | `check_py36_clean.py` | `--check-py36` — 本仓违背**自己**的 Python 3.6.5 承诺（已经发生过：`list[str]` 与 `from __future__ import annotations` 都曾提交进来） |
 | `check_subprocess_hygiene.py` | `S1–S5` — 任何「捕获输出却继承 stdin」或「可能永远挂住」的子进程调用 |
 | `check_help_contract.py` | `B0–B5` — 代码里有、`--help` 里没有的退出码（或反之）；帮助丢了用法示例 / 图示 / 退出码段；**示例命令其实跑不起来**；帮助**悄悄缩水或臃肿**（绝对界 **+** 对已批准快照的 **±64 B** 漂移带 **+** 对 `--help` **规范形**的**逐字节**比对 —— 规范形与解释器、终端宽度都无关，分辨率 **1 字节**）；`ci-examples/` 模板宣称的退出码；以及**散文里陈旧的「N 道护栏」数字**。**R70**：`GUARD_CONTRACT` 里每条护栏的 `rc=0` 描述**必须逐字含**它自己声明的 `ROW_SIGNATURE` —— 这段描述此前是**只写不读**的散文，已悄悄落后两轮（写着 `C1–C6` 而**当时**的事实是 `C1–C12`）。 **R72**：同一个 `ROW_SIGNATURE` 还必须等于这道门**实际发出**的判据前缀（五条腿：无隐形判据 / 无幽灵声明 / 豁免表两向 / ASCII 树 token 对账 / 树必须列全每道已登记护栏）。**R73**：每道门还要声明它**越出签名的**那些前缀（`ROW_EXTRA`），且每个判据前缀**只能有一个主人** —— 被两道门同时声明的前缀有歧义，必须连同理由登记进 `PREFIX_OWNERSHIP_SHARED`(今天 **14 个** —— 每一条都在 `PREFIX_OWNERSHIP_RENAME` 里写着**具体去向**：哪道门会搬、搬到哪个**当前空闲**且不等于自己那一族的族；改名方必须多到只剩 <= 1 个主人；另有棘轮 `PREFIX_OWNERSHIP_MAX`（`<= 17`，R73 冻结）保证这个数只减不增。**R74** 已经**真的**付清一族：`check_help_contract.py` 的 CI 退出码判据由 `C0–C3` 改名为 `CI0–CI3` —— 那本来就是它们的意思（`CI_PY_EXIT_CONTRACT` / `CI_SH_EXIT_CONTRACT`），于是 `check_binfmt_fixtures.py` 成为 `C` 的唯一主人；登记表 17 → 14)。 |
@@ -543,7 +611,7 @@ python tools/check_all.py        # 跑完 tools/check_*.py 全部护栏 + 各自
 | `check_import_graph.py` | `G1–G7` — **import 期成环**。`renderers/*` 原先在各文件**底部** `from matlabc import ...` 借用符号，而 `matlabc.py` 也在自己底部再导出 `renderers.*` —— 这是**真的** import 期环，只靠一份「被借用的名字必须已经定义在再导出点之前」的**隐式时序契约**才跑得起来，而那份契约没有任何对手方，测试、`git status`、`git diff` 都看不见它。R52 把借用搬到惰性代理（`renderers/_late.py`），import 期图于是无环；这道门不让它长回来，并要求剩余的惰性环与每一条「指向本仓模块的动态 import」都**登记 + 两向核对**（未登记 → 红；陈旧登记 → 也红）。**G7** 把同一条纪律推到这条通道的**内容侧**：`renderers/_late.py::BORROWED` 是借用清单的静态单一事实源 —— 用了 `_mL.X` 却没登记 → 红；登记了却再没有使用点、或登记了 `matlabc.py` 模块层里没有的名字 → 也红 |
 | `check_flow_diagrams.py` | `D1–D12` — README 里嵌的图、`flow/diagrams/` 里的文件、`candidate*.json` 里的声明、交互产物与 `flow/FLOW_INDEX.json` 索引 —— **六条来源两两对齐**（D1–D12，每一对都双向）：裂图、没人引用的旧图、只补了英文没补中文、以及 SVG 自身形态不成立（尺寸/字体/双主题/含外链）都必须红 |
 | `check_boundary_reverse.py` | `V1–V6` — 「诚实的边界」里那些**书面承诺还成不成立**。R51 只核对「这句话还在不在」，这台门给每条边界接上能说「不」的判据（V1–V6）：未认领 / 又认领又豁免（歧义）/ 豁免理由过短 / 认领的 head 已成陈迹 / 只有「必须不出现」的空断言 / 棘轮被改动而不改常量，都要红。**R56**：V1 的准入条件从「含 6 个否定标记词」放宽为「**每一条** bullet」—— 旧口径把 `* Mach-O：`（一句状态声明，一个标记词都没有）**整条跳过**了，而它的行为对手方其实一直在 `check_binfmt_fixtures.py` 的 C8/C9 上 |
-| `check_c_frontend_shapes.py` | `F1–F6` — C 前端的**函数定义形态**丢掉一个已经修过一次的 case。R49 把行锚定正则 `_RE_C_FUNC` 换成词法 + 括号配平扫描，并在 glibc 上证过（漏识 15,471 → 4，且全在 `#if 0` 死区），但那份证据**只活在仓库外**（`_r49/`），而产品的 `_scan_c_definitions_selftest()` 在**产品里零调用点** —— 于是 `check_all.py` 跑完全部护栏，仍然没有任何东西能对 C 前端形态说「不」。本门用**公开 CLI** 跑三个合成夹具，钉住六条**互不重叠**的判据：P1/P2/P3/P4 四种书写形态（F1）、指针返回类型紧贴函数名（F2）、参数 / 返回类型值域（F3）、**字符串字面量**里的花括号不得干扰函数体边界（F4）、声明起点行号（F5），以及「不假阳」与帮助正文已披露的「不识别 K&R / 返回函数指针」边界（F6 带正向半边，所以不会是空断言）。夹具完备性（`R2`）与五个棘轮（`R1`）挡住「判据悄悄缩水」 |
+| `check_c_frontend_shapes.py` | `F1–F7` — C 前端的**函数定义形态**丢掉一个已经修过一次的 case。R49 把行锚定正则 `_RE_C_FUNC` 换成词法 + 括号配平扫描，并在 glibc 上证过（漏识 15,471 → 4，且全在 `#if 0` 死区），但那份证据**只活在仓库外**（`_r49/`），而产品的 `_scan_c_definitions_selftest()` 在**产品里零调用点** —— 于是 `check_all.py` 跑完全部护栏，仍然没有任何东西能对 C 前端形态说「不」。本门用**公开 CLI** 跑三个合成夹具，钉住六条**互不重叠**的判据：P1/P2/P3/P4 四种书写形态（F1）、指针返回类型紧贴函数名（F2）、参数 / 返回类型值域（F3）、**字符串字面量**里的花括号不得干扰函数体边界（F4）、声明起点行号（F5），以及「不假阳」与帮助正文已披露的「不识别 K&R / 返回函数指针」边界（F6 带正向半边，所以不会是空断言）。夹具完备性（`R2`）与五个棘轮（`R1`）挡住「判据悄悄缩水」。**R86-3** 新增 `F7` —— **调用关系的有界投影**（`--callgraph`）：两份产物必须对账（`call_relations.edges_total` == `--json` 载荷里 `edges` 数组的长度）、有环夹具必须报出环而**无环夹具必须保持空**、节点上限必须诚实（`truncated.hit_node_cap`，且 `fan_in_shown` 必须等于实际给出的条数）、深度开关必须真的改变节点集合、未知扩展名必须**非零退出且不静默降级成 JSON**，以及节点身份口径（`callee-name`）与「同名跨文件会合并 ⇒ 环可能含假阳性」这条限制都必须写成字面量。内核整树有 7,065,831 条调用边，而 `--json-level summary` 的载荷**结构上不含** `edges` —— 没有有界投影，就**没有任何产物**能让「谁调用谁」可见 |
 | `check_py_js_frontend_shapes.py` | `G1–G7 (py/js)` — Python / JS 前端丢掉一个已经处理过一次的定义形态。独立装置（`_r66/probe_r66a_forms.py`）实测：Python 的 **8** 个真实形态里**漏 4 个**（`def one(): return 1`、`async def`、`-> bool` 返回注解、参数表跨行），JS 的 **10** 个里**漏 8 个**（`async function`、`export function`、`export default function`、`function*`、三种箭头）—— 同一台装置量 **C** 前端是 **0 漏**。第二台装置（`_r66/probe_r66b_domain.py`）量出形参是用 `\(([^)]*)\)` 取的，而它**不能含 `)`** —— 默认值里的嵌套括号（`x=(1, 2)` / `b = g(1, 2)`）会把参数截断、严重时整个定义都认不出来。R66 已把两处修掉（同装置复量：Python 0/8、JS 1/10、值域 0/8、假阳 0/7；剩的那 1 个是**有意披露**的对象方法简写）。本门用**公开 CLI** 跑四个合成夹具，钉住七条互不重叠的判据：Python 四形态（G1）、JS 七形态（G2）、形参值域含注解剥离与嵌套括号（G3）、不假阳（G4）、已披露的「不识别对象方法简写 / 匿名 default」边界**及其正向半边**（G5）、声明起点行号（G6）、不**过度**识别（三引号字符串 / 块注释 / 模板串里独占一行的定义必须不被认出，G7）。夹具完备性（`R2`）与棘轮（`R1`）挡住「判据悄悄缩水」 |
 | `check_readme_parity.py` | `P1/P2/P4/P5` — 中英 README 的结构分叉 —— 小节数，以及逐节的表行 / 代码块 / mermaid 图数。它**故意不比对行数**，因为中文比英文紧凑。**P4（R61）** 把对手方从「另一侧文件」换成**事实**：每一侧 README 的「质量门表」都必须逐行列出 `tools/check_*.py` 里真实存在的脚本 —— 漏列 / 多列 / 重复行 / 表后紧跟悬空续行，都要红。光靠对等门**永远看不见**那个缺陷：两侧**同时**少了一行，逐节计数当然还相等 **P5（R62）**再把对手方换成「**那道门自己**」：每道护栏在源码里声明 `ROW_SIGNATURE`（本门自己的判据族，或只有它在用的机制名），并把它打进自己的成功行；两侧 README 的对应表行必须逐字含它 —— 把两行的描述整段对调，行的**集合**并没有变，所以光靠 P4 看不见。 |
 | `check_legal_parity.py` | `L1–L7` — 把「双轨许可」的隐形腐烂接上对手方。R69 把许可从「MIT」改成「**代码 MIT + 名称与品牌保留**」，而这个安排有三条其他任何门都看不见的腐烂方式：① MIT 正文被「顺手润色」—— GitHub 的 licensee 靠**正文**识别许可，一句改写就能让那枚 `license-MIT` 徽章变成假话，而此前**没有任何现有门读过 LICENSE 的正文**；② `LICENSE` 与 `LICENSE_CN` 只改了一侧的版权人，两份描述**同一份**授权的文件互相矛盾，而两份都还在、rc 依然是 0；③ README 的版本徽章陈旧 —— **R69 实测就是这个**：两侧 README 写着 `1.16.71`，而 `matlabc.py` 的 `VERSION` 已经是 `1.16.72`，此前完全无人管。L1 把 MIT 正文逐字保留（双轨的前提：**代码侧**必须仍是 MIT）；L2 让版权人在两份许可文件里成为单一事实源；L3 要求「侵权必究」不仅写进许可正文，还要在**每一个读者入口**（两侧 README、CONTRIBUTING）可见；L4 要求两侧 README 的徽章集合逐条相等，且 `license` 徽章仍是 `MIT`；L5 把 `version` 徽章钉在 `VERSION` 常量上；L6 保持 `LICENSE` 与 `LICENSE_CN` 的编号小节相等；L7 要求双轨在 README 的**许可证节内部**可见。为什么重要：本项目的专属说明刻意放在 MIT 授权**之后**的 *附录*里，正是为了让授权正文一字不动 —— 这个承诺在本门出现之前没有任何对手方 |

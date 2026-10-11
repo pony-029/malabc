@@ -20,7 +20,7 @@
   ② 公开 CLI（`--lang c --json`）才是用户真正看到的那一面：内部函数对了、
      组装错了（行号算错 / body_end 没落进 JSON），一样是缺陷。
 
-判据（F1–F6；六条判据的**管辖范围互不重叠**，每条各有自己的突变体作独立证人）：
+判据（F1–F7；七条判据的**管辖范围互不重叠**，每条各有自己的突变体作独立证人）：
   F1 四形态全覆盖：`shapes.c` 里 P1 同行 / P2 Allman（花括号换行）/
      P3 返回类型独占一行（GNU）/ P4 参数表跨行 四个定义必须**全部被认出**。
      删掉任一种形态的支持（退回 R49 之前的行锚定行为）⇒ 红。
@@ -44,6 +44,24 @@
      K&R 老式定义（`kr_old`）与返回函数指针（`sig`）。
      只写「必须不出现」的判据在「产品什么都不产出」时也成立 —— 那是**空断言**；
      这里的正向半边就是它的对手方。
+  F7 调用关系的**有界投影**（`--callgraph` 系列；R86-3）：F1–F6 管的是「函数长什么样」，
+     这一条管的是「函数之间什么关系」。六个半边，各有自己的突变体：
+       F7a **两本账对账**：同一份产物里 `call_relations.edges_total` 必须==
+           `--json` 载荷里 `edges` 的长度。两个独立容器数同一件事，对不上就是
+           其中一本算错了（口径类缺陷：两边一起错时会永远自洽，所以必须**并列**）。
+       F7b **环，两向**：`cg_cyc.c` 里 `hub ⇄ leaf` 必须被报成 1 个 size=2 的环；
+           `cg_acy.c` 必须报 `cycles == []` 且 `cycles_computed` 为真
+           （只断言「有环」会让「永远报空」也绿）。
+       F7c **有界且诚恳**：`--callgraph-max-nodes 2` ⇒ 节点恰 2 个且
+           `hit_node_cap` 为真；默认大上限 ⇒ 为假。且 `truncated.fan_in_shown`
+           必须 == 实际给出的 `fan_in_top` 条数（数字与实物对账，不许说谎）。
+       F7d **深度真的起作用**：`--callgraph-depth 1` 与 `2` 的节点集合必须不同
+           （否则那个开关是个摆设，而摆设型开关没有任何东西会告诉你它是摆设）。
+       F7e **未知扩展名不许静默降级**：`--callgraph x.txt` 必须**非零退出**，
+           且**不得**产出该文件（静默改成 JSON 就是「没听懂却假装听懂」）。
+       F7f **口径写成字面量**：`identity == "callee-name"`，`limitations` 至少 3 条
+           且非空，其中必须有「同名合并 ⇒ 假阳性」这一条 —— 节点身份是**名字**不是
+           **定义落点**，这是本投影最容易被人误读的地方。
 
 为什么 `neg.c` 的「已披露边界」不单开一条判据：它与「不假阳」在实现上是**同一个
   集合比较**（`neg.c` 的名字集合必须恰为 `{real_fn}`）。硬拆两条会让同一个突变体
@@ -69,7 +87,7 @@
               └──── 手写期望 WANT（独立于产品）────────┘
 
 退出码：
-    0 = F1–F6 全绿，且棘轮与夹具完备性全绿
+    0 = F1–F7 全绿，且棘轮与夹具完备性全绿
     1 = 有违规（某条判据红 / 棘轮不符 / 夹具被改瘦）
     2 = 缺输入（找不到 matlabc.py / 公开 CLI 跑不起来 / JSON 不可解析）
 
@@ -92,7 +110,7 @@ import tempfile
 #   ① 本门的成功行（下面 main() 打印的那一行）；
 #   ② README.md / README_CN.md 里本门那一行。
 # 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
-ROW_SIGNATURE = "F1–F6"
+ROW_SIGNATURE = "F1–F7"
 
 # H3（R73）：越出签名族、但仍由本门发出的判据前缀。
 ROW_EXTRA = "R1,R2"
@@ -155,6 +173,32 @@ FIXTURES = (("shapes.c", SHAPES_C),
             ("sbraces.c", SBRACES_C),
             ("neg.c", NEG_C))
 
+# ---------------------------------------------------------------------------
+# F7（R86-3）夹具：调用关系。**独立于 F1–F6 那一组** ——
+# 刻意不复用 `FIXTURES`，因为 `EXPECTED_REAL_FUNCS` / `EXPECTED_FIXTURES` 是
+# 钉死的棘轮：把调用关系样本混进同一批，会顺手把那两个数字改掉，于是
+# 「F7 改动」与「F1–F6 覆盖缩水」在读数上分不开。两组各自跑、各自计数。
+# ---------------------------------------------------------------------------
+CG_CYC_C = (
+    "static void helper(void) { }\n"        # 被 hub 调，自身不调
+    "void leaf(void);\n"
+    "void hub(void) { helper(); leaf(); }\n"
+    "void leaf(void) { hub(); }\n"          # hub ⇄ leaf：唯一的 size=2 环
+    "void top(void) { hub(); hub(); }\n"    # 扇入最高 = hub（3 次）
+    "void side(void) { top(); }\n"          # 给 depth=2 提供第二层
+)
+
+CG_ACY_C = (
+    "void bottom(void) { }\n"
+    "void mid(void) { bottom(); }\n"
+    "void top2(void) { mid(); }\n"          # 一条 3 级链，**无环**
+)
+
+CG_FIXTURES = (("cg_cyc.c", CG_CYC_C), ("cg_acy.c", CG_ACY_C))
+
+# F7b 的期望环（手写，独立于产品）：成员集合必须恰是这两个
+CG_WANT_CYCLE = ("hub", "leaf")
+
 # 手写期望 —— **独立于产品**（不是跑产品得到的结果），也不来自任何 tools/ 装置。
 # 值 = (ret, params, line, body_start, body_end)
 WANT = {
@@ -189,14 +233,16 @@ CRITERIA = (
     ("F4", "函数体边界（字符串字面量里的花括号不得干扰 body_end）"),
     ("F5", "声明起点行号逐字段相等"),
     ("F6", "不假阳（控制语句 / 调用 / 宏 / 初值），且已披露的 K&R / 返回函数指针保持不识别"),
+    ("F7", "调用关系的有界投影：两本账对账 / 环两向 / 有界且诚恳 / 深度有效 / 未知格式不降级 / 口径字面量"),
 )
 CRITERIA_IDS = tuple(c[0] for c in CRITERIA)
 
 # ---------------------------------------------------------------------------
 # 棘轮：全部是「事实的读数」，不是可调参数。覆盖不许静默缩水。
 # ---------------------------------------------------------------------------
-EXPECTED_CRITERIA = 6
+EXPECTED_CRITERIA = 7
 EXPECTED_FIXTURES = 3
+EXPECTED_CG_FIXTURES = 2
 EXPECTED_SHAPE_NAMES = 4
 EXPECTED_BOUNDARY_TRAPS = 2
 EXPECTED_REAL_FUNCS = 8          # 5（shapes）+ 2（sbraces）+ 1（neg）
@@ -280,17 +326,23 @@ def judge(per):
     return probs
 
 
-def judge_fixtures(fixtures=None, neg_c=None, shapes_c=None, sbraces_c=None):
+def judge_fixtures(fixtures=None, neg_c=None, shapes_c=None, sbraces_c=None,
+                   cg_cyc=None, cg_acy=None):
     """夹具完备性：每条陷阱必须在夹具源码里**逐字**出现。
 
     为什么这是必需的一环（R56 的自伤教训：**口径变一次，样本完备性就得跟着重算**）：
     判据是从夹具里读证据的。若夹具里那句 `if (x) { }` 被删掉，「不得出现 `if`」这
     条判据就退化成**空断言** —— 它永远绿，而且**没有任何东西会告诉你**。
+
+    `cg_cyc` / `cg_acy` 是 R86-3 加的**可注入**参数：F7 的夹具完备性也要能被
+    两向自证（传一份被抽掉环边的夹具，必须报红），否则它自己就是空断言。
     """
     fixtures = FIXTURES if fixtures is None else fixtures
     neg = NEG_C if neg_c is None else neg_c
     shp = SHAPES_C if shapes_c is None else shapes_c
     sbr = SBRACES_C if sbraces_c is None else sbraces_c
+    cgy = CG_CYC_C if cg_cyc is None else cg_cyc
+    cga = CG_ACY_C if cg_acy is None else cg_acy
     probs = []
     for name in FALSE_POSITIVE_TRAPS + BOUNDARY_TRAPS:
         if name not in neg:
@@ -306,6 +358,15 @@ def judge_fixtures(fixtures=None, neg_c=None, shapes_c=None, sbraces_c=None):
         probs.append("R2 shapes.c 缺「指针返回类型紧贴函数名」样本")
     if 'fputs ("{",' not in sbr or 'fputs ("}",' not in sbr:
         probs.append("R2 sbraces.c 缺字符串花括号样本")
+    # F7 夹具完备性：没有这两句，F7b 的「两向」就只剩单向
+    if "void leaf(void) { hub(); }" not in cgy:
+        probs.append("R2 cg_cyc.c 里找不到 `hub ⇄ leaf` 的**反向**那条边 —— "
+                     "F7b 的「必须报出环」变成空断言")
+    if "void hub(void) { helper(); leaf(); }" not in cgy:
+        probs.append("R2 cg_cyc.c 里找不到环的**正向**那条边")
+    if len(cga.strip().splitlines()) != 3:
+        probs.append("R2 cg_acy.c 的形状变了（应为 3 级无环链）—— "
+                     "F7b 的「无环必须报空」需要一条确定的链作证")
     for rel, text in fixtures:
         if not text.strip():
             probs.append("R2 夹具 %s 是空的" % rel)
@@ -317,6 +378,8 @@ def judge_ratchet(n_funcs):
     probs = []
     for tag, got, want in (("判据条数", len(CRITERIA), EXPECTED_CRITERIA),
                            ("夹具数", len(FIXTURES), EXPECTED_FIXTURES),
+                           ("调用关系夹具数", len(CG_FIXTURES),
+                            EXPECTED_CG_FIXTURES),
                            ("形态名数", len(SHAPE_NAMES), EXPECTED_SHAPE_NAMES),
                            ("已披露边界陷阱数", len(BOUNDARY_TRAPS),
                             EXPECTED_BOUNDARY_TRAPS),
@@ -399,6 +462,197 @@ def scan(root, python_exe):
 
 
 # ---------------------------------------------------------------------------
+# F7：调用关系的有界投影（R86-3）
+# ---------------------------------------------------------------------------
+def judge_callrel(obs):
+    """F7 的**纯函数**判据。`obs` 由 `scan_callrel` 从公开 CLI 产物里取出来。
+
+    读的是「产物说了什么」，不是「代码里写了什么」—— 这样每一条都能被一个
+    只改产物的突变体点亮（例如把 `hit_node_cap` 恒置 False）。
+    """
+    probs = []
+    if not isinstance(obs, dict):
+        return ["F7 判据载体不是字典（scan_callrel 的返回值坏了）"]
+
+    # F7a 两本账对账：两个独立容器数同一件事
+    ne = obs.get("n_edges_json")
+    et = obs.get("edges_total")
+    if ne is None or et is None:
+        probs.append("F7a 拿不到两本账（--json 的 edges / call_relations.edges_total）")
+    elif ne != et:
+        probs.append("F7a 两本账对不上：--json 的 edges=%s，"
+                     "call_relations.edges_total=%s" % (ne, et))
+
+    # F7b 环，两向
+    cyc = obs.get("cycles_cyc")
+    mem = []
+    if isinstance(cyc, list):
+        for c in cyc:
+            if isinstance(c, dict) and c.get("size") == 2:
+                mem.append(tuple(sorted(c.get("members") or [])))
+    if not mem:
+        probs.append("F7b 有环夹具里找不到 size=2 的环（读到的 cycles=%r）" % (cyc,))
+    elif tuple(sorted(CG_WANT_CYCLE)) not in mem:
+        probs.append("F7b 报出的 size=2 环是 %r，期望里没有 %r"
+                     % (mem, tuple(sorted(CG_WANT_CYCLE))))
+    if obs.get("cycles_acy") != []:
+        probs.append("F7b 无环夹具必须报 cycles == []，读到 %r"
+                     % (obs.get("cycles_acy"),))
+    if obs.get("computed_acy") is not True:
+        probs.append("F7b 无环夹具的 cycles_computed 必须为真（空结果与"
+                     "「没算」是两回事），读到 %r" % (obs.get("computed_acy"),))
+
+    # F7c 有界且诚恳
+    if obs.get("nodes_cap") != 2:
+        probs.append("F7c --callgraph-max-nodes 2 时节点数应为 2，读到 %r"
+                     % (obs.get("nodes_cap"),))
+    if obs.get("cap_hit_cap") is not True:
+        probs.append("F7c 触到上限却没标 hit_node_cap=True（读到 %r）—— "
+                     "这是「把截断说成全量」的入口" % (obs.get("cap_hit_cap"),))
+    if obs.get("cap_hit_default") is not False:
+        probs.append("F7c 未触上限却标了 hit_node_cap=True（读到 %r）"
+                     % (obs.get("cap_hit_default"),))
+    shown = obs.get("fan_in_shown")
+    tlen = obs.get("fan_in_top_len")
+    if shown is None or tlen is None or shown != tlen:
+        probs.append("F7c truncated.fan_in_shown=%r 与实际给出的 %r 条不符"
+                     % (shown, tlen))
+
+    # F7d 深度真的起作用
+    d1 = obs.get("depth1_nodes")
+    d2 = obs.get("depth2_nodes")
+    if d1 is None or d2 is None:
+        probs.append("F7d 拿不到两个深度的节点集合")
+    elif set(d1) == set(d2):
+        probs.append("F7d depth=1 与 depth=2 的节点集合相同（%r）—— "
+                     "那个开关是个摆设" % (sorted(set(d1)),))
+    elif not set(d1) < set(d2):
+        probs.append("F7d depth=2 的节点不是 depth=1 的**超集**：%r vs %r"
+                     % (sorted(set(d1)), sorted(set(d2))))
+
+    # F7e 未知扩展名不许静默降级
+    if obs.get("bad_rc") in (0, None):
+        probs.append("F7e 未知扩展名（.txt）居然退出了 %r —— 静默降级"
+                     % (obs.get("bad_rc"),))
+    if obs.get("bad_exists"):
+        probs.append("F7e 未知扩展名居然还是写出了文件 —— 不许静默改成 JSON")
+
+    # F7f 口径写成字面量
+    if obs.get("identity") != "callee-name":
+        probs.append("F7f identity 必须是字面量 'callee-name'，读到 %r"
+                     % (obs.get("identity"),))
+    lim = obs.get("limitations")
+    if not isinstance(lim, list) or len(lim) < 3 or not all(lim):
+        probs.append("F7f limitations 必须至少 3 条且非空，读到 %r" % (lim,))
+    elif not any("假阳性" in str(x) for x in lim):
+        probs.append("F7f 必须明说「同名合并 ⇒ 环可能含假阳性」—— "
+                     "这是本投影最容易被误读的地方")
+    return probs
+
+
+def scan_callrel(root, python_exe):
+    """建两组调用关系夹具 → 跑公开 CLI → 取产物 → 交给 `judge_callrel`。
+
+    返回 ``(probs, n_runs)``；``probs is None`` 表示**缺输入**。
+    """
+    base = tempfile.mkdtemp(prefix="r86cg_")
+    try:
+        cyc_dir = os.path.join(base, "cyc")
+        acy_dir = os.path.join(base, "acy")
+        os.makedirs(cyc_dir)
+        os.makedirs(acy_dir)
+        for d, fx in ((cyc_dir, (CG_FIXTURES[0],)), (acy_dir, (CG_FIXTURES[1],))):
+            for rel, text in fx:
+                with io.open(os.path.join(d, rel), "w", encoding="utf-8",
+                             newline="") as fh:
+                    fh.write(text)
+
+        def run(work, extra):
+            argv = [python_exe, "matlabc.py", work, "--lang", "c",
+                    "--checks", "none"] + list(extra)
+            p = subprocess.run(argv, cwd=root, stdin=subprocess.DEVNULL,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               timeout=CLI_TIMEOUT)
+            return p.returncode
+
+        def load(path):
+            if not os.path.isfile(path):
+                return None
+            with io.open(path, "rb") as fh:
+                try:
+                    return json.loads(fh.read().decode("utf-8", "replace"))
+                except ValueError:
+                    return None
+
+        j_cyc = os.path.join(base, "cyc.json")
+        c_cyc = os.path.join(base, "cyc_cg.json")
+        if run(cyc_dir, ["--json", j_cyc, "--callgraph", c_cyc]) != 0:
+            return None, 0
+        pay_j = load(j_cyc)
+        pay_c = load(c_cyc)
+        if not isinstance(pay_j, dict) or not isinstance(pay_c, dict):
+            return None, 0
+        rel = pay_c.get("call_relations")
+        if not isinstance(rel, dict):
+            return None, 0
+
+        d1 = os.path.join(base, "d1.json")
+        d2 = os.path.join(base, "d2.json")
+        cap = os.path.join(base, "cap.json")
+        for path, dep in ((d1, "1"), (d2, "2")):
+            if run(cyc_dir, ["--callgraph", path, "--callgraph-focus", "hub",
+                             "--callgraph-depth", dep]) != 0:
+                return None, 0
+        if run(cyc_dir, ["--callgraph", cap, "--callgraph-focus", "hub",
+                         "--callgraph-depth", "9",
+                         "--callgraph-max-nodes", "2"]) != 0:
+            return None, 0
+
+        a_j = os.path.join(base, "acy.json")
+        a_c = os.path.join(base, "acy_cg.json")
+        if run(acy_dir, ["--json", a_j, "--callgraph", a_c]) != 0:
+            return None, 0
+        pay_a = load(a_c)
+        if not isinstance(pay_a, dict):
+            return None, 0
+
+        bad = os.path.join(base, "bad.txt")
+        bad_rc = run(cyc_dir, ["--callgraph", bad])
+
+        def nodes_of(p):
+            sub = (p or {}).get("focus_subgraph") or {}
+            return sorted(n.get("name") for n in (sub.get("nodes") or []))
+
+        def sub_of(p):
+            return (p or {}).get("focus_subgraph") or {}
+
+        obs = {
+            "n_edges_json": len(pay_j.get("edges") or []),
+            "edges_total": rel.get("edges_total"),
+            "identity": rel.get("identity"),
+            "limitations": rel.get("limitations"),
+            "cycles_cyc": rel.get("cycles"),
+            "cycles_acy": ((pay_a.get("call_relations") or {}).get("cycles")),
+            "computed_acy": ((pay_a.get("call_relations") or {})
+                             .get("cycles_computed")),
+            "cap_hit_default": (sub_of(pay_c).get("truncated") or {})
+                               .get("hit_node_cap"),
+            "fan_in_shown": (rel.get("truncated") or {}).get("fan_in_shown"),
+            "fan_in_top_len": len(rel.get("fan_in_top") or []),
+            "depth1_nodes": nodes_of(load(d1)),
+            "depth2_nodes": nodes_of(load(d2)),
+            "nodes_cap": len((sub_of(load(cap)).get("nodes") or [])),
+            "cap_hit_cap": (sub_of(load(cap)).get("truncated") or {})
+                           .get("hit_node_cap"),
+            "bad_rc": bad_rc,
+            "bad_exists": os.path.exists(bad),
+        }
+        return judge_callrel(obs), 6
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
 # 主流程
 # ---------------------------------------------------------------------------
 def _write_help(text):
@@ -449,15 +703,27 @@ def main(argv):
               "（--json 是判据的载体 → 缺输入）")
         return 2
 
-    probs = list(probs) + judge_fixtures() + judge_ratchet(n_funcs)
+    try:
+        cg_probs, _n_runs = scan_callrel(root, sys.executable)
+    except (OSError, subprocess.SubprocessError) as e:
+        print("check_c_frontend_shapes: 调用关系夹具的公开 CLI 跑不起来：%s"
+              "（缺输入 → 红）" % e)
+        return 2
+    if cg_probs is None:
+        print("check_c_frontend_shapes: 调用关系投影没有产出可解析的 JSON"
+              "（--callgraph 是 F7 的载体 → 缺输入）")
+        return 2
+
+    probs = (list(probs) + judge_fixtures() + judge_ratchet(n_funcs)
+             + cg_probs)
     if probs:
         for p in probs:
             print("check_c_frontend_shapes: " + p)
         print("check_c_frontend_shapes: %d 项违规" % len(probs))
         return 1
-    print("check_c_frontend_shapes: OK（%d 个合成夹具 / 公开 CLI 认出 %d 个函数 / "
-          "%s 全绿 + 夹具完备性 + 棘轮）"
-          % (len(FIXTURES), n_funcs, ROW_SIGNATURE))
+    print("check_c_frontend_shapes: OK（%d 个形态夹具 + %d 个调用关系夹具 / "
+          "公开 CLI 认出 %d 个函数 / %s 全绿 + 夹具完备性 + 棘轮）"
+          % (len(FIXTURES), len(CG_FIXTURES), n_funcs, ROW_SIGNATURE))
     return 0
 
 
@@ -545,6 +811,69 @@ def _selftest():
     # ---- F6-c：neg.c 什么都不产出 ⇒ 正向半边必须红（空断言的对手方） ----
     red("坏样本 F6 负半边空断言（neg.c 全空）", _mk(ng={}), "F6")
 
+    # ---- F7：调用关系的有界投影（吃的是一个纯 dict，与文件系统无关） ----
+    def _obs():
+        """好观测：F7 六条子判据必须**全部**在这份观测上绿。"""
+        return {
+            "n_edges_json": 6, "edges_total": 6,
+            "identity": "callee-name",
+            "limitations": ["甲：同名合并 ⇒ 调用环可能含**假阳性**",
+                            "乙：unresolved 不在图里",
+                            "丙：截断是显式的"],
+            "cycles_cyc": [{"size": 2, "members": ["hub", "leaf"]}],
+            "cycles_acy": [], "computed_acy": True,
+            "cap_hit_default": False, "fan_in_shown": 4, "fan_in_top_len": 4,
+            "depth1_nodes": ["hub", "leaf"],
+            "depth2_nodes": ["hub", "leaf", "helper"],
+            "nodes_cap": 2, "cap_hit_cap": True,
+            "bad_rc": 1, "bad_exists": False,
+        }
+
+    def red_cg(tag, obs, want):
+        probs = judge_callrel(obs)
+        hit = [p for p in probs if p.startswith(want)]
+        others = [p for p in probs
+                  if p[:2] in CRITERIA_IDS and not p.startswith(want)]
+        if not hit:
+            bad[0] += 1
+            print("  [selftest] %s 未被 %s 抓到（实得 %r）" % (tag, want, probs))
+        elif others:
+            bad[0] += 1
+            print("  [selftest] %s 红在了别的判据上：%r" % (tag, others))
+        else:
+            good[0] += 1
+            witnessed.add(want)
+
+    green("好样本：F7 观测六条子判据全绿", judge_callrel(_obs()))
+
+    for tag, patch in (
+            ("F7a 两本账对不上（edges 少一条）", {"n_edges_json": 5}),
+            ("F7b 有环夹具里环整类消失", {"cycles_cyc": []}),
+            ("F7b 有环夹具报错了环的成员",
+             {"cycles_cyc": [{"size": 2, "members": ["hub", "side"]}]}),
+            ("F7b 无环夹具却报出环",
+             {"cycles_acy": [{"size": 3, "members": ["a", "b", "c"]}]}),
+            ("F7b 无环夹具把「没算」说成「没有」（computed=False）",
+             {"computed_acy": False}),
+            ("F7c 节点数越界（上限 2 却给 3 个）", {"nodes_cap": 3}),
+            ("F7c 触上限却没标 hit_node_cap", {"cap_hit_cap": False}),
+            ("F7c 未触上限却标了 hit_node_cap", {"cap_hit_default": True}),
+            ("F7c truncated 的 shown 与实物不符", {"fan_in_shown": 9}),
+            ("F7d depth 开关是摆设（1 与 2 同集合）",
+             {"depth2_nodes": ["hub", "leaf"]}),
+            ("F7d depth=2 不是 depth=1 的超集",
+             {"depth1_nodes": ["hub", "leaf"], "depth2_nodes": ["hub", "other"]}),
+            ("F7e 未知扩展名静默降级（rc=0）", {"bad_rc": 0}),
+            ("F7e 未知扩展名还是写出了文件", {"bad_exists": True}),
+            ("F7f 身份口径被悄悄换掉", {"identity": "definition-site"}),
+            ("F7f limitations 缩水到 2 条", {"limitations": ["甲", "乙"]}),
+            ("F7f 没明说「同名合并 ⇒ 假阳性」",
+             {"limitations": ["甲：不跟踪运行期绑定", "乙：不展开运行期", "丙：有上限"]}),
+    ):
+        d = _obs()
+        d.update(patch)
+        red_cg("坏样本 %s" % tag, d, "F7")
+
     # ---- ① 每条判据都必须被至少一个坏样本点名（覆盖不许静默缩水） ----
     if witnessed == set(CRITERIA_IDS):
         good[0] += 1
@@ -578,6 +907,18 @@ def _selftest():
     else:
         bad[0] += 1
         print("  [selftest] 空夹具 R2 不报红")
+    # F7 夹具完备性**两向**：抽掉环的反向边 / 把无环链改短 ⇒ 各自必须报红
+    if judge_fixtures(cg_cyc="void hub(void) { helper(); leaf(); }\n"):
+        good[0] += 1
+    else:
+        bad[0] += 1
+        print("  [selftest] cg_cyc.c 被抽掉环的反向边后 R2 不报红"
+              "（F7b 的「必须报出环」退化成空断言）")
+    if judge_fixtures(cg_acy="void a(void) { }\n"):
+        good[0] += 1
+    else:
+        bad[0] += 1
+        print("  [selftest] cg_acy.c 的形状被改后 R2 不报红")
 
     # ---- ④ 棘轮 R1 两向：正确读数不报红，缩水读数必须报红 ----
     green("好样本：棘轮在正确读数上全绿", judge_ratchet(EXPECTED_REAL_FUNCS))

@@ -28,6 +28,9 @@ import struct
 from .model import (
     CONTAINER_PE, DEP_IMPORT_MODULE, MAX_CHUNK, Section, Symbol, BinaryReport,
     Dependency, SYM_EXPORT,
+    EVIDENCE_OBSERVED, MIT_ASLR, MIT_NX, MIT_EXECSTACK, MIT_CANARY, MIT_RELRO,
+    MIT_CFG, MIT_HIGH_ENTROPY_VA, MIT_SEH, MIT_FORCE_INTEGRITY,
+    MIT_APPCONTAINER,
 )
 
 MACHINE = {
@@ -44,6 +47,23 @@ MAX_SECTIONS = 256
 MAX_IMPORT_DESCS = 4096
 MAX_EXPORTS = 200000
 MAX_NAME_LEN = 512
+
+# ---- R86-2：PE 静态缓解措施的判据位（全部来自头部字段，observed） ----
+# DllCharacteristics 在 Optional Header 的偏移 0x46（PE32 与 PE32+ **同偏移**：
+# 两者的差异在更早的 ImageBase/BaseOfData，到这里已经对齐）。
+DLLCHAR_HIGH_ENTROPY_VA = 0x0020
+DLLCHAR_DYNAMIC_BASE = 0x0040
+DLLCHAR_FORCE_INTEGRITY = 0x0080
+DLLCHAR_NX_COMPAT = 0x0100
+DLLCHAR_NO_ISOLATION = 0x0200
+DLLCHAR_NO_SEH = 0x0400
+DLLCHAR_APPCONTAINER = 0x1000
+DLLCHAR_GUARD_CF = 0x4000
+OPT_DLLCHAR_OFF = 0x46
+# COFF Characteristics：标了这一位 = 重定位信息已剥离 ⇒ DYNAMIC_BASE 可能不起作用
+COFF_RELOCS_STRIPPED = 0x0001
+# DataDirectory[10] = IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG
+DD_LOAD_CONFIG = 10
 
 
 def _u16(b, o):
@@ -169,6 +189,29 @@ def parse(path, scan_cap=None):
             _parse_exports(f, rep, data_dirs[0], rva_to_off, image_base)
         if len(data_dirs) > 1 and data_dirs[1][0]:
             _parse_imports(f, rep, data_dirs[1], rva_to_off)
+
+        # ---- R86-2：静态缓解措施（头部字段直接可读 ⇒ evidence_kind=observed） ----
+        # ⚠ 可达性（R86-2 的门实测）：DllCharacteristics 在布局上排在
+        #   DataDirectory **之前**，而 DataDirectory 的读取（`_u32`）会在
+        #   头部不够长时先抛 struct.error 被外层收走。于是
+        #   「解析能走到这里 ⇒ 该字段一定可读」通常是成立的；`None` 分支只在
+        #   **magic 非法**（dd_off=0，整块 DataDirectory 被跳过）或文件被截断
+        #   到这一步时才可达。保留它不是为了好看 —— 那个 `_u16` 一旦越界
+        #   就是 struct.error 崩掉整个 parse，这里的判断是**安全闸**，
+        #   顺带才是「unknown」语义。
+        dllchar = None
+        if len(opt) >= OPT_DLLCHAR_OFF + 2:
+            dllchar = _u16(opt, OPT_DLLCHAR_OFF)
+        else:
+            rep.notes.append("PE: Optional Header 只有 %d 字节，读不到 "
+                             "DllCharacteristics（缓解措施将是 unknown）" % len(opt))
+        cookie, cookie_basis = None, None
+        if len(data_dirs) > DD_LOAD_CONFIG and data_dirs[DD_LOAD_CONFIG][0]:
+            got = _read_security_cookie(f, data_dirs[DD_LOAD_CONFIG], rva_to_off, rep)
+            if got is not None:
+                cookie, cookie_basis = got
+        rep.mitigations = _compute_mitigations(rep, dllchar, chars, cookie,
+                                              cookie_basis)
         return rep
     except (OSError, struct.error) as e:
         rep.notes.append("PE: 解析中断 %s: %s" % (type(e).__name__, e))
@@ -298,3 +341,138 @@ def _parse_imports(f, rep, dd, rva_to_off):
     # 但只有在发生过「提前停止」时才记，避免正常文件刷屏。
     if stopped and "NULL 终止" not in stopped:
         rep.notes.append("PE: 导入表遍历终止原因 —— %s（已收 %d 条）" % (stopped, n))
+
+
+# ---- R86-2：GS canary 的 cookie 指针（LOAD_CONFIG 目录） ----
+
+# IMAGE_LOAD_CONFIG_DIRECTORY 是**自描述**结构：头 4 字节就是 Size。
+# SecurityCookie 在 64 位布局的偏移 88、32 位布局的偏移 60。
+# ⚠ 这两个偏移**不是**猜的：它们必须与 Size 对照后才敢用 —— 见函数内注释。
+_LC_SECURITY_COOKIE_OFF = {64: 88, 32: 60}
+_LC_PTR_SIZE = {64: 8, 32: 4}
+
+
+def _read_security_cookie(f, dd, rva_to_off, rep):
+    """返回 `(cookie 值, basis)`；读不出时返回 None（**不猜**）。
+
+    为什么宁可返回 None 也不读：SecurityCookie 的偏移是**写死**的，而
+    LOAD_CONFIG 结构历史上一直在**增长**（新 Windows 版本追加字段）。
+    对着一个 Size 很小的旧结构按新偏移去读，读到的是**紧邻的别的数据** ——
+    它会静默产出一个「看起来合法」的假 cookie，把「没有 GS」洗成「有 GS」。
+    所以这里让结构**自己**回答：Size 不覆盖到该偏移 ⇒ 判据构件缺失。
+    """
+    rva, size = dd
+    off = rva_to_off(rva)
+    if off is None:
+        rep.notes.append("PE: LOAD_CONFIG RVA 0x%x 无法映射到文件偏移" % rva)
+        return None
+    ptr = _LC_PTR_SIZE.get(rep.bits)
+    co = _LC_SECURITY_COOKIE_OFF.get(rep.bits)
+    if ptr is None:
+        return None
+    f.seek(off)
+    head = f.read(4)
+    if len(head) < 4:
+        rep.notes.append("PE: LOAD_CONFIG 目录被截断（读不到 Size）")
+        return None
+    decl = _u32(head, 0)                    # 结构**自己声明的**大小
+    if decl < co + ptr:
+        # 声明的大小够不到 SecurityCookie 字段 ⇒ 判据构件缺失，置 None。
+        rep.notes.append("PE: LOAD_CONFIG 声明大小 %d < SecurityCookie 偏移 %d "
+                         "⇒ 该字段不可读（不做越界读，避免把相邻数据当 cookie）"
+                         % (decl, co + ptr))
+        return None
+    f.seek(off + co)
+    raw = f.read(ptr)
+    if len(raw) < ptr:
+        rep.notes.append("PE: LOAD_CONFIG.SecurityCookie 被截断")
+        return None
+    val = struct.unpack_from("<Q" if ptr == 8 else "<I", raw, 0)[0]
+    return val, ("LOAD_CONFIG(dir size=%d).SecurityCookie=%#x" % (decl, val))
+
+
+def _compute_mitigations(rep, dllchar, coff_chars, cookie, cookie_basis):
+    """R86-2：PE 静态缓解措施读数。evidence_kind=observed。
+
+    与 ELF 侧（`elf._compute_mitigations`，inferred）**同形不同档**：
+      * 这里每个值都来自**头部里写着的字段**，不需要「由缺席推否定」；
+      * 但 dllchar 读不到（Optional Header 被截断）时仍然是 `None`，
+        与 `False`（读到了、且没有这一位）严格分开 —— 与 ELF 侧同一条纪律。
+    """
+    basis = {}
+    lim = [
+        "这些是**头部声明值**（链接器开关的复读），不是运行时保护 —— "
+        "没声明 NX_COMPAT **不证明**运行时栈一定可执行（系统级强制可能仍生效）。",
+        "容器=%s：DllCharacteristics 是**构建期**配置，与运行时的系统策略无关。"
+        % (rep.container or "?"),
+    ]
+    if dllchar is None:
+        aslr = nx = cfg = hev = seh = fi = appc = None
+        basis[MIT_ASLR] = "Optional Header 太短，读不到 DllCharacteristics"
+        basis[MIT_NX] = basis[MIT_ASLR]
+        basis[MIT_CFG] = basis[MIT_ASLR]
+        lim.append("DllCharacteristics 不可读：ASLR / NX / CFG 一律置 null，不猜。")
+    else:
+        aslr = bool(dllchar & DLLCHAR_DYNAMIC_BASE)
+        nx = bool(dllchar & DLLCHAR_NX_COMPAT)
+        cfg = bool(dllchar & DLLCHAR_GUARD_CF)
+        hev = bool(dllchar & DLLCHAR_HIGH_ENTROPY_VA)
+        seh = not bool(dllchar & DLLCHAR_NO_SEH)
+        fi = bool(dllchar & DLLCHAR_FORCE_INTEGRITY)
+        appc = bool(dllchar & DLLCHAR_APPCONTAINER)
+        _d = "DllCharacteristics=%#06x" % dllchar
+        basis[MIT_ASLR] = "%s %s 0x%02x DYNAMIC_BASE" % (
+            _d, "含" if aslr else "无", DLLCHAR_DYNAMIC_BASE)
+        basis[MIT_NX] = "%s %s 0x%02x NX_COMPAT" % (
+            _d, "含" if nx else "无", DLLCHAR_NX_COMPAT)
+        basis[MIT_CFG] = "%s %s 0x%02x GUARD_CF" % (
+            _d, "含" if cfg else "无", DLLCHAR_GUARD_CF)
+        basis[MIT_HIGH_ENTROPY_VA] = "%s %s 0x%02x HIGH_ENTROPY_VA" % (
+            _d, "含" if hev else "无", DLLCHAR_HIGH_ENTROPY_VA)
+        basis[MIT_SEH] = "%s %s 0x%02x NO_SEH" % (
+            _d, "无" if seh else "含", DLLCHAR_NO_SEH)
+        basis[MIT_FORCE_INTEGRITY] = "%s %s 0x%02x FORCE_INTEGRITY" % (
+            _d, "含" if fi else "无", DLLCHAR_FORCE_INTEGRITY)
+        basis[MIT_APPCONTAINER] = "%s %s 0x%02x APPCONTAINER" % (
+            _d, "含" if appc else "无", DLLCHAR_APPCONTAINER)
+        if aslr and (coff_chars & COFF_RELOCS_STRIPPED):
+            # 两条读数**互相拉扯**：都报出来，不取其一。
+            lim.append("COFF 标了 RELOCS_STRIPPED(0x0001)：重定位信息已剥离，"
+                       "DYNAMIC_BASE 在部分加载路径上**无法生效** —— "
+                       "两条读数互相矛盾，本报告并列陈述，不做裁定。")
+
+    # 栈可执行性：PE 没有对应构件（不由段表决定），置 None 而不是 False
+    basis[MIT_EXECSTACK] = "PE 无对应构件（栈可执行性由 NX_COMPAT 声明，不由段表决定）"
+
+    # RELRO：该机制不适用于 PE —— 置 None，绝不用 False 冒充
+    basis[MIT_RELRO] = "PE 无 RELRO 机制（概念不适用，置 null 而不是 false）"
+
+    # Stack canary：/GS 的 cookie 指针只在 LOAD_CONFIG 里
+    if cookie is None:
+        canary = None
+        basis[MIT_CANARY] = (cookie_basis or
+                             "无 LOAD_CONFIG 目录（判据构件缺失，不等于没有 GS）")
+        lim.append("canary=unknown：LOAD_CONFIG 目录不在或太小 —— "
+                   "**不能**据此说这个模块没有栈保护。")
+    else:
+        canary = cookie != 0
+        basis[MIT_CANARY] = cookie_basis
+        if not canary:
+            lim.append("canary=NO 是**读到 cookie 字段且为 0**；"
+                       "但 cookie 非 0 也不证明每个函数都插了检查。")
+
+    return {
+        "evidence_kind": EVIDENCE_OBSERVED,
+        MIT_ASLR: aslr,
+        MIT_NX: nx,
+        MIT_EXECSTACK: None,
+        MIT_CANARY: canary,
+        MIT_RELRO: None,
+        MIT_CFG: cfg,
+        MIT_HIGH_ENTROPY_VA: hev,
+        MIT_SEH: seh,
+        MIT_FORCE_INTEGRITY: fi,
+        MIT_APPCONTAINER: appc,
+        "basis": basis,
+        "limitations": lim,
+    }
