@@ -187,6 +187,23 @@ W5 只比**与时钟无关**的计数器，且**逐类**比对启发式分解：
 | `kernel_asm_summary.json` | 486229 | `dff8383318922938` |
 | `kernel_callgraph.json` | 3567011 | `cf1f67b4a3cbd41a` |
 
+### 调用图有界投影的参数（产物自称，现算）
+
+| 项 | 值 |
+|---|---|
+| `focus` | memcpy |
+| `direction / depth` | both / 2 |
+| `max_nodes` | 300 |
+| `nodes_shown` | 300 |
+| `edges_shown` | 14816 |
+| `hit_node_cap` | True |
+| `cycles_shown / cycles_total` | 20 / 908 |
+| `nodes_in_cycles` | 41008 |
+| `biggest_cycle` | 37775 |
+| `nodes_total` | 645111 |
+| `edges_total` | 7060966 |
+| `unresolved_total` | 1295143 |
+
 ### 与 R81 的已声明变化（R87）
 
 第 19 道门 W5 原本要求本表读数与 R81 基线**逐位全等**。R87 起 C 前端的

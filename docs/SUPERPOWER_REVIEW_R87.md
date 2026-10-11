@@ -190,9 +190,29 @@ W5 改为「**计数相等 ⇔ 未声明变化**」。
 
 ---
 
-## 8. 待回填（本文件与 `docs/KERNEL_RUN.md` 同步）
+## 8. 回填（已完成）
 
 - 内核第四趟（含 R87g 修复）的 `std_funcs` / `std_edges` / `std_unresolved` /
   `std_heuristics` / `json_bytes` 与 R81 的逐键差值及原因 —— 见
   `docs/KERNEL_RUN.md` 的「与 R81 的已声明变化」表（**唯一事实源**）。
-- 远端全新克隆复核：blob 条目数 / 克隆内 `check_all` rc / `real_guard_count()`。
+  逐类对账：Σkind = `c_missing_doc` -5 + `c_missing_return` -8 + `c_uninit_pointer` +1 = -12
+  == `heuristics` delta -12 ✓。`peak_mb` / `seconds` 属墙钟键，按纪律**不参与**逐位对照。
+  ⚠ **一处未完全归因的读数**：`kernel_callgraph.json` 由 R86 的 **1,313,559 B** 变为本轮
+  **3,567,011 B**。**图本身几乎没动** —— `nodes_total` 645,191 -> 645,111（-80）、
+  `edges_total` 7,065,831 -> 7,060,966（-4,865）、`cross_file.ambiguous` 5,153,962 ->
+  5,149,101（-4,861）、最大环 37,776 -> 37,775 —— 所以字节数**不是**由图变化驱动的。
+  体积集中在两个**有界投影**：`focus_subgraph.edges` **14,816 条 / 1.45 MB**
+  （焦点 `memcpy` · 方向 `both` · 深度 2 · **触节点上限 300**）与 `call_relations.cycles`
+  前 20 个环的成员表 / 0.86 MB。⚠ R86 复盘 **B3** 记的同一产物是「`memcpy` 焦点
+  **16 节点 / 128 边 · 未触上限**」—— 与当前「触上限 300 / 14,816 边」**行为不一致**；
+  R86 那份产物已被本轮覆盖、无法逐字节对照 ⇒ **原因未归因**（第一嫌疑人是 R86 那份产物
+  早于 R86 §1.5 对 `focus_subgraph` 的重写，但**这是推断、未验证**）。
+  ⇒ **实质结论**：B3 那条「`max_nodes` 只管节点、**边数无上限**」的潜在口子由「未触发」
+  变成**已触发**（单次焦点展开 14,816 条边、无上限）。已登记为待办：把调用图步骤的 argv
+  与 `hit_node_cap` 写进 `docs/KERNEL_RUN.md`，并在下一轮补 `--callgraph-max-edges`。
+- 远端全新克隆复核（`_r82/verify_remote_r82.py`，2026-10-12）：
+  HEAD `7631d6ef…` 双侧相同 · `tree` `853b631c…` 双侧相同 · 提交数 97 vs 97 ·
+  `ls-tree` 条目 **287 vs 287** · 逐文件 blob sha256 **287/287 相同** ·
+  克隆内 `check_all` rc=0（19 个护栏，全部通过且各自自证）·
+  克隆内 `real_guard_count()=19`（期望 19）· 11 份文档字节双侧相同 ·
+  NEGCTRL 分辨力为真（篡改后仍判「相同」= False）⇒ `REMOTE_VERIFY OK`。
