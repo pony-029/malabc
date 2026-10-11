@@ -20193,3 +20193,69 @@ def test_r74_rename_plan_and_ratchet_are_two_way():
         hc.PREFIX_OWNERSHIP_RENAME.clear()
         hc.PREFIX_OWNERSHIP_RENAME.update(saved_plan)
 
+
+
+def test_r75_c_missing_return_precision():
+    """R75 回归：c_missing_return 的三条实测缺陷（内核语料取证）。
+
+    用最小对照文件把三条缺陷钉死：
+      a.c  单行定义且有 return  -> 修复前被 F3 误报「无 return」（函数体切片落空）
+      b.c  static inline void   -> 修复前被 F2 误报「非 void 函数无 return」
+      c.c  真的无 return        -> 真阳性，任何修复都不能把它弄丢
+    再验 F1：只开 c_missing_return 时必须和 --checks all 得到**同一集合**，
+    而不是静默返回 0 条（内核语料实测：同一目录 0 条 vs 3 条）。
+    """
+    ma._clear_closure_cache()
+    tmp = tempfile.mkdtemp(prefix="mabr75_")
+    try:
+        cdir = os.path.join(tmp, "src")
+        os.makedirs(cdir)
+        with io.open(os.path.join(cdir, "a.c"), "w", encoding="utf-8") as fh:
+            fh.write("/* a */\nstatic int one_line_ok(void) { return 1; }\n")
+        with io.open(os.path.join(cdir, "b.c"), "w", encoding="utf-8") as fh:
+            fh.write("/* b */\nstatic inline void vfn(void)\n{\n"
+                     "    int a = 1;\n}\n")
+        with io.open(os.path.join(cdir, "c.c"), "w", encoding="utf-8") as fh:
+            fh.write("/* c */\nint really_missing(void)\n{\n"
+                     "    int a = 1;\n}\n")
+
+        def _names(args, out_name):
+            jp = os.path.join(tmp, out_name)
+            rc, _o, err = _run([cdir, "--lang", "c"] + args + ["--json", jp], tmp)
+            assert rc == 0, "--lang c 失败: %s" % err[:400]
+            payload = json.loads(_read_text(jp))
+            return sorted(h["func"] for h in payload["heuristics"]
+                          if h["kind"] == "c_missing_return")
+
+        # ① --checks all：只有 c.c 该报（F3 的单行误报、F2 的 void 误报都必须消失）
+        got_all = _names(["--checks", "all"], "all.json")
+        assert got_all == ["really_missing"], \
+            "c_missing_return 应只报真阳性，实得 %r（F2/F3 回归？）" % (got_all,)
+        # ② 只开 c_missing_return：集合必须与 ① 一致（F1：不许静默变空）
+        got_sub = _names(["--checks", "c_missing_return"], "sub.json")
+        assert got_sub == got_all, \
+            "子集调用与 --checks all 结果不一致（F1 回归）：all=%r sub=%r" % (
+                got_all, got_sub)
+        # ③ 反向：真阳性必须还在（防止「把检查整体关掉」也算通过）
+        assert "really_missing" in got_all, "真阳性被误杀"
+
+        # ④ 纯函数：新判据 _RE_C_RET_IS_VOID 的两向边界
+        pat = ma._RE_C_RET_IS_VOID
+        for _s in ("void", "static void", "static inline void",
+                   "static inline void __init", "static noinline_for_stack void",
+                   "asmlinkage __visible void __softirq_entry",
+                   "notrace void __weak", "static __always_inline void"):
+            assert pat.search(_s), "应判为 void: %r" % _s
+        for _s in ("int", "static int", "void *", "static void *",
+                   "static inline void __percpu *", "void * __init",
+                   "struct buffer_head *", "static bool"):
+            assert not pat.search(_s), "不应判为 void: %r" % _s
+
+        # ⑤ 纯函数：_func_body_lines 的单行函数切片必须含定义行本身
+        _lines = ["x", "static int f(void) { return 7; }", "tail"]
+        _body = ma._func_body_lines(_lines, 2, [{"line": 2}])
+        assert any("return 7" in _l for _l in _body), \
+            "单行函数体切片应含定义行（F3 回归）：%r" % (_body,)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+

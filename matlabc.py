@@ -6970,6 +6970,14 @@ _RE_C_FUNC = re.compile(
     r"[A-Za-z_][A-Za-z0-9_ \t\*]*?[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\("
     r"([^;{}()]*)\)[ \t]*\{")
 _RE_C_CALL = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+# R75：C 返回类型是否「本质上是 void」。三个条件缺一不可：
+#   1) 含独立单词 void（容忍限定词/属性：`void __init`、
+#      `void __softirq_entry`、`notrace void __weak`、`static __always_inline void`）；
+#   2) **整串不含 `*`** —— `void *` / `static void * __init` /
+#      `static inline void __percpu *` 都是返回指针，不是 void。
+# 第 2 条不能写成 `void` 后面的负向前瞻 `(?!\s*\*)`：`void __percpu *` 里
+# void 与 * 之间夹着限定词，前瞻会漏判（内核语料实测 22 种类型踩中）。
+_RE_C_RET_IS_VOID = re.compile(r"^(?!.*\*).*\bvoid\b")
 _RE_C_CX = re.compile(r"\b(?:if|for|while|switch|case|else|do|catch)\b"
                       r"|&&|\|\||[?]")
 _RE_C_INCLUDE = re.compile(r"^[ \t]*#[ \t]*include[ \t]*[<\"]([^>\"]+)[>\"]")
@@ -8245,7 +8253,16 @@ def _c_heuristic_checks(c_model, enabled=None):
                             "kind": "c_missing_guard",
                             "msg": "头文件缺少 include 卫士（#ifndef 或 #pragma once）",
                             "level": "note"})
-        lines = _c_lines_effective(pf.get("path")) if _on("c_missing_doc") else []
+        # R75：行文本不能只由 c_missing_doc 决定 —— 下面的 c_uninit_pointer /
+        # c_array_oob / c_use_after_free / c_missing_return 都靠它取函数体；
+        # 只在 c_missing_doc 打开时才加载，会让这四个检查在
+        # `--checks c_missing_return` 这类子集调用下**静默不产出任何结果**
+        # （内核语料上实测：同一目录 `--checks c_missing_return` 报 0 条，
+        # `--checks all` 报 3 条）。
+        lines = _c_lines_effective(pf.get("path")) if (
+            _on("c_missing_doc") or _on("c_uninit_pointer")
+            or _on("c_array_oob") or _on("c_use_after_free")
+            or _on("c_missing_return")) else []
         for fn in pf["functions"]:
             nm = fn["name"]
             lname = nm.lower()
@@ -8324,8 +8341,14 @@ def _c_heuristic_checks(c_model, enabled=None):
                                     "func": nm, "kind": "c_use_after_free",
                                     "msg": "%s 在 free(%s) 之后仍被使用（use-after-free）"
                                            % (pn, pn), "level": "warning"})
+                    # R75：返回类型判定必须容忍限定词与 GCC 属性 ——
+                    # `static inline void` / `static inline void __init` /
+                    # `asmlinkage __visible void __softirq_entry` /
+                    # `notrace void __weak` 全都是 void；而 `void *` 是返回
+                    # 指针、不是 void。旧写法把前四种全判成「非 void」，
+                    # 在内核语料上制造了 85%~100% 的 c_missing_return 假阳性。
                     if _on("c_missing_return") and ret and \
-                            not ret.startswith(("void", "static void")):
+                            not _RE_C_RET_IS_VOID.search(ret):
                         # 非 void 函数体在 return 计数为 0 或仅有条件 return
                         nret = len(re.findall(r"\breturn\b", "\n".join(fn_lines)))
                         if nret == 0:
@@ -8367,11 +8390,16 @@ def _func_body_lines(lines, def_line, funcs):
 
     lines: 文件行列表（0-based 索引，行号 1-based）；
     funcs: 同文件函数 dict 列表（按 line 升序）。返回相对 def_line 的行列表。"""
+    # R75：切片起点必须落在**定义行本身**。旧实现 lines[def_line:end] 把
+    # 1-based 的 def_line 直接当 0-based 下标用，等价于跳过定义行 ——
+    # 对「单行函数」（`static int f(void) { return 1; }`，头文件里大量存在）
+    # 函数体直接落空，c_missing_return 于是凭空报「无 return 语句」。
+    start = def_line - 1 if (def_line and def_line >= 1) else 0
     end = len(lines)
     for g in funcs:
-        if g["line"] > def_line:
+        if g.get("line", 0) > def_line:
             end = min(end, g["line"] - 1)
-    return lines[def_line:end]
+    return lines[start:end]
 
 
 def _gen_c_tests(c_model, out_dir, root):
