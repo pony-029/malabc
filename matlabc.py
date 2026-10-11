@@ -7640,6 +7640,55 @@ _RE_ASM_LABEL = re.compile(r"^([A-Za-z_.$][\w.$]*)\s*:")
 _RE_ASM_SYMBOL = re.compile(r"^\.(?:globl|global|weak)\s+([A-Za-z_.$][\w.$]*)")
 
 
+_RE_ASM_NUMLABEL = re.compile(r"^(\d+):")
+
+# R79 / C28-2（第二轮）/ F3：**语句**必须这样起头（助记符 / 指令 / 标签）。
+# `} :text`（`.lds.S` 链接脚本）与 `{` 这类首字符不是标识符的都不是语句。
+_ASM_HEAD_RE = re.compile(r"^[A-Za-z_.$]")
+
+# R79 / C28-2：哪些段指令意味着「后面是数据」。`.section` 不在表里 ——
+# 它要带段名参数，单独处理。
+_ASM_DATA_SEGMENT_PREFIXES = (".data", ".bss", ".rodata", ".sdata", ".sbss",
+                              ".ldata", ".lbss", ".tdata", ".tbss")
+
+
+def _asm_segment_of(head, rest):
+    """R79 / C28-2：`.S` 段指令 → `"text"` / `"data"` / `None`（= 不改当前段）。
+
+    `.section <name>[,flags]`：只看**段名子串** —— 含 `text` ⇒ 文本，其余 ⇒
+    数据。汇编没有权威的「代码段名单」，用 `text` 子串是**保守**取法：
+    宁可把陌生段当数据（进 `excluded_hist` 留痕），也不要把数据当代码 ——
+    那正是 C28-2 要修的那类污染（`.byte` 数据表把 `insn_hist` 挤满，
+    R78 实测 `|` 出现 5,709 次）。
+    返回 `None` 表示「这条指令不改变当前段」（如 `.globl` / `.align`）。
+    """
+    if head == ".section":
+        name = (rest or "").split(",", 1)[0].strip().strip('"').lower()
+        return "text" if "text" in name else "data"
+    if head.startswith(".text"):
+        return "text"
+    for p in _ASM_DATA_SEGMENT_PREFIXES:
+        if head.startswith(p):
+            return "data"
+    return None
+
+
+def _asm_statement_heads(s):
+    """R79 / C28-2：一行汇编里的**语句头**（GAS 用 `;` 分隔语句）。
+
+    为什么需要：`lock; addl $1, %eax` 是**两条**语句（指令前缀 + 真指令），
+    按「行首 token」取会得到伪助记符 `lock;`（R78 实测的污染之一）。
+    只按 `;` 切，不做更复杂的引号感知 —— `.text` 段里 `;` 落在字符串
+    字面量中的情形不出现（`.ascii` 一类在数据段，已被分段挡在直方图之外）。
+    """
+    out = []
+    for stmt in s.split(";"):
+        p = stmt.split()
+        if p:
+            out.append(p[0])
+    return out
+
+
 def _asm_file_model(text, rel, path):
     """R78 / C-1：`.S` / `.s` / `.asm` 的**极简**前端。
 
@@ -7665,43 +7714,105 @@ def _asm_file_model(text, rel, path):
     directives = []
     macros = 0
     hist = {}
+    excl = {}
+    # R79 / C28-2：**段状态机**。起点记 `text` —— GAS 里 `.S` 的默认段就是
+    # `.text`，这不是保守假设，是规矩本身。
+    seg = "text"
+    seg_lines = {"text": 0, "data": 0}
+    # R79 / C28-2（第二轮）/ F1：**先按 cpp 语义折叠续行**，再分类。
+    # `.S` 是**预处理**过的汇编，`\` + 换行就是 cpp 续行。实测整棵内核：
+    # 不折叠时 `insn_hist` 的头名是 `\`（8,240 次）—— 全是 `#define` 宏体的
+    # 续行残片（证人 `arch/powerpc/kernel/kvm_emul.S:31`、
+    # `arch/arm64/crypto/sm4-neon-core.S:102`）；`|`（5,660 次）里也混着
+    # 续行片段（证人 `arch/hexagon/kernel/head.S:51-53` 的三行 `#define`）。
+    # 折叠后整条宏是一个 `#` 逻辑行 ⇒ 走 `directives`，宏体里的伪助记符消失。
+    pend_ln = 0
+    pend = None
     for idx, raw in enumerate(lines):
         ln = idx + 1
-        if dead[ln]:
-            continue
         s = raw
         k = s.find("//")
         if k >= 0:
             s = s[:k]
-        s = s.strip()
-        if not s:
-            continue
-        if s.startswith("#"):
-            directives.append({"line": ln, "text": s[:200]})
-            if s[1:].lstrip().startswith("define"):
-                macros += 1
-            continue
-        if s.startswith("."):
-            m = _RE_ASM_SYMBOL.match(s)
-            if m:
-                symbols.append({"line": ln, "name": m.group(1)})
+        stripped = s.rstrip()
+        cont = stripped.endswith("\\")
+        body = stripped[:-1] if cont else stripped
+        if not dead[ln]:
+            if pend is None:
+                pend_ln, pend = ln, body
             else:
-                directives.append({"line": ln, "text": s[:200]})
+                pend = pend + " " + body
+        # 注释行（dead）的**文本丢弃**，但续行链照走 —— cpp 语义里
+        # `/* ... */ \` 仍是同一条逻辑行的一部分。
+        if cont:
             continue
-        m = _RE_ASM_LABEL.match(s)
-        if m:
-            labels.append({"line": ln, "name": m.group(1)})
-            s = s[m.end():].strip()
-            if not s:
-                continue
-        parts = s.split()
-        if parts:
-            hist[parts[0]] = hist.get(parts[0], 0) + 1
+        if pend is None:
+            continue
+        text_line = pend.strip()
+        text_ln = pend_ln
+        pend = None
+        if not text_line:
+            continue
+        if text_line.startswith("#"):
+            directives.append({"line": text_ln, "text": text_line[:200]})
+            if text_line[1:].lstrip().startswith("define"):
+                macros += 1
+        elif text_line.startswith("|"):
+            # F2：m68k 方言里 `|` 是**行注释**（`arch/m68k/fpsp040/*.S` 全篇
+            # 这样写）。GAS 的语句必须以助记符 / 指令 / 标签开头，**不可能**
+            # 以 `|` 开头 ⇒ 判为注释安全。如实记进 `comments`（style=m68k），
+            # 而不是当成指令 —— 那份「注释」是文档，译文层还要用。
+            comments.append({"line": text_ln, "col": 1, "style": "m68k",
+                             "text": text_line[:200],
+                             "block_end": text_ln})
+        elif text_line.startswith("."):
+            nl = text_line.split(None, 1)
+            nseg = _asm_segment_of(nl[0].lower(),
+                                   (nl[1] if len(nl) > 1 else ""))
+            if nseg:
+                seg = nseg
+            m = _RE_ASM_SYMBOL.match(text_line)
+            if m:
+                symbols.append({"line": text_ln, "name": m.group(1)})
+            else:
+                directives.append({"line": text_ln,
+                                   "text": text_line[:200]})
+        else:
+            m = _RE_ASM_LABEL.match(text_line)
+            if m:
+                labels.append({"line": text_ln, "name": m.group(1),
+                               "kind": "name"})
+            else:
+                # R79 / C28-2：数字局部标签（`1:` / `2:`）是**真标签** ——
+                # `jmp 1b` 就指向它。R78 把它当「行首 token」塞进直方图，
+                # 于是 `insn_hist` 里出现了 `1: 1964`。
+                m = _RE_ASM_NUMLABEL.match(text_line)
+                if m:
+                    labels.append({"line": text_ln, "name": m.group(1),
+                                   "kind": "numeric"})
+            if m:
+                text_line = text_line[m.end():].strip()
+            for head in _asm_statement_heads(text_line):
+                if not _ASM_HEAD_RE.match(head):
+                    # F3：语句必须以字母 / `_` / `.` / `$` 起头。`}`、`{`
+                    # 这类首字符不是标识符的**不是语句**（`.lds.S` 链接脚本）
+                    # ⇒ 进 `excluded_hist` 留痕，不当助记符。**不静默丢弃**。
+                    excl[head] = excl.get(head, 0) + 1
+                elif seg == "text":
+                    hist[head] = hist.get(head, 0) + 1
+                else:
+                    # 数据段的行**没有助记符语义**，但不静默丢弃 ——
+                    # 进 `excluded_hist` 留痕，谁都能核对「排除了什么」。
+                    excl[head] = excl.get(head, 0) + 1
+        seg_lines[seg] = seg_lines.get(seg, 0) + 1
     top = sorted(hist.items(), key=lambda kv: (-kv[1], kv[0]))[:64]
+    ex_top = sorted(excl.items(), key=lambda kv: (-kv[1], kv[0]))[:32]
     return {"rel": rel, "path": path, "kind": "asm", "functions": [],
             "imports": [], "symbols": symbols, "labels": labels,
             "directives": directives, "macros": macros,
             "insn_hist": [[k, v] for (k, v) in top],
+            "excluded_hist": [[k, v] for (k, v) in ex_top],
+            "segment_lines": seg_lines,
             "insn_total": sum(hist.values()), "comments": comments}
 
 
@@ -7770,13 +7881,47 @@ def _c_asm_stats(files):
     return st
 
 
-def _ext_file_payload(pf):
+def _annotations_on(args):
+    """R79 / C28-1：JSON 是否带**行级明细**（注释 / 汇编）。
+
+    默认 `True`（保持 R78 的载荷形态）；`--no-annotations` 置 `False`。
+    **顶层汇总从来不受这个开关影响** —— 它们的信息密度是「每语料一行」，
+    丢掉它们不会让 JSON 变小，只会让人看不懂。
+    """
+    return getattr(args, "annotations", True)
+
+
+def _c_file_payload(pf, detail=True):
+    """R79 / C28-1：C 的**每文件** JSON。
+
+    `detail=False` 时**不写出**行级明细键（`comments` / `asm`）。
+    为什么是「不写键」而不是「写空数组」：空数组每文件白付约 32 B，
+    内核量级（6 万文件）就是约 2 MB 的纯噪声，而这一档的全部意义就是变小。
+    消费方靠顶层 `annotations` 布尔判断处于哪种模式，不用去猜。
+    """
+    out = {"rel": pf["rel"], "includes": pf["includes"],
+           "macros": pf["macros"], "functions": pf["functions"]}
+    if detail:
+        out["comments"] = pf.get("comments", [])
+        out["asm"] = pf.get("asm", [])
+    return out
+
+
+# `--no-annotations` 下从**扩展前端**每文件载荷里去掉的键（全是行级明细）。
+_ASM_DETAIL_KEYS = ("symbols", "labels", "directives", "insn_hist",
+                    "excluded_hist", "comments", "segment_lines")
+
+
+def _ext_file_payload(pf, detail=True):
     """R78：扩展前端的**每文件** JSON。
 
     除通用字段外，把该前端**自带**的扩展块原样带出（汇编的
     `symbols/labels/insn_hist/directives/comments`）。不这样做，新数据就会在
     JSON 这一层被静默丢掉 —— R78a 落盘后实测确认过一次（`--lang asm` 的 JSON
     里 symbol/label 全空），这就是它的对手方。
+
+    R79 / C28-1：新增 `detail` 形参。`detail=False`（`--no-annotations`）时
+    只跳过 `_ASM_DETAIL_KEYS` 里的行级明细，**标量与计数照旧**。
 
     `path` 一律不带（绝对路径，且既有输出也没有它）。
     """
@@ -7785,30 +7930,55 @@ def _ext_file_payload(pf):
     for k in sorted(pf):
         if k in ("rel", "path", "imports", "functions"):
             continue
+        if not detail and k in _ASM_DETAIL_KEYS:
+            # R79 / C28-1：明细开关。标量（macros / insn_total）**留下** ——
+            # 它们才几十字节，却能让人一眼看出「哪个文件最重」。
+            continue
         out[k] = pf[k]
     return out
 
 
 def _asm_file_stats(files):
-    """R78：`.S` 语料的顶层汇总（文件 / 符号 / 标签 / 指令 / 宏 / 注释）。"""
-    st = {"files": 0, "symbols": 0, "labels": 0, "macros": 0,
-          "instructions": 0, "directives": 0, "comments": 0,
-          "insn_top": {}}
+    """`.S` 语料的顶层汇总（文件 / 符号 / 标签 / 指令 / 宏 / 注释 / 段行数）。
+
+    R79 三处变化，全为 C28-2：
+      * `instructions` 只数**文本段**的助记符（R78 把每个行首 token 都数进去，
+        于是 `1:` / `lock;` / `|` 也被算成指令）；
+      * 新增 `numeric_labels`（`1:` 一类）；`labels` 仍然含它们；
+      * 新增 `segment_lines` / `excluded_top` —— 让「被排除的是什么」**看得见**，
+        而不是从直方图里静默蒸发。
+    所有 dict 键排序，保证两次运行逐字节一致。
+    """
+    st = {"files": 0, "symbols": 0, "labels": 0, "numeric_labels": 0,
+          "macros": 0, "instructions": 0, "directives": 0, "comments": 0,
+          "segment_lines": {"text": 0, "data": 0},
+          "insn_top": {}, "excluded_top": {}}
     top = {}
+    ex = {}
     for pf in files:
         if pf.get("kind") != "asm":
             continue
         st["files"] += 1
         st["symbols"] += len(pf.get("symbols") or [])
-        st["labels"] += len(pf.get("labels") or [])
+        for _l in (pf.get("labels") or []):
+            st["labels"] += 1
+            if _l.get("kind") == "numeric":
+                st["numeric_labels"] += 1
         st["macros"] += pf.get("macros") or 0
         st["instructions"] += pf.get("insn_total") or 0
         st["directives"] += len(pf.get("directives") or [])
         st["comments"] += len(pf.get("comments") or [])
+        _pl = pf.get("segment_lines") or {}
+        for _seg in st["segment_lines"]:
+            st["segment_lines"][_seg] += _pl.get(_seg, 0)
         for pair in (pf.get("insn_hist") or []):
             top[pair[0]] = top.get(pair[0], 0) + pair[1]
+        for pair in (pf.get("excluded_hist") or []):
+            ex[pair[0]] = ex.get(pair[0], 0) + pair[1]
     st["insn_top"] = dict(sorted(top.items(),
                                  key=lambda kv: (-kv[1], kv[0]))[:32])
+    st["excluded_top"] = dict(sorted(ex.items(),
+                                     key=lambda kv: (-kv[1], kv[0]))[:32])
     return st
 
 
@@ -10267,13 +10437,10 @@ def _run_c_only(c_model, root, args):
         _c_payload = {
             "lang": c_model.get("lang", "c"),
             "version": VERSION,
-            "files": [{
-                "rel": pf["rel"], "includes": pf["includes"],
-                "macros": pf["macros"],
-                "functions": pf["functions"],
-                "comments": pf.get("comments", []),
-                "asm": pf.get("asm", []),
-            } for pf in c_model.get("files", [])],
+            # R79 / C28-1：如实标出当前是「带明细」还是「瘦身」模式
+            "annotations": _annotations_on(args),
+            "files": [_c_file_payload(pf, _annotations_on(args))
+                      for pf in c_model.get("files", [])],
             "edges": [{"caller": e[0], "callee": e[1], "line": e[2],
                        "file": e[3]} for e in c_model.get("edges", [])],
             # P90：#include 跨文件依赖边（解析到项目内文件 / 未解析为 null）
@@ -10362,7 +10529,8 @@ def _run_ext_only(model, root, args, lang):
         payload = {
             "lang": model.get("lang", lang),
             "version": VERSION,
-            "files": [_ext_file_payload(pf)
+            "annotations": _annotations_on(args),
+            "files": [_ext_file_payload(pf, _annotations_on(args))
                       for pf in model.get("files", [])],
             "edges": [{"caller": e[0], "callee": e[1], "line": e[2], "file": e[3]}
                       for e in model.get("edges", [])],
@@ -30558,6 +30726,15 @@ def main(argv=None):
                          "asm（汇编 .S/.s/.asm 浅层前端，R78）。"
                          "TypeScript / Rust / Go 等暂无前端：扫描到时会显式告警，"
                          "不会静默返回 0 结果")
+    ap.add_argument("--no-annotations", dest="annotations",
+                    action="store_false", default=True,
+                    help="R79 / C28-1：JSON 里**不带**注释与汇编的**明细数组**"
+                         "（逐文件的 comments / asm，汇编前端的 symbols / "
+                         "labels / insn_hist / directives / comments），"
+                         "只保留顶层汇总（asm / comment_stats / "
+                         "asm_file_stats）。整树级语料下明细会把 JSON 撑到"
+                         "GB 级，此开关给 CI / 大语料一个更小的 JSON；"
+                         "默认带明细。顶层 `annotations` 布尔会如实标出当前模式。")
     ap.add_argument("--binary", metavar="FILE[,FILE...]",
                     default=cfg.get("binary"),
                     help="分析二进制文件（可逗号分隔多个），分析完即退出。"

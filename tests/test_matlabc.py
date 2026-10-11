@@ -20584,3 +20584,173 @@ def test_r78_annotation_fields_are_deterministic(tmp_path):
     st = json.loads(outs[0])["asm"]
     assert list(st["clobbers"]) == sorted(st["clobbers"]), st["clobbers"]
     assert list(st["qualifiers"]) == sorted(st["qualifiers"]), st["qualifiers"]
+
+
+def test_r79_lite_json_drops_detail_keeps_summary(tmp_path):
+    """R79 / C28-1：`--no-annotations` 只丢**明细数组**，顶层汇总照旧。
+
+    四层，每层都有对手方：
+      ① 默认：逐文件 `comments` / `asm` 在 JSON 里（R78 行为的回归钉）
+      ② 加开关：逐文件**没有**这两个键 —— 是「不写键」而不是「写空数组」，
+         空数组每文件白付约 32 B，内核量级就是约 2 MB 纯噪声
+      ③ 两种模式都能**自证**：顶层 `annotations` 布尔；且汇总键
+         (`asm` / `comment_stats` / `edges` / `unresolved` / `heuristics`)
+         在两种模式下**都在**、且**逐位相同** —— 开关只动明细
+      ④ 汇编同款：`--lang asm --no-annotations` 丢
+         `symbols/labels/insn_hist/directives/comments`，
+         但 `asm_file_stats` 与标量 `insn_total` 仍在
+    """
+    src = tmp_path / "src"
+    src.mkdir()
+    with io.open(str(src / "a.c"), "w", encoding="utf-8") as fh:
+        fh.write("/* c1 */\nint f(int v) {\n"
+                 "    int o;\n"
+                 '    asm volatile("nop" : "+r"(o) : "r"(v) : "memory");\n'
+                 "    return o;\n}\n")
+    outs = {}
+    for flag, tag in (([], "full"), (["--no-annotations"], "lite")):
+        jp = os.path.join(str(tmp_path), "c_%s.json" % tag)
+        rc, _o, err = _run([str(src), "--lang", "c", "--json", jp] + flag,
+                           str(tmp_path))
+        assert rc == 0, err[:300]
+        outs[tag] = json.loads(_read_text(jp))
+
+    # ① 默认带明细
+    assert "comments" in outs["full"]["files"][0]
+    assert "asm" in outs["full"]["files"][0]
+    assert outs["full"]["annotations"] is True
+    # ② lite 丢明细（键不存在）
+    assert "comments" not in outs["lite"]["files"][0]
+    assert "asm" not in outs["lite"]["files"][0]
+    assert outs["lite"]["annotations"] is False
+    # ③ 汇总两模式都在且逐位相同；导航标量留下
+    for k in ("asm", "comment_stats", "edges", "unresolved", "heuristics"):
+        assert k in outs["lite"], k
+    assert outs["lite"]["asm"] == outs["full"]["asm"]
+    assert outs["lite"]["comment_stats"] == outs["full"]["comment_stats"]
+    assert outs["lite"]["files"][0]["functions"] == \
+        outs["full"]["files"][0]["functions"]
+    # 手算：这条内联汇编两种模式都看得到（汇总层面）
+    assert outs["full"]["asm"]["statements"] == 1
+    assert outs["full"]["comment_stats"]["total"] == 1
+
+    # ④ 汇编同款
+    asrc = tmp_path / "asm"
+    asrc.mkdir()
+    with io.open(str(asrc / "t.S"), "w", encoding="utf-8") as fh:
+        fh.write(".globl f\n.data\n1:\n    |\n.text\nf:\n"
+                 "    lock; addl $1, %eax\n    ret\n")
+    a_outs = {}
+    for flag, tag in (([], "full"), (["--no-annotations"], "lite")):
+        jp = os.path.join(str(tmp_path), "a_%s.json" % tag)
+        rc, _o, err = _run([str(asrc), "--lang", "asm", "--json", jp] + flag,
+                           str(tmp_path))
+        assert rc == 0, err[:300]
+        a_outs[tag] = json.loads(_read_text(jp))
+    af = a_outs["full"]["files"][0]
+    al = a_outs["lite"]["files"][0]
+    for k in ("symbols", "labels", "insn_hist", "directives", "comments"):
+        assert k in af and k not in al, k
+    assert al["insn_total"] == af["insn_total"] == 3, (al["insn_total"],
+                                                       af["insn_total"])
+    assert a_outs["lite"]["asm_file_stats"] == a_outs["full"]["asm_file_stats"]
+
+
+def test_r79_asm_segment_split_and_statement_heads():
+    """R79 / C28-2：`.S` 直方图**先分段再统计** —— 修 R78 实测的三类污染。
+
+    对手方（R78 在整棵内核上量到的）：
+      * 数字局部标签 `1:`（1964 次）—— 它是**标签**（`jmp 1b` 指向它）；
+      * 分号连写的 `lock;` —— GAS 的 `;` 是语句分隔符，得切成 `lock` + `addl`；
+      * `|`（5709 次）—— 见下一个测试：m68k 方言里它是**注释**（不是数据）。
+
+    本测试用手算的 `.text`/`.data` 混排把段边界钉死，并**同时**证明
+    「被排除的东西有留痕」（`excluded_hist`），不是静默消失。
+    """
+    text = (".text\n"                      #  1  seg=text
+            "_start:\n"                     #  2  名字标签
+            "1:\n"                          #  3  数字标签（旧：进直方图）
+            "    jmp 1b\n"                  #  4
+            ".data\n"                       #  5  seg=data
+            "2:\n"                          #  6  数字标签
+            "    | m68k 注释\n"              #  7  `|` = 本方言行注释
+            ".text\n"                       #  8  seg=text
+            "    lock; addl $1, %eax\n"     #  9  两条语句
+            "    ret\n"                     # 10
+            "}\n")                          # 11  非语句（.lds.S 风格）
+    m = ma._asm_file_model(text, "t.S", "t.S")
+    assert m["segment_lines"] == {"text": 8, "data": 3}, m["segment_lines"]
+    assert [(l["line"], l["name"], l["kind"]) for l in m["labels"]] == \
+        [(2, "_start", "name"), (3, "1", "numeric"), (6, "2", "numeric")], \
+        m["labels"]
+    assert dict((k, v) for (k, v) in m["insn_hist"]) == \
+        {"jmp": 1, "lock": 1, "addl": 1, "ret": 1}, m["insn_hist"]
+    # `|` 行是注释（F2），`}` 不是语句（F3）—— 两条都**留痕**，不静默
+    assert [(c["line"], c["style"]) for c in m["comments"]] == [(7, "m68k")], \
+        m["comments"]
+    assert dict((k, v) for (k, v) in m["excluded_hist"]) == {"}": 1}, \
+        m["excluded_hist"]
+    assert m["insn_total"] == 4, m["insn_total"]
+    # 分段状态机：`.section` 只看段名子串（保守取法）
+    assert ma._asm_segment_of(".section", ".rodata") == "data"
+    assert ma._asm_segment_of(".section", ".text.hot") == "text"
+    assert ma._asm_segment_of(".globl", "f") is None
+    assert ma._asm_segment_of(".data.rel.ro", "") == "data"
+
+
+def test_r79_asm_continuation_fold_kills_macro_body_pollution():
+    """R79 / C28-2（第二轮）：cpp 续行**必须先折叠**，否则宏体残片冒充助记符。
+
+    实测证人（`_r79/probe_hist_r79.py`，整棵内核 1,358 个 `.S`）：
+      * `arch/hexagon/kernel/head.S:51-53` —— `#define PTE_BITS (` 三行续行，
+        第 52 行以 `|` 开头；不折叠时它被当成「助记符 `|`」；
+      * `arch/powerpc/kernel/kvm_emul.S:31` —— 整行只有一个续行反斜杠；
+      * `arch/arm64/crypto/sm4-neon-core.S:102` —— 同上。
+    不折叠时 `insn_hist` 的头名就是那个续行反斜杠（8,240 次）与 `|`（5,660 次）。
+
+    为什么这是**真缺陷**而不是「浅层前端的应有之义」：`.S` 是预处理过的汇编，
+    续行反斜杠 + 换行是 cpp 续行 —— 折叠是**语义等价**的重写，不是"猜宏"。
+    折叠后宏体整体变成一个 `#` 逻辑行，正好与 R78 的发现闭环：
+    宏体里藏着大量汇编（13,632 处里 14.4%），它们本就不该被当成指令扫出来。
+    """
+    text = ("#define PTE_BITS ( A | B \\\n"          # 1-3 一条 cpp 逻辑行
+            "                 | C << 6 \\\n"
+            "                 | D)\n"
+            "\n"                                        # 4  空行
+            ".text\n"                                   # 5
+            "_start:\n"                                 # 6
+            "    movq %rax, %rbx\n"                     # 7
+            "|  m68k 注释\n"                             # 8
+            "}\n")                                      # 9
+    m = ma._asm_file_model(text, "t.S", "t.S")
+    # ① 宏体被折叠成**一个** `#` 逻辑行 ⇒ macro +1，且不是指令
+    assert m["macros"] == 1, m["macros"]
+    assert m["directives"][0]["line"] == 1, m["directives"]
+    assert m["directives"][0]["text"].startswith("#define PTE_BITS"), \
+        m["directives"][0]
+    # ② 直方图里没有 `\` / `|` / `}`
+    assert dict((k, v) for (k, v) in m["insn_hist"]) == {"movq": 1}, \
+        m["insn_hist"]
+    assert m["insn_total"] == 1, m["insn_total"]
+    # ③ m68k `|` 行 ⇒ 注释（如实记下），不进任何直方图
+    assert [(c["line"], c["style"]) for c in m["comments"]] == [(8, "m68k")], \
+        m["comments"]
+    # ④ 语句必须以标识符起头：`}` 不是语句 ⇒ 进 excluded_hist 留痕
+    assert dict((k, v) for (k, v) in m["excluded_hist"]) == {"}": 1}, \
+        m["excluded_hist"]
+    # ⑤ 段计数按**逻辑行**（空行不计）
+    assert m["segment_lines"] == {"text": 6, "data": 0}, m["segment_lines"]
+
+
+def test_r79_no_annotations_flag_is_documented():
+    """R79 / C28-1：开关必须出现在 `--help` 里 —— 能关但没人知道能关等于没有。
+
+    对手方：argparse 里加了 `dest` 却忘了 `help`，功能可用但**不可发现**；
+    `tools/check_help_contract.py` 只管体积，不管「某个开关是否被解释」。
+    """
+    out = subprocess.run([_PY, ANALYZER, "--help"], stdout=subprocess.PIPE,
+                         stderr=subprocess.STDOUT)
+    txt = out.stdout.decode("utf-8", "replace")
+    assert out.returncode == 0
+    assert "--no-annotations" in txt
+    assert "明细" in txt
