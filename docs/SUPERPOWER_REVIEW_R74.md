@@ -175,3 +175,22 @@ R72/R73 只说「有 17 个多主人前缀」。R74 先把**语义**逐条取出
    保留原值；R74 的读数只写在本文件里。
 3. **不动 `VERSION`**（`1.16.72`，源码常量）。
 4. **不动 `flow/` 图册**（R45–R48 已定不推进）。
+
+## 附 1 远端复核定稿读数（`_r74/verify_remote_r74.py`）
+
+从**全新克隆**回来（`git@github.com:pony-029/malabc.git`），对 `87e3ad1` 复核：
+
+| 项 | 读数 |
+| --- | --- |
+| `HEAD` | 两侧同为 `87e3ad14e6db40b3c11f4b7c8a65ae7c1af6f2a2` |
+| `HEAD^{tree}` | 两侧同为 `1ba310a943b0c761eb9e9116fa2c48d53a8c3e6b` |
+| `ls-tree -r -z` 条目 | **258 / 258**（R73 是 257；+1 = 本文件） |
+| 逐文件 sha256（内容取自 `git cat-file blob`） | **258 个全同** |
+| 克隆内 `tools/check_all.py` | **rc=0** |
+| 克隆内 `pytest -k "r72 or r73 or r74"` | **4 passed** |
+| NEGCTRL B（只改工作区） | 指纹**看不见**、`git status` 看得见 ✓ |
+| NEGCTRL A（改对象 + `commit --amend`） | 指纹变了且**点名** `CONTRIBUTING.md` ✓ |
+
+> 「推送成功」不是证据；**从远端克隆回来逐文件比对**才是 —— 且 NEGCTRL 要打在
+> **有分辨力的那一面**（对象库 vs 工作区），否则只会得到一条永远绿的假 NEGCTRL。
+
