@@ -296,9 +296,9 @@ GUARD_CONTRACT = {
         2: "缺输入（任一在册文件缺失或读不到，或读不到 matlabc.py 的 VERSION）",
     },
     "tools/check_unified_graph.py": {
-        0: "统一图恒等式 + 三张登记表自洽（U1–U7：形状/前提/映射逐条/注入即破/装置登记/往返/站点先行/验证分母）",
+        0: "统一图恒等式 + 三张登记表自洽（U1–U8：形状/前提/映射逐条/注入即破/装置登记/往返/站点先行/验证分母/匹配口径）",
         1: "有违规（形状非法 / T1 前提缺失 / 守恒判定器抓不到注入 / 未登记装置 / 往返漂移）",
-        2: "缺输入（导不到 unified_graph 或 binhops 或 concurrency —— 缺输入 → 红）",
+        2: "缺输入（导不到 unified_graph / binhops / concurrency / site_matching / translate.rules —— 缺输入 → 红）",
     },
 }
 

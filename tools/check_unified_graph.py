@@ -3,7 +3,7 @@
 
 R82 方案 §11/1 说 Phase 0 是「唯一不做就白做的一步」—— 因为 T1–T4 都要往
 同一张图上加东西。但「先立模型」这句话本身**没有对手方**：模型写完没人知道
-它守没守住。本门就是它的对手方，判据族 **U1–U7**。
+它守没守住。本门就是它的对手方，判据族 **U1–U8**。
 
 一图看懂（每条判据拦什么）：
 
@@ -29,6 +29,20 @@ R82 方案 §11/1 说 Phase 0 是「唯一不做就白做的一步」—— 因�
     U7  互转规则的验证分母      三分（verified/unverified/total）必须构成划分，
                                 且「已支持」⊆「已验证」—— 未验证的不得以
                                 「已支持」出现（H6：一个会一直空下去的字段）
+    U8  站点**匹配口径**         词界口径必须在**故意的前后缀语料**上真的比子串
+                                口径少收（delta>0，否则词界化等于没做）；三个
+                                已知误报（`__future__`/`signaling`/`callbacks`）
+                                必须被排除；驼峰（`hThread`/`myThreadPool`）与
+                                短语（`new Promise`/`.then(`）必须仍被命中
+                                （口径不许修过头）；两词干族必须不交
+
+**U8 为什么必须有**（R82b 黑帽 B5 实测）：分母可以被两件事**悄悄换掉**，
+而全部门禁**全程绿** —— ① 匹配用**子串**（`signal_struct` 里的 `signal` 也算）；
+② 「锁/信号量」被收进 `unknown`（互斥同步 != 异步站点）。两本账共用一个错口径时，
+**对账永远对得上**（内核树上实测 13.4 万全绿，而分母早被换成了「并发相关词频」）。
+⇒ **只加「对账」不够，必须给口径本身配对手方。** U8 的形态是「并列报两种口径，
+并断言它们**真的不同**」—— 若两个读数完全相同，说明口径对手方退化成了同一把尺子
+（这比「不一致」更坏：它看起来像已经量过了）。
 
 **U3 为什么是本门的心脏**（R82-0-2 的验收判据字面就是「注入一条边即破」）：
 把那句话写成注释是**没有对手方**的；写成一条**真跑**的探针，它才是判据
@@ -46,9 +60,9 @@ R82 方案 §11/1 说 Phase 0 是「唯一不做就白做的一步」—— 因�
     python tools/check_unified_graph.py --selftest # 两向自证
 
 退出码：
-    0  = 形状合法、前提在场、守恒判定器两向、装置登记两向、往返无损、站点先行、验证分母成划分
-    1  = 有违规（形状非法 / 前提缺失 / 判定器抓不到注入 / 未登记装置 / 往返漂移 / 额度失效 / 未验证报成已支持）
-    2  = 缺输入（导不到 unified_graph / binhops / concurrency / translate.rules）
+    0  = 形状合法、前提在场、守恒判定器两向、装置登记两向、往返无损、站点先行、验证分母成划分、匹配口径两向
+    1  = 有违规（形状非法 / 前提缺失 / 判定器抓不到注入 / 未登记装置 / 往返漂移 / 额度失效 / 未验证报成已支持 / 口径未生效）
+    2  = 缺输入（导不到 unified_graph / binhops / concurrency / site_matching / translate.rules）
 """
 import argparse
 import os
@@ -58,7 +72,7 @@ import sys
 #   ① 本门的成功行（下面 main() 打印的那一行）；
 #   ② README.md / README_CN.md 里本门那一行。
 # 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
-ROW_SIGNATURE = "U1–U7"
+ROW_SIGNATURE = "U1–U8"
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
@@ -72,10 +86,11 @@ def _load():
         import unified_graph as ug
         import binhops as bh
         import concurrency as cc
+        import site_matching as sm
         import translate.rules as tr
     except ImportError:
         return None
-    return ug, bh, cc, tr
+    return ug, bh, cc, sm, tr
 
 
 # ── U1：单一事实源的形状（**两张表必须绑死**）────────────────────────────
@@ -225,12 +240,18 @@ def hop_device_problems(hop_devices, unregistered_fn, registered_fn):
 # ── U6：站点先行（**构造期**拒绝，不是事后审计）────────────────────────
 def scheduling_precedence_problems(ug, make_graph=None, make_node=None,
                                    make_edge=None):
-    """U6：`add_edge` 在没有站点额度时必须拒绝。
+    """U6：构造期拒绝 —— 「站点先行」+ 「分母来源必须独立」。
 
-    三条断言，缺一不可：
+    七条断言，缺一不可：
       ① 没额度 ⇒ **拒绝**（这是 H2 的解药：先造边后补站点必须写不出来）
-      ② 有额度 ⇒ **通过**（正例：否则"一律拒绝"也能骗过 ①）
+      ② 有额度 ⇒ **通过**（正例：否则「一律拒绝」也能骗过 ①）
       ③ 额度**只能消费一次** ⇒ 同类第二条边必须再被拒
+      ④ `declared_sites` **缺来源** ⇒ 拒绝（无来源的分母与 `all_site_count()`
+         在判定器眼里无法区分，A1b 退化成恒真式）
+      ⑤ 来源标为**非独立** ⇒ 拒绝 —— 这一条字面就是「拿派生量当独立分母」
+         必须**写不出来**（R82b 黑帽 B1）
+      ⑥ 来源**未登记** ⇒ 拒绝（拼错的标签会被静默采纳成「有来源」）
+      ⑦ 独立来源 ⇒ **通过**（正例：否则「一律拒绝」也能骗过 ④⑤⑥）
 
     构造器可注入（本仓 §4o-4：「判据必须可注入」）—— 否则夹具拿不到
     一个「不检查额度的假图」，第 ①③ 条就无法两向自证。
@@ -270,6 +291,27 @@ def scheduling_precedence_problems(ug, make_graph=None, make_node=None,
     if not raised2:
         probs.append("U6 额度没有被消费：另一类没有站点的边仍被接受"
                      "（额度检查必须**按 kind** 而非全局）")
+
+    # ④⑤⑥⑦ 分母的**来源标签**（三条拒绝 + 一条正例）──
+    g2 = mk_g()
+    for tag, args, why in (
+            ("缺来源", (4,), "分母与 sites 表在判定器眼里无法区分"),
+            ("非独立来源", (4, "sites_table"),
+             "字面就是「拿派生量当独立分母」"),
+            ("未登记来源", (4, "__no_such_source__"),
+             "拼错的标签会被静默采纳成「有来源」")):
+        raised = False
+        try:
+            g2.set_declared_sites(*args)
+        except ug.GraphError:
+            raised = True
+        if not raised:
+            probs.append("U6 declared_sites 的来源检查漏了【%s】⇒ 被采纳"
+                         "（%s）" % (tag, why))
+    got = g2.set_declared_sites(4, "file_axis")
+    if got != 4:
+        probs.append("U6 正例被误拦：独立来源 file_axis 应当通过，得到 %r"
+                     % (got,))
     return probs
 
 
@@ -310,6 +352,90 @@ def rule_registry_problems(census, rule_ids, supported_ids, verified_ids):
 
 
 # ── U3/U5：真跑守恒判定器（注入即破 / 往返无损）────────────────────────
+# ── U8：匹配口径（**给口径本身配对手方**）──────────────────────────────
+# 故意塞满前后缀的语料：每一条 token 都出现「真站点」与「子串陷阱」两种形态。
+# 它是**夹具**，所以必须自己声明：这些 token 就是 U8 要裁决的那一批。
+CALIBER_CORPUS = (
+    "signal_struct x; signaling y; forked z; threads w; callbacks v;\n"
+    "__future__ import; pthread_create(f); hThread = 1; std::thread t;\n"
+)
+CALIBER_TOKENS = ("signal", "fork", "thread", "callback", "pthread_create")
+
+
+def matching_caliber_problems(sm, corpus=None, tokens=None):
+    """U8：站点匹配的**口径**必须自洽（纯函数，可注入）。
+
+    六条，各守一个失败模式：
+      ① 两口径必须**真的不同** —— 读出一模一样时，词界化等于没做，
+         而报告照样「通过」（这是本判据存在的理由，也是最该红的那一条）
+      ② 三个**已知误报**必须被排除（`__future__` / `signaling` / `callbacks`）
+         —— 不修的话「缺口规模」被系统性高估，而高估的方向恰好看不见
+      ③ 驼峰必须**仍被命中**（`hThread` / `myThreadPool`）——
+         口径修过头与没修一样坏，而且更隐蔽（它会静默删掉真站点）
+      ④ 短语 / 命名空间 token 不许被一刀切词界化打死
+         （`new Promise` 里没有「标识符边界」可言）
+      ⑤ 两个词干族必须**不交**（否则桶归属依赖遍历顺序 ⇒ 静默取错）
+      ⑥ 每族都必须**非空**（空族会让 `bucket_of` 恒返回 None，
+         而「分不出桶」与「没有桶」读数相同）
+    """
+    probs = []
+    text = CALIBER_CORPUS if corpus is None else corpus
+    toks = CALIBER_TOKENS if tokens is None else tokens
+    hint = sm.hint_regex()
+
+    # ① 两口径必须真的不同
+    cal = sm.compare_calibers(text, toks)
+    if cal["substring"] == cal["wordbound"]:
+        probs.append(
+            "U8 两种口径的读数完全相同（各 %d）—— 词界化【没有生效】，"
+            "口径对手方退化成了同一把尺子（这比不一致更坏：它看起来像量过了）"
+            % cal["substring"])
+    elif cal["delta"] <= 0:
+        probs.append(
+            "U8 子串口径没有多收任何东西（delta=%d）—— 在一份**故意塞满**"
+            "前后缀陷阱的语料上，这不可能是真的" % cal["delta"])
+
+    # ② 已知误报必须被排除
+    for bad, why in (("__future__", "双下划线包裹：`future` 不是独立词"),
+                     ("signaling", "后缀 -ing：`signal` 不是独立词"),
+                     ("callbacks", "复数后缀：`callback` 不是独立词"),
+                     ("forked", "后缀 -ed：`fork` 不是独立词")):
+        if hint.search(bad):
+            probs.append("U8 词界口径仍收进误报 %r（%s）—— 缺口规模会被系统性高估"
+                         % (bad, why))
+
+    # ③ 驼峰必须仍被命中
+    for ok, why in (("hThread", "前缀驼峰（要左边界就会漏掉它）"),
+                    ("myThreadPool", "带前缀的驼峰"),
+                    ("spinLock", "spin_lock 的驼峰形态"),
+                    ("asyncTask", "连写驼峰")):
+        if not hint.search(ok):
+            probs.append("U8 词界口径漏掉了真站点 %r（%s）—— 修过头与没修一样坏"
+                         % (ok, why))
+
+    # ④ 短语 / 命名空间 token 不许失配
+    for tok, sample in (("new Promise", "new Promise(executor)"),
+                        (".then(", "p.then(cb)"),
+                        ("std::thread", "std::thread t;")):
+        if sm.count_wordbound(sample, tok) < 1:
+            probs.append("U8 短语/命名空间 token %r 在 %r 上失配 —— "
+                         "词界化修过头（短语没有标识符边界可言）" % (tok, sample))
+
+    # ⑤ 两族不交
+    both = sorted(set(sm.ASYNC_STEMS) & set(sm.SYNC_STEMS))
+    if both:
+        probs.append("U8 词干族不交性被破坏：%s 同时在两族"
+                     "（桶归属会依赖遍历顺序 ⇒ 静默取错）" % both)
+
+    # ⑥ 两族非空
+    for name, fam in (("ASYNC_STEMS", sm.ASYNC_STEMS),
+                      ("SYNC_STEMS", sm.SYNC_STEMS)):
+        if not fam:
+            probs.append("U8 %s 为空 —— 空族让每个词都落不进桶，"
+                         "而「分不出桶」与「没有桶」读数相同" % name)
+    return probs
+
+
 def _injection_probe(ug, hop_devices):
     """返回 dict：每个子探针的 (干净, 注入后) 问题列表。
 
@@ -329,19 +455,22 @@ def _injection_probe(ug, hop_devices):
     #   ⚠ 只补站点不同步声明 ⇒ A1b 会红（这正是第二个分母在起作用的证据，
     #   本轮落地时它当场抓到过一次）。
     g.add_site("direct", 1)
-    g.set_declared_sites(g.all_site_count())
+    # 声明量由**夹具自己数**（demo 的 4 条 + 本步补的 1 条 = 5），
+    # **不能**写成 `g.all_site_count()` —— 那正是「拿派生量当独立分母」：
+    # 值可能对，但来源是假的，而 A1b 的全部价值就在那个来源上。
+    g.set_declared_sites(5, "file_axis")
     out["A1a_restore"] = (clean, ug.conservation_problems(g, hop_devices))
 
     # A1b：站点与边都对得上，但**声明量**故意少报 1（独立分母动手）
     g5 = ug.demo_graph()
-    g5.set_declared_sites(g5.all_site_count() - 1)
+    g5.set_declared_sites(3, "file_axis")        # demo 真值 4，故意少报 1
     out["A1b"] = (clean, ug.conservation_problems(g5, hop_devices))
 
     # A2：端点不存在（站点与声明**先**补齐，只留 A2 一维）
     g2 = ug.demo_graph()
     g2.add_site("direct", 1)
     g2.edges.append(ug.Edge("f:missing", "fn:a.m:foo", "direct"))
-    g2.set_declared_sites(g2.all_site_count())
+    g2.set_declared_sites(5, "file_axis")
     out["A2"] = (clean, ug.conservation_problems(g2, hop_devices))
 
     # A3：binhop 边用了未登记的装置（binhop 是合法的站点结局）
@@ -349,14 +478,14 @@ def _injection_probe(ug, hop_devices):
     g3.add_site("binhop", 1)
     g3.edges.append(ug.Edge("f:a.m", "fn:a.m:foo", "binhop",
                             hop=ug.Hop("__no_such_device__")))
-    g3.set_declared_sites(g3.all_site_count())
+    g3.set_declared_sites(5, "file_axis")        # demo 的 4 条 + 本步补的 binhop 1 条
     out["A3"] = (clean, ug.conservation_problems(g3, hop_devices))
 
     # A4：同一条边造两遍
     g4 = ug.demo_graph()
     g4.add_site("direct", 1)
     g4.edges.append(ug.Edge("f:a.m", "fn:a.m:foo", "direct"))
-    g4.set_declared_sites(g4.all_site_count())
+    g4.set_declared_sites(5, "file_axis")
     out["A4"] = (clean, ug.conservation_problems(g4, hop_devices))
     return out
 
@@ -390,7 +519,7 @@ def roundtrip_problems(ug):
     return probs
 
 
-def audit(ug, bh, cc, tr):
+def audit(ug, bh, cc, sm, tr):
     """返回问题列表（空 = 干净）。缺模块由调用方先拦。"""
     probs = []
     probs += model_shape_problems(ug.NODE_KINDS, ug.EDGE_KINDS, ug.SITE_OUTCOMES,
@@ -405,6 +534,7 @@ def audit(ug, bh, cc, tr):
     probs += rule_registry_problems(tr.verification_census(), tr.rule_ids(),
                                     tr.supported_rule_ids(),
                                     tr.verified_rule_ids())
+    probs += matching_caliber_problems(sm)
 
     # U3：注入即破（R82-0-2 验收判据的**执行版**）
     probe = _injection_probe(ug, bh.HOP_DEVICES)
@@ -434,6 +564,54 @@ def audit(ug, bh, cc, tr):
     return probs
 
 
+class _LaxSM(object):
+    """U8 的**变异体**：接住真模块，只改一处 —— 用来证明每条断言能被打红。
+
+    `bound=""` 把词界边界去掉（词界退化成子串）；
+    `async_extra` 往异步族里塞词干（制造两族相交）；
+    `sync=()` 把同步族清空。
+    """
+
+    def __init__(self, sm, bound=None, async_extra=(), sync=None):
+        self._sm = sm
+        self._bound = bound
+        self._async_extra = tuple(async_extra)
+        self._sync = sync
+        for name in ("count_substring", "count_wordbound",
+                     "hint_regex", "split_hints", "bucket_of", "stem_regex",
+                     "camel", "namespace_parts", "ident_part", "is_phrase",
+                     "known_stems_by_lang", "token_regex", "bucket_totals"):
+            setattr(self, name, getattr(sm, name))
+        self.BUCKET_ASYNC = sm.BUCKET_ASYNC
+        self.BUCKET_SYNC = sm.BUCKET_SYNC
+        self.HINT_BUCKETS = sm.HINT_BUCKETS
+        self.SYNC_STEMS = sm.SYNC_STEMS if sync is None else tuple(sync)
+        self.ASYNC_STEMS = tuple(sm.ASYNC_STEMS) + self._async_extra
+
+    def hint_regex(self):
+        return self._sm.stem_regex(tuple(self.ASYNC_STEMS)
+                                   + tuple(self.SYNC_STEMS))
+
+    def compare_calibers(self, text, tokens):
+        """`bound=""` 时把词界**退化成子串** —— 用来打红 ①（口径未生效）。
+
+        ⚠ 变异要**只**作用于这一维：`hint_regex` 不动，所以 ②③ 保持原样。
+        若两维一起变异，`expect(..., True)` 会被别的维的报错满足（§4k-3）。
+        """
+        if self._bound is None:
+            return self._sm.compare_calibers(text, tokens)
+        per = {}
+        sub = wb = 0
+        for t in tokens:
+            a = text.count(t)
+            b = text.count(t)          # 退化：词界 == 子串
+            per[t] = {"substring": a, "wordbound": b}
+            sub += a
+            wb += b
+        return {"substring": sub, "wordbound": wb, "delta": sub - wb,
+                "per_token": per}
+
+
 def _selftest():
     """两向自证：好样本必须放行，坏样本必须抓到，且**每条判据都被触发过**。"""
     loaded = _load()
@@ -441,7 +619,7 @@ def _selftest():
         print("SELFTEST 无法自证：导不到 unified_graph / binhops / concurrency / "
               "translate.rules")
         return 2
-    ug, bh, cc, tr = loaded
+    ug, bh, cc, sm, tr = loaded
 
     bad = good = 0
     fails = []
@@ -461,7 +639,7 @@ def _selftest():
             good += 1
 
     # ── 正例：真实仓库必须干净 ──
-    expect("真实仓库（U1–U7 全量）", audit(ug, bh, cc, tr), False)
+    expect("真实仓库（U1–U8 全量）", audit(ug, bh, cc, sm, tr), False)
     expect("守恒判定器：干净 demo 图",
            ug.conservation_problems(ug.demo_graph(), bh.HOP_DEVICES), False)
 
@@ -563,6 +741,11 @@ def _selftest():
         def add_edge(self, e):
             self.edges.append(e)
 
+        def set_declared_sites(self, n, source=None):
+            """假图**也不检查来源** —— 让 U6 的 ④⑤⑥ 能被打红。"""
+            self.declared_sites = n
+            return n
+
     expect("U6 假图不检查额度 ⇒ 必须被抓到",
            scheduling_precedence_problems(ug, make_graph=_LaxGraph), True)
 
@@ -583,6 +766,30 @@ def _selftest():
     expect("U7 普查分母自报了一个好看的小数",
            rule_registry_problems({"total": 1, "verified": 1, "unverified": 0},
                                   tr.rule_ids(), (), tr.rule_ids()[:1]), True)
+
+    # ── U8 匹配口径：正例 + 反例（每条都要有**能单独打红它**的变异）──
+    expect("U8 真实口径：两口径真的不同、误报被排除、驼峰仍命中",
+           matching_caliber_problems(sm), False)
+    expect("U8 词界退化回子串（边界被去掉）⇒ 必须抓到",
+           matching_caliber_problems(
+               _LaxSM(sm, bound=""), corpus=CALIBER_CORPUS,
+               tokens=CALIBER_TOKENS), True)
+    expect("U8 词干族相交 ⇒ 必须抓到",
+           matching_caliber_problems(
+               _LaxSM(sm, async_extra=("lock",))), True)
+    expect("U8 某一族为空 ⇒ 必须抓到",
+           matching_caliber_problems(_LaxSM(sm, sync=())), True)
+    buckets, unclassified = sm.split_hints(
+        {"hThread": 3, "pthreadMutex": 2})
+    expect("U8 分桶对真命中是**划分**（不完备项为空）",
+           [] if (not unclassified
+                  and buckets[sm.BUCKET_ASYNC].get("hThread") == 3
+                  and buckets[sm.BUCKET_SYNC].get("pthreadMutex") == 2)
+           else ["x"], False)
+    buckets2, unclassified2 = sm.split_hints(
+        {"hThread": 3, "NotAStem": 5})
+    expect("U8 分桶不完备时必须**报出来**（不许静默丢）",
+           unclassified2 if unclassified2 == ["NotAStem"] else ["y"], True)
 
     # ── 反例：U3 注入即破（逐维）+ 还原 ──
     probe = _injection_probe(ug, bh.HOP_DEVICES)
@@ -625,17 +832,17 @@ def main(argv=None):
     loaded = _load()
     if loaded is None:
         print("check_unified_graph: 导不到 unified_graph / binhops / concurrency / "
-              "translate.rules（缺输入 → 红）")
+              "site_matching / translate.rules（缺输入 → 红）")
         return 2
-    ug, bh, cc, tr = loaded
-    probs = audit(ug, bh, cc, tr)
+    ug, bh, cc, sm, tr = loaded
+    probs = audit(ug, bh, cc, sm, tr)
     if probs:
         print("check_unified_graph: %d 项违规" % len(probs))
         for p in probs:
             print("  - " + p)
         return 1
-    print("check_unified_graph: OK（统一图恒等式 + 三张登记表自洽 + 站点先行生效；"
-          "判据族 %s）" % ROW_SIGNATURE)
+    print("check_unified_graph: OK（统一图恒等式 + 三张登记表自洽 + 站点先行生效 "
+          "+ 匹配口径两向；判据族 %s）" % ROW_SIGNATURE)
     return 0
 
 

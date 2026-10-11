@@ -77,6 +77,8 @@
 # round | phase | line | action | objective | blocked_reason
 # ⚠ 轮号与 rounds.jsonl 的**已执行轮次**对齐 —— 台账是不可改的事实，计划只能让路。
 #   第 3 轮历史上已试过 R82-A1 并 blocked，所以 Phase 0b 两项顺延到 4/5。
+# ⚠ **区段轴**：`phase` 列就是区段（0 / 0b / 0c / A / B / C / D / E），`line` 列是线路（base / t1 / t2 ...）。**一条线路被 blocked 只停它自己**（环路按 `line` 停），
+#   所以 Phase A 未落地时 Phase 0c 的地基工作仍能记账。R83 的 Phase 0c 因此插在 Phase A 之前（轮号顺延），已执行的 0–6 轮一个不动。
 0  | 0  | base | phase0_acceptance       | Phase 0 验收：门数 17→18 全绿 + U1–U5 两向自证 | -
 1  | 0  | base | conservation_two_way    | 统一图守恒判定器两向成立（干净 0 / 注入 ≥1 / 还原 0） | -
 2  | 0  | base | py36_census             | 3.6.5 语法门在新增模块上仍绿 | -
@@ -84,10 +86,12 @@
 4  | 0b | base | u7_selftest             | 判据族扩到 U1–U7 且逐条两向自证 | -
 5  | 0b | base | concurrency_denominator | 并发站点数下界（第一个真分母；unknown 首次非零） | -
 6  | A  | t1   | -                       | R82-A2 C/C++ 并发原语后端 | 未实现
-7  | A  | t1   | -                       | R82-A3 Py/JS 后端（await 必须不产生 async 边） | 未实现
-8  | A  | t1   | -                       | R82-A4 MATLAB 后端（parfor/parfeval/batch/timer） | 未实现
-9  | A  | t1   | -                       | R82-A5 asm 间接跳转 ⇒ unknown（不猜） | 未实现
-10 | A  | t1   | -                       | R82-A6 站点/报告新增「异步」列 + 未识别并发站点计数 | 未实现
+7  | 0c | base | caliber_two_way         | 站点匹配口径：词界 vs 子串**并列**读数（U8 两向自证） | -
+8  | 0c | base | declared_source_gate    | declared_sites 必须带**已登记的独立来源**（含 from_dict 侧门） | -
+9  | A  | t1   | -                       | R82-A3 Py/JS 后端（await 必须不产生 async 边） | 未实现
+10 | A  | t1   | -                       | R82-A4 MATLAB 后端（parfor/parfeval/batch/timer） | 未实现
+11 | A  | t1   | -                       | R82-A5 asm 间接跳转 ⇒ unknown（不猜） | 未实现
+12 | A  | t1   | -                       | R82-A6 站点/报告新增「异步」列 + 未识别并发站点计数 | 未实现
 ```
 
 ### Phase A · T1 异步调用链（轮 1–60）

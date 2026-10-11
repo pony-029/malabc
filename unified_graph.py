@@ -73,6 +73,28 @@ SITE_OUTCOMES = tuple(EDGE_KINDS) + tuple(NON_EDGE_OUTCOMES)
 EDGE_PRODUCING_OUTCOMES = tuple(k for k in SITE_OUTCOMES
                                 if k not in NON_EDGE_OUTCOMES)
 
+# `declared_sites` 的**来源登记表**。每一条必须回答两个问题：
+#   ① 它**独立于** `sites` 表吗？（`independent`）
+#   ② 它和别的来源**差在哪**？（`note`）
+# 判据 U6 会**拒绝** `independent=False` 的来源。为什么必须是拒绝而不是提醒：
+# A1b 的全部价值在于「右边是**外部给的**」；一旦右边可以从 `sites` 派生，
+# A1b 立刻退化成恒真式 —— 而它的绿灯与「真的对上了」**一模一样**。
+# 「让写不出来的形状，比一条抓不住它的判据可靠」（R82-0b 的 H2 解药）。
+DECLARED_SITE_SOURCES = (
+    # (标签, 是否独立于 sites 表, 说明)
+    ("sites_table", False,
+     "从 sites 派生（all_site_count）—— 与 A1a 同源，**禁止**当独立分母"),
+    ("file_axis", True,
+     "按**文件**轴记的第二本账（逐文件累加，与结局轴 sites 不是一次投影）"),
+    ("wordbound_scan", True,
+     "用**词界**口径再扫一遍语料（与子串口径并列，互为对手方）"),
+    ("parser", True,
+     "真解析器报出的候选站点总数（Phase A 之后）"),
+)
+
+# 允许当独立分母的来源（**派生**，绝不手写）。
+INDEPENDENT_SITE_SOURCES = tuple(s for s, ind, _n in DECLARED_SITE_SOURCES if ind)
+
 
 class GraphError(ValueError):
     """图结构非法。构造期即失败，远好过运行期静默取错（R82 §4m-3）。"""
@@ -163,7 +185,8 @@ class UnifiedGraph(object):
     """节点 / 边 / 站点结局的容器。`add_*` 走构造期校验，`from_dict` 不走 ——
     这样守恒判定器能**报出**畸形图，而不是让反序列化先抛（R82 §6「声明⇄实装对账」）。
     """
-    __slots__ = ("nodes", "edges", "sites", "meta", "declared_sites")
+    __slots__ = ("nodes", "edges", "sites", "meta", "declared_sites",
+                 "declared_source")
 
     def __init__(self):
         self.nodes = {}      # nid -> Node
@@ -174,6 +197,10 @@ class UnifiedGraph(object):
         # 独立来源 ⇒ A1b **不参与判定**（报告里必须显式写「未行使」，
         # 而不是静默跳过 —— 缺席不能同时也是信号）。
         self.declared_sites = None
+        # 那个分母的**来源标签**（必须在 DECLARED_SITE_SOURCES 里且独立）。
+        # 它是 A1b 的**前提**，不是注解：没有它，`declared_sites` 与
+        # `all_site_count()` 在判定器眼里无法区分。
+        self.declared_source = None
 
     # ── 构造 ────────────────────────────────────────────────────────────
     def add_node(self, node):
@@ -210,15 +237,41 @@ class UnifiedGraph(object):
         self.edges.append(edge)
         return edge
 
-    def set_declared_sites(self, n):
-        """登记「候选站点总数」—— A1b 的**第二个分母**，必须是独立来源。
+    def set_declared_sites(self, n, source=None):
+        """登记「候选站点总数」—— A1b 的**第二个分母**。
 
-        **不得**用 `all_site_count()` 当参数：那是从 `sites` 派生的，与 A1a
-        同源 ⇒ 一起失效。传 None 表示本次没有独立来源。
+        **必须**带 `source`，且该来源要在 `DECLARED_SITE_SOURCES` 里、
+        `independent` 为真。三种拒绝（各自守一个失败模式）：
+
+          ① 缺 `source`    —— 分母与 `sites` 在判定器眼里无法区分
+          ② 未登记的标签   —— 拼错的来源会被静默采纳成"有来源"（§4m-1）
+          ③ 非独立标签     —— **拿派生量当独立分母**，A1b 当场退化成恒真式
+
+        传 `n=None` 表示本次**没有**独立来源：那是「未行使」，不是「通过」
+        —— 报告里必须显式说出来（R82 §4y-6：缺席不能同时也是信号）。
         """
-        if n is not None and int(n) < 0:
+        if n is None:
+            self.declared_sites = None
+            self.declared_source = None
+            return None
+        if int(n) < 0:
             raise GraphError("declared_sites 不得为负：%r" % (n,))
-        self.declared_sites = None if n is None else int(n)
+        if not source:
+            raise GraphError(
+                "declared_sites 必须带 source（独立来源标签）—— 缺来源的分母"
+                "与 sites 表无法区分，A1b 会退化成恒真式。允许的来源：%s"
+                % (list(INDEPENDENT_SITE_SOURCES),))
+        row = [r for r in DECLARED_SITE_SOURCES if r[0] == source]
+        if not row:
+            raise GraphError(
+                "未登记的 declared_sites 来源 %r（允许 %s）"
+                % (source, [s for s, _i, _n in DECLARED_SITE_SOURCES]))
+        if not row[0][1]:
+            raise GraphError(
+                "来源 %r 被标注为**非独立**（%s）⇒ 不许当作 A1b 的独立分母"
+                % (source, row[0][2]))
+        self.declared_sites = int(n)
+        self.declared_source = source
         return self.declared_sites
 
     # ── 统计 ────────────────────────────────────────────────────────────
@@ -257,7 +310,8 @@ class UnifiedGraph(object):
                 "edges": [e.to_dict() for e in self.edges],
                 "sites": self.site_census(),
                 "edge_census": self.edge_census(),
-                "declared_sites": self.declared_sites}
+                "declared_sites": self.declared_sites,
+                "declared_source": self.declared_source}
 
     def to_json(self, indent=1):
         return json.dumps(self.to_dict(), ensure_ascii=False, indent=indent)
@@ -276,6 +330,7 @@ class UnifiedGraph(object):
             g.edges.append(Edge.from_dict(ed))
         g.sites = dict(d.get("sites", {}))
         g.declared_sites = d.get("declared_sites")
+        g.declared_source = d.get("declared_source")
         return g
 
 
@@ -303,6 +358,23 @@ def conservation_problems(g, hop_devices=None):
     # A1b —— 第二个分母。**不能**从 sites 派生，否则与 A1a 同源。
     declared = getattr(g, "declared_sites", None)
     if declared is not None:
+        # A1b 有**前提**：那个分母必须自带一个**已登记的独立来源**。
+        # 反序列化路径（`from_dict`）不走构造期校验，所以这一条必须在这里
+        # 也能红 —— 否则「先写 JSON 再读回来」是一条绕过 `set_declared_sites`
+        # 的侧门，而它产出的图看起来完全正常。
+        src = getattr(g, "declared_source", None)
+        if not src:
+            probs.append(
+                "A1b 前提缺失：declared_sites=%d 却没带来源标签 —— "
+                "没有来源的分母无法与 all_site_count() 区分，"
+                "判据本身不成立（允许 %s）" % (declared, list(INDEPENDENT_SITE_SOURCES)))
+        elif src not in [s for s, _i, _n in DECLARED_SITE_SOURCES]:
+            probs.append("A1b 来源未登记：%r（允许 %s）"
+                         % (src, [s for s, _i, _n in DECLARED_SITE_SOURCES]))
+        elif src not in INDEPENDENT_SITE_SOURCES:
+            probs.append(
+                "A1b 来源 %r **非独立**（它从 sites 派生）⇒ 这个分母等于 "
+                "all_site_count()，A1b 退化成恒真式" % (src,))
         total = g.all_site_count()
         if total != declared:
             probs.append(
@@ -359,9 +431,12 @@ def demo_graph():
                     evidence="parfeval @foo at line 9"))
     g.add_site("join", 1)       # 汇合：**不**产出边
     g.add_site("unknown", 1)    # 诚实：没识别出来
-    # demo 图自洽：声明量与 sites 由构造一致。A1b 的**红**由护栏的子探针制造
+    # demo 图自洽：声明量与 sites 一致。A1b 的**红**由护栏的子探针制造
     # （真造一个「声明 5 而实际 4」的图），并断言它被抓到。
-    g.set_declared_sites(g.all_site_count())
+    # 来源写 `file_axis` 而不是转发 `all_site_count()`：demo 里 4 条站点
+    # 各出自一个文件，文件轴那本账独立数出来的也是 4。**值恰好相等，
+    # 但来源是真话** —— 这正是 A1b 想要的形态（两个来源独立数出同一个数）。
+    g.set_declared_sites(4, "file_axis")
     return g
 
 
