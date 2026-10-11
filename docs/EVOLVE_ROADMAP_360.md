@@ -21,6 +21,7 @@
 ──────────────────────────────────────────────────────────────────────────────
   0          Phase 0  ✅已落地   底座    门数 17→18 全绿；两道新护栏两向变异可见
   0d         Phase 0d ✅已落地   base    门数 18→19 全绿；内核全树（63,051 文件）读数与 R81 逐位**且逐类**相同
+  0e         Phase 0e ✅已落地   base    门数**仍 19**（不加闸，只提分辨率）；判据族 W1–W5 → **W1–W6**；内核分析流程 13 站在册
   1 –  60    Phase A           T1 异步  整树内核语料上：边数守恒恒等式成立；async 边 > 0
  61 – 140    Phase B           T2 跳    unresolved 四类分母齐；每跳有装置；旧键逐位不变
 141 – 210    Phase C           T3 算子  三处对齐有差集分母；estimated 可识别；insn_top 干净
@@ -82,6 +83,9 @@
 #   所以 Phase A 未落地时 Phase 0c 的地基工作仍能记账。R83 的 Phase 0c 因此插在 Phase A 之前（轮号顺延），已执行的 0–6 轮一个不动。
 #   R84 的 Phase 0d（全树规模读数登记表）同理插在 Phase A 之前，轮号再顺延一位 ——
 #   0c 的 7/8 一个不动，Phase A 的三条 blocked 轮次由 9/10/11/12 挪到 10/11/12/13。
+#   R85 的 Phase 0e（分析流程登记 + 判据族 W6）同理：0d 的第 9 轮不动，Phase A 的三条
+#   blocked 轮次再由 10/11/12/13 挪到 11/12/13/14。**门数不变（19）** —— 这一轮只给第 19
+#   道门加判据族（W1–W5 → W1–W6），不给棘轮加数（「缺口为 0 时加闸 = churn」）。
 0  | 0  | base | phase0_acceptance       | Phase 0 验收：门数 17→18 全绿 + U1–U5 两向自证 | -
 1  | 0  | base | conservation_two_way    | 统一图守恒判定器两向成立（干净 0 / 注入 ≥1 / 还原 0） | -
 2  | 0  | base | py36_census             | 3.6.5 语法门在新增模块上仍绿 | -
@@ -92,10 +96,11 @@
 7  | 0c | base | caliber_two_way         | 站点匹配口径：词界 vs 子串**并列**读数（U8 两向自证） | -
 8  | 0c | base | declared_source_gate    | declared_sites 必须带**已登记的独立来源**（含 from_dict 侧门） | -
 9  | 0d | base | kernel_snapshot_gate    | 全树规模读数登记表：出处+口径 / 三档分母并列 / 汇总↔明细恒等式 / 与 R81 逐位**且逐类**（第 19 道门 W1–W5） | -
-10 | A  | t1   | -                       | R82-A3 Py/JS 后端（await 必须不产生 async 边） | 未实现
-11 | A  | t1   | -                       | R82-A4 MATLAB 后端（parfor/parfeval/batch/timer） | 未实现
-12 | A  | t1   | -                       | R82-A5 asm 间接跳转 ⇒ unknown（不猜） | 未实现
-13 | A  | t1   | -                       | R82-A6 站点/报告新增「异步」列 + 未识别并发站点计数 | 未实现
+10 | 0e | base | kernel_pipeline_gate    | 分析流程登记：13 站站表形状 / 恰一个 current 驱动 / 产物链拓扑 / 仓内落点存在（第 19 道门 W1–W5 → W1–W6） | -
+11 | A  | t1   | -                       | R82-A3 Py/JS 后端（await 必须不产生 async 边） | 未实现
+12 | A  | t1   | -                       | R82-A4 MATLAB 后端（parfor/parfeval/batch/timer） | 未实现
+13 | A  | t1   | -                       | R82-A5 asm 间接跳转 ⇒ unknown（不猜） | 未实现
+14 | A  | t1   | -                       | R82-A6 站点/报告新增「异步」列 + 未识别并发站点计数 | 未实现
 ```
 
 ### Phase A · T1 异步调用链（轮 1–60）
