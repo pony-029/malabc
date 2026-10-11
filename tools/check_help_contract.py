@@ -64,7 +64,33 @@ H1（R70）「护栏的描述文本 ⇄ 它自己声明的签名」：`GUARD_CON
     签名一旦随判据族长上去，描述没跟上就红（描述陈旧 → 红 / 护栏没有可读的
     `ROW_SIGNATURE` → 红）。
 
-两向自证：R1/R2/R3/R4/R5/R5c/R51/H1 各配独立坏样本（必须红）与好样本（必须过），
+H2（R72）「签名 ⇄ 它**实际发出**的判据前缀」：H1 只证明「描述里含签名」，它
+    **不证明**签名等于这道门真能说出口的那几个「不」。R72 用仓库外装置普查 18 个
+    护栏脚本，基线 `OK=11 BAD=3`，三个都是**同一个病**：`check_boundary_reverse.py`
+    声明 `V1–V5` 却发了 14 次 `V6`（**隐形判据**）；`check_binfmt_fixtures.py` 声明
+    `C1–C13`，而 `C7` 的两条断言标成了 `C4`（**判据身份错标** ⇒ 失败时把读者指向
+    另一条判据）；`check_subprocess_hygiene.py` 声明 `S1–S5`，`S1`/`S2` 的消息
+    **一个前缀都没有**。三条方向：A 不许隐形（命名空间内、以字符串字面量开头的判据
+    前缀 ⊆ 声明集）；B 不许幽灵声明（声明的每个前缀都得真的发得出）；C `check_all.py`
+    的 ASCII 树里「契约 <签名>」那一行必须等于该门 `ROW_SIGNATURE` 的 `..` 形式
+    （R71 §8 的 C21-1）。两条口径：辅助前缀 = 数字部分为 0 或带小写字母后缀
+    （`F0`/`I0`/`L0`/`I1b`），不参与 A、参与 B；「以字面量开头」**故意**取宽
+    （夹具名也算），代价与方向一起写清：A 因此**宁可误报**、B 因此**宁可漏报**。
+    非 Xn 族签名与无签名者走 `SIGNATURE_CENSUS_EXEMPT` 登记制（两向：登记了却已经
+    能被管 ⇒ 陈旧豁免也红）。D 腿把树从「一致」扩到**完整**：R72 现场又抓到一条 ——
+    R55 加 `check_boundary_reverse.py` 时只在旁边留了一句注释，ASCII 树行**一直
+    没加**（16/17），而无门可见；现在漏行（`H2e`）与陈旧行（列了不存在的门）都红。
+    诚实的边界有**三条**：① 本判据是**静态**的，动态拼出来的判据前缀它看不见 ——
+    那种情况只会在 B 上表现为「声明了却发不出」，由人把它写回字面量；② A 腿只认
+    **与签名同族**的前缀（否则自检用例标签会把 A 腿淹掉 —— R70 的量具正是这么
+    栽的），所以一道门在签名命名空间**之外**另发的族，它看不见：R72 实测 **7/18**
+    个脚本存在跨族实发，其中至少 `check_help_contract.py` 的 C/G/H/N/R 五族、
+    `check_c_frontend_shapes.py` 的 `R1/R2`、`check_baseline.py` 的 `B2/B3` 是
+    **真判据**（逐行读过），且 `G0/G1/G2`、`R1/R2`、`B2/B3` 跨护栏**重名**；
+    ③ D 腿只核**带「契约 X..Y」token 的行**，补完 D5 之后真树 17 行里仍只有 **2**
+    行带 —— 覆盖面本身是下一轮（C22-5）要补的。
+
+两向自证：R1/R2/R3/R4/R5/R5c/R51/H1/H2 各配独立坏样本（必须红）与好样本（必须过），
 并对真实仓库做一次整体核对。
 
 退出码：
@@ -198,7 +224,7 @@ GUARD_CONTRACT = {
         2: "缺输入（缺文档 / 缺 flow/diagrams/ / 一个候选都找不到）",
     },
     "tools/check_help_contract.py": {
-        0: "全部一致（B0–B5 + R1/R2/R3/R4/R5/R5c/R51 + G0/G0b/G1/G2 + N1/N3/N4 + H1）",
+        0: "全部一致（B0–B5 + R1/R2/R3/R4/R5/R5c/R51 + G0/G0b/G1/G2 + N1/N3/N4 + H1/H2）",
         1: "发现不一致（R1/R1b/R2/R3/R4/R5/R5c/R51 任一红）",
         2: "缺输入（入口脚本缺失 / 解析不到 docstring）",
     },
@@ -245,7 +271,7 @@ GUARD_CONTRACT = {
         2: "缺输入（找不到 matlabc.py / 公开 CLI 跑不起来 / JSON 不可解析）",
     },
     "tools/check_boundary_reverse.py": {
-        0: "「诚实的边界」的每条否定式承诺都有反向判据，且公开 CLI 行为全绿（V1–V5）",
+        0: "「诚实的边界」的每条否定式承诺都有反向判据，且公开 CLI 行为全绿（V1–V6）",
         1: "有违规（未认领 / 歧义 / 空断言 / 陈旧 / 棘轮不符 / 行为不符）",
         2: "缺输入（找不到 matlabc.py / 工具脚本，或公开 CLI 跑不起来）",
     },
@@ -1287,6 +1313,194 @@ def guard_signature_problems(contract, sig_by_script,
     return probs
 
 
+# ---------------------------------------------------------------------------
+# H2（R72）「签名 ⇄ 它**实际发出**的判据前缀」
+#
+# 起因（R71 §8 的 C20-1）：H1 只证明「GUARD_CONTRACT 的 rc=0 描述里含签名」，它
+# **不证明**签名等于这道门真能说出口的那几个「不」。R72 用仓库外装置
+# `E:\matlabc\_r72\probe_r72_signature.py` 普查 18 个护栏脚本，基线
+# `OK=11 BAD=3 EXEMPT=4`，三个 BAD 都是**同一个病**：
+#   * `check_boundary_reverse.py` 声明 `V1–V5`，源码里却发了 14 次 `V6`
+#     —— **隐形判据**（发了却没声明，读者看到的判据数在撒谎）；
+#   * `check_binfmt_fixtures.py` 声明 `C1–C13`，而 `C7` 的两条断言标成了 `C4`
+#     —— **判据身份错标**（失败时把读者指向另一条判据）；
+#   * `check_subprocess_hygiene.py` 声明 `S1–S5`，`S1`/`S2` 的消息**一个前缀都没有**。
+#
+# 三条判据（全是纯函数，不读文件、不起进程）：
+#   A「不许隐形判据」：命名空间内、以**字符串字面量开头**出现的判据前缀（去掉辅助
+#     前缀后）必须 ⊆ 声明的集合。多出来的就是「发了却没说」。
+#   B「不许幽灵声明」：声明的每个前缀都必须真的能在源码里找到它以字面量开头出现。
+#   C「ASCII 树对账」：`check_all.py` 里凡出现「契约 <签名>」的那一行，`<签名>`
+#     必须等于那道门 `ROW_SIGNATURE` 的 `..` 形式（R71 §8 的 C21-1）。
+#
+# 两条**口径**（写下来，否则下一轮各写一套）：
+#   1. 辅助前缀 = 数字部分为 0，或带一个小写字母后缀（`F0`/`I0`/`L0`/`I1b`）。
+#      它们**不参与** A，但**参与** B 的容纳侧。
+#   2. 「以字面量开头」**故意**取宽：本门命名空间里任何一个 `Xn` 字面量都算，
+#      **夹具名也算** —— 这迫使命名空间保持干净。代价与方向一起写清：
+#      A 因此**宁可误报**（多算 ⇒ 更容易红），B 因此**宁可漏报**（多算 ⇒ 更容易过）。
+#
+# 诚实的边界：本判据是**静态**的。若某道门用 f-string / `%` 动态拼出判据前缀，
+# A 与 B 都看不见它 —— 那时只会在 B 上表现为「声明了却发不出」，由人把它写回
+# 字面量，或登记进 `SIGNATURE_CENSUS_EXEMPT` 并写下理由。
+# ---------------------------------------------------------------------------
+_JUDGE_LIT_RE = re.compile(r'["\']([A-Z]{1,3}\d+[a-z]?)([ :：　])')
+_SIG_RANGE_RE = re.compile(r"^([A-Z]{1,3})(\d+)[–—-]([A-Z]{1,3})(\d+)$")
+_SIG_SINGLE_RE = re.compile(r"^([A-Z]{1,3}\d+[a-z]?)$")
+_TREE_CONTRACT_RE = re.compile(
+    r"check_(?P<name>[a-z0-9_]+)\.py[^\n]*?契约\s*(?P<sig>[A-Za-z0-9.]+)")
+# H2e（R72）用：树**行**的名字（不要求带「契约」token）—— 「漏写一行」
+# 和「写错一行」是两种病，前者以前没有任何门看得见。
+_TREE_ROW_RE = re.compile(
+    r"[├└]─▶\s*(check_[a-z0-9_]+\.py)")
+
+# 非 Xn 族签名 / 无签名的**登记制**豁免（理由 >= 8 字符）。两向核对：
+# 登记了却已经能被管 ⇒ 陈旧豁免，也红。
+SIGNATURE_CENSUS_EXEMPT = {
+    "tools/check_all.py": "runner：没有判据族，它的退出码契约由 GUARD_CONTRACT 承担",
+    "tools/check_doc_flags.py": "签名是属性名 NO_HELP_SCRIPTS，不是 Xn 族",
+    "tools/check_operator_impl.py": "签名是算子元表名 _UNIMPLEMENTED_KINDS，不是 Xn 族",
+    "tools/check_py36_clean.py": "签名是 CLI 开关名 --check-py36，不是 Xn 族",
+}
+
+
+def _is_aux_prefix(pfx):
+    """辅助前缀：数字部分为 0，或带一个小写字母后缀。**唯一**一条辅助规则。"""
+    if re.match(r"^[A-Z]{1,3}0$", pfx):
+        return True
+    return bool(re.match(r"^[A-Z]{1,3}\d+[a-z]$", pfx))
+
+
+def expand_row_signature(sig):
+    """把 `V1–V5` / `P1–P4/T1` / `G1–G7 (py/js)` 展开成前缀集合。
+
+    非 Xn 族（或取不到）返回 `None` —— 那是「要登记豁免」的另一条路，不是违规。
+    """
+    if not sig:
+        return None
+    body = re.sub(r"\s*\([^)]*\)\s*$", "", sig)
+    out = set()
+    for part in re.split(r"[/、，,]", body):
+        part = part.strip()
+        if not part:
+            continue
+        m = _SIG_RANGE_RE.match(part)
+        if m:
+            # ⚠ 本正则有 **4** 个捕获组：ns / 起 / 尾命名空间 / 止。
+            #   R72 首版只解包 3 个（`int(m.group(3))` 拿到的是字母），冒烟当场
+            #   炸出 `ValueError: invalid literal for int(): 'V'` —— 加一条
+            #   命名空间两侧必须相同的断言，顺带把「X1–Y5」这种跨族写法挡在门外。
+            ns, a, tail_ns, b = (m.group(1), int(m.group(2)),
+                                 m.group(3), int(m.group(4)))
+            if tail_ns != ns:
+                return None
+            for k in range(a, b + 1):
+                out.add("%s%d" % (ns, k))
+            continue
+        m = _SIG_SINGLE_RE.match(part)
+        if not m:
+            return None
+        out.add(m.group(1))
+    return out or None
+
+
+def observed_judgement_prefixes(src):
+    """源码里以**字符串字面量开头**出现的判据前缀（取宽；夹具名也算）。"""
+    return set(m.group(1) for m in _JUDGE_LIT_RE.finditer(src))
+
+
+def signature_census_problems(contract, sig_by_script, src_by_script,
+                              exempt=None):
+    """H2 A/B：签名 ⇄ 实发前缀。返回问题串列表（空 = 过）。"""
+    if exempt is None:
+        exempt = SIGNATURE_CENSUS_EXEMPT
+    probs = []
+    for script in sorted(contract):
+        sig = sig_by_script.get(script)
+        declared = expand_row_signature(sig)
+        if declared is None:
+            if script not in exempt:
+                probs.append(
+                    "H2  %s: 签名 %r 不是可展开的 Xn 族，且**没有**登记豁免 —— "
+                    "免检必须登记（`SIGNATURE_CENSUS_EXEMPT`，理由 >=8 字符）"
+                    % (script, sig))
+            continue
+        src = src_by_script.get(script)
+        if src is None:
+            probs.append("H2  %s: 读不到源码（缺输入 → 红）" % script)
+            continue
+        ns = set(p[0] for p in declared)
+        in_ns = set(p for p in observed_judgement_prefixes(src) if p[0] in ns)
+        fam = set(p for p in in_ns if not _is_aux_prefix(p))
+        invisible = sorted(fam - declared)
+        phantom = sorted(declared - in_ns)
+        if invisible:
+            probs.append(
+                "H2a %s: 源码里发了 %s，但 ROW_SIGNATURE 只写到 %r —— **隐形判据**"
+                "（发了却没声明：读者看到的判据数在撒谎）"
+                % (script, "/".join(invisible), sig))
+        if phantom:
+            probs.append(
+                "H2b %s: ROW_SIGNATURE %r 里的 %s 在源码里**发不出** —— 幽灵声明，"
+                "或判据前缀是动态拼的（本判据是静态的，看不见动态拼法）"
+                % (script, sig, "/".join(phantom)))
+    # 豁免登记两向：登记了却已经能被管 ⇒ 陈旧豁免，也红。
+    for script in sorted(exempt):
+        if script not in contract:
+            probs.append("H2c 豁免登记 %s 不在 GUARD_CONTRACT 里 —— 陈旧登记" % script)
+            continue
+        if len(str(exempt[script]).strip()) < 8:
+            probs.append("H2c 豁免登记 %s 的理由少于 8 字符 —— 免检要写清为什么"
+                         % script)
+        if expand_row_signature(sig_by_script.get(script)) is not None:
+            probs.append(
+                "H2c 豁免登记 %s 的签名 %r 现在**已经**是可展开的 Xn 族 —— 陈旧豁免："
+                "它已经能被本判据管，该把登记项删掉"
+                % (script, sig_by_script.get(script)))
+    return probs
+
+
+def ascii_tree_signature_problems(tree_src, sig_by_script):
+    """H2 C/D/E：`check_all.py` 的 ASCII 树。**一致**（C）与**完整**（E）分开判。
+
+    树是**只写不读**的散文 —— R70 手改过一次、R71 又手改过一次，而没有任何门看着它。
+
+      C（`H2d`）**一致性**：带「契约 <签名>」token 的树行，token 必须等于该门
+      `ROW_SIGNATURE` 的 `..` 写法。
+      E（`H2e`）**完整性**：树**行**必须与登记在册的护栏集合**恰好**对上 ——
+      漏写一行 ⇒ 红；列了不存在的门 ⇒ 也红（陈旧行）。R72 实测：R55 加
+      `check_boundary_reverse.py` 时只在旁边留了一句注释，**树行一直没加**
+      （16/17），而没有任何门看得见 —— 「没产出」不等于「对了」的又一例。
+      `check_all.py` 自己是树根、不是树行，从集合里扣除。
+    """
+    probs = []
+    for m in _TREE_CONTRACT_RE.finditer(tree_src):
+        script = "tools/check_" + m.group("name") + ".py"
+        tok = m.group("sig")
+        sig = sig_by_script.get(script)
+        if sig is None:
+            probs.append("H2d ASCII 树里给 %s 标了「契约 %s」，但它没有可读的 "
+                         "ROW_SIGNATURE" % (script, tok))
+            continue
+        want = sig.replace("–", "..").replace("-", "..")
+        if tok != want:
+            probs.append("H2d ASCII 树里写的是「契约 %s」，而 %s 的 ROW_SIGNATURE 是 "
+                         "%r（应写作 «契约 %s»）—— 树是只写不读的散文，这一条给它"
+                         "配对手方" % (tok, script, sig, want))
+    # ---- E 腿：树行必须列全（漏写）且不许多（陈旧） ----
+    listed = set(m.group(1) for m in _TREE_ROW_RE.finditer(tree_src))
+    want_rows = set(os.path.basename(s) for s in sig_by_script)
+    want_rows.discard("check_all.py")          # runner 是树根，不是树行
+    for miss in sorted(want_rows - listed):
+        probs.append("H2e ASCII 树里**没有 %s 这一行** —— 树漏了一道登记在册的门"
+                     "（漏写和写错一样是缺陷；R55 加 check_boundary_reverse.py 时"
+                     "就漏了整整一轮又一轮）" % miss)
+    for stale in sorted(listed - want_rows):
+        probs.append("H2e ASCII 树里列了 %s，但它**不是**登记在册的护栏 —— "
+                     "陈旧行（门被删了/改名了，树没跟上）" % stale)
+    return probs
+
+
 def audit_guards(root, on_problem):
     """R33（C'7）+ R63（G0b）：对护栏脚本施加 R1（+反向+陈旧）与 R2，
     并核对「存在 ⇄ 登记」。返回核对过的脚本数。"""
@@ -1336,6 +1550,27 @@ def audit_guards(root, on_problem):
         sig_by_script[script] = _load_row_signature(os.path.join(root, script))
     for msg in guard_signature_problems(GUARD_CONTRACT, sig_by_script):
         on_problem(msg)
+    # H2（R72）：签名 ⇄ **实际发出**的判据前缀。H1 只管「描述里含签名」。
+    src_by_script = {}
+    for script in sorted(GUARD_SCRIPTS):
+        try:
+            with io.open(os.path.join(root, script), "r", encoding="utf-8",
+                         errors="replace") as fh:
+                src_by_script[script] = fh.read()
+        except OSError:
+            src_by_script[script] = None
+    for msg in signature_census_problems(GUARD_CONTRACT, sig_by_script,
+                                         src_by_script):
+        on_problem(msg)
+    try:
+        with io.open(os.path.join(root, "tools/check_all.py"), "r",
+                     encoding="utf-8", errors="replace") as fh:
+            tree_src = fh.read()
+    except OSError:
+        on_problem("H2d 读不到 tools/check_all.py（缺输入 → 红）")
+    else:
+        for msg in ascii_tree_signature_problems(tree_src, sig_by_script):
+            on_problem(msg)
     return n
 
 
@@ -1709,6 +1944,80 @@ def _selftest():
            bool(guard_signature_problems(
                {"tools/check_all.py": {0: "全部通过"}},
                {"tools/check_all.py": None})), False)
+
+    # ---- H2（R72）：签名 ⇄ **实际发出**的判据前缀（纯函数，不读文件、不起进程） ----
+    # ⚠ 合成用例**必须**自带 exempt（`{}` 或本用例自己的登记表）：
+    #   `exempt=None` 会回落到真实仓库的 `SIGNATURE_CENSUS_EXEMPT`，那几条
+    #   登记在合成 contract 里全成了「陈旧登记」，于是 `bool(probs)` **恒为真**。
+    #   后果有两层：好样本被误判红（看得见）；坏样本的裸 `bool(...)` 变成恒真
+    #   —— 把它真正要检的那条腿删掉照样「抓到」，**空转**（看不见）。R72 首版
+    #   两个都中了。所以下面：合成调用一律显式 exempt，坏样本一律断言具体问题串。
+    _h2_c = {"tools/check_x.py": {0: "契约 X1–X3 全部通过"}}
+    expect("H2a 坏样本：源码发了 X4 而签名只到 X1–X3（抓到）",
+           any(x.startswith("H2a") for x in signature_census_problems(
+               _h2_c, {"tools/check_x.py": "X1–X3"},
+               {"tools/check_x.py": 'p = ["X4 隐形判据"]'})), True)
+    expect("H2b 坏样本：签名声明到 X3 但源码发不出 X3（抓到）",
+           any(x.startswith("H2b") for x in signature_census_problems(
+               _h2_c, {"tools/check_x.py": "X1–X3"},
+               {"tools/check_x.py": 'p = ["X1 a", "X2 b"]'})), True)
+    expect("H2 好样本：声明与实发一致，辅助前缀（X0/X1b）不参与 A（放行）",
+           bool(signature_census_problems(
+               _h2_c, {"tools/check_x.py": "X1–X3"},
+               {"tools/check_x.py":
+                'p = ["X0 缺输入", "X1 a", "X1b 子判据", "X2 b", "X3 c"]'},
+               exempt={})), False)
+    expect("H2 坏样本：读不到源码（缺输入被抓）",
+           any("读不到源码" in x for x in signature_census_problems(
+               _h2_c, {"tools/check_x.py": "X1–X3"},
+               {"tools/check_x.py": None}, exempt={})), True)
+    expect("H2c 坏样本：陈旧豁免（登记项现在已可展开）",
+           any(x.startswith("H2c") for x in signature_census_problems(
+               _h2_c, {"tools/check_x.py": "X1–X3"},
+               {"tools/check_x.py": 'p = ["X1 a", "X2 b", "X3 c"]'},
+               exempt={"tools/check_x.py": "看起来不像 Xn 族其实早就是了"})), True)
+    expect("H2 坏样本：非 Xn 族签名却没登记豁免（抓到）",
+           any("不是可展开的 Xn 族" in x for x in signature_census_problems(
+               {"tools/check_z.py": {0: "全部通过"}},
+               {"tools/check_z.py": "NO_SUCH_THING"},
+               {"tools/check_z.py": "x = 1"}, exempt={})), True)
+    expect("H2 好样本：非 Xn 族签名**已登记**豁免（放行）",
+           bool(signature_census_problems(
+               {"tools/check_z.py": {0: "全部通过"}},
+               {"tools/check_z.py": "NO_SUCH_THING"},
+               {"tools/check_z.py": "x = 1"},
+               exempt={"tools/check_z.py":
+                       "签名是属性名 NO_SUCH_THING，不是 Xn 族，登记免检"})), False)
+    expect("H2c 坏样本：登记了但理由少于 8 字符（抓到）",
+           any("理由少于 8 字符" in x for x in signature_census_problems(
+               {"tools/check_z.py": {0: "全部通过"}},
+               {"tools/check_z.py": "NO_SUCH_THING"},
+               {"tools/check_z.py": "x = 1"},
+               exempt={"tools/check_z.py": "短"})), True)
+    expect("H2d 坏样本：树里写「契约 X1..X2」而签名是 X1–X3（抓到）",
+           any(x.startswith("H2d") for x in ascii_tree_signature_problems(
+               "  ├─▶ check_x.py   契约 X1..X2 + 两向自证",
+               {"tools/check_x.py": "X1–X3"})), True)
+    expect("H2d 好样本：树与签名一致（放行）",
+           bool(ascii_tree_signature_problems(
+               "  ├─▶ check_x.py   契约 X1..X3 + 两向自证",
+               {"tools/check_x.py": "X1–X3"})), False)
+    expect("H2e 坏样本：树**漏写**了一道登记在册的门（抓到）",
+           any(x.startswith("H2e") for x in ascii_tree_signature_problems(
+               "  ├─▶ check_x.py   契约 X1..X3 + 两向自证",
+               {"tools/check_x.py": "X1–X3",
+                "tools/check_y.py": "Y1–Y2"})), True)
+    expect("H2e 坏样本：树里列了**不存在**的门（陈旧行，抓到）",
+           any(x.startswith("H2e") and "check_gone.py" in x
+               for x in ascii_tree_signature_problems(
+                   "  ├─▶ check_x.py   契约 X1..X3 + 两向自证\n"
+                   "  └─▶ check_gone.py  已删除的门",
+                   {"tools/check_x.py": "X1–X3"})), True)
+    expect("H2e 好样本：树列全了（runner 是树根，不算行）（放行）",
+           bool(ascii_tree_signature_problems(
+               "  ├─▶ check_x.py   契约 X1..X3 + 两向自证",
+               {"tools/check_x.py": "X1–X3",
+                "tools/check_all.py": None})), False)
 
     # ---- R39（C''9）：ci-examples 退出码契约（纯函数 + 临时文件，不起进程） ----
     with _tf.TemporaryDirectory() as ctd:

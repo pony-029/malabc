@@ -10,6 +10,7 @@
         ├─▶ check_doc_flags.py            文档/帮助里写的 CLI 开关必须真的存在
         ├─▶ check_flow_diagrams.py        图的引用 ↔ 文件 ↔ 候选声明，两两对齐且双向
         ├─▶ check_help_contract.py        退出码在代码↔帮助双向一致；示例能真跑
+        ├─▶ check_boundary_reverse.py     「诚实的边界」每条承诺都要有对手方（契约 V1..V6 + 两向自证）
         ├─▶ check_import_graph.py         模块级 import 必须无环；回边只能走登记过的惰性通道
         ├─▶ check_c_frontend_shapes.py    C 前端函数定义形态（四形态/指针返回/体界/行号）各有对手方
         ├─▶ check_py_js_frontend_shapes.py Python/JS 前端形态（单行/async/注解/跨行/箭头）各有对手方

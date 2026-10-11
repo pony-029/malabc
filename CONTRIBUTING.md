@@ -593,6 +593,21 @@ R68 手量记为 12/10，宽松数一致、严格数差一，差在 `check_readm
 写着 `V1–V5` 却会发 `V6`；`check_import_graph.py` 也会发 `B6–B9`。签名 ⇄ 它
 **实际发出的判据前缀**这一层，本轮没有门守着。
 
+> **R72 追注：上段末尾「`check_import_graph.py` 也会发 `B6–B9`」不成立（已复核，作废）。**
+> R72 的独立装置 `_r72/probe_r72_signature.py` 逐脚本对账「`ROW_SIGNATURE` ⇄
+> 源码里**以字面量开头**的判据前缀」，读数是 `check_import_graph.py` 的签名
+> `G1–G7`、实发也只有 `G1–G7`（另有一处 `R52` 引用），**没有** `B6–B9`：
+> `B1..B13` 是它 `--selftest` 里 `red(...)` / `green(...)` 的**用例标签**
+> （形如 `red("B6 未登记动态 import", …)`），与「门对外发出的判据前缀」
+> 是两回事。**R70 的量具把自检用例标签算成了实发判据** —— 这正是 R72 给 H2
+> 加**命名空间过滤**（只认与签名同族的前缀）的原因：缺了它，夹具名与用例名
+> 会同时污染 A 腿（隐形）与 B 腿（幽灵）。
+> 上段另一条「`V1–V5` 却会发 `V6`」**复核成立**，R72 已修（→ `V1–V6`）；
+> 本轮同一装置另抓到两处同类缺陷（`check_binfmt_fixtures.py` 的 `C7` 断言
+> 被标成 `C4:`；`check_subprocess_hygiene.py` 的 `S1`/`S2` 无前缀、`S5` 从不出
+> 现在任何一行开头），三处均已在 R72 修掉。完整读数与证据见
+> `docs/SUPERPOWER_REVIEW_R72.md`。
+
 ### R71：fat（universal）Mach-O **逐片**解析（R68 §8 C18-1）
 
 `binfmt/macho.py` 在 R68 已经会读依赖指令与 `LC_SYMTAB`，但**只在 thin 路径**：

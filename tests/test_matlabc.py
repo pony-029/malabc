@@ -18010,7 +18010,7 @@ def test_r55_boundary_claims_have_reverse_criteria():
 
     本测试钉四件事：
       A 帮助「语言：」这条必须与**实测的两个分支**都一致（修前红、修后绿）；
-      B 端到端：新门在真实仓库 rc=0 且打印 V1–V5 全绿；
+      B 端到端：新门在真实仓库 rc=0 且打印 V1–V6 全绿；
       C 五条判据**各自独立作证** —— 每处变异只许红在**指定**判据上；
       D 三个棘轮必须等于真实读数（否则覆盖可以静默缩水）。
     """
@@ -18159,7 +18159,7 @@ def test_r55_boundary_claims_have_reverse_criteria():
                  timeout=300)
     out = r.stdout.decode("utf-8", "replace")
     assert r.returncode == 0, out[-1500:]
-    assert "V1–V5 全绿" in out, out[-800:]
+    assert "V1–V6 全绿" in out, out[-800:]
 
     ca = _r37_load("check_all")
     assert ca.MIN_GUARDS >= 13, (
@@ -19705,3 +19705,256 @@ def test_r71_binfmt_gate_c13_is_two_way():
     assert m, s_out[-500:]
     assert int(m.group(1)) >= 11, s_out[-500:]
     assert int(m.group(2)) >= 10, s_out[-500:]
+
+
+# ===========================================================================
+# R72：「签名 ⇄ 它**实际发出**的判据前缀」—— 判据 H2（R71 §8 的 C20-1 + C20-2）
+#
+# R70 的 H1 只证明了「`GUARD_CONTRACT` 的描述里逐字含 `ROW_SIGNATURE`」，
+# 那**不**等于「签名 == 这道门真的发出去了什么」。R72 用独立装置
+# `_r72/probe_r72_signature.py`（仓库外、只读源码文本、自带前置条件自证）量了
+# 这一层。基线读数 `OK=11 BAD=3 EXEMPT=4`，三条都是真缺陷：
+#   D1 `check_boundary_reverse.py` 声明 `V1–V5` 却**发了 14 次** `V6`（隐形判据）；
+#   D2 `check_binfmt_fixtures.py` 声明 `C1–C13`，而 `C7` 的两条断言标成了 `C4:`；
+#   D3 `check_subprocess_hygiene.py` 的 `S1`/`S2` 消息**没有前缀**，
+#      而 `S5` **从不**以自己开头出现在任何一行。
+# 修后 `OK=14 BAD=0 EXEMPT=4`。判据落在 `tools/check_help_contract.py`（与 H1 同址、
+# 复用同一份 `GUARD_SCRIPTS`），四条腿：
+#   A 无隐形（实发 ⊆ 声明）· B 无幽灵（声明 ⊆ 实发）
+#   C 豁免两向（登记了却已能展开 ⇒ 陈旧豁免也红）· D 树对账
+#   （`check_all.py` ASCII 树里的「契约 C1..C13」必须等于 `ROW_SIGNATURE` 的 `..` 写法）
+# ===========================================================================
+
+
+def test_r72_signature_census_is_two_way():
+    """R72 H2：`ROW_SIGNATURE` 必须等于这道门**实际发出**的判据前缀族。
+
+    钉住五层：
+
+      ① 主路径 rc=0，成功行含本门 `ROW_SIGNATURE`（`B0–B5`）；
+      ② `--selftest` 通过，`SELFTEST COUNTS` 取**下界**断言（样本不许静默缩水）；
+      ③ 纯函数四条腿各配好/坏样本，含**豁免登记两向**与**展开器**本身
+         （`G1–G7 (py/js)` 要能展开；`X1–Y5` 这种跨族写法必须拒）；
+      ④ **真仓库**：18 个护栏脚本逐条对账必须 0 项；`18 = 14 个 Xn 族 + 4 个显式
+         豁免`，且豁免表**恰好**是那 4 个（一个不多一个不少）；
+      ⑤ **接线**：H2 必须真管真树。先确认真树上 `H2*` 安静，再临时往豁免登记表塞
+         一条**陈旧登记**、并把树对账换成「会说话」的替身 —— 两次都必须报出 H2。
+         没有这一层，判据就可能只是纯函数自娱（R70 给 H1 配过同样的反向层）。
+
+    ⚠ 合成用例**必须**自带 `exempt=`：`exempt=None` 会回落到真实仓库的
+    `SIGNATURE_CENSUS_EXEMPT`，那 4 条登记在合成 contract 里全成了「陈旧登记」，
+    于是 `bool(probs)` 恒为真 —— 好样本被误判红，而**裸 `bool(...)` 的坏样本会
+    变成空转**（把要检的那条腿删掉照样「抓到」）。R72 首版两个都中了。
+    """
+    gate = os.path.join("tools", "check_help_contract.py")
+    r = _r31_run([gate], timeout=180)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[-900:]
+    assert "B0–B5" in out, out[-400:]
+
+    s = _r31_run([gate, "--selftest"], timeout=180)
+    sout = s.stdout.decode("utf-8", "replace")
+    assert s.returncode == 0, sout[-900:]
+    m = re.search(r'SELFTEST COUNTS \{"bad": (\d+), "good": (\d+)\}', sout)
+    assert m, sout[-500:]
+    assert int(m.group(1)) >= 51, m.group(0)
+    assert int(m.group(2)) >= 43, m.group(0)
+
+    hc = _r37_load("check_help_contract")
+
+    # ③ 纯函数：四条腿各配好/坏两向
+    _c = {"tools/check_x.py": {0: "契约 X1–X3 全部通过"}}
+    _zz = {"tools/check_z.py": {0: "全部通过"}}
+    _sx = {"tools/check_x.py": "X1–X3"}
+    _sz = {"tools/check_z.py": "NO_SUCH_THING"}
+
+    # A 隐形：发了 X4 而签名只到 X1–X3
+    p = hc.signature_census_problems(
+        _c, _sx, {"tools/check_x.py": 'p = ["X4 隐形判据"]'}, exempt={})
+    assert any(x.startswith("H2a") for x in p), p
+    # B 幽灵：签名声明到 X3 却发不出 X3
+    p = hc.signature_census_problems(
+        _c, _sx, {"tools/check_x.py": 'p = ["X1 a", "X2 b"]'}, exempt={})
+    assert any(x.startswith("H2b") for x in p), p
+    # 好样本：辅助前缀（X0 数字为 0 / X1b 带小写后缀）不参与 A
+    assert hc.signature_census_problems(
+        _c, _sx,
+        {"tools/check_x.py":
+         'p = ["X0 缺输入", "X1 a", "X1b 子判据", "X2 b", "X3 c"]'},
+        exempt={}) == []
+    # 缺输入
+    p = hc.signature_census_problems(
+        _c, _sx, {"tools/check_x.py": None}, exempt={})
+    assert any("读不到源码" in x for x in p), p
+    # C 两向之一：登记了、且确实还必要 ⇒ 放行
+    assert hc.signature_census_problems(
+        _zz, _sz, {"tools/check_z.py": "x = 1"},
+        exempt={"tools/check_z.py": "签名是属性名，不是 Xn 族，登记免检"}) == []
+    # C 两向之二：非 Xn 族却没登记 ⇒ 红
+    p = hc.signature_census_problems(
+        _zz, _sz, {"tools/check_z.py": "x = 1"}, exempt={})
+    assert any("不是可展开的 Xn 族" in x for x in p), p
+    # C 两向之三：登记了却已经能被管 ⇒ **陈旧豁免**也红
+    p = hc.signature_census_problems(
+        _c, _sx, {"tools/check_x.py": 'p = ["X1 a", "X2 b", "X3 c"]'},
+        exempt={"tools/check_x.py": "其实早就是 Xn 族了"})
+    assert any(x.startswith("H2c") for x in p), p
+    # C 两向之四：登记理由过短 ⇒ 红（免检必须写清为什么）
+    p = hc.signature_census_problems(
+        _zz, _sz, {"tools/check_z.py": "x = 1"},
+        exempt={"tools/check_z.py": "短"})
+    assert any("理由少于 8 字符" in x for x in p), p
+
+    # D 树对账
+    assert hc.ascii_tree_signature_problems(
+        "  ├─▶ check_x.py   契约 X1..X3 + 两向自证",
+        {"tools/check_x.py": "X1–X3"}) == []
+    p = hc.ascii_tree_signature_problems(
+        "  ├─▶ check_x.py   契约 X1..X2 + 两向自证",
+        {"tools/check_x.py": "X1–X3"})
+    assert any(x.startswith("H2d") for x in p), p
+    # E 完整性：漏行与陈旧行都要红（两向）。
+    # 现场：R55 加 check_boundary_reverse.py 时 ASCII 树行一直没加（16/17），
+    # 只核「一致性」的 H2d 对此完全无感 —— 漏写和写错是两种病。
+    p = hc.ascii_tree_signature_problems(
+        "  ├─▶ check_x.py   契约 X1..X3 + 两向自证",
+        {"tools/check_x.py": "X1–X3", "tools/check_y.py": "Y1–Y2"})
+    assert any(x.startswith("H2e") for x in p), p
+    p = hc.ascii_tree_signature_problems(
+        "  ├─▶ check_x.py   契约 X1..X3 + 两向自证\n"
+        "  └─▶ check_gone.py  已删除的门",
+        {"tools/check_x.py": "X1–X3"})
+    assert any(x.startswith("H2e") and "check_gone.py" in x for x in p), p
+    assert hc.ascii_tree_signature_problems(
+        "  ├─▶ check_x.py   契约 X1..X3 + 两向自证",
+        {"tools/check_x.py": "X1–X3", "tools/check_all.py": None}) == []
+
+    # 展开器 = 单一事实源：`/` 多族、`(py/js)` 限定都要对；跨族写法必须拒
+    assert hc.expand_row_signature("X1–X3") == {"X1", "X2", "X3"}
+    assert hc.expand_row_signature("P1–P4/T1") == {"P1", "P2", "P3", "P4", "T1"}
+    assert hc.expand_row_signature("G1–G7 (py/js)") == set(
+        "G%d" % i for i in range(1, 8))
+    assert hc.expand_row_signature("NO_HELP_SCRIPTS") is None
+    assert hc.expand_row_signature("X1–Y5") is None
+    assert hc._is_aux_prefix("X0") and hc._is_aux_prefix("X1b")
+    assert not hc._is_aux_prefix("X1")
+
+    # ④ 真仓库：逐条对账，必须 0 项
+    sig_by, src_by = {}, {}
+    for script in hc.GUARD_SCRIPTS:
+        sig_by[script] = hc._load_row_signature(os.path.join(ROOT, script))
+        with open(os.path.join(ROOT, script), "r", encoding="utf-8",
+                  errors="replace") as fh:
+            src_by[script] = fh.read()
+    real = hc.signature_census_problems(hc.GUARD_CONTRACT, sig_by, src_by)
+    assert real == [], real
+    with open(os.path.join(ROOT, "tools", "check_all.py"), "r",
+              encoding="utf-8", errors="replace") as fh:
+        tree = fh.read()
+    assert hc.ascii_tree_signature_problems(tree, sig_by) == [], \
+        hc.ascii_tree_signature_problems(tree, sig_by)
+    # 树行必须列全 17 道门（runner 是树根不算行）—— D5 的直接对手方
+    rows = set(x.group(1) for x in hc._TREE_ROW_RE.finditer(tree))
+    assert rows == set(os.path.basename(x) for x in sig_by) - {"check_all.py"}, \
+        sorted(rows)
+    xn = [x for x in sig_by if hc.expand_row_signature(sig_by[x]) is not None]
+    assert len(sig_by) == 18, len(sig_by)
+    assert len(xn) == 14, sorted(xn)
+    assert set(hc.SIGNATURE_CENSUS_EXEMPT) == set(sig_by) - set(xn), \
+        sorted(hc.SIGNATURE_CENSUS_EXEMPT)
+
+    # ⑤ 接线：先确认真树上 H2 安静
+    probs = []
+    hc.audit_guards(ROOT, hc.on_problem_collector(probs))
+    assert [x for x in probs if x.startswith("H2")] == [], probs[:5]
+
+    #    接线一：临时往登记表塞一条**陈旧登记** —— 被接线的函数在**调用时**才读它
+    saved_e = hc.SIGNATURE_CENSUS_EXEMPT.get("tools/check_baseline.py")
+    try:
+        hc.SIGNATURE_CENSUS_EXEMPT["tools/check_baseline.py"] = (
+            "R72 接线自证：临时登记（它本来就该被判成陈旧豁免）")
+        probs = []
+        hc.audit_guards(ROOT, hc.on_problem_collector(probs))
+        assert any(x.startswith("H2c") and "check_baseline.py" in x
+                   for x in probs), probs
+    finally:
+        if saved_e is None:
+            del hc.SIGNATURE_CENSUS_EXEMPT["tools/check_baseline.py"]
+        else:
+            hc.SIGNATURE_CENSUS_EXEMPT["tools/check_baseline.py"] = saved_e
+
+    #    接线二：把树对账换成「会说话」的替身 —— 证明 audit_guards 真的调它
+    saved_fn = hc.ascii_tree_signature_problems
+    try:
+        hc.ascii_tree_signature_problems = (
+            lambda tree_src, sig: ["H2d R72 接线自证：我确实被调到了"])
+        probs = []
+        hc.audit_guards(ROOT, hc.on_problem_collector(probs))
+        assert any(x.startswith("H2d R72 接线自证") for x in probs), probs
+    finally:
+        hc.ascii_tree_signature_problems = saved_fn
+
+    #    接线三：复查（钉死「临时改动已归还」）
+    probs = []
+    hc.audit_guards(ROOT, hc.on_problem_collector(probs))
+    assert [x for x in probs if x.startswith("H2")] == [], probs[:5]
+
+
+# ---------------------------------------------------------------------------
+# R72 取证：H2 的 A 腿只认**与签名同族**的前缀。这是**必要**的过滤器 ——
+# 没有它，`check_import_graph.py` 自检里的用例标签 `B1..B13` 会把 A 腿淹掉，
+# 于是 R70 的量具就是这样把用例标签当成「实发判据」的。
+# 代价是：一道护栏若在签名命名空间**之外**另发一族判据，H2 看不见。
+#
+# 独立装置 `_r72/probe_r72_crossns.py` + `_r72/probe_r72_crossns_ctx.py`
+# 实测 18 个脚本里 **7 个**有跨族实发。其中被**逐行读过、确认是真判据**
+# （`on_problem` / `probs.append`）的至少有：
+#   `check_help_contract.py` 的 `C0–C3` / `G0,G0b,G1,G2` / `N0–N4` / `R0–R5c` / `H1,H2`
+#   `check_c_frontend_shapes.py` 的 `R1`,`R2`（夹具完备性 + 棘轮）
+#   `check_baseline.py` 的 `B2`,`B3`（基线噪声登记的两向判据）
+# 另有跨护栏**重名**：`G0/G1/G2`（ `check_help_contract.py` 与 `check_patch_ops.py` 各
+# 表示不同东西）、`R1/R2`（前者同上、后者与 `check_c_frontend_shapes.py`）、
+# `B2/B3`（与 `check_help_contract.py` 的边界判据同字母不同义）。
+#
+# ⚠ 下面这张表是**缺口登记，不是合格证** —— R73 的目标是把它清空，或改成
+# 「按族登记 + 族级所有权唯一」两向判据。口径取**宽**（「以字面量开头」，
+# 含自检用例标签与轮次散文），所以 `check_import_graph.py` 那族 `B` **不是**判据
+# （正是 R70 栽的坑）、`check_boundary_reverse.py` 那族 `R` 只是散文里的轮次引用。
+# 两向：多一族 ⇒ 红（缺口不许悄悄长大）；少一族 ⇒ 也红（修好了就来改表并写清轮次）。
+# ---------------------------------------------------------------------------
+_R72_EXTRA_NS = {
+    "tools/check_baseline.py": {"B", "R"},
+    "tools/check_boundary_reverse.py": {"R"},
+    "tools/check_c_frontend_shapes.py": {"R"},
+    "tools/check_help_contract.py": {"C", "G", "H", "N", "R", "X"},
+    "tools/check_import_graph.py": {"B", "R"},
+    "tools/check_ir_attribution.py": {"C"},
+    "tools/check_py_js_frontend_shapes.py": {"R"},
+}
+
+
+def test_r72_cross_namespace_families_are_registered():
+    """R72：跨命名空间实发族的**两向登记表**（缺口不许长大、修好就来改表）。
+
+    用**产品自己的** `expand_row_signature` + `observed_judgement_prefixes` 算
+    「签名命名空间之外还发了哪些族」—— 不另写一份展开器：R72 我自己在探针里
+    手搓了一个，按 `/` 把 `G1–G7 (py/js)` 切坏，于是 `check_py_js_frontend_shapes.py`
+    被误报成「非 Xn 族」。量具与产品**共用同一个展开**是这条判据的前提。
+    """
+    hc = _r37_load("check_help_contract")
+    got = {}
+    for script in hc.GUARD_SCRIPTS:
+        sig = hc._load_row_signature(os.path.join(ROOT, script))
+        with open(os.path.join(ROOT, script), "r", encoding="utf-8",
+                  errors="replace") as fh:
+            src = fh.read()
+        obs_ns = set(p[0] for p in hc.observed_judgement_prefixes(src))
+        dec = hc.expand_row_signature(sig)
+        extra = obs_ns if dec is None else obs_ns - set(p[0] for p in dec)
+        if extra:
+            got[script] = extra
+    assert got == _R72_EXTRA_NS, (
+        "跨命名空间实发族变化。多一族 = 签名漏了一族判据（缺口长大了）；"
+        "少一族 = 有人修好了（请来改表并写清是哪一轮修的）。实测：%r" % (got,))
+    # 表里不许有陈旧键（登记了却不存在 ⇒ 也红）
+    assert set(_R72_EXTRA_NS) <= set(hc.GUARD_SCRIPTS), sorted(_R72_EXTRA_NS)

@@ -222,11 +222,11 @@ def analyze_source(rel, src, on_problem):
         if not capture:
             continue                      # 只能靠盲区登记，下面的判据无从施加
         if not _has_ast(kw, "stdin"):     # S1
-            on_problem("%s:%d subprocess.%s 捕获输出但未设 stdin="
+            on_problem("S1 %s:%d subprocess.%s 捕获输出但未设 stdin="
                        "（会继承调用方句柄；本仓已有真实挂死案例）"
                        % (rel, n.lineno, f.attr))
         if f.attr != "Popen" and not _has_ast(kw, "timeout"):   # S2
-            on_problem("%s:%d subprocess.%s 捕获输出但未设 timeout= "
+            on_problem("S2 %s:%d subprocess.%s 捕获输出但未设 timeout= "
                        "（挂住无上限）" % (rel, n.lineno, f.attr))
     return sites, blind
 
@@ -392,6 +392,12 @@ def _selftest():
     print("  真实仓库：运行时捕获点 %d、tests 捕获点 %d；"
           "Popen 登记点 %d、盲区登记点 %d"
           % (len(r_sites), len(t_sites), len(popen_keys), len(blind_keys)))
+    # S5（R72）：`tests/` 单独计数并**打印**（不判红；tests 的挂死由 pytest 自身
+    # 的超时兜底）。⚠ 字面量**必须**以判据前缀开头 —— 签名里有 5 个前缀，而这一行
+    # 以前完全没有编号，于是 `S5` 在源码里找不到任何「以它开头」的输出，判据身份
+    # 对不上（H2 的「幽灵声明」）。缩进留给输出本身，不放进字面量里。
+    print("S5 tests/ 捕获点单独计数：%d（设计如此：不计入违规，只不隐瞒）"
+          % len(t_sites))
     if problems or reg_problems:
         fails.append("真实仓库")
         print("  *** 真实仓库有 %d 项违规（S1/S2=%d, S3/S4=%d）***"

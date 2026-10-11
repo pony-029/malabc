@@ -869,11 +869,11 @@ def analyze(tmpdir):
                  if k.startswith("_Z9realentryv") or "fake" in k
                  or k == "not_an_entry"]
     _check(findings, "_Z9realentryv" in ptx_names,
-           "C4: 真 PTX entry（带括号）未被提取（得到 %s）" % ptx_names)
+           "C7: 真 PTX entry（带括号）未被提取（得到 %s）" % ptx_names)
     bad_ptx = [n for n in ptx_names
                if "fake" in n or n == "not_an_entry"]
     _check(findings, not bad_ptx,
-           "C4: 假 PTX .entry（不带括号）被误当成 kernel：%s" % bad_ptx)
+           "C7: 假 PTX .entry（不带括号）被误当成 kernel：%s" % bad_ptx)
 
     # C8（R33/C'5）：Mach-O 的「未验证」必须传播到 BinaryReport.verified=False，
     # 而不是只写在 docstring 里。造一个结构合法的 thin Mach-O 64。
