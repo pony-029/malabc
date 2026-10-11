@@ -429,3 +429,46 @@ MUTANT RESULT: 3/3 注入即红 + 还原即绿 + NEGCTRL 绿
 | 修复后 `c_missing_return` | 四子系统 2,315 → 10（−99.6%） |
 | 变异体 | 3/3 注入即红 + 还原即绿 |
 | 门禁 | `check_all` rc=0（17 门）· pytest **484 passed** |
+
+---
+
+## 附 2 远端复核（定稿读数）
+
+提交 `37cf1ba`，推送后**从全新克隆**复核：
+
+```
+== clone git@github.com:pony-029/malabc.git
+  local  HEAD=37cf1baa375c tree=938b0a8e0f81 条目=259
+  remote HEAD=37cf1baa375c tree=938b0a8e0f81 条目=259
+  ✔ HEAD 与 tree 一致
+  ✔ ls-tree 条目数一致（259）           （R74 定稿是 258，+1 = 本轮复盘文档）
+  ✔ 逐文件 sha256 全同（259 个 blob）
+  克隆内 check_all rc=0 :: check_all: OK（17 个护栏，全部通过且各自自证；门数下限 17）
+  克隆内 pytest -k r75 rc=0 :: 1 passed
+  NEGCTRL-A（克隆里改对象库/HEAD）量具看见了 ✔差异，命中文件 ['README.md']
+  NEGCTRL-B（只改工作区）量具看不见 ✔；git status='M README.md'
+  真树 git status（应只剩 .workbuddy）：[]
+
+>>> REMOTE_VERIFY OK
+```
+
+**两臂 NEGCTRL 的分工是这一轮又踩了一次的坑**：第一版我把变异打在真树的
+**索引**上（`update-index` + `write-tree`），而量具读的是 `HEAD^{tree}` ——
+量具根本不读索引，于是"A 臂没看见"**是我的探针打错了位置，不是量具没有分辨力**。
+改法：两臂都打在**克隆**上，A 臂造新 commit 并移动 `HEAD`（对象库那一面必变），
+B 臂只改工作区（对象库那一面必不变，而 `git status` 必变）。
+
+### 测试套件对照（判定"有没有引入新失败"）
+
+| | failed | passed | skipped |
+|---|---|---|---|
+| 修复前基线副本 | 126 | 348 | 9 |
+| 修复后（本仓库） | **123** | **352** | 9 |
+| **逐条比对失败集合** | **新增失败 0 个** | — | — |
+
+差的 3 个（`test_r30_static_guards_all_clean` / `test_r33_check_all_guard_count_floor` /
+`test_r62_gate_row_signatures_two_way`）经隔离验证是**对照副本没有 `.git`** 导致
+`check_baseline.py` 报 `not a git repository` 并连带失败，**与本次改动无关**
+（在无 `.git` 副本里跑 `check_all` 复现：`1 项失败：['check_baseline.py']`）。
+因此真实结论是：**本次改动引入新失败 0 个，新增 1 个通过的回归测试**
+（352 = 348 + 3 个 git 假象 + 1 个新测试）。
