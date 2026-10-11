@@ -9639,6 +9639,8 @@ def _run_c_only(c_model, root, args):
             with io.open(os.path.join(bdir, "c_report.html"), "w",
                          encoding="utf-8") as fh:
                 fh.write(c_html)
+            # R76：先落「薄索引」作为**降级产物** —— 下面的分页站点若抛异常，
+            # 目录里至少还有一个能打开的 index.html，不产生断链。
             with io.open(os.path.join(bdir, "index.html"), "w",
                          encoding="utf-8") as fh:
                 fh.write(render_c_index_html(c_model, root))
@@ -9646,6 +9648,21 @@ def _run_c_only(c_model, root, args):
         except Exception as exc:
             print("[ERROR] 写入 C 报告失败：%s" % exc, file=sys.stderr)
             ok = False
+        # R76：分页站点 —— index + 每源码文件一页 + 每检查规则一页 + browse.css。
+        # 单页 c_report.html 在语料级规模下会到 GB 级（实测 fs 子树 2,085 文件
+        # 已达 30.6 MB），分页后单页恒为 KB 级。同时补写 browse.css —— 此前
+        # C 站点只写了页面、`<link href="browse.css">` 指向的文件从未落盘，
+        # 页面实际是**无样式**的（悬空链接）。
+        try:
+            _q76 = render_c_site(c_model, root, bdir, heuristics=c_heuristics,
+                                 css_text=BROWSE_CSS,
+                                 kind_meta_fn=_operator_meta_fallback)
+            print("[OK] C 分页站点：%d 页（%d 文件页 + %d 规则页 + 索引）· %.1f MB"
+                  % (_q76["pages"], _q76["files"], _q76["rule_kinds"],
+                     _q76["bytes"] / 1048576.0))
+        except Exception as exc:
+            print("[WARN] C 分页站点生成失败（薄索引仍可用）：%s" % exc,
+                  file=sys.stderr)
     if args.json:
         # R33/C'3：--binary-attach 的三态归因（只依据显式给出的二进制）
         _c_names = [u[0] for u in (c_model.get("unresolved", []) or [])]
@@ -31668,6 +31685,7 @@ from renderers.unresolved import render_unresolved_page, _render_unresolved_tabl
 from renderers.callgraph import (
     render_static_callgraph_svg, render_folder_function_graph_svg)
 from renderers.creport import render_c_report, render_c_index_html
+from renderers.csite import render_c_site
 from renderers.sarif import render_sarif, render_sarif_diff_md
 from renderers.hotspot import render_html_hotspot_callgraphs
 

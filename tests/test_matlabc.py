@@ -20259,3 +20259,88 @@ def test_r75_c_missing_return_precision():
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
+
+
+def test_r76_c_site_is_paginated_and_styled():
+    """R76：C 前端 `--browse` 必须产出**分页**站点，且样式/链接不悬空、可离线打开。
+
+    由来（实测）：C 单页报告把「全部函数 + 全部调用边 + 全部未解析 + 全部
+    include 边」灌进一个 HTML —— `fs` 子树（2,085 文件 / 11.6 万调用边）单页已
+    **30.6 MB**；整棵 Linux 内核（62,704 文件 / 706 万调用边）逐行线性外推约
+    **1 GB**，浏览器打不开。同时站点 `<link href="browse.css">` 指向的文件**从未
+    被写出**（悬空），报告实际是**无样式页**。
+
+    期望全部**手写**（不读生成器的任何常量），并带一个反向控制：页面数必须随
+    C 文件数增长 —— 若退回「单页报告」，`file/` 目录会消失，本测试立刻变红。
+    """
+    tmp = tempfile.mkdtemp(prefix="mabr76_")
+    try:
+        with io.open(os.path.join(tmp, "alpha.c"), "w", encoding="utf-8") as fh:
+            fh.write("static int never_called(int x)\n{\n    return x + 1;\n}\n\n"
+                     "int bad_ret(int x)\n{\n    if (x)\n        return 1;\n}\n")
+        with io.open(os.path.join(tmp, "beta.c"), "w", encoding="utf-8") as fh:
+            fh.write("/* documented: adds one */\nint documented(int x)\n{\n"
+                     "    return x + 1;\n}\n\n"
+                     "static int helper_unused(void)\n{\n    return 2;\n}\n")
+        with io.open(os.path.join(tmp, "gamma.c"), "w", encoding="utf-8") as fh:
+            fh.write("int gamma(int x)\n{\n    return x;\n}\n")
+        out = os.path.join(tmp, "site")
+        rc, _o, err = _run([tmp, "--lang", "c", "--browse", out,
+                            "--checks", "all"], tmp)
+        assert rc == 0, "C 站点失败: %s" % err[:400]
+        # ① 分页：每个 C 文件一页（反向控制：退回单页则 file/ 不存在）
+        files_dir = os.path.join(out, "file")
+        assert os.path.isdir(files_dir), "缺少 file/ 分页目录（退回单页报告？）"
+        fpages = sorted(f for f in os.listdir(files_dir) if f.endswith(".html"))
+        assert len(fpages) == 3, "应有 3 个 C 文件页，实得 %d: %s" % (
+            len(fpages), fpages)
+        rules_dir = os.path.join(out, "rule")
+        assert os.path.isdir(rules_dir), "缺少 rule/ 分页目录"
+        rpages = sorted(f for f in os.listdir(rules_dir) if f.endswith(".html"))
+        assert "c_missing_doc.html" in rpages, "缺 c_missing_doc 规则页"
+        assert "c_unused_static.html" in rpages, "缺 c_unused_static 规则页"
+        # ② 索引页：KPI + 告警构成（服务端 SVG，非 JS 画图）
+        idx = _read_text(os.path.join(out, "index.html"))
+        assert "C 语言前端分析" in idx, "索引页品牌缺失"
+        assert "告警构成" in idx and "规则汇总" in idx, "索引页缺告警概览"
+        assert "<svg" in idx, "索引页图表应为服务端 SVG"
+        # ③ 离线自足：无 <script>、无 http(s) 外链；每页的 browse.css 都可解析。
+        #    旧单页 c_report.html 仍在目录里（保留兼容），不计入分页站点页面数。
+        assert os.path.exists(os.path.join(out, "c_report.html")), \
+            "旧单页完整表 c_report.html 应保留（兼容既有链接）"
+        n_site = 0
+        for dp, _dn, fn in os.walk(out):
+            for f in fn:
+                if not f.endswith(".html") or f == "c_report.html":
+                    continue
+                n_site += 1
+                t = _read_text(os.path.join(dp, f))
+                assert "<script" not in t.lower(), "%s 含 <script>（非离线自足）" % f
+                assert "http://" not in t and "https://" not in t, \
+                    "%s 含外链（离线打开会缺样式）" % f
+                assert os.path.exists(os.path.join(dp, "browse.css")), \
+                    "%s 所在目录缺 browse.css（悬空链接）" % f
+        assert n_site == 3 + len(rpages) + 1, \
+            "分页站点应为 3 文件页 + %d 规则页 + 1 索引，实得 %d" % (
+                len(rpages), n_site)
+        # ④ 双向可达：文件页 → 规则页 → 回到该文件页（防「单向可达」）
+        linked = 0
+        for f in fpages:
+            t = _read_text(os.path.join(files_dir, f))
+            for kind in ("c_missing_doc", "c_unused_static"):
+                if ("../rule/%s.html" % kind) not in t:
+                    continue
+                rt = _read_text(os.path.join(rules_dir, kind + ".html"))
+                assert ("../file/%s" % f) in rt, \
+                    "规则页 %s 未链接回文件页 %s（单向可达）" % (kind, f)
+                linked += 1
+        assert linked > 0, "没有任何文件页链接到规则页"
+        # ⑤ 质量快照与真实页面树对账（防「清单与产物漂移」）
+        q = json.loads(_read_text(os.path.join(out, "site-quality.json")))
+        assert q["files"] == 3, "site-quality 记录的 C 文件数应为 3"
+        assert q["pages"] == n_site, \
+            "site-quality.pages(%s) 与实际分页站点页面数(%d) 不符" % (
+                q["pages"], n_site)
+        assert q["orphan_alerts"] == 0, "不应有无法归因到文件的告警"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
