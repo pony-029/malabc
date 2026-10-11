@@ -20039,7 +20039,11 @@ def test_r73_family_ownership_is_two_way():
         "（多 = 陈旧登记；少 = 有冲突没登记）："
         "实测 %r / 登记 %r"
         % (sorted(multi), sorted(hc.PREFIX_OWNERSHIP_SHARED)))
-    assert len(multi) >= 17, sorted(multi)
+    # R74 起：绝对下界换成**棘轮** —— 这个数只许降不许升，
+    # 且上限本身不得超过 R73 冻结的 17。
+    assert len(multi) <= hc.PREFIX_OWNERSHIP_MAX <= 17, (
+        len(multi), hc.PREFIX_OWNERSHIP_MAX)
+    assert set(hc.PREFIX_OWNERSHIP_RENAME) == set(hc.PREFIX_OWNERSHIP_SHARED)
 
     # ⑤ 接线：真仓库输入 0 项；临时删一条登记必须报 O3（用完即还原）
     sigs = {s: hc._load_row_signature(os.path.join(ROOT, s))
@@ -20063,3 +20067,129 @@ def test_r73_family_ownership_is_two_way():
     finally:
         hc.PREFIX_OWNERSHIP_SHARED.clear()
         hc.PREFIX_OWNERSHIP_SHARED.update(saved)
+
+
+def test_r74_rename_plan_and_ratchet_are_two_way():
+    """R74：C 族**真的付清**（17 → 14）+ 每条债务必须有合法去向 + 棘轮只减不增。
+
+    钉住五层：
+
+      ① 主路径 rc=0；`--selftest` 通过，`SELFTEST COUNTS` 取**下界**（R74 加了 9 例）；
+      ② **真仓库**：多主人集合 == 登记表；且 `C1/C2/C3` 已**从多主人里消失** ——
+         它们被改名为 `CI1–CI3`，`check_binfmt_fixtures.py` 成为 C 族唯一主人。
+         这是「真的付清」，不是「改改散文」。绝对下界换成**棘轮**（只减不增）；
+      ③ **真仓库**：去向表键集合 == 登记表键集合；每条 `(门, 目标族)` 的门**真是主人**、
+         目标族**当前空闲**且不等于原族；付清后剩余主人 <= 1；
+      ④ **纯函数**：O5/O6/O7 各配好/坏样本（一律**显式**传 registry/rename_plan/max_reg，
+         免得回落到真实表 —— R72 的 `exempt=None` 摔过这个坑）；
+      ⑤ **接线**：用**真仓库输入**调一遍（必须 0 项）；再临时把棘轮调低 1 —— 同一次调用
+         必须报 `O7`；临时清空去向表 —— 必须报 `O5`。用完即还原。
+         没有这一层，新表就可能只是装饰。
+    """
+    gate = os.path.join("tools", "check_help_contract.py")
+    r = _r31_run([gate], timeout=180)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out[-900:]
+
+    s = _r31_run([gate, "--selftest"], timeout=180)
+    sout = s.stdout.decode("utf-8", "replace")
+    assert s.returncode == 0, sout[-900:]
+    m = re.search(r'SELFTEST COUNTS \{"bad": (\d+), "good": (\d+)\}', sout)
+    assert m, sout[-500:]
+    assert int(m.group(1)) >= 65, m.group(0)
+    assert int(m.group(2)) >= 51, m.group(0)
+
+    hc = _r37_load("check_help_contract")
+
+    # ② 真仓库：登记表 == 实测多主人集合；C 族已付清
+    declared = {}
+    for script in hc.GUARD_SCRIPTS:
+        path = os.path.join(ROOT, script)
+        base = hc.expand_row_signature(hc._load_row_signature(path)) or set()
+        raw = hc._load_row_extra(path)
+        ext = hc.expand_row_signature(raw) if raw else set()
+        declared[script] = base | (ext or set())
+    owners = {}
+    for script, ps in declared.items():
+        for pf in ps:
+            owners.setdefault(pf, set()).add(script)
+    multi = set(pf for pf, o in owners.items() if len(o) > 1)
+    assert multi == set(hc.PREFIX_OWNERSHIP_SHARED), (
+        "共享登记表与实测多主人前缀不一致：实测 %r / 登记 %r"
+        % (sorted(multi), sorted(hc.PREFIX_OWNERSHIP_SHARED)))
+    assert len(multi) <= hc.PREFIX_OWNERSHIP_MAX <= 17, (
+        len(multi), hc.PREFIX_OWNERSHIP_MAX)
+    for gone in ("C1", "C2", "C3"):
+        assert gone not in multi, (gone, sorted(multi))
+    for k in ("C1", "C2", "C3", "C13"):
+        assert owners.get(k) == {"tools/check_binfmt_fixtures.py"}, \
+            (k, owners.get(k))
+
+    # ③ 真仓库：去向表合法
+    plan = hc.PREFIX_OWNERSHIP_RENAME
+    assert set(plan) == set(hc.PREFIX_OWNERSHIP_SHARED), sorted(plan)
+    fams = set()
+    for pset in declared.values():
+        for pf in pset:
+            fams.add(re.match(r"^([A-Z]{1,3})", pf).group(1))
+    for pf, movers in plan.items():
+        assert len(owners[pf]) - len(set(o for o, _d in movers)) <= 1, pf
+        for owner, dest in movers:
+            assert owner in owners[pf], (pf, owner)
+            assert re.match(r"^[A-Z]{1,3}$", dest), (pf, dest)
+            assert dest != re.match(r"^([A-Z]{1,3})", pf).group(1), (pf, dest)
+            assert dest not in fams, (pf, dest)
+
+    # ④ 纯函数：O5/O6/O7 各两向
+    _cx = {"tools/check_x.py": {0: "a"}, "tools/check_y.py": {0: "b"}}
+    _sx = {"tools/check_x.py": "Z1", "tools/check_y.py": "Z1"}
+    _ex = {"tools/check_x.py": "", "tools/check_y.py": ""}
+    _nx = {"tools/check_x.py": {"Z1"}, "tools/check_y.py": {"Z1"}}
+    _reg = {"Z1": "两个门各有一条含义不同的 Z1，登记说明写在这里"}
+    _ok = {"Z1": (("tools/check_y.py", "Q"),)}
+    assert hc.family_ownership_problems(
+        _cx, _sx, _ex, _nx, registry=_reg, rename_plan=_ok, max_reg=1) == []
+    assert any(x.startswith("O5") for x in hc.family_ownership_problems(
+        _cx, _sx, _ex, _nx, registry=_reg, rename_plan={}, max_reg=1))
+    assert any(x.startswith("O5") for x in hc.family_ownership_problems(
+        _cx, _sx, _ex, _nx, registry={}, rename_plan=_ok, max_reg=0))
+    assert any(x.startswith("O6") for x in hc.family_ownership_problems(
+        _cx, _sx, _ex, _nx, registry=_reg,
+        rename_plan={"Z1": (("tools/check_nope.py", "Q"),)}, max_reg=1))
+    assert any(x.startswith("O6") for x in hc.family_ownership_problems(
+        _cx, _sx, _ex, _nx, registry=_reg,
+        rename_plan={"Z1": (("tools/check_y.py", "Z"),)}, max_reg=1))
+    assert any(x.startswith("O7") for x in hc.family_ownership_problems(
+        _cx, _sx, _ex, _nx, registry=_reg, rename_plan=_ok, max_reg=0))
+    assert any(x.startswith("O7") for x in hc.family_ownership_problems(
+        _cx, _sx, _ex, _nx, registry=_reg, rename_plan=_ok, max_reg=18))
+
+    # ⑤ 接线：真仓库输入 0 项；临时破坏棘轮/去向表必须被抓，用完即还原
+    sigs = {s: hc._load_row_signature(os.path.join(ROOT, s))
+            for s in hc.GUARD_SCRIPTS}
+    extras = {s: hc._load_row_extra(os.path.join(ROOT, s))
+              for s in hc.GUARD_SCRIPTS}
+    narrows = {}
+    for s in hc.GUARD_SCRIPTS:
+        with open(os.path.join(ROOT, s), "r", encoding="utf-8",
+                  errors="replace") as fh:
+            narrows[s] = hc.narrow_judgement_prefixes(fh.read())
+    assert hc.family_ownership_problems(
+        hc.GUARD_CONTRACT, sigs, extras, narrows) == []
+    saved_cap = hc.PREFIX_OWNERSHIP_MAX
+    saved_plan = dict(hc.PREFIX_OWNERSHIP_RENAME)
+    try:
+        hc.PREFIX_OWNERSHIP_MAX = saved_cap - 1
+        p = hc.family_ownership_problems(
+            hc.GUARD_CONTRACT, sigs, extras, narrows)
+        assert any(x.startswith("O7") for x in p), p
+        hc.PREFIX_OWNERSHIP_MAX = saved_cap
+        hc.PREFIX_OWNERSHIP_RENAME.clear()
+        p = hc.family_ownership_problems(
+            hc.GUARD_CONTRACT, sigs, extras, narrows)
+        assert any(x.startswith("O5") for x in p), p
+    finally:
+        hc.PREFIX_OWNERSHIP_MAX = saved_cap
+        hc.PREFIX_OWNERSHIP_RENAME.clear()
+        hc.PREFIX_OWNERSHIP_RENAME.update(saved_plan)
+

@@ -116,7 +116,7 @@ import sys
 # 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
 ROW_SIGNATURE = "B0–B5"
 # H3（R73）：越出签名族、但仍由本门发出的判据前缀（O1 的两向对手方）。
-ROW_EXTRA = "C1–C3/G1–G2/H1–H2/N1–N4/O1–O4/R1–R5"
+ROW_EXTRA = "CI1–CI3/G1–G2/H1–H2/N1–N4/O1–O7/R1–R5"
 
 # ---------------------------------------------------------------------------
 # 退出码契约的唯一事实源。每个码都要在 evidence 指的文件里有真实依据
@@ -1515,7 +1515,7 @@ def ascii_tree_signature_problems(tree_src, sig_by_script):
 # 差出的 3 道全是**散文噪声**（轮次引用、夹具名）—— 这正是 R72 记下的
 # 「A 宁松勿漏 => 会多报」的方向，R73 给它一个数。
 #
-# 四条判据（纯函数，不读文件、不起进程）：
+# 七条判据（纯函数，不读文件、不起进程）：
 #   O1「不许隐形判据（跨族）」：NARROW 口径下发出的前缀（去掉辅助前缀）必须 ⊆
 #      签名 ∪ ROW_EXTRA。多出来 = 跑到别的族里发了判据却没声明。
 #   O2「不许幽灵扩展」：ROW_EXTRA 里声明的每个前缀都必须在 NARROW 口径下真的发得出。
@@ -1524,6 +1524,13 @@ def ascii_tree_signature_problems(tree_src, sig_by_script):
 #      （否则「某前缀失败了」这句话有歧义）。
 #   O4「所有权登记两向」：登记了却不再冲突 => 红；理由 < 8 字符 => 红；
 #      登记的前缀没有任何门声明 => 红。
+#   O5「债务要有去向」：登记表与去向表 PREFIX_OWNERSHIP_RENAME 的键集合**必须相等**
+#      （有登记没去向 => 红；有去向没登记 => 也红）。只登记「它俩重名」是句空话，
+#      必须写明**谁**改名、搬去**哪个族**。
+#   O6「去向必须合法」：每条去向 (门, 目标族) —— 门必须**真的是**该前缀的主人
+#      （幽灵主人 => 红）；目标族必须是 1-3 个大写字母、**当前没有任何门声明**（被占 => 计划失效），
+#      且 **!= 原族**（原地不动 = 假装搬家 => 红）；并且**改名方要够**：付清之后剩余主人必须 <= 1。
+#   O7「棘轮只减不增」：登记条数 <= PREFIX_OWNERSHIP_MAX，而该上限 <= R73 的冻结值 17。
 #
 # 三条口径与一条边界（**写下来**，否则下一轮各写一套）：
 #   1. NARROW 的定义就在这里：调用名属于 NARROW_REPORT_CALLS 的**实参**（含嵌套，
@@ -1547,12 +1554,14 @@ _JUDGE_HEAD_RE = re.compile(r"^([A-Z]{1,3}\d+[a-z]?)([ :：　])")
 
 # 全局所有权的**登记制**共享前缀（理由 >= 8 字符）。两向核对见 O4。
 # 这些前缀本来是「同一个字母、两道门各有一条判据」：登记下来才无歧义。
+# 全局所有权的**登记制**共享前缀（理由 >= 8 字符）。两向核对见 O4。
+# 这些前缀本来是「同一个字母、两道门各有一条判据」：登记下来才无歧义。
+# R74：C1/C2/C3 **已真的付清** —— check_help_contract.py 的 CI 退出契约判据由 C0–C3 改名为 CI0–CI3
+#   （它们本来就是关于 CI_PY_EXIT_CONTRACT / CI_SH_EXIT_CONTRACT 的，叫 CI 比叫 C 更准），于是 C 只剩
+#   check_binfmt_fixtures.py 一个主人。登记表 17 -> 14。
 PREFIX_OWNERSHIP_SHARED = {
     "B2": "基线门与帮助契约门各有一条 B2，含义不同（基线 vs 帮助契约）",
     "B3": "基线门与帮助契约门各有一条 B3，含义不同（基线 vs 帮助契约）",
-    "C1": "binfmt 夹具门与帮助契约门各有一条 C1，含义不同（夹具 vs 帮助契约）",
-    "C2": "binfmt 夹具门与帮助契约门各有一条 C2，含义不同（夹具 vs 帮助契约）",
-    "C3": "binfmt 夹具门与帮助契约门各有一条 C3，含义不同（夹具 vs 帮助契约）",
     "G1": "四个门各有一条 G1（帮助契约 / 导入图 / 补丁算子 / py-js 前端），含义不同",
     "G2": "四个门各有一条 G2（帮助契约 / 导入图 / 补丁算子 / py-js 前端），含义不同",
     "G3": "三个门各有一条 G3（导入图 / 补丁算子 / py-js 前端），含义不同",
@@ -1566,6 +1575,42 @@ PREFIX_OWNERSHIP_SHARED = {
     "R1": "三个门各有一条 R1（C 前端 / 帮助契约 / py-js 前端），含义不同",
     "R2": "三个门各有一条 R2（C 前端 / 帮助契约 / py-js 前端），含义不同",
 }
+
+# R74（O5/O6）：每条债务必须写明**去向** —— 谁改名、搬去哪个族。目标族必须**当前空闲**
+# （没有任何门在声明它）且不等于原族；付清之后剩余主人必须 <= 1。
+PREFIX_OWNERSHIP_RENAME = {
+    "B2": (("tools/check_baseline.py", "BL"),),
+    "B3": (("tools/check_baseline.py", "BL"),),
+    "G1": (("tools/check_help_contract.py", "GC"),
+           ("tools/check_import_graph.py", "IG"),
+           ("tools/check_patch_ops.py", "PO"),
+           ("tools/check_py_js_frontend_shapes.py", "PS")),
+    "G2": (("tools/check_help_contract.py", "GC"),
+           ("tools/check_import_graph.py", "IG"),
+           ("tools/check_patch_ops.py", "PO"),
+           ("tools/check_py_js_frontend_shapes.py", "PS")),
+    "G3": (("tools/check_import_graph.py", "IG"),
+           ("tools/check_patch_ops.py", "PO"),
+           ("tools/check_py_js_frontend_shapes.py", "PS")),
+    "G4": (("tools/check_import_graph.py", "IG"),
+           ("tools/check_py_js_frontend_shapes.py", "PS")),
+    "G5": (("tools/check_import_graph.py", "IG"),
+           ("tools/check_py_js_frontend_shapes.py", "PS")),
+    "G6": (("tools/check_import_graph.py", "IG"),
+           ("tools/check_py_js_frontend_shapes.py", "PS")),
+    "G7": (("tools/check_import_graph.py", "IG"),
+           ("tools/check_py_js_frontend_shapes.py", "PS")),
+    "P1": (("tools/check_readme_parity.py", "RP"),),
+    "P2": (("tools/check_readme_parity.py", "RP"),),
+    "P4": (("tools/check_readme_parity.py", "RP"),),
+    "R1": (("tools/check_help_contract.py", "RC"),
+           ("tools/check_py_js_frontend_shapes.py", "PS")),
+    "R2": (("tools/check_help_contract.py", "RC"),
+           ("tools/check_py_js_frontend_shapes.py", "PS")),
+}
+
+# R74（O7）：棘轮 —— 共享登记条数只能减不能增。
+PREFIX_OWNERSHIP_MAX = 14
 
 
 def _str_const(node):
@@ -1636,13 +1681,19 @@ def _prefix_sort_key(p):
 
 
 def family_ownership_problems(contract, sig_by_script, extra_by_script,
-                              narrow_by_script, registry=None):
-    """H3 O1-O4：族级所有权。返回问题串列表（空 = 过）。
+                              narrow_by_script, registry=None,
+                              rename_plan=None, max_reg=None):
+    """H3 O1-O7：族级所有权 + 债务去向 + 棘轮。返回问题串列表（空 = 过）。
 
     纯函数：所有输入都是「已读好的文本/集合」，不读文件、不起进程。
     """
+    explicit = registry is not None
     if registry is None:
         registry = PREFIX_OWNERSHIP_SHARED
+    if rename_plan is None:
+        rename_plan = {} if explicit else PREFIX_OWNERSHIP_RENAME
+    if max_reg is None:
+        max_reg = len(registry) if explicit else PREFIX_OWNERSHIP_MAX
     probs = []
     declared_all = {}
     for script in sorted(contract):
@@ -1700,6 +1751,62 @@ def family_ownership_problems(contract, sig_by_script, extra_by_script,
                 "就该删掉登记，让 O3 重新能管它"
                 % (p, len(owners[p]),
                    ", ".join(os.path.basename(s) for s in sorted(owners[p]))))
+    # O5：每条债务都要有去向；去向表不许有幽灵条目（键集合两向）
+    for p in sorted(registry, key=_prefix_sort_key):
+        if p not in rename_plan:
+            probs.append(
+                "O5 共享前缀登记 %s 没有「去向」—— 只登记「它俩重名」是空话，"
+                "必须写明谁来改名、改到哪个族" % p)
+    for p in sorted(rename_plan, key=_prefix_sort_key):
+        if p not in registry:
+            probs.append("O5 去向表里的 %s 不在共享登记表里 —— 幽灵去向（该删了）" % p)
+    # O6：去向必须指名真主人、目标族空闲且真的搬家、改名方要够
+    fam_of_declared = set()
+    for _s in declared_all:
+        for _x in declared_all[_s]:
+            fam_of_declared.add(re.match(r"^([A-Z]{1,3})", _x).group(1))
+    for p in sorted(rename_plan, key=_prefix_sort_key):
+        if p not in owners:
+            continue
+        movers = set()
+        for item in rename_plan[p]:
+            try:
+                owner, dest = item
+            except (TypeError, ValueError):
+                probs.append("O6 去向 %s 的条目 %r 不是 (门, 目标族) 二元组" % (p, item))
+                continue
+            if owner not in owners[p]:
+                probs.append(
+                    "O6 去向 %s 指名的 %s 根本不是它的主人（真主人：%s）—— 幽灵主人"
+                    % (p, owner,
+                       ", ".join(os.path.basename(s) for s in sorted(owners[p]))))
+                continue
+            movers.add(owner)
+            if not re.match(r"^[A-Z]{1,3}$", dest or ""):
+                probs.append("O6 去向 %s 的目标族 %r 不是 1-3 个大写字母"
+                             % (p, dest))
+                continue
+            if dest == re.match(r"^([A-Z]{1,3})", p).group(1):
+                probs.append("O6 去向 %s 的目标族 %s 与它现在的族相同 —— 那不是搬家，是假装搬家" % (p, dest))
+            if dest in fam_of_declared:
+                probs.append(
+                    "O6 去向 %s 的目标族 %s 已被别的门占用 —— 计划失效，换一个空闲族"
+                    % (p, dest))
+        left = len(owners[p]) - len(movers)
+        if left > 1:
+            probs.append(
+                "O6 去向 %s 只指名了 %d 个改名方，付清后仍剩 %d 个主人（%s）—— "
+                "至少要 %d 个改名方，冲突才会真的消失"
+                % (p, len(movers), left,
+                   ", ".join(os.path.basename(s) for s in sorted(owners[p] - movers)),
+                   len(owners[p]) - 1))
+    # O7：棘轮只减不增
+    if len(registry) > max_reg:
+        probs.append("O7 共享登记 %d 条 > 棘轮上限 %d —— 判据前缀不许变得更歧义"
+                     % (len(registry), max_reg))
+    if max_reg > 17:
+        probs.append("O7 棘轮上限 %d 超过 R73 的冻结值 17 —— 上限只能降不能升"
+                     % max_reg)
     return probs
 
 
@@ -1804,26 +1911,26 @@ def audit_ci_examples(root, on_problem, matlabc_codes):
         registered = set(registered)
         path = os.path.join(root, script)
         if not os.path.exists(path):
-            on_problem("C0 %s 不存在（缺输入 → 红）" % script)
+            on_problem("CI0 %s 不存在（缺输入 → 红）" % script)
             continue
         src, doc = _docstring(path)
         if doc is None:
-            on_problem("C0 %s 解析不到模块 docstring（缺输入 → 红）" % script)
+            on_problem("CI0 %s 解析不到模块 docstring（缺输入 → 红）" % script)
             continue
         n += 1
         for code in sorted(registered):
             if not _code_has_evidence(src, code):
-                on_problem("C1 %s: 登记了退出码 %d，但源码里找不到依据"
+                on_problem("CI1 %s: 登记了退出码 %d，但源码里找不到依据"
                            "（return %d / sys.exit(%d)）" % (script, code, code, code))
         for code in sorted(_literal_sys_exits(src) - registered):
-            on_problem("C1 %s: 源码里有 sys.exit(%d)，但 CI_PY_EXIT_CONTRACT 没登记它"
+            on_problem("CI1 %s: 源码里有 sys.exit(%d)，但 CI_PY_EXIT_CONTRACT 没登记它"
                        % (script, code))
         declared = parse_exit_section(doc)
         if declared is None:
-            on_problem("C2 %s: docstring 里解析不到非空的「退出码」段 —— "
+            on_problem("CI2 %s: docstring 里解析不到非空的「退出码」段 —— "
                        "被复制进用户 CI 的脚本必须写清退出码" % script)
         elif declared != registered:
-            on_problem("C2 %s: 帮助与登记表不一致（少写 %s / 多写 %s）"
+            on_problem("CI2 %s: 帮助与登记表不一致（少写 %s / 多写 %s）"
                        % (script, sorted(registered - declared) or "无",
                           sorted(declared - registered) or "无"))
 
@@ -1831,44 +1938,44 @@ def audit_ci_examples(root, on_problem, matlabc_codes):
         registered = set(registered)
         path = os.path.join(root, script)
         if not os.path.exists(path):
-            on_problem("C0 %s 不存在（缺输入 → 红）" % script)
+            on_problem("CI0 %s 不存在（缺输入 → 红）" % script)
             continue
         try:
             with io.open(path, "r", encoding="utf-8", errors="replace") as fh:
                 src = fh.read()
         except OSError as e:
-            on_problem("C0 %s 读不到（%s）" % (script, e))
+            on_problem("CI0 %s 读不到（%s）" % (script, e))
             continue
         n += 1
         # shell 侧用 `exit N`，不是 Python 的 return —— 语言不同，判据必须不同
         for code in sorted(registered):
             if code not in _sh_exit_literals(src):
-                on_problem("C1 %s: 登记了退出码 %d，但文件里没有 `exit %d`"
+                on_problem("CI1 %s: 登记了退出码 %d，但文件里没有 `exit %d`"
                            % (script, code, code))
         for code in sorted(_sh_exit_literals(src) - registered):
-            on_problem("C1 %s: 文件里有 `exit %d`，但 CI_SH_EXIT_CONTRACT 没登记它"
+            on_problem("CI1 %s: 文件里有 `exit %d`，但 CI_SH_EXIT_CONTRACT 没登记它"
                        % (script, code))
 
     for script, phrase in sorted(CI_RELIES_ON_NONZERO.items()):
         path = os.path.join(root, script)
         if not os.path.exists(path):
-            on_problem("C0 %s 不存在（缺输入 → 红）" % script)
+            on_problem("CI0 %s 不存在（缺输入 → 红）" % script)
             continue
         n += 1
         try:
             with io.open(path, "r", encoding="utf-8", errors="replace") as fh:
                 src = fh.read()
         except OSError as e:
-            on_problem("C0 %s 读不到（%s）" % (script, e))
+            on_problem("CI0 %s 读不到（%s）" % (script, e))
             continue
         # 两向之一：模板必须真的还写着那句断言（陈旧的登记也要抓）
         if phrase not in src:
-            on_problem("C3 %s: 登记它断言「%s」，但文件里已经没有这句话 —— "
+            on_problem("CI3 %s: 登记它断言「%s」，但文件里已经没有这句话 —— "
                        "要么把话加回去，要么更新 CI_RELIES_ON_NONZERO"
                        % (script, phrase))
         # 两向之二：它的前提必须仍成立 —— matlabc.py 的退出契约里要有非零码
         if not [c for c in matlabc_codes if c != 0]:
-            on_problem("C3 %s: 它断言「门禁 FAIL 会%s」，但 matlabc.py 的退出契约里"
+            on_problem("CI3 %s: 它断言「门禁 FAIL 会%s」，但 matlabc.py 的退出契约里"
                        "**没有任何非零码** —— 模板在说谎" % (script, phrase))
     return n
 
@@ -2382,9 +2489,11 @@ def _selftest():
     # ---- H3（R73）O1-O4：族级所有权 ----
     # 合成样本刻意不用真实门名；O1/O2 一律显式 registry={}，避免回落到真实登记表
     # （R72 的 exempt=None 就是摔在这里：回落让好样本变红、坏样本变空转）。
-    def _fo(contract, sigs, extras, narrows, registry=None):
+    def _fo(contract, sigs, extras, narrows, registry=None,
+            rename_plan=None, max_reg=None):
         return family_ownership_problems(contract, sigs, extras, narrows,
-                                         registry=registry)
+                                         registry=registry,
+                                         rename_plan=rename_plan, max_reg=max_reg)
 
     _cx = {"tools/check_x.py": {0: "全部通过"}}
     _sig_x = {"tools/check_x.py": "X1–X3"}
@@ -2456,6 +2565,69 @@ def _selftest():
                'print("X7 a")\nb.append("X8 b")\n'
                'on_problem("X9 %s" % v)\n') != {"X7", "X8", "X9"}, False)
 
+    # ---- R74（O5-O7）：债务去向与棘轮 ----
+    # 合成样本刻意不用真实门名；一律显式传 registry/rename_plan/max_reg，
+    # 免得回落到真实表（R72 的 exempt=None 就是摔在这里）。
+    _reg1 = {"Z1": "两个门各有一条含义不同的 Z1，登记说明写在这里"}
+    _plan1 = {"Z1": (("tools/check_y.py", "Q"),)}
+    _cx2 = {"tools/check_x.py": {0: "a"}, "tools/check_y.py": {0: "b"}}
+    _sig_z = {"tools/check_x.py": "Z1", "tools/check_y.py": "Z1"}
+    _ex2 = {"tools/check_x.py": "", "tools/check_y.py": ""}
+    _nar2 = {"tools/check_x.py": {"Z1"}, "tools/check_y.py": {"Z1"}}
+    expect("O5 正例：登记与去向一一对应 ⇒ 放行",
+           any(x.startswith("O5") for x in _fo(
+               _cx2, _sig_z, _ex2, _nar2,
+               registry=_reg1, rename_plan=_plan1, max_reg=1)), False)
+    expect("O5 反例：登记了却没有「去向」",
+           any(x.startswith("O5") for x in _fo(
+               _cx2, _sig_z, _ex2, _nar2,
+               registry=_reg1, rename_plan={}, max_reg=1)), True)
+    expect("O5 反例：去向表里有一条不在登记表里（幽灵去向）",
+           any(x.startswith("O5") for x in _fo(
+               _cx2, _sig_z, _ex2, _nar2,
+               registry={}, rename_plan=_plan1, max_reg=0)), True)
+    expect("O6 反例：去向指名的门并不是这个前缀的主人（幽灵主人）",
+           any(x.startswith("O6") for x in _fo(
+               _cx2, _sig_z, _ex2, _nar2,
+               registry=_reg1,
+               rename_plan={"Z1": (("tools/check_nope.py", "Q"),)},
+               max_reg=1)), True)
+    expect("O6 反例：目标族与原来的族相同（假装搬家）",
+           any(x.startswith("O6") for x in _fo(
+               _cx2, _sig_z, _ex2, _nar2,
+               registry=_reg1,
+               rename_plan={"Z1": (("tools/check_y.py", "Z"),)},
+               max_reg=1)), True)
+    expect("O6 反例：目标族 Q 已经被第三道门占用",
+           any(x.startswith("O6") for x in _fo(
+               {"tools/check_x.py": {0: "a"}, "tools/check_y.py": {0: "b"},
+                "tools/check_q.py": {0: "c"}},
+               {"tools/check_x.py": "Z1", "tools/check_y.py": "Z1",
+                "tools/check_q.py": "Q1"},
+               {"tools/check_x.py": "", "tools/check_y.py": "",
+                "tools/check_q.py": ""},
+               {"tools/check_x.py": {"Z1"}, "tools/check_y.py": {"Z1"},
+                "tools/check_q.py": {"Q1"}},
+               registry=_reg1, rename_plan=_plan1, max_reg=1)), True)
+    expect("O6 反例：三个主人只指名一个改名方（付清后仍剩两个）",
+           any(x.startswith("O6") for x in _fo(
+               {"tools/check_x.py": {0: "a"}, "tools/check_y.py": {0: "b"},
+                "tools/check_w.py": {0: "c"}},
+               {"tools/check_x.py": "Z1", "tools/check_y.py": "Z1",
+                "tools/check_w.py": "Z1"},
+               {"tools/check_x.py": "", "tools/check_y.py": "",
+                "tools/check_w.py": ""},
+               {"tools/check_x.py": {"Z1"}, "tools/check_y.py": {"Z1"},
+                "tools/check_w.py": {"Z1"}},
+               registry=_reg1, rename_plan=_plan1, max_reg=1)), True)
+    expect("O7 反例：登记条数 1 超过棘轮上限 0",
+           any(x.startswith("O7") for x in _fo(
+               _cx2, _sig_z, _ex2, _nar2,
+               registry=_reg1, rename_plan=_plan1, max_reg=0)), True)
+    expect("O7 反例：棘轮上限 18 超过 R73 冻结值 17",
+           any(x.startswith("O7") for x in _fo(
+               _cx2, _sig_z, _ex2, _nar2,
+               registry=_reg1, rename_plan=_plan1, max_reg=18)), True)
     # ---- 真实仓库整体核对 ----
     root = repo_root()
     probs = []
