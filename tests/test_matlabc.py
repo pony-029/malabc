@@ -20754,3 +20754,213 @@ def test_r79_no_annotations_flag_is_documented():
     assert out.returncode == 0
     assert "--no-annotations" in txt
     assert "明细" in txt
+
+
+def _r80_write_c_fixture(tmp_path):
+    """R80 测试用的最小 C 语料：文件注释 + include + 内联汇编 + 3 个函数。
+
+    刻意既有 `/* */` 又有 `//`、既有 include 又有内联汇编 ——
+    这样 summary 的五个计数里**没有一个是零**，守恒断言才不是平凡成立的。
+    """
+    src = tmp_path / "src"
+    src.mkdir()
+    with io.open(str(src / "a.c"), "w", encoding="utf-8") as fh:
+        fh.write("/* 文件级注释 */\n"
+                 "#include <stdio.h>\n"
+                 "#define N 4\n"
+                 "int add(int a, int b) {   /* 行内注释 */\n"
+                 "    int o;\n"
+                 '    __asm__ volatile("addl %2, %0" : "+r"(o) : "r"(a)'
+                 ' : "memory");\n'
+                 "    return o;\n"
+                 "}\n"
+                 "int mul(int a, int b) { return a * b; }\n"
+                 'void caller(void) { add(1, 2); mul(3, 4); printf("x"); }\n')
+    return str(src), str(tmp_path)
+
+
+def _r80_json(base, src, tag, flag):
+    jp = os.path.join(base, "r80_%s.json" % tag)
+    rc, _o, err = _run([src, "--lang", "c", "--json", jp] + list(flag), base)
+    assert rc == 0, err[:300]
+    return json.loads(_read_text(jp))
+
+
+def test_r80_json_level_three_tiers_shape(tmp_path):
+    """R80 / C29-1：`--json-level` 三档的**形状**，每层都能被单独推翻。
+
+    ① 三档必须**如实自报** `json_level`（不报就等于让下游去猜）；
+    ② `--no-annotations` 与 `--json-level=lite` **完全等价**（字典相等，
+       不是"差不多"）—— 对手方：两条路径各写一套逻辑，日子一久必然分叉；
+    ③ `summary` 档**不得**出现 `edges` / `unresolved` / `heuristics` 明细键
+       （而 lite 必须**还都在**），且必须给出 `summary` 计数块与
+       `heuristics_by_kind`；
+    ④ `summary` 的每文件载荷**恰好**那六个键 —— 多一个键就是"偷偷又塞了明细"；
+    ⑤ 更瘦的档位不会被更胖的开关顶回去（`summary + --no-annotations` 仍是
+       summary）：开关只让结果更瘦，不更胖。
+    """
+    src, base = _r80_write_c_fixture(tmp_path)
+    out = {}
+    for tag, flag in (("full", []), ("lite", ["--json-level=lite"]),
+                      ("na", ["--no-annotations"]),
+                      ("summary", ["--json-level=summary"]),
+                      ("sum_na", ["--json-level=summary",
+                                  "--no-annotations"])):
+        jp = os.path.join(base, "c_%s.json" % tag)
+        rc, _o, err = _run([src, "--lang", "c", "--json", jp] + flag, base)
+        assert rc == 0, err[:300]
+        out[tag] = json.loads(_read_text(jp))
+
+    assert out["full"]["json_level"] == "full"
+    assert out["lite"]["json_level"] == "lite"
+    assert out["summary"]["json_level"] == "summary"
+    assert out["full"]["annotations"] is True
+    assert out["lite"]["annotations"] is False
+    assert out["summary"]["annotations"] is False
+    assert out["na"] == out["lite"]
+    for k in ("edges", "unresolved", "heuristics"):
+        assert k not in out["summary"], k
+        assert k in out["lite"], k
+    assert "summary" in out["summary"]
+    assert "heuristics_by_kind" in out["summary"]
+    assert sorted(out["summary"]["files"][0]) == [
+        "macros", "n_asm", "n_comments", "n_functions", "n_includes",
+        "rel"], sorted(out["summary"]["files"][0])
+    assert out["sum_na"]["json_level"] == "summary"
+    assert out["sum_na"] == out["summary"]
+
+
+def test_r80_summary_counts_are_conserved(tmp_path):
+    """R80 / C29-1：summary 的每个计数 == full 档那份明细数组的长度。
+
+    这是「summary 丢了明细」与「summary 丢了信息」之间的**分界线**：
+    只要计数守恒，任何人拿 summary 都能核实自己丢掉了多少。
+    对手方是两类笔误 —— `n_functions` 写成文件数、`comments` 数成注释**行**数
+    （而非注释条数）—— 两者都会让下面某一条红。
+
+    最后一条断言「非零」是**防空转**：在空语料上守恒是平凡成立的，
+    那样的绿证明不了任何事。
+    """
+    src, base = _r80_write_c_fixture(tmp_path)
+    full = _r80_json(base, src, "full", [])
+    summ = _r80_json(base, src, "summary", ["--json-level=summary"])
+    sm = summ["summary"]
+
+    assert sm["files"] == len(full["files"])
+    assert sm["functions"] == sum(len(p["functions"]) for p in full["files"])
+    assert sm["edges"] == len(full["edges"])
+    assert sm["unresolved"] == len(full["unresolved"])
+    assert sm["include_edges"] == len(full["include_edges"])
+    assert sm["heuristics"] == len(full["heuristics"])
+    assert sm["comments"] == full["comment_stats"]["total"]
+    assert sm["asm_statements"] == full["asm"]["statements"]
+    assert sum(summ["heuristics_by_kind"].values()) == len(full["heuristics"])
+    fmap = dict((p["rel"], p) for p in full["files"])
+    for sig in summ["files"]:
+        f = fmap[sig["rel"]]
+        assert sig["n_functions"] == len(f["functions"]), sig["rel"]
+        assert sig["n_includes"] == len(f["includes"]), sig["rel"]
+        assert sig["n_comments"] == len(f["comments"]), sig["rel"]
+        assert sig["n_asm"] == len(f["asm"]), sig["rel"]
+        assert sig["macros"] == f["macros"], sig["rel"]
+    assert summ["asm"] == full["asm"]
+    assert summ["comment_stats"] == full["comment_stats"]
+    # 防空转：这些计数必须**非零**，否则上面的"守恒"什么都没证明
+    assert sm["functions"] == 3, sm
+    assert sm["edges"] >= 2, sm
+    assert sm["comments"] >= 2, sm
+    assert sm["asm_statements"] == 1, sm
+
+
+def test_r80_unknown_json_level_degrades_to_full():
+    """R80 / C29-1：未知档位**降级为 full**，不静默丢明细。
+
+    这不是假想：argparse 的 `choices` 只拦命令行，而 `--json-level` 的默认值
+    来自 `cfg.get("json_level", ...)` —— 配置文件可以把它写成**任意字符串**，
+    直接进 args。若那时按「不等于 summary 就当 lite」处理，一个错别字
+    就会把整棵树的明细悄悄丢掉，而且**没有任何输出会提示这件事**。
+
+    所以纯函数层面把九种输入都钉死（含 `None` / 空串 / 完全缺属性）。
+    """
+    class _A(object):
+        def __init__(self, **kw):
+            self.__dict__.update(kw)
+
+    for kw, want in ((dict(json_level="full", annotations=True), "full"),
+                     (dict(json_level="lite", annotations=True), "lite"),
+                     (dict(json_level="summary", annotations=True), "summary"),
+                     (dict(json_level="full", annotations=False), "lite"),
+                     (dict(json_level="summary", annotations=False),
+                      "summary"),
+                     (dict(json_level="bogus", annotations=True), "full"),
+                     (dict(json_level="", annotations=True), "full"),
+                     (dict(json_level=None, annotations=False), "lite"),
+                     (dict(), "full")):
+        assert ma._json_level(_A(**kw)) == want, (kw, want)
+    # `annotations` 布尔与档位**同源**：summary 也报 False
+    assert ma._annotations_on(_A(json_level="summary",
+                                 annotations=True)) is False
+    assert ma._annotations_on(_A(json_level="full",
+                                 annotations=True)) is True
+
+
+def test_r80_asm_summary_signature(tmp_path):
+    """R80 / C29-1：汇编前端 summary = **lite + 每文件计数**（形状判据）。
+
+    ① 明细数组（`symbols` / `labels` / `directives` / `comments`）必须没了，
+       但有对应的 `n_<键名>` 计数；
+    ② 标量 `insn_total` 与两键小字典 `segment_lines` / `macros` **必须还在** ——
+       它们是**签名**不是明细，丢掉就让「哪个文件最重」无从判断；
+    ③ 被截过桶数的两个直方图（`insn_hist` / `excluded_hist`）必须丢：
+       "有多少个桶"不是任何人的问题，信息在 `insn_total` 与顶层
+       `asm_file_stats` 的 `insn_top` 里。
+
+    ⚠ 诚实边界：本测试**不谈体积**。实测汇编档 summary 可能**大于** lite
+    （lite 已删光明细，summary 反而要写计数）——那是有意为之，
+    免得下一轮有人把计数"优化"掉。体积单调下降只在 C 侧成立。
+    """
+    asrc = tmp_path / "asm"
+    asrc.mkdir()
+    with io.open(str(asrc / "t.S"), "w", encoding="utf-8") as fh:
+        fh.write(".globl f\n.data\n1:\n    | m68k 注释\n.text\nf:\n"
+                 "    lock; addl $1, %eax\n    ret\n")
+    got = {}
+    for tag, flag in (("full", []), ("lite", ["--no-annotations"]),
+                      ("summary", ["--json-level=summary"])):
+        jp = os.path.join(str(tmp_path), "a_%s.json" % tag)
+        rc, _o, err = _run([str(asrc), "--lang", "asm", "--json", jp] + flag,
+                           str(tmp_path))
+        assert rc == 0, err[:300]
+        got[tag] = json.loads(_read_text(jp))
+
+    af = got["full"]["files"][0]
+    al = got["lite"]["files"][0]
+    asm = got["summary"]["files"][0]
+    for k in ("symbols", "labels", "directives", "comments"):
+        assert k in af, k
+        assert k not in al and k not in asm, k
+        assert "n_" + k in asm, k
+    assert asm["insn_total"] == af["insn_total"] == 3, asm.get("insn_total")
+    assert asm["segment_lines"] == af["segment_lines"]
+    assert asm["macros"] == af["macros"]
+    assert asm["kind"] == "asm"
+    assert "insn_hist" not in asm and "excluded_hist" not in asm
+    assert got["summary"]["asm_file_stats"] == got["full"]["asm_file_stats"]
+    assert got["summary"]["json_level"] == "summary"
+
+
+def test_r80_json_level_flag_is_documented():
+    """R80 / C29-1：三档必须出现在 `--help`，且**三档枚举**要真的印出来。
+
+    只断言开关名存在是不够的：`choices` 会把三个档位印进 usage/help，
+    所以「档位到底有哪几个」这件事本身是可核验的。
+    对手方：加了 `choices` 却漏了 `help` —— 功能可用、用户却只能去翻源码。
+    """
+    out = subprocess.run([_PY, ANALYZER, "--help"], stdout=subprocess.PIPE,
+                         stderr=subprocess.STDOUT)
+    txt = out.stdout.decode("utf-8", "replace")
+    assert out.returncode == 0
+    assert "--json-level" in txt
+    for lv in ("full", "lite", "summary"):
+        assert lv in txt, lv
+    assert "json_level" in txt

@@ -7881,38 +7881,92 @@ def _c_asm_stats(files):
     return st
 
 
+def _json_level(args):
+    """R80 / C29-1：把两个开关**归约成唯一档位**（full / lite / summary）。
+
+    规则只有一条：`--no-annotations` 只会让结果**更瘦**，永不更胖。
+      * 给了 `--json-level=full|lite|summary` ⇒ 原样生效；
+      * 没给 `--json-level`、只给了 `--no-annotations` ⇒ `lite`（= R79 行为）；
+      * 两个都没给 ⇒ `full`（= R78 行为，向后兼容的锚）。
+
+    为什么是「三档 + 一个机器可读的标记」而不是再堆几个布尔开关：
+    下游拿到一份 JSON 时第一个问题必然是「明细在不在」，而键在不在这件事
+    **只能靠猜**。顶层 `json_level` 把它写成字面量，于是消费方不用猜。
+
+    ⚠ 单调性只说**明细粒度**（逐条记录 → 计数 → 无），**不说体积**：
+    实测汇编档 `summary`（4,850 B）反而**大于** `lite`（4,564 B）——
+    因为 `lite` 已经把行级明细全删了，`summary` 却要写回每文件计数。
+    体积单调下降只在 C 侧成立（那儿明细才是大头，实测 kernel `lib`
+    整树 19.31 MB → summary 约 80 KB）。把这条边界写在这里，
+    免得下一轮有人拿「三档单调变瘦」去当不变量断言。
+
+    不认识的档位（配置文件可以写成任意字符串 —— argparse 的 `choices`
+    只管命令行）**降级为 `full`**：宁可多给数据，也不要因为一个错别字
+    把明细静默丢掉。
+    """
+    lv = getattr(args, "json_level", None) or "full"
+    if lv not in ("full", "lite", "summary"):
+        lv = "full"
+    if lv == "full" and not getattr(args, "annotations", True):
+        return "lite"
+    return lv
+
+
 def _annotations_on(args):
     """R79 / C28-1：JSON 是否带**行级明细**（注释 / 汇编）。
 
-    默认 `True`（保持 R78 的载荷形态）；`--no-annotations` 置 `False`。
-    **顶层汇总从来不受这个开关影响** —— 它们的信息密度是「每语料一行」，
-    丢掉它们不会让 JSON 变小，只会让人看不懂。
+    R80 / C29-1：语义**收紧**为 `_json_level(args) == "full"` ——
+    于是 summary 档也如实报 `False`（它连结构性明细都没有）。
+    这样「顶层 `annotations` 布尔」与「实际档位」永远**同源**，
+    不会出现「说带明细、实际没带」这类各说各话。
     """
-    return getattr(args, "annotations", True)
+    return _json_level(args) == "full"
 
 
-def _c_file_payload(pf, detail=True):
-    """R79 / C28-1：C 的**每文件** JSON。
+def _c_file_payload(pf, level="full"):
+    """R80 / C29-1：C 的**每文件** JSON，三档（full / lite / summary）。
 
-    `detail=False` 时**不写出**行级明细键（`comments` / `asm`）。
-    为什么是「不写键」而不是「写空数组」：空数组每文件白付约 32 B，
-    内核量级（6 万文件）就是约 2 MB 的纯噪声，而这一档的全部意义就是变小。
-    消费方靠顶层 `annotations` 布尔判断处于哪种模式，不用去猜。
+    * `full`    —— R78 原样（含 `comments` / `asm` 行级明细）；
+    * `lite`    —— 去掉行级明细键（= R79 的 `--no-annotations`）；
+    * `summary` —— 只留**签名**：`rel` + 各项计数，一个字的明细都不带。
+
+    为什么明细一律「**不写键**」而不是「写空数组」：空数组每文件白付约 32 B，
+    内核量级（6 万文件）就是约 2 MB 的纯噪声，而这两档的全部意义就是变小。
+    消费方靠顶层 `json_level` 判断档位，不用去猜键在不在。
+
+    summary 档的计数是**守恒**的：`n_functions` / `n_includes` / `n_comments`
+    / `n_asm` 各自等于同一文件在 full 档下那份数组的长度（测试逐条断言）。
+    于是「summary 丢了明细」≠「summary 丢了信息」—— 谁都能拿它去核对。
     """
+    if level == "summary":
+        return {"rel": pf["rel"],
+                "n_functions": len(pf.get("functions") or []),
+                "n_includes": len(pf.get("includes") or []),
+                "macros": pf.get("macros") or 0,
+                "n_comments": len(pf.get("comments") or []),
+                "n_asm": len(pf.get("asm") or [])}
     out = {"rel": pf["rel"], "includes": pf["includes"],
            "macros": pf["macros"], "functions": pf["functions"]}
-    if detail:
+    if level == "full":
         out["comments"] = pf.get("comments", [])
         out["asm"] = pf.get("asm", [])
     return out
 
 
-# `--no-annotations` 下从**扩展前端**每文件载荷里去掉的键（全是行级明细）。
+# `lite` / `summary` 档下从**扩展前端**每文件载荷里去掉的键（全是行级明细）。
 _ASM_DETAIL_KEYS = ("symbols", "labels", "directives", "insn_hist",
                     "excluded_hist", "comments", "segment_lines")
 
+# R80 / C29-1：summary 档下**连计数都不给**的两个键。它们是**直方图**
+# （桶数被截到 64 / 32 个），「有多少个桶」不是任何人的问题；信息已由
+# 标量 `insn_total` 与顶层 `asm_file_stats` 的 `insn_top` 覆盖。
+# 其余**数组**（imports / functions / symbols / labels / directives /
+# comments）不属于这里 —— 它们在 summary 档降级为 `n_<键名>` 计数，
+# 那是每文件签名的一部分。
+_EXT_SUMMARY_DROP_KEYS = ("insn_hist", "excluded_hist")
 
-def _ext_file_payload(pf, detail=True):
+
+def _ext_file_payload(pf, level="full"):
     """R78：扩展前端的**每文件** JSON。
 
     除通用字段外，把该前端**自带**的扩展块原样带出（汇编的
@@ -7923,19 +7977,93 @@ def _ext_file_payload(pf, detail=True):
     R79 / C28-1：新增 `detail` 形参。`detail=False`（`--no-annotations`）时
     只跳过 `_ASM_DETAIL_KEYS` 里的行级明细，**标量与计数照旧**。
 
+    R80 / C29-1：`detail` 形参换成 `level`（full / lite / summary）。
+    `summary` 档把每一条**明细数组**降级为 `n_<键名>` 计数、丢掉两个直方图
+    （见 `_EXT_SUMMARY_DROP_KEYS`），**标量与小字典照旧** ——
+    于是每文件恰好一行可以横向对比的签名。
+
     `path` 一律不带（绝对路径，且既有输出也没有它）。
     """
+    if level == "summary":
+        # R80 / C29-1：**标量与小字典**（kind / macros / insn_total /
+        # segment_lines）原样留下；每条**明细数组**降级为 `n_<键名>`；
+        # 两个被截过桶数的直方图直接丢。`sorted` 让键序确定 ⇒ 两次运行逐字节一致。
+        out = {"rel": pf.get("rel")}
+        for k in sorted(pf):
+            if k in ("rel", "path"):
+                continue
+            v = pf[k]
+            if not isinstance(v, list):
+                out[k] = v
+            elif k not in _EXT_SUMMARY_DROP_KEYS:
+                out["n_" + k] = len(v)
+        return out
     out = {"rel": pf.get("rel"), "imports": pf.get("imports", []),
            "functions": pf.get("functions", [])}
     for k in sorted(pf):
         if k in ("rel", "path", "imports", "functions"):
             continue
-        if not detail and k in _ASM_DETAIL_KEYS:
+        if level == "lite" and k in _ASM_DETAIL_KEYS:
             # R79 / C28-1：明细开关。标量（macros / insn_total）**留下** ——
             # 它们才几十字节，却能让人一眼看出「哪个文件最重」。
             continue
         out[k] = pf[k]
     return out
+
+
+def _heuristics_by_kind(heuristics):
+    """R80 / C29-1：把启发式**明细**压成**按规则的直方图**。
+
+    summary 档里最容易被忽略的一大块就是它 —— 实测 security 默认档
+    `heuristics` 单独占 908.8 KB（整份 JSON 7.76 MB 的 11.4%），
+    而人要的通常只是「哪条规则报了多少次」。键排序 ⇒ 两次运行逐字节一致。
+    """
+    c = {}
+    for h in (heuristics or []):
+        k = h.get("kind") if isinstance(h, dict) else None
+        k = k or "?"
+        c[k] = c.get(k, 0) + 1
+    return dict(sorted(c.items()))
+
+
+def _c_summary_counts(c_model, heuristics):
+    """R80 / C29-1：C 侧 summary 档的**每语料一行**计数块。
+
+    判据是**计数守恒**（测试里逐条断言）：这儿的每个数都等于同一语料在
+    full 档下那份明细数组的长度 —— 档位只动**形态**，不动**数量**。
+    """
+    files = c_model.get("files") or []
+    n_fun = n_inc = n_com = n_asm = 0
+    for pf in files:
+        n_fun += len(pf.get("functions") or [])
+        n_inc += len(pf.get("includes") or [])
+        n_com += len(pf.get("comments") or [])
+        n_asm += len(pf.get("asm") or [])
+    return {"files": len(files), "functions": n_fun, "includes": n_inc,
+            "edges": len(c_model.get("edges") or []),
+            "include_edges": len(c_model.get("include_edges") or []),
+            "unresolved": len(c_model.get("unresolved") or []),
+            "heuristics": len(heuristics or []),
+            "comments": n_com, "asm_statements": n_asm}
+
+
+def _ext_summary_counts(model, heuristics):
+    """R80 / C29-1：扩展前端（py / js / asm）的 summary 档计数块。
+
+    与 C 侧同构，只有两点不同：`imports` 替代 `includes`；`include_edges`
+    恒为 **0** —— 那是 C 的 `#include` 依赖边，扩展前端没有这个概念
+    （非 summary 档里它同样恒为 `[]`，这里只是把同一个事实写成计数）。
+    """
+    files = model.get("files") or []
+    n_fun = n_imp = 0
+    for pf in files:
+        n_fun += len(pf.get("functions") or [])
+        n_imp += len(pf.get("imports") or [])
+    return {"files": len(files), "functions": n_fun, "imports": n_imp,
+            "edges": len(model.get("edges") or []),
+            "include_edges": 0,
+            "unresolved": len(model.get("unresolved") or []),
+            "heuristics": len(heuristics or [])}
 
 
 def _asm_file_stats(files):
@@ -10434,26 +10562,59 @@ def _run_c_only(c_model, root, args):
         _c_names = [u[0] for u in (c_model.get("unresolved", []) or [])]
         _binattr, _binattr_ok = _emit_binary_attach_names(
             args, _c_names, label="C 未解析调用", root=root)
-        _c_payload = {
-            "lang": c_model.get("lang", "c"),
-            "version": VERSION,
-            # R79 / C28-1：如实标出当前是「带明细」还是「瘦身」模式
-            "annotations": _annotations_on(args),
-            "files": [_c_file_payload(pf, _annotations_on(args))
-                      for pf in c_model.get("files", [])],
-            "edges": [{"caller": e[0], "callee": e[1], "line": e[2],
-                       "file": e[3]} for e in c_model.get("edges", [])],
-            # P90：#include 跨文件依赖边（解析到项目内文件 / 未解析为 null）
-            "include_edges": [{"from": e[0], "include": e[1], "to": e[2]}
-                              for e in c_model.get("include_edges", [])],
-            "unresolved": [{"callee": u[0], "line": u[1], "file": u[2]}
-                           for u in c_model.get("unresolved", [])],
-            "heuristics": c_heuristics,
-            # R78 / C-1：注释与内联汇编 —— 明细在 files[]，顶层只给汇总
-            "asm": _c_asm_stats(c_model.get("files", [])),
-            "comment_stats": _c_comment_stats(
-                c_model.get("files", [])),
-        }
+        _lvl = _json_level(args)
+        _cfiles = c_model.get("files", [])
+        # ⚠ 两档各写一个**完整字典字面量**，而不是「先建一个再补键」。
+        #
+        # 为什么（这是一次真实的门禁裁决，不是口味）：`payload["unresolved"] = ...`
+        # 这种**下标赋值**在 `tools/check_ir_attribution.py` 的写点判据眼里，
+        # 与「新建第二个 unresolved 容器」在 AST 上**无法区分** —— 它收的正是
+        # `Assign(Subscript("unresolved"))`。而那张写点表按独立实测只该有
+        # **3** 处，于是第 4 处被**正确地**判成 I1（R80 实测：reshape 前
+        # `_run_c_only` / `_run_ext_only` 各报一条红）。
+        # 字典字面量表达的是同一件事（把 IR 容器**序列化**出去），
+        # 形态却恰好是这道门已经建模过的那一种 —— 所以改的是我的写法。
+        if _lvl == "summary":
+            # 这三块才是整树级 C JSON 的**真正大头**（实测 `drivers/net`
+            # 6,086 文件：full 253.05 MB、lite 193.71 MB ⇒ lite 只省 23.5%），
+            # lite 一个字节都动不了它们（它们不是注释）。
+            _c_payload = {
+                "lang": c_model.get("lang", "c"),
+                "version": VERSION,
+                # R79 / C28-1 + R80 / C29-1：如实标出当前档位（明细 / 摘要）
+                "json_level": _lvl,
+                "annotations": False,
+                "files": [_c_file_payload(pf, _lvl) for pf in _cfiles],
+                "summary": _c_summary_counts(c_model, c_heuristics),
+                "heuristics_by_kind": _heuristics_by_kind(c_heuristics),
+                # R78 / C-1：注释与内联汇编 —— 明细在 files[]，顶层只给汇总。
+                # 两档都给：它的信息密度是「每语料一行」，丢掉只会让人看不懂。
+                "asm": _c_asm_stats(_cfiles),
+                "comment_stats": _c_comment_stats(_cfiles),
+            }
+        else:
+            _c_payload = {
+                "lang": c_model.get("lang", "c"),
+                "version": VERSION,
+                # R79 / C28-1 + R80 / C29-1：如实标出当前档位（明细 / 瘦身）
+                "json_level": _lvl,
+                "annotations": _annotations_on(args),
+                "files": [_c_file_payload(pf, _lvl) for pf in _cfiles],
+                "edges": [
+                    {"caller": e[0], "callee": e[1], "line": e[2],
+                     "file": e[3]} for e in c_model.get("edges", [])],
+                # P90：#include 跨文件依赖边（解析到项目内文件 / 未解析为 null）
+                "include_edges": [
+                    {"from": e[0], "include": e[1], "to": e[2]}
+                    for e in c_model.get("include_edges", [])],
+                "unresolved": [
+                    {"callee": u[0], "line": u[1], "file": u[2]}
+                    for u in c_model.get("unresolved", [])],
+                "heuristics": c_heuristics,
+                # R78 / C-1：注释与内联汇编 —— 明细在 files[]，顶层只给汇总。
+                "asm": _c_asm_stats(_cfiles),
+                "comment_stats": _c_comment_stats(_cfiles),
+            }
         if _binattr is not None:
             _c_payload["unresolved_attribution"] = _binattr
         if not _binattr_ok:
@@ -10526,22 +10687,42 @@ def _run_ext_only(model, root, args, lang):
         if len(rels) > 20:
             print("      ... 其余 %d 个省略" % (len(rels) - 20))
     if args.json:
-        payload = {
-            "lang": model.get("lang", lang),
-            "version": VERSION,
-            "annotations": _annotations_on(args),
-            "files": [_ext_file_payload(pf, _annotations_on(args))
-                      for pf in model.get("files", [])],
-            "edges": [{"caller": e[0], "callee": e[1], "line": e[2], "file": e[3]}
-                      for e in model.get("edges", [])],
-            "include_edges": [],
-            "unresolved": [{"callee": u[0], "line": u[1], "file": u[2]}
-                           for u in model.get("unresolved", [])],
-            "heuristics": heuristics,
-        }
+        _lvl = _json_level(args)
+        _efiles = model.get("files", [])
+        # 同 `_run_c_only`：两档各写一个完整字典字面量。
+        # 见那边的长注释 —— 下标赋值 `payload["unresolved"] = ...` 会被
+        # `tools/check_ir_attribution.py` 的写点判据当成「第二个 unresolved 容器」。
+        if _lvl == "summary":
+            # 省掉 edges / unresolved / heuristics 三份明细，
+            # 换成**计数**与按规则的直方图（与 C 侧同一套语义）。
+            payload = {
+                "lang": model.get("lang", lang),
+                "version": VERSION,
+                # R79 / C28-1 + R80 / C29-1：如实标出当前档位
+                "json_level": _lvl,
+                "annotations": False,
+                "files": [_ext_file_payload(pf, _lvl) for pf in _efiles],
+                "summary": _ext_summary_counts(model, heuristics),
+                "heuristics_by_kind": _heuristics_by_kind(heuristics),
+            }
+        else:
+            payload = {
+                "lang": model.get("lang", lang),
+                "version": VERSION,
+                "json_level": _lvl,
+                "annotations": _annotations_on(args),
+                "files": [_ext_file_payload(pf, _lvl) for pf in _efiles],
+                "edges": [
+                    {"caller": e[0], "callee": e[1], "line": e[2],
+                     "file": e[3]} for e in model.get("edges", [])],
+                "include_edges": [],
+                "unresolved": [
+                    {"callee": u[0], "line": u[1], "file": u[2]}
+                    for u in model.get("unresolved", [])],
+                "heuristics": heuristics,
+            }
         if model.get("lang") == "asm":
-            payload["asm_file_stats"] = _asm_file_stats(
-                model.get("files", []))
+            payload["asm_file_stats"] = _asm_file_stats(_efiles)
         if _write_output(args.json,
                          json.dumps(payload, ensure_ascii=False, indent=2),
                          "JSON"):
@@ -30734,7 +30915,22 @@ def main(argv=None):
                          "只保留顶层汇总（asm / comment_stats / "
                          "asm_file_stats）。整树级语料下明细会把 JSON 撑到"
                          "GB 级，此开关给 CI / 大语料一个更小的 JSON；"
-                         "默认带明细。顶层 `annotations` 布尔会如实标出当前模式。")
+                         "默认带明细。顶层 `annotations` 布尔会如实标出当前模式。"
+                         "R80 / C29-1：等价于 `--json-level=lite`；"
+                         "要更瘦的一档（summary）见 `--json-level`。")
+    ap.add_argument("--json-level", dest="json_level",
+                    choices=("full", "lite", "summary"),
+                    default=cfg.get("json_level", "full"),
+                    help="R80 / C29-1：JSON 详细档位（三档，**明细粒度**"
+                         "单调递降：逐条记录 → 计数 → 无；体积单调下降只在 "
+                         "C 侧成立，汇编侧 summary 可能略大于 lite）。"
+                         "full（默认，全量明细）/ lite（去注释与汇编明细，"
+                         "= --no-annotations）/ summary（再去掉结构性明细："
+                         "逐文件函数条目、调用边、未解析、include 边、"
+                         "启发式明细 —— 只留**计数**与每文件一行签名）。"
+                         "顶层 `json_level` 标出实际档位；summary 档另给一个 "
+                         "`summary` 计数块，于是「丢掉的明细有多少条」永远数得出来。"
+                         "两个开关同时给出时取**明细更少**的那一档。")
     ap.add_argument("--binary", metavar="FILE[,FILE...]",
                     default=cfg.get("binary"),
                     help="分析二进制文件（可逗号分隔多个），分析完即退出。"
