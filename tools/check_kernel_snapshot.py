@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
-"""全树规模读数（跑次登记表）的登记制护栏 —— 判据族 W1–W5。
+"""全树规模读数（跑次登记表）+ 分析流程登记的登记制护栏 —— 判据族 W1–W6。
 
-它回答的问题只有一个：**文档里那张「内核全树跑出来的数字」还成立吗？**
+它回答两个问题：
+  1. **文档里那张「内核全树跑出来的数字」还成立吗？**
+  2. **产出那张数字的流程有哪几站、该跑哪一代驱动？**（W6）
 
-为什么需要它（三条，都是本仓已经踩过的形态）：
+为什么需要它（四条，都是本仓已经踩过的形态）：
   * **会走进文档与提交信息的数字，必须有一个能在下次重算它的装置**（L67）。
     重跑内核要 ~13 分钟，不适合放进门禁 ⇒ 本门**不重跑**，它钉住的是
     「这个读数是**哪一份被测物**（`matlabc.py` 的 sha256）在**哪一棵语料**
@@ -15,22 +17,28 @@
   * **汇总与明细必须对账**（§4x-1）：启发式的 `heuristics` 总数与按类别
     直方图之和是同一个量的两条路径，两边一起错时**对账发现不了**，
     所以这里用**恒等式**（`Σkinds == heuristics`），它不是调出来的阈值。
+  * **「流程在哪里」曾经是一个没有对手方的问题**（L85）。这条流程只活在
+    8 个脚本的 docstring 里，散在 `_kernel/`（R75–R81）与 `_r82/`（R84）
+    两棵**仓外**树 ⇒ 没有任何一处能回答「有哪几站、该跑哪一代」，
+    而盘上真躺着三代驱动，其中一代**再跑一次就会就地覆盖对照基线**。
+    ⇒ W6 把站表搬进登记表，并用「**恰好一个 current 分析器**」与
+    「**产物链拓扑**」两条判据钉住它 —— 站表可以随便列，链不会。
 
 本门**不做识别**：不跑分析、不读源码、不解析二进制、不碰内核语料
-（28 MB 语料与 13 分钟预算都不属于一道静态门）。它只回答：
-「那张表自称的那件事，今天还成立吗？」
+（1.3 GB 语料与 13 分钟预算都不属于一道静态门）。它只回答：
+「那张表与那条流程自称的那件事，今天还成立吗？」
 
 退出码：
-    0  = W1–W5 全部通过
+    0  = W1–W6 全部通过
     1  = 发现违规
-    2  = 缺输入（登记表不在 / 块缺失 / 格式不可解析 / `matlabc.py` 不在）
+    2  = 缺输入（登记表不在 / 任一块缺失 / 格式不可解析 / `matlabc.py` 不在）
 """
 import io
 import os
 import re
 import sys
 
-ROW_SIGNATURE = "W1–W5"
+ROW_SIGNATURE = "W1–W6"
 
 _here = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_here)
@@ -72,7 +80,7 @@ REQUIRED = (
 
 
 # --------------------------------------------------------------- 解析
-def parse_block(text):
+def parse_block(text, open_mark=None, close_mark=None, tag="W1"):
     """取块 -> (kv, problems)。kv 为 None 表示没取到。
 
     规则（每条都对应一次真事故）：
@@ -80,22 +88,27 @@ def parse_block(text):
       * 标记之间必须紧跟一个围栏块。
       * 数据行 `键 | 值`；`#` 开头或空行是注释。
       * **键不得重复** —— 重复会静默折叠成一个（L73 的多重集纪律）。
+
+    `open_mark` / `close_mark` / `tag` 让**同一个解析器**同时服务两块（读数块与
+    流程块）—— 两份实现必然分叉（§4x-5：一个量只许有一份实现）。
     """
+    o = open_mark or BLOCK_OPEN
+    c = close_mark or BLOCK_CLOSE
     probs = []
-    if text.count(BLOCK_OPEN) != 1:
-        return None, ["W1 开标记 %r 出现 %d 次（要求恰好 1 次）"
-                      % (BLOCK_OPEN, text.count(BLOCK_OPEN))]
-    if text.count(BLOCK_CLOSE) != 1:
-        return None, ["W1 闭标记 %r 出现 %d 次（要求恰好 1 次）"
-                      % (BLOCK_CLOSE, text.count(BLOCK_CLOSE))]
-    i = text.index(BLOCK_OPEN) + len(BLOCK_OPEN)
-    j = text.index(BLOCK_CLOSE)
+    if text.count(o) != 1:
+        return None, ["%s 开标记 %r 出现 %d 次（要求恰好 1 次）"
+                      % (tag, o, text.count(o))]
+    if text.count(c) != 1:
+        return None, ["%s 闭标记 %r 出现 %d 次（要求恰好 1 次）"
+                      % (tag, c, text.count(c))]
+    i = text.index(o) + len(o)
+    j = text.index(c)
     if j < i:
-        return None, ["W1 闭标记出现在开标记之前"]
+        return None, ["%s 闭标记出现在开标记之前" % tag]
     body = text[i:j]
     m = re.search(r"```[^\n]*\n(.*?)```", body, re.S)
     if not m:
-        return None, ["W1 开闭标记之间没有围栏块（必须用 ``` 围起来）"]
+        return None, ["%s 开闭标记之间没有围栏块（必须用 ``` 围起来）" % tag]
     lines = m.group(1).split("\n")
     kv = {}
     for ln in lines:
@@ -103,22 +116,23 @@ def parse_block(text):
         if not s or s.startswith("#"):
             continue
         if s.count("|") != 1:
-            probs.append("W1 数据行必须恰好一个 `|` 分隔符：%r" % ln)
+            probs.append("%s 数据行必须恰好一个 `|` 分隔符：%r" % (tag, ln))
             continue
         k, v = s.split("|")
         k, v = k.strip(), v.strip()
         if not k:
-            probs.append("W1 空键：%r" % ln)
+            probs.append("%s 空键：%r" % (tag, ln))
             continue
         if k in kv:
-            probs.append("W1 键 %r 重复（重复会静默折叠成一个 ⇒ 必须红）" % k)
+            probs.append("%s 键 %r 重复（重复会静默折叠成一个 ⇒ 必须红）" % (tag, k))
             continue
         if v == "":
-            probs.append("W1 键 %r 的值为空（缺值必须红；要表示「无」请写 `-`）" % k)
+            probs.append("%s 键 %r 的值为空（缺值必须红；要表示「无」请写 `-`）"
+                         % (tag, k))
             continue
         kv[k] = v
     if not kv:
-        probs.append("W1 块里一行数据都没有")
+        probs.append("%s 块里一行数据都没有" % tag)
         return None, probs
     return kv, probs
 
@@ -356,6 +370,159 @@ def _unknown_doc_denominator(path):
                                          errors="replace").read())
 
 
+# --------------------------------------------------------------- 流程登记（W6）
+# 为什么「流程」也值得一条判据：它此前只活在 8 个脚本的 docstring 里，散在
+# `_kernel/`（R75–R81）与 `_r82/`（R84）两棵**仓外**树 ⇒「有哪几站、该跑哪一代」
+# **没有任何对手方**（L85）。实测代价：盘上同时躺着三代驱动，其中一代再跑一次
+# 就会**就地覆盖对照基线**。
+PIPELINE_OPEN = "<!-- KERNEL-PIPELINE v1 -->"
+PIPELINE_CLOSE = "<!-- /KERNEL-PIPELINE -->"
+PIPELINE_DOC = os.path.join("docs", "KERNEL_RUN.md")
+
+# 闭集的意义不是分类癖：**开放集合上，拼错的 role 会被当成一个新类型静静收下**
+# （同 §4z-11 的归一撞车）。闭集让它当场红。
+# `probe` = **独立口径的探针**（量的是**另一件事**，不与主读数竞争同一个产物）：
+# 把它混进 `analyze`，W6b「恰好一个 current 分析器」就会被它顶掉 ——
+# 而它并不是「另一个可以替代当前驱动的选择」，是「另一条并行的量」。
+# 角色分不开，「该跑哪个」这条判据就只是一句好听话。
+PIPELINE_ROLES = ("source", "analyze", "probe", "derive", "present",
+                  "register", "gate")
+PIPELINE_STATUS = ("current", "superseded", "auxiliary")
+PIPELINE_FIELDS = ("path", "role", "in", "out", "status")
+STATION_RE = re.compile(r"^pipeline\.station\.(\d+)$")
+
+
+def _pfields(val):
+    """`path=X;role=Y` -> (fields, malformed, duplicated)。
+
+    三条都要报出来：缺 `=`、键重复（重复会静默折叠 ⇒ 与「只写了一个」逐字相同）。
+    """
+    fields, mal, dup = {}, [], []
+    for part in (val or "").split(";"):
+        part = part.strip()
+        if not part:
+            continue
+        if "=" not in part:
+            mal.append(part)
+            continue
+        k, _eq, v = part.partition("=")
+        k, v = k.strip(), v.strip()
+        if k in fields:
+            dup.append(k)
+        fields[k] = v
+    return fields, mal, dup
+
+
+def _tokens(v):
+    """`corpus,baseline-r81` -> ['corpus','baseline-r81']；`-` / 空 -> []。"""
+    if not v or v == "-":
+        return []
+    return [t.strip() for t in v.split(",") if t.strip()]
+
+
+def audit_pipeline(pkv, repo_root=None):
+    """返回 (problems, info)。所有外部事实（仓库根）可注入 ⇒ 可两向自证。"""
+    probs = []
+    if pkv is None:
+        return ["W6 流程块不可解析（缺输入 ⇒ 红）"], {}
+
+    keys = sorted(k for k in pkv if STATION_RE.match(k))
+    if not keys:
+        probs.append("W6a 一个 `pipeline.station.NN` 都没有 —— "
+                     "空集上「每站都合法」恒真（§4h-2：反例不能是空集）")
+    stations = []
+    for k in keys:
+        f, mal, dup = _pfields(pkv[k])
+        for bad in mal:
+            probs.append("W6a %s 里 %r 缺 `=`（字段是 `键=值`，用 `;` 分隔）"
+                         % (k, bad))
+        for d in dup:
+            probs.append("W6a %s 里字段 %r 重复（重复会静默折叠成一个 ⇒ 必须红）"
+                         % (k, d))
+        for fld in PIPELINE_FIELDS:
+            v = f.get(fld)
+            if v in (None, "") or (v == "-" and fld not in ("in", "out")):
+                probs.append("W6a %s 缺字段 %r（每站必须有 %s；只有 in/out 允许 `-`）"
+                             % (k, fld, "/".join(PIPELINE_FIELDS)))
+        if f.get("role") and f["role"] not in PIPELINE_ROLES:
+            probs.append("W6a %s role=%r 不在闭集 %s"
+                         % (k, f["role"], list(PIPELINE_ROLES)))
+        if f.get("status") and f["status"] not in PIPELINE_STATUS:
+            probs.append("W6a %s status=%r 不在闭集 %s"
+                         % (k, f["status"], list(PIPELINE_STATUS)))
+        needs_why = ((f.get("status") and f["status"] != "current")
+                     or f.get("role") == "probe")
+        if needs_why and not f.get("why"):
+            probs.append("W6a %s（role=%s status=%s）没写 why —— 退役/辅助站不写理由，"
+                         "下一个人不知道它还能不能用；`probe` 不写理由，读者分不清"
+                         "它是「另一条并行的量」还是「被误分类的第二个主驱动」"
+                         % (k, f.get("role"), f.get("status")))
+        stations.append((int(STATION_RE.match(k).group(1)), k, f))
+    stations.sort(key=lambda t: t[0])
+
+    # ---- W6d 分母自证：分母必须等于明细（偏小的分母比不报更坏，§4v-1）----
+    st = _ival(pkv, "pipeline.stations")
+    if st is None:
+        probs.append("W6d 缺 pipeline.stations（站数分母）—— 没有分母就无法自证覆盖")
+    elif st != len(stations):
+        probs.append("W6d pipeline.stations=%d 但块里实际有 %d 站 —— "
+                     "分母与明细必须相等（不等时读者只会信分母）" % (st, len(stations)))
+
+    # ---- W6b 恰好一个 current 分析器（「该跑哪个」的对手方）----
+    cur = [(k, f) for (_n, k, f) in stations
+           if f.get("role") == "analyze" and f.get("status") == "current"]
+    if len(cur) != 1:
+        probs.append("W6b `role=analyze` 且 `status=current` 的站有 %d 个（要求恰好 1 个）"
+                     " —— 0 个 ⇒ 流程没有分析器；2 个以上 ⇒ 没人知道该跑哪一代"
+                     % len(cur))
+    else:
+        want = pkv.get("pipeline.analyze_current")
+        got = os.path.splitext(os.path.basename(cur[0][1].get("path", "")))[0]
+        if not want:
+            probs.append("W6b 缺 pipeline.analyze_current —— 当前驱动必须被点名")
+        elif want != got:
+            probs.append("W6b pipeline.analyze_current=%r 与那唯一 current 分析器 "
+                         "%r 不符" % (want, got))
+
+    # ---- W6c 产物链拓扑：每站的 in 必须已被**前序**站的 out 产出 ----
+    produced, broken = set(), []
+    for (_n, k, f) in stations:
+        for t in _tokens(f.get("in")):
+            if t not in produced:
+                broken.append((k, t))
+        produced.update(_tokens(f.get("out")))
+    for k, t in broken:
+        probs.append("W6c %s 的输入 %r 没有任何前序站产出它 —— 这条流程是**断的**"
+                     "（站表可以随便列，链不会）" % (k, t))
+    declared = pkv.get("pipeline.chain_ok")
+    if not broken and declared != "1":
+        probs.append("W6c 链重算后是通的，但 pipeline.chain_ok=%r ≠ 1 —— "
+                     "声明必须被它所在的正文支持（否则读的人只会信声明）" % declared)
+    if broken and declared == "1":
+        probs.append("W6c pipeline.chain_ok=1，但重算发现 %d 处断链" % len(broken))
+
+    # ---- W6e 仓内落点必须存在（仓外刻意「只计数、不裁决」，理由见 docstring）----
+    arts = _tokens(pkv.get("pipeline.repo_artifacts"))
+    if not arts:
+        probs.append("W6e pipeline.repo_artifacts 为空集 —— "
+                     "空集上「每个落点都存在」恒真（§4h-2）；"
+                     "而它同时是「仓内可裁决面」的全部，空集等于这一族没行使")
+    else:
+        root = repo_root or _ROOT
+        miss = [a for a in arts if not os.path.exists(os.path.join(root, a))]
+        if miss:
+            probs.append("W6e 仓内落点缺失 %d/%d：%s —— "
+                         "站表里有一站是**幻影**（L85：指针指空了看不出来）"
+                         % (len(miss), len(arts), ", ".join(miss)))
+
+    outside = [k for (_n, k, f) in stations
+               if re.match(r"^[A-Za-z]:[\\/]", f.get("path", ""))]
+    info = {"stations": len(stations), "outside_repo": len(outside),
+            "artifacts": len(arts), "broken": len(broken),
+            "current": (cur[0][1].get("path") if len(cur) == 1 else None)}
+    return probs, info
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     doc_p = os.path.join(_ROOT, DOC)
@@ -390,8 +557,29 @@ def main(argv=None):
                        matlabc_bytes=os.path.getsize(mc_p),
                        unknown_doc_denominator=unk, readmes=readmes))
 
+    # ---- W6：流程块（**同一个文件里的第二个围栏块**）----
+    # 「缺输入必须能红」：流程块不在 ⇒ rc=2，绝不当成「没有流程要核」而静默放行。
+    pkv, pprobs = parse_block(text, PIPELINE_OPEN, PIPELINE_CLOSE, tag="W6")
+    if pkv is None:
+        print("check_kernel_snapshot: 缺输入 —— 流程块 %s 不在 %s ⇒ 红"
+              % (PIPELINE_OPEN, PIPELINE_DOC))
+        for p in pprobs:
+            print("  - " + p)
+        return 2
+    probs.extend(pprobs)
+    p6, pinfo = audit_pipeline(pkv, repo_root=_ROOT)
+    probs.extend(p6)
+
     if unk is None:
         print("  [跳过] docs/UNKNOWN_SITES.md 里抽不到「N 文件」分母 ⇒ 跨文档那一条未行使")
+    if pinfo:
+        print("  流程读数：%d 站（其中仓外 %d 个 —— 存在性**刻意不裁决**，"
+              "新克隆里没有 `_kernel/`）；仓内落点 %d 个；当前驱动 %s"
+              % (pinfo["stations"], pinfo["outside_repo"], pinfo["artifacts"],
+                 pinfo["current"] or "?"))
+        if pinfo["outside_repo"] == 0:
+            print("  [注意] 站表里一个仓外路径都没有 —— 若这是真的，"
+                  "请复核「仓外不裁决」这条口径是否还需要")
     for p in probs:
         print("  - " + p)
     if probs:
@@ -399,8 +587,9 @@ def main(argv=None):
               % (len(probs), ROW_SIGNATURE))
         return 1
     print("check_kernel_snapshot: OK（全树规模读数：出处+口径钉住 + 两档分母并列 + "
-          "汇总↔明细恒等式 + 与 R81 基线逐位/逐类对照 + 唯一事实源指针；判据族 %s）"
-          % ROW_SIGNATURE)
+          "汇总↔明细恒等式 + 与 R81 基线逐位/逐类对照 + 唯一事实源指针；"
+          "流程登记：站表形状 + 恰一个 current 驱动 + 产物链拓扑 + 仓内落点存在；"
+          "判据族 %s）" % ROW_SIGNATURE)
     return 0
 
 
@@ -604,6 +793,149 @@ def _selftest():
     kv2, _ = parse_block(text)
     expect("W5 README 指针未行使（None ⇒ 不判）",
            audit(kv2, text, "a" * 64, 100, 3, readmes=None), False)
+
+    # ======================= W6 流程登记 =======================
+    # 夹具：最小的**合法**站表 —— 1 源站 + 1 退役分析器 + 1 当前分析器 + 1 终点门。
+    # 刻意含一个退役站：它是 W6a「非 current 必须写 why」那一条的**正例**半边。
+    def _mkpipe(stations=None, extra=None, drop=()):
+        st = stations if stations is not None else [
+            ("01", "path=X:/a/fetch.py;role=source;in=-;out=corpus;status=current"),
+            ("02", "path=X:/a/old.py;role=analyze;in=corpus;out=old-j;"
+                   "status=superseded;why=理由"),
+            ("03", "path=X:/a/new.py;role=analyze;in=corpus,old-j;out=agg;"
+                   "status=current"),
+            ("04", "path=tools/check_kernel_snapshot.py;role=gate;in=agg;out=-;"
+                   "status=current"),
+        ]
+        kv = dict(("pipeline.station." + n, v) for n, v in st)
+        kv["pipeline.stations"] = str(len(st))
+        kv["pipeline.analyze_current"] = "new"
+        kv["pipeline.chain_ok"] = "1"
+        kv["pipeline.repo_artifacts"] = "matlabc.py"
+        for k, v in (extra or {}).items():
+            if v is None:
+                kv.pop(k, None)
+            else:
+                kv[k] = v
+        for k in drop:
+            kv.pop(k, None)
+        rows = "\n".join("%s | %s" % (k, kv[k]) for k in sorted(kv))
+        return "%s\n```text\n%s\n```\n%s\n" % (PIPELINE_OPEN, rows, PIPELINE_CLOSE)
+
+    def _p6(t):
+        k, pp = parse_block(t, PIPELINE_OPEN, PIPELINE_CLOSE, tag="W6")
+        if k is None:
+            return pp
+        return pp + audit_pipeline(k, repo_root=_ROOT)[0]
+
+    # 正例：最小合法站表必须放行
+    expect("W6 最小合法站表（含退役站 + 恰一个 current 驱动）", _p6(_mkpipe()), False)
+
+    # 反例 W6a：形状（字段缺失 / 闭集外的 role/status / 退役无 why / 空站表）
+    expect("W6a 某站缺 role 字段",
+           _p6(_mkpipe(stations=[("01", "path=X:/a/f.py;in=-;out=corpus;"
+                                        "status=current")])), True)
+    expect("W6a role 不在闭集",
+           _p6(_mkpipe(stations=[("01", "path=X:/a/f.py;role=magic;in=-;"
+                                        "out=corpus;status=current")])), True)
+    expect("W6a status 不在闭集",
+           _p6(_mkpipe(stations=[("01", "path=X:/a/f.py;role=source;in=-;"
+                                        "out=corpus;status=maybe")])), True)
+    expect("W6a 非 current 站没写 why",
+           _p6(_mkpipe(stations=[("01", "path=X:/a/o.py;role=analyze;in=-;"
+                                        "out=x;status=superseded")])), True)
+    expect("W6a 字段缺 `=`（不是 `键=值`）",
+           _p6(_mkpipe(stations=[("01", "path=X:/a/f.py;role=source;in=-;"
+                                        "out=corpus;status=current;oops")])), True)
+    expect("W6a 字段重复（会静默折叠成一个）",
+           _p6(_mkpipe(stations=[("01", "path=X:/a/f.py;role=source;role=analyze;"
+                                        "in=-;out=corpus;status=current")])), True)
+    _k, _pp = parse_block(_mkpipe(), PIPELINE_OPEN, PIPELINE_CLOSE, tag="W6")
+    for _kk in [_x for _x in _k if STATION_RE.match(_x)]:
+        _k.pop(_kk)
+    expect("W6a 站表是空集（反例不能是空集 ⇒ 必须红）",
+           _pp + audit_pipeline(_k, repo_root=_ROOT)[0], True)
+    # 反例/正例 W6a：`probe` 角色必须写 why —— 否则它与「被误分类的第二个主驱动」
+    # 在**读数上完全分不开**（这正是本轮真撞到的形态：`chunks` 一开始被标成 analyze）。
+    expect("W6a role=probe 却没写 why",
+           _p6(_mkpipe(stations=[
+               ("01", "path=X:/a/f.py;role=source;in=-;out=corpus;status=current"),
+               ("02", "path=X:/a/p.py;role=probe;in=corpus;out=probe-j;"
+                      "status=current"),
+               ("03", "path=X:/a/new.py;role=analyze;in=corpus;out=agg;"
+                      "status=current")],
+               extra={"pipeline.stations": "3",
+                      "pipeline.analyze_current": "new"})), True)
+    expect("W6a role=probe 写了 why（且不占 current 分析器名额）",
+           _p6(_mkpipe(stations=[
+               ("01", "path=X:/a/f.py;role=source;in=-;out=corpus;status=current"),
+               ("02", "path=X:/a/p.py;role=probe;in=corpus;out=probe-j;"
+                      "status=current;why=独立口径"),
+               ("03", "path=X:/a/new.py;role=analyze;in=corpus;out=agg;"
+                      "status=current")],
+               extra={"pipeline.stations": "3",
+                      "pipeline.analyze_current": "new"})), False)
+
+    # 反例 W6b：恰好一个 current 分析器（0 个 / 2 个 / 点名不符）
+    expect("W6b 两个 current 分析器（没人知道该跑哪个）",
+           _p6(_mkpipe(extra={
+               "pipeline.station.05": "path=X:/a/new2.py;role=analyze;in=agg;"
+                                      "out=agg2;status=current",
+               "pipeline.stations": "5"})), True)
+    expect("W6b 零个 current 分析器（流程没有分析器）",
+           _p6(_mkpipe(extra={
+               "pipeline.station.03": "path=X:/a/new.py;role=analyze;"
+                                      "in=corpus,old-j;out=agg;"
+                                      "status=superseded;why=也退役了"})), True)
+    expect("W6b pipeline.analyze_current 与那唯一站不符",
+           _p6(_mkpipe(extra={"pipeline.analyze_current": "someoneelse"})), True)
+
+    # 反例 W6c：产物链拓扑（断链 / 顺序反了 / 声明与正文分家）
+    expect("W6c 输入没有任何前序站产出（链是断的）",
+           _p6(_mkpipe(stations=[
+               ("01", "path=X:/a/f.py;role=source;in=-;out=corpus;status=current"),
+               ("02", "path=X:/a/n.py;role=analyze;in=corpus,mystery;out=agg;"
+                      "status=current")],
+               extra={"pipeline.stations": "2",
+                      "pipeline.analyze_current": "n"})), True)
+    expect("W6c 顺序反了（第 1 站引用了后序站的产物）",
+           _p6(_mkpipe(stations=[
+               ("01", "path=X:/a/user.py;role=analyze;in=corpus;out=agg;"
+                      "status=current"),
+               ("02", "path=X:/a/f.py;role=source;in=-;out=corpus;"
+                      "status=current")],
+               extra={"pipeline.stations": "2",
+                      "pipeline.analyze_current": "user"})), True)
+    expect("W6c 链其实通，但 chain_ok 声明成 0",
+           _p6(_mkpipe(extra={"pipeline.chain_ok": "0"})), True)
+    expect("W6c 链是断的，但 chain_ok 声明成 1（声明与正文分家）",
+           _p6(_mkpipe(stations=[
+               ("01", "path=X:/a/n.py;role=analyze;in=ghost;out=agg;"
+                      "status=current")],
+               extra={"pipeline.stations": "1",
+                      "pipeline.analyze_current": "n"})), True)
+
+    # 反例 W6d：站数分母必须等于明细
+    expect("W6d 分母比明细大（读者只会信分母）",
+           _p6(_mkpipe(extra={"pipeline.stations": "9"})), True)
+    expect("W6d 分母整键缺失",
+           _p6(_mkpipe(drop=("pipeline.stations",))), True)
+    expect("W6d 分母比明细小（会把站点漏出覆盖之外）",
+           _p6(_mkpipe(extra={"pipeline.stations": "2"})), True)
+
+    # 反例 W6e：仓内落点必须存在（空集 / 指向不存在的文件）
+    expect("W6e 仓内落点为空集（恒真）",
+           _p6(_mkpipe(extra={"pipeline.repo_artifacts": "-"})), True)
+    expect("W6e 仓内落点不存在（站表里有一站是幻影）",
+           _p6(_mkpipe(extra={"pipeline.repo_artifacts":
+                              "matlabc.py,docs/NO_SUCH_FILE_R85.md"})), True)
+    # 正例 W6e：多个仓内落点都真实存在 ⇒ 放行（覆盖整个群体，不是「至少一个」）
+    expect("W6e 两个仓内落点都存在",
+           _p6(_mkpipe(extra={"pipeline.repo_artifacts":
+                              "matlabc.py,tools/check_kernel_snapshot.py"})), False)
+
+    # 反例 W6：流程块缺失（缺输入必须能红，不许静默当成「没有流程要核」）
+    expect("W6 流程块整块缺失", _p6("正文里没有流程块\n"), True)
 
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     if fails:
