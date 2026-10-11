@@ -50,7 +50,7 @@ matlabc — 代码结构梳理与静态分析工具（纯 Python，零依赖，�
   喂给别的工具/脚本            python matlabc.py 我的目录/ --json out.json
   接进 GitHub 代码扫描          python matlabc.py 我的目录/ --sarif out.sarif
   看 C / Python / JS 代码       python matlabc.py 我的目录/ --lang c
-                                （--lang 可选 matlab(默认) / c / cpp / py / js）
+                                （--lang 可选 matlab(默认) / c / cpp / py / js / asm）
   MATLAB 调了 C               python matlabc.py 我的目录/ --mixed
   查一个 .so/.dll 的依赖与导出  python matlabc.py --binary libfoo.so
   查 GPU 算子（CUDA/AMD/Vulkan）python matlabc.py --binary libcublas.so.12
@@ -7040,6 +7040,39 @@ def collect_c_files(root, recursive=True, exclude=None):
     return sorted(out)
 
 
+# R78 / C-1：汇编源码扩展名 —— **独立的事实源**，与 `_C_SOURCE_EXTS` 分开。
+# 为什么不能塞进 `_C_SOURCE_EXTS`：汇编没有 C 的函数 / 调用概念，塞进去会让
+# `collect_c_files` 把 `.S` 当 C 解析（产出垃圾函数），而且
+# `CFrontend.exts is _C_SOURCE_EXTS` 这条身份断言（由 check_ir_attribution.py
+# 的 C7' 守着）也会跟着变味。`.S` 走 cpp、`.s` 不预处理、`.asm` 为通用后缀。
+_ASM_SOURCE_EXTS = (".S", ".s", ".asm")
+
+
+def collect_asm_files(root, recursive=True, exclude=None):
+    """R78 / C-1：收集汇编源码文件（扩展名见 `_ASM_SOURCE_EXTS`），稳定排序。
+
+    与 `collect_c_files` 同构（同样的排序 / 排除 / `--no-recursive` 语义），
+    但走**独立**的扩展名事实源。
+    """
+    out = []
+    skip = set(exclude or ())
+    root_norm = os.path.normcase(os.path.normpath(str(root)))
+    for dp, dns, fns in os.walk(root):
+        dns[:] = [d for d in sorted(dns) if d not in skip
+                  and not d.startswith(".")]
+        for fn in sorted(fns):
+            if not fn.endswith(_ASM_SOURCE_EXTS):
+                continue
+            if not recursive and \
+                    os.path.normcase(os.path.normpath(dp)) != root_norm:
+                continue
+            p = os.path.join(dp, fn)
+            if p in skip:
+                continue
+            out.append(p)
+    return sorted(out)
+
+
 def scan_unsupported_sources(root, recursive=True, exclude=None):
     """R62-R31b：扫描「已知但未支持」的语言源文件 -> {语言名: [相对路径, ...]}。
 
@@ -7253,6 +7286,530 @@ def _c_lex(text):
         toks.append(("punct", c, line, i))
         i += 1
     return toks
+
+
+# ---------------------------------------------------------------------------
+# R78 / C-1「解析层下沉」（方案：`docs/SUPERPOWER_PLAN_R77.md` §6.1）：
+# 让**注释**与**内联汇编**进入 C 模型，供 CLI / JSON / 站点三处共用。
+#
+# 硬纪律：**一行都不动 `_c_lex`** —— 它服务 8 类既有规则，动它就等于动
+# 全部函数行号与字符偏移。注释与汇编各走**独立 pass**，且与 `_c_lex`
+# 共用同一套注释 / 字符串识别规则与行计数口径，所以行号能对得上。
+# ---------------------------------------------------------------------------
+
+_ASM_KEYWORDS = ("asm", "__asm__", "__asm")
+# GCC/Clang 允许的 asm 限定符（顺序任意、可叠加）。归一化只留主干字。
+_ASM_QUALIFIERS = ("volatile", "goto", "inline")
+_ASM_UNESCAPE = {"n": "\n", "t": "\t", "r": "\r", "0": "\0", "\\": "\\",
+                 '"': '"', "'": "'", "a": "\a", "b": "\b", "f": "\f",
+                 "v": "\v"}
+
+
+def _c_norm_qualifier(word):
+    """`__volatile__` / `volatile` → `volatile`；`__inline__` → `inline`。"""
+    return word.strip("_").lower()
+
+
+def _c_unescape(raw):
+    """把 C 字符串字面量的内容（未含两侧引号）反转义成文本。"""
+    out = []
+    j = 0
+    n = len(raw)
+    while j < n:
+        ch = raw[j]
+        if ch == "\\" and j + 1 < n:
+            out.append(_ASM_UNESCAPE.get(raw[j + 1], raw[j + 1]))
+            j += 2
+            continue
+        out.append(ch)
+        j += 1
+    return "".join(out)
+
+
+def _c_comments(text):
+    """R78：抽取 C 源码注释，返回 [{line, col, style, text, block_end}]。
+
+    与 `_c_lex` 共用同一套识别与行计数规则：块注释 `/*…*/`（可跨行）、
+    行注释 `//…`（含反斜杠续行）、**字符串字面量里的 `/*` 不算注释**。
+    因此 `line` 与词法器给出的函数 / 告警行号**同一口径**。
+
+    style ∈ {"line","block"}；`text` 是**剥壳后**的原文（块注释保留内部换行）；
+    `block_end` 是注释的**结束**行（行注释即其自身所在行）。
+    """
+    out = []
+    i, n, line = 0, len(text), 1
+    while i < n:
+        c = text[i]
+        if c == "\n":
+            line += 1
+            i += 1
+            continue
+        if c == "/" and i + 1 < n and text[i + 1] == "*":
+            start = line
+            j = text.find("*/", i + 2)
+            closed = j >= 0
+            if not closed:
+                j = n
+            body = text[i + 2:j]
+            end = start + body.count("\n")
+            out.append({"line": start, "col": i - text.rfind("\n", 0, i),
+                        "style": "block", "text": body, "block_end": end})
+            line = end
+            i = (j + 2) if closed else n
+            continue
+        if c == "/" and i + 1 < n and text[i + 1] == "/":
+            start = line
+            j = i + 2
+            while True:
+                k = text.find("\n", j)
+                if k < 0:
+                    j = n
+                    break
+                if k > 0 and text[k - 1] == "\\":
+                    j = k + 1
+                    continue
+                j = k
+                break
+            body = text[i + 2:j]
+            end = start + body.count("\n")
+            out.append({"line": start, "col": i - text.rfind("\n", 0, i),
+                        "style": "line", "text": body, "block_end": end})
+            line = end
+            i = j
+            continue
+        if c in "\"'":
+            q = c
+            j = i + 1
+            while j < n:
+                if text[j] == "\\":
+                    if j + 1 < n and text[j + 1] == "\n":
+                        line += 1
+                    j += 2
+                    continue
+                if text[j] == q:
+                    j += 1
+                    break
+                if text[j] == "\n":
+                    line += 1
+                j += 1
+            i = j
+            continue
+        i += 1
+    return out
+
+
+def _c_asm_tokens(text):
+    """R78：**内联汇编专用**的独立词法（不碰 `_c_lex`）。
+
+    与 `_c_lex` 的唯一实质差别：`#` 开头的预处理行**不再折叠成一个不透明的
+    `pp` token**，而是按普通代码继续词法化。依据是白帽实测（R78，
+    `_r78/probe_asm_scope.py`）：全树 13,632 处内联汇编里有 **1,964 处
+    （14.4%）写在宏体里**，而 `include/` 里这个比例是 **93.1%**
+    （`asm/barrier.h` 的 `mb()/rmb()/wmb()` 全在 `#define` 里）。
+    若复用 `_c_lex`，这 14.4% 会**静默消失**。
+
+    注释 / 字符串识别规则与行计数口径与 `_c_lex` 一致；字符串的 `text`
+    是**字面量值**（已去引号 + 反转义）。返回 [(kind, text, line, off)]，
+    kind ∈ {"id","punct","num","str"}。
+    """
+    toks = []
+    i, n, line = 0, len(text), 1
+    while i < n:
+        c = text[i]
+        if c == "\n":
+            line += 1
+            i += 1
+            continue
+        if c in " \t\r\f\v\\":
+            # `\` 只在字符串外出现一次意义：续行。当空白跳过即可。
+            i += 1
+            continue
+        if c == "/" and i + 1 < n and text[i + 1] == "*":
+            j = text.find("*/", i + 2)
+            j = n if j < 0 else j
+            line += text.count("\n", i, j)
+            i = j + 2
+            continue
+        if c == "/" and i + 1 < n and text[i + 1] == "/":
+            j = i + 2
+            while True:
+                k = text.find("\n", j)
+                if k < 0:
+                    j = n
+                    break
+                if k > 0 and text[k - 1] == "\\":
+                    j = k + 1
+                    continue
+                j = k
+                break
+            line += text.count("\n", i, j)
+            i = j
+            continue
+        if c in "\"'":
+            q = c
+            start = line
+            j = i + 1
+            buf = []
+            while j < n:
+                if text[j] == "\\":
+                    nxt = text[j + 1] if j + 1 < n else ""
+                    if nxt == "\n":
+                        line += 1          # 字符串续行：内容里什么都不留
+                    else:
+                        buf.append("\\" + nxt)
+                    j += 2
+                    continue
+                if text[j] == q:
+                    j += 1
+                    break
+                if text[j] == "\n":
+                    line += 1
+                buf.append(text[j])
+                j += 1
+            toks.append(("str", _c_unescape("".join(buf)), start, i))
+            i = j
+            continue
+        if c.isalpha() or c == "_":
+            j = i
+            while j < n and (text[j].isalnum() or text[j] == "_"):
+                j += 1
+            toks.append(("id", text[i:j], line, i))
+            i = j
+            continue
+        if c.isdigit():
+            j = i
+            while j < n and (text[j].isalnum() or text[j] in "._"):
+                j += 1
+            toks.append(("num", text[i:j], line, i))
+            i = j
+            continue
+        toks.append(("punct", c, line, i))
+        i += 1
+    return toks
+
+
+def _c_asm_operand(text, toks, j, close):
+    """解析一个 asm 操作数 `[name] "constraint" (expr)`；返回 (rec, next_j)。
+
+    不能解析时返回 (None, j + 1)，让调用方**跳过**而不是崩 ——
+    一条畸形操作数不该让整个文件的汇编信息消失。
+    """
+    name = None
+    if j < close and toks[j][0] == "punct" and toks[j][1] == "[":
+        k = j + 1
+        if k < close and toks[k][0] == "id":
+            name = toks[k][1]
+            k += 1
+        if k < close and toks[k][0] == "punct" and toks[k][1] == "]":
+            j = k + 1
+        else:
+            return None, j + 1
+    if j >= close or toks[j][0] != "str":
+        return None, j + 1
+    constraint = toks[j][1]
+    j += 1
+    expr = None
+    if j < close and toks[j][0] == "punct" and toks[j][1] == "(":
+        k = _c_match_paren(toks, j)
+        if k is None or k > close:
+            return None, j + 1
+        # 表达式原文：字符偏移切片 + 空白归一（注释在 token 流里已被跳过，
+        # 但原始切片仍可能带上它们 —— 那是极端罕见情形，这里不额外过滤）。
+        expr = " ".join(text[toks[j][3] + 1:toks[k][3]].split())
+        j = k + 1
+    cstr = constraint.strip()
+    if cstr.startswith("+"):
+        d = "inout"
+    elif cstr.startswith("="):
+        d = "out"
+    else:
+        d = "in"
+    return {"dir": d, "constraint": cstr, "expr": expr,
+            "name": name}, j
+
+
+def _c_asm_record(text, toks, open_i, close_i, line, keyword, quals):
+    """把一段 `asm ( … )` 的 token 区间拆成模板 / 输出 / 输入 / clobber / 标签。
+
+    分节规则（GCC 方言）：按**顶层** `:` 切分，依次是
+    模板 : 输出 : 输入 : clobber : (asm goto 的标签)。
+    `:` 只认顶层 —— 操作数 `(expr)` 里的 `:`（如三元运算符）不算。
+
+    只做**结构提取**，不做语义验证（见 `_c_inline_asm` 的说明）。
+    """
+    sections = [[]]
+    depth = 0
+    for k in range(open_i + 1, close_i):
+        kind, txt, _ln, _off = toks[k]
+        if kind == "punct":
+            if txt == "(":
+                depth += 1
+            elif txt == ")":
+                depth -= 1
+            elif txt == ":" and depth == 0:
+                sections.append([])
+                continue
+        sections[-1].append(k)
+    # 模板：相邻的字符串字面量按 C 规则拼接
+    template = "".join(toks[k][1] for k in sections[0]
+                      if toks[k][0] == "str")
+    out_ops = []
+    in_ops = []
+    for sec, sink in ((1, out_ops), (2, in_ops)):
+        if sec >= len(sections):
+            continue
+        idxs = sections[sec]
+        p = 0
+        while p < len(idxs):
+            rec, nj = _c_asm_operand(text, toks, idxs[p], close_i)
+            if rec is None:
+                p += 1
+                continue
+            rec["idx"] = len(sink)
+            sink.append(rec)
+            q = p + 1
+            while q < len(idxs) and idxs[q] < nj:
+                q += 1
+            p = q if q > p else (p + 1)
+    clobbers = ([toks[k][1] for k in sections[3] if toks[k][0] == "str"]
+                if len(sections) > 3 else [])
+    labels = ([toks[k][1] for k in sections[4] if toks[k][0] == "id"]
+              if len(sections) > 4 else [])
+    return {"line": line, "kind": keyword, "qualifiers": list(quals),
+            "template": template, "outputs": out_ops, "inputs": in_ops,
+            "clobbers": clobbers, "labels": labels,
+            "has_goto": ("goto" in quals) or bool(labels), "func": None}
+
+
+def _c_inline_asm(text, toks=None):
+    """R78：抽取内联汇编（`asm` / `__asm__` / `__asm`），返回结构记录列表。
+
+    这是**结构提取**，不是语义验证 —— 报告"这行读了哪些约束、绑了哪个 C
+    表达式、声明了哪些 clobber"，**不**判断 clobber 是否充分。后者必须有
+    约束求解器；`inline-asm-fact-extraction` 技能 §7 实测：编译器对"漏
+    clobber"全程沉默，而本仓是**零依赖 + Python 3.6.5**，用不了 libclang
+    —— 这条边界在 `docs/SUPERPOWER_PLAN_R77.md` §8 已登记。
+
+    记录字段：{line, kind, qualifiers, template, outputs, inputs, clobbers,
+    labels, has_goto, func}；输出/输入每项 {idx, dir, constraint, expr, name}。
+    """
+    toks = _c_asm_tokens(text) if toks is None else toks
+    res = []
+    n = len(toks)
+    i = 0
+    while i < n:
+        kind, txt, ln, _off = toks[i]
+        if kind == "id" and txt in _ASM_KEYWORDS:
+            j = i + 1
+            quals = []
+            while j < n and toks[j][0] == "id" and \
+                    _c_norm_qualifier(toks[j][1]) in _ASM_QUALIFIERS:
+                q = _c_norm_qualifier(toks[j][1])
+                if q not in quals:
+                    quals.append(q)
+                j += 1
+            if j < n and toks[j][0] == "punct" and toks[j][1] == "(":
+                close = _c_match_paren(toks, j)
+                if close is not None:
+                    res.append(_c_asm_record(text, toks, j, close, ln,
+                                             txt, quals))
+                    i = close + 1
+                    continue
+        i += 1
+    return res
+
+
+def _attach_asm_funcs(asm, funcs):
+    """R78：给每条内联汇编挂上**所属函数名**（就近包含它的那个）。
+
+    找不到（文件级汇编 / 宏体里的汇编 —— 宏不在任何函数体内）时保持 `None`
+    —— 不猜。挂的是**名字**而不是函数对象，避免 JSON 循环引用。
+    """
+    for a in asm:
+        best = None
+        for fn in funcs:
+            bs = fn.get("body_start") or fn.get("line") or 0
+            be = fn.get("body_end") or fn.get("line") or 0
+            if bs <= a["line"] <= be:
+                if best is None or bs >= best[0]:
+                    best = (bs, fn["name"])
+        a["func"] = best[1] if best else None
+
+
+_RE_ASM_LABEL = re.compile(r"^([A-Za-z_.$][\w.$]*)\s*:")
+_RE_ASM_SYMBOL = re.compile(r"^\.(?:globl|global|weak)\s+([A-Za-z_.$][\w.$]*)")
+
+
+def _asm_file_model(text, rel, path):
+    """R78 / C-1：`.S` / `.s` / `.asm` 的**极简**前端。
+
+    只做**浅层**：符号（`.globl`）、标签、注释、指令助记符直方图、`#` 指令。
+    **明确不做**：宏展开、条件汇编求值（`.if` / `.include`）、指令语义 ——
+    这些在 `docs/SUPERPOWER_PLAN_R77.md` §8 已登记为边界。
+
+    返回的 dict 带 `functions: []` / `imports: []`，因此能直接走
+    `_run_ext_only` 的既有输出链路（调用方一行不改）。
+    """
+    if text.startswith(u"\ufeff"):
+        text = text[1:]
+    lines = text.split("\n")
+    comments = _c_comments(text)
+    dead = [False] * (len(lines) + 1)
+    for c in comments:
+        if c["style"] == "block":
+            for L in range(c["line"], c["block_end"] + 1):
+                if 1 <= L <= len(lines):
+                    dead[L] = True
+    symbols = []
+    labels = []
+    directives = []
+    macros = 0
+    hist = {}
+    for idx, raw in enumerate(lines):
+        ln = idx + 1
+        if dead[ln]:
+            continue
+        s = raw
+        k = s.find("//")
+        if k >= 0:
+            s = s[:k]
+        s = s.strip()
+        if not s:
+            continue
+        if s.startswith("#"):
+            directives.append({"line": ln, "text": s[:200]})
+            if s[1:].lstrip().startswith("define"):
+                macros += 1
+            continue
+        if s.startswith("."):
+            m = _RE_ASM_SYMBOL.match(s)
+            if m:
+                symbols.append({"line": ln, "name": m.group(1)})
+            else:
+                directives.append({"line": ln, "text": s[:200]})
+            continue
+        m = _RE_ASM_LABEL.match(s)
+        if m:
+            labels.append({"line": ln, "name": m.group(1)})
+            s = s[m.end():].strip()
+            if not s:
+                continue
+        parts = s.split()
+        if parts:
+            hist[parts[0]] = hist.get(parts[0], 0) + 1
+    top = sorted(hist.items(), key=lambda kv: (-kv[1], kv[0]))[:64]
+    return {"rel": rel, "path": path, "kind": "asm", "functions": [],
+            "imports": [], "symbols": symbols, "labels": labels,
+            "directives": directives, "macros": macros,
+            "insn_hist": [[k, v] for (k, v) in top],
+            "insn_total": sum(hist.values()), "comments": comments}
+
+
+def _c_comment_stats(files):
+    """R78：注释统计（总量 / 行 vs 块 / 含 CJK / 含拉丁词）。
+
+    设计意图（R77 §6.2）：JSON 顶层只给**汇总**，明细留在 `files[].comments`。
+    `with_cjk` / `with_latin` 是「要不要翻译」这个决策的量化依据 ——
+    R77 白帽实测内核注释 81.5% 含英文、纯中文 0 条。
+    """
+    st = {"total": 0, "line": 0, "block": 0, "with_cjk": 0,
+          "with_latin": 0, "bytes": 0, "files_with_comments": 0}
+    for pf in files:
+        cs = pf.get("comments") or []
+        if not cs:
+            continue
+        st["files_with_comments"] += 1
+        for c in cs:
+            st["total"] += 1
+            st["line" if c.get("style") == "line" else "block"] += 1
+            t = c.get("text") or ""
+            st["bytes"] += len(t.encode("utf-8", "replace"))
+            if any(u"\u4e00" <= ch <= u"\u9fff" for ch in t):
+                st["with_cjk"] += 1
+            run = 0
+            for ch in t:
+                if ("a" <= ch <= "z") or ("A" <= ch <= "Z"):
+                    run += 1
+                    if run >= 3:
+                        st["with_latin"] += 1
+                        break
+                else:
+                    run = 0
+    return st
+
+
+def _c_asm_stats(files):
+    """R78：内联汇编汇总（语句数 / 文件数 / 限定符 / clobber / 操作数方向）。
+
+    全部按 key 排序，保证两次运行**逐字节一致**（站点与 JSON 都依赖这一点）。
+    """
+    st = {"statements": 0, "files_with_asm": 0, "with_goto": 0,
+          "outputs": 0, "inputs": 0, "inout": 0, "bound_names": 0,
+          "qualifiers": {}, "clobbers": {}}
+    for pf in files:
+        asms = pf.get("asm") or []
+        if not asms:
+            continue
+        st["files_with_asm"] += 1
+        for a in asms:
+            st["statements"] += 1
+            if a.get("has_goto"):
+                st["with_goto"] += 1
+            for q in a.get("qualifiers") or []:
+                st["qualifiers"][q] = st["qualifiers"].get(q, 0) + 1
+            for cl in a.get("clobbers") or []:
+                st["clobbers"][cl] = st["clobbers"].get(cl, 0) + 1
+            for op in (a.get("outputs") or []) + (a.get("inputs") or []):
+                d = op.get("dir")
+                st["inout" if d == "inout" else
+                   ("outputs" if d == "out" else "inputs")] += 1
+                if op.get("name"):
+                    st["bound_names"] += 1
+    st["qualifiers"] = dict(sorted(st["qualifiers"].items()))
+    st["clobbers"] = dict(sorted(st["clobbers"].items()))
+    return st
+
+
+def _ext_file_payload(pf):
+    """R78：扩展前端的**每文件** JSON。
+
+    除通用字段外，把该前端**自带**的扩展块原样带出（汇编的
+    `symbols/labels/insn_hist/directives/comments`）。不这样做，新数据就会在
+    JSON 这一层被静默丢掉 —— R78a 落盘后实测确认过一次（`--lang asm` 的 JSON
+    里 symbol/label 全空），这就是它的对手方。
+
+    `path` 一律不带（绝对路径，且既有输出也没有它）。
+    """
+    out = {"rel": pf.get("rel"), "imports": pf.get("imports", []),
+           "functions": pf.get("functions", [])}
+    for k in sorted(pf):
+        if k in ("rel", "path", "imports", "functions"):
+            continue
+        out[k] = pf[k]
+    return out
+
+
+def _asm_file_stats(files):
+    """R78：`.S` 语料的顶层汇总（文件 / 符号 / 标签 / 指令 / 宏 / 注释）。"""
+    st = {"files": 0, "symbols": 0, "labels": 0, "macros": 0,
+          "instructions": 0, "directives": 0, "comments": 0,
+          "insn_top": {}}
+    top = {}
+    for pf in files:
+        if pf.get("kind") != "asm":
+            continue
+        st["files"] += 1
+        st["symbols"] += len(pf.get("symbols") or [])
+        st["labels"] += len(pf.get("labels") or [])
+        st["macros"] += pf.get("macros") or 0
+        st["instructions"] += pf.get("insn_total") or 0
+        st["directives"] += len(pf.get("directives") or [])
+        st["comments"] += len(pf.get("comments") or [])
+        for pair in (pf.get("insn_hist") or []):
+            top[pair[0]] = top.get(pair[0], 0) + pair[1]
+    st["insn_top"] = dict(sorted(top.items(),
+                                 key=lambda kv: (-kv[1], kv[0]))[:32])
+    return st
 
 
 def _c_match_paren(toks, j):
@@ -7627,9 +8184,13 @@ def _parse_c_source(text, rel, path):
                     or (active_end is None and brace_depth <= 0)):
                 active = None
                 brace_depth = 0
+    comments = _c_comments(text)
+    asm = _c_inline_asm(text)
+    _attach_asm_funcs(asm, funcs)
     return {
         "rel": rel, "path": path, "functions": funcs,
         "includes": sorted(set(includes)), "macros": macros,
+        "comments": comments, "asm": asm,
     }
 
 
@@ -9411,6 +9972,41 @@ class CFrontend(BaseFrontend):
 register_frontend("c", CFrontend)
 
 
+class AsmFrontend(BaseFrontend):
+    """R78 / C-1：汇编（`.S` / `.s` / `.asm`）前端 —— **浅层**，与 C 的 8 类规则隔离。
+
+    为什么单开一个前端而不是塞进 `CFrontend`：汇编没有 C 的函数 / 调用 / 参数
+    概念，`_parse_c_source` 用在 `.S` 上只会产出垃圾。这里只出符号 / 标签 /
+    指令族 / 注释（`_asm_file_model`）。
+
+    调用图显式留空 —— 宏与条件汇编都没展开，任何"边"都是猜测。
+    """
+
+    lang = "asm"
+    exts = _ASM_SOURCE_EXTS
+    display = "汇编(.S)"
+
+    def collect_files(self, root, recursive=True, exclude=None):
+        return collect_asm_files(root, recursive=recursive, exclude=exclude)
+
+    def parse_file(self, text, rel, path):
+        return _asm_file_model(text, rel, path)
+
+    def build_edges(self, model):
+        """汇编不做调用图：宏未展开 + 条件汇编未求值 ⇒ 边只能是猜测。"""
+        return [], []
+
+    def collect_checks(self, model, enabled=None):
+        """汇编不参与 C 的 8 类静态规则（显式空，不是"忘了实现"）。"""
+        return []
+
+    def gen_tests(self, model, out_dir, root):
+        return 0, []
+
+
+register_frontend("asm", AsmFrontend)
+
+
 class MatlabFrontend(BaseFrontend):
     """P90：MATLAB 前端插件（解析复走主流程，测试生成独立实现）。"""
     lang = "matlab"
@@ -9675,6 +10271,8 @@ def _run_c_only(c_model, root, args):
                 "rel": pf["rel"], "includes": pf["includes"],
                 "macros": pf["macros"],
                 "functions": pf["functions"],
+                "comments": pf.get("comments", []),
+                "asm": pf.get("asm", []),
             } for pf in c_model.get("files", [])],
             "edges": [{"caller": e[0], "callee": e[1], "line": e[2],
                        "file": e[3]} for e in c_model.get("edges", [])],
@@ -9684,6 +10282,10 @@ def _run_c_only(c_model, root, args):
             "unresolved": [{"callee": u[0], "line": u[1], "file": u[2]}
                            for u in c_model.get("unresolved", [])],
             "heuristics": c_heuristics,
+            # R78 / C-1：注释与内联汇编 —— 明细在 files[]，顶层只给汇总
+            "asm": _c_asm_stats(c_model.get("files", [])),
+            "comment_stats": _c_comment_stats(
+                c_model.get("files", [])),
         }
         if _binattr is not None:
             _c_payload["unresolved_attribution"] = _binattr
@@ -9760,8 +10362,7 @@ def _run_ext_only(model, root, args, lang):
         payload = {
             "lang": model.get("lang", lang),
             "version": VERSION,
-            "files": [{"rel": pf["rel"], "imports": pf.get("imports", []),
-                       "functions": pf["functions"]}
+            "files": [_ext_file_payload(pf)
                       for pf in model.get("files", [])],
             "edges": [{"caller": e[0], "callee": e[1], "line": e[2], "file": e[3]}
                       for e in model.get("edges", [])],
@@ -9770,6 +10371,9 @@ def _run_ext_only(model, root, args, lang):
                            for u in model.get("unresolved", [])],
             "heuristics": heuristics,
         }
+        if model.get("lang") == "asm":
+            payload["asm_file_stats"] = _asm_file_stats(
+                model.get("files", []))
         if _write_output(args.json,
                          json.dumps(payload, ensure_ascii=False, indent=2),
                          "JSON"):
@@ -29945,11 +30549,13 @@ def main(argv=None):
                     help="P90：按函数生成测试骨架到指定目录（MATLAB→gen_matlab_tests/，"
                          "C→gen_c_tests/，py→gen_py_tests/，js→gen_js_tests/），"
                          "已存在的同名文件不覆盖")
-    ap.add_argument("--lang", choices=("matlab", "c", "cpp", "py", "js"),
+    ap.add_argument("--lang",
+                    choices=("matlab", "c", "cpp", "py", "js", "asm"),
                     default=cfg.get("lang", "matlab"),
                     help="分析语言：matlab（默认）/ c（C/C++ 前端，P87；扩展名含 "
                          ".c/.h/.cc/.cpp/.cxx/.hpp/.hh/.hxx）/ cpp（= c 的显式别名）/ "
-                         "py（Python 前端，P93）/ js（JavaScript 前端，P93）。"
+                         "py（Python 前端，P93）/ js（JavaScript 前端，P93）/ "
+                         "asm（汇编 .S/.s/.asm 浅层前端，R78）。"
                          "TypeScript / Rust / Go 等暂无前端：扫描到时会显式告警，"
                          "不会静默返回 0 结果")
     ap.add_argument("--binary", metavar="FILE[,FILE...]",
@@ -30469,7 +31075,7 @@ def main(argv=None):
     if not getattr(args, "_skip_full_collect", False):
         paths = collect_files(root, recursive=not args.no_recursive, exclude=args.exclude)
     # P87/P93：纯语言模式（--lang c/py/js）不要求存在 .m 文件，前端报告独立于 MATLAB 流程
-    if not paths and args.lang not in ("c", "py", "js"):
+    if not paths and args.lang not in ("c", "py", "js", "asm"):
         # R62-R31b：MATLAB 模式空结果时，先说清「目录里有没有我不支持的语言文件」。
         _warn_unsupported_sources(root, args, "MATLAB(.m)")
         print(f"未找到任何 .m 文件：{root}", file=sys.stderr)
@@ -30478,7 +31084,19 @@ def main(argv=None):
     # P87/P93：多语言后端扩展——C/Python/JS 前端（--lang c/py/js 纯语言模式；--mixed 混合）
     c_model = None
     c_bridge = []
-    if args.lang in ("c", "py", "js"):
+    if args.lang in ("c", "py", "js", "asm"):
+        if args.lang == "asm":
+            # R78 / C-1：汇编前端（浅层）—— 注册表收集 + 统一模型组装
+            _asm_paths = collect_asm_files(
+                root, recursive=not args.no_recursive,
+                exclude=args.exclude)
+            if not _asm_paths:
+                _warn_unsupported_sources(root, args, "汇编(.S/.s/.asm)")
+                print("未找到任何汇编文件：%s" % root, file=sys.stderr)
+                return 1
+            _asm_model = _build_ext_model(
+                _asm_paths, "asm", get_frontend("asm").parse_file)
+            return _run_ext_only(_asm_model, root, args, "asm")
         if args.lang == "c":
             c_paths = collect_c_files(root, recursive=not args.no_recursive,
                                       exclude=args.exclude)

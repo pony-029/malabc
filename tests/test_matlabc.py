@@ -17303,7 +17303,8 @@ def test_r44_frontends_ir_is_the_only_decision_point():
     """R44/C'''1：「这个调用解析不到」只有一个判定点，而且四条路径真的都调它。
 
     三层断言，缺一层都会漏掉一种真实回归：
-      ① 公开面：`IR_LANG_OWNERS` 覆盖四种语言，且每个登记项都指向包内**可调用**的东西
+      ① 公开面：`IR_LANG_OWNERS` 覆盖五种语言（R78 起含 `asm` 的显式空产出点），
+         且每个登记项都指向包内**可调用**的东西
          —— 只写字符串的登记表可以是两个拼错的名字，而它看起来依然"有覆盖"；
       ② 行为：`resolve_calls` 的三种情形（多命中扇出 / 零命中 / 同名两次）；
       ③ 结构：C/Py/JS 三个前端**不再** override `build_edges`；
@@ -17313,7 +17314,9 @@ def test_r44_frontends_ir_is_the_only_decision_point():
     fr = _r44_frontends()
 
     # ① 公开面
-    assert set(fr.LANGS) == set(["c", "js", "matlab", "py"]), fr.LANGS
+    # R78 / C-1：新增汇编前端（显式空产出点）⇒ 五种语言
+    assert set(fr.LANGS) == set(["asm", "c", "js", "matlab", "py"]), \
+        fr.LANGS
     for lang, spec in fr.IR_LANG_OWNERS.items():
         assert len(spec) == 2, (lang, spec)
         mod = getattr(fr, spec[0], None)
@@ -17431,7 +17434,7 @@ def test_r44_gate_is_registered_and_can_say_no():
     out = r.stdout.decode("utf-8", "replace")
     assert r.returncode == 0, out[-800:]
     assert "写点 3 处 = 判定点 1 + 消费点 2" in out, out[-400:]
-    assert "语言登记 4 个" in out, out[-400:]
+    assert "语言登记 5 个" in out, out[-400:]
 
     # 自证：坏样本必须报、好样本必须过
     r = _r31_run([os.path.join("tools", "check_ir_attribution.py"), "--selftest"],
@@ -17505,7 +17508,7 @@ def test_r44_language_registry_is_two_way_and_typed():
                 else:
                     outside.add(rel)
     assert set(reg) == set(fr.IR_LANG_OWNERS), (sorted(reg), sorted(fr.IR_LANG_OWNERS))
-    assert set(reg) == set(["c", "js", "matlab", "py"]), sorted(reg)
+    assert set(reg) == set(["asm", "c", "js", "matlab", "py"]), sorted(reg)
 
     # 门自己的判据也要认同一件事（否则"文档说两向核对"就还是空的）
     probs, n_lang = ga.judge_langs(reg, fr.IR_LANG_OWNERS,
@@ -20344,3 +20347,240 @@ def test_r76_c_site_is_paginated_and_styled():
         assert q["orphan_alerts"] == 0, "不应有无法归因到文件的告警"
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+def test_r78_c_comments_and_inline_asm_enter_model(tmp_path):
+    """R78 / C-1「解析层下沉」：注释与内联汇编进入 C 模型与 JSON。
+
+    期望值全部**手算**，不取自产品输出。七层：
+      ① 注释行号 / 列号 / 风格 / 剥壳文本逐条相等（跨行块注释 / 行注释 / 行尾块注释）
+      ② **宏体内**的 asm 必须被抽到。若内联汇编抽取复用 `_c_lex` 的 token 流，
+         `#` 行会被折叠成一个不透明 token ⇒ 这一类**静默消失**。R78 白帽实测：
+         全树 13,632 处内联汇编里 1,964 处（14.4%）在宏体内，`include/` 里 93.1%
+         （`_r78/probe_asm_scope.py` 的读数）。
+      ③ 一条完整 asm 的模板 / 输出 / 输入 / clobber / 限定符逐字段相等
+      ④ 约束方向：`+m` ⇒ inout、`=r` ⇒ out、裸 `"r"` ⇒ in
+      ⑤ `asm goto` 的标签与 has_goto
+      ⑥ 所属函数归属（宏体里的 asm 必须 `func is None` —— 不猜）
+      ⑦ JSON 顶层 `asm` / `comment_stats` 汇总与明细自洽
+    """
+    src = tmp_path / "src"
+    src.mkdir()
+    text = ("/* 文件级块注释\n"
+            "   跨两行 */\n"
+            "#define MB() asm volatile(\"mfence\":::\"memory\")\n"
+            "\n"
+            "// 行注释\n"
+            "static int helper(int v)\n"
+            "{\n"
+            "    int out = 0;\n"
+            "    asm volatile(\"lock; addl %1,%0\" : \"+m\"(out) : \"ir\"(v)\n"
+            "                 : \"cc\", \"memory\");\n"
+            "    __asm__(\"\" : \"=r\"(out) : \"r\"(v));\n"
+            "    return out;  /* 行尾块注释 */\n"
+            "}\n"
+            "\n"
+            "int top(int x)\n"
+            "{\n"
+            "    int r;\n"
+            "    __asm__ goto(\"jz %l[taken]\" : : : : taken);\n"
+            "    r = helper(x);\n"
+            "taken:\n"
+            "    return r;\n"
+            "}\n")
+    with io.open(str(src / "a.c"), "w", encoding="utf-8") as fh:
+        fh.write(text)
+    json_path = os.path.join(str(tmp_path), "c.json")
+    rc, _o, err = _run([str(src), "--lang", "c", "--json", json_path],
+                       str(tmp_path))
+    assert rc == 0, "--lang c --json 失败: %s" % err[:400]
+    payload = json.loads(_read_text(json_path))
+    assert len(payload["files"]) == 1
+    f0 = payload["files"][0]
+
+    # ① 注释（行 / 列 / 风格 / 剥壳文本）
+    got = [(c["line"], c["col"], c["style"], c["text"])
+           for c in f0["comments"]]
+    want = [(1, 1, "block", " 文件级块注释\n   跨两行 "),
+            (5, 1, "line", " 行注释"),
+            (12, 18, "block", " 行尾块注释 ")]
+    assert got == want, "注释逐条不符：\n got=%r\nwant=%r" % (got, want)
+    assert [c["block_end"] for c in f0["comments"]] == [2, 5, 12]
+
+    # ② 宏体内的 asm 必须在（这是本轮最核心的一条）
+    asms = f0["asm"]
+    assert len(asms) == 4, "应抽到 4 条内联汇编，实得 %d：%r" % (
+        len(asms), [a["line"] for a in asms])
+    mb = [a for a in asms if a["line"] == 3]
+    assert mb, ("宏体（#define MB()）里的 asm 丢了 —— 抽取器多半复用了 "
+                "_c_lex 的 token 流，`#` 行被折叠成了不透明 token")
+    assert mb[0]["template"] == "mfence"
+    assert mb[0]["clobbers"] == ["memory"]
+    assert mb[0]["qualifiers"] == ["volatile"]
+
+    # ③④ 一条完整 asm
+    h = [a for a in asms if a["line"] == 9][0]
+    assert h["kind"] == "asm" and h["qualifiers"] == ["volatile"], h
+    assert h["template"] == "lock; addl %1,%0", h["template"]
+    assert [(op["dir"], op["constraint"], op["expr"])
+            for op in h["outputs"]] == [("inout", "+m", "out")], h["outputs"]
+    assert [(op["dir"], op["constraint"], op["expr"])
+            for op in h["inputs"]] == [("in", "ir", "v")], h["inputs"]
+    assert h["clobbers"] == ["cc", "memory"], h["clobbers"]
+    assert h["has_goto"] is False
+
+    # ④ 第二条：`=r` 判 out、裸 `"r"` 判 in
+    e2 = [a for a in asms if a["line"] == 11][0]
+    assert e2["template"] == ""
+    assert [(op["dir"], op["constraint"]) for op in e2["outputs"]] == \
+        [("out", "=r")], e2["outputs"]
+    assert [(op["dir"], op["constraint"]) for op in e2["inputs"]] == \
+        [("in", "r")], e2["inputs"]
+
+    # ⑤ asm goto
+    g = [a for a in asms if a["line"] == 18][0]
+    assert g["kind"] == "__asm__" and g["qualifiers"] == ["goto"], g
+    assert g["has_goto"] is True and g["labels"] == ["taken"], g
+    assert g["template"] == "jz %l[taken]"
+
+    # ⑥ 函数归属（宏体里的 asm 不属于任何函数）
+    assert [a["func"] for a in asms] == [None, "helper", "helper", "top"], \
+        [a["func"] for a in asms]
+
+    # ⑦ 顶层汇总与明细自洽
+    st = payload["asm"]
+    assert st["statements"] == 4 and st["files_with_asm"] == 1
+    assert st["with_goto"] == 1
+    assert (st["outputs"], st["inputs"], st["inout"]) == (1, 2, 1), st
+    # 两条 volatile：第 3 行在宏体内（MB()），第 9 行在函数内
+    assert st["qualifiers"] == {"goto": 1, "volatile": 2}, st["qualifiers"]
+    # memory 也是两条：宏体内的 MB() 与 helper 里的那条
+    assert st["clobbers"] == {"cc": 1, "memory": 2}, st["clobbers"]
+    cs = payload["comment_stats"]
+    assert (cs["total"], cs["line"], cs["block"]) == (3, 1, 2), cs
+    assert (cs["with_cjk"], cs["with_latin"]) == (3, 0), cs
+    assert cs["files_with_comments"] == 1
+
+
+def test_r78_comment_scanner_shares_lexer_line_gauge():
+    """R78：`_c_comments` 与 `_c_lex` **同一行计数口径**（"行号能对上"的前提）。
+
+    为什么单钉这条：若两者对「字符串内的换行」/「`//` 反斜杠续行」/「块注释内的
+    换行」计入方式不同，注释行号就会与函数 / 告警行号**整体错位**，而**没有任何
+    别的测试会发现**（它们各自内部是自洽的）。
+
+    手算：C 里 `"x\\` + 换行 + `y"` 是**字符串续行**（两行一个字面量）；
+    `// d1\\` + 换行 + `d2` 是**行注释续行**。两条都必须被行计数如实记下。
+    """
+    src = ('a\n'
+           'char *s = "x\\\n'
+           'y";\n'
+           '/* c1\n'
+           '   c2 */\n'
+           '// d1\\\n'
+           'd2\n'
+           'b\n')
+    cmts = ma._c_comments(src)
+    assert [(c["line"], c["style"], c["block_end"]) for c in cmts] == \
+        [(4, "block", 5), (6, "line", 7)], cmts
+    # 词法器：最后一条 id token 是第 8 行的 `b`
+    toks = ma._c_lex(src)
+    assert toks[-1][0] == "id" and toks[-1][1] == "b" and toks[-1][2] == 8, \
+        toks[-1]
+
+
+def test_r78_asm_frontend_shallow_model(tmp_path):
+    """R78 / C-1：`--lang asm` 的极简汇编前端（符号 / 标签 / 指令族 / 注释）。
+
+    四层：
+      ① 扩展名是**独立的事实源**（`AsmFrontend.exts is _ASM_SOURCE_EXTS`，
+         且 `.S` 不在 `_C_SOURCE_EXTS` 里 —— 汇编不能走 C 的 8 类规则）
+      ② 浅层模型字段全部带进 JSON（`_run_ext_only` 曾把它们**静默丢掉**）
+      ③ 值逐条手算相等
+      ④ 明确**不产出**的东西：函数恒 0、调用边恒 0（"不猜"是设计，不是遗漏）
+    """
+    assert ma._ASM_SOURCE_EXTS == (".S", ".s", ".asm")
+    assert ma.AsmFrontend.exts is ma._ASM_SOURCE_EXTS
+    for e in ma._ASM_SOURCE_EXTS:
+        assert e not in ma._C_SOURCE_EXTS, \
+            "%s 不应出现在 C 的扩展名事实源里（汇编没有 C 的函数概念）" % e
+
+    src = tmp_path / "asm"
+    src.mkdir()
+    text = ("/* boot stub */\n"
+            "#include <linux/linkage.h>\n"
+            "#define KERNEL_CS 0x10\n"
+            "\n"
+            ".globl _start\n"
+            ".weak weak_alias\n"
+            "\n"
+            ".text\n"
+            "_start:\n"
+            "    movq %rsp, %rdi\n"
+            "    call early_setup\n"
+            "    ret\n")
+    with io.open(str(src / "entry.S"), "w", encoding="utf-8") as fh:
+        fh.write(text)
+    json_path = os.path.join(str(tmp_path), "asm.json")
+    rc, _o, err = _run([str(src), "--lang", "asm", "--json", json_path],
+                       str(tmp_path))
+    assert rc == 0, "--lang asm --json 失败: %s" % err[:400]
+    payload = json.loads(_read_text(json_path))
+    assert payload["lang"] == "asm"
+    assert len(payload["files"]) == 1
+    f0 = payload["files"][0]
+
+    # ② 扩展块必须带进 JSON（而不是只留 rel/imports/functions）
+    for k in ("symbols", "labels", "insn_hist", "insn_total", "comments"):
+        assert k in f0, "扩展块 %s 被 _run_ext_only 丢了" % k
+
+    # ③ 值
+    assert [(s["line"], s["name"]) for s in f0["symbols"]] == \
+        [(5, "_start"), (6, "weak_alias")], f0["symbols"]
+    assert [(l["line"], l["name"]) for l in f0["labels"]] == \
+        [(9, "_start")], f0["labels"]
+    assert f0["macros"] == 1, f0["macros"]           # #define KERNEL_CS
+    assert f0["insn_total"] == 3, f0["insn_hist"]    # movq / call / ret
+    assert dict((k, v) for (k, v) in f0["insn_hist"]) == \
+        {"movq": 1, "call": 1, "ret": 1}, f0["insn_hist"]
+    assert [(c["line"], c["style"], c["text"]) for c in f0["comments"]] == \
+        [(1, "block", " boot stub ")], f0["comments"]
+
+    # ④ 不产出：函数与调用边恒 0（浅层前端的设计边界，不是遗漏）
+    assert f0["functions"] == []
+    assert payload["edges"] == [] and payload["unresolved"] == []
+    st = payload["asm_file_stats"]
+    assert st["files"] == 1 and st["symbols"] == 2 and st["labels"] == 1
+    assert st["instructions"] == 3
+
+
+def test_r78_annotation_fields_are_deterministic(tmp_path):
+    """R78：注释 / 汇编字段两次运行**逐字节一致**（无时间戳、无 dict 顺序抖动）。
+
+    对手方：若 `qualifiers` / `clobbers` / `insn_hist` 直接 dump 一个未排序的
+    dict，CPython 3.6 的 dict 顺序来自插入顺序，跨运行虽稳定，但**跨解释器**
+    不稳定；这里用排序把它钉成契约。
+    """
+    src = tmp_path / "src"
+    src.mkdir()
+    with io.open(str(src / "a.c"), "w", encoding="utf-8") as fh:
+        fh.write("/* z */\n// a\nint f(int v)\n{\n"
+                 "    int o;\n"
+                 "    asm volatile(\"nop\" : \"+r\"(o) : \"r\"(v)\n"
+                 "                 : \"memory\", \"cc\");\n"
+                 "    return o;\n}\n")
+    outs = []
+    for i in (1, 2):
+        jp = os.path.join(str(tmp_path), "c%d.json" % i)
+        rc, _o, err = _run([str(src), "--lang", "c", "--json", jp],
+                           str(tmp_path))
+        assert rc == 0, err[:300]
+        p = json.loads(_read_text(jp))
+        outs.append(json.dumps({"asm": p["asm"],
+                                "comment_stats": p["comment_stats"],
+                                "f": p["files"]}, ensure_ascii=False,
+                               sort_keys=True))
+    assert outs[0] == outs[1], "两次运行的注释 / 汇编字段不一致"
+    # 排序契约：clobber 与 qualifier 的键序稳定（不是插入序）
+    st = json.loads(outs[0])["asm"]
+    assert list(st["clobbers"]) == sorted(st["clobbers"]), st["clobbers"]
+    assert list(st["qualifiers"]) == sorted(st["qualifiers"]), st["qualifiers"]

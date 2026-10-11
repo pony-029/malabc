@@ -137,3 +137,20 @@ def unresolved_arity_problems(ir):
         if not isinstance(row, (tuple, list)) or len(row) != UNRESOLVED_ARITY:
             bad.append((i, row))
     return bad
+
+
+def unresolved_none(model):
+    """R78 / C-1：**显式空产出点** —— 供「有前端、但不做调用图」的语言登记。
+
+    为什么需要它：`IR_LANG_OWNERS` 要求每个已注册前端都**点名**自己的
+    unresolved 产出点（`tools/check_ir_attribution.py` 的 I6，两向核对）。
+    汇编（`.S` / `.s` / `.asm`）**刻意不做调用图** —— 宏未展开、条件汇编未
+    求值，任何"边"都只能是猜测（见 `matlabc.py::AsmFrontend.build_edges`）。
+
+    但"不做"不等于"不登记"：不登记的话，I6 只剩下「注册了前端却没登记产出点」
+    这一种状态，**分不清「忘了登记」与「刻意不做」**；哪天有人给汇编悄悄加一份
+    自己的 unresolved 实现，也不会有装置知道。
+
+    返回 `([], [])`，与 `resolve_calls` 的元组形状一致 `(edges, unresolved)`。
+    """
+    return [], []

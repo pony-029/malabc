@@ -47,6 +47,10 @@ unresolved_symbols = ir.unresolved_symbols
 
 # 语言 → (包内模块名, 该语言 unresolved 的产出函数名)。**唯一登记处。**
 IR_LANG_OWNERS = {
+    # R78 / C-1：汇编（`.S`）**刻意不做调用图** ⇒ 显式登记一个
+    # 「空产出点」，而不是让它缺席 —— 缺席会让 I6 分不清
+    # 「忘了登记」与「刻意不做」。
+    "asm": ("ir", "unresolved_none"),
     "c": ("ir", "resolve_calls"),
     "py": ("ir", "resolve_calls"),
     "js": ("ir", "resolve_calls"),
