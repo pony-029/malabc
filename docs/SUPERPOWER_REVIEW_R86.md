@@ -150,6 +150,31 @@ typedef struct __attribute__((packed, aligned(4))) {
 * `kernel_callgraph.json` 已进 `docs/KERNEL_RUN.md` 的「运行产物」表，但**不在 AGG 里** ——
   删掉它会让文档 `--check` 变红（有对手方），但 `AGG_r84.json` 本身仍不知道它存在。
 
+### 1.8 远端复核（只认 git 对象，不认工作区字节）
+
+| 判据 | 读数 |
+|---|---|
+| 提交 | `0eff1ea`（HEAD / tree 双侧相同） |
+| `rev-parse HEAD` / `HEAD^{tree}` | `0eff1ea61d4…` / `20ec1e7ea4e1…` —— 本地与克隆**逐字符相同** |
+| 提交计数 | **94 vs 94** |
+| `ls-tree -r -z` | **286 vs 286** 条，25,838 vs 25,838 字节，**逐字节相同** |
+| 逐文件 blob sha256 | **286 / 286** 相同 |
+| 克隆内 `check_all` | rc=0；`real_guard_count()=19`（期望 19，**从克隆内自变量现算**，不写死） |
+| 10 份文档字节数 | 全部相同（含本档 17,078） |
+| 3 个新模块 sha256[:16] | `site_matching.py` `e8a01fd7b9738efd` · `callrel.py` **`efb1a34f8c135d46`** · `binfmt/resolve.py` `8da31d87df065c67` —— 全部与克隆一致 |
+| NEGCTRL | 篡改一个 blob 号后必须判「不同」—— 实测仍判相同 = `False`（**判据有分辨力**） |
+
+⚠ **`git diff` 不是工具** —— 它按同一套规则把两侧都归一化了。上面比的是 **git 对象**
+（blob sha256）与**克隆内实跑的门**，不是工作区字节。
+
+⚠ 条目数 283 → **286** 的那三条增量就是本轮新增：`callrel.py`、`binfmt/resolve.py`、
+本档。**分母是克隆内现算的**，不是从 R85 抄来的。
+
+⚠ `docs/KERNEL_RUN.md` 里 `provenance.git_head = 4ed0bcd…`（R85 的记账提交）——
+那是**跑内核那一刻**的 HEAD，是**真事实**，提交之后不该被改写成 `0eff1ea`。
+门 W2 只比对 `matlabc_sha256` / `matlabc_bytes` 与**当前**文件，**不比对 HEAD**
+⇒ 「钉祖先哈希」与「提交后门仍然绿」这两件事不冲突。
+
 ## 2. 红帽 —— 直觉
 
 * 用户那句话我第一反应是「数据在，只是我没给你看」—— **这是个很差的辩解**。
