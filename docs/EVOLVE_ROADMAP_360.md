@@ -104,6 +104,17 @@
 #   （F1–F8 → F1–F9），不加闸门。仍走 `t2`。这一轮**不改分析结果**（funcs/edges/
 #   unresolved 一个都不变），改的是**同一张图的身份口径** —— 所以它是「口径类」修复，
 #   不是「功能类」：功能错了会有测试红，口径错了**所有读数会一起错且全都自洽**。
+#   R89 的 Phase 0k（调用图的**解析阶梯**：同文件优先 + `#include` 闭包）同理插在 0j
+#   之后、Phase A 之前：0j 的第 15 轮不动，Phase A 的四条 blocked 轮次再由
+#   16/17/18/19 挪到 17/18/19/20。**门数仍是 19** —— 0k 只给
+#   `check_c_frontend_shapes.py` 加判据族 F10（F1–F9 → F1–F10），不加闸门。仍走 `t2`。
+#   这一轮同样**不改边账**（三种口径 `edges_total` 必须逐位相同）—— 它拆的是**歧义桶**：
+#   `ambiguous` 里「同文件 / 同翻译单元可判」的那部分落进新档（`same_file` / `include`），
+#   `resolution` 五档之和恒等于 `edges_total`（分母被钉住，「救回了多少」才不是任人打扮的数）。
+#   ⚠ 本轮三支量具把 0j 复盘里 §7① 的预期**当场否证**了：CROSS 档只救回 9.9%（同文件）/
+#   18.4%（+ 包含闭包三明治），残余 81.6% 是**这一层判不出来**（同名宏遮蔽 / 函数指针 /
+#   条件编译 / 语料子集外定义），不是"还没修"。所以出口判据写成 `resolution` 五档自洽
+#   + 三口径 `unique`/`external` 逐位不变，而不是"`ambiguous` 必须下降多少"。
 0  | 0  | base | phase0_acceptance       | Phase 0 验收：门数 17→18 全绿 + U1–U5 两向自证 | -
 1  | 0  | base | conservation_two_way    | 统一图守恒判定器两向成立（干净 0 / 注入 ≥1 / 还原 0） | -
 2  | 0  | base | py36_census             | 3.6.5 语法门在新增模块上仍绿 | -
@@ -120,10 +131,11 @@
 13 | 0h | t2   | call_relations_proj     | 调用关系的**有界投影**（`callrel.py` + `--callgraph` 系列 + 判据族 F7）：度数 TOP-N / 名字级 SCC / 跨文件四桶 / 焦点 BFS / 截断显式 | -
 14 | 0i | t2   | c_attr_spec_family      | C 前端**属性说明符**缺陷族（`__attribute__` 既不是定义也不是调用）：类型定义不产假函数 / 属性头与组内参数不产假调用 / 判据族 **F1–F7 → F1–F8** | -
 15 | 0j | t2   | callgraph_identity_defsite | 调用图的**节点身份口径**：默认换成「定义落点」（同名不同文件**不合并** ⇒ 假环当场散开、**边一条不删**）；老口径`callee-name` 仍可显式选中；判据族 **F1–F8 → F1–F9** | -
-16 | A  | t1   | -                       | R82-A3 Py/JS 后端（await 必须不产生 async 边） | 未实现
-17 | A  | t1   | -                       | R82-A4 MATLAB 后端（parfor/parfeval/batch/timer） | 未实现
-18 | A  | t1   | -                       | R82-A5 asm 间接跳转 ⇒ unknown（不猜） | 未实现
-19 | A  | t1   | -                       | R82-A6 站点/报告新增「异步」列 + 未识别并发站点计数 | 未实现
+16 | 0k | t2   | callgraph_local_scope   | 调用图的**解析阶梯**：rung1 同文件优先（调用者所在文件里**恰一份**定义）+ rung2 `#include` 闭包（**三明治**判定，只对 TU 根）；`resolution` 五档对手方（之和 ≡ `edges_total`）；非 C 语言门；判据族 **F1–F9 → F1–F10** | -
+17 | A  | t1   | -                       | R82-A3 Py/JS 后端（await 必须不产生 async 边） | 未实现
+18 | A  | t1   | -                       | R82-A4 MATLAB 后端（parfor/parfeval/batch/timer） | 未实现
+19 | A  | t1   | -                       | R82-A5 asm 间接跳转 ⇒ unknown（不猜） | 未实现
+20 | A  | t1   | -                       | R82-A6 站点/报告新增「异步」列 + 未识别并发站点计数 | 未实现
 ```
 
 ### Phase 0f · REA 能力移植 Ⅰ：静态缓解措施（轮 11 · `t2`）
@@ -213,6 +225,38 @@
 **Phase 0j 出口**：`--callgraph` 默认交付的图**不含**由同名合并造出的假环；
 `biggest_cycle` 从五位数塌到两位数（跨区域语料实测 **1750 → 36**）；**边数一条不减**；
 老口径仍可显式复现；两种口径各自的局限都写在**产物**里（不是只在代码注释里）。
+
+### Phase 0k · 调用图的**解析阶梯**：同文件 → 翻译单元（轮 16 · `t2`）
+
+**动因**：Phase 0j 把 72.9% 的边打成 `K_AMB`（同名多定义 ⇒ 汇点、不猜）。但那一大桶里
+有一块是 **C 自己的作用域规则**本来就判得出的：**同文件里恰一份定义**（rung 1）、
+**同一翻译单元内恰一份候选**（rung 2）。这不是新发明的启发式 —— 它是 C 语义的既有部分，
+只是提取器没实现。⚠ **两条都不许「猜」**：只能「恰一份」时用，多于一份仍落 `K_AMB`。
+
+| ID | 任务 | 轮次预算 | 出口判据 |
+|---|---|---|---|
+| R89a | 预登记量具 `_r89/measure_scope.py`（**不调用新代码**，只用 `build_c_model()`）：独立测「同文件可消歧」的边数 + 同名宏撞车数 | 16 | 数字**先于**实现落盘：CROSS 档救回 2,370 / 23,957 = **9.9%**；同名宏 **89** 条 |
+| R89b | 预登记量具 `_r89/measure_ladder.py`（rung0 唯一 / rung1 同文件 / rung2 闭包**松**判据 / 残余） | 16 | 松判据 **31.2%** —— 并**否证**「闭包一加就能救一半」（假包含把计数从 0 抬到 1） |
+| R89c | 三级量具 `_r89/measure_sandwich.py`：`closure_under` ⊆ 真 TU ⊆ `closure_over`，**判据 = `vis_under == vis_over == {同一份}`** | 16 | **18.4%**（三明治后 +2,034）；残余 81.6% 记成「这一层判不出来」；`FAILURES=0` |
+| R89d | `callrel.py` 第三档口径 `definition-site-local`（**默认**）：`LOCAL_SCOPE_LANGS=("c",)`；`_resolve()` 唯一判定点返回 `(kind, drel, line, ndef, rung)`；`CLOSURE_CAP=65536` 超限**判不出**（回落 `K_AMB` 并计 `closure_capped`）；`CLOSURE_CACHE=8` | 16 | 三口径 `edges_total` 逐位相同（**加口径不许吃边**）；rung2 **只对 TU 根** `.c/.cc/.cpp/.cxx`（调用点落在头文件里时 TU 由包含者决定） |
+| R89e | `resolution` 块 = 「救回了多少」的**分母对手方**：五档（`unique`/`same_file`/`include`/`ambiguous`/`external`）之和 ≡ `edges_total`；`local_scope` 块自报参数（口径 / 语言 / allowed_langs / include_map / rungs / closure_cap / closure_capped / header_callers） | 16 | F10d：三口径下 `unique`/`external` **逐位不变**（阶梯只做**重分类**）；产物自称参数全部现算 |
+| R89f | ⚠ **抽出唯一判据 `_defsite_family(identity)`**：四处二元 `identity != IDENTITY_DEFSITE` 在加第三种口径时会把新口径**静静**塞进「名字级」分支（节点名印成内部键 ⇒ 焦点匹配不上 ⇒ 默认子图退化） | 16 | 当场点亮 **F7b/F7c/F7d/F9e 四条**（「口径类缺陷所有读数一起错且都自洽」的现场）；修后只剩字面量级联 |
+| R89g | 判据族 **F1–F9 → F1–F10**（**十一条半边 F10a–F10k**：F10a 三口径边账 / F10b 活性+环内同文件+不超名字级 / F10c 惰性 / F10d 只做重分类 / F10e 语言门 / **F10f 第二级活性 / F10g TU 边界计数 / F10h 过近似不许冒充 / F10i 两级不许互相冒充 / F10j 代价不变量 / F10k `under` 唯一性口径**）+ **六处级联**；`_same_file_cycles` **两种形状都收**（产物是 `list[dict]`、自证夹具是 `list[list]`，门与自证共用它） | 16 | `SELFTEST COUNTS {"bad": 0, "good": 122}`；门 rc=0 且成功行含 `F1–F10`（含「23 个阶梯夹具」）；`MIN_GUARDS` **仍 19** |
+| R89h | 内核两臂**重跑** + `KERNEL_RUN.md` 重生成（调用图参数子表新增 `local_scope` 行，判定是否要新 KERNEL-DELTA 条目） | 16 | `edges_total` 两本账仍相等；`resolution` 五档在真产物上自洽 |
+| R89i | ⚠ **F10f–F10i 四条半边是被证据逼出来的**（不是设计出来的）：F10h 需要 **basename 撞车**的夹具（`incx`）—— `inc` 夹具头名唯一 ⇒ `under == over` ⇒ 三明治**被松掉也看不出来**；F10i 是**变异体 M3** 逼出的门洞（关掉 rung1 后 `dup` 夹具的**图逐位没变**、只有 `resolution` 标签从 `same_file` 变 `include`，当时门 **rc=0**）⇒ 教训写成判据：**「标签」也是产物的一部分**。同期新增**第四支预登记量具** `_r89/measure_incx.py`（三夹具 × 两口径 8 项预登记期望）与探针 **P12**（`_closure` 超限必须返回 `(None, True)`、未超限必须完整 31 项、`CLOSURE_CAP == 65536`）、**P13**（`incx` 上过近似不许冒充） | 16 | `incx` 默认档 `include=0 / ambiguous=2（== 边数）/ closure_capped=0` ⇒ 那条错报有对手方；探针 `CHECKS=132 FAILURES=0`；变异体 **10 个**（当时）注入即红且红在指定判据 |
+| R89j | ⚠ **第二类「读数不变」的缺陷**：闭包缓存原写法 `if len(cache) < CLOSURE_CACHE: cache[start] = seen` = **只记最早 8 个起点、之后再也不写** ⇒ 第 9 个起点起**每个调用点**都重算闭包。内核实测 `--callgraph` 一步 **61.4 分钟没跑完**（基础分析只用 535 s）而**所有读数一个都没变**。修法 = **满则 `cache.clear()`**；同期把代价变成**产物自称的参数**（`local_scope.rung2_files` / `closure_computed` / `closure_visits` + 不变量 `closure_computed == 2 × rung2_files`），并新增判据 **F10j** 与变异体 **M12**（唯一能抓它的装置） | 16 | 变异体 **11/11** 全绿（`M12 → F10j`）；`--selftest` `{"bad": 0, "good": 119}`；门成功行含「23 个阶梯夹具」 |
+| R89k | ⚠ **三层对账装置抓到的真缺陷**（本轮最值钱的一条）：`_r82/append_rounds_r89.py` 新加的对账（① 先对分母 ② 语料标签一致 ③ 两个桶**逐位相等**）在真语料上红 —— 独立量具说 `include=2034`、引擎报 **0**。判别实验（`_r89/dbg_cross_reconcile.py`）证明这**不是判据差异**（同一份模型上 `callrel._edge_res` 与量具规则**逐边 0 差异**）；根因一行：`include_graphs()` 的 `under` 图按 include **行数**判唯一性（`by_base[b] += 1`）⇒ 被 ≥2 处包含的头（内核里**最常见**的形状，如 `kernel.h` 被 330 处包含）**整条被丢出**欠近似图 ⇒ 三明治在主战场上**恒失败**。按 include 边实测：行数口径只留 **606 / 28,333**，目标数口径留 **7,823**。修法 = 唯一性改判「这个 basename **解析到几个目标文件**」+ 口径名登记进 `local_scope.under_basis`。⚠ 同轮还证明**另半边的失败不在产品**：`same_file` 2370 vs 2273 来自账本用了**非规范 CLI 形态**（`cwd=仓库`+绝对根）而 `matlabc._rel_of()` 会把 cwd 之外的 `rel` 塌成 basename ⇒ 主量具改成规范形态，产品敏感度**登记进 `limitations`** 并列 R90 第一候选 | 16 | 修复后引擎 `include=2034 / ambiguous=19553`，与两支预登记量具**逐位相等**；新增判据 **F10k**（`multi` 夹具 `include == edges_total`、`ambiguous == 0`、产物自报口径）+ 变异体 **M13**；探针升到 `CHECKS=140 FAILURES=0`；`--selftest {"bad": 0, "good": 122}`；门数 **仍 19** |
+
+**Phase 0k 出口**：`--callgraph` 交付的图里，`ambiguous` 桶中**同文件 / 同翻译单元可判**的
+那部分被如实落成 `same_file` / `include`；**边数一条不减**；**非 C 语言一律不启用**
+（模块绑定能在运行时被改掉，「同名同文件」只是近似 —— 近似冒充结论会造出假环）；
+两种残余（宏同名遮蔽、basename 张冠李戴、`#ifdef` 不展开）写进产物 `limitations`。
+
+⚠ **出口必须是「产品兑现」而不是「量具测得出」**（R89k 的教训）：表里的
+`include +2,034` 一度只是**潜力**（引擎报 0，因为 `under` 图按 include 行数判唯一性）。
+现在两支预登记量具与引擎在真语料上**逐位相等**，才敢把这两档写进出口。
+⚠ 连同「同一份语料的读数依赖**调用形态**」（`_rel_of` 的 cwd 敏感）一起写进
+`limitations`：出口判据必须**指明调用形态**，否则同一个语料可以给出两套数。
 
 ### Phase A · T1 异步调用链（轮 1–60）
 

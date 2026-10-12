@@ -20,7 +20,7 @@
   ② 公开 CLI（`--lang c --json`）才是用户真正看到的那一面：内部函数对了、
      组装错了（行号算错 / body_end 没落进 JSON），一样是缺陷。
 
-判据（F1–F9；九条判据的**管辖范围互不重叠**，每条各有自己的突变体作独立证人）：
+判据（F1–F10；十条判据的**管辖范围互不重叠**，每条各有自己的突变体作独立证人）：
   F1 四形态全覆盖：`shapes.c` 里 P1 同行 / P2 Allman（花括号换行）/
      P3 返回类型独占一行（GNU）/ P4 参数表跨行 四个定义必须**全部被认出**。
      删掉任一种形态的支持（退回 R49 之前的行锚定行为）⇒ 红。
@@ -61,10 +61,12 @@
            （否则那个开关是个摆设，而摆设型开关没有任何东西会告诉你它是摆设）。
        F7e **未知扩展名不许静默降级**：`--callgraph x.txt` 必须**非零退出**，
            且**不得**产出该文件（静默改成 JSON 就是「没听懂却假装听懂」）。
-       F7f **口径与它的局限必须一起写下来**（R88 改）：`identity` 必须是声明的
-           两个字面量之一；`limitations` 至少 3 条且非空，**并且必须说清**本口径
-           自己的局限 —— 名字级必须明说「同名合并 ⇒ 环可能含假阳性」，定义落点必须
-           明说「被调侧的歧义**判不出来**（不猜）⇒ 经过它的环会**漏报**」。
+       F7f **口径与它的局限必须一起写下来**（R88 建 / R89 扩到三个字面量）：
+           `identity` 必须是声明的**三个**字面量之一；`limitations` 至少 3 条且
+           非空，**并且必须说清**本口径自己的局限 —— 名字级必须明说「同名合并 ⇒
+           环可能含假阳性」，定义落点必须明说「被调侧的歧义**判不出来**（不猜）
+           ⇒ 经过它的环会**漏报**」，新口径（R89）还必须明说它的**规则**本身
+           （同文件优先 / `include` 闭包）与「判不出来的部分照样不猜」。
            口径换了而局限没换 ⇒ 红（那是「把旧口径的免责声明贴在新口径上」）。
   F9 节点身份口径（R88）：F7f 管「口径与局限都写下来了」，这一族管口径**行为本身**。
      内核实测：名字级口径下 `cross_file.ambiguous` 占 72.9%，最大「调用环」有 37,775
@@ -80,6 +82,18 @@
        F9d **活性**：同名不同文件的夹具上最大环必须**塌**、节点数必须**更多**。
        F9e **惰性**：没有同名可拆的夹具上两口径必须**逐位相同**，且环成员必须
            **带落点**（否则同名不同文件的成员分不开）。
+
+  F10 同文件 / 包含闭包**阶梯**（R89）：F9 管「换身份口径」，这一族管「同名多
+     定义时按 C 的翻译单元可见性**判得出就判**」。R88 把这一整桶留成了 K_AMB 汇点，
+     R89 收回可判定的那部分 —— 所以这一族必须同时给出**正向**（真环被收回）与
+     **反向**（no-op / 只重分类 / 语言门）两边的证据：
+       F10a **三口径边账**相等且等于载荷边数（加口径不许吃边）。
+       F10b **活性且不越界**：同名不同文件夹具上新口径报出的环必须**更多**、
+           每个环的成员必须**同文件**、最大环不许超过名字级。
+       F10c **惰性**：无同名可消歧时与纯定义落点逐位相同（阶梯是 no-op）。
+       F10d **只做重分类**：`resolution` 各档之和 == `edges_total`，且三口径的
+           `unique`/`external` 逐位相同 —— 「救回数」的分母被钉住。
+       F10e **语言门**：非 C 语料上 `applied=false` 且读数与纯定义落点逐位相同。
 
 为什么 `neg.c` 的「已披露边界」不单开一条判据：它与「不假阳」在实现上是**同一个
   集合比较**（`neg.c` 的名字集合必须恰为 `{real_fn}`）。硬拆两条会让同一个突变体
@@ -105,7 +119,7 @@
               └──── 手写期望 WANT（独立于产品）────────┘
 
 退出码：
-    0 = F1–F9 全绿，且棘轮与夹具完备性全绿
+    0 = F1–F10 全绿，且棘轮与夹具完备性全绿
     1 = 有违规（某条判据红 / 棘轮不符 / 夹具被改瘦）
     2 = 缺输入（找不到 matlabc.py / 公开 CLI 跑不起来 / JSON 不可解析）
 
@@ -128,7 +142,7 @@ import tempfile
 #   ① 本门的成功行（下面 main() 打印的那一行）；
 #   ② README.md / README_CN.md 里本门那一行。
 # 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
-ROW_SIGNATURE = "F1–F9"
+ROW_SIGNATURE = "F1–F10"
 
 # H3（R73）：越出签名族、但仍由本门发出的判据前缀。
 ROW_EXTRA = "R1,R2"
@@ -139,7 +153,13 @@ CLI_TIMEOUT = 300.0
 # F7f 要核的**口径字面量**（与 `callrel.py` 的常量同义；这里写成自己的字面量，
 # 因为 `tools/` 不 import 产品模块 —— 宁可另写同义实现，R54/R55 的纪律）。
 # 写成元组而不是集合：报错时要按声明顺序印出来。
-DECLARED_IDENTITIES = ("callee-name", "definition-site")
+IDENTITY_NAME_LIT = "callee-name"
+IDENTITY_DEFSITE_LIT = "definition-site"
+# R89：默认口径。它比定义落点多一条**推导**（同名多定义时按 C 的翻译单元可见性
+# 判两级：同文件优先 → #include 闭包三明治）。这里写成自己的字面量、不 import
+# 产品模块 —— `tools/` 不 import 产品的纪律（R54/R55）。
+IDENTITY_LOCAL_LIT = "definition-site-local"
+DECLARED_IDENTITIES = (IDENTITY_NAME_LIT, IDENTITY_DEFSITE_LIT, IDENTITY_LOCAL_LIT)
 
 # ---------------------------------------------------------------------------
 # 夹具：纯合成，不联网、不建 GUI、不读仓库里任何 .c
@@ -246,6 +266,110 @@ CG_DUP_FIXTURES = (
      "static void b(void) { h(); }\n"
      "static void h(void) { b(); }\n"),
 )
+
+# ---------------------------------------------------------------------------
+# F10（R89）夹具：**Python** 语料 —— 语言门的对手方。
+#
+# 为什么必须有这一档：R89 的阶梯只在 C 上启用（理由见 `_limitations_local`：
+# C 的可见性由翻译单元决定，可判定；Python 的模块绑定能在运行时被 import 改掉）。
+# 若有人把门拆了（阶梯对 Python 也生效），这份夹具上会同 dup 夹具一样长出
+# **两个同文件环** ⇒ F10e 的「逐位相同」当场红。
+# 没有这一档，F10e 就只能在 C 语料上自说自话（空断言）。
+#
+# 手推（独立于产品）：`h` 在 p_a.py / p_b.py 各一份定义 ⇒ 每个调用点扇出 2 条边
+# ⇒ 4 条边；被调侧判不出 ⇒ K_AMB 汇点 ⇒ 环 0 个、节点 3 个（a@a、b@b、h@汇点）。
+# ---------------------------------------------------------------------------
+CG_PY_FIXTURES = (
+    ("cg_py_a.py", "def h():\n    pass\n\n\ndef a():\n    h()\n"),
+    ("cg_py_b.py", "def h():\n    pass\n\n\ndef b():\n    h()\n"),
+)
+
+# ---------------------------------------------------------------------------
+# F10（R89）夹具 ③④：**第二级**（翻译单元）的对手方。
+#
+# 为什么必须有：`dup` 夹具只行使 rung 1（同文件）。少了这两档，「rung 2 存在」
+# 与「rung 2 只对翻译单元根成立」两条声明就**只活在仓库外**（`_r89/` 的探针）
+# —— 那正是 R49 的教训：证据在仓外 ⇒ 回归时没有任何东西能说「不」。
+# 实测（`_r89/probe_local_scope.py` 的 inc/hdr 两组，102 条断言）：
+#   inc 默认口径 include=2 / edges_total=2；纯定义落点 include=0、ambiguous=2。
+#   hdr 默认口径 include=0、ambiguous=2、header_callers=2（**自报**没判）。
+# ---------------------------------------------------------------------------
+CG_INC_FIXTURES = (
+    ("t1/m.c", '#include "k.h"\nint m(void) { return h(); }\n'),
+    ("t1/k.h", "int h(void) { return 1; }\n"),
+    ("t2/k2.h", "int h(void) { return 2; }\n"),
+)
+# ⚠ R89（由量具 `_r89/measure_incx.py` 逼出来的**一行开关**）：
+# `api.h` **必须自己带一个 include**。否则：把 `.h` 也塞进
+# `TU_ROOT_EXTS` 会让闭包退化成 `{api.h}` ⇒ 候选 0 份 ⇒ 仍然
+# ambiguous ⇒ **门全绿**。加上这一行，同一处注入就变成
+# 「候选 0→1、include 0→2」⇒ F10g 当场红。
+# 实测（本行加入前后读数**逐位相同**）：include=0 / ambiguous=2 /
+# header_callers=2 —— 只加了「可行使性」，没改任何结论。
+CG_HDR_FIXTURES = (
+    ("t1/api.h", '#include "k.h"\nint api(void) { return h(); }\n'),
+    ("t1/k.h", "int h(void) { return 1; }\n"),
+    ("t2/k2.h", "int h(void) { return 2; }\n"),
+)
+
+# ---------------------------------------------------------------------------
+# F10（R89）夹具 ⑤：**三明治**的对手方 —— basename 撞车的**假**包含。
+#
+# 为什么非有这一档不可（`_r89/measure_incx.py` 预登记实测）：
+#   现有的 `inc` 夹具头名 `k.h` 在语料里 basename **唯一** ⇒
+#   `under == over` ⇒ 判据松成 `if vu or vo:`（拿**过近似**当真 TU）
+#   在它上面读数**完全相同** ⇒ 那条错报此前没有任何对手方。
+#   这里 `k.h` 出现在两处 ⇒ `under` 排除它、`over` 并入它 ⇒
+#   真 TU 夹在中间、两侧给不出同一份 ⇒ **必须判不出**。
+# 实测：默认口径 include=0 / ambiguous=2（== edges_total）/ capped=0；
+#       纯定义落点与之一致（它本来就不做作用域推理）。
+# ---------------------------------------------------------------------------
+CG_INCX_FIXTURES = (
+    ("t1/m.c", '#include "k.h"\nint m(void) { return h(); }\n'),
+    ("t1/k.h", "int h(void) { return 1; }\n"),
+    ("t2/k.h", "int h(void) { return 2; }\n"),
+)
+
+# ---------------------------------------------------------------------------
+# F10j（R89j）：第二级的**代价**不变量 —— 「每个调用者文件只该算两次闭包」。
+#
+# 为什么必须**多于 8 个**调用者文件：`CLOSURE_CACHE = 8`。R89 的第一版写的是
+# `if len(cache) < CLOSURE_CACHE:`，也就是「只记最早 8 个起点、之后**再也不写**」
+# —— 缓存永远停在头部那 8 个文件上，第 9 个起点的闭包**每条边都重算**。
+# ⚠ 单文件夹具（inc / hdr / incx）**看不出**这个退化：缓存初始为空 ⇒ 第一条边
+# 就写进去了，同文件的后续边照样命中。必须凑够 > 8 个**不同**的调用者文件。
+#
+# 12 个 `.c`（每个两条同名调用边）+ 一份共享头。**R89k 之后**这份夹具同时钉
+# 两件事：
+#
+#   (1) **代价不变量**（F10j）：`rung2_files == 12`、
+#       `closure_computed == 2 × rung2_files`（每个文件各算 under/over 一次）。
+#       旧写法（满了不写）：前 8 个文件各 2 次 = 16，后 4 个文件的每条边都
+#       重算 = 32 ⇒ **48 ≠ 24**，F10j 当场红。
+#
+#   (2) **`under` 的唯一性口径**（F10k）：`k.h` 被 12 个文件包含，但**只解析
+#       到一个目标文件** ⇒ `under` 必须保留它 ⇒ 48 条歧义边**全部**落进
+#       `include`。R89k 之前 `include_graphs()` 数的是 include **行数**
+#       （`by_base["k.h"] = 12 ≠ 1`）⇒ 整条被丢出 `under` ⇒
+#       `include=0 / ambiguous=48`。
+#
+# ⚠ 这个缺口曾经写在这份注释里当「已知且保守」，并在 F10j 里**刻意不钉**
+# （怕钉住弱行为、让下一轮的正确改进变成假红）。真语料上的对账把那个判断
+# **推翻**了：欠近似不是「更安全」，而是把这一级的能力砍成 **0**
+# （独立量具在 CROSS 档测出 2034 条，引擎一条也判不出来）。
+# ---------------------------------------------------------------------------
+CG_MULTI_ROOTS = tuple("t1/m%02d.c" % i for i in range(1, 13))
+
+# `under` 图的唯一性口径名（**独立抄一份**：门要能在 `callrel.py` 被改坏时
+# 独立证伪它，两处一起改就失去分辨率）。
+UNDER_BASIS_WANT = "unique-basename-target"
+CG_MULTI_FIXTURES = (
+    tuple((rel, '#include "k.h"\nint %s(void) { int a = h(); int b = h();'
+                ' return a + b; }\n'
+                % os.path.splitext(os.path.basename(rel))[0])
+          for rel in CG_MULTI_ROOTS)
+    + (("t1/k.h", "int h(void) { return 1; }\n"),
+       ("t2/k2.h", "int h(void) { return 2; }\n")))
 
 # F7b 的期望环（手写，独立于产品）：成员集合必须恰是这两个。
 CG_WANT_CYCLE = ("hub", "leaf")
@@ -395,16 +519,18 @@ CRITERIA = (
     ("F7", "调用关系的有界投影：两本账对账 / 环两向 / 有界且诚恳 / 深度有效 / 未知格式不降级 / 口径字面量"),
     ("F8", "属性说明符 `__attribute__`：类型定义不产函数 / 真函数不丢 / 组内参数不算调用 / 未解析两向 / 产物零出现 / 文档显式声明"),
     ("F9", "节点身份口径：默认定义落点 / 老口径可选且非法值报错 / 两口径边账相同 / 同名不同文件处环必须塌（活性）/ 无同名可拆处逐位相同（惰性）且成员带落点"),
+    ("F10", "同文件/包含闭包阶梯：三口径边账相等 / 真环被收回且环内同文件且不超过名字级 / 无同名可消歧处逐位相同 / 只做重分类（计数和==边数且 unique+external 不变）/ 非 C 语言上语言门生效 / 第二级的代价不变量（closure_computed == 2×rung2_files，缓存不许退化成重算）/ `under` 图的唯一性口径（按**解析目标数**判、不按 include **行数**，共享头必须判得出来且口径要自报）"),
 )
 CRITERIA_IDS = tuple(c[0] for c in CRITERIA)
 
 # ---------------------------------------------------------------------------
 # 棘轮：全部是「事实的读数」，不是可调参数。覆盖不许静默缩水。
 # ---------------------------------------------------------------------------
-EXPECTED_CRITERIA = 9
+EXPECTED_CRITERIA = 10
 EXPECTED_FIXTURES = 3
 EXPECTED_CG_FIXTURES = 2
 EXPECTED_DUP_FIXTURES = 2
+EXPECTED_PY_FIXTURES = 2        # R89：语言门的语料（两文件同名定义）
 EXPECTED_ATTR_FIXTURES = 1
 EXPECTED_SHAPE_NAMES = 4
 EXPECTED_BOUNDARY_TRAPS = 2
@@ -490,7 +616,8 @@ def judge(per):
 
 
 def judge_fixtures(fixtures=None, neg_c=None, shapes_c=None, sbraces_c=None,
-                   cg_cyc=None, cg_acy=None, attr_c=None, cg_dup=None):
+                   cg_cyc=None, cg_acy=None, attr_c=None, cg_dup=None,
+                   cg_py=None):
     """夹具完备性：每条陷阱必须在夹具源码里**逐字**出现。
 
     为什么这是必需的一环（R56 的自伤教训：**口径变一次，样本完备性就得跟着重算**）：
@@ -509,6 +636,7 @@ def judge_fixtures(fixtures=None, neg_c=None, shapes_c=None, sbraces_c=None,
     cga = CG_ACY_C if cg_acy is None else cg_acy
     atr = ATTR_C if attr_c is None else attr_c
     dup = CG_DUP_FIXTURES if cg_dup is None else cg_dup
+    pyf = CG_PY_FIXTURES if cg_py is None else cg_py
     probs = []
     for name in FALSE_POSITIVE_TRAPS + BOUNDARY_TRAPS:
         if name not in neg:
@@ -552,6 +680,21 @@ def judge_fixtures(fixtures=None, neg_c=None, shapes_c=None, sbraces_c=None,
         probs.append("R2 重复定义夹具里 `static void h(void) {` 出现 %d 次"
                      "（要求恰 2 次）—— 少了就没有「同名不同文件」这个前提"
                      % dtxt.count("static void h(void) {"))
+    # F10 夹具完备性：两份文件里**各自**必须有 `h` 的定义 + 一个调用点。
+    # 少任一侧，「同名不同文件」这个前提就不成立 ⇒ F10b/F10e 退化成空断言。
+    ptxt = dict(pyf)
+    for rel, fn in (("cg_py_a.py", "def a():\n    h()\n"),
+                    ("cg_py_b.py", "def b():\n    h()\n")):
+        t = ptxt.get(rel)
+        if t is None:
+            probs.append("R2 Python 夹具缺 %s —— F10e 的语言门没有对手方" % rel)
+            continue
+        if "def h():\n" not in t:
+            probs.append("R2 Python 夹具 %s 里没有 `def h():` —— 没有同名定义就"
+                         "谈不上「同名不同文件」" % rel)
+        if fn not in t:
+            probs.append("R2 Python 夹具 %s 里没有调用点（%r）—— 阶梯没有边可判"
+                         % (rel, fn.strip()))
     # F8 夹具完备性：四类类型定义与三类真函数**都必须在**。
     # 少了任一侧，F8a/F8b 就退化成空断言（永远绿，且没人告诉你）。
     for marker, why in (
@@ -585,6 +728,8 @@ def judge_ratchet(n_funcs):
                             EXPECTED_CG_FIXTURES),
                            ("重复定义夹具数", len(CG_DUP_FIXTURES),
                             EXPECTED_DUP_FIXTURES),
+                           ("Python 夹具数", len(CG_PY_FIXTURES),
+                            EXPECTED_PY_FIXTURES),
                            ("属性夹具数", len(ATTR_FIXTURES),
                             EXPECTED_ATTR_FIXTURES),
                            ("形态名数", len(SHAPE_NAMES), EXPECTED_SHAPE_NAMES),
@@ -754,16 +899,439 @@ def judge_callrel(obs):
         probs.append("F7f limitations 必须至少 3 条且非空，读到 %r" % (lim,))
     else:
         _ltxt = " ".join(str(x) for x in lim)
-        if ident == "callee-name" and "假阳性" not in _ltxt:
+        if ident == IDENTITY_NAME_LIT and "假阳性" not in _ltxt:
             probs.append("F7f 名字级口径必须明说「同名合并 ⇒ 调用环可能含假阳性」"
                          "—— 这是它最容易被误读的地方")
-        elif ident == "definition-site":
+        elif ident in (IDENTITY_DEFSITE_LIT, IDENTITY_LOCAL_LIT):
             if "不猜" not in _ltxt:
-                probs.append("F7f 定义落点口径必须明说「被调侧的歧义**判不出来**"
-                             "（不猜）」—— 否则读者会以为同名多定义也消歧了")
+                probs.append("F7f %s 口径必须明说「判不出来的部分**不猜**」"
+                             "—— 否则读者会以为同名多定义也消歧了" % ident)
             if "漏" not in _ltxt:
-                probs.append("F7f 定义落点口径必须明说它**会漏**（K_AMB 是汇点 ⇒"
-                             "经过同名多定义的环不再被报出）—— 只报好处不报代价")
+                probs.append("F7f %s 口径必须明说它**会漏**（K_AMB 是汇点 ⇒"
+                             "经过同名多定义的环不再被报出）—— 只报好处不报代价"
+                             % ident)
+            if ident == IDENTITY_LOCAL_LIT:
+                # R89：新口径多了一条**推导**。它必须自己说清规则与它的作用域，
+                # 否则读者分不出它与 definition-site 的差别（而那正是它的全部内容）。
+                if "同文件" not in _ltxt:
+                    probs.append("F7f 新口径必须明说它的规则（**同文件优先**）"
+                                 "—— 不然它与 definition-site 看起来一模一样")
+                if "include" not in _ltxt and "翻译单元" not in _ltxt:
+                    probs.append("F7f 新口径必须明说第二级（`include` 闭包 / "
+                                 "翻译单元可见性）—— 只报一级等于只报一半规则")
+    return probs
+
+
+def _res_sum(res):
+    """`resolution` 各档之和（**现算**，不写死档名以外的任何东西）。"""
+    if not isinstance(res, dict):
+        return None
+    out = 0
+    for v in res.values():
+        if not isinstance(v, int):
+            return None
+        out += v
+    return out
+
+
+def _cycle_members(cyc):
+    """一个环 -> 成员名字表。**两种形状都要收**（这是本轮踩过的坑）：
+
+      产物 `callrel.strongly_connected` 交出来的是 ``[{"size": k,
+      "members": [名, ...]}, ...]``，而 `_cycle_members_all()` 与自证夹具
+      交出来的**已经是 members 本身**（``[[名, ...], ...]``）。
+    只按 dict 解会在自证里崩成 `AttributeError: 'list' object has no
+    attribute 'get'` —— 而**门与自证共用这个函数**，所以两向都要能跑。
+    """
+    if isinstance(cyc, dict):
+        return cyc.get("members") or []
+    if isinstance(cyc, (list, tuple)):
+        return list(cyc)
+    return []
+
+
+def _same_file_cycles(cycles):
+    """每个环的成员落点集合：返回 ``[set(rel), ...]``（无落点的成员记 ""）。
+
+    F10b 要问的是「这个环是不是**同一个文件内部**的真递归」，所以必须把
+    `名字 @ 落点` 里的落点取出来按环分组 —— 只数环的个数区分不了
+    「两个同文件真环」与「一个真环 + 一条跨文件假边」。
+    """
+    out = []
+    for c in cycles or []:
+        rels = set()
+        for m in _cycle_members(c):
+            s = str(m)
+            rels.add(s.split(" @ ", 1)[1] if " @ " in s else "")
+        out.append(rels)
+    return out
+
+
+def judge_local(obs):
+    """F10（R89）的**纯函数**判据：同文件 / 包含闭包**阶梯**。
+
+    与 F9 的分工：F9 管「身份口径换没换、换了会不会吃边」；F10 管**阶梯本身**
+    —— 它判得出什么、判不出什么、在哪些语料上根本不该启用。
+    五个半边各有自己的坏样本（自证里逐条点名），互不重叠：
+
+      F10a 三口径（default / 纯定义落点 / 名字级）的 `edges_total` 全相等且等于
+           `--json` 载荷边数。**加口径不许吃边**（F9c 的两口径版）。
+      F10b **活性 + 覆盖**：同名不同文件夹具上，新口径报出的环必须**多于**纯定义落点，
+           每个环的成员必须落在**同一个文件**里，环的落点互不相同，
+           并且**环成员落点集合的并集必须覆盖夹具里的每一个文件**（覆盖不是形状：
+           「盲算给第一份定义」也会留下一个**同文件**的环，形状判据对它无感）；
+           同时最大环**不许超过**名字级（每个落点节点映到恰好一个名字 ⇒
+           细化只能让环变小或不变）。三个半边缺一不可：只断言「环变多」可以
+           由「把调用点全算给第一份定义」刷出来（那会凑出跨文件边）。
+      F10c **惰性**：没有同名可消歧的夹具上，新口径与纯定义落点必须**逐位相同**
+           （biggest / nodes / edges）—— 没东西可判时阶梯必须是 no-op。
+      F10d **只做重分类**：`resolution` 各档之和 == `edges_total`（三口径都要），
+           且 `unique` / `external` 在三口径下逐位相同 —— 阶梯动的只能是
+           `same_file`/`include` 与 `ambiguous` 的分配。**分母被钉住**，
+           「救回了多少」这个数才不是任人打扮的。
+      F10e **语言门**：非 C 语料上 `applied=false` / `rungs=[]`，且读数与纯定义
+           落点逐位相同。近似冒充结论会造出假环。
+      F10f **第二级活性**：定义在**被包含的头文件**里时，默认口径必须把全部边落进
+           `include`（对照：纯定义落点全留 `ambiguous`）。判据是**恒等式**
+           `include == edges_total`，不是手抄数字 —— 顺手当了「夹具被掏空」的对手方。
+      F10g **第二级的作用域边界**：调用点落在**头文件**里时 `include` 必须为 0、
+           判不出的全部留在 `ambiguous`，且产物自报 `header_callers > 0`
+           （「我没判」不能装成「判不出来」）；同时断言 `applied=true`，
+           否则这一条测的是「什么都没发生」而不是边界。
+      F10h **三明治**：basename 撞车（`incx`）时**过近似不许冒充真 TU**
+           —— `include` 必须为 0、判不出的必须全留在 `ambiguous`，
+           **且** `closure_capped` 必须为 0（截断路径与三明治失败路径
+           读数**逐位相同** ⇒ 不给这一条配对，一个「闭包永远超限」的
+           坏实现会把前两条一起满足），**且**对照半边 `inc` 的
+           `include` 必须为正（否则前两条会被「它从来不判」刷绿）。
+           五个半边互不重叠，各有自己的坏样本。
+      F10i **两级不许互相冒充**（由变异体 M3 逼出来的门洞）：`same_file`
+           与 `include` 是对「**为什么**判得出来」的两种不同断言 ——
+           把「同一个文件」记成「同一个翻译单元」就是在产物里写下
+           **错误的原因**，而本轮全部结论都按这两档分桶。判据是关系式：
+           `dup` 上 `include == 0` 且 `same_file == pure.ambiguous`，
+           `inc` 上反过来（与 F10f 互为对手方），外加「对照半边不许为 0」。
+      F10j：第二级的**代价** —— `closure_computed == 2 × rung2_files`（外加
+            「12 个调用者文件都走到了第二级」与「五档之和 == 边数」两条对照）。
+            这条判的是**没有读数会变的那种错**：缓存退化（重算）产出的
+            集合完全一样，所以任何正确性判据都抓不到它（R89j 实测：
+            内核整树 `--callgraph` 61.4 分钟没跑完，而**所有读数一个都没变**）。
+      F10k **`under` 的唯一性口径**（R89k）：判据是「**共享头必须判得出来**」
+           —— multi 夹具里 12 个 `.c` 共享**一份** `k.h`，48 条歧义边必须
+           **全部**落进 `include`，且产物要自报口径（`local_scope.under_basis`）。
+           ⚠ 这条不是设计出来的，是**账本的对账装置**在真语料上红出来的：
+           独立量具说 `include=2034`、引擎报 **0**。根因是 `include_graphs()`
+           按 include **行数**判唯一性 ⇒ 被 ≥2 处包含的头（内核里**最常见**的
+           形状，如 `kernel.h` / `list.h`）整条被丢出 `under` ⇒ 三明治在
+           主战场上**恒失败**。
+           ⚠ F10j 曾**刻意不钉**这个数（当时的理由是「欠近似是保守方向、钉住
+           会让下一轮的正确改进变成假红」）。真语料上的对账把那个判断**推翻**：
+           欠近似不是「更安全」，而是把这一级的能力砍成 **0**。
+           对照半边（basename 撞车 ⇒ **必须**判不出来）由 F10h 持有 ——
+           两侧分开住，一条判据只问一件事。
+    """
+    probs = []
+    if not isinstance(obs, dict):
+        return ["F10 判据载体不是字典（scan_identity 的返回值坏了）"]
+
+    # ---- F10a 三口径边账 ----
+    e = (obs.get("dup_edges_default"), obs.get("dup_edges_pure"),
+         obs.get("dup_edges_legacy"), obs.get("dup_n_edges_json"))
+    if None in e or len(set(e)) != 1:
+        probs.append("F10a 三口径的边账必须全相等且等于载荷里的边数，读到 "
+                     "default=%r pure=%r legacy=%r 载荷=%r" % e)
+
+    # ---- F10b 活性 + 不越界 ----
+    cd, cp = (obs.get("dup_cycles_default") or []), (obs.get("dup_cycles_pure") or [])
+    if len(cd) <= len(cp):
+        probs.append("F10b 同名不同文件夹具上新口径报出的环必须**多于**纯定义落点"
+                     "（%d vs %d）—— 阶梯没把真环收回来" % (len(cd), len(cp)))
+    rl = _same_file_cycles(cd)
+    bad = [sorted(r) for r in rl if len(r) != 1]
+    if cd and bad:
+        probs.append("F10b 新口径报出的环里有**跨文件**的成员集合（%r）—— "
+                     "那不是「同文件优先」，是把调用点盲算给了某一份定义" % bad)
+    if len(set(frozenset(r) for r in rl)) != len(rl):
+        probs.append("F10b 新口径报出的环里有**落点相同**的两个环（%r）—— "
+                     "同一个文件里不该被拆成两个同名环" % rl)
+    # ---- F10b 的**覆盖**半边（R89 由变异体 M3 逼出来）----
+    # 上面三条只问**形状**（环变多 / 不跨文件 / 落点不重复）。形状能骗：
+    # 把 rung1 从「同文件里**恰一份**」松成「**盲算给第一份定义**」，
+    # 两个环会掉成一个 —— 而那一个仍然在同文件里 ⇒ 三条形状判据全绿。
+    # 缺的那条是**覆盖**：每个含同名调用点的文件，都必须由**它自己文件里
+    # 的那一份**把环收回来。期望值来自夹具（`CG_DUP_FIXTURES` 的文件名表）。
+    exp = obs.get("dup_fixture_rels")
+    if not isinstance(exp, list) or not exp:
+        probs.append("F10b 拿不到夹具文件表（dup_fixture_rels）—— "
+                     "覆盖半边会退化成空断言，读到 %r" % (exp,))
+    else:
+        covered = set(f for r in rl for f in r)
+        miss = sorted(set(exp) - covered)
+        if miss:
+            probs.append("F10b 有调用者文件没被收回来 %r —— 环只覆盖了 %r，"
+                         "而夹具里每个文件各有一份同名定义。缺这几个说明"
+                         "调用点被**算给了别处**（盲算给某一份是不猜的反面）"
+                         % (miss, sorted(covered)))
+    bd, bp, bl = (obs.get("dup_big_default"), obs.get("dup_big_pure"),
+                  obs.get("dup_big_legacy"))
+    if None in (bd, bp, bl) or bd > bl:
+        probs.append("F10b 新口径的最大环 %r **超过**名字级 %r —— 细化只能让环变小"
+                     "或不变，出现这个方向说明节点身份漏了「名字」这一层"
+                     % (bd, bl))
+
+    # ---- F10c 惰性 ----
+    for tag, k in (("最大环", "big"), ("节点数", "nodes"), ("边数", "edges")):
+        a, b = obs.get("inert_%s_default" % k), obs.get("inert_%s_pure" % k)
+        if a != b:
+            probs.append("F10c 没有同名可消歧的夹具上，新口径与纯定义落点的%s"
+                         "必须逐位相同，读到 %r / %r（阶梯无中生有）"
+                         % (tag, a, b))
+
+    # ---- F10d 只做重分类 ----
+    for tag, key in (("default", "dup_res_default"), ("pure", "dup_res_pure"),
+                     ("legacy", "dup_res_legacy")):
+        res = obs.get(key)
+        s = _res_sum(res)
+        if s is None:
+            probs.append("F10d %s 口径没有 resolution 块（或不是整数计数）—— "
+                         "「救回了多少」必须有分母，读到 %r" % (tag, res))
+        elif s != obs.get("dup_edges_default"):
+            probs.append("F10d %s 口径 resolution 各档之和 %d != edges_total %r"
+                         "（逐档计数与总数必须自洽）"
+                         % (tag, s, obs.get("dup_edges_default")))
+    rd, rp = obs.get("dup_res_default") or {}, obs.get("dup_res_pure") or {}
+    for k in ("unique", "external"):
+        if rd.get(k) != rp.get(k):
+            probs.append("F10d 三口径下 %r 必须逐位相同（阶梯只许在 "
+                         "same_file/include 与 ambiguous 之间重新分配），"
+                         "读到 %r / %r" % (k, rd.get(k), rp.get(k)))
+
+    # ---- F10e 语言门 ----
+    sc = obs.get("py_scope_default")
+    if not isinstance(sc, dict):
+        probs.append("F10e Python 语料上产物必须自报 local_scope，读到 %r" % (sc,))
+    else:
+        if sc.get("applied"):
+            probs.append("F10e Python 语料上阶梯**不许**启用（applied=%r）—— "
+                         "Python 的模块绑定能在运行时被改掉，「同名同文件」是近似"
+                         % (sc.get("applied"),))
+        if sc.get("rungs"):
+            probs.append("F10e Python 语料上 rungs 必须为空，读到 %r"
+                         % (sc.get("rungs"),))
+    for tag, k in (("最大环", "big"), ("节点数", "nodes"), ("边数", "edges")):
+        a, b = obs.get("py_%s_default" % k), obs.get("py_%s_pure" % k)
+        if a != b:
+            probs.append("F10e Python 语料上新口径与纯定义落点的%s必须逐位相同，"
+                         "读到 %r / %r（语言门没生效 ⇒ 近似冒充了结论）"
+                         % (tag, a, b))
+    # ---- F10f 第二级（翻译单元）**活性** ----
+    # 判据写成**恒等式**（include == edges_total）而不是手抄的数字：
+    # 数字会在夹具改动时静默变错，恒等式不会；而且它同时是「夹具没被掏空」
+    # 的对手方（谁把 m.c 里的 `#include` 删了，include 立刻归零 ⇒ 红）。
+    
+    ie, ird, irp = (obs.get("inc_edges_default"), obs.get("inc_res_default"),
+                    obs.get("inc_res_pure"))
+    if not isinstance(ie, int) or not isinstance(ird, dict) \
+            or not isinstance(irp, dict):
+        probs.append("F10f 拿不到 inc 夹具（翻译单元那一级）的读数 —— "
+                     "第二级会整片退化成空断言，读到 %r / %r"
+                     % (irp, ird))
+    else:
+        if ird.get("include") != ie:
+            probs.append("F10f 定义在被包含的头文件里时，默认口径必须把"
+                         "**全部** %r 条边落进 include，读到 %r"
+                         % (ie, ird.get("include")))
+        if ird.get("same_file"):
+            probs.append("F10f 定义不在调用者文件里 ⇒ same_file 必须为 0，"
+                         "读到 %r" % (ird.get("same_file"),))
+        if ird.get("ambiguous"):
+            probs.append("F10f 同翻译单元里**恰一份**候选可见 ⇒ 不该留"
+                         "歧义，读到 ambiguous=%r" % (ird.get("ambiguous"),))
+        if irp.get("include"):
+            probs.append("F10f 纯定义落点**不做**作用域推理 ⇒ include 必须"
+                         "为 0，读到 %r" % (irp.get("include"),))
+        if irp.get("ambiguous") != ie:
+            probs.append("F10f 纯定义落点下这些边必须全部留在 ambiguous，"
+                         "读到 %r（对照失效 ⇒ F10f 的前半是空断言）"
+                         % (irp.get("ambiguous"),))
+    
+    # ---- F10g 第二级的**作用域边界**：调用点落在头文件里 ⇒ rung 2 不适用 ----
+    # TU 由「谁包含这个头」决定，头文件自己的 include 闭包只是那个 TU 的
+    # **一部分** ⇒ 在头文件里下「唯一可见」的结论是**错报**的方向。
+    he, hrd, hsc = (obs.get("hdr_edges_default"), obs.get("hdr_res_default"),
+                    obs.get("hdr_scope_default"))
+    if not isinstance(he, int) or not isinstance(hrd, dict) \
+            or not isinstance(hsc, dict):
+        probs.append("F10g 拿不到 hdr 夹具（头文件调用点）的读数 —— "
+                     "作用域边界会退化成空断言，读到 %r / %r" % (hsc, hrd))
+    else:
+        if not hsc.get("applied"):
+            probs.append("F10g hdr 夹具上阶梯竟然没启用（applied=%r）—— "
+                         "那样这一条测的不是边界，是「什么都没发生」"
+                         % (hsc.get("applied"),))
+        if hrd.get("include"):
+            probs.append("F10g 调用点在**头文件**里 ⇒ rung 2 不适用 ⇒ include"
+                         "必须为 0，读到 %r —— 头文件的 TU 由包含者决定，"
+                         "在这里下结论是错报的方向"
+                         % (hrd.get("include"),))
+        if hrd.get("ambiguous") != he:
+            probs.append("F10g 判不出的必须**全部**留在 ambiguous %r，读到 %r"
+                         % (he, hrd.get("ambiguous")))
+        hc = hsc.get("header_callers")
+        if not isinstance(hc, int) or hc <= 0:
+            probs.append("F10g 产物必须**自报** header_callers > 0（「我没判」"
+                         "不能装成「判不出来」），读到 %r" % (hc,))
+
+    # ---- F10h 三明治：**过近似不许冒充真 TU** ----
+    # 判据的对手方是**两份夹具的对照**，不是任何手抄数字：
+    #   inc  （被包含的头 basename 唯一）⇒ include == edges_total（判得出）
+    #   incx （同名 basename 落在别处）  ⇒ include == 0 且 ambiguous == edges
+    # 把三明治松成 `if vu or vo:`（只看过近似）会让 incx 误判成
+    # include == edges_total ⇒ 这一条当场红。只留 inc 一份夹具的话，
+    # 那次注入会让**两道门全绿** —— 这就是它必须存在的原因。
+    xe, xrd, xrp = (obs.get("incx_edges_default"),
+                    obs.get("incx_res_default"),
+                    obs.get("incx_res_pure"))
+    ia = obs.get("inc_res_default") or {}
+    if not isinstance(xe, int) or not isinstance(xrd, dict) \
+            or not isinstance(xrp, dict):
+        probs.append("F10h 拿不到 incx 夹具（三明治）的读数 —— "
+                     "「假包含不许抬成判得出」这一半会退化成空断言，"
+                     "读到 %r / %r" % (xrp, xrd))
+    else:
+        if xrd.get("include"):
+            probs.append("F10h 同名 basename 的**假**包含被判成了可见 ⇒ "
+                         "include=%r —— 过近似（over）冒充了真 TU，"
+                         "这是**错报**的方向" % (xrd.get("include"),))
+        if xrd.get("same_file"):
+            probs.append("F10h incx 夹具里定义不在调用者文件中 ⇒ "
+                         "same_file 必须为 0，读到 %r"
+                         % (xrd.get("same_file"),))
+        if xrd.get("ambiguous") != xe:
+            probs.append("F10h 三明治判不出时，全部 %r 条边必须留在 "
+                         "ambiguous，读到 %r"
+                         % (xe, xrd.get("ambiguous")))
+        if xrp.get("include") or xrp.get("ambiguous") != xe:
+            probs.append("F10h 纯定义落点不做作用域推理 ⇒ incx 上 "
+                         "include 必须 0 且 ambiguous 必须 %r，读到 %r"
+                         % (xe, xrp))
+        if not isinstance(ia.get("include"), int) or ia.get("include") == 0:
+            probs.append("F10h **对照半边**失效：inc 夹具上 include=%r"
+                         "（本应为正）—— 那样「incx 上 include 为 0」"
+                         "就只是「它从来不判」，前两条会被刷绿"
+                         % (ia.get("include"),))
+        xsc = obs.get("incx_scope_default")
+        if not isinstance(xsc, dict):
+            probs.append("F10h incx 夹具上产物必须自报 local_scope，"
+                         "读到 %r" % (xsc,))
+        else:
+            if not xsc.get("applied"):
+                probs.append("F10h incx 夹具上阶梯没启用（%r）—— "
+                             "这一条测的会是「什么都没发生」"
+                             % (xsc.get("applied"),))
+            capped = xsc.get("closure_capped")
+            if not isinstance(capped, int) or capped != 0:
+                probs.append("F10h incx 上 closure_capped=%r（必须为 0）"
+                             "—— **截断**与**三明治失败**产出的读数是"
+                             "同一份，不给这条配对，一个「闭包永远"
+                             "超限」的坏实现会把 h1/h2 一起满足"
+                             % (capped,))
+
+    # ---- F10j 第二级的**代价**：缓存必须真的缓存（R89j）----
+    # 「每个调用者文件只算两次闭包」—— 退化时集合一样、只有次数不一样
+    # ⇒ 这条判据是**唯一**能看见它的东西。
+    me = obs.get("multi_edges_default")
+    mrd = obs.get("multi_res_default")
+    msc = obs.get("multi_scope_default")
+    if not isinstance(me, int) or not isinstance(mrd, dict) \
+            or not isinstance(msc, dict):
+        probs.append("F10j 拿不到 multi 夹具（>8 个调用者文件）的读数 —— "
+                     "缓存退化会退化成空断言，读到 %r / %r" % (msc, mrd))
+    else:
+        nf = msc.get("rung2_files")
+        nc = msc.get("closure_computed")
+        if not isinstance(nf, int) or nf != len(CG_MULTI_ROOTS):
+            probs.append("F10j multi 夹具上走进第二级的调用者文件数必须是 %d，"
+                         "读到 %r（读不到 ⇒ 代价不变量无从谈起）"
+                         % (len(CG_MULTI_ROOTS), nf))
+        elif not isinstance(nc, int) or nc != 2 * nf:
+            probs.append("F10j **闭包缓存退化成重算**：closure_computed=%r，"
+                         "而「每个文件只算两次（under+over）」要求 %d —— "
+                         "多出来的部分是同一份闭包被反复重算（R89j 之前内核整树"
+                         "这一步 61.4 分钟没跑完，而所有读数一个都没变）"
+                         % (nc, 2 * nf))
+        # 对照半边：夹具读数自洽（五档之和 == 边数）。**不**断言 include 是多少
+        # —— 欠近似把共享头排除在外是**已知且保守**的行为，钉住它等于禁止下一轮
+        # 把这个口径改强（R83 ④：陈旧的红与真坏长得一样）。
+        tot = sum(v for v in mrd.values() if isinstance(v, int))
+        if tot != me:
+            probs.append("F10j multi 夹具上五档之和 %r != 边数 %r —— 读到的产物"
+                         "本身不自洽，代价不变量也没有意义" % (tot, me))
+        if not (msc.get("closure_visits") or 0):
+            probs.append("F10j closure_visits 为 0 —— 代价计数器是死的"
+                         "（整条 F10j 会变成空断言）")
+
+    # ---- F10k `under` 图的**唯一性口径**（R89k，由账本的对账装置逼出来）----
+    # 判据来由见 §judge_local 的 docstring：真语料上「量具 2034 / 引擎 0」。
+    # 这条夹具的 `k.h` 被 12 个文件包含却**只有一个解析目标** ⇒ 三明治必须成立。
+    # ⚠ 守卫 `isinstance(...)` 是**有意的**：读不到夹具时由 F10j 的
+    # 「拿不到 multi 夹具」那条报红 —— 一条判据只负责一件事（否则同一个
+    # 坏样本会让两条判据一起红，`red_loc` 判定「红在别处 = 失败」）。
+    if isinstance(msc, dict):
+        if msc.get("under_basis") != UNDER_BASIS_WANT:
+            probs.append(
+                "F10k `under` 的唯一性口径没有被登记、或登记成了别的东西："
+                "读到 %r（要求 %r）。不登记口径就只能靠读代码猜 —— 而这一轮"
+                "的错误恰恰是**口径**错（按 include 行数而不是按解析目标数）"
+                % (msc.get("under_basis"), UNDER_BASIS_WANT))
+    if isinstance(mrd, dict) and isinstance(me, int):
+        if mrd.get("include") != me or mrd.get("ambiguous"):
+            probs.append(
+                "F10k 共享头在 12 个调用者文件之间的第二级必须**全部**判得出来："
+                "include=%r（要求 %r = 边数）、ambiguous=%r（要求 0）。"
+                "按 include 行数判唯一性会把 k.h 整条丢出 under 图，读数正是"
+                " include=0 / ambiguous=48"
+                % (mrd.get("include"), me, mrd.get("ambiguous")))
+
+    # ---- F10i **两级不许互相冒充**：救回来的是**哪一级** ----
+    # 这一条不是设计出来的，是变异体 M3（把 rung1 关成 `if False:`）
+    # 逼出来的**门洞**：dup 夹具里没有 include（`under = {}`、不是 None）
+    # ⇒ 关掉 rung1 之后流程落到 rung2，闭包 `{调用者自己}` 里恰好一份候选
+    # ⇒ 判成 `include`。节点键仍是 `K_DEF + rel + name` ⇒ **图逐位没变**
+    # （edges / cycles / biggest / 覆盖全不动），只有**标签**从 `same_file`
+    # 变成 `include` —— 而当时没有任何判据看标签，门 rc=0 全绿。
+    # 标签是**原因**：「同一个文件」与「同一个翻译单元（包含进来的头）」
+    # 是两种不同的断言，把前者记成后者就是在产物里写下一个错误的原因，
+    # 而本轮所有下游结论（残余分类、下一轮的同 TU 消歧）都按这两档分桶。
+    dd, pp = obs.get("dup_res_default"), obs.get("dup_res_pure")
+    ix = obs.get("inc_res_default") or {}
+    if not isinstance(dd, dict) or not isinstance(pp, dict):
+        probs.append("F10i 拿不到 dup 夹具的两口径 resolution —— "
+                     "「哪一级救回的」会退化成空断言，读到 %r / %r"
+                     % (dd, pp))
+    else:
+        if dd.get("include"):
+            probs.append("F10i dup 语料里**没有 include**（`under` 是空字典、"
+                         "不是 None），却被判成 include=%r —— 两级在互相"
+                         "冒充：rung2 把「同一个文件」记成了「同一个"
+                         "翻译单元」" % (dd.get("include"),))
+        if dd.get("same_file") != pp.get("ambiguous"):
+            probs.append("F10i dup 上救回的全部必须来自 rung1：same_file=%r"
+                         "应等于纯定义落点的 ambiguous=%r（差额说明有边被"
+                         "记到了另一级）"
+                         % (dd.get("same_file"), pp.get("ambiguous")))
+        if not pp.get("ambiguous"):
+            probs.append("F10i **对照半边**失效：纯定义落点上没有歧义可救"
+                         "（%r）⇒ 上面两条会被 0 == 0 刷绿"
+                         % (pp.get("ambiguous"),))
+        if not ix.get("include"):
+            probs.append("F10i **对照半边**失效：inc 夹具上 include=%r"
+                         "（本应为正）⇒ 「dup 上 include 为 0」就只是"
+                         "「它从来不判这一级」" % (ix.get("include"),))
+        if ix.get("same_file"):
+            probs.append("F10i inc 夹具上定义不在调用者文件里 ⇒ same_file"
+                         "必须为 0（rung1 不许冒充 rung2），读到 %r"
+                         % (ix.get("same_file"),))
     return probs
 
 
@@ -793,9 +1361,10 @@ def judge_identity(obs):
     if not isinstance(obs, dict):
         return ["F9 判据载体不是字典（scan_identity 的返回值坏了）"]
 
-    if obs.get("id_default") != "definition-site":
-        probs.append("F9a 默认节点身份必须是字面量 'definition-site'，读到 %r"
-                     % (obs.get("id_default"),))
+    if obs.get("id_default") != IDENTITY_LOCAL_LIT:
+        probs.append("F9a 默认节点身份必须是字面量 %r（R89 起 —— 口径被静默换掉"
+                     "是这类缺陷里最难发现的一种），读到 %r"
+                     % (IDENTITY_LOCAL_LIT, obs.get("id_default")))
     if obs.get("id_legacy") != "callee-name":
         probs.append("F9b `--callgraph-identity callee-name` 必须仍被支持并如实"
                      "回显，读到 %r" % (obs.get("id_legacy"),))
@@ -1126,14 +1695,29 @@ def _write_help(text):
         return True
 
 
+def _cycle_members_all(pay):
+    """产物 → 每个环的成员表（F10b 要比「环多不多、成员同不同文件」）。"""
+    cs = ((pay or {}).get("call_relations") or {}).get("cycles") or []
+    return [list(c.get("members") or []) for c in cs]
+
+
 def scan_identity(root, python_exe):
     """F9 的**载体**：跑公开 CLI，把「节点身份口径」这一族量出来。
 
-    两个夹具目录、五趟 CLI（各有理由，缺一趟就有半边没被量到）：
-      dup  × 默认           ⇒ 默认口径是什么（F9a）
+    七个夹具目录、十六趟 CLI（各有理由，缺一趟就有半边没被量到）：
+      dup  × 默认           ⇒ 默认口径是什么（F9a）+ 阶梯活性（F10b/F10d）
+      dup  × definition-site ⇒ **纯**定义落点基线（F10a/F10b/F10d 的对照）
       dup  × callee-name    ⇒ 老口径还在不在（F9b）
       dup  × 未知值          ⇒ 会不会静默降级（F9b）
-      cyc  × 默认 / 老口径   ⇒ 惰性对照（F9e）：没有同名可拆时不许动
+      cyc  × 默认 / 纯 / 老  ⇒ 惰性对照（F9e/F10c）：没有同名可拆时不许动
+      py   × 默认 / 纯       ⇒ 语言门（F10e）：非 C 语料上阶梯必须整体失效
+      inc  × 默认 / 纯       ⇒ 第二级活性（F10f）：基名唯一 ⇒ 判得出
+      hdr  × 默认 / 纯       ⇒ TU 边界（F10g）：调用点在头文件里 ⇒ 不判
+      incx × 默认 / 纯       ⇒ 三明治（F10h）：基名撞车 ⇒ 也不许判
+      multi× 默认            ⇒ **代价不变量**（F10j）：>8 个调用者文件才测得出
+                                缓存退化（每个文件只该算两次闭包）；
+                                同一趟也是 `under` **唯一性口径**（F10k）的载体：
+                                12 个文件共享**一个** `k.h` ⇒ 必须全判得出来
 
     返回 ``(probs, n_runs)``；``probs is None`` = **缺输入**
     （不许把「跑不起来」当成「没问题」）。
@@ -1142,8 +1726,29 @@ def scan_identity(root, python_exe):
     try:
         dup = os.path.join(base, "dup")
         cyc = os.path.join(base, "cyc")
+        pyd = os.path.join(base, "py")
+        incd = os.path.join(base, "inc")
+        hdrd = os.path.join(base, "hdr")
+        incxd = os.path.join(base, "incx")
+        multid = os.path.join(base, "multi")
         os.makedirs(dup)
         os.makedirs(cyc)
+        os.makedirs(pyd)
+
+        def put(base_dir, fixtures):
+            """按 rel 路径落盘（rel 里可以带子目录 —— inc/hdr 夹具需要）。"""
+            for rel, text in fixtures:
+                p = os.path.join(base_dir, rel.replace("/", os.sep))
+                d = os.path.dirname(p)
+                if d and not os.path.isdir(d):
+                    os.makedirs(d)
+                with io.open(p, "w", encoding="utf-8", newline="") as fh:
+                    fh.write(text)
+
+        put(incd, CG_INC_FIXTURES)
+        put(hdrd, CG_HDR_FIXTURES)
+        put(incxd, CG_INCX_FIXTURES)
+        put(multid, CG_MULTI_FIXTURES)
         for rel, text in CG_DUP_FIXTURES:
             with io.open(os.path.join(dup, rel), "w", encoding="utf-8",
                          newline="") as fh:
@@ -1152,9 +1757,13 @@ def scan_identity(root, python_exe):
         with io.open(os.path.join(cyc, rel0), "w", encoding="utf-8",
                      newline="") as fh:
             fh.write(txt0)
+        for rel, text in CG_PY_FIXTURES:
+            with io.open(os.path.join(pyd, rel), "w", encoding="utf-8",
+                         newline="") as fh:
+                fh.write(text)
 
-        def run(work, extra):
-            argv = [python_exe, "matlabc.py", work, "--lang", "c",
+        def run(work, extra, lang="c"):
+            argv = [python_exe, "matlabc.py", work, "--lang", lang,
                     "--checks", "none"] + list(extra)
             p = subprocess.run(argv, cwd=root, stdin=subprocess.DEVNULL,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -1170,20 +1779,43 @@ def scan_identity(root, python_exe):
                 except ValueError:
                     return None
 
-        def one(work, tag, extra):
+        def one(work, tag, extra, lang="c"):
             j = os.path.join(base, "%s.j.json" % tag)
             c = os.path.join(base, "%s.c.json" % tag)
-            if run(work, ["--json", j, "--callgraph", c] + list(extra)) != 0:
+            if run(work, ["--json", j, "--callgraph", c] + list(extra),
+                   lang=lang) != 0:
                 return None, None
             return load(j), load(c)
 
         _jd, c_def = one(dup, "dup_def", [])
+        _jp, c_pure = one(dup, "dup_pure",
+                          ["--callgraph-identity", "definition-site"])
         _jl, c_leg = one(dup, "dup_leg", ["--callgraph-identity", "callee-name"])
         _ji, c_inert_def = one(cyc, "inert_def", [])
-        _jn, c_inert_leg = one(cyc, "inert_leg",
-                               ["--callgraph-identity", "callee-name"])
+        _jn, c_inert_pure = one(cyc, "inert_pure",
+                                ["--callgraph-identity", "definition-site"])
+        _jn2, c_inert_leg = one(cyc, "inert_leg",
+                                ["--callgraph-identity", "callee-name"])
+        _jy, c_py_def = one(pyd, "py_def", [], lang="py")
+        _jy2, c_py_pure = one(pyd, "py_pure",
+                              ["--callgraph-identity", "definition-site"],
+                              lang="py")
+        _jinc, c_inc_def = one(incd, "inc_def", [])
+        _jinc2, c_inc_pure = one(
+            incd, "inc_pure", ["--callgraph-identity", "definition-site"])
+        _jhdr, c_hdr_def = one(hdrd, "hdr_def", [])
+        _jhdr2, c_hdr_pure = one(
+            hdrd, "hdr_pure", ["--callgraph-identity", "definition-site"])
+        _jincx, c_incx_def = one(incxd, "incx_def", [])
+        _jincx2, c_incx_pure = one(
+            incxd, "incx_pure",
+            ["--callgraph-identity", "definition-site"])
+        _jmul, c_multi_def = one(multid, "multi_def", [])
         if not all(isinstance(x, dict) for x in
-                   (c_def, c_leg, c_inert_def, c_inert_leg)):
+                   (c_def, c_pure, c_leg, c_inert_def, c_inert_pure,
+                    c_inert_leg, c_py_def, c_py_pure, c_inc_def, c_inc_pure,
+                    c_hdr_def, c_hdr_pure, c_incx_def, c_incx_pure,
+                    c_multi_def)):
             return None, 0
         bad = os.path.join(base, "bad_id.json")
         bad_rc = run(dup, ["--callgraph", bad, "--callgraph-identity", "nope"])
@@ -1206,6 +1838,51 @@ def scan_identity(root, python_exe):
             "id_default": rel_of(c_def).get("identity"),
             "id_legacy": rel_of(c_leg).get("identity"),
             "cg_version": rel_of(c_def).get("version"),
+            # ---- F10（R89）----
+            "dup_edges_pure": rel_of(c_pure).get("edges_total"),
+            "dup_res_default": rel_of(c_def).get("resolution"),
+            "dup_res_pure": rel_of(c_pure).get("resolution"),
+            "dup_res_legacy": rel_of(c_leg).get("resolution"),
+            "dup_cycles_default": _cycle_members_all(c_def),
+            # F10b 的**覆盖**半边：期望值来自**夹具自己**（文件名表），
+            # 不是手抄的数字 —— 「每个含同名调用点的文件都要被收回来」。
+            "dup_fixture_rels": [p for p, _t in CG_DUP_FIXTURES],
+            "dup_cycles_pure": _cycle_members_all(c_pure),
+            "inert_big_pure": big(c_inert_pure),
+            "inert_nodes_pure": rel_of(c_inert_pure).get("nodes_total"),
+            "inert_edges_pure": rel_of(c_inert_pure).get("edges_total"),
+            "inert_edges_default": rel_of(c_inert_def).get("edges_total"),
+            "py_scope_default": ((c_py_def or {}).get("call_relations") or {}
+                                 ).get("local_scope"),
+            "py_scope_pure": ((c_py_pure or {}).get("call_relations") or {}
+                              ).get("local_scope"),
+            "py_big_default": big(c_py_def),
+            "py_big_pure": big(c_py_pure),
+            "py_nodes_default": rel_of(c_py_def).get("nodes_total"),
+            "py_nodes_pure": rel_of(c_py_pure).get("nodes_total"),
+            "py_edges_default": rel_of(c_py_def).get("edges_total"),
+            "py_edges_pure": rel_of(c_py_pure).get("edges_total"),
+            # ---- F10f/F10g（R89）：两级阶梯的**第二级** ----
+            "inc_edges_default": rel_of(c_inc_def).get("edges_total"),
+            "inc_res_default": rel_of(c_inc_def).get("resolution"),
+            "inc_res_pure": rel_of(c_inc_pure).get("resolution"),
+            "inc_scope_default": (rel_of(c_inc_def)).get("local_scope"),
+            "hdr_edges_default": rel_of(c_hdr_def).get("edges_total"),
+            "hdr_res_default": rel_of(c_hdr_def).get("resolution"),
+            "hdr_res_pure": rel_of(c_hdr_pure).get("resolution"),
+            "hdr_scope_default": (rel_of(c_hdr_def)).get("local_scope"),
+            # ---- F10h（R89）：三明治 —— basename 撞车的假包含 ----
+            "incx_edges_default": rel_of(c_incx_def).get("edges_total"),
+            "incx_res_default": rel_of(c_incx_def).get("resolution"),
+            "incx_res_pure": rel_of(c_incx_pure).get("resolution"),
+            "incx_scope_default": (rel_of(c_incx_def)).get("local_scope"),
+            # ---- F10j（R89j）：第二级的代价（缓存不许退化成重算）----
+            "multi_edges_default": rel_of(c_multi_def).get("edges_total"),
+            "multi_res_default": rel_of(c_multi_def).get("resolution"),
+            "multi_scope_default": (rel_of(c_multi_def)).get("local_scope"),
+            "dup_big_pure": big(c_pure),
+            "dup_nodes_pure": rel_of(c_pure).get("nodes_total"),
+            "dup_n_edges_json_pure": len((_jp or {}).get("edges") or []),
             "bad_id_rc": bad_rc,
             "bad_id_exists": os.path.exists(bad),
             "dup_edges_default": rel_of(c_def).get("edges_total"),
@@ -1223,7 +1900,7 @@ def scan_identity(root, python_exe):
             "default_focus_candidates": focus_cands(c_def),
             "legacy_focus_candidates": focus_cands(c_leg),
         }
-        return judge_identity(obs), 5
+        return judge_identity(obs) + judge_local(obs), 15
     finally:
         shutil.rmtree(base, ignore_errors=True)
 
@@ -1297,9 +1974,13 @@ def main(argv):
         print("check_c_frontend_shapes: %d 项违规" % len(probs))
         return 1
     print("check_c_frontend_shapes: OK（%d 个形态夹具 + %d 个调用关系夹具 + "
-          "%d 个重复定义夹具 + %d 个属性夹具 / 公开 CLI 认出 %d 个函数 / %s 全绿 + "
+          "%d 个重复定义夹具 + %d 个 Python 夹具 + %d 个阶梯夹具 + "
+          "%d 个属性夹具 / 公开 CLI 认出 %d 个函数 / %s 全绿 + "
           "夹具完备性 + 棘轮）"
           % (len(FIXTURES), len(CG_FIXTURES), len(CG_DUP_FIXTURES),
+             len(CG_PY_FIXTURES),
+             (len(CG_INC_FIXTURES) + len(CG_HDR_FIXTURES)
+              + len(CG_INCX_FIXTURES) + len(CG_MULTI_FIXTURES)),
              len(ATTR_FIXTURES), n_funcs, ROW_SIGNATURE))
     return 0
 
@@ -1543,12 +2224,17 @@ def _selftest():
         数字取的是**真实夹具的手推值**（见 `CG_DUP_FIXTURES` 的注释）：
         名级 4 边 ⇒ SCC 3；落点 5 节点 ⇒ 0 环；惰性对照 cyc 两口径都是 2 环 / 3 节点。
         """
-        return {"id_default": "definition-site", "id_legacy": "callee-name",
-                "cg_version": 2, "bad_id_rc": 1, "bad_id_exists": False,
-                "dup_edges_default": 4, "dup_edges_legacy": 4,
-                "dup_n_edges_json": 4,
-                "dup_big_default": 0, "dup_big_legacy": 3,
-                "dup_nodes_default": 5, "dup_nodes_legacy": 3,
+        return {"id_default": "definition-site-local",
+                "id_legacy": "callee-name",
+                "cg_version": 3, "bad_id_rc": 1, "bad_id_exists": False,
+                # R89：数字换成**真实夹具的实测值**（旧版写 4 条边，而夹具实际
+                # 是 6 —— 被调侧两份定义 ⇒ 每个调用点扇出 2 条；`_obs_id` 只被
+                # F9c 用来比三个数彼此相等，所以 4 一直「绿」，但它是错的读数。
+                # 自证夹具同样不许撒谎。）
+                "dup_edges_default": 6, "dup_edges_legacy": 6,
+                "dup_n_edges_json": 6,
+                "dup_big_default": 2, "dup_big_legacy": 3,
+                "dup_nodes_default": 4, "dup_nodes_legacy": 3,
                 "inert_big_default": 2, "inert_big_legacy": 2,
                 "inert_nodes_default": 3, "inert_nodes_legacy": 3,
                 "inert_cycle_members": ["hub @ cg_cyc.c", "leaf @ cg_cyc.c"],
@@ -1582,6 +2268,8 @@ def _selftest():
              {"legacy_focus_candidates": None}),
             ("F9c 拆节点吃掉了边", {"dup_edges_default": 3}),
             ("F9c 载荷那边少一条（两本账对不上）", {"dup_n_edges_json": 5}),
+            ("F9c 三口径里有一支吃了边（R89 扩到三口径）",
+             {"dup_edges_legacy": 5}),
             ("F9d 同名不同文件处环没塌", {"dup_big_default": 3}),
             ("F9d 同名不同文件没被拆开（节点数没涨）",
              {"dup_nodes_default": 3}),
@@ -1597,6 +2285,282 @@ def _selftest():
         if letter not in witnessed_sub:
             bad[0] += 1
             print("  [selftest] F9 的子判据 %s 没有自己的坏样本（子覆盖静默缩水）"
+                  % letter)
+
+    # ---- F10：同文件 / 包含闭包阶梯（R89；同样吃纯 dict）----
+    def _obs_loc():
+        """好观测：F10 五条子判据必须**全部**在这份观测上绿。
+
+        数字取**真实夹具的手推值**（`CG_DUP_FIXTURES`：6 条边 / 新口径 2 个
+        同文件 2 环 / 纯定义落点 0 环 5 节点 / 名字级 1 个 3 环；
+        `CG_PY_FIXTURES`：4 条边、0 环、3 节点）。
+        """
+        return {
+            "dup_edges_default": 6, "dup_edges_pure": 6,
+            "dup_edges_legacy": 6, "dup_n_edges_json": 6,
+            "dup_cycles_default": [["a @ cg_dup_a.c", "h @ cg_dup_a.c"],
+                                   ["b @ cg_dup_b.c", "h @ cg_dup_b.c"]],
+            "dup_cycles_pure": [],
+            "dup_fixture_rels": ["cg_dup_a.c", "cg_dup_b.c"],
+            "dup_big_default": 2, "dup_big_pure": 0, "dup_big_legacy": 3,
+            "dup_nodes_default": 4, "dup_nodes_pure": 5,
+            "dup_res_default": {"unique": 2, "same_file": 4, "include": 0,
+                                "ambiguous": 0, "external": 0},
+            "dup_res_pure": {"unique": 2, "same_file": 0, "include": 0,
+                             "ambiguous": 4, "external": 0},
+            "dup_res_legacy": {"unique": 2, "same_file": 0, "include": 0,
+                               "ambiguous": 4, "external": 0},
+            "inert_big_default": 2, "inert_big_pure": 2,
+            "inert_nodes_default": 3, "inert_nodes_pure": 3,
+            "inert_edges_default": 6, "inert_edges_pure": 6,
+            "py_scope_default": {"applied": False, "lang": "py", "rungs": []},
+            "inc_edges_default": 2,
+            "inc_res_default": {"unique": 0, "same_file": 0, "include": 2,
+                                "ambiguous": 0, "external": 0},
+            "inc_res_pure": {"unique": 0, "same_file": 0, "include": 0,
+                             "ambiguous": 2, "external": 0},
+            "inc_scope_default": {"applied": True, "lang": "c",
+                                  "rungs": ["same-file", "include-closure"]},
+            "hdr_edges_default": 2,
+            "hdr_res_default": {"unique": 0, "same_file": 0, "include": 0,
+                                "ambiguous": 2, "external": 0},
+            "hdr_res_pure": {"unique": 0, "same_file": 0, "include": 0,
+                             "ambiguous": 2, "external": 0},
+            "hdr_scope_default": {"applied": True, "lang": "c",
+                                  "rungs": ["same-file", "include-closure"],
+                                  "header_callers": 2},
+            "incx_edges_default": 2,
+            "incx_res_default": {"unique": 0, "same_file": 0,
+                                 "include": 0, "ambiguous": 2,
+                                 "external": 0},
+            "incx_res_pure": {"unique": 0, "same_file": 0,
+                              "include": 0, "ambiguous": 2,
+                              "external": 0},
+            "incx_scope_default": {"applied": True, "lang": "c",
+                                   "rungs": ["same-file",
+                                             "include-closure"],
+                                   "closure_capped": 0,
+                                   "header_callers": 0},
+            # ---- F10j/F10k：代价不变量 + `under` 唯一性口径（好样本 = **实测**
+            #      读数：12 个调用者文件各算 2 次闭包；共享头 k.h 只有**一个**
+            #      解析目标 ⇒ 三明治成立 ⇒ 48 条歧义边全部落进 include）----
+            "multi_edges_default": 48,
+            "multi_res_default": {"unique": 0, "same_file": 0, "include": 48,
+                                  "ambiguous": 0, "external": 0},
+            "multi_scope_default": {"applied": True, "lang": "c",
+                                    "rungs": ["same-file", "include-closure"],
+                                    "under_basis": "unique-basename-target",
+                                    "rung2_files": 12, "closure_computed": 24,
+                                    "closure_visits": 72,
+                                    "closure_capped": 0, "header_callers": 0},
+            "py_big_default": 0, "py_big_pure": 0,
+            "py_nodes_default": 3, "py_nodes_pure": 3,
+            "py_edges_default": 4, "py_edges_pure": 4,
+        }
+
+    def red_loc(tag, obs, want):
+        probs = judge_local(obs)
+        hit = [p for p in probs if p.startswith(want)]
+        others = [p for p in probs
+                  if p[:3] in CRITERIA_IDS and not p.startswith(want)]
+        for p in hit:
+            witnessed_sub.add(p[:4])
+        if not hit:
+            bad[0] += 1
+            print("  [selftest] %s 未被 %s 抓到（实得 %r）" % (tag, want, probs))
+        elif others:
+            bad[0] += 1
+            print("  [selftest] %s 红在了别的判据上：%r" % (tag, others))
+        else:
+            good[0] += 1
+            witnessed.add(want)
+
+    green("好样本：F10 观测五条子判据全绿", judge_local(_obs_loc()))
+    for tag, patch in (
+            ("F10a 新口径吃了边（边账不等）", {"dup_edges_default": 5}),
+            ("F10a 载荷那边与三口径对不上", {"dup_n_edges_json": 7}),
+            ("F10b 阶梯没把真环收回来", {"dup_cycles_default": []}),
+            ("F10b 环里出现跨文件成员（盲算给某一份定义）",
+             {"dup_cycles_default": [["a @ cg_dup_a.c", "h @ cg_dup_b.c"]]}),
+            ("F10b 同一个文件被拆成两个同名环",
+             {"dup_cycles_default": [["a @ cg_dup_a.c", "h @ cg_dup_a.c"],
+                                     ["a @ cg_dup_a.c", "h @ cg_dup_a.c"]]}),
+            ("F10b 新口径造出了比名字级更大的环", {"dup_big_default": 4}),
+            # ⚠ 这一条是**覆盖**半边唯一的证人：环仍然同文件、不重复、也比
+            # 名字级小 —— 三条形状判据全绿，只有「有个文件没被收回来」能抓它。
+            ("F10b 有调用者文件的环没被收回来（盲算给了别处）",
+             {"dup_cycles_default": [["a @ cg_dup_a.c", "h @ cg_dup_a.c"]]}),
+            ("F10b 拿不到夹具文件表（覆盖半边会变空断言）",
+             {"dup_fixture_rels": None}),
+            ("F10c 无同名可消歧处阶梯无中生有", {"inert_big_default": 9}),
+            ("F10c 无同名可消歧处节点数变了", {"inert_nodes_default": 4}),
+            ("F10c 无同名可消歧处边数变了", {"inert_edges_default": 5}),
+            ("F10d resolution 各档之和与边数不符",
+             {"dup_res_default": {"unique": 2, "same_file": 3, "include": 0,
+                                  "ambiguous": 0, "external": 0}}),
+            ("F10d 阶梯动了不该动的档（unique 变了）",
+             {"dup_res_default": {"unique": 3, "same_file": 3, "include": 0,
+                                  "ambiguous": 0, "external": 0}}),
+            ("F10d resolution 块整个没了", {"dup_res_pure": None}),
+            ("F10e 非 C 语料上阶梯竟然启用了",
+             {"py_scope_default": {"applied": True, "lang": "py",
+                                   "rungs": ["same-file"]}}),
+            ("F10e 非 C 语料上台阶非空（语言门被绕过）",
+             {"py_scope_default": {"applied": False, "lang": "py",
+                                   "rungs": ["include-closure"]}}),
+            ("F10e 非 C 语料上读数真的变了", {"py_big_default": 2}),
+            ("F10e 产物没有自报 local_scope", {"py_scope_default": None}),
+            # ---- F10f：第二级（翻译单元）活性 ----
+            ("F10f 第二级没生效（定义在被包含的头里却判不出）",
+             {"inc_res_default": {"unique": 0, "same_file": 0, "include": 0,
+                                  "ambiguous": 2, "external": 0}}),
+            ("F10f 把定义算成了「同文件」",
+             {"inc_res_default": {"unique": 0, "same_file": 2, "include": 0,
+                                  "ambiguous": 0, "external": 0}}),
+            ("F10f 纯定义落点上也动了作用域（对照失效）",
+             {"inc_res_pure": {"unique": 0, "same_file": 0, "include": 2,
+                               "ambiguous": 0, "external": 0}}),
+            ("F10f 拿不到 inc 夹具读数（第二级变空断言）",
+             {"inc_res_default": None}),
+            # ---- F10g：第二级的作用域边界 ----
+            ("F10g 头文件里的调用点也走了第二级（错报方向）",
+             {"hdr_res_default": {"unique": 0, "same_file": 0, "include": 2,
+                                  "ambiguous": 0, "external": 0}}),
+            ("F10g 判不出的没留在 ambiguous",
+             {"hdr_res_default": {"unique": 0, "same_file": 0, "include": 0,
+                                  "ambiguous": 0, "external": 0}}),
+            ("F10g 产物没自报 header_callers（「我没判」装成「判不出来」）",
+             {"hdr_scope_default": {"applied": True, "lang": "c",
+                                    "rungs": ["same-file"],
+                                    "header_callers": 0}}),
+            ("F10g hdr 夹具上阶梯根本没启用（边界判据变空断言）",
+             {"hdr_scope_default": {"applied": False, "lang": "c",
+                                    "rungs": [], "header_callers": 2}}),
+            # ---- F10h：三明治（过近似不许冒充真 TU）----
+            ("F10h 假包含被当成了可见（过近似冒充真 TU）",
+             {"incx_res_default": {"unique": 0, "same_file": 0,
+                                   "include": 2, "ambiguous": 0,
+                                   "external": 0}}),
+            ("F10h 判不出的没全留在 ambiguous",
+             {"incx_res_default": {"unique": 0, "same_file": 0,
+                                   "include": 0, "ambiguous": 0,
+                                   "external": 2}}),
+            ("F10h incx 上定义被算成了「同文件」",
+             {"incx_res_default": {"unique": 0, "same_file": 2,
+                                   "include": 0, "ambiguous": 0,
+                                   "external": 0}}),
+            ("F10h 纯定义落点在 incx 上也动了作用域（对照失效）",
+             {"incx_res_pure": {"unique": 0, "same_file": 0,
+                                "include": 2, "ambiguous": 0,
+                                "external": 0}}),
+            ("F10h 拿不到 incx 夹具读数（三明治变空断言）",
+             {"incx_res_default": None}),
+            ("F10h 对照半边失效（inc 上 include 归零 ⇒ 前两条可被刷绿）",
+             {"inc_res_default": {"unique": 0, "same_file": 0,
+                                  "include": 0, "ambiguous": 2,
+                                  "external": 0}}),
+            ("F10h 截断冒充了三明治（closure_capped 不为 0）",
+             {"incx_scope_default": {"applied": True, "lang": "c",
+                                     "rungs": ["same-file",
+                                               "include-closure"],
+                                     "closure_capped": 1,
+                                     "header_callers": 0}}),
+            ("F10h incx 上阶梯根本没启用（测的是什么都没发生）",
+             {"incx_scope_default": {"applied": False, "lang": "c",
+                                     "rungs": [],
+                                     "closure_capped": 0,
+                                     "header_callers": 0}}),
+            # ---- F10i：两级不许互相冒充（M3 逼出来的门洞）----
+            ("F10i rung2 把「同文件」记成了「同翻译单元」",
+             {"dup_res_default": {"unique": 2, "same_file": 0,
+                                  "include": 4, "ambiguous": 0,
+                                  "external": 0}}),
+            ("F10i 救回的边没有全部来自 rung1（差额落到别处）",
+             {"dup_res_default": {"unique": 2, "same_file": 3,
+                                  "include": 1, "ambiguous": 0,
+                                  "external": 0}}),
+            ("F10i 对照半边失效（纯定义落点上没有歧义可救）",
+             {"dup_res_pure": {"unique": 6, "same_file": 0,
+                               "include": 0, "ambiguous": 0,
+                               "external": 0}}),
+            ("F10i 对照半边失效（inc 上 include 归零）",
+             {"inc_res_default": {"unique": 0, "same_file": 0,
+                                  "include": 0, "ambiguous": 2,
+                                  "external": 0}}),
+            ("F10i rung1 冒充 rung2（inc 上记成同文件）",
+             {"inc_res_default": {"unique": 0, "same_file": 2,
+                                  "include": 0, "ambiguous": 0,
+                                  "external": 0}}),
+            # ---- F10j：第二级的代价（缓存必须真的缓存）----
+            ("F10j 闭包缓存退化成重算（每个文件算的次数 > 2）",
+             {"multi_scope_default": {"applied": True, "lang": "c",
+                                      "rungs": ["same-file",
+                                                "include-closure"],
+                                      "under_basis": "unique-basename-target",
+                                      "rung2_files": 12,
+                                      "closure_computed": 48,
+                                      "closure_visits": 120,
+                                      "closure_capped": 0,
+                                      "header_callers": 0}}),
+            ("F10j 代价计数器是死的（visits 恒 0 ⇒ 判据变空断言）",
+             {"multi_scope_default": {"applied": True, "lang": "c",
+                                      "rungs": ["same-file",
+                                                "include-closure"],
+                                      "under_basis": "unique-basename-target",
+                                      "rung2_files": 12,
+                                      "closure_computed": 24,
+                                      "closure_visits": 0,
+                                      "closure_capped": 0,
+                                      "header_callers": 0}}),
+            ("F10j 阶梯根本没走到第二级（尝试是空的 ⇒ 代价不变量无从谈起）",
+             {"multi_scope_default": {"applied": True, "lang": "c",
+                                      "rungs": ["same-file",
+                                                "include-closure"],
+                                      "under_basis": "unique-basename-target",
+                                      "rung2_files": 0,
+                                      "closure_computed": 0,
+                                      "closure_visits": 0,
+                                      "closure_capped": 0,
+                                      "header_callers": 0}}),
+            ("F10j 夹具读数本身不自洽（五档之和 != 边数）",
+             {"multi_res_default": {"unique": 2, "same_file": 0, "include": 48,
+                                    "ambiguous": 0, "external": 0}}),
+            ("F10j 拿不到 multi 夹具读数（缓存退化变空断言）",
+             {"multi_scope_default": None}),
+            ("F10i 拿不到 dup 夹具的两口径 resolution",
+             {"dup_res_pure": None}),
+            # ---- F10k：`under` 的唯一性口径（R89k）----
+            ("F10k 共享头被按 include 行数丢掉（第二级在主战场上恒判不出）",
+             {"multi_res_default": {"unique": 0, "same_file": 0, "include": 0,
+                                    "ambiguous": 48, "external": 0}}),
+            ("F10k 口径没被登记（只能靠读代码猜）",
+             {"multi_scope_default": {"applied": True, "lang": "c",
+                                      "rungs": ["same-file",
+                                                "include-closure"],
+                                      "rung2_files": 12,
+                                      "closure_computed": 24,
+                                      "closure_visits": 72,
+                                      "closure_capped": 0,
+                                      "header_callers": 0}}),
+            ("F10k 口径登记成了别的值（登记本身不再是空话）",
+             {"multi_scope_default": {"applied": True, "lang": "c",
+                                      "rungs": ["same-file",
+                                                "include-closure"],
+                                      "under_basis": "include-row-count",
+                                      "rung2_files": 12,
+                                      "closure_computed": 24,
+                                      "closure_visits": 72,
+                                      "closure_capped": 0,
+                                      "header_callers": 0}}),
+    ):
+        d = _obs_loc()
+        d.update(patch)
+        red_loc("坏样本 %s" % tag, d, "F10")
+    for letter in ("F10a", "F10b", "F10c", "F10d", "F10e", "F10f", "F10g",
+                   "F10h", "F10i", "F10j", "F10k"):
+        if letter not in witnessed_sub:
+            bad[0] += 1
+            print("  [selftest] F10 的子判据 %s 没有自己的坏样本（子覆盖静默缩水）"
                   % letter)
 
     # ---- ① 每条判据都必须被至少一个坏样本点名（覆盖不许静默缩水） ----
@@ -1671,6 +2635,13 @@ def _selftest():
         bad[0] += 1
         print("  [selftest] 重复定义夹具被抽掉「同名两份定义」后 R2 不报红"
               "（F9d 的『环必须塌』退化成空断言）")
+    if judge_fixtures(cg_py=(("cg_py_a.py", "def a():\n    h()\n"),
+                             ("cg_py_b.py", "def b():\n    h()\n"))):
+        good[0] += 1
+    else:
+        bad[0] += 1
+        print("  [selftest] Python 夹具被抽掉「同名定义」后 R2 不报红"
+              "（F10e 的语言门退化成空断言）")
     if judge_fixtures(attr_c=ATTR_C.replace("DPT(typedef)\n", "")):
         good[0] += 1
     else:

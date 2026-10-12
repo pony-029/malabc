@@ -412,19 +412,34 @@ python matlabc.py myproj/ --lib-resolve 2 --lib-path /opt/sdk/lib --json out.jso
 | `--callgraph-focus` | 函数名 | 无 | 以该函数为根做 BFS **双向**展开（它调了谁、谁调了它）。不给则取扇入最高的枢纽，按被调方向展开 |
 | `--callgraph-depth` | 整数 | 2 | 焦点子图展开层数 |
 | `--callgraph-max-nodes` | 整数 | 300 | 焦点子图节点上限。撞上限即停止展开并置 `truncated.hit_node_cap=true` |
-| `--callgraph-identity` | `definition-site` / `callee-name` | `definition-site` | 图的**节点身份**口径（R88）。`definition-site` = 节点是「函数名 @ 定义文件」⇒ 同名不同文件的函数各成节点、跨文件假环散开；`callee-name` = 老口径，节点就是函数名（同名**合并**，`cycles` 可能含假阳性）。未知取值 ⇒ **非零退出**且不产出文件 |
+| `--callgraph-identity` | `definition-site-local` / `definition-site` / `callee-name` | `definition-site-local` | 图的**节点身份**口径（R88 加第二档，R89 加第三档）。`definition-site-local` = 在「定义落点」之上再走 **C 的作用域阶梯**（同文件优先 → 同翻译单元，只在**恰一份**候选时用）⇒ 歧义桶里可判的那部分如实落成 `same_file` / `include`；`definition-site` = 只按定义落点（同名多定义一律进**不猜**的汇点）；`callee-name` = 老口径，节点就是函数名（同名**合并**，`cycles` 可能含假阳性）。三档 `edges_total` **逐位相同**（换口径不删边）。未知取值 ⇒ **非零退出**且不产出文件 |
 
 `.json` 里有什么：`fan_in_top` / `fan_out_top`（枢纽排行）、`cycles`（**定义落点**级强连通
 分量 = 互为递归）、`cross_file` / `cross_dir`（内部 / 跨文件 / 同名多定义 / 无定义四桶）、
-`focus_subgraph`（逐层邻域）、`truncated`（`*_total` 与 `*_shown` 并列）、`limitations`
-（三条口径限制，逐字）。
+`focus_subgraph`（逐层邻域）、`truncated`（`*_total` 与 `*_shown` 并列）、`resolution`
+（**五档**：`unique` / `same_file` / `include` / `ambiguous` / `external`，**之和恒等于边数**）、
+`local_scope`（产物**自称**的阶梯参数：口径 / 语言 / `allowed_langs` / `include_map` /
+`rungs` / `closure_cap` / `closure_capped` / `header_callers` / **`under_basis`**
+（`under` 图的唯一性口径）/ `rung2_files` / `closure_computed` / `closure_visits`）、
+`limitations`（逐字）。
 
-**三条口径写出来而不是让人猜**：① 节点身份默认是**定义落点**（`identity:
-"definition-site"`，R88）—— 节点是「函数名 @ 定义文件」，同名不同文件**不合并**；老口径
-`callee-name` 仍在（`--callgraph-identity callee-name`），在它下面 `cycles` 可能含
-**假阳性**。换口径**一条边都不删**；被调侧同名多定义时**不猜**（并成汇点节点），代价是
-**经过它的环不报**；② 未解析调用**不在图里**（没有 callee 节点），只并列报计数 ——
-「没解析出来」不是「没有关系」；③ 截断永远显式上报 —— 「我没展开」不等于「没有关系」。
+**四条口径写出来而不是让人猜**：① 节点身份默认是**带作用域的本地定义落点**（`identity:
+"definition-site-local"`，R89）—— 节点是「函数名 @ 定义文件」，同名不同文件**不合并**；两个更老的
+口径仍在（`--callgraph-identity definition-site` / `callee-name`），在名字级那档下面 `cycles` 可能含
+**假阳性**。换口径**一条边都不删**（三档 `edges_total` 逐位相同）；被调侧同名多定义时**不猜**
+（并成汇点节点），代价是**经过它的环不报**，而 `resolution` 五档把「救回了多少 / 剩下多少判不出」
+摊开成吃同一个分母的数；② 阶梯补的是 **C 本来就有**的两条作用域规则（同文件 → 同翻译单元，
+只用**恰一份**候选；且只对翻译单元根启用）—— ⚠ 第二级的「唯一」判的是这个 basename
+**解析到几个目标文件**（`local_scope.under_basis`），**不是**有几条 include 行指过来：按行计数
+会把被很多地方包含的头（内核里**最常见**的形状）整条丢出欠近似图 ⇒ 这一级在真语料上**恒判不出**
+（实测引擎 `include=0`，而独立量具测出 **2034**）；**只对 C 启用** —— Python / JS 的模块绑定能在
+运行时被改掉，「同名同文件」只是近似，近似冒充结论会造出假环；③ 未解析调用**不在图里**（没有
+callee 节点），只并列报计数 —— 「没解析出来」不是「没有关系」；④ 截断永远显式上报 —— 「我没展开」
+不等于「没有关系」；⑤ ⚠ **读数依赖调用形态**：`rel` 由 `matlabc._rel_of()` 决定，被分析目录在
+**当前工作目录之外**时它会塌成 **basename**（同名不同目录的文件被合并）⇒ 读数**整体改变**
+（内核整树实测 `resolution.same_file` 381290 → 348353，而 `edges_total`/`unique` 逐位不变）。
+**规范用法是从被分析目录里跑**（`cwd=<被分析目录>`、目标 `.`）—— 同一个语料用另一种形态调用
+会给出**另一套数**。
 
 ```bash
 # 全图形状：度数排行 + 递归环 + 跨文件计数

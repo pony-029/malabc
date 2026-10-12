@@ -65,6 +65,42 @@ R88 加了第二种：``definition-site``，并把它设为**默认**。它把�
 收窄到「候选必须是**有出边**的节点」后选 ``unpack_to_rootfs``（扇入 10 / 扇出 12）
 ⇒ 真子图。⇒ 判据不是「看着更顺眼」，是**默认输出非空**这条可实测的性质。
 
+R89：节点身份口径再进一步 —— `definition-site-local`（**默认**）
+====================================================================
+R88 把身份从「名字」换到「定义落点」，代价是**同名多定义的被调者一律落 K_AMB
+汇点**（内核 5,149,101 条 = 72.9%），并把「经过它的环会漏报」写进 limitations。
+R89 要做的是**把其中判得出来的那部分收回来**，判不出来的照样留汇点。
+
+判据是 C 的**翻译单元可见性**，两级（都不是新发明的规则，是 C 本来就有的）：
+
+    rung 1  **同文件优先**：被调名多份定义里**恰一份**落在调用者文件里 ⇒ 用它。
+            理由：定义就在这个文件里，谁包含这个文件都成立（`static` 更是不
+            可能从别的 TU 可见）。
+    rung 2  **包含闭包**：调用者文件的 `#include` 闭包里**恰一份**候选 ⇒ 用它。
+            理由：头文件被包含进来就是 TU 的一部分。
+
+rung 2 必须做成**三明治**（这是量具逼出来的，不是设计洁癖）
+--------------------------------------------------------
+include 解析是**按 basename** 做的（P90 既有口径）⇒ 闭包有两个版本：
+`closure_under`（只走 basename 唯一的 include）⊆ 真 TU ⊆ `closure_over`
+（多命中全部并入）。只用 `over` 判「恰好一个可见」**不成立**：假包含能把计数从
+0 抬到 1。所以判据是
+
+    vis_under == vis_over == {同一份候选}
+
+真 TU 的可见集合夹在两者之间 ⇒ 只能是那一份。**纯集合论，与语料无关。**
+另有作用域判据：调用点落在**头文件**里时，TU 由包含者决定 ⇒ rung 2
+**只对 TU 根**（`.c/.cc/.cpp/.cxx`）成立（rung 1 没有这个问题）。
+
+实测（`_r89/measure_sandwich.py`，`linux-6.19.14` 的 8 区域 / 3,927 文件 /
+68,030 边）：歧义 23,957 条 ⇒ rung1 2,370（9.9%）+ rung2 2,034（8.5%）
+⇒ **救回 18.4%**，残余 19,553 条（81.6%，其中调用点在头文件里的 3,558 条）。
+
+⚠ **R88 §7① 的预期（「`ambiguous` 会塌下去」）被这三支量具当场否证** ——
+松判据（只用 over 闭包）读到 31.2%，三明治之后只剩 18.4%，而残余的 81.6% 不是
+「还没修」，是**这一层判不出来**：同名宏（实测 CROSS 89 条边）、函数指针、
+条件编译、语料子集外的定义。**不许靠猜把这部分刷小。**
+
 零第三方依赖 / Python 3.6.5 兼容 / 无全局可变状态。
 """
 
@@ -74,15 +110,20 @@ R88 加了第二种：``definition-site``，并把它设为**默认**。它把�
 # ``focus_candidates``，而它是**有意义的**：名字级口径下一个名字恒等于一个
 # 节点 ⇒ 候选恒为 1；定义落点口径下一个名字可以映到多个节点 ⇒ 它必须被报出来
 # （否则 ``--callgraph-focus memcpy`` 会在若干个 memcpy 里**静默挑一个**）。
-CALLREL_VERSION = 2
+CALLREL_VERSION = 3
 
 # 节点身份口径。写成常量是为了让「口径被默默换掉」可被判据看见。
 IDENTITY_NAME = "callee-name"
 IDENTITY_DEFSITE = "definition-site"
 
 # R88：默认改成定义落点。老口径**保留且可复现**（``--callgraph-identity callee-name``）。
-DEFAULT_IDENTITY = IDENTITY_DEFSITE
-IDENTITIES = (IDENTITY_NAME, IDENTITY_DEFSITE)
+# R89：默认再进一步 —— 定义落点 **+ 翻译单元可见性优先**。两个老口径都保留。
+IDENTITY_LOCAL = "definition-site-local"
+
+# 默认口径。`definition-site-local` 在**没有同名多定义**的语料上与
+# `definition-site` 逐位相同（判据 F10d 钉的就是这条：不许无中生有）。
+DEFAULT_IDENTITY = IDENTITY_LOCAL
+IDENTITIES = (IDENTITY_NAME, IDENTITY_DEFSITE, IDENTITY_LOCAL)
 
 # 证据档：本模块的读数全部来自**已经解析出的边**，是读出来的不是推出来的。
 EVIDENCE_OBSERVED = "observed"
@@ -115,6 +156,63 @@ EXTERN_MARK = "<无定义>"
 #   所以这个标记今天改不动任何读数；它的作用是让**万一**出现的 K_SITE 能被看见。
 SITE_MARK = "<非定义落点>"
 
+# ── R89：解析阶梯 ───────────────────────────────────────────────────────────
+# 这五个名字是**产物里的键**（`resolution` 块），不是内部枚举 —— 改名字就是改
+# 产物形状（CALLREL_VERSION 要跟着涨）。
+R_UNIQ = "unique"        # 名字只有一份定义（观测）
+R_SAME = "same_file"     # 多份定义、恰一份在调用者文件里（**推导**：TU 作用域）
+R_INC = "include"        # 多份定义、恰一份在调用者 include 闭包里（**推导**）
+R_AMB = "ambiguous"      # 多份定义、判不出是哪一份（**不猜**）
+R_EXT = "external"       # 一份定义都没有
+
+# 阶梯只在**这些语言**上启用。为什么必须按语言分：
+# C 的可见性规则是「TU = 文件 + 其 include」，句法与语义都给得出结论；
+# Python / JS 的模块绑定可以被 import / 重赋值在**运行时**改掉，
+# 「同名就在同文件」只是**近似** —— 近似一旦冒充结论就会造出**假环**，
+# 那正是 R88 要修的东西。⇒ 宁可少报（回落 K_AMB），不猜。
+LOCAL_SCOPE_LANGS = ("c",)
+
+# 只有翻译单元的**根**才谈得上「它的 include 闭包就是它的 TU」。
+TU_ROOT_EXTS = (".c", ".cc", ".cpp", ".cxx")
+
+# 闭包 BFS 的节点上限。**超限即判不出**（回落 K_AMB 并计数），
+# 绝不用截断后的集合下结论 —— 截断把「可见」判成「不可见」是**错报**的方向。
+# 实测（`_r89/` 量具，CROSS 3,927 文件）：闭包 p50=684 / p90=701 / max=784，
+# 上限 65536 有 ~80 倍余量。
+CLOSURE_CAP = 65536
+# 闭包缓存条数。边表是**按文件产出**的（`call_sites_of_files` 的顺序）⇒
+# 相邻的边几乎总在同一个调用者文件里，小缓存命中率极高而内存有界。
+#
+# ⚠ **满了必须淘汰**（R89j 修）：写 `if len(cache) < CLOSURE_CACHE:` 就是
+# 「只记最早 8 个起点、之后再也不写」—— 缓存**永远**停在头部那 8 个文件上，
+# 第 9 个起点的闭包**每条边都重算**。R89 实测代价：内核整树 `--callgraph`
+# 一步 **61.4 分钟未跑完**（基础分析只用 535 s），而**所有读数一个都没变**
+# ⇒ 没有任何正确性判据会红。现在满则**整体清空**：同一文件的下一条边立刻
+# 把它填回来 ⇒ 每个文件只算两次（under + over），内存仍有界。
+# 这条不变量由 `local_scope.closure_computed == 2 × rung2_files` 守着。
+CLOSURE_CACHE = 8
+
+# `under` 图的**唯一性口径**（R89k）：按「这个 basename 解析到**几个**目标文件」
+# 判，而不是按「有几条 include 行指过来」。前者是 include 解析本身的**分辨力**，
+# 后者会把「被很多地方包含的头」（内核里**最常见**的形状，如 `kernel.h`）误判成
+# 不确定 ⇒ `under` 几乎空掉 ⇒ 三明治恒失败。口径名进 `local_scope.under_basis`。
+UNDER_BASIS = "unique-basename-target"
+
+
+def _defsite_family(identity):
+    '''口径是否属于**落点族**（键 = ``kind + SEP + rel + SEP + name``）。
+
+    **唯一判据，只此一份。** 为什么必须抽出来：R88 时期四处写的是
+    ``identity != IDENTITY_DEFSITE`` —— 那是**二元**判断，加入第三种口径
+    （`definition-site-local`）时新口径会**静静**落进「名字级」分支：
+    节点名印成**内部键**（带 U+001F）、``_name_of`` 拿不到函数名 ⇒
+    ``--callgraph-focus`` 匹配不上任何节点 ⇒ 默认子图退化。
+    R89 实测代价：一条补丁让门里 **F7b/F7c/F7d/F9e 四条同时红**
+    （这正是「口径类缺陷所有读数一起错且都自洽」的现场）。
+    '''
+    return identity in (IDENTITY_DEFSITE, IDENTITY_LOCAL)
+
+
 KIND_LABEL = {
     K_DEF: "定义落点",
     K_SITE: "调用点文件（非定义落点）",
@@ -146,18 +244,208 @@ def _home(func_index, name):
     return (pf.get("rel"), fn.get("line"), len(hits))
 
 
+def _ext_of(rel):
+    """rel 的扩展名（小写，带点）。rel 一律是正斜杠形状（`_rel_of` 归一过）。"""
+    if not rel:
+        return ""
+    i = rel.rfind("/")
+    name = rel[i + 1:] if i >= 0 else rel
+    j = name.rfind(".")
+    return name[j:].lower() if j > 0 else ""
+
+
+def _base_of(rel):
+    """rel 的文件名（不含目录）。"""
+    if not rel:
+        return ""
+    i = rel.rfind("/")
+    return rel[i + 1:] if i >= 0 else rel
+
+
 def _sym(func_index, name):
-    """名字 → ``(kind, rel, line, ndef)``。**一个量一份实现**（与 ``_home`` 同源）。"""
+    """名字 → ``(kind, rel, line, ndef)``。**一个量一份实现**。
+
+    R89：本函数现在只是 `_resolve` 的**无作用域视图**（`scope=None`）——
+    保留它是为了让「名字级视图」有一个名字，而不是第二份判据。
+    """
+    k, rel, ln, nd = _resolve(func_index, name, None, None)[:4]
+    return (k, rel, ln, nd)
+
+
+def _resolve(func_index, name, rel, scope=None):
+    """名字 → ``(kind, drel, line, ndef, rung)``。**R89 的判据本体，只此一份。**
+
+    ``scope is None`` ⇒ 纯名字级视图（= R88 的 `definition-site` 行为，逐位可复现）；
+    给了 scope 且 `scope["applied"]` ⇒ 走两级阶梯（见模块 docstring）。
+
+    ⚠ 返回的 `rung` 同时给「节点映射」与「cross_file 分桶」用 ——
+    两处若各判一次，同一个量必然分叉（R87 的教训）。
+    """
     hits = (func_index or {}).get(_norm(name))
     if not hits:
-        return (K_EXT, None, None, 0)
-    h = hits[0]
-    pf = h.get("file") or {}
-    fn = h.get("func") or {}
-    rel = pf.get("rel")
-    if len(hits) > 1:
-        return (K_AMB, rel, fn.get("line"), len(hits))
-    return (K_DEF, rel, fn.get("line"), 1)
+        return (K_EXT, None, None, 0, R_EXT)
+    n = len(hits)
+    h0 = hits[0]
+    pf0 = h0.get("file") or {}
+    fn0 = h0.get("func") or {}
+    if n == 1:
+        return (K_DEF, pf0.get("rel"), fn0.get("line"), 1, R_UNIQ)
+    if scope is not None and scope.get("applied") and rel:
+        # ---- rung 1：同文件优先 ----
+        # 「恰一份」而不是「至少一份」：同文件里同名定义 ≥2 份（`#ifdef` 双分支）
+        # 时同样判不出来 —— 判据不许因为「反正在同文件」就松口。
+        same = [h for h in hits if ((h.get("file") or {}).get("rel")) == rel]
+        if len(same) == 1:
+            f = same[0].get("func") or {}
+            return (K_DEF, rel, f.get("line"), n, R_SAME)
+        # ---- rung 2：包含闭包（**只对 TU 根成立**）----
+        if _ext_of(rel) not in TU_ROOT_EXTS:
+            scope["header"] = scope.get("header", 0) + 1
+        elif scope.get("under") is not None:
+            where = [((h.get("file") or {}).get("rel")) for h in hits]
+            # 第二级的**代价**也要可观测：算过多少个不同调用者文件（R89j）。
+            scope["r2"].add(rel)
+            cu, c1 = _closure(rel, scope["under"], scope["cu"], scope["cap"],
+                              scope)
+            co, c2 = _closure(rel, scope["over"], scope["co"], scope["cap"],
+                              scope)
+            if c1 or c2:
+                scope["capped"] = scope.get("capped", 0) + 1
+            elif cu is not None and co is not None:
+                vu = [w for w in where if w and w in cu]
+                vo = [w for w in where if w and w in co]
+                if len(vu) == 1 and len(vo) == 1 and vu == vo:
+                    for h in hits:
+                        if ((h.get("file") or {}).get("rel")) == vu[0]:
+                            f = h.get("func") or {}
+                            return (K_DEF, vu[0], f.get("line"), n, R_INC)
+    return (K_AMB, pf0.get("rel"), fn0.get("line"), n, R_AMB)
+
+
+def _closure(start, graph, cache, cap, stats=None):
+    """从 ``start`` 出发在 include 图上可达的文件集合（含 start）。
+
+    返回 ``(集合_or_None, 是否超限)``。**超限返回 None** —— 调用方必须把它当成
+    「判不出」，不许拿截断集合当结论（截断的方向是**错报**）。
+
+    缓存是**小容量**的（`CLOSURE_CACHE`）：边表按文件产出 ⇒ 相邻边几乎同一个
+    调用者文件，小缓存就够；闭包本身在语料上可达数百项，无上限缓存会白吃
+    几百 MB（内核那本账峰值已经 13 GB，这份内存是**可以不要**的）。
+    """
+    got = cache.get(start)
+    if got is not None:
+        return (got, False)
+    seen = set()
+    stack = [start]
+    while stack:
+        cur = stack.pop()
+        if cur in seen:
+            continue
+        seen.add(cur)
+        if len(seen) > cap:
+            return (None, True)
+        for nxt in graph.get(cur, ()):
+            if nxt not in seen:
+                stack.append(nxt)
+    # ⚠ **满则清空**，不许「满了就不写」—— 后者会让缓存永远停在最早那 8 个
+    # 起点上，第 9 个起点的闭包每条边都重算（R89j 内核实测 61.4 分钟未跑完）。
+    if len(cache) >= CLOSURE_CACHE:
+        cache.clear()
+    cache[start] = seen
+    if stats is not None:
+        stats["computed"] = int(stats.get("computed") or 0) + 1
+        stats["visits"] = int(stats.get("visits") or 0) + len(seen)
+    return (seen, False)
+
+
+def include_graphs(include_edges):
+    """``model["include_edges"]`` → **两级** include 图 ``(under, over)``。
+
+    `include_edges` 的形状是 ``[(include_方_rel, 头名, 解析到的_rel 或 None)]``
+    （P90）。解析是**按 basename** 的 ⇒ 同名的头文件可能命中多份：
+
+    * ``over``  所有能解析到文件的 include（多命中**全部**并入）—— 过近似；
+    * ``under`` 只保留「basename 只解析到**一个**目标文件」的那些 —— 欠近似。
+
+    真 TU 夹在两者之间，这正是三明治判据成立的理由。
+
+    ⚠ **唯一性判据是「解析目标有几个」，不是「include 行有几条」**（R89k 修）。
+    原实现按行计数 ⇒ 只要某个头被 ≥2 处包含（`kernel.h` / `list.h` 这类
+    **最常见**的形状）就整条被丢出 `under` ⇒ 三明治在主战场上**恒失败**。
+    CROSS 档实测：按行计数只留 **606 / 28,333** 条 include 边进 `under`，
+    按目标数是 **7,823** 条；后果是第二级在那个语料上**一条也判不出来**
+    （引擎 `resolution.include = 0`，独立量具测出的潜力是 **2,034**）。
+    """
+    rows = []
+    # basename → **解析到的文件集合**（不是「有几条 include 行指过来」）。
+    targets = {}
+    for row in (include_edges or []):
+        if not row or len(row) < 3 or not row[2]:
+            continue
+        src, dst = row[0], row[2]
+        rows.append((src, dst))
+        targets.setdefault(_base_of(dst).lower(), set()).add(dst)
+    under = {}
+    over = {}
+    for src, dst in rows:
+        over.setdefault(src, set()).add(dst)
+        if len(targets.get(_base_of(dst).lower()) or ()) == 1:
+            under.setdefault(src, set()).add(dst)
+    return (under, over)
+
+
+def scope_of(identity, lang, include_edges):
+    """R89：**作用域对象**（`None` 表示不走阶梯 ⇒ 纯名字级视图）。
+
+    启用条件只有两条，都写在这里（**一处实现**，不许在调用点各判一次）：
+      * 口径是 `definition-site-local`；
+      * 语言在 `LOCAL_SCOPE_LANGS` 里。
+
+    ``include_edges`` 不给 ⇒ **只剩 rung 1**（这件事会**如实报在**
+    `local_scope.rungs` / `include_map` 里 —— 静默少一级是「没听懂却假装听懂」）。
+    ⚠ 「给了但是空的 list」与「没给（None）」**必须分得开**：前者是「这份语料
+    真的没有 include」（C 模型恒提供该键，可能为空），后者才是「调用方没传」。
+    """
+    lg = (lang or "").lower()
+    applied = (identity == IDENTITY_LOCAL and lg in LOCAL_SCOPE_LANGS)
+    sc = {"applied": bool(applied), "lang": lg, "under": None, "over": None,
+          "cu": {}, "co": {}, "cap": CLOSURE_CAP, "capped": 0,
+          "header": 0, "r2": set(), "computed": 0, "visits": 0}
+    if applied and include_edges is not None:
+        under, over = include_graphs(include_edges)
+        sc["under"] = under
+        sc["over"] = over
+    return sc
+
+
+def scope_report(sc):
+    """作用域 → 产物里那块**自称参数**（口径、语言、用到哪几级、上限、诊断计数）。"""
+    if sc is None:
+        sc = {"applied": False, "lang": "", "under": None, "capped": 0,
+              "header": 0, "cap": CLOSURE_CAP, "r2": set(), "computed": 0,
+              "visits": 0}
+    rungs = []
+    if sc.get("applied"):
+        rungs.append("same-file")
+        if sc.get("under") is not None:
+            rungs.append("include-closure")
+    return {
+        "applied": bool(sc.get("applied")),
+        "lang": sc.get("lang") or "",
+        "allowed_langs": list(LOCAL_SCOPE_LANGS),
+        "include_map": sc.get("under") is not None,
+        # R89k：`under` 的**唯一性口径**（产物自称，不靠读代码猜）
+        "under_basis": UNDER_BASIS,
+        "rungs": rungs,
+        "closure_cap": sc.get("cap"),
+        "closure_capped": int(sc.get("capped") or 0),
+        "header_callers": int(sc.get("header") or 0),
+        # R89j：第二级的**代价**（产物自称）。`closure_computed` 是**算了几次**
+        # 闭包（不是几条边）⇒ 缓存一退化它就涨，「每个文件只算两次」当场破功。
+        "rung2_files": len(sc.get("r2") or ()),
+        "closure_computed": int(sc.get("computed") or 0),
+        "closure_visits": int(sc.get("visits") or 0),
+    }
 
 
 def _def_at(func_index, name, rel):
@@ -204,39 +492,50 @@ def _key_parts(key):
     return (kind, rel or None, nm)
 
 
-def _edge_nodes(e, func_index, identity, caches=None):
-    """边 → ``(源键, 目标键)``。``identity`` 决定**节点身份口径**。
+def _edge_res(e, func_index, identity, caches=None, scope=None):
+    """边 → ``(源键, 目标键, rung, 目标落点)``。``identity`` 决定**节点身份口径**。
 
     这是**唯一**的「边的两端各是谁」判定点 —— 顶层投影与焦点子图都从这里取，
     不许各写一份（R87 的教训：同一个量两份实现必然分叉）。
+
+    R89 让它**多返回两个量**（`rung`、目标落点），理由是同一个：`cross_file` 分桶
+    必须与节点映射用**同一次**判定结果。若分桶自己再判一次名字歧义，
+    就会出现「节点已经拆到某文件、桶里却还算歧义」这种自相矛盾的产物。
     """
     caller = e[0]
     callee = e[1]
-    if identity != IDENTITY_DEFSITE:
-        # 老口径：名字即身份。逐字节复现 R86/R87 的读数。
-        return (_norm(caller), _norm(callee))
-
     rel = e[3]
+    kind, drel, _ln, _nd, rung = _resolve(func_index, callee, rel, scope)
+    if identity == IDENTITY_NAME:
+        # 老口径：名字即身份。逐字节复现 R86/R87 的读数（rung 照给，供分桶）。
+        return (_norm(caller), _norm(callee), rung, drel)
+
     dcache = caches[0] if caches is not None else {}
     # 源：调用者。调用点所在文件**通常就是**它的定义文件；核不上就标 K_SITE。
+    # （走到这里只剩两个落点口径 —— 名字级那支在上面已经返回了。）
     if rel and rel in _defset(func_index, caller, dcache):
         src = _key(K_DEF, rel, caller)
     else:
         src = _key(K_SITE, rel, caller)
     # 目标：被调者。
-    kind, drel, _ln, _nd = _sym(func_index, callee)
     if kind == K_DEF:
         dst = _key(K_DEF, drel, callee)
     elif kind == K_AMB:
         dst = _key(K_AMB, None, callee)
     else:
         dst = _key(K_EXT, None, callee)
-    return (src, dst)
+    return (src, dst, rung, drel)
+
+
+def _edge_nodes(e, func_index, identity, caches=None, scope=None):
+    """``(源键, 目标键)`` —— `_edge_res` 的两元投影（老调用点的兼容面）。"""
+    a, b, _rung, _drel = _edge_res(e, func_index, identity, caches, scope)
+    return (a, b)
 
 
 def _display(key, identity):
     """节点键 → **可读且唯一的**节点名。名字级口径下就是键本身（老行为）。"""
-    if identity != IDENTITY_DEFSITE:
+    if not _defsite_family(identity):
         return key
     kind, rel, nm = _key_parts(key)
     if kind == K_DEF:
@@ -249,7 +548,7 @@ def _display(key, identity):
 
 
 def _name_of(key, identity):
-    if identity != IDENTITY_DEFSITE:
+    if not _defsite_family(identity):
         return key
     return _key_parts(key)[2]
 
@@ -262,14 +561,14 @@ def _focus_label(s, identity):
     —— 名字不在图里时更应该让用户看到他敲的是什么，而不是把内部键形状漏出去。
     名字级口径下两种情形都返回 ``s`` 本身 ⇒ 老读数逐字节不变。
     """
-    if identity != IDENTITY_DEFSITE:
+    if not _defsite_family(identity):
         return s
     return _display(s, identity) if isinstance(s, str) and SEP in s else s
 
 
 def _nodeinfo(key, identity, func_index):
     """节点键 → ``{"name","file","line","defs"}``（**字段集合与老口径一致**）。"""
-    if identity != IDENTITY_DEFSITE:
+    if not _defsite_family(identity):
         rel, line, ndef = _home(func_index, key)
         return {"name": key, "file": rel, "line": line, "defs": ndef}
     kind, rel, nm = _key_parts(key)
@@ -441,46 +740,55 @@ def strongly_connected(names, head, adj, max_cycles=DEFAULT_MAX_CYCLES,
 # ── 顶层有界投影 ────────────────────────────────────────────────────────────
 def call_relations(edges, func_index=None, top_n=DEFAULT_TOP_N,
                    max_cycles=DEFAULT_MAX_CYCLES, with_cycles=True,
-                   unresolved_total=0, identity=DEFAULT_IDENTITY):
+                   unresolved_total=0, identity=DEFAULT_IDENTITY, lang=None,
+                   include_edges=None):
     """产出**有界**调用关系投影。规模无关，输出恒为 KB 级。
 
     ``edges``            ``[(caller, callee, line, rel)]``（与统一 IR 同源）
     ``func_index``       ``{小写名: [{"file": pf, "func": fn}]}``，用于回指文件/行
     ``unresolved_total`` 未解析调用条数（**不进图**，但要并列报出来）
-    ``identity``         ``callee-name`` | ``definition-site``（默认后者，R88）
+    ``identity``         ``callee-name`` | ``definition-site`` |
+                         ``definition-site-local``（默认第三个，R89）
+    ``lang``             语料语言。阶梯只在 `LOCAL_SCOPE_LANGS` 上启用 ——
+                         **语言是启用条件的一部分**，不许默认「都是 C」。
+    ``include_edges``    ``model["include_edges"]``（P90）。不给 ⇒ 阶梯只剩
+                         rung 1，且这件事会**如实报在** `local_scope` 里。
     """
     n_edges = len(edges)
     dfcache = {}
+    scope = scope_of(identity, lang, include_edges)
 
     fan_out = {}
     fan_in = {}
     cross = {"internal": 0, "cross": 0, "ambiguous": 0, "unknown": 0}
     dir_cross = {"internal": 0, "cross": 0, "unknown": 0}
+    resolution = {R_UNIQ: 0, R_SAME: 0, R_INC: 0, R_AMB: 0, R_EXT: 0}
     pairs = []
     for e in edges:
-        a, b = _edge_nodes(e, func_index, identity, (dfcache,))
+        a, b, rung, drel = _edge_res(e, func_index, identity, (dfcache,), scope)
         pairs.append((a, b))
         fan_out[a] = fan_out.get(a, 0) + 1
         fan_in[b] = fan_in.get(b, 0) + 1
         rel = e[3]
-        crel, _cline, ndef = _home(func_index, e[1])
-        if ndef == 0:
+        resolution[rung] += 1
+        # R89：分桶用的落点**就是**节点映射那一次判定的结果（不许各判一次）。
+        if rung == R_EXT:
             cross["unknown"] += 1
-        elif ndef > 1:
+        elif rung == R_AMB:
             cross["ambiguous"] += 1
-        elif crel == rel:
+        elif drel == rel:
             cross["internal"] += 1
         else:
             cross["cross"] += 1
-        # 目录级只看**判得出来的**：无定义（unknown）不猜；同名多定义（ambiguous）
-        # 同样不进目录统计 —— 宁可少报，不可错报。
-        if ndef == 1:
-            if _dir_of(rel) == _dir_of(crel):
+        # 目录级只看**判得出来的**：无定义不猜；判不出的同名多定义同样不进
+        # 目录统计 —— 宁可少报，不可错报。
+        if rung == R_EXT:
+            dir_cross["unknown"] += 1
+        elif rung != R_AMB:
+            if _dir_of(rel) == _dir_of(drel):
                 dir_cross["internal"] += 1
             else:
                 dir_cross["cross"] += 1
-        elif ndef == 0:
-            dir_cross["unknown"] += 1
 
     def _rows(counter, key_name):
         rows = []
@@ -527,6 +835,14 @@ def call_relations(edges, func_index=None, top_n=DEFAULT_TOP_N,
         "version": CALLREL_VERSION,
         "identity": identity,
         "evidence_kind": EVIDENCE_OBSERVED,
+        # R89：**解析阶梯**的逐档计数。四（五）档之和恒等于 edges_total ——
+        # 这条恒等式是「救回了多少」这个数的**对手方**（没有它，救回数可以靠
+        # 改分母变大）。档名与 `scope_of` 的 rung 常量同源。
+        "resolution": resolution,
+        # R89：阶梯的**自称参数**（口径 / 语言 / 用到哪几级 / 上限 / 诊断）。
+        # 为什么参数也要进产物：R87 的教训 —— 「产物字节变了 ≠ 图变了」，
+        # 要登记的是**产物自称的参数**，不只字节与 sha。
+        "local_scope": scope_report(scope),
         "nodes_total": n_nodes,
         "edges_total": n_edges,
         "unresolved_total": unresolved_total,
@@ -538,13 +854,15 @@ def call_relations(edges, func_index=None, top_n=DEFAULT_TOP_N,
         "cycles_computed": bool(with_cycles),
         "cycle_stats": cstats,
         "truncated": tr,
-        "limitations": _limitations(identity, unresolved_total),
+        "limitations": _limitations(identity, unresolved_total, scope),
     }
 
 
-def _limitations(identity, unresolved_total):
+def _limitations(identity, unresolved_total, scope=None):
     """**口径自己的局限**必须随口径一起说。名字级那一条与 R86/R87 逐字相同。"""
-    if identity != IDENTITY_DEFSITE:
+    if identity == IDENTITY_LOCAL:
+        return _limitations_local(unresolved_total, scope)
+    if identity == IDENTITY_NAME:
         return [
             "节点身份是**被调函数的原始名**（小写比较），不是「定义落点」。"
             "跨文件同名函数（C 的 static 重名）会合并成一个节点 ⇒ cycles "
@@ -587,10 +905,82 @@ def _limitations(identity, unresolved_total):
     ]
 
 
+def _limitations_local(unresolved_total, scope):
+    """R89 口径的局限。**规则、它判得出来的边界、它判不出来的部分，三样一起说。**
+
+    ⚠ F7f 会逐条核这里的措辞 —— 口径换了而局限照抄旧口径，是这套门禁里
+    最容易被忽略、也最危险的一种漂移。
+    """
+    sc = scope_report(scope)
+    if not sc["applied"]:
+        return [
+            "⚠ 本口径声明为 `%s`（同文件优先 + 包含闭包），但**本次运行没有启用"
+            "阶梯**：语言 %r 不在 %r 里。⇒ 它的读数与 `%s` **逐位相同**。"
+            "为什么按语言分：C 的可见性由翻译单元决定（可判定）；Python / JS 的"
+            "模块绑定能在运行时被 import / 重赋值改掉，「同名同文件」只是近似 ——"
+            "近似冒充结论就会造出**假环**。"
+            % (IDENTITY_LOCAL, sc["lang"], list(LOCAL_SCOPE_LANGS),
+               IDENTITY_DEFSITE),
+            "未解析调用（%d 条）**不在图里** —— 它们没有 callee 节点。"
+            % int(unresolved_total or 0),
+            "截断是显式的，见 truncated —— 「我没展开」不等于「没有关系」。",
+        ]
+    rungs = " + ".join(sc["rungs"]) if sc["rungs"] else "（无）"
+    return [
+        "节点身份是**定义落点**，且同名多定义时按 C 的**翻译单元可见性**判两级："
+        "① **同文件优先**（恰一份定义落在调用者文件里 ⇒ 用它）；"
+        "② **包含闭包**（`#include` 闭包里恰一份候选 ⇒ 用它，且必须是"
+        "**三明治**：欠近似闭包与过近似闭包都恰含同一份；只对 TU 根 "
+        "`.c/.cc/.cpp/.cxx` 成立）。本次启用：%s（语言 %r）。"
+        % (rungs, sc["lang"]),
+        "⚠ 这两级是**推导**（derived）不是观测：它依赖 C 的可见性规则成立。"
+        "**已知的判错方向**：同名宏（`#define foo(...)`）会遮蔽同名函数，"
+        "而调用提取是纯词法的；闭包按 basename 解析头文件，同名头文件可能张冠"
+        "李戴；条件编译（`#ifdef`）不展开。这三种情况下这条边可能被指到"
+        "同名的另一份定义上。",
+        "⚠ 第二级的「唯一」判的是「这个 basename **解析到几个目标文件**」"
+        "（`local_scope.under_basis` = %r），**不是**「有几条 include 行指过来」"
+        "—— 后者会把被很多地方包含的头（内核里**最常见**的形状，如 `kernel.h`）"
+        "整条丢出欠近似图 ⇒ 三明治在主战场上**恒失败**。R89k 之前正是如此："
+        "CROSS 档独立量具测出 2034 条可判，引擎一条也判不出来。"
+        % (sc.get("under_basis") or "-"),
+        "⚠ **判不出来的部分一律留 `K_AMB` 汇点**（不猜）。它的规模见 "
+        "`resolution.ambiguous`，占用的**上界**是「经过同名单定义被调者的环会"
+        "漏报」（`K_AMB` 是汇点，没有出边）。本次还有 %d 条边因为**调用点落在"
+        "头文件里**而用不上第二级（头文件的 TU 由包含者决定，不由它自己）。"
+        % int(sc["header_callers"] or 0),
+        "⚠ 闭包 BFS 有上限 %d（`local_scope.closure_cap`）：超限的边**回落 "
+        "`K_AMB`** 并计入 `closure_capped`（本次 %d 条）—— 截断后的集合绝不会"
+        "被当成结论（截断的方向是**错报**）。"
+        % (int(sc["closure_cap"] or 0), int(sc["closure_capped"] or 0)),
+        "⚠ 第二级的**成本**也在 `local_scope` 里自称：%d 个调用者文件触发了闭包，"
+        "实际算了 %d 次、访问 %d 个节点 —— 不变量是「**每个文件只算两次**"
+        "（under + over）」，即 `closure_computed == 2 × rung2_files`；它一破"
+        "就说明缓存退化成了重算（R89j 之前正是如此：内核整树这一步 61.4 分钟"
+        "没跑完，而**所有读数一个都没变**）。"
+        % (int(sc["rung2_files"] or 0), int(sc["closure_computed"] or 0),
+           int(sc["closure_visits"] or 0)),
+        "⚠ 本块的读数全部建立在产物里的 `rel` 上，而 `rel` 由 "
+        "`matlabc._rel_of()` 决定：**被分析目录在当前工作目录之外**时 `rel` 会"
+        "退化成 **basename**（同名不同目录的文件被合并）⇒ 本块读数**整体改变**"
+        "（内核整树实测 `resolution.same_file` 381290 → 348353，而 `edges_total`"
+        "与 `unique` **逐位不变**）。**规范用法是从被分析目录里跑**"
+        "（`cwd=<被分析目录>`、目标 `.`）；修它要动 `_rel_of` 的语义（影响所有"
+        "前端），列为 R90 第一候选。",
+        "⚠ 因为 resolve_calls 对多定义**扇出**，edges_total 不是「调用点条数」，"
+        "而是「(调用点 × 命中定义) 对」的条数。",
+        "未解析调用（%d 条）**不在图里** —— 它们没有 callee 节点。"
+        "它们不是「没有关系」，是「没解析出来」。"
+        % int(unresolved_total or 0),
+        "截断是显式的，见 truncated —— 「我没展开」不等于「没有关系」。",
+    ]
+
+
 # ── 子图（以某函数为中心展开）───────────────────────────────────────────────
 def focus_subgraph(edges, focus, depth=DEFAULT_DEPTH,
                    max_nodes=DEFAULT_MAX_NODES, direction="callee",
-                   func_index=None, identity=DEFAULT_IDENTITY):
+                   func_index=None, identity=DEFAULT_IDENTITY, lang=None,
+                   include_edges=None):
     """以 ``focus`` 为根做 BFS，展开 ``depth`` 层。``direction`` ∈ callee/caller/both。
 
     与顶层一样：**超限即停并如实上报**，不静默截断。
@@ -616,7 +1006,11 @@ def focus_subgraph(edges, focus, depth=DEFAULT_DEPTH,
     want = _norm(focus)
     want_node = focus if isinstance(focus, str) else ""
     dfcache = {}
-    pairs = [_edge_nodes(e, func_index, identity, (dfcache,)) for e in edges]
+    # R89：作用域与顶层投影**同一份构造**（scope_of 是唯一入口）——
+    # 两处若各建一份，同一个名字在顶层与焦点子图里可能映到不同节点。
+    scope = scope_of(identity, lang, include_edges)
+    pairs = [_edge_nodes(e, func_index, identity, (dfcache,), scope)
+             for e in edges]
 
     # 名字 → 候选节点（按度数降序；次级键只依赖内容，不依赖遍历顺序）。
     deg = {}
@@ -747,6 +1141,13 @@ def format_report(rel):
     out.append("  跨文件：内部 %d | 跨文件 %d | 同名多定义(不猜) %d | 无定义 %d"
                % (cf.get("internal", 0), cf.get("cross", 0),
                   cf.get("ambiguous", 0), cf.get("unknown", 0)))
+    rs = rel.get("resolution") or {}
+    if rs:
+        out.append("  解析阶梯（判得出/判不出，逐档现算）：唯一定义 %d | "
+                   "同文件优先 %d | 包含闭包 %d | 仍有歧义(不猜) %d | 无定义 %d"
+                   % (rs.get("unique", 0), rs.get("same_file", 0),
+                      rs.get("include", 0), rs.get("ambiguous", 0),
+                      rs.get("external", 0)))
     tr = rel.get("truncated") or {}
     out.append("  扇入 TOP（被调用最多，改动影响面大）")
     for r in (rel.get("fan_in_top") or [])[:10]:

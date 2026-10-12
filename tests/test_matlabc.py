@@ -13320,6 +13320,18 @@ def test_r88_generator_selfcheck():
     browse 站点写完即复用 fe_audit S13/S14 低开销核对并输出 [R88 自检]
     stderr 汇总——结构错位/重复 id 这类浏览器会静默自我修复的缺陷，
     直接改完当场可见，不必等外部审计跑批。
+
+    ⚠ R89 实测：本测试**恒红**，根因是 `fe_audit.py` 从未提交 —— 缺它时
+    `matlabc._selfcheck_html_tree` 里的那次 import 失败，而那个函数按
+    「自检本身不许反过来拖垮生成」的设计**吞掉**异常 ⇒ stderr 一行都没有，
+    于是断言拿不到 [R88 自检] 汇总行。
+    它此前**不在任何一个登记桶里**：本仓的已知红登记表按 basename 扫正文，
+    而本测试依赖 `fe_audit.py` 的方式是**经由产品在运行时 import**，
+    正文里没点过它的名字 ⇒ K1 看不见它、K5（新缺口）也不找它
+    ⇒ 一条恒红的测试活在**所有门之外**。
+    这层依赖现在写进正文（点名 `fe_audit.py`，按 R63 已披露的口径，
+    **点名即登记义务**），并登记进 RED 桶：`fe_audit.py` 落地之日，
+    本测试即应当转绿 —— 那条登记也就到了该被摘掉的时候。
     """
     import io, os, re, shutil, subprocess, sys, tempfile
     env = dict(os.environ)
@@ -18277,7 +18289,7 @@ def test_r61_c_frontend_shapes_gate_two_way():
          来自 R52，防的是「一条判据红、别的陪红」把独立证人变成一笔糊涂账。
       ② **夹具完备性两向**：把陷阱从夹具源码里删掉，`R2` 必须红 ——
          否则「不得出现 `if`」会退化成**空断言**（R56 的自伤）。
-      ③ **端到端**：真的把门跑起来，rc=0 且打印 F1–F9 全绿；`--selftest` 打印计数。
+      ③ **端到端**：真的把门跑起来，rc=0 且打印 F1–F10 全绿；`--selftest` 打印计数。
     反向判据：在本仓 `HEAD`（`24a2803`）上，`tools/check_c_frontend_shapes.py`
     **不存在** ⇒ ① 的 `_r37_load` 直接 ImportError ⇒ 本测试必红。
     """
@@ -18363,13 +18375,22 @@ def test_r61_c_frontend_shapes_gate_two_way():
 
     # ①'' R87 / F8：属性说明符**既不是定义、也不是调用**。同一套 `_red` 纪律。
     #      三个泄漏通道各要一个独立证人（类型定义 / 属性头 / 组内参数）。
+    #      ⚠ R89 修：这一份**同形夹具**从 R87 起就是**红的**，而且**没人知道** ——
+    #      R87 给 F8d 加了「已登记的噪声未解析读数必须**看得见**」这条判据
+    #      （`ATTR_KNOWN_UNRESOLVED_NOISE`，即夹具里那两条未展开的宏调用），
+    #      门自己的 `_obs_attr()` 跟着改了，**测试里抄的这一份没改** ⇒
+    #      `judge_attr` 报「未登记的未解析读数 []（登记的是 ['BTF_ID','DPT']）」。
+    #      这正是本仓反复说过的「**陈旧的红与真坏长得一样**」：一条一直是红的
+    #      测试，等于一条不在场的测试。夹具与门**同源**，两边必须一起改。
     def _obs_attr():
         return {"names": list(g.ATTR_WANT_FUNCS),
                 "calls": {"decl_then_attr": [], "get_attribute": [],
                           "aligned_fn": [],
                           "attr_caller": ["get_attribute", "missing_extern"]},
-                "unresolved": list(g.ATTR_WANT_UNRESOLVED),
-                "unresolved_total": len(g.ATTR_WANT_UNRESOLVED),
+                "unresolved": (list(g.ATTR_KNOWN_UNRESOLVED_NOISE)
+                               + list(g.ATTR_WANT_UNRESOLVED)),
+                "unresolved_total": (len(g.ATTR_WANT_UNRESOLVED)
+                                     + len(g.ATTR_KNOWN_UNRESOLVED_NOISE)),
                 "n_edges_json": g.ATTR_WANT_N_EDGES,
                 "edges_total": g.ATTR_WANT_N_EDGES,
                 "cg_text_attr": 0, "cg_text_aligned": 0,
@@ -18421,7 +18442,7 @@ def test_r61_c_frontend_shapes_gate_two_way():
                  timeout=180)
     out = r.stdout.decode("utf-8", "replace")
     assert r.returncode == 0, out[-1200:]
-    assert "F1–F9 全绿" in out, out[-600:]
+    assert "F1–F10 全绿" in out, out[-600:]
     s = _r31_run([os.path.join("tools", "check_c_frontend_shapes.py"), "--selftest"],
                  timeout=180)
     sout = s.stdout.decode("utf-8", "replace")
@@ -21066,3 +21087,68 @@ def test_r80_json_level_flag_is_documented():
     for lv in ("full", "lite", "summary"):
         assert lv in txt, lv
     assert "json_level" in txt
+
+
+# ===========================================================================
+# R89：GUI 的「调用关系」卡片 —— CLI 有、GUI 没有就是**新的能力不对等**
+# ===========================================================================
+def _r89_load(path, name):
+    """按**文件路径**加载仓库里的模块（gui.py / callrel.py 都不 import 分析器）。"""
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_r89_gui_callgraph_card():
+    """R89 / R88 §7④：`--callgraph` 系列在 CLI 上有三轮，GUI 一格都没有。
+
+    这条测试守两件事，缺一不可：
+
+      ① **界面真的把开关接上了**：`gui.py --selftest` 必须过 —— 它的断言覆盖
+         「没填输出文件 ⇒ 一个参数都不下发」「填了必须原样进命令行」「身份口径的
+         **默认档刻意不下发**（这样「界面没动过」的命令行与 R88 逐字相同）」，
+         以及「配置 JSON → 表单」那一半（只测「表单 → 命令行」会漏掉「加载了
+         配置但界面空白」这类**沉默**故障：用户以为没生效，却不报错）。
+
+      ② **重抄的口径常量不许漂**：`gui.py` 不 import 1.6 MB 的分析器，所以三档
+         字面量在界面里**重抄**了一份 —— 重抄就有漂移风险。这里做**三方**核对：
+         `gui.CALLGRAPH_IDENTITIES` == `callrel.IDENTITIES`（集合相等，**不比
+         顺序**：两处的书写顺序本就不同）且默认档 == `callrel.DEFAULT_IDENTITY`，
+         再拿 `matlabc.py --help` 的实际正文核一次（API 与帮助是两条独立出口，
+         只核一处 = 只核了一半）。
+
+    反向判据：`gui.py` 的卡片若被删掉，① 会红（`CALLGRAPH_IDENTITIES` 不存在 ⇒
+    ImportError）；三档里若有一档被写成错字，② 会红（集合不相等）。
+    """
+    # ---- ① 界面侧：自证必须过（它内部断言了「不下发 / 下发 / 往返」三件事） ----
+    r = _r31_run(["gui.py", "--selftest"], timeout=120)
+    out = r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, "gui.py --selftest rc=%s\n%s" % (r.returncode, out[-800:])
+    assert "GUI selftest OK" in out, out[-400:]
+
+    # ---- ② 三方核对 ----
+    gui = _r89_load(os.path.join(ROOT, "gui.py"), "r89_gui_mod")
+    rel = _r89_load(os.path.join(ROOT, "callrel.py"), "r89_callrel_mod")
+    assert set(gui.CALLGRAPH_IDENTITIES) == set(rel.IDENTITIES), (
+        sorted(gui.CALLGRAPH_IDENTITIES), sorted(rel.IDENTITIES))
+    assert gui.CALLGRAPH_IDENTITY_DEFAULT == rel.DEFAULT_IDENTITY, (
+        gui.CALLGRAPH_IDENTITY_DEFAULT, rel.DEFAULT_IDENTITY)
+    assert gui.CALLGRAPH_IDENTITY_DEFAULT in gui.CALLGRAPH_IDENTITIES
+    # ⚠ 这里**不**断言「默认档 == IDENTITIES 的某一位置」—— 那是实现细节，
+    # 钉住它只会让「调换 choices 顺序」这种无害改动变红（判据要能说「不」，
+    # 但不该对无害改动说「不」）。
+
+    h = _r31_run(["matlabc.py", "--help"], timeout=120)
+    htxt = h.stdout.decode("utf-8", "replace")
+    assert h.returncode == 0, htxt[:400]
+    assert "--callgraph-identity" in htxt
+    for ident in gui.CALLGRAPH_IDENTITIES:
+        assert ident in htxt, "帮助正文里没有口径 %r" % (ident,)
+
+    # 帮助正文必须提到这张卡片（用户得先知道有这个入口，才谈得上用它）
+    assert "调用关系" in gui.HELP_TEXT, "gui.py 帮助正文没提「调用关系」"
+    for flag in ("--callgraph", "--callgraph-focus", "--callgraph-depth",
+                 "--callgraph-max-nodes", "--callgraph-identity"):
+        assert flag in gui.HELP_TEXT, "gui.py 帮助正文没提 %s" % flag
+

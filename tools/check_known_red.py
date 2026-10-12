@@ -32,6 +32,22 @@
   K1 要求**扫描到的引用集合 == 登记集合**（新加一条依赖缺失产物的测试 ⇒ 红）。
   只写「已知红清单」而没有这两条，清单会慢慢变成垃圾桶。
 
+  ⚠ **R89 补上第 ⑤ 种引用方式，同时把它标成本门的已知盲区**：上面四条
+  （①–④）都默认「测试**正文里点了产物的名字**」。但一个测试还可以**经由产品**
+  依赖缺失产物。实测现场是 `test_r88_generator_selfcheck`：它跑
+  `matlabc.py --browse`，而 `matlabc._selfcheck_html_tree` 内部
+  `import fe_audit` —— 缺 `fe_audit.py` 时这次 import 失败，而那个函数按
+  「自检不许拖垮生成」的设计**吞掉**异常（`except Exception: pass`）⇒
+  stderr 一行都没有 ⇒ 测试**恒红**。可它的正文里一个 `fe_audit.py` 都没写过
+  ⇒ `scan_refs` 扫不到它、K1 的集合里根本没有它、K5 又只认
+  `os.path.join(<根>, "<单段文件名>")` 那一种写法 ⇒ **一条恒红的测试活在
+  所有门之外**（本门存在的意义正是在这里落空）。
+  处置（R89）：① 把该测试的这层依赖**写进正文**（点名 `fe_audit.py` ——
+  按 R63 已披露的口径，**点名即登记义务**，这是本门「宁可多登记」的代价）；
+  ② 把它登记进 RED 桶，理由指向 `fe_audit.py`；③ 这条边界写在这里。
+  **本门的口径仍然只覆盖「正文点名」**：经由产品在运行时产生的依赖，静态扫描
+  看不见 —— 写下来，免得下一轮以为它已经被罩住了。
+
 一图看懂（谁在跟谁说话）：
 
     产物（从未提交）                引用它的测试（实测三分）
@@ -198,6 +214,11 @@ RED_TESTS = {
     "test_r81_doc_fact_sync": ("fe_audit.py",),
     "test_r85_r86_site_quality_gate": ("fe_audit.py",),
     "test_r87_audit_check_registry": ("fe_audit.py",),
+    # R89：**从所有门之外捞回来的那一条**。它此前不在任何桶里 ——
+    # 因为它依赖 `fe_audit.py` 的方式是「经由 `matlabc.py` 在运行时 import」，
+    # 正文里没点过名字 ⇒ `scan_refs` 扫不到（见模块 docstring 第 ⑤ 条）。
+    # 现在测试正文里已经点名 `fe_audit.py`，这条登记才有 K1 的对手方。
+    "test_r88_generator_selfcheck": ("fe_audit.py",),
     "test_r89_strict_exit_codes": ("fe_audit.py", "fe_dom_check.js"),
     "test_r92_fe_artifact_exemption": ("fe_audit.py", "fe_dom_check.js"),
     "test_r93_issue_contract_validation": ("fe_audit.py",),

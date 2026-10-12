@@ -61,6 +61,17 @@ APP_VERSION = "1.1.0"
 # 于是「问帮助」变成「开窗口」或「静默退出」—— 对命令行用户是纯粹的意外。
 # 帮助必须在任何副作用（单例锁、tkinter、子进程）之前返回。
 # ---------------------------------------------------------------------------
+# R89：调用关系图的**节点身份口径**（三档）。GUI **不** import 分析器
+# （1.6 MB 的模块不进界面进程），所以这几档字面量在这里重抄了一份 ——
+# 重抄就有漂移风险，对手方在
+# `tests/test_matlabc.py::test_r89_gui_callgraph_card`：断言这里的三档与
+# `matlabc.py --callgraph-identity` 的 choices、以及 `callrel` 自己导出的
+# 口径**三者两两相等**。默认档由 `build_cli_args` **刻意不下发**
+# （留空 ⇒ 用 CLI 默认），这样「界面没动过」时命令行逐字与 R88 一致。
+CALLGRAPH_IDENTITIES = ("definition-site-local", "definition-site",
+                       "callee-name")
+CALLGRAPH_IDENTITY_DEFAULT = CALLGRAPH_IDENTITIES[0]
+
 HELP_TEXT = """\
 matlabc GUI —— 把命令行开关收敛成一张表单，一键分析并打开结果。
 
@@ -87,6 +98,10 @@ matlabc GUI —— 把命令行开关收敛成一张表单，一键分析并打�
     │ 二进制诊断     │ --lib-resolve / --lib-path /                 │
     │                │ --lib-max-nodes：库名→文件→递归分析依赖      │
     │                │ --binary-attach：额外点名库文件或库名        │
+    │ 调用关系       │ --callgraph <文件> / --callgraph-focus       │
+    │                │ --callgraph-depth / --callgraph-max-nodes    │
+    │                │ --callgraph-identity <口径>                  │
+    │                │ 格式 .json / .dot / .mmd                     │
     └────────────────┴────────────────────────────────────────────┘
 
 二进制诊断（R86-2 · 移植 REA 的静态证据契约）：
@@ -101,6 +116,20 @@ matlabc GUI —— 把命令行开关收敛成一张表单，一键分析并打�
       - 一次最多解析文件数：达到上限的节点记 skipped，与 not_found 严格区分：
         「我没看」不等于「找不到」（等价于 --lib-max-nodes）。
     只看一个 .so/.dll、不跑源码分析：python matlabc.py --binary libfoo.so
+
+调用关系（可选 · R86-3 投影 / R88 身份口径 / R89 解析阶梯）：
+    等价开关：--callgraph / --callgraph-focus / --callgraph-depth /
+              --callgraph-max-nodes / --callgraph-identity
+    填一个输出文件，就把「谁调用谁」导出成**有界**投影：度数排行、递归环、
+    跨文件计数、焦点邻域 —— 规模无关，输出恒为 KB 级（内核整树有 700 万条边，
+    而 `--json-level summary` 的载荷**结构上不含**边，没有这一条就没有产物）。
+      - 焦点函数：以它为根做双向 BFS（它调了谁、谁调了它）；留空取扇入最高的枢纽。
+      - 深度 / 节点上限：撞上限置 truncated.hit_node_cap —— 「我没展开」不等于
+        「没有关系」。
+      - 身份口径：definition-site-local（默认，同文件 → 同翻译单元，只对 C 启用）/
+        definition-site / callee-name（同名合并，环可能含假阳性）。换口径**一条边
+        都不删**，逐档「判得出的 / 判不出的」计数在产物的 resolution 块里。
+    只看一个函数的邻域：python matlabc.py <目录> --callgraph-focus foo --callgraph cg.json
 
 配置文件（可加载/可另存）：把上面这张表单存成 JSON，下次直接回填。
     加载：界面「加载配置」→ 选 JSON → 表单被填好
@@ -175,6 +204,11 @@ def build_cli_args(form):
         lib_resolve  int  库引用解析下钻层数（None=不传；0=显式关闭）
         lib_path     str  追加库搜索目录（逗号分隔；追加而非替换）
         lib_max_nodes int 引用解析一次最多分析几个文件（None=不传）
+        callgraph    str  导出调用关系的有界投影（.json/.dot/.mmd；留空=不导出）
+        callgraph_focus str  焦点子图的根函数名（留空=扇入最高的枢纽）
+        callgraph_depth int  焦点子图展开层数（None=不传，用 CLI 默认）
+        callgraph_max_nodes int  焦点子图节点上限（None=不传，用 CLI 默认）
+        callgraph_identity str  节点身份口径（三档；**默认档不下发**）
     """
     args = []
     config = form.get("config")
@@ -253,6 +287,24 @@ def build_cli_args(form):
         args += ["--lib-path", lib_path.replace("\\", "/")]
     if form.get("lib_max_nodes") is not None:
         args += ["--lib-max-nodes", str(form["lib_max_nodes"])]
+    # ---- 调用关系（有界投影 R86-3 / 身份口径 R88 / 解析阶梯 R89）----
+    # 三段递进：没填输出文件时**一个参数都不下发**（默认行为逐字不变）；
+    # 填了才把焦点 / 深度 / 节点上限一起带上（它们只在 --callgraph 存在时
+    # 才有意义）；身份口径的**默认档刻意不下发** —— 让「界面没动过」的命令
+    # 行与 R88 逐字相同。
+    cg = (form.get("callgraph") or "").strip()
+    if cg:
+        args += ["--callgraph", cg.replace("\\", "/")]
+        focus = (form.get("callgraph_focus") or "").strip()
+        if focus:
+            args += ["--callgraph-focus", focus]
+        if form.get("callgraph_depth") is not None:
+            args += ["--callgraph-depth", str(form["callgraph_depth"])]
+        if form.get("callgraph_max_nodes") is not None:
+            args += ["--callgraph-max-nodes", str(form["callgraph_max_nodes"])]
+        ident = (form.get("callgraph_identity") or "").strip()
+        if ident and ident != CALLGRAPH_IDENTITY_DEFAULT:
+            args += ["--callgraph-identity", ident]
     return args
 
 
@@ -342,6 +394,19 @@ def config_to_form(cfg):
         form["lib_path"] = str(cfg["lib_path"])
     if cfg.get("lib_max_nodes") is not None and cfg["lib_max_nodes"] != "":
         form["lib_max_nodes"] = str(cfg["lib_max_nodes"])
+    # R89：调用关系五格（同上 —— 回填与真正下发是**两件事**，缺一样就会
+    # 出现「配置里写了、界面却是空白」的沉默故障：用户以为没生效）。
+    if cfg.get("callgraph"):
+        form["callgraph"] = str(cfg["callgraph"])
+    if cfg.get("callgraph_focus"):
+        form["callgraph_focus"] = str(cfg["callgraph_focus"])
+    if cfg.get("callgraph_depth") is not None and cfg["callgraph_depth"] != "":
+        form["callgraph_depth"] = str(cfg["callgraph_depth"])
+    if (cfg.get("callgraph_max_nodes") is not None
+            and cfg["callgraph_max_nodes"] != ""):
+        form["callgraph_max_nodes"] = str(cfg["callgraph_max_nodes"])
+    if cfg.get("callgraph_identity"):
+        form["callgraph_identity"] = str(cfg["callgraph_identity"])
     return form
 
 
@@ -634,6 +699,12 @@ def _launch_gui():
         "lib_resolve": tk.StringVar(value=""),
         "lib_path": tk.StringVar(value=""),
         "lib_max_nodes": tk.StringVar(value=""),
+        # R89：调用关系五格
+        "callgraph": tk.StringVar(value=""),
+        "callgraph_focus": tk.StringVar(value=""),
+        "callgraph_depth": tk.StringVar(value=""),
+        "callgraph_max_nodes": tk.StringVar(value=""),
+        "callgraph_identity": tk.StringVar(value=CALLGRAPH_IDENTITY_DEFAULT),
     }
 
     def collect():
@@ -663,6 +734,13 @@ def _launch_gui():
             "lib_resolve": int(form["lib_resolve"].get()) if form["lib_resolve"].get().strip() else None,
             "lib_path": form["lib_path"].get().strip(),
             "lib_max_nodes": int(form["lib_max_nodes"].get()) if form["lib_max_nodes"].get().strip() else None,
+            "callgraph": form["callgraph"].get().strip(),
+            "callgraph_focus": form["callgraph_focus"].get().strip(),
+            "callgraph_depth": int(form["callgraph_depth"].get())
+            if form["callgraph_depth"].get().strip() else None,
+            "callgraph_max_nodes": int(form["callgraph_max_nodes"].get())
+            if form["callgraph_max_nodes"].get().strip() else None,
+            "callgraph_identity": form["callgraph_identity"].get().strip(),
         }
 
     def apply_form(values):
@@ -687,6 +765,11 @@ def _launch_gui():
                 form[key].set(bool(values[key]))
         for key in ("git_diff_base", "gate_baseline", "max_warnings", "sarif_base",
                     "lib_path", "binary_attach"):
+            if key in values and values[key] is not None:
+                form[key].set(str(values[key]))
+        # R89：调用关系五格（键名与 CLI 的配置键同名 ⇒ 可直接从 JSON 回填）
+        for key in ("callgraph", "callgraph_focus", "callgraph_depth",
+                    "callgraph_max_nodes", "callgraph_identity"):
             if key in values and values[key] is not None:
                 form[key].set(str(values[key]))
 
@@ -763,6 +846,19 @@ def _launch_gui():
             cfg["lib_path"] = f["lib_path"]
         if f["lib_max_nodes"] is not None:
             cfg["lib_max_nodes"] = f["lib_max_nodes"]
+        # R89：调用关系 —— 只写用户实际填了的项，保持配置精简；身份口径的
+        # 默认档不写（写了也是同一个默认，只会让配置多一行噪声）。
+        if f["callgraph"]:
+            cfg["callgraph"] = f["callgraph"]
+        if f["callgraph_focus"]:
+            cfg["callgraph_focus"] = f["callgraph_focus"]
+        if f["callgraph_depth"] is not None:
+            cfg["callgraph_depth"] = f["callgraph_depth"]
+        if f["callgraph_max_nodes"] is not None:
+            cfg["callgraph_max_nodes"] = f["callgraph_max_nodes"]
+        if (f["callgraph_identity"]
+                and f["callgraph_identity"] != CALLGRAPH_IDENTITY_DEFAULT):
+            cfg["callgraph_identity"] = f["callgraph_identity"]
         if f["ai_mode"] in ("ask", "auto") and f["provider"]:
             cfg["ai"] = {"default_provider": f["provider"]}
         try:
@@ -1129,6 +1225,30 @@ def _launch_gui():
     ttk.Label(binbox, text="留空=不做库解析。深度 0=关。「追加目录」是**追加**，平台默认目录仍会搜。三态：唯一命中 / 同名多份（不猜，按位数排除 32/64 位孪生）/ 未找到（并列列出搜过的目录）；「上限内没轮到」的节点记 skipped，与 not_found 严格区分。",
               style="CardMuted.TLabel", wraplength=760, justify="left").grid(
         row=3, column=0, columnspan=4, sticky="w", padx=8, pady=(2, 6))
+    # 调用关系卡片（R89：CLI 有 --callgraph 系列、GUI 一格都没有 = 新的不对等）
+    cgbox = ttk.LabelFrame(body, text="调用关系（有界投影 · 可选）")
+    cgbox.grid(row=7, column=0, sticky="we", pady=5)
+    cgbox.columnconfigure(3, weight=1)
+    ttk.Label(cgbox, text="导出文件（留空=不导出）").grid(
+        row=0, column=0, sticky="w", padx=8, pady=6)
+    ttk.Entry(cgbox, textvariable=form["callgraph"]).grid(
+        row=0, column=1, columnspan=3, sticky="we", padx=(0, 8))
+    ttk.Label(cgbox, text="焦点函数（留空=枢纽）").grid(
+        row=1, column=0, sticky="w", padx=8, pady=6)
+    ttk.Entry(cgbox, textvariable=form["callgraph_focus"], width=18).grid(
+        row=1, column=1, sticky="w")
+    ttk.Label(cgbox, text="展开深度").grid(row=1, column=2, sticky="w", padx=8)
+    ttk.Entry(cgbox, textvariable=form["callgraph_depth"], width=8).grid(
+        row=1, column=3, sticky="w")
+    ttk.Label(cgbox, text="节点上限").grid(row=2, column=0, sticky="w", padx=8, pady=6)
+    ttk.Entry(cgbox, textvariable=form["callgraph_max_nodes"], width=8).grid(
+        row=2, column=1, sticky="w")
+    ttk.Label(cgbox, text="节点身份口径").grid(row=2, column=2, sticky="w", padx=8)
+    ttk.OptionMenu(cgbox, form["callgraph_identity"], CALLGRAPH_IDENTITY_DEFAULT,
+                   *CALLGRAPH_IDENTITIES).grid(row=2, column=3, sticky="w")
+    ttk.Label(cgbox, text="留空=不导出。导出的是**有界**投影（度数排行 / 递归环 / 跨文件计数 / 焦点邻域），规模无关、输出恒为 KB 级。身份口径三档：definition-site-local（默认，同文件 → 同翻译单元，只对 C 启用）/ definition-site / callee-name（同名合并，环可能含假阳性）；换口径**一条边都不删**，逐档「判得出的 / 判不出的」计数在产物的 resolution 块里。",
+              style="CardMuted.TLabel", wraplength=760, justify="left").grid(
+        row=3, column=0, columnspan=4, sticky="w", padx=8, pady=(2, 6))
     # 底部：操作按钮 + 状态 + 日志
     actions = ttk.Frame(root)
     actions.pack(fill="x", padx=12, pady=(8, 2))
@@ -1291,6 +1411,51 @@ def main(argv=None):
         g0 = config_to_form({"dir": "C:/p", "lib_resolve": 0})
         assert g0["lib_resolve"] == "0", g0
         assert "lib_max_nodes" not in config_to_form({"dir": "C:/p"}), "未填不该造出键"
+        # R89：调用关系五格 -> --callgraph / --callgraph-focus / --callgraph-depth /
+        # --callgraph-max-nodes / --callgraph-identity。与二进制那一组同一纪律：
+        # ① 没填输出文件时**一个参数都不出现**（默认行为不许被界面偷偷改掉）；
+        # ② 填了必须原样进命令行；③ 身份口径的**默认档刻意不下发**（这样
+        # 「界面没动过」的命令行与 R88 逐字相同），非默认档必须显式下发。
+        for _f in ("--callgraph", "--callgraph-focus", "--callgraph-depth",
+                   "--callgraph-max-nodes", "--callgraph-identity"):
+            assert _f not in args, (_f, args)
+        # 只填焦点/深度而没填输出文件 ⇒ 仍然一个都不下发（三者脱离图没有意义）
+        q1 = build_cli_args({"src": "C:/p", "callgraph_focus": "foo",
+                             "callgraph_depth": 3})
+        assert "--callgraph" not in q1 and "--callgraph-focus" not in q1, q1
+        cg_sample = dict(sample)
+        cg_sample.update({"callgraph": "D:\\cg\\g.json",
+                          "callgraph_focus": "hub", "callgraph_depth": 3,
+                          "callgraph_max_nodes": 300,
+                          "callgraph_identity": "callee-name"})
+        cg_args = build_cli_args(cg_sample)
+        assert _val("--callgraph", cg_args) == "D:/cg/g.json", cg_args
+        assert _val("--callgraph-focus", cg_args) == "hub", cg_args
+        assert _val("--callgraph-depth", cg_args) == "3", cg_args
+        assert _val("--callgraph-max-nodes", cg_args) == "300", cg_args
+        assert _val("--callgraph-identity", cg_args) == "callee-name", cg_args
+        # 默认档不下发；显式给了默认档也不下发（两者等价，命令行更短）
+        for _ident in ("", CALLGRAPH_IDENTITY_DEFAULT):
+            q2 = build_cli_args({"src": "C:/p", "callgraph": "g.json",
+                                 "callgraph_identity": _ident})
+            assert "--callgraph-identity" not in q2, (_ident, q2)
+            assert _val("--callgraph", q2) == "g.json", q2
+        # 三档必须在册（少一档 ⇒ 要么有档选不出来，要么打错字静默变成默认）
+        assert CALLGRAPH_IDENTITIES == ("definition-site-local",
+                                        "definition-site",
+                                        "callee-name"), CALLGRAPH_IDENTITIES
+        # 配置往返那一半：只测「表单 -> 命令行」会漏掉「加载了配置但界面空白」
+        gc = config_to_form({"dir": "C:/p", "callgraph": "D:/cg/g.json",
+                             "callgraph_focus": "hub", "callgraph_depth": 3,
+                             "callgraph_max_nodes": 300,
+                             "callgraph_identity": "definition-site"})
+        assert gc["callgraph"] == "D:/cg/g.json", gc
+        assert gc["callgraph_focus"] == "hub", gc
+        assert gc["callgraph_depth"] == "3", gc
+        assert gc["callgraph_max_nodes"] == "300", gc
+        assert gc["callgraph_identity"] == "definition-site", gc
+        assert "callgraph" not in config_to_form({"dir": "C:/p"}), \
+            "未填不该造出键"
         print("GUI selftest OK:", " ".join(args))
         return 0
     # 单例守卫：防止重复双击启动多个 GUI 主进程（与 RunGate 同类「多实例」病根）。

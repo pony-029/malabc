@@ -10674,18 +10674,28 @@ def _emit_call_relations(model, args, label="C"):
     edges = list(model.get("edges") or [])
     unresolved = list(model.get("unresolved") or [])
     func_index = model.get("func_index") or {}
+    # R89：阶梯的启用条件是「口径 + 语言」，而语言在这里（模型自带）；
+    # include 图（P90 的 `include_edges`）只有模型里有，非 C 语料恒缺 ⇒
+    # 那时阶梯只剩 rung 1 —— 这件事由产物 `local_scope.include_map` **如实报出**，
+    # 不是静默降级。
+    _lang = model.get("lang")
+    _inc = model.get("include_edges")
     rel = callrel.call_relations(edges, func_index=func_index,
                                  unresolved_total=len(unresolved),
-                                 with_cycles=True, identity=identity)
+                                 with_cycles=True, identity=identity,
+                                 lang=_lang, include_edges=_inc)
     sub = None
     if edges:
         # R88：默认根的取法住在 callrel 里（它必须知道节点身份的编码方式）。
         root_name = focus_name or callrel.hub_of(rel)
+        # R89：同一份作用域输入（同一个 lang / 同一份 include 图）——
+        # 顶层与焦点子图若各建一份，同一个名字可能映到不同的节点。
         sub = callrel.focus_subgraph(edges, root_name, depth=depth,
                                      max_nodes=max_nodes,
                                      func_index=func_index,
                                      direction="both" if focus_name else "callee",
-                                     identity=identity)
+                                     identity=identity,
+                                     lang=_lang, include_edges=_inc)
     ext = os.path.splitext(out)[1].lower()
     payload = {"call_relations": rel}
     if sub is not None:
@@ -31269,16 +31279,23 @@ def main(argv=None):
     ap.add_argument("--callgraph-identity", metavar="MODE",
                     default=cfg.get("callgraph_identity"),
                     choices=list(callrel.IDENTITIES),
-                    help="R88：图的**节点身份**口径。%s（默认）= 节点是「函数名 @ "
-                         "定义文件」—— 同名不同文件的 static 函数各成节点，跨文件"
-                         "**假环当场散开**；%s = 老口径，节点就是函数名（同名**合并**，"
-                         "报出的「调用环」里可能含假阳性）。"
-                         "为什么默认换掉：内核整树实测名字级口径下 5,149,101 条"
+                    help="R88/R89：图的**节点身份**口径（三个字面量）。"
+                         "%s（默认）= 定义落点 **+ 翻译单元可见性优先**：同名多定义"
+                         "时按 C 的 TU 规则判两级（① 同文件优先 ② `#include` 闭包，"
+                         "闭包判据是**三明治**），判不出的仍留「同名多定义」汇点、"
+                         "**不猜**；%s = 只认定义落点（同名多定义一律判不出）；"
+                         "%s = 老口径，节点就是函数名（同名**合并**，报出的「调用环」"
+                         "里可能含假阳性）。"
+                         "为什么换：内核整树实测**名字级**口径下 5,149,101 条"
                          "（72.9%%）边指向「同名多定义」，最大「调用环」37,775 个成员 "
-                         "—— 那不是真环，是同名合并造出来的。"
-                         "换口径**一条边都不删**（两条口径 edges_total 相等）。"
-                         "未知取值 ⇒ 非零退出且不产出文件（不静默退回默认）。"
-                         % (callrel.IDENTITY_DEFSITE, callrel.IDENTITY_NAME))
+                         "—— 那不是真环，是同名合并造出来的；换成定义落点后最大环"
+                         "当场塌到三位数。三级口径**一条边都不删**"
+                         "（edges_total 三口径相等），逐档判得出的/判不出的计数见"
+                         "产物的 `resolution`，规则参数（语言、用到哪几级、闭包上限）"
+                         "见 `local_scope`。未知取值 ⇒ 非零退出且不产出文件"
+                         "（不静默退回默认）。"
+                         % (callrel.IDENTITY_LOCAL, callrel.IDENTITY_DEFSITE,
+                            callrel.IDENTITY_NAME))
     ap.add_argument("--operator-impact-out", metavar="FILE", default=None,
                     help="R62：把「检测算子工程影响分析」单独写入 FILE（Markdown 或 .csv）；"
                          "算子按命中数×严重度×波及系数排名，定位对整个工程影响最大的检测类别。"
