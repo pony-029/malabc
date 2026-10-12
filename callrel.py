@@ -960,13 +960,16 @@ def _limitations_local(unresolved_total, scope):
         "没跑完，而**所有读数一个都没变**）。"
         % (int(sc["rung2_files"] or 0), int(sc["closure_computed"] or 0),
            int(sc["closure_visits"] or 0)),
-        "⚠ 本块的读数全部建立在产物里的 `rel` 上，而 `rel` 由 "
-        "`matlabc._rel_of()` 决定：**被分析目录在当前工作目录之外**时 `rel` 会"
-        "退化成 **basename**（同名不同目录的文件被合并）⇒ 本块读数**整体改变**"
-        "（内核整树实测 `resolution.same_file` 381290 → 348353，而 `edges_total`"
-        "与 `unique` **逐位不变**）。**规范用法是从被分析目录里跑**"
-        "（`cwd=<被分析目录>`、目标 `.`）；修它要动 `_rel_of` 的语义（影响所有"
-        "前端），列为 R90 第一候选。",
+        "**（R90 已修）** `rel` 只相对**被分析根**（与 MATLAB 端 "
+        "`p.relative_to(root).as_posix()` 同口径），**不再**依赖调用者的 cwd —— "
+        "R90 之前它相对**当前工作目录**算，被分析根在 cwd **之外**时只能退化成 "
+        "**basename** ⇒ 同名不同目录的文件被**合并** ⇒ 同一份语料给出**两套读数**"
+        "（内核整树实测 `resolution.same_file` 381290 → 348353，而 `edges_total` "
+        "与 `unique` **逐位不变** —— 只有量 `rel` 的那几条判据看得见）。"
+        "`root` **没有默认值**（漏传当场 `TypeError`）⇒ **不留**静默的 cwd 回退。"
+        "**回归判据**：同一份语料在**任意** cwd 下（含「根不在 cwd 之下」的形态）"
+        "必须给出**逐位相等**的 `rel` 及其派生读数 —— 「已修」二字由该判据维持，"
+        "不是由「改完了」这句话维持。",
         "⚠ 因为 resolve_calls 对多定义**扇出**，edges_total 不是「调用点条数」，"
         "而是「(调用点 × 命中定义) 对」的条数。",
         "未解析调用（%d 条）**不在图里** —— 它们没有 callee 节点。"

@@ -5278,7 +5278,7 @@ def test_p93_lang_frontends():
                      "    return 0;\n"
                      "}\n")
         gdir5 = os.path.join(tmp, "gtc")
-        c_model = ma.build_c_model([os.path.join(cdir, "branch.c")])
+        c_model = ma.build_c_model([os.path.join(cdir, "branch.c")], cdir)
         n2, rels2 = ma.gen_tests_for_lang("c", c_model, gdir5, cdir)
         assert n2 >= 1
         ctext = _read_text(os.path.join(gdir5, "gen_c_tests", "test_pick.c"))
@@ -5501,7 +5501,7 @@ def test_p96_branch_coverage():
                      "    for (int k = 0; k < x; k++) { x--; }\n"
                      "    return 0;\n"
                      "}\n")
-        c_model = ma.build_c_model([os.path.join(cdir, "branch.c")])
+        c_model = ma.build_c_model([os.path.join(cdir, "branch.c")], cdir)
         ccov = ma.measure_branch_coverage(c_model, cdir, lang="c")
         assert ccov is not None
         assert ccov["total_branches"] >= 2, "C 分支点（if/for）应计入总数"

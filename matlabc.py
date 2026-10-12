@@ -8608,7 +8608,7 @@ def _parse_c_source(text, rel, path):
     }
 
 
-def build_c_model(c_files):
+def build_c_model(c_files, root):
     """P87：把 C 文件解析结果组装为统一模型。
 
     返回 {"lang": "c", "files": [...], "func_index": {小写名: {file, func}},
@@ -8622,7 +8622,7 @@ def build_c_model(c_files):
                 text = fh.read()
         except Exception:
             continue
-        rel = _rel_of(path)
+        rel = _rel_of(path, root)
         parsed = _parse_c_source(text, rel, path)
         model["files"].append(parsed)
         for fn in parsed["functions"]:
@@ -8654,16 +8654,31 @@ def build_c_model(c_files):
     return model
 
 
-def _rel_of(path):
-    """P87：把绝对路径转为相对当前工作目录的 rel（保持与 MATLAB 端一致）。"""
+def _rel_of(path, root):
+    """P87/R90：把路径转为**相对被分析根**的 rel（与 MATLAB 端口径一致）。
+
+    R90 之前它算的是「相对**当前工作目录**」：被分析根**不在 cwd 之下**时
+    `os.path.relpath` 只能返回以 `..` 开头的串，旧实现随即**回退成 basename**
+    ⇒ 同名不同目录的文件在模型里被**合并**。`rel` 是所有读数共用的那一层
+    （阶梯 / `cross_file` 分桶 / include 图 / 焦点子图都从它派生）⇒ 同一份语料
+    会因**调用者的 cwd** 给出两套数（内核整树实测 `resolution.same_file`
+    381290 → 348353，而 `edges_total` 与 `unique` **逐位不变**）。
+
+    主流程里 MATLAB 端一直是根相对（`p.relative_to(root).as_posix()`），
+    本函数此前是唯一的偏离者 —— R90 统一过来。
+
+    ⚠ 修法**不是**「把 basename 换成绝对路径」：那会让产物变成**机器相关**的。
+    ⚠ `root` **没有默认值**、且逃逸根时**不**回退 basename —— 两条都为「不许
+    静默」：漏传根会当场 `TypeError`，而静默的 cwd 回退正是本轮要修的东西。
+    逃逸根（路径不在根之下）只可能来自「调用方没把根的收集结果原样传进来」，
+    此时返回**诚实的相对形态**（含 `..`）—— 它仍与 cwd 无关、且**不会合并**同名文件。
+    """
     p = os.path.abspath(path)
-    cw = os.path.abspath(os.getcwd())
+    base = os.path.abspath(root)
     try:
-        r = os.path.relpath(p, cw)
+        r = os.path.relpath(p, base)
     except Exception:
         r = os.path.basename(p)
-    if r.startswith(".."):
-        return os.path.basename(p)
     return r.replace("\\", "/")
 
 
@@ -9979,7 +9994,7 @@ def _parse_js_source(text, rel, path):
     return {"rel": rel, "path": path, "functions": funcs, "imports": imports}
 
 
-def _build_ext_model(paths, lang, parse_fn):
+def _build_ext_model(paths, lang, parse_fn, root):
     """P93：把 Python/JS 文件解析结果组装为统一语言无关模型。
 
     返回 {"lang", "files", "func_index", "edges", "unresolved"}，与 C 前端一致。"""
@@ -9991,7 +10006,7 @@ def _build_ext_model(paths, lang, parse_fn):
                 text = fh.read()
         except Exception:
             continue
-        rel = _rel_of(path)
+        rel = _rel_of(path, root)
         parsed = parse_fn(text, rel, path)
         model["files"].append(parsed)
         for fn in parsed["functions"]:
@@ -31944,14 +31959,14 @@ def main(argv=None):
                 print("未找到任何汇编文件：%s" % root, file=sys.stderr)
                 return 1
             _asm_model = _build_ext_model(
-                _asm_paths, "asm", get_frontend("asm").parse_file)
+                _asm_paths, "asm", get_frontend("asm").parse_file, root)
             return _run_ext_only(_asm_model, root, args, "asm")
         if args.lang == "c":
             c_paths = collect_c_files(root, recursive=not args.no_recursive,
                                       exclude=args.exclude)
             if not c_paths:
                 _warn_unsupported_sources(root, args, "C/C++")
-            c_model = build_c_model(c_paths)
+            c_model = build_c_model(c_paths, root)
             return _run_c_only(c_model, root, args)
         # P93：Python / JavaScript 前端——走注册表插件收集 + 统一模型组装
         fe = get_frontend(args.lang)
@@ -31961,12 +31976,12 @@ def main(argv=None):
             _warn_unsupported_sources(root, args, args.lang)
             print(f"未找到任何 {args.lang} 文件：{root}", file=sys.stderr)
             return 1
-        ext_model = _build_ext_model(ext_paths, args.lang, fe.parse_file)
+        ext_model = _build_ext_model(ext_paths, args.lang, fe.parse_file, root)
         return _run_ext_only(ext_model, root, args, args.lang)
     if args.mixed:
         c_paths = collect_c_files(root, recursive=not args.no_recursive,
                                   exclude=args.exclude)
-        c_model = build_c_model(c_paths)
+        c_model = build_c_model(c_paths, root)
 
     # 解析全部文件（P71/P133：--incremental 时复用未变文件的解析结果；
     # P133：签名升级为内容 SHA-256，CI/git checkout 后 mtime 变化仍可命中）

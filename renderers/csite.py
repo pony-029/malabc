@@ -21,9 +21,13 @@ C 前端原有的单页报告 `c_report.html` 把「全部函数 + 全部调用�
 ----------
 1. **零 JS、零 CDN**：所有图表在服务端算成 SVG 后注入，断网双击即可打开。
    （R75 教训：外链 Chart.js 一旦被 CDN 拖慢，整页脚本都不执行，KPI/图表全空白。）
-2. **路径口径用 `path` 相对 `root` 重算，不用 `rel`**：`_rel_of()` 是相对
-   **当前工作目录**算 `rel` 的，目标在 cwd 之外时直接退化为 basename；语料级
-   规模下 `main.c` / `core.c` / `internal.h` 必然重名，页面名会互相覆盖。
+2. **路径口径用 `path` 相对 `root` 重算，不用 `rel`**：本模块**不 import
+   `matlabc` 的任何符号**，而 `rel` 是谁算的、按哪个根算的都不在它的契约里：
+   R90 之前 `rel` 相对**当前工作目录**算，语料级规模下 `main.c` / `core.c`
+   必然重名、页面名会互相覆盖（R76/R78 的 C-2 站点就是靠这里绕开的）；
+   **R90 起 `rel` 已改为相对被分析根，但本模块的判据不建立在那上面** ——
+   「上游口径变了而没人重新审这个渲染器」正是 C28-6 记下的那类隐患。
+   所以这里**一律自己算**，不看 `rel`。
 
 本模块只依赖标准库，且**不借用 matlabc 的任何符号**（`renderers/` 子树的
 import 期回边由图门 G1/G7 钉住，借用必须走 `renderers/_late.py`）。
@@ -266,7 +270,7 @@ def render_c_site(c_model, root, outdir, heuristics=None, css_text=None,
     outdir = str(outdir)
     root_abs = os.path.abspath(root) if root else None
 
-    # ---- 1) 文件条目：显示路径一律「相对 root」，避开 rel 的 basename 退化 ----
+    # ---- 1) 文件条目：显示路径一律「相对 root」**自己算**，不借 rel ----
     entries = []
     seen_flat = {}
     for pf in files:

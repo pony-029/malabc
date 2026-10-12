@@ -389,6 +389,8 @@ FAILURES=2
    而 `edges_total` 与 `unique` **逐位不变**。**规范用法是从被分析目录里跑**
    （`cwd=<被分析目录>`、目标 `.`）。已写进产物 `limitations`；**修它要动 `_rel_of`
    的语义（影响所有前端）**，所以列为 R90 第一候选，不在本轮动手。
+
+   ⚠ **R90 已修**：`_rel_of(path, root)` 改成**相对被分析根**，`root` **没有默认值**（漏传就是一条静默的 cwd 回退）；判据 = **F10l**。见 `docs/SUPERPOWER_REVIEW_R90.md`。
 7. 三明治的**欠近似**修好之后（R89k）`under` 图变大 ⇒ `closure_visits` 上升
    （CROSS 档 313,205 → 354,419），**代价也随之上升**；但 `closure_capped` 在真语料上
    仍是 **0**（上限 65536 有充分余量）。
@@ -402,6 +404,8 @@ FAILURES=2
 ## 10. 给下一轮的建设性意见（R90 起候选，按价值排序）
 
 1. ⚠ **`matlabc._rel_of()` 的 cwd 敏感**（R89k 只登记未修，**价值最高**）：
+
+   ✅ **R90 已修**（本条已兑现；保留原文作为那一轮的快照）——判据 **F10l** + 双形态对账：见 `docs/SUPERPOWER_REVIEW_R90.md`。
    被分析目录在 cwd 之外时 `rel` 塌成 basename ⇒ 同名不同目录的文件合并 ⇒
    **阶梯 / `cross_file` 分桶 / include 图 / 焦点子图**全部读数一起变
    （内核实测 `same_file` 381290 → 348353，而 `edges_total`/`unique` 逐位不变 ⇒

@@ -129,6 +129,7 @@
     python tools/check_c_frontend_shapes.py --help       # 显示本帮助
 """
 import argparse
+import ast
 import io
 import json
 import os
@@ -328,6 +329,39 @@ CG_INCX_FIXTURES = (
     ("t1/m.c", '#include "k.h"\nint m(void) { return h(); }\n'),
     ("t1/k.h", "int h(void) { return 1; }\n"),
     ("t2/k.h", "int h(void) { return 2; }\n"),
+)
+
+# ---------------------------------------------------------------------------
+# F10l（R90）：**`rel` 的基准** = 被分析**根**，不是调用者的 cwd。
+#
+# 为什么非有这一档不可：「`matlabc._rel_of()` 相对当前工作目录算」这个缺陷，
+# 现有夹具**没有一个能完整测出来**。R90 实测了两件事，两件都要写下来：
+#   ① 把 `_rel_of` 改成根相对之后，本门**真跑**的全部读数**逐位不变**；
+#   ② 但变异体 M14 的第一版（只把基准换成 cwd、**不**恢复「`..` ⇒ basename」
+#      那条塌陷）在**没有**本档时红在 **F10b** —— 因为 dup 夹具的文件就在语料
+#      **根**上，basename 恰好**等于**根相对，两种形态在它上面同形；F10b 的覆盖
+#      半边是拿**夹具 rel 名**与产物 rel 比字符串，所以它只对**第三种**形态
+#      （`../../…`，即「只换基准、不塌陷」的半拉子注入）敏感。
+#      ⇒ 只有本档（同 basename、落在**两个目录**里）能直接测出**塌陷**。
+# ⚠ 「判据没有分辨力」与「注入不忠实」是两件事：M14 的第一版看起来像前者，
+#   实际是后者。所以注释不能写成「一个也测不出来」。
+#
+# 这一档 `d1/x.c` 与 `d2/x.c` **同 basename**、各定义一份 `dup`：
+#   * `rel` 按**被分析根**算 ⇒ 两个文件是 `d1/x.c` / `d2/x.c` ⇒ `dup` 的两份
+#     定义各落在**调用者自己的文件**里 ⇒ 同文件优先（rung 1）判得出 ⇒
+#     4 条边**全部** `same_file`、`ambiguous = 0`、节点 4 个。
+#   * `rel` 按**调用者的 cwd** 算（门自己就是 `cwd=仓库` + 绝对临时目录的形态）
+#     ⇒ 两个文件都塌成 `x.c` ⇒ `dup` 的两份定义挤进同一个 `rel` ⇒ rung 1
+#     的「恰一份」不成立、rung 2 又没有 include 可走 ⇒ 4 条边**全部**留歧义、
+#     节点 3 个（多出一个汇点）。
+# ⚠ 两种形态下 `edges_total` **都是 4** —— 只看边数的判据一条也看不见它。
+# ⚠ 手推（独立于产品）：2 文件 / 4 函数 / 2 个调用点各命中 2 份定义 ⇒ 扇出后 4 条边。
+# ---------------------------------------------------------------------------
+CG_DUPX_FIXTURES = (
+    ("d1/x.c", "static int dup(void) { return 1; }\n"
+               "int e1(void) { return dup(); }\n"),
+    ("d2/x.c", "static int dup(void) { return 2; }\n"
+               "int e2(void) { return dup(); }\n"),
 )
 
 # ---------------------------------------------------------------------------
@@ -1029,6 +1063,23 @@ def judge_local(obs):
            欠近似不是「更安全」，而是把这一级的能力砍成 **0**。
            对照半边（basename 撞车 ⇒ **必须**判不出来）由 F10h 持有 ——
            两侧分开住，一条判据只问一件事。
+      F10l **`rel` 的基准 = 被分析根**（R90）：`dupx` 夹具让 `d1/x.c` 与
+           `d2/x.c` **同 basename**、各定义一份 `dup`。`rel` 若按**调用者的
+           cwd** 算，两个文件塌成同一个 `x.c` ⇒ 两份定义挤进同一个 rel ⇒
+           同文件优先判不出来（`same_file=0 / ambiguous=4`）；按**被分析根**
+           算则两份定义各在调用者自己的文件里 ⇒ 全部 `same_file`。
+           三条断言 + 两条完备性：
+             ① 同名不同目录**不许被合并**（`same_file` == 边数、`ambiguous` == 0）
+             ② **对照半边**：纯定义落点不做作用域推理 ⇒ 同样这些边本应**全部**
+                留歧义（证明①不是「0 == 0」刷绿的）
+             ③ **直接测形态**：产物自报的 `rel`（`fan_in_top` / `fan_out_top`
+                的 `file`）必须等于**夹具自己的**相对路径表 —— 这一条不看任何
+                派生读数
+             ④ ③ 所依赖的两张表是**有界投影** ⇒ 先断言 `shown == total`，
+                否则③可能只看到一部分却「碰巧」相等
+             ⑤ **不许静默**：`_rel_of` / `build_c_model` / `_build_ext_model`
+                的 `root` 形参**不许有默认值** —— 有默认值就等于留了一条静默的
+                cwd 回退（这条是 **AST** 判据：读真实形参默认值，不是文本搜索）
     """
     probs = []
     if not isinstance(obs, dict):
@@ -1332,6 +1383,57 @@ def judge_local(obs):
             probs.append("F10i inc 夹具上定义不在调用者文件里 ⇒ same_file"
                          "必须为 0（rung1 不许冒充 rung2），读到 %r"
                          % (ix.get("same_file"),))
+
+    # ---- F10l `rel` 的**基准** = 被分析根（R90，由「同一份语料两种调用形态」
+    #      的装置逼出来）----
+    # 判据来由见 §judge_local 的 docstring。⚠ 守卫 `isinstance` 是**有意的**：
+    # 读不到夹具时由这一条自己的第一支报红，不让别的 F10x 一起红
+    # （`red_loc` 判定「红在别处 = 失败」）。
+    dxe = obs.get("dupx_edges_default")
+    dxr = obs.get("dupx_res_default")
+    dxp = obs.get("dupx_res_pure")
+    if not isinstance(dxe, int) or not isinstance(dxr, dict) \
+            or not isinstance(dxp, dict):
+        probs.append("F10l 拿不到 dupx 夹具（同名不同目录）的读数 —— "
+                     "`rel` 的基准会退化成空断言，读到 %r / %r" % (dxp, dxr))
+    else:
+        if dxr.get("same_file") != dxe:
+            probs.append("F10l 同名不同目录的两份定义被**合并**了：`rel` 应相对"
+                         "**被分析根**，退回「相对 cwd」就只剩 basename ⇒ "
+                         "同文件优先判不出来 ⇒ same_file 应为 %r（= 边数），"
+                         "读到 %r" % (dxe, dxr.get("same_file")))
+        if dxr.get("ambiguous"):
+            probs.append("F10l dupx 夹具上留下了 %r 条歧义边 —— 两份定义各在"
+                         "调用者自己的文件里，本该一条都不留"
+                         % (dxr.get("ambiguous"),))
+        if dxp.get("ambiguous") != dxe:
+            probs.append("F10l **对照半边**失效：纯定义落点不做作用域推理 ⇒ "
+                         "同样这些边本应**全部**留歧义（%r 条），读到 %r —— "
+                         "夹具丧失了可歧义性，上一条会被 0 == 0 刷绿"
+                         % (dxe, dxp.get("ambiguous")))
+        want_files = sorted(set(p for p, _t in CG_DUPX_FIXTURES))
+        seen_files = obs.get("dupx_files_seen")
+        if not isinstance(seen_files, list) or seen_files != want_files:
+            probs.append("F10l 产物自报的文件不是**根相对**形态：期望 %r，"
+                         "读到 %r —— 退回 cwd 相对时两个文件会塌成同名 basename"
+                         % (want_files, seen_files))
+    if obs.get("dupx_proj_whole") is not True:
+        probs.append("F10l dupx 夹具的 fan_in/fan_out 有界投影被截断（%r）⇒ "
+                     "上面那条形态判据看到的文件集可能不完整"
+                     % (obs.get("dupx_proj_whole"),))
+    rd = obs.get("rel_root_param_defaults")
+    _nd_want = ("_rel_of", "build_c_model", "_build_ext_model")
+    if not isinstance(rd, dict):
+        probs.append("F10l 拿不到 `root` 形参默认值的 AST 读数（%r）—— "
+                     "「不许静默」这半边会退化成空断言" % (rd,))
+    else:
+        bad_nd = [k for k in _nd_want if rd.get(k) != "NODEFAULT"]
+        if bad_nd:
+            probs.append("F10l %s 的 `root` **带了默认值**（读到 %r）—— "
+                         "有默认值就等于留了一条**静默**的 cwd 回退：漏传根时"
+                         "产物会悄悄变回 cwd 相对"
+                         % (", ".join(bad_nd),
+                            dict((k, rd.get(k)) for k in _nd_want)))
     return probs
 
 
@@ -1495,6 +1597,65 @@ def judge_attr(obs):
         probs.append("F8f %s 里缺少边界声明 %r —— 「不做也不静默」这条口径"
                      "要求边界落在文档上" % (ATTR_DOC, list(miss)))
     return probs
+
+
+def _files_seen(pay):
+    """产物自报的**文件**集合（`fan_in_top` / `fan_out_top` 两项的 `file`）。
+
+    这两张表是**有界投影** ⇒ 完整性由 `_proj_whole` 另行断言，不能默认
+    「看到的就是全部」（R86-3 的口径：截断必须显式）。
+    空/缺的 `file`（`K_AMB` 汇点不指落点）**不并入** —— 它是「没落点」，
+    不是「落点是空字符串」。
+    """
+    cr = (pay or {}).get("call_relations") or {}
+    out = set()
+    for key in ("fan_in_top", "fan_out_top"):
+        for it in (cr.get(key) or []):
+            f = it.get("file")
+            if f:
+                out.add(f)
+    return sorted(out)
+
+
+def _proj_whole(pay):
+    """`fan_in` / `fan_out` 两张表是否**未被截断**（`shown == total`，现算）。"""
+    cr = (pay or {}).get("call_relations") or {}
+    t = cr.get("truncated") or {}
+    try:
+        return (int(t.get("fan_in_shown")) == int(t.get("fan_in_total"))
+                and int(t.get("fan_out_shown")) == int(t.get("fan_out_total")))
+    except (TypeError, ValueError):
+        return False
+
+
+def _root_param_defaults(path):
+    """`matlabc.py` 里三个组装函数的 `root` 形参**有没有默认值**（AST 现读）。
+
+    R90 的设计决定是「`root` **没有默认值**」—— 有默认值就等于留了一条
+    **静默**的 cwd 回退（漏传根时产物悄悄变成 cwd 相对）。这是**结构化**判据：
+    读的是 AST 里真实的形参默认值，不是源码文本里有没有某个字符串。
+
+    返回 `{函数名: "NODEFAULT" | "DEFAULT" | "MISSING"}`。
+    """
+    want = ("_rel_of", "build_c_model", "_build_ext_model")
+    out = dict((w, "MISSING") for w in want)
+    try:
+        with io.open(path, "rb") as fh:
+            tree = ast.parse(fh.read().decode("utf-8", "replace"))
+    except (IOError, OSError, SyntaxError, ValueError):
+        return out
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef) or node.name not in want:
+            continue
+        args = list(node.args.args)
+        if not any(a.arg == "root" for a in args):
+            out[node.name] = "MISSING"
+            continue
+        ndef = len(node.args.defaults)
+        tail = args[len(args) - ndef:] if ndef else []
+        out[node.name] = ("DEFAULT" if any(a.arg == "root" for a in tail)
+                          else "NODEFAULT")
+    return out
 
 
 def scan_callrel(root, python_exe):
@@ -1718,6 +1879,8 @@ def scan_identity(root, python_exe):
                                 缓存退化（每个文件只该算两次闭包）；
                                 同一趟也是 `under` **唯一性口径**（F10k）的载体：
                                 12 个文件共享**一个** `k.h` ⇒ 必须全判得出来
+      dupx × 默认 / 纯       ⇒ `rel` 的**基准**（F10l）：同 basename 落在两个
+                                目录里 —— 退回 cwd 相对就塌成一个文件
 
     返回 ``(probs, n_runs)``；``probs is None`` = **缺输入**
     （不许把「跑不起来」当成「没问题」）。
@@ -1731,6 +1894,7 @@ def scan_identity(root, python_exe):
         hdrd = os.path.join(base, "hdr")
         incxd = os.path.join(base, "incx")
         multid = os.path.join(base, "multi")
+        dupxd = os.path.join(base, "dupx")
         os.makedirs(dup)
         os.makedirs(cyc)
         os.makedirs(pyd)
@@ -1749,6 +1913,7 @@ def scan_identity(root, python_exe):
         put(hdrd, CG_HDR_FIXTURES)
         put(incxd, CG_INCX_FIXTURES)
         put(multid, CG_MULTI_FIXTURES)
+        put(dupxd, CG_DUPX_FIXTURES)
         for rel, text in CG_DUP_FIXTURES:
             with io.open(os.path.join(dup, rel), "w", encoding="utf-8",
                          newline="") as fh:
@@ -1811,11 +1976,15 @@ def scan_identity(root, python_exe):
             incxd, "incx_pure",
             ["--callgraph-identity", "definition-site"])
         _jmul, c_multi_def = one(multid, "multi_def", [])
+        _jdx, c_dupx_def = one(dupxd, "dupx_def", [])
+        _jdx2, c_dupx_pure = one(
+            dupxd, "dupx_pure",
+            ["--callgraph-identity", "definition-site"])
         if not all(isinstance(x, dict) for x in
                    (c_def, c_pure, c_leg, c_inert_def, c_inert_pure,
                     c_inert_leg, c_py_def, c_py_pure, c_inc_def, c_inc_pure,
                     c_hdr_def, c_hdr_pure, c_incx_def, c_incx_pure,
-                    c_multi_def)):
+                    c_multi_def, c_dupx_def, c_dupx_pure)):
             return None, 0
         bad = os.path.join(base, "bad_id.json")
         bad_rc = run(dup, ["--callgraph", bad, "--callgraph-identity", "nope"])
@@ -1880,6 +2049,14 @@ def scan_identity(root, python_exe):
             "multi_edges_default": rel_of(c_multi_def).get("edges_total"),
             "multi_res_default": rel_of(c_multi_def).get("resolution"),
             "multi_scope_default": (rel_of(c_multi_def)).get("local_scope"),
+            # ---- F10l（R90）：`rel` 的基准 = 被分析根 ----
+            "dupx_edges_default": rel_of(c_dupx_def).get("edges_total"),
+            "dupx_res_default": rel_of(c_dupx_def).get("resolution"),
+            "dupx_res_pure": rel_of(c_dupx_pure).get("resolution"),
+            "dupx_files_seen": _files_seen(c_dupx_def),
+            "dupx_proj_whole": _proj_whole(c_dupx_def),
+            "rel_root_param_defaults": _root_param_defaults(
+                os.path.join(root, "matlabc.py")),
             "dup_big_pure": big(c_pure),
             "dup_nodes_pure": rel_of(c_pure).get("nodes_total"),
             "dup_n_edges_json_pure": len((_jp or {}).get("edges") or []),
@@ -1980,7 +2157,8 @@ def main(argv):
           % (len(FIXTURES), len(CG_FIXTURES), len(CG_DUP_FIXTURES),
              len(CG_PY_FIXTURES),
              (len(CG_INC_FIXTURES) + len(CG_HDR_FIXTURES)
-              + len(CG_INCX_FIXTURES) + len(CG_MULTI_FIXTURES)),
+              + len(CG_INCX_FIXTURES) + len(CG_MULTI_FIXTURES)
+              + len(CG_DUPX_FIXTURES)),
              len(ATTR_FIXTURES), n_funcs, ROW_SIGNATURE))
     return 0
 
@@ -2356,6 +2534,19 @@ def _selftest():
             "py_big_default": 0, "py_big_pure": 0,
             "py_nodes_default": 3, "py_nodes_pure": 3,
             "py_edges_default": 4, "py_edges_pure": 4,
+            # ---- F10l（R90）：dupx 夹具的**手推**值 ——
+            #      4 条边（2 个调用点各命中 2 份定义 ⇒ 扇出）、两份定义各在
+            #      调用者自己的文件里 ⇒ 全部 same_file；纯定义落点下全部歧义。
+            "dupx_edges_default": 4,
+            "dupx_res_default": {"unique": 0, "same_file": 4, "include": 0,
+                                 "ambiguous": 0, "external": 0},
+            "dupx_res_pure": {"unique": 0, "same_file": 0, "include": 0,
+                              "ambiguous": 4, "external": 0},
+            "dupx_files_seen": ["d1/x.c", "d2/x.c"],
+            "dupx_proj_whole": True,
+            "rel_root_param_defaults": {"_rel_of": "NODEFAULT",
+                                        "build_c_model": "NODEFAULT",
+                                        "_build_ext_model": "NODEFAULT"},
         }
 
     def red_loc(tag, obs, want):
@@ -2375,7 +2566,7 @@ def _selftest():
             good[0] += 1
             witnessed.add(want)
 
-    green("好样本：F10 观测五条子判据全绿", judge_local(_obs_loc()))
+    green("好样本：F10 观测全部子判据全绿", judge_local(_obs_loc()))
     for tag, patch in (
             ("F10a 新口径吃了边（边账不等）", {"dup_edges_default": 5}),
             ("F10a 载荷那边与三口径对不上", {"dup_n_edges_json": 7}),
@@ -2552,12 +2743,35 @@ def _selftest():
                                       "closure_visits": 72,
                                       "closure_capped": 0,
                                       "header_callers": 0}}),
+            # ---- F10l：`rel` 的基准 = 被分析根（R90）----
+            ("F10l 同名不同目录被合并（rel 退回 cwd 相对）",
+             {"dupx_res_default": {"unique": 0, "same_file": 0, "include": 0,
+                                   "ambiguous": 4, "external": 0}}),
+            ("F10l 产物自报的文件塌成同名 basename",
+             {"dupx_files_seen": ["x.c"]}),
+            ("F10l 有界投影被截断 ⇒ 形态判据看到的文件集不完整",
+             {"dupx_proj_whole": False}),
+            ("F10l 拿不到 dupx 夹具读数（rel 基准变空断言）",
+             {"dupx_res_default": None}),
+            ("F10l 对照半边失效（纯定义落点上也不歧义）",
+             {"dupx_res_pure": {"unique": 4, "same_file": 0, "include": 0,
+                                "ambiguous": 0, "external": 0}}),
+            ("F10l `root` 带了默认值（静默的 cwd 回退又回来了）",
+             {"rel_root_param_defaults": {"_rel_of": "DEFAULT",
+                                          "build_c_model": "NODEFAULT",
+                                          "_build_ext_model": "NODEFAULT"}}),
+            ("F10l `root` 形参整个不见了（组装器不再接受根）",
+             {"rel_root_param_defaults": {"_rel_of": "NODEFAULT",
+                                          "build_c_model": "MISSING",
+                                          "_build_ext_model": "NODEFAULT"}}),
+            ("F10l 拿不到 `root` 形参读数（「不许静默」变空断言）",
+             {"rel_root_param_defaults": None}),
     ):
         d = _obs_loc()
         d.update(patch)
         red_loc("坏样本 %s" % tag, d, "F10")
     for letter in ("F10a", "F10b", "F10c", "F10d", "F10e", "F10f", "F10g",
-                   "F10h", "F10i", "F10j", "F10k"):
+                   "F10h", "F10i", "F10j", "F10k", "F10l"):
         if letter not in witnessed_sub:
             bad[0] += 1
             print("  [selftest] F10 的子判据 %s 没有自己的坏样本（子覆盖静默缩水）"
