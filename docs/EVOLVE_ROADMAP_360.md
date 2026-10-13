@@ -125,6 +125,17 @@
 #   修法必须**先设计成判据**（两向）：① 造 `a/x.c` 与 `b/x.c` 同名定义夹具，断言
 #   两种调用形态下 `nodes_total` / `same_file` **相等**；② 产物**不出现机器相关绝对路径**。
 #   ⚠ 不许拿「把 basename 换成绝对路径」当修法 —— 那是把口径问题换成一个更难查的问题。
+#   R91 的 Phase 0m（焦点子图的**边上限**）同理插在 0l 之后、Phase A 之前：
+#   0l 的第 17 轮不动，Phase A 的四条 blocked 轮次再由 18/19/20/21 挪到 19/20/21/22。**门数仍是 19**
+#   —— 0m 只给 `check_c_frontend_shapes.py` 的 F10 族加一条半边（F10l → F10m），**签名仍是 `F1–F10`**
+#   （族没变 ⇒ 六处级联不触发）。仍走 `t2`。
+#   ⚠ **本轮的红线**：不给 `--callgraph-max-edges` 时产物必须**逐字节不变** —— 否则 R90 刚建立的
+#   「内核跨轮回归（读数逐位相同 + 字节差必须被解释掉）」会被自己破坏。
+#   实测（内核整树）：焦点子图 **34 节点 / 19,469 边**、`hit_node_cap=false`；`truncated` 里 `fan_in/out` 有
+#   `shown/total`，而 `focus_subgraph` **没有**对应的边上限参数 ⇒ 「有界投影」只对上了一半。
+#   判据必须**先设计成两向**：① 给了上限就一定要 `len(edges) <= cap` 且**显式上报截断**（`hit_edge_cap`）；
+#   ② **不给开关时读数与产物逐位/逐字节不变**（否则它就不是「加上限」而是「改默认」）。
+#   ⚠ 不许静默截断 —— 截断不上报就是把「看不全」伪装成「全部」。
 0  | 0  | base | phase0_acceptance       | Phase 0 验收：门数 17→18 全绿 + U1–U5 两向自证 | -
 1  | 0  | base | conservation_two_way    | 统一图守恒判定器两向成立（干净 0 / 注入 ≥1 / 还原 0） | -
 2  | 0  | base | py36_census             | 3.6.5 语法门在新增模块上仍绿 | -
@@ -143,10 +154,11 @@
 15 | 0j | t2   | callgraph_identity_defsite | 调用图的**节点身份口径**：默认换成「定义落点」（同名不同文件**不合并** ⇒ 假环当场散开、**边一条不删**）；老口径`callee-name` 仍可显式选中；判据族 **F1–F8 → F1–F9** | -
 16 | 0k | t2   | callgraph_local_scope   | 调用图的**解析阶梯**：rung1 同文件优先（调用者所在文件里**恰一份**定义）+ rung2 `#include` 闭包（**三明治**判定，只对 TU 根）；`resolution` 五档对手方（之和 ≡ `edges_total`）；非 C 语言门；判据族 **F1–F9 → F1–F10** | -
 17 | 0l | t2   | rel_of_root_relative   | `matlabc._rel_of()` 算的是「相对 **cwd**」而不是「相对**被分析根**」⇒ 被分析目录在 cwd **之外**时 `rel` 塌成 **basename**（同名不同目录**被合并**）；修法 = `_rel_of` 增**根参数**（**不是**把 basename 换成绝对路径）；判据族 F10 族内加半边 **F10l**（签名仍 `F1–F10`） | -
-18 | A  | t1   | -                       | R82-A3 Py/JS 后端（await 必须不产生 async 边） | 未实现
-19 | A  | t1   | -                       | R82-A4 MATLAB 后端（parfor/parfeval/batch/timer） | 未实现
-20 | A  | t1   | -                       | R82-A5 asm 间接跳转 ⇒ unknown（不猜） | 未实现
-21 | A  | t1   | -                       | R82-A6 站点/报告新增「异步」列 + 未识别并发站点计数 | 未实现
+18 | 0m | t2   | callgraph_edge_cap      | 焦点子图**边数无上限**（R87 起 node cap 有、edge cap 没有 ⇒ 有界投影只对上一半）：`--callgraph-max-edges N`（**默认 0 = 不限** ⇒ 不给开关时产物**逐字节不变**）；截断**显式上报**（`hit_edge_cap` + `edges_shown/edges_total`）；判据族 F10 族内加半边 **F10m**（签名仍 `F1–F10`） | -
+19 | A  | t1   | -                       | R82-A3 Py/JS 后端（await 必须不产生 async 边） | 未实现
+20 | A  | t1   | -                       | R82-A4 MATLAB 后端（parfor/parfeval/batch/timer） | 未实现
+21 | A  | t1   | -                       | R82-A5 asm 间接跳转 ⇒ unknown（不猜） | 未实现
+22 | A  | t1   | -                       | R82-A6 站点/报告新增「异步」列 + 未识别并发站点计数 | 未实现
 ```
 
 ### Phase 0f · REA 能力移植 Ⅰ：静态缓解措施（轮 11 · `t2`）
@@ -290,6 +302,30 @@
 分桶 / 焦点读数），且产物里的路径只相对**被分析根**；`edges_total` 与此前的
 `unique` / `external` **逐位不变**（只改路径形态，不许改分析结果）。
 ⚠ **出口必须是「产品兑现」而不是「量具测得出」**（0k 的教训）。
+
+### Phase 0m · 焦点子图的**边上限**（轮 18 · `t2`）
+
+**动因**：R87 给焦点子图加了 **node cap**，但**没有 edge cap**。
+内核默认根 **34 节点 / 19,469 边**、`hit_node_cap=false` ——
+也就是说「有界投影」只对上了一半：
+节点有限制、**边没有**。`truncated` 块里 `fan_in/out`
+有 `shown/total`，而 `focus_subgraph` **没有**对应的边上限参数
+⇒ 「看不全」可以不上报。
+
+| ID | 任务 | 轮次预算 | 出口判据 |
+|---|---|---|---|
+| R91a | **预登记量具**（先于产品）：先量**现状**（焦点子图 `nodes`/`edges`、`hit_node_cap`、`focus_subgraph` 有无边上限字段），再量「给上限后」的期望 | 18 | 数字**先于**实现落盘；量具**不 import** 产品新代码（R82b：两本账共用一个错口径会永远对得上） |
+| R91b | `callrel.py` 的焦点 BFS 增**边上限** + CLI `--callgraph-max-edges N`；**默认 0 = 不限**（不给开关时产物**逐字节不变**）；截断必须**显式上报** | 18 | 两向：① 给了 `N` 则 `len(edges) <= N` 且 `hit_edge_cap=true` + `edges_shown/edges_total` 同源；② **不给**时与基线**逐字节相同** |
+| R91c | 判据 **F10l → F10m**（族内加半边，**签名仍 `F1–F10`** ⇒ **不触发六处级联**）+ 变异体 `M16`（去掉上限：静默不截断 或 截断不上报） | 18 | `--selftest` 计数**不降**；变异体注入即红且红在 **F10m**；还原后副本与真树皆绿 |
+| R91d | 文档三处：`matlabc.py --help`（体积棘轮三臂）、README 双侧、GUI 卡片对等（CLI 有 GUI 没有 = **新的不对等**） | 18 | `check_doc_flags` / `check_help_contract` / `check_readme_parity` 全绿 |
+| R91e | 门数**仍 19**（不加闸门 —— 「缺口为 0 时加闸 = churn」，R85 定论）；`--check-py36` 仍绿 | 18 | `check_all.py` rc=0；`MIN_GUARDS` 不动 |
+
+**Phase 0m 出口**：**给了上限就一定要显式上报**
+（`hit_edge_cap` 与 `edges_shown/edges_total` **同源**、`len(edges) <= cap`）；
+**不给开关时内核 `--callgraph` 产物逐字节不变**
+（R90 建立的跨轮回归仍绿）；`edges_total` / `resolution`
+**逐位不变**（只加限，不改分析结果）。
+⚠ **出口必须是「产品兑现」而不是「量具测得出」**（0k/0l 的老课）。
 
 ### Phase A · T1 异步调用链（轮 1–60）
 
