@@ -146,6 +146,11 @@ ATTR_FEEDS = {
     ("matlabc.py", "_run_c_only"):
         ("reads", ("unresolved",),
          "C 模式的 JSON / 终端两条分支都从 IR 容器读 unresolved 键"),
+    ("matlabc.py", "_run_ext_only"):
+        ("reads", ("unresolved",),
+         "Py/JS/asm 三种语言共用这条出口（R92 接上），名字从 IR 容器的 "
+         "unresolved 键读 —— 与 _run_c_only 同一口径（同一个模型形状、"
+         "同一个判定点）。此前扩展语言根本不跑归因，所以这里没有登记；接上之后喂入点 2 -> 3 处"),
     ("matlabc.py", "_emit_binary_attach"):
         ("calls", ("_collect_unresolved_calls",),
          "MATLAB 主流程：名字来自 _collect_unresolved_calls -> "

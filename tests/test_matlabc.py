@@ -20430,8 +20430,14 @@ def test_r76_c_site_is_paginated_and_styled():
         assert "C 语言前端分析" in idx, "索引页品牌缺失"
         assert "告警构成" in idx and "规则汇总" in idx, "索引页缺告警概览"
         assert "<svg" in idx, "索引页图表应为服务端 SVG"
-        # ③ 离线自足：无 <script>、无 http(s) 外链；每页的 browse.css 都可解析。
+        # ③ 离线自足：无 <script>、无**外链资源引用**；每页的 browse.css 都可解析。
         #    旧单页 c_report.html 仍在目录里（保留兼容），不计入分页站点页面数。
+        #    R92：外链判据由「正文出现 http:// 即红」收窄为「**属性**里的外链资源
+        #    引用」。理由（实测，不是放宽）：源码页会把被分析文件的正文**逐行内联**，
+        #    于是 `xmlns="http://www.w3.org/2000/svg"` 这类散文、以及 shields.io
+        #    徽章 URL 都会出现在正文里 —— 按旧判据**每一张真源码页都会误判**
+        #    （`tools/check_flow_diagrams.py` L73 记过同款错判据）。
+        #    真正会去取外部资源 / 跳走的写法仍然逐条判红。
         assert os.path.exists(os.path.join(out, "c_report.html")), \
             "旧单页完整表 c_report.html 应保留（兼容既有链接）"
         n_site = 0
@@ -20441,14 +20447,51 @@ def test_r76_c_site_is_paginated_and_styled():
                     continue
                 n_site += 1
                 t = _read_text(os.path.join(dp, f))
-                assert "<script" not in t.lower(), "%s 含 <script>（非离线自足）" % f
-                assert "http://" not in t and "https://" not in t, \
-                    "%s 含外链（离线打开会缺样式）" % f
+                low = t.lower()
+                assert "<script" not in low, "%s 含 <script>（非离线自足）" % f
+                assert 'href="http' not in low and 'src="http' not in low, \
+                    "%s 属性里有外链资源引用（离线打开会缺东西）" % f
                 assert os.path.exists(os.path.join(dp, "browse.css")), \
                     "%s 所在目录缺 browse.css（悬空链接）" % f
-        assert n_site == 3 + len(rpages) + 1, \
-            "分页站点应为 3 文件页 + %d 规则页 + 1 索引，实得 %d" % (
-                len(rpages), n_site)
+        # ③b R92：站点新增 funcs/deps/dir/src 四类页。判据**按产物推导**，不再硬编码
+        #     页面总数 —— 硬编码会在每次加页时失败，而失败理由与「站点退化」无关。
+        #     真正要守的是「分页没退化」+「新页真的存在」。
+        spages = sorted(f for f in os.listdir(os.path.join(out, "src"))
+                        if f.endswith(".html"))
+        assert len(spages) == 3, "每个 C 文件都应有源码页（R92），实得 %d" % len(spages)
+        for extra in ("funcs.html", "deps.html"):
+            assert os.path.exists(os.path.join(out, extra)), "缺少 %s（R92）" % extra
+        dpages = sorted(f for f in os.listdir(os.path.join(out, "dir"))
+                        if f.endswith(".html"))
+        assert len(dpages) == 1, \
+            "3 个文件同在根目录 ⇒ 应恰有 1 个目录页，实得 %d：%s" % (
+                len(dpages), dpages)
+        assert n_site == 3 + len(rpages) + len(dpages) + len(spages) + 2 + 1, \
+            ("分页站点应为 3 文件页 + %d 规则页 + %d 目录页 + %d 源码页 + "
+             "funcs/deps + 1 索引，实得 %d") % (
+                len(rpages), len(dpages), len(spages), n_site)
+        # ③c R92：文件页的函数表必须给出**双向**调用关系（「每个函数和其他函数
+        #     之间的调用关系」的落点），且源码行链接的目标与锚点都真实存在。
+        def _fn_table(page):
+            i = page.find("出边</th>")
+            if i < 0:
+                return u""
+            j = page.find("<tbody>", i)
+            return page[j:page.find("</tbody>", j)]
+
+        hit_row = 0
+        for f in fpages:
+            t = _read_text(os.path.join(files_dir, f))
+            for col in ("出边</th>", "入边</th>", "调用（它调用了谁）</th>",
+                        "被调用（谁调用了它）</th>"):
+                assert col in t, "%s 缺列 %s（R92 调用关系表）" % (f, col)
+            for m in re.finditer(r'href="([^"#]+\.html)#L(\d+)"', _fn_table(t)):
+                tgt = os.path.join(files_dir, m.group(1))
+                assert os.path.exists(tgt), "函数表里的源码行链接目标缺失：%s" % m.group(0)
+                assert ('id="L%s"' % m.group(2)) in _read_text(tgt), \
+                    "源码锚点 #L%s 在 %s 里不存在" % (m.group(2), m.group(1))
+                hit_row += 1
+        assert hit_row > 0, "函数表里没有一条可点且锚点真实的源码行链接 —— 空判据"
         # ④ 双向可达：文件页 → 规则页 → 回到该文件页（防「单向可达」）
         linked = 0
         for f in fpages:
@@ -20471,7 +20514,389 @@ def test_r76_c_site_is_paginated_and_styled():
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
-def test_r78_c_comments_and_inline_asm_enter_model(tmp_path):
+
+def test_r92_py_site_cross_reference():
+    """R92：Python 前端 `--browse` 也必须产出**交叉引用站点**（此前完全没有）。
+
+    由来（用户实测反馈：「把 C 语言的版本做出来，以及 python 代码的做出来」）：
+    `_run_ext_only` 此前明写「不生成 HTML 站点」，于是 Python/JS/asm 用户一个
+    页面都拿不到，而 C 侧自 R76 起就有分页站点、MATLAB 侧自 P63 起就有
+    `src/` + `dirs/` —— 同一条能力按语言分裂成「有」和「没有」。本测试钉住五件事：
+
+      ① 站点形态与 C **同一套**（file / rule / dir / src / funcs / deps / index
+         + 每目录一份 browse.css），不是「Python 版另做一套」；
+      ② **文件级依赖**真的解析到项目内文件（`from pkg.util import twice` →
+         `pkg/util.py`）并且可点，不是只印一行 import 名；
+      ③ 文件页函数表给出**双向**调用关系（出边 / 入边 / 调用 / 被调用），
+         且出边的目标是跨文件的可点链接、源码行锚点在 `src/` 页里真实存在；
+      ④ 旧单页 `c_report.html` 是 **C 专属**产物 —— Python 站点里既不生成它，
+         也**不许**在索引里提它（悬空引用，R76 记过的那类）；
+      ⑤ 质量快照与真实页面树对账（防「清单与产物漂移」）。
+    """
+    tmp = tempfile.mkdtemp(prefix="mabr92py_")
+    try:
+        pkg = os.path.join(tmp, "pkg")
+        os.makedirs(pkg)
+        with io.open(os.path.join(pkg, "__init__.py"), "w", encoding="utf-8") as fh:
+            fh.write("")
+        with io.open(os.path.join(pkg, "util.py"), "w", encoding="utf-8") as fh:
+            fh.write("def twice(n):\n    return n * 2\n")
+        with io.open(os.path.join(tmp, "app.py"), "w", encoding="utf-8") as fh:
+            fh.write("from pkg.util import twice\n\n\ndef run(x):\n"
+                     "    return twice(x)\n")
+        out = os.path.join(tmp, "site")
+        rc, _o, err = _run([tmp, "--lang", "py", "--browse", out], tmp)
+        assert rc == 0, "Python 站点失败: %s" % err[:400]
+        # ① 与 C 同一套站点形态
+        files_dir = os.path.join(out, "file")
+        assert os.path.isdir(files_dir), "缺少 file/ 分页目录（Python 站点没建？）"
+        fpages = sorted(f for f in os.listdir(files_dir) if f.endswith(".html"))
+        assert len(fpages) == 3, "应有 3 个 Python 文件页，实得 %d: %s" % (
+            len(fpages), fpages)
+        for sub in ("src", "dir", "rule"):
+            assert os.path.isdir(os.path.join(out, sub)), "缺少 %s/（R92）" % sub
+        for extra in ("funcs.html", "deps.html", "index.html"):
+            assert os.path.exists(os.path.join(out, extra)), "缺少 %s（R92）" % extra
+        app_page = os.path.join(files_dir, "app.py.html")
+        util_page = os.path.join(files_dir, "pkg__util.py.html")
+        assert os.path.exists(app_page), "缺 app.py 文件页"
+        assert os.path.exists(util_page), \
+            "缺 pkg/util.py 文件页（扁平名应为 pkg__util.py）"
+        # ② 文件级依赖解析到项目内文件（不是只印一行 import 名）
+        deps = _read_text(os.path.join(out, "deps.html"))
+        assert "pkg.util" in deps, "deps 页应列出 import 的模块名"
+        assert "pkg/util.py" in deps, "deps 页应把 pkg.util 解析到 pkg/util.py"
+        assert 'href="file/pkg__util.py.html"' in deps, \
+            "deps 页应链接到被依赖文件页（解析结果不可点 = 只印了一半）"
+        # ③ 函数表的双向调用关系 + 跨文件可点
+        app = _read_text(app_page)
+        for col in ("出边</th>", "入边</th>", "调用（它调用了谁）</th>",
+                    "被调用（谁调用了它）</th>"):
+            assert col in app, "app.py 页缺列 %s（R92 调用关系表）" % col
+        assert 'href="pkg__util.py.html">twice</a>' in app, \
+            "run() 的「调用」列应链接到定义 twice 的文件页"
+        # ③b 源码页锚点真实：文件页上的 #L 链接必须落到 src/ 页里的 id="L<n>"
+        n_anchor = 0
+        for m in re.finditer(r'href="\.\./src/([^"#]+)#L(\d+)"', app):
+            sp = os.path.join(out, "src", m.group(1))
+            assert os.path.exists(sp), "源码页缺失：%s" % m.group(1)
+            assert ('id="L%s"' % m.group(2)) in _read_text(sp), \
+                "源码锚点 #L%s 在 %s 里不存在" % (m.group(2), m.group(1))
+            n_anchor += 1
+        assert n_anchor > 0, "文件页没有任何源码行链接 —— 判据会退化成空断言"
+        # ④ 旧单页是 C 专属：既不生成，也不许在索引里提（悬空引用）
+        assert not os.path.exists(os.path.join(out, "c_report.html")), \
+            "Python 站点不该有 c_report.html（C 专属产物）"
+        assert "c_report" not in _read_text(os.path.join(out, "index.html")), \
+            "Python 索引页提到了不存在的 c_report.html（悬空引用）"
+        # ⑤ 离线自足 + 每目录都有 browse.css；外链判据只认**属性**里的资源引用
+        #    （源码页会把被分析文件的正文逐行内联，正文里的 https 字面量是合法的）
+        for dp, _dn, fn in os.walk(out):
+            for f in fn:
+                if not f.endswith(".html"):
+                    continue
+                low = _read_text(os.path.join(dp, f)).lower()
+                assert "<script" not in low, "%s 含 <script>（非离线自足）" % f
+                assert 'href="http' not in low and 'src="http' not in low, \
+                    "%s 属性里有外链资源引用" % f
+                assert os.path.exists(os.path.join(dp, "browse.css")), \
+                    "%s 所在目录缺 browse.css（悬空链接）" % f
+        # ⑥ 质量快照与真实页面树对账
+        n_site = 0
+        for dp, _dn, fn in os.walk(out):
+            n_site += sum(1 for f in fn if f.endswith(".html"))
+        q = json.loads(_read_text(os.path.join(out, "site-quality.json")))
+        assert q["lang"] == "py", \
+            "site-quality 应记住语言标签，实得 %r" % q.get("lang")
+        assert q["files"] == 3 and q["pages"] == n_site, \
+            "site-quality 与页面树不符：files=%s pages=%s 实际=%d" % (
+                q.get("files"), q.get("pages"), n_site)
+        assert q["include_edges"] >= 1, "应至少有 1 条解析到项目内的依赖边"
+        assert q["legacy_single_page"] is False, \
+            "Python 站点不该声称有 c_report.html"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r93_callgraph_is_inline_svg_and_clickable():
+    """R93：每个文件页带一张**可跳转**的调用关系图（零 JS、零外链、零 Graphviz）。
+
+    由来（用户要求：「调用关系最好使用图来实现，并且图示可以跳转的……
+    分析能否像 doxygen 那样实现，并且有着突破性和革命性的展示」）：
+
+    doxygen 的 callgraph 依赖**外部 Graphviz**（`HAVE_DOT=YES` + PATH 里的
+    `dot`），默认 `DOT_GRAPH_MAX_NODES=50`，函数没有 `@details` 就不画图，
+    而且它把图用 `<img src="*.svg">` 嵌进 HTML —— **SVG 里的链接全部失效**
+    （clang-uml 文档明写这一点）。本测试钉住本项目的六条**相反**选择：
+
+      ① **零外部依赖**：布局在 Python 内实现（Fruchterman-Reingold），不调 `dot`；
+      ② **内联 SVG + `<a href>`** ⇒ 节点真能点（这正是 doxygen 做不到的那点）；
+      ③ **零 JS / 零外链**：断网双击即可打开（R75 的 CDN 教训）；
+      ④ **图与表同源**：出边读 `calls` 流（函数表「调用」列的同一份数据），
+         未解析的外部调用也画成橙色节点 —— doxygen 只画 documented 的函数；
+      ⑤ **截断可见**：超过节点上限时写明「另有 N 个节点未画」；
+      ⑥ **确定性**：同输入两次逐位相等（本仓把可复现当身份式判据）。
+    """
+    tmp = tempfile.mkdtemp(prefix="mabr93a_")
+    try:
+        nl = chr(10)
+        with io.open(os.path.join(tmp, "util.c"), "w", encoding="utf-8") as fh:
+            fh.write("#include <string.h>" + nl + nl +
+                     "int util_len(const char *s) {" + nl +
+                     "    return (int)strlen(s);" + nl + "}" + nl)
+        with io.open(os.path.join(tmp, "main.c"), "w", encoding="utf-8") as fh:
+            fh.write("#include <stdio.h>" + nl + "#include <stdlib.h>" + nl + nl +
+                     "int util_len(const char *s);" + nl + nl +
+                     "static int helper(int n) {" + nl + "    return n * 2;" + nl +
+                     "}" + nl + nl + "int main(void) {" + nl +
+                     "    char *b = (char *)malloc(16);" + nl +
+                     "    printf(" + chr(34) + "%d" + chr(92) + "n" + chr(34) +
+                     ", util_len(b));" + nl +
+                     "    return helper(2);" + nl + "}" + nl)
+        out = os.path.join(tmp, "site")
+        rc, _o, err = _run([tmp, "--lang", "c", "--browse", out], tmp)
+        assert rc == 0, "站点生成失败: %s" % err[:400]
+        page = _read_text(os.path.join(out, "file", "main.c.html"))
+
+        # ① 图存在且是**内联 SVG**（不是 <img src=*.svg> —— 那样点不了）
+        assert "<h2>调用关系图</h2>" in page, "main.c 页缺调用关系图段"
+        assert "<svg" in page, "图不是 SVG"
+        assert 'class="cs-graph"' in page, "图缺 cs-graph 类（样式钩子）"
+        assert "<script" not in page.lower(), "图引入了脚本（违反零 JS 纪律）"
+        # ⚠ 外链判据必须**按属性**收窄，不能用「含 http:// 即红」：内联 SVG 的
+        #   `xmlns="http://www.w3.org/2000/svg"` 是命名空间声明，浏览器**不会**
+        #   去取它，但它长得和真外链一模一样。这个坑本轮犯了两次（审计器一次、
+        #   测试一次），所以判据写成属性式：**加载器属性**里不许出现 http。
+        for attr in ('src=', 'href="http', 'xlink:href="http',
+                     "@import", "url(http"):
+            assert attr not in page, (
+                "图页面出现外链加载（%s，违反离线自足）" % attr)
+        i0 = page.find("<h2>调用关系图</h2>")
+        svg_txt = page[i0:page.find("</svg>", i0) + 6]
+
+        # ② 图里**必须有边**。这一条是本轮最贵的教训：第一版把「节点 id」
+        #    （元组）与「节点下标」（整数）混在一个集合里，过滤边时全被丢掉，
+        #    页面呈现为「有 7 个节点、0 条边」—— 不报错、能打开、只是不对。
+        n_edge = len(re.findall(r"<line ", svg_txt))
+        assert n_edge > 0, "图里有节点却一条边都没有（id/下标空间混用缺陷）"
+
+        # ③ 未解析调用必须画成节点：main 调了 malloc / printf，它们在项目里
+        #    没有定义 —— doxygen 那套会把它们直接丢掉，于是图比真实干净。
+        assert 'class="cs-gext"' in svg_txt, (
+            "未解析/外部调用没有画成节点（图比真实干净）")
+        for lib in ("malloc", "printf"):
+            assert lib in svg_txt, (
+                "未解析调用 %s 没出现在图里（丢弃未解析调用 = 图不完整）" % lib)
+        assert "cs-gdash" in svg_txt, (
+            "连向未解析节点的边应为虚线（与已解析边区分）")
+
+        # ④ 节点可点，且链接**零死链**（含 #L 锚点）。
+        n_link = 0
+        for m in re.finditer(r'<a href="([^"]+)">', svg_txt):
+            href = m.group(1)
+            tgt, _s, frag = href.partition("#")
+            real = os.path.normpath(os.path.join(out, "file", tgt))
+            assert os.path.exists(real), "图节点链接死链：%s" % href
+            if frag:
+                assert re.match(r"^L\d+$", frag), (
+                    "图节点锚点形状非法：%s" % href)
+                assert ('id="%s"' % frag) in _read_text(real), (
+                    "图节点锚点在目标页不存在：%s" % href)
+            n_link += 1
+        assert n_link > 0, "图里没有可点节点 —— 判据会退化成空断言"
+
+        # ⑤ 节点上限与迭代次数写进质量快照（有界是架构约束，不是调参）
+        q = json.loads(_read_text(os.path.join(out, "site-quality.json")))
+        assert q.get("graph_pages", 0) >= 2, (
+            "两个有函数的文件都该有图，实得 %s" % q.get("graph_pages"))
+        assert q.get("graph_nodes_drawn", 0) > 0, "图节点计数为 0"
+        assert q.get("graph_max_nodes", 0) > 0, "图节点上限未登记"
+        assert q.get("graph_iters", 0) > 0, "图迭代次数未登记"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r93_graph_truncation_is_disclosed_and_survives():
+    """R93：超过节点上限的语料 —— **不许崩**，而且必须**写明截断**。
+
+    对应本轮第二个真实缺陷：截断后「节点 id -> 下标」映射就过期了，拿它
+    翻译边会越界抛 `list index out of range`，**整个站点生成失败**（不是只
+    丢一张图）。
+
+    ⚠ 3 文件小夹具**永远测不到这条路**（节点数远低于上限）—— 必须真的造出
+      一个超过上限的语料。「小夹具通过 ≠ 路径正确」本身就是判据的一部分。
+    """
+    tmp = tempfile.mkdtemp(prefix="mabr93b_")
+    try:
+        nl = chr(10)
+        n_fn = 60                      # > GRAPH_MAX_NODES(40)
+        body = ["int leaf_%d(int x) { return x + %d; }" % (i, i)
+                for i in range(n_fn)]
+        body.append("int top(int x) {")
+        for i in range(n_fn):
+            body.append("    x += leaf_%d(x);" % i)
+        body.append("    return x;" + nl + "}")
+        with io.open(os.path.join(tmp, "big.c"), "w", encoding="utf-8") as fh:
+            fh.write(nl.join(body) + nl)
+        out = os.path.join(tmp, "site")
+        rc, _o, err = _run([tmp, "--lang", "c", "--browse", out], tmp)
+        # 判据一：站点必须**生成成功**
+        assert rc == 0, "超上限语料导致站点生成失败: %s" % err[:400]
+        assert os.path.exists(os.path.join(out, "file", "big.c.html")), (
+            "超上限语料没产出文件页")
+        page = _read_text(os.path.join(out, "file", "big.c.html"))
+        i0 = page.find("<h2>调用关系图</h2>")
+        assert i0 >= 0, "超上限语料缺调用关系图"
+        svg_txt = page[i0:page.find("</svg>", i0) + 6]
+        # 判据二：节点数**真的被限住了**（否则上限形同虚设）
+        n_node = len(re.findall(r"<circle ", svg_txt))
+        cap = json.loads(
+            _read_text(os.path.join(out, "site-quality.json")))["graph_max_nodes"]
+        assert 0 < n_node <= cap, (
+            "图节点数 %d 越过了上限 %d（有界性没生效）" % (n_node, cap))
+        # 判据三：截断**必须可见** ——「画了一部分」与「全都画了」在页面上
+        #   长得一样，不写出来读者就会把图当全貌（R83 起的纪律）
+        assert "未画" in page, (
+            "节点被截断却没写明「另有 N 个节点未画」（截断不可见 = 误导）")
+        # 判据四：截断后仍要有边（越界那条路的直接判据）
+        assert len(re.findall(r"<line ", svg_txt)) > 0, (
+            "截断后图里没有边（下标映射过期，越界被吞成空图）")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r93_graph_link_falls_back_when_no_src_page():
+    """R93：没有源码页的文件，节点链接必须**退回文件页**，而不是指向不存在的行。
+
+    为什么这条独立成测试（而不是并进上面那条）：上面那个夹具只有两个小文件，
+    **全部都有源码页**，于是 `src_flat` 判断永远为真、`_def_href` 的回退分支
+    **一次都没被执行过**。实测证明：把 `if flat in src_flat:` 改成恒真，
+    上面那条测试**照样全绿** —— 判据形同虚设。
+
+    这是「小夹具通过 ≠ 路径正确」的又一次应验（R90 那次是补丁吞注释，
+    这次是分支根本没被覆盖）。覆盖判据的唯一可靠办法是**构造能让该分支
+    失败的真实条件**，而不是多断言几行。
+
+    触发办法：把某个文件写得**超过单文件源码页上限**（默认 256 KB）⇒ 它
+    没有源码页，但**文件页一定在**。
+    """
+    tmp = tempfile.mkdtemp(prefix="mabr93e_")
+    try:
+        nl = chr(10)
+        with io.open(os.path.join(tmp, "small.c"), "w", encoding="utf-8") as fh:
+            fh.write("int small_a(void) { return 1; }" + nl + nl +
+                     "int small_b(void) { return small_a(); }" + nl)
+        big = ["/* %s */" % ("x" * 90) for _ in range(3200)]
+        big.append("int big_top(void) { return small_a(); }")
+        with io.open(os.path.join(tmp, "big.c"), "w", encoding="utf-8") as fh:
+            fh.write(nl.join(big) + nl)
+        assert os.path.getsize(os.path.join(tmp, "big.c")) > 256 * 1024, (
+            "夹具前提失败：big.c 没超过单文件源码页上限")
+        out = os.path.join(tmp, "site")
+        rc, _o, err = _run([tmp, "--lang", "c", "--browse", out], tmp)
+        assert rc == 0, "站点生成失败: %s" % err[:400]
+        # 前提对账：big.c 真的**没有**源码页，small.c 有
+        assert not os.path.exists(os.path.join(out, "src", "big.c.html")), (
+            "前提失败：big.c 竟有源码页（上限没生效，这条测试会空跑）")
+        assert os.path.exists(os.path.join(out, "src", "small.c.html")), (
+            "前提失败：small.c 没有源码页")
+        page = _read_text(os.path.join(out, "file", "big.c.html"))
+        i0 = page.find("<h2>调用关系图</h2>")
+        assert i0 >= 0, "big.c 页缺调用关系图"
+        svg_txt = page[i0:page.find("</svg>", i0) + 6]
+        n_link = 0
+        for m in re.finditer(r'<a href="([^"]+)">', svg_txt):
+            href = m.group(1)
+            tgt, _s, _frag = href.partition("#")
+            real = os.path.normpath(os.path.join(out, "file", tgt))
+            assert os.path.exists(real), (
+                "无源码页时节点链接死链：%s（应退回文件页）" % href)
+            if tgt.startswith("../src/"):
+                flat = tgt[len("../src/"):-len(".html")]
+                assert os.path.exists(
+                    os.path.join(out, "src", flat + ".html")), (
+                    "图链接指向没有源码页的文件：%s" % href)
+            n_link += 1
+        assert n_link > 0, "big.c 的图里没有可点节点 —— 判据会退化成空断言"
+
+        # `big_top` 没有任何调用点（它只调别人），所以它**只能靠自身定义
+        # 建节点**。第一版的建节点循环被 `_def_href` 的 `def` 劈成两半、
+        # 后半成了 `return` 之后的不可达代码，于是 `big_top` 的节点
+        # **没有链接**（点不动）而页面照样正常打开。
+        # 反向验证：把那个循环的迭代源改成 `[]`，下面这条判据必须变红。
+        found_big = False
+        for m in re.finditer(
+                r'(<a href="([^"]+)">)?\s*<circle class="cs-gself"[^/]*/>'
+                r'\s*<text class="cs-glbl"[^>]*>([^<]*)</text>', svg_txt):
+            label = m.group(3)
+            if label == "big_top":
+                found_big = True
+                assert m.group(1), (
+                    "无调用点的函数 big_top 在图里没有链接（建节点循环"
+                    "被劈成不可达代码）")
+                assert "#L" not in (m.group(2) or ""), (
+                    "big.c 没有源码页，链接不该带 #L：%s" % m.group(2))
+        assert found_big, (
+            "big_top 根本没出现在图里 —— 它没有任何调用点，只能靠自身"
+            "定义建节点（这条判据就是为那个缺陷准备的）")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r93_graph_is_deterministic_and_identical_across_langs():
+    """R93：布局**确定性** + C/Py 两语言的图**同形**。
+
+    ① 确定性：同一份输入两次跑出来的 `file/*.html` 必须**逐字节相等**。布局
+       初值不能用 `random`，否则同一语料两次跑出两份不同的 HTML —— 而本仓
+       把「同输入逐位相等」当身份式判据（R84/R91 都栽在这上面）。
+    ② 同形：图不是 C 专属。C 走 `edges`、Python 走 `calls` 流，但**站点里
+       图的形态必须一致**（同 SVG 类、同节点类、同说明段），否则
+       「像 MATLAB 那样」这句话又按语言分裂成两套。
+    """
+    tmp = tempfile.mkdtemp(prefix="mabr93c_")
+    try:
+        nl = chr(10)
+        q = chr(34)
+        with io.open(os.path.join(tmp, "a.c"), "w", encoding="utf-8") as fh:
+            fh.write("#include <stdio.h>" + nl + nl +
+                     "int helper(int n) { return n + 1; }" + nl + nl +
+                     "int main(void) { printf(" + q + "%d" + chr(92) + "n" + q +
+                     ", helper(1)); return 0; }" + nl)
+        o1 = os.path.join(tmp, "s1")
+        o2 = os.path.join(tmp, "s2")
+        for o in (o1, o2):
+            rc, _out, err = _run([tmp, "--lang", "c", "--browse", o], tmp)
+            assert rc == 0, "站点生成失败: %s" % err[:300]
+        p1 = _read_text(os.path.join(o1, "file", "a.c.html"))
+        p2 = _read_text(os.path.join(o2, "file", "a.c.html"))
+        assert p1 == p2, "两次跑出的文件页**不逐字节相等**（布局不确定性）"
+        # 零时间戳也是这条的一部分：快照里不能有跑批时刻
+        q1 = _read_text(os.path.join(o1, "site-quality.json"))
+        assert "timestamp" not in q1.lower(), "质量快照含时间戳 ⇒ 两次跑不相等"
+
+        # ② Python 侧同形：同样的 SVG 类、同样的节点类
+        ptmp = tempfile.mkdtemp(prefix="mabr93d_")
+        try:
+            with io.open(os.path.join(ptmp, "m.py"), "w", encoding="utf-8") as fh:
+                fh.write("import os" + nl + nl + nl +
+                         "def helper(n):" + nl + "    return n + 1" + nl + nl + nl +
+                         "def main():" + nl +
+                         "    return helper(os.getpid())" + nl)
+            po = os.path.join(ptmp, "site")
+            rc, _o, err = _run([ptmp, "--lang", "py", "--browse", po], ptmp)
+            assert rc == 0, "Python 站点生成失败: %s" % err[:300]
+            py_page = _read_text(os.path.join(po, "file", "m.py.html"))
+            for token in ("<h2>调用关系图</h2>", 'class="cs-graph"',
+                          "cs-gself", "cs-glbl"):
+                assert token in py_page, (
+                    "Python 侧图缺 %s（图按语言分叉了）" % token)
+        finally:
+            shutil.rmtree(ptmp, ignore_errors=True)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_r49_c_multiline_signature():
     """R78 / C-1「解析层下沉」：注释与内联汇编进入 C 模型与 JSON。
 
     期望值全部**手算**，不取自产品输出。七层：

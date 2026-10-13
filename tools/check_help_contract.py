@@ -615,7 +615,11 @@ HELP_BYTES = {
 # provenance 钉着），且由 `_r91/verify_default_byteeq.py` **两向**钉住：折掉
 # `version` 后与 R90 **逐字节相等**（8343 B），而原始字节**必须不等**。
 HELP_BYTES_SNAPSHOT = {
-    "matlabc.py": 58856,
+    # R92：`--browse` 的帮助正文补写了「四语言同形站点」与新页面清单
+    # （index/file/funcs/deps/dir/src/rule + binaries 动态链接库页）。
+    # 合法增长 58856 -> **59577**（+721，远超本臂 ±64 B 分辨率 ⇒ 必须显式更新）。
+    # ⚠ 这不是放宽判据：`HELP_DRIFT_BYTES` 一个字没动。
+    "matlabc.py": 59577,
     "matlabc_flow.py": 2075,
     "matlabc_ask.py": 919,
     "matlabc_mcp.py": 0,
@@ -690,7 +694,8 @@ HELP_CANON_COLUMNS = 10000
 # 反而变长 —— 正是上面那条已登记边界。修法：**两条臂各跑一次**（与门里两条
 # 不同的缓存键一致），`_r91/measure_help_r91.py` 现在就是两跑。
 HELP_CANON_SNAPSHOT = {
-    "matlabc.py": 48740,
+    # R92：同一笔改动（规范形与解释器、宽度都无关，所以 +571 就是真实内容改动）。
+    "matlabc.py": 49311,
     "matlabc_flow.py": 1701,
     "matlabc_ask.py": 756,
     "matlabc_mcp.py": 0,

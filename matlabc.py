@@ -10794,43 +10794,9 @@ def _run_c_only(c_model, root, args):
             print("      - %s" % r)
         if len(rels) > 20:
             print("      ... 其余 %d 个省略" % (len(rels) - 20))
-    c_html = render_c_report(c_model, [], root)
-    if args.browse:
-        bdir = os.path.abspath(args.browse)
-        if not os.path.isdir(bdir):
-            try:
-                os.makedirs(bdir)
-            except Exception as exc:
-                print("[ERROR] 创建 C 报告目录失败：%s" % exc, file=sys.stderr)
-                return 1
-        try:
-            with io.open(os.path.join(bdir, "c_report.html"), "w",
-                         encoding="utf-8") as fh:
-                fh.write(c_html)
-            # R76：先落「薄索引」作为**降级产物** —— 下面的分页站点若抛异常，
-            # 目录里至少还有一个能打开的 index.html，不产生断链。
-            with io.open(os.path.join(bdir, "index.html"), "w",
-                         encoding="utf-8") as fh:
-                fh.write(render_c_index_html(c_model, root))
-            print("[OK] C 语言前端分析站点已生成：%s/index.html" % bdir)
-        except Exception as exc:
-            print("[ERROR] 写入 C 报告失败：%s" % exc, file=sys.stderr)
-            ok = False
-        # R76：分页站点 —— index + 每源码文件一页 + 每检查规则一页 + browse.css。
-        # 单页 c_report.html 在语料级规模下会到 GB 级（实测 fs 子树 2,085 文件
-        # 已达 30.6 MB），分页后单页恒为 KB 级。同时补写 browse.css —— 此前
-        # C 站点只写了页面、`<link href="browse.css">` 指向的文件从未落盘，
-        # 页面实际是**无样式**的（悬空链接）。
-        try:
-            _q76 = render_c_site(c_model, root, bdir, heuristics=c_heuristics,
-                                 css_text=BROWSE_CSS,
-                                 kind_meta_fn=_operator_meta_fallback)
-            print("[OK] C 分页站点：%d 页（%d 文件页 + %d 规则页 + 索引）· %.1f MB"
-                  % (_q76["pages"], _q76["files"], _q76["rule_kinds"],
-                     _q76["bytes"] / 1048576.0))
-        except Exception as exc:
-            print("[WARN] C 分页站点生成失败（薄索引仍可用）：%s" % exc,
-                  file=sys.stderr)
+    # R92：站点落盘**推迟到本函数末尾**（那里 `_binattr` 已经算好 —— 动态库页
+    # 要把「未解析调用归到了谁」一起画出来）。以前它在这里，于是站点拿不到
+    # 归因结果，只能重算一遍。移动只改**控制台输出顺序**，不改任何文件内容。
     if args.json:
         # R33/C'3：--binary-attach 的三态归因（只依据显式给出的二进制）
         _c_names = [u[0] for u in (c_model.get("unresolved", []) or [])]
@@ -10943,14 +10909,184 @@ def _run_c_only(c_model, root, args):
         print("C 启发式检查 %d 条：%s"
               % (len(c_heuristics),
                  " | ".join("%s=%d" % (k, by_kind[k]) for k in sorted(by_kind))))
+    # R92：站点是**成品**，放最后落盘 —— 此时 `_binattr`（二进制归因）已经算好，
+    # 动态库页可以把「未解析调用 → 归到了哪个库」一并画出来。
+    if args.browse:
+        if not _emit_lang_site(c_model, root, args, "c", u"C", "includes",
+                               c_heuristics,
+                               binaries=_binary_site_payload(args),
+                               attribution=(_binattr or {}).get("rows"),
+                               legacy_single=lambda: render_c_report(c_model, [],
+                                                                     root)):
+            ok = False
     return 0 if ok else 1
+
+
+def _ext_dep_edges(model, lang):
+    """R92：Py/JS 的**文件级依赖边**（`import a.b` → 项目内哪个文件）。
+
+    返回三元组 `(从哪个 rel, 引用了什么, 解析到哪个 rel 或 None)` —— 与 C 的
+    `include_edges` **逐位同形**，所以站点用同一条渲染路径。这正是本轮要消灭的
+    东西：C 侧自 P90 起就有 `include_edges`，Py/JS 连「文件依赖」这一栏都没有，
+    同一条能力按语言分裂成「有」和「没有」（R83 记的那类缺口）。
+
+    映射规则（说清而不是猜）：
+
+    * **Python**：模块名按 `.` 拆段，取**最长**能命中的那个 —— `a.b` 先试
+      `a/b.py`，再试 `a/b/__init__.py`，再退到 `a.py` / `a/__init__.py`。
+    * **JavaScript**：只解析**相对路径**导入（`./x` / `../x`），以导入方文件所在
+      目录为基准；扩展名依次试 `.js` / `.jsx` / `.mjs` / `.cjs` / `/index.js`，
+      最后才试原样路径。裸模块名（`react`）**当作项目外**，不去猜 node_modules。
+
+    命中不了就是 `None`（标准库 / 第三方 / 项目外）—— **不是**空串、**不是**
+    省略条目。「解析不到」与「没有这一栏」在页面上必须长得不一样。
+
+    已披露**不做**（写在这里，而不是让读者以为这个解析很聪明）：不模拟
+    `sys.path` / `NODE_PATH` / `package.json` 的 `main`，不跟进 `__init__.py` 的
+    再导出，不看 `from x import y` 里 `y` 具体落到哪个文件，不解析 `<script src>`
+    与打包器别名（`@/x`）。路径规范化是**纯字符串**处理，不碰文件系统 ——
+    站点可能在一台机器上生成、在另一台上打开。
+    """
+    rels = {}
+    for pf in (model.get("files") or []):
+        rel = pf.get("rel") or u""
+        if rel:
+            rels[rel.replace(u"\\", u"/").lower()] = rel
+
+    def _py_hit(stem):
+        for cand in (stem + u".py", stem + u"/__init__.py"):
+            r = rels.get(cand.lower())
+            if r:
+                return r
+        return None
+
+    def _js_hit(base_dir, mod):
+        parts = base_dir.split(u"/") if base_dir else []
+        for seg in mod.split(u"/"):
+            if seg in (u"", u"."):
+                continue
+            if seg == u"..":
+                if parts:
+                    parts.pop()
+                continue
+            parts.append(seg)
+        stem = u"/".join(parts)
+        for cand in (u".js", u".jsx", u".mjs", u".cjs",
+                     u"/index.js", u""):
+            r = rels.get((stem + cand).lower())
+            if r:
+                return r
+        return None
+
+    out = []
+    seen = set()
+    for pf in (model.get("files") or []):
+        rel = pf.get("rel") or u""
+        if not rel:
+            continue
+        nrel = rel.replace(u"\\", u"/")
+        base_dir = u"/".join(nrel.split(u"/")[:-1])
+        for imp in (pf.get("imports") or []):
+            mod = (imp[0] if isinstance(imp, (list, tuple)) and imp else u"") or u""
+            mod = mod.strip()
+            if not mod:
+                continue
+            to = None
+            if lang == "py":
+                parts = mod.split(u".")
+                for i in range(len(parts), 0, -1):
+                    to = _py_hit(u"/".join(parts[:i]))
+                    if to:
+                        break
+            elif lang == "js":
+                if mod.startswith(u"./") or mod.startswith(u"../"):
+                    to = _js_hit(base_dir, mod)
+            # `from x import a, b` 是**一条**语句却产出两条 import 记录；
+            # 按 (文件, 模块) 去重，否则「依赖边」计数会被同一个模块灌水。
+            key = (nrel, mod)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append((rel, mod, to))
+    return out
+
+
+def _emit_lang_site(model, root, args, lang, display, dep_key, heuristics,
+                    dep_edges=None, binaries=None, attribution=None,
+                    legacy_single=None):
+    """R92：把「交叉引用站点」落盘到 `--browse` 指定的目录；返回是否成功。
+
+    **C / Py / JS / asm 共用这一条出口。** 站点形态按语言分裂正是本轮要消灭的
+    东西：`_run_ext_only` 此前明写「不生成 HTML 站点」，于是 Python/JS 用户一个
+    页面都拿不到，而 C 早就有分页站点。
+
+    `legacy_single` 只有 C 传：它是**旧单页** `c_report.html` 的生成器（可调用
+    对象）。其余语言没有这件历史产物，传 None 即可 —— 站点索引里也**不会**
+    出现指向它的链接（悬空链接是 R76 记过的那类缺陷）。
+    """
+    outdir = os.path.abspath(args.browse)
+    if not os.path.isdir(outdir):
+        try:
+            os.makedirs(outdir)
+        except Exception as exc:
+            print("[ERROR] 创建站点目录失败：%s" % exc, file=sys.stderr)
+            return False
+    ok = True
+    n_files = len(model.get("files") or [])
+    wrote_legacy = False
+    if legacy_single is not None:
+        if n_files <= LEGACY_SINGLE_PAGE_MAX_FILES:
+            try:
+                with io.open(os.path.join(outdir, "c_report.html"), "w",
+                             encoding="utf-8") as fh:
+                    fh.write(legacy_single())
+                wrote_legacy = True
+            except Exception as exc:
+                print("[ERROR] 写入旧单页报告失败：%s" % exc, file=sys.stderr)
+                ok = False
+        else:
+            # 不静默：跳过一个产物必须在终端说清为什么。
+            print("[NOTE] 文件数 %d 超过 %d：跳过旧单页 c_report.html"
+                  "（线性外推会到 GB 级），分页站点不受影响。"
+                  % (n_files, LEGACY_SINGLE_PAGE_MAX_FILES))
+    # R76：先落「薄索引」作为**降级产物** —— 分页站点若抛异常，目录里至少还有
+    # 一个能打开的 index.html，不产生断链。仅在旧单页真的存在时才写它：
+    # 薄索引的导航直指 `c_report.html`，在没有它的语言里就是一个悬空链接。
+    if wrote_legacy:
+        try:
+            with io.open(os.path.join(outdir, "index.html"), "w",
+                         encoding="utf-8") as fh:
+                fh.write(render_c_index_html(model, root))
+        except Exception as exc:
+            print("[ERROR] 写入站点索引失败：%s" % exc, file=sys.stderr)
+            ok = False
+    try:
+        q = render_c_site(model, root, outdir, heuristics=heuristics,
+                          css_text=BROWSE_CSS,
+                          kind_meta_fn=_operator_meta_fallback,
+                          lang=lang, display=display, dep_key=dep_key,
+                          dep_edges=dep_edges,
+                          binaries=binaries or None, attribution=attribution)
+        print("[OK] %s 分页站点：%d 页（%d 文件页 + %d 规则页 + %d 目录页 + "
+              "%d 源码页 + 索引）· %.1f MB"
+              % (display, q["pages"], q["files"], q["rule_kinds"],
+                 q["dir_pages"], q["src_pages"], q["bytes"] / 1048576.0))
+    except Exception as exc:
+        print("[WARN] 分页站点生成失败：%s" % exc, file=sys.stderr)
+    return ok
 
 
 def _run_ext_only(model, root, args, lang):
     """P93：Python/JS 前端入口（--lang py / --lang js）。
 
     复用 C 模式输出链路：静态启发式检查（--checks）、测试骨架（--gen-tests）、
-    JSON（含 heuristics）/SARIF 输出与摘要；不生成 HTML 站点。"""
+    JSON（含 heuristics）/SARIF 输出与摘要，以及 `--browse` 交叉引用站点。
+
+    R92：**站点不再是 C 的专属**。此前这里明写「不生成 HTML 站点」，于是
+    Python / JS / asm 用户一个页面都拿不到，而 MATLAB 侧从 P63 起就有 `src/` +
+    `dirs/` 分页站点 —— 同一条能力按语言分裂成「有」和「没有」（R83 记的那类
+    缺口）。现在四语言走**同一条出口** `_emit_lang_site`，差别只有 `dep_key`
+    （C 是 `includes`，其余是 `imports`）和传给它的依赖边来源。"""
     ok = True
     fe = get_frontend(lang)
     heuristics = []
@@ -10964,6 +11100,15 @@ def _run_ext_only(model, root, args, lang):
             print("      - %s" % r)
         if len(rels) > 20:
             print("      ... 其余 %d 个省略" % (len(rels) - 20))
+    # R92：`--binary-attach` 在扩展语言里此前**完全不跑** —— 于是
+    # `--lang py --binary-attach foo.dll` 静默无输出，动态库这一栏在 Py/JS 上
+    # 根本不存在。这里接上同一条流水线；没有开关时它自己返回 (None, True)
+    # 且**不打任何东西**（所以既有输出逐字节不变）。
+    _binattr, _binattr_ok = _emit_binary_attach_names(
+        args, [u[0] for u in (model.get("unresolved", []) or [])],
+        label="%s 未解析调用" % fe.display, root=root)
+    if not _binattr_ok:
+        ok = False
     if args.json:
         _lvl = _json_level(args)
         _efiles = model.get("files", [])
@@ -11001,6 +11146,8 @@ def _run_ext_only(model, root, args, lang):
             }
         if model.get("lang") == "asm":
             payload["asm_file_stats"] = _asm_file_stats(_efiles)
+        if _binattr is not None:
+            payload["unresolved_attribution"] = _binattr
         if _write_output(args.json,
                          json.dumps(payload, ensure_ascii=False, indent=2),
                          "JSON"):
@@ -11044,6 +11191,16 @@ def _run_ext_only(model, root, args, lang):
         print("%s 启发式检查 %d 条：%s"
               % (fe.display, len(heuristics),
                  " | ".join("%s=%d" % (k, by_kind[k]) for k in sorted(by_kind))))
+    # R92：站点是**成品**，放最后落盘 —— 与 C 路径同一个出口。依赖边在这里
+    # 现算（`_ext_dep_edges`），**不写回模型**：模型里的 `include_edges` 还被
+    # `--callgraph` 的 rung-2 消歧读着（C 专属口径）。
+    if args.browse:
+        if not _emit_lang_site(model, root, args, lang, fe.display, "imports",
+                               heuristics,
+                               dep_edges=_ext_dep_edges(model, lang),
+                               binaries=_binary_site_payload(args),
+                               attribution=(_binattr or {}).get("rows")):
+            ok = False
     return 0 if ok else 1
 
 
@@ -30926,6 +31083,88 @@ def _render_buildsys_hints(hints):
     return "\n".join(lines)
 
 
+def _binary_report_summary(rep, name=None):
+    """R92：把 `binfmt.BinaryReport` 压成站点用的小字典（**只搬运，不判定**）。
+
+    为什么不让 `renderers/csite.py` 直接吃 `BinaryReport` 对象：站点渲染器
+    **不 import binfmt、也不 import matlabc**（`renderers/` 子树的 import 期
+    回边由图门钉住）。所以形状转换必须发生在一个**显式**的搬运层里 ——
+    它是唯一同时知道两边形状的地方，改渲染器不必动 binfmt，反之亦然。
+
+    `note` 只表达「这份读数的可信度」这一件事，且**不静默**：
+    未验证的容器会带上为什么未验证。
+    """
+    sym = list(getattr(rep, "symbols", None) or [])
+    kinds = {}
+    for s in sym:
+        k = getattr(s, "kind", "?")
+        kinds[k] = kinds.get(k, 0) + 1
+    exports = [getattr(s, "name", "") for s in sym
+               if getattr(s, "kind", "") == "export"]
+    deps = [(getattr(d, "kind", ""), getattr(d, "name", ""))
+            for d in (getattr(rep, "dependencies", None) or [])]
+    note = None
+    if not getattr(rep, "verified", True):
+        note = ("未验证：本机没有该容器的真实语料"
+                if getattr(rep, "fixture_verified", False)
+                else "未验证：既无真实语料也无合成夹具 —— 结论仅供参考")
+    return {
+        "name": name or os.path.basename(getattr(rep, "path", "") or ""),
+        "path": getattr(rep, "path", "") or "",
+        "container": getattr(rep, "container", None),
+        "arch": getattr(rep, "arch", None),
+        "bits": getattr(rep, "bits", 0),
+        "endian": getattr(rep, "endian", None),
+        "flavour": getattr(rep, "flavour", None),
+        "n_symbols": len(sym),
+        "symbol_kinds": kinds,
+        "n_imports": kinds.get("import", 0),
+        "exports": exports,
+        "deps": deps,
+        "mitigations": dict(getattr(rep, "mitigations", None) or {}),
+        "note": note,
+    }
+
+
+def _binary_site_payload(args, reports=None):
+    """R92：`--browse` 站点用的二进制读数列表。
+
+    只收集**用户显式给出**的二进制（`--binary-attach` 的 CSV，加上调用方
+    已经解析好的 reports）。解析不了 / 不是文件的项**照样进列表**，带一句
+    「未纳入证据」的说明 —— 静默丢掉会让「页面上没有」与「本来就没有」
+    长得一样（R86 的证据契约：Missing evidence is unknown, not empty or false）。
+    """
+    out = [_binary_report_summary(r) for r in (reports or [])]
+    csv = getattr(args, "binary_attach", None)
+    if not csv:
+        return out
+    binfmt = _load_binfmt()
+    if binfmt is None:
+        return out
+    seen = set(os.path.basename(x.get("path") or "") for x in out)
+    for p in [x.strip() for x in str(csv).split(",") if x.strip()]:
+        base = os.path.basename(p) or p
+        if base in seen:
+            continue
+        if not os.path.isfile(p):
+            out.append({"name": base, "path": p, "container": None, "arch": None,
+                        "bits": 0, "endian": None, "flavour": None,
+                        "n_symbols": 0, "symbol_kinds": {}, "n_imports": 0,
+                        "exports": [], "deps": [], "mitigations": {},
+                        "note": "不是文件或读不到 —— **未纳入证据**"})
+            continue
+        try:
+            out.append(_binary_report_summary(binfmt.parse(p, scan_cap=None),
+                                              name=base))
+        except Exception as e:
+            out.append({"name": base, "path": p, "container": None, "arch": None,
+                        "bits": 0, "endian": None, "flavour": None,
+                        "n_symbols": 0, "symbol_kinds": {}, "n_imports": 0,
+                        "exports": [], "deps": [], "mitigations": {},
+                        "note": "解析失败：%s —— **未纳入证据**" % e})
+    return out
+
+
 def _emit_binary_attach_names(args, names, label="未解析调用", root=None):
     """R33/C'3：--binary-attach 的核心 —— 给定待归因名字，打印并返回 JSON 片段。
 
@@ -31254,7 +31493,13 @@ def main(argv=None):
                     default=cfg.get("browse"),
                     help="生成交互式源码浏览站点（函数点击跳转定义、调用跳转），输出到目录 OUTDIR"
                          "（省略 OUTDIR 时用默认目录 matlabc_browse）；"
-                         "与 --from-json 组合时为 P124 快照回放站点（无需源码，直接回放 JSON 快照）")
+                         "与 --from-json 组合时为 P124 快照回放站点（无需源码，直接回放 JSON 快照）。"
+                         "R92：站点对 C / Python / JavaScript / 汇编**同形** —— index +"
+                         " file/<每源文件一页，函数表给出 出边·入边·调用·被调用 四列，双向可点> +"
+                         " funcs（扇入/扇出/未解析名三张有界榜）+ deps（#include / import 解析到项目内文件）+"
+                         " dir/<每目录一页> + src/<源码页，逐行 #L 锚点> + rule/<每条检查规则一页>；"
+                         "在给 --binary 或 --binary-attach 时另加 binaries 动态链接库页"
+                         "（容器/架构/位数/依赖项/导出符号/缓解措施 + 「未解析调用归到了哪个库」三态归属）")
     ap.add_argument("--watch", nargs="?", const="1.0", metavar="INTERVAL",
                     default=None,
                     help="P150：守护监听模式——循环扫描目录，文件内容变更（基于 P133 内容 SHA-256 签名）"
@@ -33199,7 +33444,7 @@ from renderers.unresolved import render_unresolved_page, _render_unresolved_tabl
 from renderers.callgraph import (
     render_static_callgraph_svg, render_folder_function_graph_svg)
 from renderers.creport import render_c_report, render_c_index_html
-from renderers.csite import render_c_site
+from renderers.csite import render_c_site, LEGACY_SINGLE_PAGE_MAX_FILES
 from renderers.sarif import render_sarif, render_sarif_diff_md
 from renderers.hotspot import render_html_hotspot_callgraphs
 # R86-3：调用关系的**有界投影**。与 `frontends/ir.py` 同源的边定义复用，

@@ -85,6 +85,17 @@ _ROOT = os.path.dirname(_HERE)
 # （例如 "1 failed, 2 passed in 1.2s"），行内任意位置匹配会把它们当 nodeid 捞出来。
 FAILED_RE = re.compile(r"^FAILED\s+(\S+)", re.M)
 ERROR_RE = re.compile(r"^ERROR\s+(\S+)", re.M)
+# R94：**收尾摘要行**的存在性是量具自证的最后一环。
+#   没有它就说明 pytest **没跑到收尾**（被 SIGTERM 掐断、崩溃、或被超时杀死），
+#   而那时 `FAILED ...` 一行都没有 ⇒ parse_failed 返回空集合
+#   ⇒ `regressions = 空` ⇒ **报「零回归」**。
+#   R94 实测：外层 timeout 30 分钟截断 + 丢弃 returncode ⇒ 报出了完全错误的
+#   「regressions: 0」，而直跑 pytest 是 131 failed / 354 passed。
+#   ⇒ **被杀的跑与干净的跑在量具眼里一样**。
+#   判据取「计数 + 结论词 + ` in N.NNs`」而不是锚行首 —— pytest 的 `-q` / `-v`
+#   / `--tb=` 几种风格的收尾行长得很不一样，锚行首会在别人改参数时误报。
+PYTEST_SUMMARY_RE = re.compile(
+    r"\d+ (?:failed|passed|errors?|skipped)[^\n]* in [\d.]+s")
 
 SUITE = os.path.join("tests", "test_matlabc.py")
 DEFAULT_FILTER = "not r33"
@@ -442,9 +453,22 @@ def run_full(repo, work, kfilter, py, on_problem):
             % (nhead, nwork))
 
     print("[3/4] 跑 HEAD 树（-k %r）…" % kfilter)
-    _, out_head = run_suite(head_tree, kfilter, py)
+    rc_head, out_head = run_suite(head_tree, kfilter, py)
     print("[4/4] 跑当前树（-k %r）…" % kfilter)
-    _, out_work = run_suite(repo, kfilter, py)
+    rc_work, out_work = run_suite(repo, kfilter, py)
+    # R94：先判**量具读数可不可信**，再判回归。可信性不成立时下面的
+    #   任何比较都是无意义的 ⇒ 直接报红（缺输入，不是「无回归」）。
+    for _side, _rc, _out in (("HEAD 树", rc_head, out_head),
+                            ("当前树", rc_work, out_work)):
+        if _rc not in (0, 1):
+            on_problem("量具缺输入（%s）：pytest 返回码 %r（非 0/1；2 = 收集期错误）"
+                       "⇒ 该侧的失败集合不可信，下面的回归计数无意义"
+                       % (_side, _rc))
+        if not PYTEST_SUMMARY_RE.search(_out):
+            on_problem("量具缺输入（%s）：pytest 输出里**没有收尾摘要行**"
+                       "（被 SIGTERM 掐断 / 崩溃 / 超时）⇒ `parse_failed` 会返回空集合"
+                       "⇒ 无回归与「全绿」在读数上无法区分"
+                       % _side)
 
     fb = parse_failed(out_head)
     fa = parse_failed(out_work)

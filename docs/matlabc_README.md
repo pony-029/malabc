@@ -274,6 +274,8 @@ python ai_cli.py --prompt-file analysis.json --provider 文心一言 --task fix
    支持模糊匹配（`fda` 命中 `fooDetailA`）、最近访问、`Shift+Enter` 跳全局状态并预置筛选；
 6. **类浏览**：类文件显示类定义、属性、方法、事件与枚举。
 
+**R92：分页交叉引用站点不再只属于 C。** `--browse` 此前只对 C 产出分页站点，Python / JS / 汇编走 `_run_ext_only`，而那里明写「不生成 HTML 站点」—— 同一条能力按语言分裂成「有」和「没有」（R83 记的那类缺口）。R92 把 `renderers/csite.py` 泛化为**语言无关**的交叉引用引擎（`lang` / `display` / `dep_key` / `dep_edges` / `binaries` / `attribution` 六个形参），四语言同形：`index.html` + `file/<每源文件一页>` + `funcs.html`（扇入 / 扇出 / **未解析名**三张有界榜）+ `deps.html`（`#include` / `import` 解析到项目内哪个文件）+ `dir/<每目录一页>` + `src/<源码页，逐行 id="L<n>">` + `rule/<每条检查规则一页>`，并在给了 `--binary` / `--binary-attach` 时多一页 `binaries.html`（容器 / 架构 / 位数 / 依赖项 / 导出符号 / 缓解措施（逐键给出**依据**）+「未解析调用 → 归到了哪个库」三态表）。**每个文件页的函数表是四列**：`出边` / `入边` / `调用（它调用了谁）` / `被调用（谁调用了它）`，两个方向都可点跳转 —— 这就是「每一个函数和其他文件或者函数之间的调用关系」的落点。依赖边的口径明说而不是猜：Python 按 `.` 拆段取**最长命中**（`a/b.py` → `a/b/__init__.py` → `a.py` → `a/__init__.py`），JavaScript 只解析**相对路径**导入（`./x` / `../x`，依次试 `.js/.jsx/.mjs/.cjs/index.js`），裸模块名（`react`）**当作项目外**，不模拟 `sys.path` / `node_modules` / 打包器别名。大语料有两道**不静默**的闸：源码页的单文件上限与总输出预算（用尽即停止内联，并在索引写明有多少文件因此没内联）、以及文件数超过 5,000 时跳过旧单页 `c_report.html`（索引里说明跳过理由，并给出按实测基数复算的体积区间）。
+
 **操作示意**：`main.m` 调用了 `process_data()` → 在 `main.m` 源码页点击 `process_data(` → 自动跳到 `process_data.m` 定义处 → 卡片显示"被调用"列表回到 `main.m`。
 
 > **全站交互说明（快捷键 / 命令面板 / 可分享深链 / 离线 / 无障碍 / 自查）**

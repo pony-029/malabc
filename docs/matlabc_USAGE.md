@@ -252,7 +252,7 @@ matlabc flow ./myproj --auto-apply-loop --draft-pr
 
 | 参数 | 取值 | 默认 | 说明 |
 | --- | --- | --- | --- |
-| `--browse` | 文件 | 无 | 生成可点击跳转的浏览站点（纯内联、零 WebSocket） |
+| `--browse` | 文件 | 无 | 生成可点击跳转的浏览站点（纯内联、零 WebSocket）；**R92 起 C / Python / JS / 汇编同形**：`index` / `file`（函数表四列 出边·入边·调用·被调用，双向可点）/ `funcs` / `deps` / `dir` / `src` / `rule`，给 `--binary[-attach]` 时另加 `binaries` 动态链接库页 |
 | `--watch` | 开关 | 关 | 守护模式：文件内容变更（SHA-256 签名）自动重分析重生成 |
 
 ### 3.4 结构化输出与可复现
