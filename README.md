@@ -280,9 +280,10 @@ you could open and answer *"who calls whom"* with.
 # Whole-graph shape: degree tops, recursion cycles, cross-file / cross-dir counts
 python matlabc.py linux/ --lang c --callgraph cg.json
 
-# Drill into one function, two levels out, at most 50 nodes
+# Drill into one function, two levels out: at most 50 nodes and 200 edges
 python matlabc.py linux/ --lang c --callgraph cg.dot \
-       --callgraph-focus __schedule --callgraph-depth 2 --callgraph-max-nodes 50
+       --callgraph-focus __schedule --callgraph-depth 2 \
+       --callgraph-max-nodes 50 --callgraph-max-edges 200
 ```
 
 | Part | Answers |
@@ -291,7 +292,7 @@ python matlabc.py linux/ --lang c --callgraph cg.dot \
 | `cycles` | strongly-connected components (mutual recursion). Nodes are **definition sites** by default, so same-named `static` functions in different files no longer merge into a phantom cycle |
 | `cross_file` / `cross_dir` | internal vs cross-file vs **same name, several definitions (not guessed)** vs no definition |
 | `focus_subgraph` | the BFS neighbourhood of one function, level by level |
-| `truncated` | `*_total` and `*_shown` side by side — **"I did not expand it" is not "there is no relation"** |
+| `truncated` | every cap that fired, **numerator and denominator together**: `hit_node_cap` / `nodes_shown`, plus — when `--callgraph-max-edges N` was given — `hit_edge_cap` / `max_edges` / `edges_total`. **"I did not expand it" is not "there is no relation"** |
 
 `.json` is the structured form; `.dot` and `.mmd` render the focus subgraph. An unknown
 extension **fails** rather than quietly falling back to JSON.
@@ -317,8 +318,14 @@ translation-unit roots) — and it is enabled **for C only**: Python / JS module
 reassigned at run time, so "same name, same file" would be an approximation, and an approximation
 posing as a conclusion is precisely what manufactures phantom cycles.
 Unresolved calls are **not in the graph** (they have no callee node); they are counted alongside,
-because *"not resolved"* is not *"no relation"*. And the cap is always reported: a focus BFS that
-stops at the node limit sets `truncated.hit_node_cap`.
+because *"not resolved"* is not *"no relation"*. And a cap is **always reported**: a focus BFS that
+stops at the node limit sets `truncated.hit_node_cap`, and one bounded by
+`--callgraph-max-edges N` keeps the **first** `N` edges it meets and sets `truncated.hit_edge_cap`
+alongside `max_edges` and `edges_total` — the latter being the **same count** it would have shown
+unbounded, so "how many were dropped" is never read off a second, differently-computed number.
+Bounding edges **never touches nodes** (`nodes` / `nodes_shown` / `hit_node_cap` are unchanged).
+With the switch absent, that `truncated` block carries exactly the four keys it had in R90 — the
+three edge-cap keys are **conditional, not omitted**.
 
 ### Static Check Rules
 

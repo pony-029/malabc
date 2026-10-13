@@ -10664,6 +10664,7 @@ def _emit_call_relations(model, args, label="C"):
     focus_name = (getattr(args, "callgraph_focus", None) or "").strip()
     depth = getattr(args, "callgraph_depth", None)
     max_nodes = getattr(args, "callgraph_max_nodes", None)
+    max_edges = getattr(args, "callgraph_max_edges", None)
     identity = (getattr(args, "callgraph_identity", None)
                 or callrel.DEFAULT_IDENTITY)
     if depth is None:
@@ -10684,6 +10685,21 @@ def _emit_call_relations(model, args, label="C"):
         print("[ERROR] --callgraph-identity：认识的口径只有 %s，拿到的是 %r "
               "—— 不静默退回默认。" % (" / ".join(callrel.IDENTITIES), identity),
               file=sys.stderr)
+        return False
+    # R91：边上限的三态。**刻意放在 `if not out` 那条 early-return 之后** ——
+    # 与上面身份口径校验的位置一致：不给 `--callgraph` 时本函数是**无操作**，
+    # 那是一句写在 docstring 里的承诺，不该被一个新开关悄悄改掉。
+    if max_edges is None:
+        max_edges = 0          # 0 = 不限（「不给开关 ⇒ 产物不变」的入口）
+    try:
+        max_edges = int(max_edges)
+    except (TypeError, ValueError):
+        print("[ERROR] --callgraph-max-edges：拿到 %r，不是整数 —— 不静默当 0。"
+              % (max_edges,), file=sys.stderr)
+        return False
+    if max_edges < 0:
+        print("[ERROR] --callgraph-max-edges：上限不能为负（拿到 %r）—— "
+              "0 表示不限，不静默当 0。" % (max_edges,), file=sys.stderr)
         return False
 
     edges = list(model.get("edges") or [])
@@ -10710,7 +10726,8 @@ def _emit_call_relations(model, args, label="C"):
                                      func_index=func_index,
                                      direction="both" if focus_name else "callee",
                                      identity=identity,
-                                     lang=_lang, include_edges=_inc)
+                                     lang=_lang, include_edges=_inc,
+                                     max_edges=max_edges)
     ext = os.path.splitext(out)[1].lower()
     payload = {"call_relations": rel}
     if sub is not None:
@@ -10747,7 +10764,10 @@ def _emit_call_relations(model, args, label="C"):
             print("    ⚠ 名字 %r 在 %s 口径下映到 %d 个节点，这里取度数最高的一个；"
                   "要精确定位请写 `函数名 @ 文件`"
                   % (focus_name or sub["focus"], identity, _cands))
-        if sub["truncated"]["hit_node_cap"]:
+        # R91：两个上限都可能点亮 reason —— 任一命中就如实打出来
+        # （`.get` 是因为 `hit_edge_cap` 只在**给了边上限**时才在 truncated 里）
+        if (sub["truncated"]["hit_node_cap"]
+                or sub["truncated"].get("hit_edge_cap")):
             print("    ⚠ %s" % sub["truncated"]["reason"])
     print("[OK] 调用关系投影已写入：%s" % out)
     return True
@@ -31291,6 +31311,18 @@ def main(argv=None):
                          "并在 JSON 的 truncated.hit_node_cap 标 True —— "
                          "「未展开」不会被说成「无关系」"
                          % callrel.DEFAULT_MAX_NODES)
+    ap.add_argument("--callgraph-max-edges", type=int, metavar="N",
+                    default=cfg.get("callgraph_max_edges"),
+                    help="R91：焦点子图的**边数上限**（0 = 不限，默认 0）。"
+                         "R87 只给了节点上限、边**没有** —— 内核默认根实测 "
+                         "34 节点 / 19,469 边，「有界投影」只对上了一半。"
+                         "给了 N 就只保留**先遇到的** N 条边，并在 JSON 的 "
+                         "truncated 里同时给出 hit_edge_cap=true 与 edges_total"
+                         "（**同源**：就是「不设上限时会收多少条」，不是另算"
+                         "一个数）—— 「没展示」不会被说成「无关系」。"
+                         "**边上限只裁边、不动节点**；不给这个开关时产物与 "
+                         "R90 **逐字节相同**。负值 ⇒ 非零退出且不产出文件"
+                         "（不静默当 0）。")
     ap.add_argument("--callgraph-identity", metavar="MODE",
                     default=cfg.get("callgraph_identity"),
                     choices=list(callrel.IDENTITIES),

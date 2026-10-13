@@ -110,7 +110,15 @@ include 解析是**按 basename** 做的（P90 既有口径）⇒ 闭包有两�
 # ``focus_candidates``，而它是**有意义的**：名字级口径下一个名字恒等于一个
 # 节点 ⇒ 候选恒为 1；定义落点口径下一个名字可以映到多个节点 ⇒ 它必须被报出来
 # （否则 ``--callgraph-focus memcpy`` 会在若干个 memcpy 里**静默挑一个**）。
-CALLREL_VERSION = 3
+# R91：3 → 4。`focus_subgraph.truncated` 新增三个键（`max_edges` /
+# `hit_edge_cap` / `edges_total`）。它们是**条件键**（只在设了边上限的子图上
+# 出现），但「条件出现」正是下游最需要被提前告知的形态 —— 同一个版本号下键集
+# 随调用参数变，恰恰是版本号要防的歧义。
+# ⚠ 代价写清楚：这一行让**默认产物**（不给任何新开关）与 R90 **不再逐字节
+# 相同** —— 差恰好是这一个字符（`3` → `4`）。所以 R91 的红线就地换成更强的
+# 那条：「差必须**逐字节定位**在 version 字段上，其余一个字节都不许动」
+# （装置 `_r91/verify_default_byteeq.py` 两向钉住）。
+CALLREL_VERSION = 4
 
 # 节点身份口径。写成常量是为了让「口径被默默换掉」可被判据看见。
 IDENTITY_NAME = "callee-name"
@@ -983,7 +991,7 @@ def _limitations_local(unresolved_total, scope):
 def focus_subgraph(edges, focus, depth=DEFAULT_DEPTH,
                    max_nodes=DEFAULT_MAX_NODES, direction="callee",
                    func_index=None, identity=DEFAULT_IDENTITY, lang=None,
-                   include_edges=None):
+                   include_edges=None, max_edges=0):
     """以 ``focus`` 为根做 BFS，展开 ``depth`` 层。``direction`` ∈ callee/caller/both。
 
     与顶层一样：**超限即停并如实上报**，不静默截断。
@@ -1005,6 +1013,21 @@ def focus_subgraph(edges, focus, depth=DEFAULT_DEPTH,
     任何节点**，默认子图就退化成「1 节点 0 边」。两条路在**名字级口径下完全等价**
     （那时 ``_display(k) == _name_of(k) == k``，精确相等蕴含归一相等），
     所以老读数逐字节不变。
+
+    ⚠ **R91：边数上限（``max_edges``）** —— R87 只给了**节点**上限，边**没有**：
+    内核默认根实测 34 节点 / **19,469** 边，而 ``truncated`` 里
+    ``fan_in/out`` 有 ``shown/total``、``focus_subgraph`` 对边却什么都不报
+    ⇒ 「看不全」可以不上报。本参数把那一半补上：
+
+      * ``max_edges <= 0``（默认）= **不限**，且 ``truncated`` 的键集与 R90
+        **逐字相同**（不给开关就没人能截断它，那三项只会是常量，加进去是噪声，
+        却会作废 R90 建立的跨轮回归）；
+      * ``max_edges > 0`` ⇒ 只保留**先遇到的** ``max_edges`` 条边，并在
+        ``truncated`` 里同时给出 ``max_edges`` / ``hit_edge_cap`` /
+        ``edges_total``（``edges_total`` 与「不设上限」时的 ``edges_shown``
+        **同源**，不是另算一个数）；
+      * **只裁边、不动节点** —— ``nodes`` / ``nodes_shown`` / ``hit_node_cap``
+        与不设上限时**逐位相同**（判据 F10m 的两向都钉着这条）。
     """
     want = _norm(focus)
     want_node = focus if isinstance(focus, str) else ""
@@ -1062,8 +1085,16 @@ def focus_subgraph(edges, focus, depth=DEFAULT_DEPTH,
         nodes.append({"name": d["name"], "level": level[nid],
                       "file": d["file"], "line": d["line"], "defs": d["defs"]})
     sub = []
+    cap = int(max_edges or 0)      # <= 0 = 不限
+    edge_total = 0                 # 「不设上限时会收多少条」= 两端都在 keep 里的边
+    edge_cut = False
     for i, (a, b) in enumerate(pairs):
         if a in keep and b in keep:
+            edge_total += 1
+            if cap > 0 and len(sub) >= cap:
+                # 前缀截断：保留**先遇到的** cap 条，不依赖集合遍历顺序。
+                edge_cut = True
+                continue
             sub.append({"from": _display(a, identity), "to": _display(b, identity),
                         "line": edges[i][2], "file": edges[i][3]})
     return {
@@ -1074,15 +1105,41 @@ def focus_subgraph(edges, focus, depth=DEFAULT_DEPTH,
         "max_nodes": int(max_nodes),
         "nodes": nodes,
         "edges": sub,
-        "truncated": {
-            "hit_node_cap": bool(cut),
-            "nodes_shown": len(nodes),
-            "edges_shown": len(sub),
-            "reason": ("达到节点上限 %d，展开在**未探完**处停止 —— "
-                       "被停下的那些分支记为「未展开」，不是「无关系」。"
-                       % int(max_nodes)) if cut else "未触发上限。",
-        },
+        "truncated": _trunc_block(cut, len(nodes), len(sub), max_nodes,
+                                  cap, edge_cut, edge_total),
     }
+
+
+# ── 截断上报块（R91）────────────────────────────────────────────────────────
+def _trunc_block(cut, n_nodes, n_edges, max_nodes, max_edges, edge_cut,
+                 edges_total):
+    """`focus_subgraph` 的 `truncated` 块（抽成函数只为让**键的顺序**可读）。
+
+    ⚠ **不设边上限（`max_edges <= 0`）时键集与 R90 逐字相同**：没有上限就
+    不可能被它截断，`max_edges` / `hit_edge_cap` / `edges_total` 三项只会是
+    常量（0 / False / == `edges_shown`），带上去纯属噪声，却会把 R90 建立的
+    「内核跨轮回归」当场作废 —— 那是**刻意**的条件键，不是遗漏。
+    """
+    parts = []
+    if cut:
+        parts.append("达到节点上限 %d，展开在**未探完**处停止 —— "
+                     "被停下的那些分支记为「未展开」，不是「无关系」。"
+                     % int(max_nodes))
+    if edge_cut:
+        parts.append("达到边数上限 %d，只保留先遇到的 %d 条边 —— "
+                     "被丢掉的边不是「无关系」，是**没展示**。"
+                     % (int(max_edges), int(max_edges)))
+    out = {
+        "hit_node_cap": bool(cut),
+        "nodes_shown": int(n_nodes),
+        "edges_shown": int(n_edges),
+        "reason": " ".join(parts) if parts else "未触发上限。",
+    }
+    if int(max_edges or 0) > 0:
+        out["max_edges"] = int(max_edges)
+        out["hit_edge_cap"] = bool(edge_cut)
+        out["edges_total"] = int(edges_total)
+    return out
 
 
 # ── 渲染 ────────────────────────────────────────────────────────────────────

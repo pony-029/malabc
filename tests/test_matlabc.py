@@ -21100,6 +21100,42 @@ def _r89_load(path, name):
     return mod
 
 
+def _r91_callgraph_flags(path):
+    """R91：AST 现读 `matlabc.py` 的 argparse，返回所有 `--callgraph*` 开关名。
+
+    为什么不是文本搜索：注释、docstring、帮助正文里都会出现开关名，
+    `grep` 出来的清单既可能**多**（注释里提过但已删）也可能**少**（拼在
+    多行 add_argument 里）。AST 只看真的 `add_argument(...)` 调用，
+    且只认**首参**这个窄口径（与 F10m 的 `_cgraph_flags` 同一纪律）。
+    py3.6 兼容：`ast.Constant` 是 **3.8 才有**，老解释器给的是 `ast.Str` —— 所以按
+    `getattr` 取、取不到就退到 `Str`，**不直接写 `_ast.Constant`**
+    （那在 3.6 上是 AttributeError，而本仓的语法门只查语法、查不出运行时属性）。
+    """
+    import ast as _ast
+    with io.open(path, "r", encoding="utf-8") as fh:
+        tree = _ast.parse(fh.read())
+    const_t = getattr(_ast, "Constant", None)
+    str_t = getattr(_ast, "Str", None)
+    names = set()
+    for node in _ast.walk(tree):
+        if not isinstance(node, _ast.Call):
+            continue
+        fn = node.func
+        if not (isinstance(fn, _ast.Attribute) and fn.attr == "add_argument"):
+            continue
+        if not node.args:
+            continue
+        a0 = node.args[0]
+        v = None
+        if const_t is not None and isinstance(a0, const_t):
+            v = a0.value
+        elif str_t is not None and isinstance(a0, str_t):
+            v = a0.s
+        if isinstance(v, str) and v.startswith("--callgraph"):
+            names.add(v)
+    return names
+
+
 def test_r89_gui_callgraph_card():
     """R89 / R88 §7④：`--callgraph` 系列在 CLI 上有三轮，GUI 一格都没有。
 
@@ -21143,12 +21179,23 @@ def test_r89_gui_callgraph_card():
     htxt = h.stdout.decode("utf-8", "replace")
     assert h.returncode == 0, htxt[:400]
     assert "--callgraph-identity" in htxt
+    # R91：边上限那条也要在**帮助正文**里（GUI 与 CLI 是两条独立出口，
+    # 只核 GUI 一处 = 只核了一半）。
+    assert "--callgraph-max-edges" in htxt
     for ident in gui.CALLGRAPH_IDENTITIES:
         assert ident in htxt, "帮助正文里没有口径 %r" % (ident,)
 
     # 帮助正文必须提到这张卡片（用户得先知道有这个入口，才谈得上用它）
     assert "调用关系" in gui.HELP_TEXT, "gui.py 帮助正文没提「调用关系」"
-    for flag in ("--callgraph", "--callgraph-focus", "--callgraph-depth",
-                 "--callgraph-max-nodes", "--callgraph-identity"):
+    # ⚠ R91：这张清单**不手写** —— 手写清单有一条已经应验过的退化方式：
+    # 往 CLI 加一个 `--callgraph-*` 开关时，谁也不会记得回来加一行。
+    # R91 就是这么发现界面上少了一格「边数上限」的。
+    # 改成**从 CLI 现读**（AST 读 argparse 的真实首参，注释里写开关名骗不过）：
+    # 每个 `--callgraph*` 开关都必须在 GUI 帮助正文里出现 ⇒ 新开关**自动**
+    # 产生一条界面义务；反过来，开关被删掉时这一条也不会变成陈旧的谎话。
+    cg_flags = _r91_callgraph_flags(os.path.join(ROOT, "matlabc.py"))
+    assert cg_flags, "AST 从 matlabc.py 里一个 --callgraph* 开关都没读到" \
+                     "（判据会退化成空断言）"
+    for flag in sorted(cg_flags):
         assert flag in gui.HELP_TEXT, "gui.py 帮助正文没提 %s" % flag
 

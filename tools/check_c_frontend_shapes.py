@@ -365,6 +365,45 @@ CG_DUPX_FIXTURES = (
 )
 
 # ---------------------------------------------------------------------------
+# F10m（R91）：焦点子图的**边上限**（`--callgraph-max-edges`）。
+#
+# 为什么非有这一档不可：R87 给焦点子图加了**节点**上限，边**没有**。内核默认根
+# 实测 **34 节点 / 19,469 边**、`hit_node_cap=false` —— 「有界投影」只对上了
+# 一半。现有夹具**没有一个**能测出这一点：它们都是个小图，边少到自己就是全部。
+#
+# 这一档是**枢纽 + 定数叶子**：1 个 `hub` 扇出 6 个叶子，深度 2 ⇒
+#   **节点 = 1 + 6 = 7**（枢纽 + 各叶子；叶子互不调用）
+#   **边   = 6**（每个叶子一条 `hub -> leafN`）
+# ⇒ 默认根必选 `hub`（只有它有出边，`hub_of` 的候选池就是它），方向 `callee`。
+# ⚠ 这两个手推数字由 `judge_fixtures` 的**夹具完备性**守着（叶子定义**恰好**
+#   `CG_EDGE_LEAVES` 份 + 枢纽把每个叶子各调一次）—— 夹具被改动时它们会当场
+#   变红，而不是变成谎话。
+#
+# 三种形态各有一条断言：
+#   不给上限      ⇒ 6 条边全收，且 `truncated` 的键集与 R90 **逐字相同**
+#   给上限 3      ⇒ 恰留**先遇到的** 3 条边 + `hit_edge_cap` + `edges_total`=6
+#                   + 节点**一动都不动**
+#   显式 0（不限）⇒ 与「不给上限」逐键相同（0 不是「真上限」）
+# ---------------------------------------------------------------------------
+CG_EDGE_LEAVES = 6
+CG_EDGE_CAP = 3
+# R90 时 `focus_subgraph.truncated` 的键集（默认形态的红线：不许增删）
+CG_EDGE_BASE_TRUNC_KEYS = ("edges_shown", "hit_node_cap", "nodes_shown",
+                           "reason")
+CG_EDGE_FIXTURES = (
+    ("e.c",
+     "int leaf1(void) { return 1; }\n"
+     "int leaf2(void) { return 2; }\n"
+     "int leaf3(void) { return 3; }\n"
+     "int leaf4(void) { return 4; }\n"
+     "int leaf5(void) { return 5; }\n"
+     "int leaf6(void) { return 6; }\n"
+     "int hub(void) { return leaf1() + leaf2() + leaf3() + leaf4() + "
+     "leaf5() + leaf6(); }\n"),
+)
+
+
+# ---------------------------------------------------------------------------
 # F10j（R89j）：第二级的**代价**不变量 —— 「每个调用者文件只该算两次闭包」。
 #
 # 为什么必须**多于 8 个**调用者文件：`CLOSURE_CACHE = 8`。R89 的第一版写的是
@@ -750,6 +789,24 @@ def judge_fixtures(fixtures=None, neg_c=None, shapes_c=None, sbraces_c=None,
         if marker not in atr:
             probs.append("R2 attr.c 里找不到 %s（`%s`）—— 那条判据变成空断言"
                          % (why, marker))
+    # F10m 夹具完备性：手推的「7 节点 / 6 边」必须**来自夹具源码本身**。
+    # 少了叶子、多了叶子、或枢纽少调一个，F10m 里那几个手推数字就成了谎话，
+    # 而判据照样绿（R90 的教训：判据要**自维持**，不能靠「我记得夹具长这样」）。
+    etxt = "".join(text for _rel, text in CG_EDGE_FIXTURES)
+    n_def = etxt.count("int leaf")
+    if n_def != CG_EDGE_LEAVES:
+        probs.append("R2 边上限夹具里有 %d 份叶子定义，CG_EDGE_LEAVES 记的是 %d"
+                     " —— F10m 手推的边数当场不成立" % (n_def, CG_EDGE_LEAVES))
+    miss = [i for i in range(1, CG_EDGE_LEAVES + 1)
+            if ("int leaf%d(void)" % i) not in etxt]
+    if miss:
+        probs.append("R2 边上限夹具里缺叶子定义 %r —— 手推的 %d 条边"
+                     "（= 叶子数）当场变成谎话" % (miss, CG_EDGE_LEAVES))
+    hub_body = etxt[etxt.find("int hub(void)"):]
+    if hub_body.count("()") != CG_EDGE_LEAVES:
+        probs.append("R2 边上限夹具的枢纽调用了 %d 次（应为 %d）—— "
+                     "F10m 的手推边数不成立"
+                     % (hub_body.count("()"), CG_EDGE_LEAVES))
     return probs
 
 
@@ -1080,6 +1137,23 @@ def judge_local(obs):
              ⑤ **不许静默**：`_rel_of` / `build_c_model` / `_build_ext_model`
                 的 `root` 形参**不许有默认值** —— 有默认值就等于留了一条静默的
                 cwd 回退（这条是 **AST** 判据：读真实形参默认值，不是文本搜索）
+      F10m **焦点子图的边上限必须显式上报**（R91）：R87 给了**节点**上限、
+           **边**没有 —— 内核默认根实测 34 节点 / **19,469** 边、
+           `hit_node_cap=false`，也就是「有界投影」只对上了一半。
+           `edge` 夹具是「1 枢纽 + 6 叶子」⇒ 手推 **7 节点 / 6 边**。四个半边：
+             ① 不给开关 ⇒ `truncated` 的键集**恰好**是 R90 那四个（多一个键
+                就作废 R90 建立的跨轮回归），且 6 条边一条不少；显式
+                `--callgraph-max-edges 0` 也必须与它逐键相同（0 = 不限，
+                不是「一个真上限」）
+             ② 给了 `N` ⇒ `len(edges)` 恰为**先遇到的** `N` 条（前缀），
+                且 `hit_edge_cap=true` + `edges_total` **同源**
+                （== 「不给上限」时的边数，不是另算一个数）
+             ③ **只裁边、不动节点**：节点数与节点名**逐位相同**，
+                `hit_node_cap` 不许被顺带点燃
+             ④ **开关在册**：AST 现读 `matlabc.py` 的 argparse ——
+                「能力被砍成 0」也是 R83 意义上的一类缺陷
+           ⚠ 两个手推数字由 `judge_fixtures` 的夹具完备性守着（叶子定义**恰好**
+           6 份 + 枢纽把每个叶子各调一次），夹具被改动时它们会当场变红。
     """
     probs = []
     if not isinstance(obs, dict):
@@ -1434,6 +1508,88 @@ def judge_local(obs):
                          "产物会悄悄变回 cwd 相对"
                          % (", ".join(bad_nd),
                             dict((k, rd.get(k)) for k in _nd_want)))
+    # ---- F10m 焦点子图的**边上限**（R91，由预登记量具
+    #      `_r91/measure_edgecap.py` 逼出来）----
+    # 判据来由见 §judge_local 的 docstring。⚠ 守卫 `isinstance` 是**有意的**：
+    # 读不到夹具时由本子判据自己的第一支报红，不让别的 F10x 一起红
+    # （`red_loc` 判定「红在别处 = 失败」）。
+    ed_def = obs.get("edge_default_edges")
+    ed_cap = obs.get("edge_capped_edges")
+    ed_tr = obs.get("edge_capped_trunc")
+    edd_n, edc_n = obs.get("edge_default_nodes"), obs.get("edge_capped_nodes")
+    if not isinstance(ed_def, int) or not isinstance(ed_cap, int) \
+            or not isinstance(ed_tr, dict):
+        probs.append("F10m 拿不到边上限夹具的读数（读到 %r / %r / %r）—— "
+                     "「截断必须显式」会退化成空断言"
+                     % (ed_def, ed_cap, ed_tr))
+    else:
+        if ed_def != CG_EDGE_LEAVES:
+            probs.append("F10m 不给上限时边数 %r ≠ 夹具手推的 %r（= 叶子数）"
+                         " —— 要么没收全、要么悄悄设了默认上限"
+                         % (ed_def, CG_EDGE_LEAVES))
+        if edd_n != 1 + CG_EDGE_LEAVES:
+            probs.append("F10m 不给上限时节点数 %r ≠ 手推 %r"
+                         % (edd_n, 1 + CG_EDGE_LEAVES))
+        if ed_cap > CG_EDGE_CAP:
+            probs.append("F10m 给了上限 %d 却保留 %r 条边 —— 静默不截断"
+                         % (CG_EDGE_CAP, ed_cap))
+        elif ed_cap != CG_EDGE_CAP:
+            probs.append("F10m 给了上限 %d 应恰好保留 %d 条边（**先遇到的**"
+                         "前缀），读到 %r"
+                         % (CG_EDGE_CAP, CG_EDGE_CAP, ed_cap))
+        if ed_tr.get("hit_edge_cap") is not True:
+            probs.append("F10m 截断了却没上报 `truncated.hit_edge_cap`（读到 "
+                         "%r）—— 「没展示」不许被说成「无关系」"
+                         % (ed_tr.get("hit_edge_cap"),))
+        if ed_tr.get("max_edges") != CG_EDGE_CAP:
+            probs.append("F10m `truncated.max_edges` 应回显 %r，读到 %r"
+                         % (CG_EDGE_CAP, ed_tr.get("max_edges")))
+        if ed_tr.get("edges_total") != ed_def:
+            probs.append("F10m `truncated.edges_total` 必须与「不给上限」时的"
+                         "边数**同源**（%r），读到 %r —— 分母另算一个数，就"
+                         "无从判断到底截掉了多少"
+                         % (ed_def, ed_tr.get("edges_total")))
+        if edc_n != edd_n or obs.get("edge_nodes_same") is not True:
+            probs.append("F10m 边上限**只该裁边**，节点却动了：%r vs %r"
+                         "（节点名逐位相同=%r）"
+                         % (edc_n, edd_n, obs.get("edge_nodes_same")))
+        if ed_tr.get("hit_node_cap") is not False:
+            probs.append("F10m 边上限不该点燃 `hit_node_cap`（读到 %r）"
+                         % (ed_tr.get("hit_node_cap"),))
+        if obs.get("edge_zero_edges") != ed_def:
+            probs.append("F10m 显式 `--callgraph-max-edges 0` 的边数 %r ≠ "
+                         "不设上限时的 %r —— 0 被当成一个**真上限**了"
+                         % (obs.get("edge_zero_edges"), ed_def))
+        # ⚠ 只钉**数**，不钉**文案**（`reason` 不在此列）：告警措辞是给人读的，
+        # 改一句话不该红；但默认形态的键集里仍必须有 `reason`（下面那条是精确
+        # 比较），所以「它存在」并没有被放过。
+        lack = [k for k in ("edges_shown", "hit_node_cap", "nodes_shown",
+                            "max_edges", "hit_edge_cap", "edges_total")
+                if k not in ed_tr]
+        if lack:
+            probs.append("F10m 给了上限时 `truncated` 缺键 %r —— 截断的"
+                         "**分子**与**分母**必须同时在场" % (lack,))
+    # 默认形态的键集**恰好**是 R90 那四个 —— 「不给开关 ⇒ 产物逐字节不变」的
+    # 结构半边。值可能还是对的，但只要多（或少）一个键，R90 建立的内核跨轮
+    # 回归就当场作废。
+    base_keys = sorted(CG_EDGE_BASE_TRUNC_KEYS)
+    for _tag, _key in (("不给开关", "edge_default_keys"),
+                       ("显式 0（= 不限）", "edge_zero_keys")):
+        got = obs.get(_key)
+        if got != base_keys:
+            probs.append("F10m %s 时 `truncated` 的键集 %r ≠ R90 的 %r —— "
+                         "默认产物被改了，跨轮回归作废"
+                         % (_tag, got, base_keys))
+    fl = obs.get("edge_cli_flags")
+    if not isinstance(fl, dict):
+        probs.append("F10m 拿不到 CLI 开关的 AST 读数（读到 %r）—— 「开关"
+                     "在册」这半边会退化成空断言" % (fl,))
+    else:
+        lackf = [f for f in ("--callgraph-max-nodes", "--callgraph-max-edges")
+                 if fl.get(f) is not True]
+        if lackf:
+            probs.append("F10m CLI 上没有 %r —— 开关没落地（AST 现读 argparse，"
+                         "不是文本搜索）" % (lackf,))
     return probs
 
 
@@ -1655,6 +1811,63 @@ def _root_param_defaults(path):
         tail = args[len(args) - ndef:] if ndef else []
         out[node.name] = ("DEFAULT" if any(a.arg == "root" for a in tail)
                           else "NODEFAULT")
+    return out
+
+
+def _focus_of(pay):
+    """产物里的 `focus_subgraph`（缺 ⇒ 空字典，由判据自己去报）。"""
+    return (pay or {}).get("focus_subgraph") or {}
+
+
+def _focus_nodes(pay):
+    return _focus_of(pay).get("nodes") or []
+
+
+def _focus_edges(pay):
+    return _focus_of(pay).get("edges") or []
+
+
+def _focus_node_names(pay):
+    return [n.get("name") for n in _focus_nodes(pay)]
+
+
+def _trunc_of(pay):
+    return _focus_of(pay).get("truncated") or {}
+
+
+def _trunc_keys(pay):
+    return sorted(_trunc_of(pay).keys())
+
+
+def _cgraph_flags(path):
+    """`matlabc.py` 的 argparse 里**登记了哪些调用图开关**（AST 现读）。
+
+    结构化判据：注释里写一个开关名**骗不过**它（与 F10l⑤ 读 `root` 形参默认值
+    同一手法）。返回 `{开关名: True/False}`。
+    """
+    want = ("--callgraph", "--callgraph-focus", "--callgraph-depth",
+            "--callgraph-max-nodes", "--callgraph-max-edges",
+            "--callgraph-identity")
+    out = dict((w, False) for w in want)
+    try:
+        with io.open(path, "rb") as fh:
+            tree = ast.parse(fh.read().decode("utf-8", "replace"))
+    except (IOError, OSError, SyntaxError, ValueError):
+        return out
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        f = node.func
+        nm = (f.attr if isinstance(f, ast.Attribute)
+              else (f.id if isinstance(f, ast.Name) else ""))
+        if nm != "add_argument" or not node.args:
+            continue
+        a0 = node.args[0]
+        v = getattr(a0, "value", None)
+        if not isinstance(v, str):
+            v = getattr(a0, "s", None)
+        if v in out:
+            out[v] = True
     return out
 
 
@@ -1895,9 +2108,11 @@ def scan_identity(root, python_exe):
         incxd = os.path.join(base, "incx")
         multid = os.path.join(base, "multi")
         dupxd = os.path.join(base, "dupx")
+        edgecapd = os.path.join(base, "edgecap")
         os.makedirs(dup)
         os.makedirs(cyc)
         os.makedirs(pyd)
+        os.makedirs(edgecapd)
 
         def put(base_dir, fixtures):
             """按 rel 路径落盘（rel 里可以带子目录 —— inc/hdr 夹具需要）。"""
@@ -1914,6 +2129,7 @@ def scan_identity(root, python_exe):
         put(incxd, CG_INCX_FIXTURES)
         put(multid, CG_MULTI_FIXTURES)
         put(dupxd, CG_DUPX_FIXTURES)
+        put(edgecapd, CG_EDGE_FIXTURES)
         for rel, text in CG_DUP_FIXTURES:
             with io.open(os.path.join(dup, rel), "w", encoding="utf-8",
                          newline="") as fh:
@@ -1980,11 +2196,20 @@ def scan_identity(root, python_exe):
         _jdx2, c_dupx_pure = one(
             dupxd, "dupx_pure",
             ["--callgraph-identity", "definition-site"])
+        _jed, c_edge_def = one(edgecapd, "edge_def", [])
+        # 上限给 **3**（< 6）：正好考「前缀截断 + 必须上报 + 分母同源」
+        _jec, c_edge_cap = one(
+            edgecapd, "edge_cap",
+            ["--callgraph-max-edges", str(CG_EDGE_CAP)])
+        # 显式 0 = 不限：不许出现上限那三个键（否则 0 被当成真上限）
+        _jez, c_edge_zero = one(
+            edgecapd, "edge_zero", ["--callgraph-max-edges", "0"])
         if not all(isinstance(x, dict) for x in
                    (c_def, c_pure, c_leg, c_inert_def, c_inert_pure,
                     c_inert_leg, c_py_def, c_py_pure, c_inc_def, c_inc_pure,
                     c_hdr_def, c_hdr_pure, c_incx_def, c_incx_pure,
-                    c_multi_def, c_dupx_def, c_dupx_pure)):
+                    c_multi_def, c_dupx_def, c_dupx_pure,
+                    c_edge_def, c_edge_cap, c_edge_zero)):
             return None, 0
         bad = os.path.join(base, "bad_id.json")
         bad_rc = run(dup, ["--callgraph", bad, "--callgraph-identity", "nope"])
@@ -2057,6 +2282,19 @@ def scan_identity(root, python_exe):
             "dupx_proj_whole": _proj_whole(c_dupx_def),
             "rel_root_param_defaults": _root_param_defaults(
                 os.path.join(root, "matlabc.py")),
+            # ---- F10m（R91）：焦点子图的**边上限** ----
+            "edge_default_nodes": len(_focus_nodes(c_edge_def)),
+            "edge_default_edges": len(_focus_edges(c_edge_def)),
+            "edge_default_keys": _trunc_keys(c_edge_def),
+            "edge_capped_nodes": len(_focus_nodes(c_edge_cap)),
+            "edge_capped_edges": len(_focus_edges(c_edge_cap)),
+            "edge_capped_trunc": _trunc_of(c_edge_cap),
+            "edge_nodes_same": (_focus_node_names(c_edge_def)
+                                == _focus_node_names(c_edge_cap)),
+            "edge_zero_keys": _trunc_keys(c_edge_zero),
+            "edge_zero_edges": len(_focus_edges(c_edge_zero)),
+            "edge_cli_flags": _cgraph_flags(
+                os.path.join(root, "matlabc.py")),
             "dup_big_pure": big(c_pure),
             "dup_nodes_pure": rel_of(c_pure).get("nodes_total"),
             "dup_n_edges_json_pure": len((_jp or {}).get("edges") or []),
@@ -2077,7 +2315,7 @@ def scan_identity(root, python_exe):
             "default_focus_candidates": focus_cands(c_def),
             "legacy_focus_candidates": focus_cands(c_leg),
         }
-        return judge_identity(obs) + judge_local(obs), 15
+        return judge_identity(obs) + judge_local(obs), 18
     finally:
         shutil.rmtree(base, ignore_errors=True)
 
@@ -2158,7 +2396,7 @@ def main(argv):
              len(CG_PY_FIXTURES),
              (len(CG_INC_FIXTURES) + len(CG_HDR_FIXTURES)
               + len(CG_INCX_FIXTURES) + len(CG_MULTI_FIXTURES)
-              + len(CG_DUPX_FIXTURES)),
+              + len(CG_DUPX_FIXTURES) + len(CG_EDGE_FIXTURES)),
              len(ATTR_FIXTURES), n_funcs, ROW_SIGNATURE))
     return 0
 
@@ -2547,6 +2785,26 @@ def _selftest():
             "rel_root_param_defaults": {"_rel_of": "NODEFAULT",
                                         "build_c_model": "NODEFAULT",
                                         "_build_ext_model": "NODEFAULT"},
+            # ---- F10m（R91）：边上限夹具的**手推**值 —— 1 枢纽扇出 6 个叶子、
+            #      深度 2 ⇒ 7 节点 / 6 边；给 3 ⇒ 只留**先遇到的** 3 条边，
+            #      节点**一动都不动**（边上限只裁边）----
+            "edge_default_nodes": 1 + CG_EDGE_LEAVES,
+            "edge_default_edges": CG_EDGE_LEAVES,
+            "edge_default_keys": sorted(CG_EDGE_BASE_TRUNC_KEYS),
+            "edge_capped_nodes": 1 + CG_EDGE_LEAVES,
+            "edge_capped_edges": CG_EDGE_CAP,
+            "edge_capped_trunc": {"hit_node_cap": False,
+                                  "nodes_shown": 1 + CG_EDGE_LEAVES,
+                                  "edges_shown": CG_EDGE_CAP,
+                                  "max_edges": CG_EDGE_CAP,
+                                  "hit_edge_cap": True,
+                                  "edges_total": CG_EDGE_LEAVES,
+                                  "reason": "（文案不是契约，判据只钉数）"},
+            "edge_nodes_same": True,
+            "edge_zero_keys": sorted(CG_EDGE_BASE_TRUNC_KEYS),
+            "edge_zero_edges": CG_EDGE_LEAVES,
+            "edge_cli_flags": {"--callgraph-max-nodes": True,
+                               "--callgraph-max-edges": True},
         }
 
     def red_loc(tag, obs, want):
@@ -2766,12 +3024,47 @@ def _selftest():
                                           "_build_ext_model": "NODEFAULT"}}),
             ("F10l 拿不到 `root` 形参读数（「不许静默」变空断言）",
              {"rel_root_param_defaults": None}),
+            # ---- F10m：焦点子图的**边上限**（R91）----
+            ("F10m 给了上限却静默不截断（边数超上限）",
+             {"edge_capped_edges": CG_EDGE_LEAVES}),
+            ("F10m 截断了却不上报 hit_edge_cap（「没展示」被说成「无关系」）",
+             {"edge_capped_trunc": {
+                 "hit_node_cap": False, "nodes_shown": 1 + CG_EDGE_LEAVES,
+                 "edges_shown": CG_EDGE_CAP, "max_edges": CG_EDGE_CAP,
+                 "hit_edge_cap": False, "edges_total": CG_EDGE_LEAVES}}),
+            ("F10m 有上限但不给分母（截掉了多少无从判断）",
+             {"edge_capped_trunc": {
+                 "hit_node_cap": False, "nodes_shown": 1 + CG_EDGE_LEAVES,
+                 "edges_shown": CG_EDGE_CAP, "max_edges": CG_EDGE_CAP,
+                 "hit_edge_cap": True}}),
+            ("F10m 分母不同源（另算一个数）",
+             {"edge_capped_trunc": {
+                 "hit_node_cap": False, "nodes_shown": 1 + CG_EDGE_LEAVES,
+                 "edges_shown": CG_EDGE_CAP, "max_edges": CG_EDGE_CAP,
+                 "hit_edge_cap": True, "edges_total": 4}}),
+            ("F10m 上限把节点一起裁了（只该裁边）",
+             {"edge_capped_nodes": 3, "edge_nodes_same": False}),
+            ("F10m 默认形态就多出上限键（跨轮回归作废）",
+             {"edge_default_keys": sorted(CG_EDGE_BASE_TRUNC_KEYS
+                                          + ("max_edges",))}),
+            ("F10m 显式 0 被当成真上限（0 不等于「不限」）",
+             {"edge_zero_keys": sorted(CG_EDGE_BASE_TRUNC_KEYS
+                                       + ("edges_total", "hit_edge_cap",
+                                          "max_edges")),
+              "edge_zero_edges": 0}),
+            ("F10m 默认形态收不全边（悄悄设了默认上限）",
+             {"edge_default_edges": CG_EDGE_CAP}),
+            ("F10m CLI 上没有这个开关（给了也没得用）",
+             {"edge_cli_flags": {"--callgraph-max-nodes": True,
+                                 "--callgraph-max-edges": False}}),
+            ("F10m 拿不到边上限夹具读数（判据变空断言）",
+             {"edge_capped_trunc": None}),
     ):
         d = _obs_loc()
         d.update(patch)
         red_loc("坏样本 %s" % tag, d, "F10")
     for letter in ("F10a", "F10b", "F10c", "F10d", "F10e", "F10f", "F10g",
-                   "F10h", "F10i", "F10j", "F10k", "F10l"):
+                   "F10h", "F10i", "F10j", "F10k", "F10l", "F10m"):
         if letter not in witnessed_sub:
             bad[0] += 1
             print("  [selftest] F10 的子判据 %s 没有自己的坏样本（子覆盖静默缩水）"

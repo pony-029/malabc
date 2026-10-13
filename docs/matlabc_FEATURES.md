@@ -140,9 +140,21 @@ Markdown 报告、Mermaid 图、Graphviz DOT、HTML 报告、可点击浏览站�
   迭代 Tarjan，不吃递归栈）、`cross_file` / `cross_dir`（内部 / 跨文件 / 同名多定义
   **不猜** / 无定义四桶，四桶之和 == 边数）、`focus_subgraph`（BFS 逐层邻域）。
   内存上用 `array('i')` 的 CSR，**不再加一份 O(E) 的 Python 对象层**（分析峰值已到 13 GB）。
-- **截断必须显式**：`truncated` 里给 `*_total` 与 `*_shown` 两对数；焦点 BFS 撞上限置
-  `hit_node_cap`。与 `--lib-resolve` 的 `skipped ≠ not_found` 同源 —— **「我没展开」不等于
-  「没有关系」**。
+- **截断必须显式**：`truncated` 里给 `*_total` 与 `*_shown` 两对数；焦点 BFS 撞节点上限置
+  `hit_node_cap`，撞**边数上限**（`--callgraph-max-edges`）置 `hit_edge_cap` 并同时给
+  `max_edges` / `edges_total`（**分子与分母一起在场**）。与 `--lib-resolve` 的
+  `skipped ≠ not_found` 同源 —— **「我没展开」不等于「没有关系」**。
+- **边数也有上限了（R91 已修；原为 R87 起的已知边界 —— 有界投影只对上「节点」那一半）**：
+  焦点子图此前只有**节点**上限、边**没有**：内核默认根实测 **34 节点 / 19,469 边**
+  （`hit_node_cap=false`），而 `truncated` 里只有 `hit_node_cap` ⇒ **「看不全」可以不上报**。
+  现在 `--callgraph-max-edges N`（**默认 0 = 不限**）只保留**先遇到的** `N` 条边，并置
+  `hit_edge_cap` + `max_edges` / `edges_total`（`edges_total` 与「不设上限」时的
+  `edges_shown` **同源**，不是另算一个数）⇒ 「截掉了多少」有分母。**只裁边、不动节点**：
+  `nodes` / `nodes_shown` / `hit_node_cap` 与不设上限时**逐位相同**。不给开关时
+  `truncated` 的键集**恰好**是 R90 那四个（三项是**条件键**，不是漏写）；夹具实测
+  （`_r91/verify_default_byteeq.py`，两向）：默认产物与 R90 **折掉 `version` 后逐字节相等**，
+  而原始字节**必须不等**（差恰 1 字节 —— `CALLREL_VERSION` 3 → 4，按「形状版本：键的增删改
+  都要 +1」的既有规矩必涨）。判据 = **F10m**；变异体 M16a/M16b/M16c 注入即红且红只落在 F10m。
 - **口径写成字面量，且默认已换成「带作用域的本地定义落点」（R88 加定义落点，R89 加阶梯）**：
   `identity` 有三个声明值 —— `definition-site-local`（**默认**，定义落点 + C 作用域阶梯）、
   `definition-site`（只按定义落点，节点 = 「函数名 @ 定义文件」）与 `callee-name`（老口径，

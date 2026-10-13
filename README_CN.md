@@ -262,9 +262,10 @@ python matlabc.py myproj/ --lib-resolve 2 --lib-path /opt/sdk/lib --json out.jso
 # 全图形状：度数排行、递归环、跨文件 / 跨目录计数
 python matlabc.py linux/ --lang c --callgraph cg.json
 
-# 钻进某个函数：向外两层，最多 50 个节点
+# 钻进某个函数：向外两层，最多 50 个节点、200 条边
 python matlabc.py linux/ --lang c --callgraph cg.dot \
-       --callgraph-focus __schedule --callgraph-depth 2 --callgraph-max-nodes 50
+       --callgraph-focus __schedule --callgraph-depth 2 \
+       --callgraph-max-nodes 50 --callgraph-max-edges 200
 ```
 
 | 块 | 回答什么 |
@@ -273,7 +274,7 @@ python matlabc.py linux/ --lang c --callgraph cg.dot \
 | `cycles` | 强连通分量（互为递归）。默认节点是**定义落点** ⇒ 同名不同文件的 `static` 函数不再合并成假环 |
 | `cross_file` / `cross_dir` | 内部 / 跨文件 / **同名多定义（不猜）** / 无定义 |
 | `focus_subgraph` | 某个函数的 BFS 邻域，逐层给出 |
-| `truncated` | `*_total` 与 `*_shown` 并列 —— **「我没展开」不等于「没有关系」** |
+| `truncated` | 每一条**真的**触发的上限，**分子与分母同时在场**：`hit_node_cap` / `nodes_shown`，以及给了 `--callgraph-max-edges N` 时的 `hit_edge_cap` / `max_edges` / `edges_total` —— **「我没展开」不等于「没有关系」** |
 
 `.json` 是结构化形态；`.dot` 与 `.mmd` 渲染焦点子图。扩展名不认识时**直接失败**，
 绝不悄悄退回 JSON。
@@ -292,8 +293,12 @@ python matlabc.py linux/ --lang c --callgraph cg.dot \
 按 basename 解析出的包含闭包两侧**都对上恰一份**候选、且调用点是翻译单元根时才用）；而且**只对 C
 启用** —— Python / JS 的模块绑定能在运行时被改掉，「同名同文件」只是一种**近似**，而近似冒充结论
 正是造出假环的成因。未解析调用**不在图里**（它们没有 callee 节点），并列报出计数，因为
-「没解析出来」不是「没有关系」。上限永远被上报：焦点 BFS 撞到节点上限会置
-`truncated.hit_node_cap`。
+「没解析出来」不是「没有关系」。上限**永远**被上报：焦点 BFS 撞到节点上限会置
+`truncated.hit_node_cap`；而被 `--callgraph-max-edges N` 限住的会保留**先遇到的** `N` 条边，
+并同时置 `truncated.hit_edge_cap` 与 `max_edges` / `edges_total` —— 后者的分母与「不给上限」
+时的**是同一个计数**，所以「丢了多少」永远不必从第二个、口径不同的数里读出来。
+限边**绝不动节点**（`nodes` / `nodes_shown` / `hit_node_cap` 逐位不变）。不给这个开关时，
+那个 `truncated` 块带的**恰好**是 R90 那四个键 —— 三个边上限键是**条件键，不是漏写**。
 
 ### 静态检查规则
 

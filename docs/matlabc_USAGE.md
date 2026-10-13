@@ -412,6 +412,7 @@ python matlabc.py myproj/ --lib-resolve 2 --lib-path /opt/sdk/lib --json out.jso
 | `--callgraph-focus` | 函数名 | 无 | 以该函数为根做 BFS **双向**展开（它调了谁、谁调了它）。不给则取扇入最高的枢纽，按被调方向展开 |
 | `--callgraph-depth` | 整数 | 2 | 焦点子图展开层数 |
 | `--callgraph-max-nodes` | 整数 | 300 | 焦点子图节点上限。撞上限即停止展开并置 `truncated.hit_node_cap=true` |
+| `--callgraph-max-edges` | 整数 | 0（不限） | 焦点子图**边数**上限（R91）。给了 `N` 只保留**先遇到的** `N` 条边，并置 `truncated.hit_edge_cap=true` 与 `max_edges` / `edges_total`（分母与「不设上限」时**同源**）；**只裁边、不动节点**。非整数 / 负数 ⇒ **非零退出**且不产出文件（不静默当 0） |
 | `--callgraph-identity` | `definition-site-local` / `definition-site` / `callee-name` | `definition-site-local` | 图的**节点身份**口径（R88 加第二档，R89 加第三档）。`definition-site-local` = 在「定义落点」之上再走 **C 的作用域阶梯**（同文件优先 → 同翻译单元，只在**恰一份**候选时用）⇒ 歧义桶里可判的那部分如实落成 `same_file` / `include`；`definition-site` = 只按定义落点（同名多定义一律进**不猜**的汇点）；`callee-name` = 老口径，节点就是函数名（同名**合并**，`cycles` 可能含假阳性）。三档 `edges_total` **逐位相同**（换口径不删边）。未知取值 ⇒ **非零退出**且不产出文件 |
 
 `.json` 里有什么：`fan_in_top` / `fan_out_top`（枢纽排行）、`cycles`（**定义落点**级强连通
@@ -434,21 +435,29 @@ python matlabc.py myproj/ --lib-resolve 2 --lib-path /opt/sdk/lib --json out.jso
 会把被很多地方包含的头（内核里**最常见**的形状）整条丢出欠近似图 ⇒ 这一级在真语料上**恒判不出**
 （实测引擎 `include=0`，而独立量具测出 **2034**）；**只对 C 启用** —— Python / JS 的模块绑定能在
 运行时被改掉，「同名同文件」只是近似，近似冒充结论会造出假环；③ 未解析调用**不在图里**（没有
-callee 节点），只并列报计数 —— 「没解析出来」不是「没有关系」；④ 截断永远显式上报 —— 「我没展开」
+callee 节点），只并列报计数 —— 「没解析出来」不是「没有关系」；④ 截断永远显式上报 ——
+节点上限置 `hit_node_cap`、**边数上限**（R91）置 `hit_edge_cap` 并给 `max_edges` /
+`edges_total`（分子与分母同时在场）—— 「我没展开」
 不等于「没有关系」；⑤ ✅ **`rel` 一律相对被分析根（R90 已修）**：`matlabc._rel_of(path, root)` 过去按
 **当前工作目录**算，被分析目录在 cwd **之外**时回退成 **basename**（同名不同目录
 的文件被**合并**）⇒ 读数**整体改变**（内核整树实测 `resolution.same_file`
 381290 → 348353，而 `edges_total`/`unique` 逐位不变）。现在 `root` **没有默认值**
 （漏传就是一条**静默**的 cwd 回退）⇒ 同一份语料在**任意** `cwd` 下给出**逐位相等**
-的读数，规范形态与非规范形态**不再有区别**。
+的读数，规范形态与非规范形态**不再有区别**；⑥ ✅ **边数也有上限了（R91 已修；原为 R87 起
+「有界投影只对上了节点那一半」）**：焦点子图此前只有**节点**上限、边没有 —— 内核默认根实测
+**34 节点 / 19,469 边**，而 `truncated` 里只有 `hit_node_cap` ⇒ **「看不全」可以不上报**。
+`--callgraph-max-edges N` 保留**先遇到的** `N` 条边；**只裁边、不动节点**；不给开关时
+`truncated` 的键集与 R90 **逐字相同**（三项是**条件键**，不是漏写），产物与 R90 的差
+**逐字节定位在 `version` 上（3 → 4，恰 1 字节）**。
 
 ```bash
 # 全图形状：度数排行 + 递归环 + 跨文件计数
 python matlabc.py linux/ --lang c --callgraph cg.json
 
-# 钻进一个函数：向外两层，最多 50 个节点，同时给出 DOT 图
+# 钻进一个函数：向外两层，最多 50 个节点、200 条边，同时给出 DOT 图
 python matlabc.py linux/ --lang c --callgraph cg.dot \
-       --callgraph-focus __schedule --callgraph-depth 2 --callgraph-max-nodes 50
+       --callgraph-focus __schedule --callgraph-depth 2 \
+       --callgraph-max-nodes 50 --callgraph-max-edges 200
 ```
 
 ---
