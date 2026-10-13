@@ -141,8 +141,8 @@ W2 会对它做非空断言。
 | `heuristics` | 1262817 | 1262829 | **不同** | | | |
 | `json_bytes` | 11355506 | 11355505 | **不同** | | | |
 | `rc` | 0 | 0 | ✅ | | | |
-| `peak_mb` | 13143.6 | 13136.5 | 不可裁决 | 137.6 | 128.3 | 不可裁决 |
-| `seconds` | 1879.7 | 793.4 | 不可裁决 | 3 | 2.4 | 不可裁决 |
+| `peak_mb` | 7730.3 | 13136.5 | 不可裁决 | 148.0 | 128.3 | 不可裁决 |
+| `seconds` | 493.6 | 793.4 | 不可裁决 | 2.7 | 2.4 | 不可裁决 |
 
 汇编臂（`--lang asm`）的规模：**1369** 文件 / **381729** 行。
 
@@ -173,9 +173,9 @@ W5 只比**与时钟无关**的计数器，且**逐类**比对启发式分解：
 
 | 项 | 值 |
 |---|---|
-| 被测物 `matlabc.py` sha256 | `f01fff25077ec23ec5c1af6fa7b6fae70989645e15c884a3c3b83276c8cb4ba5` |
-| 被测物字节数 | 1661601 |
-| 生成时 HEAD | `92394012a3f4f46a170c6463a3fc9a1e8f653153` |
+| 被测物 `matlabc.py` sha256 | `00069f2538c32e8810a302c16f15673583d4d1688db00326c960e262b937b6a5` |
+| 被测物字节数 | 1674472 |
+| 生成时 HEAD | `a08cdaf93e0059cfe98d9db98c66f76c91be996b` |
 | 基线 `AGG_r81.json` sha256 | `c6ba4cab681edd521cd674126a80b3716ff56a479de6d3463cab4a31b6e19374` |
 | 跨文档 | `docs/UNKNOWN_SITES.md` 那档分母 = 340（本表同值） |
 
@@ -359,8 +359,8 @@ corpus.files_repo_plus_oss | 340
 corpus.path | E:\matlabc\_kernel\corpus\linux-6.19.14
 crossdoc.unknown_sites_files | 340
 provenance.cwd_convention | cwd=corpus (target=.)
-provenance.git_head | 92394012a3f4f46a170c6463a3fc9a1e8f653153
-provenance.matlabc_bytes | 1661601
-provenance.matlabc_sha256 | f01fff25077ec23ec5c1af6fa7b6fae70989645e15c884a3c3b83276c8cb4ba5
+provenance.git_head | a08cdaf93e0059cfe98d9db98c66f76c91be996b
+provenance.matlabc_bytes | 1674472
+provenance.matlabc_sha256 | 00069f2538c32e8810a302c16f15673583d4d1688db00326c960e262b937b6a5
 ```
 <!-- /KERNEL-RUN -->
