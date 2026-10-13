@@ -163,6 +163,35 @@
 20 | A  | t1   | -                       | R82-A4 MATLAB 后端（parfor/parfeval/batch/timer） | 未实现
 21 | A  | t1   | -                       | R82-A5 asm 间接跳转 ⇒ unknown（不猜） | 未实现
 22 | A  | t1   | -                       | R82-A6 站点/报告新增「异步」列 + 未识别并发站点计数 | 未实现
+# ⚠ **R94 的 Phase 1–8（三语言能力对等）**：用户要求「C 与 Python 达到 MATLAB 的效果，
+#   共有的都要适配、特有的各自适配，动态链接库务必实现分析」。
+#   任务书全文 ⇒ `docs/PARITY_MATLAB_C_PY.md`（六顶思考帽产出；事实全部取自源码，不取自 README）。
+#   **能力三分法**是这批轮次的地基：COMMON（三语言都必须实现同一判据）/ IDIOM
+#   （只在某语言存在，非适用语言**必须显式写理由**）/ CROSS（调用图·度量·站点·SARIF·
+#   门禁·二进制，对所有语言同构）。不分类就动手 ⇒ 必然把 MATLAB 的
+#   lowerCamelCase 硬套到 C，让 Linux 内核整树红。
+#   ⚠ 第 19–22 轮全是 `A t1` 且 blocked ⇒ 环路会一路 SKIP 到底；下面 12 轮**全部无 blocked**。
+#   ⚠ **门数 19 → 20**（第 21 道门 `check_parity_registry.py`，判据族 E1–E6）——只在第 23 轮发生，
+#     其余各轮**不加闸门**（「缺口为 0 时加闸 = churn」，R85 已定论）。
+#   ⚠ Phase 1 立判据时必须逐处同步 6 处级联：`check_all.py` 的 **ASCII 树行**（极易漏）/
+#     `MIN_GUARDS` / `GUARD_CONTRACT` / `tests/test_matlabc.py` / README 双侧 /
+#     `matlabc.py` docstring 的两处体积快照。
+#   ⚠ **动态库的诚实边界不可跨越**：不执行、不反汇编、不符号执行（`binfmt/__init__.py:38-40`）；
+#     Mach-O `verified=False`（`macho.py:191`）；CUDA cubin 不解析（`elf.py:11-20`）。
+#     Phase 7 的 5 轮全部落在这三条边界之内。
+23 | 1  | t3   | parity_registry        | 能力对等登记表（人读 + `<!-- PARITY v1 -->` 机器块）+ **第 21 道门** `check_parity_registry.py` 判据族 **E1–E6**（两向：登记未实现⇒红 / 实现未登记⇒红 / `na` 无理由⇒红）；**门数 19→20** + 6 处级联 | -
+24 | 2  | t3   | ir_entity_common       | 语言无关 **Entity 契约**（COMMON 实体字段三语言同形）+ 契约测试；**不改既有读数**（逐位相等口径） | -
+25 | 3  | t3   | py_ast_frontend        | **Python 前端 `ast` 化**（双层：`ast` 优先 / 语法失败降级到现有扫描器且**降级必须进 `limitations`**）；解锁 class/方法/装饰器/注解/相对导入 | -
+26 | 4  | t3   | c_entity_layer         | **C 实体层**：struct/union/enum/typedef/全局变量/字段识别（R87 的 `_is_type_decl` 只做排除，需补正向） | -
+27 | 5  | t3   | rule_family_parity      | 规则族对等 **5 类 × 3 语言 = 15 格**；头一步是**真实语料误报晢查**（先量后改）；裁定 `py_unused_import` 严重度唯一事实源 | -
+28 | 6  | t3   | metrics_parity          | **度量对等**：`_compute_function_metrics` 提到语言无关层 + 三语言同形 `metrics.html`（risk/tag 四档）；顺带修 Python 假边 | -
+29 | 6  | t3   | canvas_parity           | **图的表现力对等**：把 MATLAB 的**统一画布**（多类型节点 + 可开关边型 + 点聚焦 + 双击跳源码）、**目录影响面闭包**、**调度流程视图** 移植到 C/Py；⚠ **硬约束：不得为此引入 JavaScript**（C/Py 站点零 JS 是其可归档性的卖点，`csite.py` 实测 `<script>` 0 次必须保持 0） | -
+30 | 7  | t2   | bin_closure             | **动态库闭合**：库导出符号 ↔ 我方 unresolved **双向**对账（`resolved_by` + `exports_unused`） | -
+31 | 7  | t2   | bin_graph               | **库依赖图**（binhop 渲染）+ 站点可点库卡片（每个库一张卡、卡间有边） | -
+32 | 7  | t2   | bin_sarif_json          | 二进制信息**进 SARIF**（新增 ruleId，不再塔成 `c_heuristics`）+ **完整 BinaryReport 进 JSON** | -
+33 | 7  | t2   | py_ext_module          | **Python 扩展模块**：`.pyd` 进 `MODULE_EXTS` + `PyInit_*` 导出语义 + 扩展模块归因 | -
+34 | 7  | t2   | bin_parity_gate         | 动态库能力对等判据并入 E 族（**E7–E10**） | -
+35 | 8  | t3   | kernel_full_recheck     | 三语言内核全树实测 + `check_kernel_snapshot` W2 刷新 + 发布验收 | -
 ```
 
 ### Phase 0f · REA 能力移植 Ⅰ：静态缓解措施（轮 11 · `t2`）
