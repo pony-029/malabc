@@ -25,12 +25,12 @@
 | `functions` | yes | yes | yes | yes | `fn_basic`/`mintra` 里两个定义都出现在载荷 `files[].functions` |
 | `call_edges` | yes | yes | yes | yes | `fn_basic`/`mintra` 至少一条非跨文件边进载荷 `edges` |
 | `call_edges_cross_file` | yes | yes | yes | yes | callgraph 的 `cross_file.cross > 0`（MATLAB 走载荷 `edges[].cross_file`） |
-| `call_edges_qualified` | yes | na | no | no | `class_cls`/`Muse` 上至少一条边（属性 / 方法调用 `obj.m()`） |
-| `call_edges_oneline_body` | na | yes | no | no | `oneline` 上至少一条边（花括号单行函数体内的调用点） |
-| `deps_edges_json` | na | yes | no | no | 载荷 `include_edges` 非空 |
+| `call_edges_qualified` | yes | na | yes | no | `class_cls`/`Muse` 上至少一条边（属性 / 方法调用 `obj.m()`） |
+| `call_edges_oneline_body` | na | yes | yes | no | `oneline` 上至少一条边（花括号单行函数体内的调用点） |
+| `deps_edges_json` | na | yes | yes | yes | 载荷 `include_edges` 非空 |
 | `deps_site_page` | na | yes | yes | yes | 站点 `deps.html` 文本里出现依赖目标名 |
-| `classes` | yes | na | no | no | 载荷 `files[].classes` 非空 |
-| `entities` | yes | no | no | no | 载荷里出现实体 / 字段类键（`field_access` / `types` / `structs` …） |
+| `classes` | yes | na | yes | no | 载荷 `files[].classes` 非空 |
+| `entities` | yes | no | yes | no | 载荷里出现实体 / 字段类键（`field_access` / `types` / `structs` …） |
 | `metrics_complexity` | no | yes | yes | yes | 某个函数载荷 `complexity > 1` |
 | `unresolved_attribution` | no | yes | yes | yes | 载荷 `unresolved` 非空（调了一个项目里不存在的名字） |
 | `callgraph_projection` | no | yes | yes | yes | `--callgraph` 产物存在且 `call_relations.edges_total` 是整数 |
@@ -39,7 +39,7 @@
 | `browse_site` | yes | yes | yes | yes | `--browse` 产出站点且含 HTML |
 | `site_same_page_names` | yes | yes | yes | yes | 站点同时有 `index.html` / `funcs.html` / `file/` / `dir/` |
 
-**合计 64 格：`yes` 41 · `no` 15 · `na` 8。**
+**合计 64 格：`yes` 47 · `no` 9 · `na` 8。**
 
 ## 3. 三类发现
 
@@ -67,17 +67,18 @@
 **同名同形** —— `site_same_page_names` 那一格由实测从 `no` 变 `yes`。
 剩下三条仍是槽 28 / 槽 29 的靶。
 
-### 3.3 真实的缺口：16 格，按可修性排序
+### 3.3 真实的缺口：9 格，按可修性排序
 
 | 缺口 | 格数 | 形态 | 去向 |
 | --- | --- | --- | --- |
-| `entities`（C / Py / JS） | 3 | C 的 `struct`/`enum`/`typedef`/字段、Py 的类与实例属性、JS 的对象字面量都不进载荷 | 槽 25（Py `ast` 前端）/ 槽 26（C 实体层） |
-| `classes`（Py / JS） | 2 | 载荷没有 `classes` 键；`class` 里的方法被当成顶层函数列出，**类本身丢失** | 槽 25 |
-| `call_edges_qualified`（Py / JS） | 2 | 属性 / 方法调用不成边：前端跳过前一个字符是 `.` 的调用点 | 槽 25 / 槽 28 |
-| `call_edges_oneline_body`（Py / JS） | 2 | 单行函数体里的调用点收不到（JS：定义行自身被跳过；Py：同形） | 槽 25 |
-| `deps_edges_json`（Py / JS） | 2 | 依赖边只进站点 `deps.html`，**不进载荷**（口径分裂） | 槽 28（度量对等，顺带修假边） |
+| `entities`（C / JS） | 2 | C 的 `struct`/`enum`/`typedef`/字段、JS 的对象字面量与类字段都不进载荷 | 槽 26（C 实体层）/ 槽 28 |
+| `classes`（JS） | 1 | 载荷没有 `classes` 键：`class` 语法被识别成 `constructor` 等方法，**类本身丢失** | 槽 28 |
+| `call_edges_qualified`（JS） | 1 | 属性 / 方法调用不成边：前端跳过前一个字符是 `.` 的调用点 | 槽 28 |
+| `call_edges_oneline_body`（JS） | 1 | 定义行自身被跳过 ⇒ 花括号单行体里的调用点收不到 | 槽 28 |
 | `callgraph_projection`（MATLAB） | 1 | 给了 `--callgraph` **静默不产出**（rc=0、无文件）—— 「没听懂却假装听懂」 | 槽 24–29 任一 |
 | `metrics_complexity` / `unresolved_attribution` / `heuristics_channel`（MATLAB） | 3 | 见 3.2 的口径分裂 | 槽 28 / 槽 29 |
+
+**R101 / 槽 25 把 Python 列从 5 格 `no` 清成 0 格**（`ast` 前端落地，降级到词法层时写 `limitations`），并**顺带**修好 `deps_edges_json` 的 JS 列（第 6 格）—— 那一格与 Py 是**同一处**口径分裂：载荷里 `"include_edges": []` 是硬编码的，而构建载荷的 `_run_ext_only` 是 py / js 共用的一段代码。所以这 6 格不是六个补丁，是**一处修在共用的那一层**。
 
 ⚠ `callgraph_projection` 那一格值得单独说：**它不是「不支持」，是「假装修持」**。
 CLI 收下开关、退出码 0、终端没有任何提示、盘上没有文件 —— 用户会以为画好了。
@@ -99,33 +100,27 @@ cap.call_edges | matlab=yes c=yes py=yes js=yes
 cap.call_edges.evidence | `fn_basic`/`mintra` 至少一条非跨文件边进载荷 `edges`
 cap.call_edges_cross_file | matlab=yes c=yes py=yes js=yes
 cap.call_edges_cross_file.evidence | callgraph 的 `cross_file.cross > 0`（MATLAB 走载荷 `edges[].cross_file`）
-cap.call_edges_qualified | matlab=yes c=na py=no js=no
+cap.call_edges_qualified | matlab=yes c=na py=yes js=no
 cap.call_edges_qualified.evidence | `class_cls`/`Muse` 上至少一条边（属性 / 方法调用 `obj.m()`）
 cap.call_edges_qualified.why.c | C 没有成员调用语法：`p.a` 不是调用，函数指针 `p->fp()` 属于间接调用，这一行对 C 不适用
-cap.call_edges_qualified.why.py | Python 的属性 / 方法调用不产边：前端跳过前一个字符是 `.` 的调用点，该夹具实测 0 条边
 cap.call_edges_qualified.why.js | JavaScript 同形：`.m(` 形态被跳过，`class_cls.js` 实测 0 条边
-cap.call_edges_oneline_body | matlab=na c=yes py=no js=no
+cap.call_edges_oneline_body | matlab=na c=yes py=yes js=no
 cap.call_edges_oneline_body.evidence | `oneline` 上至少一条边（花括号单行函数体内的调用点）
 cap.call_edges_oneline_body.why.matlab | MATLAB 的函数体以 `end` 收束，没有花括号单行体这种形态
-cap.call_edges_oneline_body.why.py | `def f(v): return g(v)` 这种单行函数体里的调用点收不到（实测 0 条边）
 cap.call_edges_oneline_body.why.js | 定义行自身被跳过 ⇒ 花括号单行体里的调用点收不到（实测 0 条边）
-cap.deps_edges_json | matlab=na c=yes py=no js=no
+cap.deps_edges_json | matlab=na c=yes py=yes js=yes
 cap.deps_edges_json.evidence | 载荷 `include_edges` 非空
 cap.deps_edges_json.why.matlab | MATLAB 没有 `#include` / `import` 语法，文件级依赖走另一条通道（`files_graph` / `folder_edges`）
-cap.deps_edges_json.why.py | 依赖边只进站点 `deps.html`，不进载荷：实测 `include_edges` 为空而 `deps.html` 提到目标模块
-cap.deps_edges_json.why.js | 同上的口径分裂：站点有依赖页，载荷里没有 `include_edges` 条目
 cap.deps_site_page | matlab=na c=yes py=yes js=yes
 cap.deps_site_page.evidence | 站点 `deps.html` 文本里出现依赖目标名
 cap.deps_site_page.why.matlab | 同上：没有 include / import，就没有依赖页可言
-cap.classes | matlab=yes c=na py=no js=no
+cap.classes | matlab=yes c=na py=yes js=no
 cap.classes.evidence | 载荷 `files[].classes` 非空
 cap.classes.why.c | C 没有 `class` 语法（结构化类型是 `struct`，见 entities 那一行）
-cap.classes.why.py | 载荷没有 `classes` 键：`class` 里的方法被当成顶层函数列出，类本身丢失
 cap.classes.why.js | 载荷没有 `classes` 键：`class` 语法被识别成 `constructor` 等方法，类本身丢失
-cap.entities | matlab=yes c=no py=no js=no
+cap.entities | matlab=yes c=no py=yes js=no
 cap.entities.evidence | 载荷里出现实体 / 字段类键（`field_access` / `types` / `structs` …）
 cap.entities.why.c | C 的 `struct` / `union` / `enum` / `typedef` 与字段不进载荷（该夹具里 0 处命中）；R87 的 `_is_type_decl` 只做排除，正向识别未做
-cap.entities.why.py | Python 的类属性 / 实例属性不进载荷（没有实体层）
 cap.entities.why.js | JavaScript 的对象字面量与类字段不进载荷（没有实体层）
 cap.metrics_complexity | matlab=no c=yes py=yes js=yes
 cap.metrics_complexity.evidence | 某个函数载荷 `complexity > 1`
@@ -157,7 +152,8 @@ cap.site_same_page_names.evidence | 站点同时有 `index.html` / `funcs.html` 
 2. 每语言跑一次公开 CLI（`--json --json-level full --callgraph --browse`）；
 3. 从**产物**读 56 个在册探针的信号（`yes` / `no`）；
 4. 与机器块逐格对账（E2），逆向也响；理由两向（E3）；能力名单两向（E4）；
-   人读表 ⇄ 块逐格一致（E5）；缺输入 / CLI 跑不起来 / 实测空集一律红（E6）。
+   **文档 ⇄ 机器块**（E5：人读表**逐格**，**加上**合计行 / §3.3 缺口标题与缺口表求和 /
+   两份 README 的记分牌**现算再比**）；缺输入 / CLI 跑不起来 / 实测空集一律红（E6）。
 
 实测成本：四语言各一次、每次约 0.5 s（合成夹具只有几十行），门整体 **~3 s**。
 
@@ -165,9 +161,9 @@ cap.site_same_page_names.evidence | 站点同时有 `index.html` / `funcs.html` 
 
 | 顺序 | 动作 | 预期把哪几格变绿 |
 | --- | --- | --- |
-| 1 | Python 前端 `ast` 化（槽 25） | `classes` / `entities` / `call_edges_qualified` / `call_edges_oneline_body` 的 Py 列（4 格）+ `deps_edges_json` 的 Py 列 |
+| 1 | ~~Python 前端 `ast` 化（槽 25）~~ **R101 已落地** | `classes` / `entities` / `call_edges_qualified` / `call_edges_oneline_body` / `deps_edges_json` 的 **Py 列全绿**（5 格）+ `deps_edges_json` 的 JS 列（第 6 格，同一处口径分裂） |
 | 2 | C 实体层（槽 26） | `entities` 的 C 列 |
-| 3 | 度量对等（槽 28） | `metrics_complexity` 的 MATLAB 列、`deps_edges_json` 的 Py / JS 列 |
+| 3 | 度量对等（槽 28） | `metrics_complexity` 的 MATLAB 列（`deps_edges_json` 的 Py / JS 列已被 R101 修掉） |
 | 4 | 画布对等（槽 29） | `site_same_page_names` 的 MATLAB 列 |
 | 5 | 任一槽顺手 | `callgraph_projection` 的 MATLAB 列（**要么真产出、要么明确拒绝**） |
 

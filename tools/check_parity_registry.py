@@ -25,7 +25,19 @@ E1–E6（六个方向）
   E3 **理由两向**：非 `yes` 的格必须写理由（>= 8 字符、非占位），
      `yes` 的格**不许**有理由（陈旧理由 ⇒ 红）；
   E4 **覆盖度两向**：本门的 `CAPABILITIES` 名单 ⇄ 块里的 `cap.<名>` 键集合；
-  E5 **人读表 ⇄ 机器块逐格一致**（只改一处看不出来）；
+  E5 **文档 ⇄ 机器块**，两半：人读表**逐格**一致（只改一处看不出来）；
+     **并且**文档里从格子里算出来的字一律**现算再比** —— 合计行的
+     `yes/no/na`、§3.3 缺口标题的格数、缺口表逐行求和、两份 README
+     门表行里的记分牌。后半是 R101 补的：R99 把 `site_same_page_names`
+     的 MATLAB 列从 `no` 改 `yes`，机器块与合计行改了，§3.3 标题
+     （「16 格」）与它下面那张表（求和 15）**没跟着改**，而它们
+     **一条判据都没有** ⇒ 同一份文档里同时挂着三个互相矛盾的数。
+     这类数字的风险是**结构性**的（「改一处漏一处」），所以按结构堵：
+     现算，不抄。
+     ⚠ 为什么不新开一族编号：**`E7–E10` 已经留给槽 34**
+     （`bin_parity_gate`，动态库能力对等并入 E 族，见
+     `docs/EVOLVE_ROADMAP_360.md` 第 34 行）—— 抢编号会让那条槽的
+     登记当场变错。判据签名因此仍是 `E1–E6`，那 8 处级联一处都不用动。
   E6 **未行使必须说出来**：夹具写不出来 / CLI 跑不起来 / 产物缺失 ⇒ 红，
      绝不静默当「对得上」；实测为空集也红（空集上「每格都对」恒真）。
 
@@ -733,9 +745,24 @@ def table_cells(doc_text, langs):
     return out
 
 
-def human_table_problems(doc_text, langs, caps, kv):
-    """E5：人读表 ⇄ 机器块逐格一致，两向。"""
+def human_table_problems(doc_text, langs, caps, kv, readmes=None):
+    """E5：**文档 ⇄ 机器块**，两向。
+
+    两半：
+      * 前半（R96 立）：人读表**逐格**与机器块一致；
+      * 后半（R101 补）：文档里**从格子里算出来的字**（合计行 /
+        §3.3 缺口标题 / 缺口表求和 / 两份 README 的记分牌）必须等于
+        **现算**出来的。R99 漏更过这三处中的全部三处而无人察觉 ——
+        因为那时它们一条判据都没有。
+
+    `readmes`：`[(文件名, 正文或 None)]`；`None` = 文件不在（与「在但
+    没那句话」分开报）。不传就只有文档自身的几处。
+    """
     probs = []
+    # 派生数字**先算**：下面 `if not rows` 会早退，而「表整个不在」时
+    # 合计行 / 缺口标题 / README 记分牌照样该被核。
+    probs += derived_number_problems(doc_text, langs, caps, kv,
+                                     readmes=readmes)
     rows = table_cells(doc_text, langs)
     if not rows:
         probs.append("E5 人读表一格都没解析出来 —— 表不在，或表头不是 "
@@ -758,6 +785,129 @@ def human_table_problems(doc_text, langs, caps, kv):
                 probs.append("E5 `%s`/`%s`：人读表写 %r，机器块写 %r —— "
                              "改一处漏一处，两边必须逐格一致"
                              % (cap, lang, a, b))
+    return probs
+
+
+# ---------------------------------------------------------------------------
+# E5 的后半（R101）：文档里**派生出来的数字**（不是格子，是从格子算出来的字）
+#
+# 起因是一次**实测**：R99 把 `site_same_page_names` 的 MATLAB 列从 `no` 改成
+# `yes`，机器块与合计行都改了，但 §3.3 的标题（「真实的缺口：16 格」）和它下面
+# 那张表的求和（15）没跟着改 —— 而那两处**从此没有任何判据**：E5 的前半只比
+# 人读表 ⇄ 机器块**逐格**，散文里的合计不在它的视野里。于是同一份文档里躺着
+# 三个互相矛盾的数。
+# 「改一处漏一处」是这类数字的**结构性**风险，所以要按结构来堵：
+# 凡是从格子里算出来的数，一律**现算再比**，而不是再抄一遍。
+# ---------------------------------------------------------------------------
+TOTALS_RE = re.compile(
+    r"合计\s*(\d+)\s*格[：:]\s*`yes`\s*(\d+)\s*·\s*`no`\s*(\d+)"
+    r"\s*·\s*`na`\s*(\d+)")
+GAP_HEAD_RE = re.compile(r"真实的缺口[：:]\s*(\d+)\s*格")
+GAP_ROW_RE = re.compile(r"^\|\s*[^|]+?\s*\|\s*(\d+)\s*\|")
+SCOREBOARD_RE = re.compile(
+    r"(\d+)\s*`yes`\s*·\s*(\d+)\s*`no`\s*·\s*(\d+)\s*`na`")
+
+
+def _readmes(root):
+    """两份 README 的正文（`None` = 文件不在，与「在但没那句话」分开报）。
+
+    为什么要读它们：记分牌那句话也出现在 README 的门表行里，**那里的数错了
+    没有任何别的判据会看见** —— R96 写下的 `40 yes / 16 no / 8 na` 就这么
+    一路躺到 R101。
+    """
+    out = []
+    for name in ("README.md", "README_CN.md"):
+        p = os.path.join(root, name)
+        if not os.path.isfile(p):
+            out.append((name, None))
+            continue
+        with io.open(p, "r", encoding="utf-8", errors="replace") as fh:
+            out.append((name, fh.read()))
+    return out
+
+
+def _block_counts(langs, caps, kv):
+    """从**机器块**一格一格地数出 `(总格数, yes, no, na)`。"""
+    states = states_from_block(kv, langs, caps)
+    cnt = {"yes": 0, "no": 0, "na": 0}
+    for cap in caps:
+        cell = states.get(cap) or {}
+        for lang in langs:
+            st = cell.get(lang)
+            if st in cnt:
+                cnt[st] += 1
+    return len(caps) * len(langs), cnt["yes"], cnt["no"], cnt["na"]
+
+
+def _gap_row_sum(text):
+    """§3.3 那张「缺口 / 格数 / 形态 / 去向」表里**格数列**的求和。
+
+    只认 `| ... | <整数> | ... |` 形态的行：表头（第 2 列是 `格数`）与分隔行
+    （第 2 列是 `---`）自然被跳过，别的表（第 2 列是 `yes` / 动作名）也一样。
+    返回 `(求和, 解析到的行数)` —— **行数要一起返回**：解析到 0 行时求和恒为 0，
+    那是个空集判据（R99 的教训），调用方必须能看见。
+    """
+    total = 0
+    seen = 0
+    for ln in (text or "").split("\n"):
+        m = GAP_ROW_RE.match(ln.strip())
+        if m:
+            total += int(m.group(1))
+            seen += 1
+    return total, seen
+
+
+def derived_number_problems(doc_text, langs, caps, kv, readmes=None):
+    """E5 后半四小条：文档里从格子里算出来的数字，必须等于**现算**出来的。"""
+    probs = []
+    total, yes, no, na = _block_counts(langs, caps, kv)
+
+    hits = TOTALS_RE.findall(doc_text or "")
+    if len(hits) != 1:
+        probs.append("E5a 合计行出现 %d 次（要求恰好 1 次；形态「合计 N 格："
+                     "`yes` A · `no` B · `na` C」）—— 这一行是从格子里算出来的，"
+                     "数不出来就说明它没了" % len(hits))
+    else:
+        got = tuple(int(x) for x in hits[0])
+        if got != (total, yes, no, na):
+            probs.append("E5a 合计行写 %s，机器块数出来是 %s（总 / yes / no / na）"
+                         " —— 改一处漏一处，两边必须相等"
+                         % (got, (total, yes, no, na)))
+
+    hits = GAP_HEAD_RE.findall(doc_text or "")
+    if len(hits) != 1:
+        probs.append("E5b 缺口标题出现 %d 次（要求恰好 1 次；形态「真实的缺口："
+                     "N 格」）" % len(hits))
+    elif int(hits[0]) != no:
+        probs.append("E5b 缺口标题写 %s 格，机器块里 `no` 有 %d 格 —— "
+                     "标题说的就是缺口数，而缺口数就是 `no` 的格数"
+                     % (hits[0], no))
+
+    s, seen = _gap_row_sum(doc_text)
+    if seen == 0:
+        probs.append("E5c §3.3 缺口表一行都没解析出来 —— 表不在，或第二列不是"
+                     "整数（解析到 0 行时求和恒为 0，空集上「相等」没有意义，"
+                     "所以这里必须红）")
+    elif s != no:
+        probs.append("E5c 缺口表的格数列求和 = %d（%d 行），机器块里 `no` 有 %d 格"
+                     " —— 逐行加起来必须等于缺口总数" % (s, seen, no))
+
+    for name, txt in (readmes or []):
+        if txt is None:
+            probs.append("E5d %s 不在 —— 记分牌那句话就写在它里面，文件没了"
+                         "这条判据就失效" % name)
+            continue
+        hits = SCOREBOARD_RE.findall(txt)
+        if not hits:
+            probs.append("E5d %s 里没有记分牌句（三个数 + yes/no/na 三个标签"
+                         "那种）—— 这枚记分牌最显眼的出口删掉了就是"
+                         "「静默退出」：要么补回来，要么把这条判据一起删" % name)
+            continue
+        for h in hits:
+            if tuple(int(x) for x in h) != (yes, no, na):
+                probs.append("E5d %s 的记分牌写 %s，机器块数出来是 %s —— "
+                             "README 上的数错了没有任何别的判据会看见"
+                             % (name, tuple(int(x) for x in h), (yes, no, na)))
     return probs
 
 
@@ -787,7 +937,8 @@ def audit(root, python_exe=None):
     probs += coverage_problems(kv, LANGS, CAPABILITIES)
     probs += reason_problems(kv, LANGS, CAPABILITIES)
     probs += reconcile_problems(kv, LANGS, CAPABILITIES, measured, PROBED)
-    probs += human_table_problems(text, LANGS, CAPABILITIES, kv)
+    probs += human_table_problems(text, LANGS, CAPABILITIES, kv,
+                                  readmes=_readmes(root))
     return probs, measured, False
 
 
@@ -883,6 +1034,22 @@ def _doc_text(states):
         cell = states.get(cap) or {}
         lines.append("| `%s` | %s |" % (cap, " | ".join(
             cell.get(l, "yes") for l in LANGS)))
+    # R101 / E5 后半：样本也得带**派生数字**（合计行 + 缺口标题 + 缺口表），
+    # 否则「好样本」在 E5 后半上必红 —— 而那不是样本坏，是样本不完整。
+    cnt = {"yes": 0, "no": 0, "na": 0}
+    for cap in CAPABILITIES:
+        for l in LANGS:
+            cnt[(states.get(cap) or {}).get(l, "yes")] += 1
+    lines.append("**合计 %d 格：`yes` %d · `no` %d · `na` %d。**"
+                 % (len(CAPABILITIES) * len(LANGS),
+                    cnt["yes"], cnt["no"], cnt["na"]))
+    lines.append("### 3.3 真实的缺口：%d 格，按可修性排序" % cnt["no"])
+    lines.append("| 缺口 | 格数 | 形态 | 去向 |")
+    lines.append("| --- | --- | --- | --- |")
+    for cap in CAPABILITIES:
+        for l in LANGS:
+            if (states.get(cap) or {}).get(l, "yes") == "no":
+                lines.append("| `%s` | 1 | 样本形态 | 待办 |" % cap)
     lines.append(BLOCK_OPEN)
     kv = _kv(states, _why_for(states))
     for k in sorted(kv):
@@ -898,6 +1065,13 @@ def _measured_for(states, probed=PROBED):
         if st in ("yes", "no"):
             m.setdefault(cap, {})[lang] = (st == "yes")
     return m
+
+
+def _rm(y, n, a):
+    """造一份「两份 README 都写着正确记分牌」的文本（E5d 的正样本）。"""
+    body = "**%d `yes` · %d `no` · %d `na`**" % (y, n, a)
+    return [("README.md", "Today's scoreboard: " + body),
+            ("README_CN.md", "今天的记分牌：" + body)]
 
 
 def _selftest():
@@ -1019,6 +1193,43 @@ def _selftest():
            human_table_problems(txt, LANGS, CAPABILITIES, ok_kv), True)
     expect("E5 人读表整个不在",
            human_table_problems("没有表", LANGS, CAPABILITIES, ok_kv), True)
+
+    # ---- E5 后半：派生数字（R101） ----
+    y, n, a = _block_counts(LANGS, CAPABILITIES, ok_kv)[1:]
+    expect("E5 后半好样本（合计行 / 缺口标题 / 缺口表 / 两份 README）",
+           human_table_problems(ok_txt, LANGS, CAPABILITIES, ok_kv,
+                                _rm(y, n, a)), False)
+    expect("E5 后半 readmes 不传则不报 README",
+           human_table_problems(ok_txt, LANGS, CAPABILITIES, ok_kv),
+           False)
+    _bt = ok_txt.replace("`yes` %d · `no` %d" % (y, n),
+                         "`yes` %d · `no` %d" % (y - 1, n + 1))
+    expect("E5a 合计行与块不一致",
+           derived_number_problems(_bt, LANGS, CAPABILITIES, ok_kv,
+                                   _rm(y, n, a)), True)
+    expect("E5a 合计行整个不在",
+           derived_number_problems("没有合计行", LANGS, CAPABILITIES,
+                                   ok_kv, _rm(y, n, a)), True)
+    _bt = ok_txt.replace("真实的缺口：%d 格" % n,
+                         "真实的缺口：%d 格" % (n + 1))
+    expect("E5b 缺口标题与块不一致",
+           derived_number_problems(_bt, LANGS, CAPABILITIES, ok_kv,
+                                   _rm(y, n, a)), True)
+    _bt = ok_txt.replace("| 1 | 样本形态", "| 2 | 样本形态", 1)
+    expect("E5c 缺口表求和与块不一致",
+           derived_number_problems(_bt, LANGS, CAPABILITIES, ok_kv,
+                                   _rm(y, n, a)), True)
+    expect("E5d README 记分牌与块不一致",
+           derived_number_problems(ok_txt, LANGS, CAPABILITIES, ok_kv,
+                                   _rm(y - 1, n + 1, a)), True)
+    expect("E5d README 里没有记分牌句",
+           derived_number_problems(ok_txt, LANGS, CAPABILITIES, ok_kv,
+                                   [("README.md", "无"),
+                                    ("README_CN.md", "无")]), True)
+    expect("E5d README 不在",
+           derived_number_problems(ok_txt, LANGS, CAPABILITIES, ok_kv,
+                                   [("README.md", None),
+                                    ("README_CN.md", None)]), True)
 
     # ---- 块解析坏样本 ----
     kv12, p12 = parse_block("no block here")

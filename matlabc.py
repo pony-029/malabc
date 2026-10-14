@@ -180,6 +180,12 @@ if _here not in _sys.path:
 # 只能放在上面那两行之后：本包要从本文件所在目录解析。
 from frontends import ir as f_ir
 from frontends import matlab as f_matlab
+# R101 / 槽 25：Python 前端的 **ast 层**。它只 import 标准库（`ast` / `sys`），
+# 词法扫描器由本文件通过形参**注入** —— 于是它可以脱离引擎单独自证。
+import pyast_frontend as _py_ast
+# R101 / 槽 25：语言无关的**实体契约**（`entity_model.py` 是槽 24 立的契约，
+# 本轮把它接上产物：只有 Python 有适配器；c 的 `no` 与理由都还在那张表里）。
+import entity_model as _em
 
 
 MAX_CALLGRAPH_DEPTH = 4
@@ -8106,18 +8112,24 @@ def _c_summary_counts(c_model, heuristics):
 def _ext_summary_counts(model, heuristics):
     """R80 / C29-1：扩展前端（py / js / asm）的 summary 档计数块。
 
-    与 C 侧同构，只有两点不同：`imports` 替代 `includes`；`include_edges`
-    恒为 **0** —— 那是 C 的 `#include` 依赖边，扩展前端没有这个概念
-    （非 summary 档里它同样恒为 `[]`，这里只是把同一个事实写成计数）。
+    与 C 侧同构，只有一点不同：`imports` 替代 `includes`。
+
+    R101 / 槽 25：`include_edges` 不再恒为 0。它以前写死 0 的理由是「那是 C 的
+    `#include` 依赖边，扩展前端没有这个概念」—— 而事实是 Py / JS **有**
+    `_ext_dep_edges`（文件级依赖边，与 C 逐位同形），只是站点在用、载荷没给。
+    那是**口径分裂**，不是「没有」。现在两档现算**同一份**：full 档的
+    `include_edges` 与这里的计数守恒。
     """
     files = model.get("files") or []
     n_fun = n_imp = 0
     for pf in files:
         n_fun += len(pf.get("functions") or [])
         n_imp += len(pf.get("imports") or [])
+    _lang = model.get("lang")
+    _deps = _ext_dep_edges(model, _lang) if _lang in ("py", "js") else []
     return {"files": len(files), "functions": n_fun, "imports": n_imp,
             "edges": len(model.get("edges") or []),
-            "include_edges": 0,
+            "include_edges": len(_deps),
             "unresolved": len(model.get("unresolved") or []),
             "heuristics": len(heuristics or [])}
 
@@ -9820,7 +9832,38 @@ def _scan_py_defs(text):
 
 
 def _parse_py_source(text, rel, path):
-    """P93：轻量 Python 解析——def 函数、调用边、import 列表。
+    """R101 / 槽 25：Python 前端的**双层调度器** —— `ast` 优先、词法降级。
+
+    为什么要有这一层（而不是把词法版直接换掉）：R66 / R67 把词法扫描器打磨到
+    能挡住文档字符串里的假定义、能跨行取形参，但它在**原理上**看不见限定调用
+    （`obj.m()`）、看不见单行函数体里的调用点，也没有类 / 字段 / 装饰器 / 注解
+    —— 于是实体层没有数据源，`class` 里的方法全被当成顶层函数。`ast` 一次解决
+    这几件事；可它会被 3.7+ 新语法（或 Python 2 风格）拒掉，而那些文件在词法层
+    仍然读得出来。
+
+    所以：**`ast` 优先，失败降级到词法层，而降级必须写进页面的 `limitations`**
+    （>= `pyast_frontend.MIN_LIMITATION` 字符），`parser` 键从 `ast` 变
+    `lexical`。「我没读到」与「确实没有」必须长得不一样 —— 只静默降级的话，
+    下游会把「词法读不出类」当成「这个文件没有类」。
+
+    判据：`pyast_frontend.py --selftest`（P1–P5 两向自证）；形态不许漂的是
+    `tools/check_py_js_frontend_shapes.py`（`G1–G7 (py/js)`）。
+    """
+    return _py_ast.parse_file(text, rel, path, _PY_KEYWORDS,
+                              lexical=_parse_py_source_lexical)
+
+
+def _parse_py_source_lexical(text, rel, path):
+    """P93 / R66 / R67：Python 的**行锚定词法扫描器** —— 现在只作**降级路径**。
+
+    R101 起 Python 前端由 `_parse_py_source` 双层调度：`ast` 优先，本函数只在
+    `ast` 拒收（`SyntaxError` / NUL 字节 / 深嵌套）时才被调用，调用方会把
+    `limitations` 写成非空。**它自己不做**的事（正是要降级的那些能力）：
+    不认 class / 字段 / 装饰器 / 注解 / 相对导入；跳过限定调用（`obj.m()`）；
+    单行函数体的调用点在定义行上被跳过。
+
+    复杂度用的是**行内关键字**计数（`pyast_frontend.COMPLEXITY_KEYWORDS`），
+    与 ast 路径的结构化计数不是同一个量 —— 见 `pyast_frontend` 的模块 docstring。
 
     返回 {"rel", "path", "functions": [函数 dict], "imports": [(mod, name, line)]}。"""
     if text.startswith(u"\ufeff"):
@@ -9872,8 +9915,7 @@ def _parse_py_source(text, rel, path):
         if stack:
             top = stack[-1]
             top["body_end"] = ln
-            for kw in ("if ", "elif ", "for ", "while ", " and ", " or ",
-                       "try", "except "):
+            for kw in _py_ast.COMPLEXITY_KEYWORDS:
                 if kw in line:
                     top["complexity"] += 1
             for cm in _RE_PY_CALL.finditer(line):
@@ -11055,6 +11097,23 @@ def _ext_dep_edges(model, lang):
     return out
 
 
+def _ext_entity_entries(files, lang):
+    """R101 / 槽 25：扩展前端的实体层**载荷片段** —— 只有 Python 有线。
+
+    返回 `{}` 或 `{"entities": [...]}`，由调用方用 `**` 展开进载荷。
+    **为什么是「有键 / 无键」而不是「非空 / 空数组」**：对等表读 `entities`
+    那一格的信号是「载荷里出现实体 / 字段类键」，空数组会被读成「有通道、
+    本次为空」。js / asm 没有实体层，写空数组等于宣称一条不存在的通道。
+    py 即使本次一个类都没读到，键也在 —— 那才是「有通道、本次为空」。
+
+    为什么走 `entity_model` 而不是在这里手搓字典：契约（字段集、种类值域、
+    未知哨兵）只有那一处事实源。手搓就是第二事实源，两家迟早分叉。
+    """
+    if lang != "py":
+        return {}
+    return {"entities": _em.py_entities(files)}
+
+
 def _emit_lang_site(model, root, args, lang, display, dep_key, heuristics,
                     dep_edges=None, binaries=None, attribution=None,
                     legacy_single=None):
@@ -11182,11 +11241,26 @@ def _run_ext_only(model, root, args, lang):
                 "edges": [
                     {"caller": e[0], "callee": e[1], "line": e[2],
                      "file": e[3]} for e in model.get("edges", [])],
-                "include_edges": [],
+                # R101 / 槽 25：依赖边不再写死空数组 —— 与站点**同源现算**
+                # （`_ext_dep_edges`），口径分裂消灭。键与 C 侧 `include_edges`
+                # 逐位同形（`from` / `include` / `to`），`include` 一词在 Py/JS 上
+                # 读作「被引入的模块名」。
+                "include_edges": [
+                    {"from": e[0], "include": e[1], "to": e[2]}
+                    for e in _ext_dep_edges(model, lang)],
                 "unresolved": [
                     {"callee": u[0], "line": u[1], "file": u[2]}
                     for u in model.get("unresolved", [])],
                 "heuristics": heuristics,
+                # R101 / 槽 25：**实体层**（语言无关契约 + 各语言适配器）。
+                # 只有 Python 有线（`pyast_frontend` 读出的 `classes` /
+                # `globals`），所以这里用 `**` 展开**片段**：其余语言**根本
+                # 不写这个键**（而不是写一个空数组）。
+                # 为什么不能写空数组：对等表的 `entities` 信号读的是
+                # 「载荷里有没有实体 / 字段类键」—— 给 js 一个 `entities: []`
+                # 就等于让它宣称一条**不存在的通道**（本门 E2b 抓的就是这类
+                # 「实现未登记」的反面：「登记了却没实现」）。
+                **_ext_entity_entries(_efiles, lang),
             }
         if model.get("lang") == "asm":
             payload["asm_file_stats"] = _asm_file_stats(_efiles)

@@ -189,6 +189,10 @@
 #   （原文写「第 19–22 轮全是 `A t1`」—— 槽 19 让位后那句话**当场失效**。
 #    失效的散文比缺的散文危险：环路读到它不报错，人读到它也不报错。）
 #   ✅ **门数 19 → 20 已落地**（R96 落了第 20 道门 `check_parity_registry.py`，判据族 E1–E6）——
+#     ⚠ R101 给同一道门补了 **E5 的后半**（「派生数字」现算核对：合计行 /
+#       §3.3 缺口标题与缺口表求和 / 两份 README 的记分牌），**判据签名仍是 E1–E6、门数仍是 20**
+#       —— 不新开编号，因为 **`E7–E10` 已由槽 34 `bin_parity_gate` 预留**（见第 34 行）。
+#       首版补丁抢了 `E7`，**会撞号** —— 抢编号等于让那条槽的登记当场变错。
 #     只在这一轮发生，其余各轮**不加闸门**（「缺口为 0 时加闸 = churn」，R85 已定论；
 #     本轮之所以是反例：64 个格子里 16 个 `no`，**缺口 > 0**）。
 #   ⚠ Phase 1 立判据时必须逐处同步 —— R96 实测是 **7 处 / 8 个文件**：① `check_all.py` 的
@@ -203,9 +207,9 @@
 #   ⚠ **动态库的诚实边界不可跨越**：不执行、不反汇编、不符号执行（`binfmt/__init__.py:38-40`）；
 #     Mach-O `verified=False`（`macho.py:191`）；CUDA cubin 不解析（`elf.py:11-20`）。
 #     Phase 7 的 5 轮全部落在这三条边界之内。
-23 | 1  | t3   | parity_registry        | 能力对等登记表 `docs/PARITY_MATLAB_C_PY.md`（人读 16 能力 × 4 语言 + `<!-- PARITY v1 -->` 机器块）+ **第 20 道门**（第 21 个护栏脚本）`check_parity_registry.py` 判据族 **E1–E6**（两向：登记未实现⇒红 / 实现未登记⇒红 / `na` **不许掩盖没实现**⇒红 / 理由陈旧⇒红 / 人读表 ⇄ 机器块⇒红 / 未行使必须说出来）；**门数 19→20** + **7 处级联**；实测记分牌 40 yes / 16 no / 8 na | -
+23 | 1  | t3   | parity_registry        | 能力对等登记表 `docs/PARITY_MATLAB_C_PY.md`（人读 16 能力 × 4 语言 + `<!-- PARITY v1 -->` 机器块）+ **第 20 道门**（第 21 个护栏脚本）`check_parity_registry.py` 判据族 **E1–E6**（两向：登记未实现⇒红 / 实现未登记⇒红 / `na` **不许掩盖没实现**⇒红 / 理由陈旧⇒红 / 人读表 ⇄ 机器块⇒红 / 未行使必须说出来）；**门数 19→20** + **7 处级联**；实测记分牌 40 yes / 16 no / 8 na（R101 槽 25 落地后 47 / 9 / 8） | -
 24 | 2  | t3   | ir_entity_common       | 语言无关 **Entity 契约**（COMMON 实体字段三语言同形）+ 契约测试；**不改既有读数**（逐位相等口径） | -
-25 | 3  | t3   | py_ast_frontend        | **Python 前端 `ast` 化**（双层：`ast` 优先 / 语法失败降级到现有扫描器且**降级必须进 `limitations`**）；解锁 class/方法/装饰器/注解/相对导入 | -
+25 | 3  | t3   | py_ast_frontend        | **Python 前端 `ast` 化**（双层：`ast` 优先 / 语法失败降级到现有扫描器且**降级必须进 `limitations`**）；解锁 class/方法/装饰器/注解/相对导入 | **R101 落地**：新建 `pyast_frontend.py`（41,699 B / 933 行；自证 `bad 13 / good 19`）；`matlabc.py` 七处锚点接线（复杂度关键字改引用 `pyast_frontend.COMPLEXITY_KEYWORDS`；载荷 `include_edges` 现算 + 新增 `entities`）；`entity_model.py` py 适配器 + `LANG_SUPPORT` 的 py 由 `no` 改 `yes`；对等表 **py 5 格 + js `deps_edges_json` 1 格**转绿（记分牌 47 `yes` / 9 `no` / 8 `na`）；顺带堵 E5「派生数字」判据空洞；复盘 `docs/SUPERPOWER_REVIEW_R101.md` |
 26 | 4  | t3   | c_entity_layer         | **C 实体层**：struct/union/enum/typedef/全局变量/字段识别（R87 的 `_is_type_decl` 只做排除，需补正向） | -
 27 | 5  | t3   | rule_family_parity      | 规则族对等 **5 类 × 3 语言 = 15 格**；头一步是**真实语料误报晢查**（先量后改）；裁定 `py_unused_import` 严重度唯一事实源 | -
 28 | 6  | t3   | metrics_parity          | **度量对等**：`_compute_function_metrics` 提到语言无关层 + 三语言同形 `metrics.html`（risk/tag 四档）；顺带修 Python 假边 | -

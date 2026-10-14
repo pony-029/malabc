@@ -29,9 +29,17 @@ enum / typedef / 全局变量，Python 有 class / 方法 / 字段。三家的**
 
 边界（本模块**不做**的事）
 ==========================
-本模块**不接线进 `matlabc.py` 的产物**，因此**不改变任何既有读数** ——
-判定用「逐位相等」：在某个语言的适配器真正接上产物之前，任何分析产物逐字节不变。
-接线是槽 25 / 槽 26 的事；本模块只提供契约、适配器与两向登记表。
+本模块自己**不 import 引擎**（`tests/test_entity_contract.py` 的 C5 用 AST
+断言只许 import `sys`）：它是纯契约 + 适配器，接线由产品侧做。
+
+⚠ R97 立契约时这里写着「本模块**不接线进 `matlabc.py` 的产物**」—— 那句话从
+**R101 / 槽 25** 起**失效**：Python 适配器已经接上产物（`_run_ext_only` 的载荷
+里有 `entities` 键，且逐项等于 `py_entities(payload["files"])`，守它的是
+`tests/test_entity_contract.py` 的 **C6**）。**失效的散文比缺的散文危险** ——
+留着它，下一个人会据此以为「改了适配器也不会动任何读数」。
+
+C 侧仍未接线（`LANG_SUPPORT["c"]` 是 `no` 且写着理由，槽 26）；MATLAB 侧
+一直有数据源，本轮起与 Python 由**同一份判据**核对。
 
 用法
 ====
@@ -201,6 +209,79 @@ def matlab_entities(files):
 
 
 # ---------------------------------------------------------------------------
+# Python 适配器（R101 / 槽 25）：只**读** `pyast_frontend` 的原生形态，不改它。
+# 真实形态（`pyast_frontend._class_page`，R101 实测）：
+#   {"name": "K", "line": 4, "bases": ["object"],
+#    "decorators": [...], "methods": ["__init__", "get"],
+#    "attributes": [{"name": "x", "line": 5, "annotation": "int",
+#                     "scope": "class"},
+#                    {"name": "v", "line": 8, "annotation": "",
+#                     "scope": "instance"}]}
+# ⚠ `methods` 这一层**只有名字**（参数与行号在 `functions` 列表里），所以
+#   `method` / `property` 成员的 `line` 只能是哨兵 0 —— 不许臆造。
+# ⚠ 属性的 `line` 与 `annotation` 是**真读数**（`pyast_frontend` 给得出），
+#   所以这两个字段**不**走哨兵 —— 契约允许真值，那就给真值。
+# ⚠ 装饰器在文件级 `functions[]` 上（不在 `classes[]` 上），所以 `@property`
+#   的判定要按**方法名**去 `functions` 里查它的 `decorators`。
+# ---------------------------------------------------------------------------
+def _is_property(decorators):
+    """`@property` 一类：装饰器文本的**尾段**等于 `property`。
+
+    尾段比较是为了同时认 `property` 与 `functools.cached_property` 之外那些
+    写成 `x.property` 的形态；非字符串（词法页面读不到装饰器）一律返回 False，
+    **不猜**。
+    """
+    for d in (decorators or []):
+        if not _is_str(d):
+            continue
+        if d.split(".")[-1].strip() == "property":
+            return True
+    return False
+
+
+def py_entities(files):
+    """把 Python 载荷的**每文件字典**归一化成契约实体。
+
+    读的是 `pyast_frontend` 的原生键（`classes` / `globals`）；页面缺这些键
+    （例如 `ast` 拒收后降级到词法层的文件）时按空处理 —— 那正是
+    `limitations` 要说清的事，不是本适配器的职责。
+    """
+    out = []
+    for mf in files or []:
+        if not isinstance(mf, dict):
+            continue
+        rel = mf.get("rel") or ""
+        deco = {}
+        for fn in (mf.get("functions") or []):
+            if isinstance(fn, dict):
+                deco[fn.get("name")] = fn.get("decorators")
+        for cls in mf.get("classes") or []:
+            if not isinstance(cls, dict):
+                continue
+            members = []
+            for mname in (cls.get("methods") or []):
+                members.append(blank_member(
+                    u"%s" % mname,
+                    "property" if _is_property(deco.get(mname)) else "method"))
+            for a in (cls.get("attributes") or []):
+                if not isinstance(a, dict):
+                    continue
+                ln = a.get("line")
+                members.append(blank_member(
+                    u"%s" % (a.get("name") or ""), "field",
+                    u"%s" % (a.get("annotation") or ""),
+                    ln if _is_int(ln) and ln >= 0 else 0))
+            line = cls.get("line")
+            out.append(blank_entity(
+                "class", u"%s" % (cls.get("name") or ""), rel,
+                line if _is_int(line) and line >= 0 else 0,
+                members, [u"%s" % b for b in (cls.get("bases") or [])]))
+        for g in mf.get("globals") or []:
+            out.append(blank_entity("global", u"%s" % g, rel, 0))
+    return out
+
+
+# ---------------------------------------------------------------------------
 # 两向登记表：`yes` 必须有可用适配器且**不留理由**；`no` 必须**没有**适配器
 # 且写出理由。任一边越界都红 —— 与 R96 的 E2/E3 同一套纪律。
 # ---------------------------------------------------------------------------
@@ -209,9 +290,7 @@ LANG_SUPPORT = {
     "c": {"status": "no", "adapter": None,
           "reason": u"C 实体层（struct/union/enum/typedef/全局变量）尚未实现"
                     u"（槽 26 c_entity_layer）"},
-    "py": {"status": "no", "adapter": None,
-           "reason": u"Python 前端尚未 ast 化，class/字段识别未实现"
-                     u"（槽 25 py_ast_frontend）"},
+    "py": {"status": "yes", "adapter": py_entities, "reason": ""},
 }
 
 
@@ -340,6 +419,50 @@ def _selftest():
     expect("matlab bases from single superclass", None if ents[0]["bases"] == ["handle"] else ["n"], False)
     expect("matlab member kinds", None if sorted(m["kind"] for m in ents[0]["members"])
            == ["method", "property"] else ["n"], False)
+
+    # R101 / 槽 25：Python 适配器。装饰器在**文件级 functions[]** 上，
+    # `@property` 的判定要按方法名回查它 —— 这里就把那个接线测出来。
+    pyfx = [{"rel": "k.py",
+             "functions": [{"name": "__init__", "decorators": []},
+                           {"name": "get", "decorators": ["property"]}],
+             "classes": [{"name": "K", "line": 4,
+                          "bases": ["object"], "decorators": [],
+                          "methods": ["__init__", "get"],
+                          "attributes": [
+                              {"name": "x", "line": 5,
+                               "annotation": "int", "scope": "class"},
+                              {"name": "v", "line": 8,
+                               "annotation": "", "scope": "instance"}]}],
+             "globals": ["CONST"]}]
+    pents = py_entities(pyfx)
+    expect("py adapter conforms", conformance_problems(pents), False)
+    expect("py adapter shape(1 class + 1 global)",
+           None if len(pents) == 2 else ["n"], False)
+    expect("py bases from bases list",
+           None if pents[0]["bases"] == ["object"] else ["n"], False)
+    expect("py member kinds", None if sorted(
+        (m["kind"], m["name"]) for m in pents[0]["members"])
+        == [("field", "v"), ("field", "x"), ("method", "__init__"),
+            ("property", "get")] else ["n"], False)
+    # 属性是真读数：annotation 与 line 都必须**不**走哨兵
+    expect("py member line/type are real", None if any(
+        m["name"] == "x" and m["line"] == 5 and m["type"] == "int"
+        for m in pents[0]["members"]) else ["n"], False)
+    # method 只有名字 ⇒ line 必须是哨兵（不许臆造）
+    expect("py method line is sentinel", None if all(
+        m["line"] == 0 for m in pents[0]["members"]
+        if m["kind"] in ("method", "property")) else ["n"], False)
+    expect("py global entity",
+           None if pents[1]["kind"] == "global" else ["n"], False)
+    # 反例（容忍而非崩溃）：畸形成员被跳过，空集依然合规
+    expect("py malformed tolerated", conformance_problems(py_entities(
+        [{"rel": "z.py", "classes": [{"name": "Z", "line": 1,
+                                          "attributes": [None],
+                                          "methods": ["m"]}],
+          "globals": []}])), False)
+    # 非 dict 页面 / 非 dict 类也被跳过
+    expect("py non-dict tolerated", conformance_problems(
+        py_entities([None, 7, {"rel": "q.py", "classes": [3]}])), False)
 
     print("SELFTEST COUNTS {\"bad\": %d, \"good\": %d}"
           % (state["bad"], state["good"]))

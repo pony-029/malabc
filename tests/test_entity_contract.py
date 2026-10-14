@@ -18,6 +18,10 @@ C / Python 适配器时**只改这里**。
      `no` 要理由且不带适配器 —— 且这份表对全部 `LANGS` 给全，缺一个就红。
   C5 纯库不变式：`entity_model` **不得 import 引擎**（它是纯契约，不是分析器的一部分）
      ⇒ 这是本轮「**不改既有读数**」在模块层的可执行证据。
+  C6 Python 适配器对**真产物**归一化后合规，且载荷里的 `entities` 键
+     **逐项等于** `py_entities(payload["files"])`（`--json-level full`）；
+     另核 `ast` 拒收时**降级必须可见**（`parser`=lexical + `limitations`
+     非空 + `classes` 是空数组而不是缺键）。
 """
 import ast
 import json
@@ -203,3 +207,110 @@ def test_r97_entity_model_is_a_pure_library():
         "entity_model 必须是纯库（只许 sys），实得 %r" % sorted(imported)
     assert "matlabc" not in imported and "callrel" not in imported, \
         "契约模块不得反向依赖引擎"
+
+
+# ---------------------------------------------------------------------------
+# R101 / 槽 25：Python 适配器接上真产物
+# ---------------------------------------------------------------------------
+FIXTURE_PY = u'''"演示模块。"
+import os
+
+CONST = 1
+
+
+class K(object):
+    x = 5
+
+    def __init__(self, v):
+        self.v = v
+
+    @property
+    def get(self):
+        return self.v
+
+
+def helper(a):
+    return a + 1
+'''
+
+# 语法上就跑不起来 ⇒ `ast` 拒收 ⇒ 必须**降级到词法层并把降级写出来**。
+FIXTURE_PY_BROKEN = u"def broken(:\n    pass\n"
+
+
+def _run_py_fixture(name, body):
+    """真跑一次引擎（`--lang py --json-level full`），返回载荷。"""
+    tmp = tempfile.mkdtemp(prefix="r101_ent_")
+    src = os.path.join(tmp, "fx")
+    os.mkdir(src)
+    with open(os.path.join(src, name), "wb") as fh:
+        fh.write(body.replace("\n", "\r\n").encode("utf-8"))
+    out = os.path.join(tmp, "out.json")
+    proc = subprocess.run([sys.executable, ANALYZER, src, "--lang", "py",
+                           "--json-level", "full", "--json", out],
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                          stdin=subprocess.DEVNULL)
+    assert proc.returncode == 0, \
+        "引擎跑 py 夹具失败：rc=%s\n%s" % (
+            proc.returncode, proc.stderr.decode("utf-8", "replace")[-800:])
+    with open(out, "rb") as fh:
+        return json.loads(fh.read().decode("utf-8"))
+
+
+def test_r101_py_adapter_matches_real_payload():
+    """C6：Python 适配器接真产物 —— 载荷 `entities` 逐项等于适配器输出。
+
+    ⚠ 只在 `--json-level full` 下成立：`summary` 档把明细数组降级成
+    `n_<键>` 计数，`classes` / `globals` 那时已经不在每文件字典里了。
+    """
+    payload = _run_py_fixture("k.py", FIXTURE_PY)
+    files = payload["files"]
+
+    # ① 独立读数：直接看引擎报了什么（不经过适配器）
+    raw_classes = [c for mf in files for c in (mf.get("classes") or [])]
+    assert len(raw_classes) == 1, "夹具应恰有 1 个类，实得 %d" % len(raw_classes)
+    assert raw_classes[0]["name"] == "K"
+    assert raw_classes[0]["line"] == 7, raw_classes[0]["line"]
+    assert raw_classes[0]["bases"] == ["object"], raw_classes[0]["bases"]
+    assert raw_classes[0]["methods"] == ["__init__", "get"], \
+        raw_classes[0]["methods"]
+    assert "CONST" in (files[0].get("globals") or []), files[0].get("globals")
+
+    # ② 契约：载荷里的 entities **逐项等于**适配器对同一份 files 的输出
+    assert "entities" in payload, \
+        "Python 载荷必须带 entities 键（有通道、本次可能为空）"
+    assert payload["entities"] == em.py_entities(files), \
+        "载荷 entities 与 py_entities(files) 不一致 —— 实体层长了第二处事实源"
+    assert em.conformance_problems(payload["entities"]) == []
+
+    # ③ 逐项核对（期望表独立于适配器的实现）
+    cls = [e for e in payload["entities"] if e["kind"] == "class"]
+    gbl = [e for e in payload["entities"] if e["kind"] == "global"]
+    assert len(cls) == 1 and len(gbl) == 1, payload["entities"]
+    assert cls[0]["name"] == "K" and cls[0]["line"] == 7
+    assert cls[0]["file"] == files[0]["rel"]
+    assert cls[0]["bases"] == ["object"]
+    got = [(m["kind"], m["name"], m["line"], m["type"])
+           for m in cls[0]["members"]]
+    want = [("method", "__init__", 0, ""),      # 只有名字 ⇒ 行号是哨兵
+            ("property", "get", 0, ""),         # `@property` 按方法名回查到
+            ("field", "x", 8, ""),              # 真行号，不许走哨兵
+            ("field", "v", 11, "")]             # 实例属性（self.v）
+    assert got == want, "成员不符：\n got = %r\n want = %r" % (got, want)
+    assert gbl[0]["name"] == "CONST" and gbl[0]["line"] == 0
+    assert em.LANG_SUPPORT["py"]["status"] == "yes", \
+        "适配器接上产物后，登记表必须同时改成 yes"
+
+
+def test_r101_py_degrade_is_written_into_limitations():
+    """C6b：`ast` 拒收时**降级必须可见** —— parser=lexical + limitations 非空。
+
+    「我没读到」与「确实没有」必须长得不一样：只静默降级的话，下游会把
+    「词法读不出类」当成「这个文件没有类」。
+    """
+    payload = _run_py_fixture("bad.py", FIXTURE_PY_BROKEN)
+    page = payload["files"][0]
+    assert page.get("parser") == "lexical", page.get("parser")
+    lims = page.get("limitations") or []
+    assert lims and all(isinstance(s, str) and s.strip() for s in lims), lims
+    assert page.get("classes") == [], \
+        "降级页面的 classes 应是空数组（而不是缺键）"
