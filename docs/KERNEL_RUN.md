@@ -106,7 +106,7 @@ pipeline.stations | 13
 |---|---|---|
 | `661 s / 10.8 GB` | R75（`_kernel/analyze_kernel.py`） | `cwd=REPO` ⇒ 记录到的路径退化成 basename |
 | `793.4 s / 13.1 GB` | R81（`_kernel/rerun_kernel_r81.py`） | `cwd=CORPUS` ⇒ 真相对路径 |
-| `2103.4 s / 10.4 GB` | R84（本轮，`_r82/probe_kernel_r84.py`） | `cwd=CORPUS`（与 R81 同口径） |
+| `2103.4 s / 10.4 GB` | 最新一趟（`_r82/probe_kernel_r84.py` @ `dda24f4`） | `cwd=CORPUS`（与 R81 同口径） |
 
 三者**都不是错的** —— 错的是「把它们混着引用而不写出口径」。
 所以本表第一件要登记的东西不是数字，是**口径**（`provenance.cwd_convention`），
