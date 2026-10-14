@@ -1,0 +1,12 @@
+{
+  "failed": 0,
+  "measured_by": "python tools/check_all.py --with-tests",
+  "passed": 534,
+  "passed_tolerance": 5,
+  "passed_tolerance_why": "容差不为 0 是**实测**结论，不是宽松：R101 对同一棵树跑两次全量，分别得 `508 passed` 与 `509 passed`（**总数恒 532**）。`skipped` 里 4 条取决于本机是否装了 node / jsdom，`passed` 于是跟着上下浮动。⚠ `failed` **不给容差**：0 就是 0。",
+  "python_version": "3.10.10",
+  "recorded_round": "R102",
+  "schema": "malabc.test-baseline/1",
+  "skipped": 4,
+  "why": "[R102] 把「整套 tests/ 的红数」变成**两向核对**的事实源。缺口是实测出来的：`tools/check_all.py` 结构性地只跑 tools/ 下的护栏、**不跑 tests/**，于是整套 tests/ 从 R99 起红着 23 条而没有任何门看得见（各轮只跑定点用例，R100 只跑了一条）。R102 逐条归因并修完（详见 docs/SUPERPOWER_REVIEW_R102.md），据此记录基线。⚠ **已知非确定**：R101 对**同一棵树**跑了两次全量，给出 `24 failed / 508 passed` 与 `23 failed / 509 passed`（**总数恒 532**）⇒ **至少一支用例与宿主负载相关**；逐条 `FAILED` 列表只有后一次（23 条），第一跑多出的那一条**无日志可查**、如实记为边界。所以本门报红时，先看是不是那支非确定用例，再判真回归。"
+}

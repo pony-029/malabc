@@ -207,9 +207,33 @@
 #   ⚠ **动态库的诚实边界不可跨越**：不执行、不反汇编、不符号执行（`binfmt/__init__.py:38-40`）；
 #     Mach-O `verified=False`（`macho.py:191`）；CUDA cubin 不解析（`elf.py:11-20`）。
 #     Phase 7 的 5 轮全部落在这三条边界之内。
-23 | 1  | t3   | parity_registry        | 能力对等登记表 `docs/PARITY_MATLAB_C_PY.md`（人读 16 能力 × 4 语言 + `<!-- PARITY v1 -->` 机器块）+ **第 20 道门**（第 21 个护栏脚本）`check_parity_registry.py` 判据族 **E1–E6**（两向：登记未实现⇒红 / 实现未登记⇒红 / `na` **不许掩盖没实现**⇒红 / 理由陈旧⇒红 / 人读表 ⇄ 机器块⇒红 / 未行使必须说出来）；**门数 19→20** + **7 处级联**；实测记分牌 40 yes / 16 no / 8 na（R101 槽 25 落地后 47 / 9 / 8） | -
+#   ⚠ **R102 修 F3（第二处真缺陷 · 环路砖死）**：这条槽的 `objective` 原本在
+#   末尾多挂着「（R101 槽 25 落地后 47 / 9 / 8）」—— 那是 **R101 追加的注记**。
+#   而 `evolve_loop.ledger_plan_problems()` 要求 `objective` 与台账**逐字**相等
+#   （台账是不可改的事实，只能让计划对齐它）⇒ 实测 301 字 vs 台账 275 字，
+#   报「第 23 轮的目标文本与计划不符」⇒ `run_loop()` 对它**非空即 `return 2`**。
+#   也就是说：**F1 把列数修好之后，环路仍然起不来**（两道砖死叠在一起）。
+#   注记已移出 objective（那条事实保留在槽 25 的注释与复盘文档里）。
+#   ⚠ 判据函数**一字未动** —— 量具没坏，它正确地抓到了漂移。
+23 | 1  | t3   | parity_registry        | 能力对等登记表 `docs/PARITY_MATLAB_C_PY.md`（人读 16 能力 × 4 语言 + `<!-- PARITY v1 -->` 机器块）+ **第 20 道门**（第 21 个护栏脚本）`check_parity_registry.py` 判据族 **E1–E6**（两向：登记未实现⇒红 / 实现未登记⇒红 / `na` **不许掩盖没实现**⇒红 / 理由陈旧⇒红 / 人读表 ⇄ 机器块⇒红 / 未行使必须说出来）；**门数 19→20** + **7 处级联**；实测记分牌 40 yes / 16 no / 8 na | -
 24 | 2  | t3   | ir_entity_common       | 语言无关 **Entity 契约**（COMMON 实体字段三语言同形）+ 契约测试；**不改既有读数**（逐位相等口径） | -
-25 | 3  | t3   | py_ast_frontend        | **Python 前端 `ast` 化**（双层：`ast` 优先 / 语法失败降级到现有扫描器且**降级必须进 `limitations`**）；解锁 class/方法/装饰器/注解/相对导入 | **R101 落地**：新建 `pyast_frontend.py`（41,699 B / 933 行；自证 `bad 13 / good 19`）；`matlabc.py` 七处锚点接线（复杂度关键字改引用 `pyast_frontend.COMPLEXITY_KEYWORDS`；载荷 `include_edges` 现算 + 新增 `entities`）；`entity_model.py` py 适配器 + `LANG_SUPPORT` 的 py 由 `no` 改 `yes`；对等表 **py 5 格 + js `deps_edges_json` 1 格**转绿（记分牌 47 `yes` / 9 `no` / 8 `na`）；顺带堵 E5「派生数字」判据空洞；复盘 `docs/SUPERPOWER_REVIEW_R101.md` |
+#   ⚠ **R102 修 F1（真缺陷 · 环路砖死）**：上面这条槽的末列原本是
+#   **R101 的落地记录**，且以 ` |` 收尾 ⇒ 该行切成 **7 列**。
+#   `evolve_loop.load_plan()` 对「列数 != 6」是**整块 `return None`**，
+#   `run_loop()` 拿到 None 即打印「缺输入即红」并 `return 2` —— 也就是
+#   **R101 之后环路根本起不来**。R102 实测：`load_plan() -> None`、
+#   `python evolve_loop.py --plan` 自报「PLAN 解析失败」。
+#   ⚠ 这是 R86 那次「预检非空即 `return 2`」砖死的**第二次应验**，
+#   而 R99 的 E10 判据（`load_plan -> 39 槽`）只把证据**写进了复盘文档**、
+#   没有任何**可重跑**的东西在看着它 —— 所以坏了两轮没人知道。
+#   修法：记录移到注释（就在下面），末列归 `-`（= 本表既有口径：
+#   那是 `blocked_reason` 列，`-` 表示无；槽 0–19/23/24/26–39 都是这样）。
+#   **严格判据一字未动** —— 让对象符合契约，不是放宽判据。
+#   对手方：本轮把「计划块可解析」钉成了**仓内可重跑的用例**
+#   `tests/test_matlabc.py::test_r102_roadmap_plan_block_is_parseable`。
+#   R101 的落地记录（原样保留，一字不改）：
+#   **R101 落地**：新建 `pyast_frontend.py`（41,699 B / 933 行；自证 `bad 13 / good 19`）；`matlabc.py` 七处锚点接线（复杂度关键字改引用 `pyast_frontend.COMPLEXITY_KEYWORDS`；载荷 `include_edges` 现算 + 新增 `entities`）；`entity_model.py` py 适配器 + `LANG_SUPPORT` 的 py 由 `no` 改 `yes`；对等表 **py 5 格 + js `deps_edges_json` 1 格**转绿（记分牌 47 `yes` / 9 `no` / 8 `na`）；顺带堵 E5「派生数字」判据空洞；复盘 `docs/SUPERPOWER_REVIEW_R101.md`
+25 | 3  | t3   | py_ast_frontend        | **Python 前端 `ast` 化**（双层：`ast` 优先 / 语法失败降级到现有扫描器且**降级必须进 `limitations`**）；解锁 class/方法/装饰器/注解/相对导入 | -
 26 | 4  | t3   | c_entity_layer         | **C 实体层**：struct/union/enum/typedef/全局变量/字段识别（R87 的 `_is_type_decl` 只做排除，需补正向） | -
 27 | 5  | t3   | rule_family_parity      | 规则族对等 **5 类 × 3 语言 = 15 格**；头一步是**真实语料误报晢查**（先量后改）；裁定 `py_unused_import` 严重度唯一事实源 | -
 28 | 6  | t3   | metrics_parity          | **度量对等**：`_compute_function_metrics` 提到语言无关层 + 三语言同形 `metrics.html`（risk/tag 四档）；顺带修 Python 假边 | -
@@ -267,6 +291,35 @@
 #   抓出的漏改**（上一轮只改了散文门数、漏了表行 ⇒ P4 红）。
 #   ⚠ 挂 `t4` 而不是 `t3`（R98 ⑯）。
 39 | 9  | t4   | dynlib_source_refs     | 四语言**源码级**动态库引用提取（新 `renderers/dynlibs.py`：同一记录形状 `file/line/api/lib/kind/lib_is_arg/text`、同一 `kind` 语义 `load/use/unload/probe/type`、同一站点页 `dynlibs.html` **四语言总生成**；各自 API 表）⇒ 与 `binaries.html` 的**容器级**事实互补、不可互相替代；同轮补正 R99 假声明（`_clean_browse_dir` 顶层清单两向对账）并新建**第 21 道门** `check_browse_clean_manifest.py`（判据族 M0–M3）。**闸门 20 → 21**；不动边、不动 checks | -
+# ⚠ **R102 的 Phase 9（测试网 + 完整门禁）**：缺口是**实测**出来的 ——
+#   `tools/check_all.py` **结构性**只跑 `tools/` 下的护栏、**不跑 `tests/`**，
+#   于是整套 `tests/` 从 R99 起红着 23 条而**没有任何门看得见**（各轮只跑定点
+#   用例，R100 只跑了一条）。R101 用 `git stash` 回 HEAD 复现同一断言，证明那批红
+#   与当轮改动无关；R102 把它逐条归因并修完，并**给它补上对手方**。
+#   归因分布（全部有实测支撑）：
+#   · **18 条 = 量具错**（R99 起站点同名页有三份家族 —— `src/` 宿主源码页 /
+#     `file/` 基础层文件页 / `xref_src/` 基础层源码页 —— 而测试助手只按文件名找，
+#     `os.walk` 先撞 `file/`）。修法：定位器指名家族 + `sorted`，并新钉一条
+#     自维持用例 `test_r102_site_locator_names_the_page_family`（造 file/ 先建的
+#     最小站点树 + 反向控制）—— 否则下一轮又会有同形状的 18 条在没人看的地方累积。
+#   · **3 条 = 真缺陷**（fe_audit 的 94 条 WARN：`_finalize_site_html` 的调用
+#     **位置**在基础层之前 ⇒ 79 条 S9；`file/` 页与宿主源码页标题逐字相同 ⇒
+#     13 条 S19；`dir/` 页只在被 `skip_index` 跳掉的索引里有入口 ⇒ 2 条 S7）。
+#     修完 `fe_audit` 复跑 error_count=0 / warn_count=0 / by_check={}。
+#   · **1 条 = 量具过期**（r76 页数公式硬编码 funcs/deps + 索引 ⇒ 改成由产物现算）。
+#   · **1 条 = 表过期**（跨命名空间两向登记表漏登记 R100 新增的第 21 道门）。
+#   · **1 条 = 分母过期**（p77 的 60s 绝对阈值标定于「每文件 1 页」时代，
+#     而站点现在每文件 3 页；增长率实测 t(400)/t(200)=1.95、t(800)/t(400)=2.11
+#     ⇒ **线性**，不是 O(n²)；改按页数现算 **75 ms/页** + 非空断言 ——
+#     同量级，不放松）。
+#   **门数不变（21）** —— 完整门禁是 `tools/check_all.py` 的**开关**
+#   （`--with-tests`），不新增 `check_*.py` ⇒ **不触发判据签名的七处级联**
+#   （R96 那笔账）。计数器由 `docs/TEST_BASELINE.json` 承担，**两向读**：
+#   红数变多 ⇒ 红；红数变少 ⇒ **也红**（有人修好了，请来改表 —— 与 R72
+#   跨命名空间表同一条纪律）；通过数掉出容差 / 换解释器 / 取不到汇总行 ⇒ 红。
+#   ⚠ 挂 `t4` 而不是 `t3`（R98 ⑯：新槽要挂**不会被别人 blocked 拖住**的线）。
+#   同轮不动边、不动 checks、不改任何判据签名。
+40 | 9  | t4   | test_net_gate          | **测试网补上对手方**：整套 `tests/` 与基线两向核对（`tools/check_all.py --with-tests` + `docs/TEST_BASELINE.json`），并把「站点页定位器必须指名家族」钉成自维持用例；同轮修完 R99 起积压的 23 条红 | -
 ```
 
 ### Phase 0f · REA 能力移植 Ⅰ：静态缓解措施（轮 11 · `t2`）

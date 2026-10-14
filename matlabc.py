@@ -24131,7 +24131,13 @@ def render_browse_site(model, outdir, reproducible=False, enabled=None,
     # 再让 manifest 一并收录其 sha；fe_audit S16 据此做语义复核（防成对改写）。
     # 统一补全横切元信息（description/OG/viewport/表头 scope）——必须早于 manifest，
     # 否则 sha 与改动后的页面不符会让 S15 误报。
-    _finalize_site_html(outdir)
+    # ⚠ R102：**这一句不能留在这里**。R99 起基础层在本函数**更下游**才写
+    #   `file/` `dir/` `xref_src/` `funcs.html` `deps.html` `dynlibs.html`；
+    #   补全写在它们之前 ⇒ 那 26 页永远拿不到 description/OG/scope。
+    #   fe_audit 在 MATLAB 样例站点上实测：79 条 S9 **全部**来自这批页
+    #   （31 缺 meta description + 31 缺 Open Graph + 17 个 <th> 无 scope）。
+    #   已下移到 `write_browse_css_tree` 之后、`_write_site_quality` 之前：
+    #   仍然早于 manifest（这正是原意），但覆盖**全部**页面。
     # FE-21：将各页专用样式表（page_css/*.css）复制到站点根目录及每个含 .html 的子目录，
     # 使外链化后的 <link href="dims.css"> 等可解析。此前该函数从未被调用，
     # 导致全部 page_css 链接悬空（FE-21 外链化形同虚设）。
@@ -24170,6 +24176,9 @@ def render_browse_site(model, outdir, reproducible=False, enabled=None,
     # 此前从未被调用，导致各浏览页 <link href="browse.css"> 悬空。必须在 _write_site_quality
     # 之前调用，使质量快照的资产计数包含这些新增样式表。
     write_browse_css_tree(outdir)
+    # R102：横切元信息补全必须在**全部**页面写完之后的最后一刻做
+    #   （含基础层 + 样式树），理由见本函数上半段那条注记。
+    _finalize_site_html(outdir)
     _write_site_quality(outdir)
     _write_site_manifest(outdir, reproducible=reproducible)
     # P-rev R88：站点刚写完即自检，结构/重复 id 问题第一时间在 stderr 亮相。

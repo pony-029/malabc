@@ -81,6 +81,13 @@ POPEN_STREAMING = {
     "tools/check_all.py|_run":
         "Popen 之后紧跟 communicate(timeout=GUARD_TIMEOUT)，超时判红；"
         "已设 stdin=DEVNULL。",
+    "tools/check_all.py|_run_tests":
+        "[R102] 完整门禁（--with-tests）跑整套 pytest：Popen 之后紧跟 "
+        "communicate(timeout=TEST_TIMEOUT=5400)，超时则 kill 并返回 None"
+        "（调用方按红处理）；已设 stdin=DEVNULL。"
+        "这条与 `_run`（跑单道护栏）是**两条不同的链**：那条的墙钟上限是 "
+        "GUARD_TIMEOUT=600，这条是整套测试的 5400。旧键只登记了 `_run`，"
+        "所以新增这条链时门口当场报「未登记」—— 门的边界没有跟着代码漂。",
     "tools/check_py36_clean.py|_run_gate":
         "Popen 之后紧跟 communicate(timeout=SCAN_TIMEOUT=600)，超时则 kill + "
         "p.wait() 并返回 None（调用方按红处理）；已设 stdin=DEVNULL。"

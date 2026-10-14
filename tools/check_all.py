@@ -30,10 +30,14 @@
         ├─ 每道护栏都要能跑通（rc=0）
         ├─ 每道护栏都要有 --selftest（两向自证：坏样本要红、好样本要过）
         ├─ 门数不得少于 MIN_GUARDS（R33/C'9：删掉一道门也会变红）
-        └─ 每个子进程都 stdin=DEVNULL + 墙钟超时（挂死 → 判红，不让门永远等）
+        ├─ 每个子进程都 stdin=DEVNULL + 墙钟超时（挂死 → 判红，不让门永远等）
+        └─ 显式 --with-tests 时**再跑整套 tests/**，与 docs/TEST_BASELINE.json 两向核对
+           （**独立行使**：护栏红也照跑 —— 否则它会被别人的红整个挡住，
+            而这种「静默失效」与没有这条判据只差一层错觉；R102 实测修掉）
         │
         ▼
-    0 = 全绿   1 = 有护栏失败/缺自证/门数不足   2 = 找不到护栏（缺输入 → 红）
+    0 = 全绿   1 = 有护栏失败/缺自证/门数不足/**测试基线不合**
+    2 = 找不到护栏（缺输入 → 红）
 
 为什么需要它：护栏分散成多个 `tools/check_*.py`，靠人记得逐个跑等于没有门。
 本 runner 与 `tests/test_matlabc.py::test_r30_static_guards_all_clean` 是同一
@@ -50,15 +54,22 @@
     python tools/check_all.py                 # 跑 tools/ 下全部护栏
     python tools/check_all.py --tools-dir D   # 指定护栏目录（自证/CI 复用）
     python tools/check_all.py --selftest      # 自证：双向验证本 runner
+    python tools/check_all.py --with-tests    # 完整门禁：再跑全套 tests/ 并核对基线（≈35 分钟；
+                                              #   与护栏判据独立结算，护栏红也照跑）
+                                              #   ⚠ 必须用**录制基线时的那个解释器**跑 ——
+                                              #   基线记的是版本串（现为 3.10.10）；换解释器会判红，
+                                              #   那是「读数不可比」，不是测试退化
     python tools/check_all.py --help          # 显示本帮助（立即返回，不跑护栏）
 
 退出码：
-    0  = 全部护栏通过（且各自自证通过）
-    1  = 有护栏失败，或护栏缺自证（`SELFTEST COUNTS` 行缺失 / 格式非法）
+    0  = 全部护栏通过（且各自自证通过）；`--with-tests` 时还要求整套 tests/ 与基线一致
+    1  = 有护栏失败，或护栏缺自证（`SELFTEST COUNTS` 行缺失 / 格式非法），或门数少于下限，或（`--with-tests` 时）整套 tests/ 与基线不符（红数变多/变少、通过数掉出容差、换解释器、取不到汇总行全部判红；两条判据**独立结算**——护栏红不会挡住测试门的读数）
     2  = 找不到护栏（--tools-dir 下没有 check_*.py → 缺输入，红）
 """
 import io
+import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -278,6 +289,109 @@ def _guard_count_problem(n_found, minimum, is_own_dir):
     return None
 
 
+# [R102] 完整门禁的墙钟上限：整套 tests/ 实测 ≈35 分钟（含两个 8 分钟的浏览用例）。
+TEST_TIMEOUT = 5400.0
+# [R102] 与基线比对用的**解释器版本串**（如 3.10.10）。用版本而不是路径：
+#   真正会让收集数/跳过数变的是解释器版本；路径是机器相关的，写进基线等于
+#   把机器信息提交进仓库，还会把「换台机器、同一个 3.10」误判成测试退化。
+PYVER = "%d.%d.%d" % sys.version_info[:3]
+# [R102] 测试基线文件（相对仓库根）。它是「测试红数」的唯一事实源，两向核对。
+TEST_BASELINE_PATH = os.path.join("docs", "TEST_BASELINE.json")
+
+
+def parse_pytest_summary(text):
+    """从 pytest 输出里取 (failed, passed, skipped)。
+
+    取**最后**一个含 ` passed` 的行（汇总行恒在末行；早期进度行也会出现
+    `passed`，取首会读错）。缺 `failed` / `skipped` 段 ⇒ 按 0 计（pytest 全绿时
+    就是这么打的）。**取不到任何汇总行 ⇒ 返回 None**（缺输入 → 红，不许猜 0）。
+    """
+    got = None
+    for ln in text.splitlines():
+        m = re.search(r"(\d+) passed", ln)
+        if not m:
+            continue
+        mf = re.search(r"(\d+) failed", ln)
+        ms = re.search(r"(\d+) skipped", ln)
+        got = (int(mf.group(1)) if mf else 0, int(m.group(1)),
+               int(ms.group(1)) if ms else 0)
+    return got
+
+
+def test_baseline_problem(got, baseline, python_ver=None):
+    """两向核对测试结果与基线。返回问题串（空 = 过）。纯函数，自证直接测它。"""
+    if got is None:
+        return ("测不到 pytest 汇总行（缺输入 → 红）—— 不许当成 0 failed "
+                "（那会把「根本没跑起来」读成「全绿」）")
+    failed, passed, _skipped = got
+    base_failed = baseline.get("failed")
+    base_passed = baseline.get("passed")
+    if base_failed is None or base_passed is None:
+        return "基线缺 failed/passed 两键（缺输入 → 红）"
+    base_py = baseline.get("python_version")
+    if python_ver and base_py and python_ver != base_py:
+        return ("解释器版本与基线不一致（实测 %s / 基线 %s）—— 换了运行环境 ⇒ "
+                "读数不可比，必须重录基线，而不是把差异读成测试退化；"
+                "本门用**当前解释器**跑 pytest（`sys.executable`），所以"
+                "`--with-tests` 请用录制基线时的那个解释器（%s）来跑"
+                % (python_ver, base_py, base_py))
+    if failed > base_failed:
+        return ("测试红数变多（%d > 基线 %d）—— 新红没有任何门在看，"
+                "先逐条归因（量具错还是对象错），再修或改表" % (failed, base_failed))
+    if failed < base_failed:
+        return ("测试红数变少（%d < 基线 %d）—— 有人修好了：请来改 "
+                "%s 并把「哪一轮修的」写进 why" % (failed, base_failed,
+                                                 TEST_BASELINE_PATH))
+    tol = baseline.get("passed_tolerance", 5)
+    if passed < base_passed - tol:
+        return ("通过数变少（%d < 基线 %d - 容差 %d）—— 测试被删或被跳过"
+                % (passed, base_passed, tol))
+    return None
+
+
+def _run_tests(root, py, timeout):
+    """跑整套 pytest，返回 (rc, 输出文本)；起不来/挂死返回 (None, "")。"""
+    env = dict(os.environ)
+    env.pop("PYTHONPATH", None)      # tests/ 要求 PYTHONPATH 不生效（显式不设）
+    cmd = [py, "-m", "pytest", "tests/", "-q", "-rf", "--tb=no"]
+    try:
+        p = subprocess.Popen(cmd, cwd=root, env=env,
+                             stdin=subprocess.DEVNULL,
+                             stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT)
+    except OSError as exc:
+        print("check_all: 起不来 pytest（%s）：%s" % (py, exc))
+        return None, ""
+    try:
+        out, _ = p.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        p.kill()
+        return None, ""
+    return p.returncode, out.decode("utf-8", "replace")
+
+
+def tests_gate_problem(tools_dir, python_exe=None, timeout=TEST_TIMEOUT):
+    """完整门禁：缺输入/缺基线/结果不合，一律返回问题串。"""
+    root = os.path.dirname(os.path.abspath(tools_dir))
+    bp = os.path.join(root, TEST_BASELINE_PATH)
+    if not os.path.isfile(bp):
+        return "缺测试基线文件 %s（缺输入 → 红）" % TEST_BASELINE_PATH
+    try:
+        with io.open(bp, encoding="utf-8") as fh:
+            baseline = json.load(fh)
+    except (ValueError, OSError) as exc:
+        return "测试基线读不了或不是 JSON：%s" % exc
+    py = python_exe or sys.executable
+    rc, text = _run_tests(root, py, timeout)
+    if rc is None:
+        return "pytest 超过 %.0fs 未退出（挂死 → 红）" % timeout
+    print("check_all: pytest 退出码 %d" % rc)
+    _got = parse_pytest_summary(text)
+    # 实测汇总**必须**打出来：基线里的数字只能来自实测，不许靠猜。
+    print("check_all: 实测汇总 (failed, passed, skipped) = %s" % (_got,))
+    return test_baseline_problem(_got, baseline, python_ver=PYVER)
+
+
 def main(argv):
     # --help 必须在**任何副作用之前**返回。早先它没有分支，于是
     # `python tools/check_all.py --help` 会真的把全套护栏跑一遍（≈30s）——
@@ -304,16 +418,42 @@ def main(argv):
     bad, guards = run_guards(tools_dir)
     if bad is None:
         return 2
+    # 本仓自己的 tools/ —— 门数棘轮与测试门都只在这种情况下才施加
+    # （显式 --tools-dir 指向别处 = 自证/嵌入式复用，不该被本仓的规矩误伤）。
+    _local = os.path.abspath(tools_dir) == os.path.dirname(
+        os.path.abspath(__file__))
+
+    # R33/C'9：门数棘轮 —— 只有当跑的是本仓自己的 tools/ 时才要求下限。
+    _guard_prob = _guard_count_problem(len(guards), MIN_GUARDS,
+                                       True) if _local else None
+
+    # [R102] 完整门禁（显式 --with-tests）：再跑整套 tests/ 并核对基线。
+    #
+    # ⚠ **两条判据必须各自独立行使**（R102 修的第二个结构性缺陷）：
+    #   本函数原先在「任一护栏红」时**立刻 `return 1`**，于是测试门**整个走不到**
+    #   —— 只要有一道护栏红，「测试红数」就又失去了对手方。而一条会「在别人红的
+    #   时候静默失效」的判据，与没有这条判据只差一层错觉：它看起来在守，其实没守。
+    #   代价是护栏红时也会真跑一遍整套 tests/（≈35 分钟）—— 但那正是 --with-tests
+    #   这个显式开关的语义：**要么不跑，要么就给出汇总**。
+    _tests_prob = None
+    if "--with-tests" in argv and _local:
+        _tests_prob = tests_gate_problem(tools_dir)
+
     if bad:
         print("check_all: %d 项失败：%s" % (len(bad), bad))
+    if _guard_prob:
+        print("check_all: " + _guard_prob)
+    if _tests_prob:
+        print("check_all: " + _tests_prob)
+    elif "--with-tests" in argv and _local:
+        # ⚠ R102 实测又抓到一次同一形状：这段原先排在
+        #   `return 1` **之后**，于是「别的护栏红」时读者只看到汇总数字、
+        #   **看不到裁决** —— 把「判了且通过」与「根本没判」混成一个信号。
+        #   与上面 `_tests_prob` 独立行使是同一条纪律的另一半：
+        #   **正反两面都要能独立看见**。
+        print("check_all: 测试基线一致（%s）" % TEST_BASELINE_PATH)
+    if bad or _guard_prob or _tests_prob:
         return 1
-    # R33/C'9：门数棘轮 —— 只有当跑的是本仓自己的 tools/ 时才要求下限。
-    # 显式 --tools-dir 指向别处（自证/嵌入式复用）时不施加，否则会误伤。
-    if os.path.abspath(tools_dir) == os.path.dirname(os.path.abspath(__file__)):
-        prob = _guard_count_problem(len(guards), MIN_GUARDS, True)
-        if prob:
-            print("check_all: " + prob)
-            return 1
     print("check_all: OK（%d 个护栏，全部通过且各自自证；门数下限 %d）"
           % (len(guards), MIN_GUARDS))
     return 0
@@ -334,6 +474,9 @@ def _selftest():
          达到下限放行、外部目录不施加下限
       ⑦ MIN_GUARDS 必须等于本目录真实护栏数（R37）—— 只测「函数在给定数字下
          对不对」不够，还要保证**那个数字本身**没被落下
+      ⑧ [R102] 测试基线两向核对（纯函数，不跑 pytest）：红数变多 / 变少 /
+         通过数掉下容差 / 换了解释器 / 取不到汇总行，**五种都必须红**；
+         再加上解析器本身的三个样本
     """
     bad = good = 0
     tmp = tempfile.mkdtemp(prefix="chk_all_selftest_")
@@ -433,6 +576,35 @@ def _selftest():
             bad += 1
             print("  [selftest] MIN_GUARDS=%d 与本目录真实护栏数 %d 不一致 —— "
                   "加门/删门后必须同步这个数字" % (MIN_GUARDS, _real))
+
+        # ⑧ [R102] 测试基线两向核对（纯函数：不跑 pytest，毫秒级）。
+        _base = {"failed": 0, "passed": 513, "skipped": 4,
+                 "python_version": "3.10.10", "passed_tolerance": 5}
+        _base2 = {"failed": 2, "passed": 500, "skipped": 4,
+                  "python_version": "3.10.10"}
+        _cases = (
+            (_base, (0, 513, 4), "3.10.10", False, "全等应放行"),
+            (_base, (1, 513, 4), "3.10.10", True, "红数变多"),
+            (_base, (0, 400, 4), "3.10.10", True, "通过数掉下容差"),
+            (_base, (0, 513, 4), "3.13.12", True, "换了解释器"),
+            (_base2, (0, 500, 4), "3.10.10", True, "红数变少(修好没改表)"),
+            (_base, None, "3.10.10", True, "取不到汇总行"),
+        )
+        for _b, _got, _py, _want_bad, _why in _cases:
+            _p = test_baseline_problem(_got, _b, python_ver=_py)
+            if bool(_p) == _want_bad:
+                good += 1
+            else:
+                bad += 1
+                print("  [selftest] 基线核对样本「%s」判反：%r" % (_why, _p))
+        if (parse_pytest_summary("1 failed, 20 passed, 3 skipped in 5s")
+                == (1, 20, 3)
+                and parse_pytest_summary("20 passed in 5s") == (0, 20, 0)
+                and parse_pytest_summary("no summary here") is None):
+            good += 1
+        else:
+            bad += 1
+            print("  [selftest] parse_pytest_summary 解析不对")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return bad, good

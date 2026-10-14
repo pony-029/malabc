@@ -618,6 +618,19 @@ def render_c_site(c_model, root, outdir, heuristics=None, css_text=None,
             seen_flat[flat] = 0
         entries.append({"rel": rel, "path": p or None, "flat": flat, "pf": pf})
 
+    # R102：目录分组**提前**建好。`file/` 页要挂「所在目录」回链 —— 否则
+    #   基础层的 `dir/*.html` 只在基础层自己的 `index.html` 里有入口，而
+    #   MATLAB 站点传 `skip_index=True`（保住宿主索引）⇒ 那批目录页在整站里
+    #   **没有任何页面链到**（fe_audit S7 实测判为孤儿页）。
+    #   分组只依赖 `entries`，而 `entries` 建好后全程只读 ⇒ 提前无副作用。
+    groups = {}
+    for e in entries:
+        d = os.path.dirname(e["rel"]) or u"(根目录)"
+        groups.setdefault(d, []).append(e)
+    dir_flat = {}
+    for d in sorted(groups):
+        dir_flat[d] = (u"_root" if d == u"(根目录)" else _flat(d))
+
     # ---- 1b·R100：源码级动态库引用（四语言共用一页 dynlibs.html）----
     # 与 `binaries` 形参（**容器解析**，需要文件递过来）是两路：这一路
     # 只读源码字面量 ⇒ 语料里一个库文件都没有也能出结果。读失败**不静默**
@@ -1116,7 +1129,18 @@ def render_c_site(c_model, root, outdir, heuristics=None, css_text=None,
         my_inc = inc_edges_by_flat.get(e["flat"], [])
         n_in = sum(len(callers_of.get((fn.get("name") or u"").lower(), [])) for fn in fns)
         _deps = e["pf"].get(dep_key) or []
-        out = _head(e["rel"], u"../", brand=brand, nav=nav, legacy=legacy_href)
+        # R102：标题必须与**宿主站点的源码页**分得开 —— MATLAB 的
+        #   `src/a.m.html` 标题就是 `a.m`，而本页原先也是 `a.m`，同一份文件
+        #   的两张页在标签栏里一模一样（fe_audit S19 逐条报「重复 <title>」）。
+        #   不加宽判据，而是把「文件页」这个身份写进标题。
+        #   同时挂「所在目录」回链：目录页本来就链着它列出的每个文件页，
+        #   反方向此前是空的 ⇒ MATLAB 站点（skip_index=True）里 `dir/` 成孤儿。
+        _df = dir_flat.get(os.path.dirname(e["rel"]) or u"(根目录)")
+        _fnav = list(nav)
+        if _df:
+            _fnav.append((u"dir/%s.html" % _df, u"所在目录"))
+        out = _head(u"%s · 文件" % e["rel"], u"../", brand=brand, nav=_fnav,
+                    legacy=legacy_href)
         out.append(u'<h1 class="cs-mono">%s</h1>' % _esc(e["rel"]))
         if e["flat"] in src_flat:
             out.append(u'<p><a href="../%s/%s.html">查看本文件源码页（带行锚点）'
@@ -1671,13 +1695,8 @@ def render_c_site(c_model, root, outdir, heuristics=None, css_text=None,
     # 为什么：内核级语料有 6.3 万个文件、约 2 千个目录，把它们全摊在索引页上
     # 会得到一个几 MB 的单页（正是 R76 判定的那种「不可用」形态）。每目录一页
     # 后索引页只列目录（约两千行），下钻一层才见文件。
-    groups = {}
-    for e in entries:
-        d = os.path.dirname(e["rel"]) or u"(根目录)"
-        groups.setdefault(d, []).append(e)
-    dir_flat = {}
-    for d in sorted(groups):
-        dir_flat[d] = (u"_root" if d == u"(根目录)" else _flat(d))
+    # R102：分组与 `dir_flat` 已在**文件条目之后**提前建好（那时 `entries`
+    #   刚定型），此处直接复用，不再重复算一遍。
     for d in sorted(groups):
         lst = sorted(groups[d], key=lambda x: x["rel"])
         n_alert = sum(len(alerts_by_flat.get(x["flat"], [])) for x in lst)
