@@ -24,6 +24,8 @@
   0e         Phase 0e ✅已落地   base    门数**仍 19**（不加闸，只提分辨率）；判据族 W1–W5 → **W1–W6**；内核分析流程 13 站在册
   0n         Phase 0n ✅已落地   t2      门数**仍 19**（不加闸，只提分辨率）；判据族 W1–W6 → **W1–W7**；运行产物由门**现算**核对（表 ⇄ 磁盘）
   1 –  60    Phase A           T1 异步  整树内核语料上：边数守恒恒等式成立；async 边 > 0
+  槽 23–35   Phase 1  ✅进行中   t3      能力对等（共有的都适配 / 特有的各自适配）：门数 19→20；
+                                        `docs/PARITY_MATLAB_C_PY.md` 的 16 能力 × 4 语言与**实测**两向一致
  61 – 140    Phase B           T2 跳    unresolved 四类分母齐；每跳有装置；旧键逐位不变
 141 – 210    Phase C           T3 算子  三处对齐有差集分母；estimated 可识别；insn_top 干净
 211 – 300    Phase D           T4 互转  三分列齐全；「造一个不等 ⇒ 必须 failed」独立验证通过
@@ -186,15 +188,22 @@
 #   环路会在 19 之后一路 SKIP 到 23；下面 12 轮（槽 23–35）**全部无 blocked**。
 #   （原文写「第 19–22 轮全是 `A t1`」—— 槽 19 让位后那句话**当场失效**。
 #    失效的散文比缺的散文危险：环路读到它不报错，人读到它也不报错。）
-#   ⚠ **门数 19 → 20**（第 21 道门 `check_parity_registry.py`，判据族 E1–E6）——只在第 23 轮发生，
-#     其余各轮**不加闸门**（「缺口为 0 时加闸 = churn」，R85 已定论）。
-#   ⚠ Phase 1 立判据时必须逐处同步 6 处级联：`check_all.py` 的 **ASCII 树行**（极易漏）/
-#     `MIN_GUARDS` / `GUARD_CONTRACT` / `tests/test_matlabc.py` / README 双侧 /
-#     `matlabc.py` docstring 的两处体积快照。
+#   ✅ **门数 19 → 20 已落地**（R96 落了第 20 道门 `check_parity_registry.py`，判据族 E1–E6）——
+#     只在这一轮发生，其余各轮**不加闸门**（「缺口为 0 时加闸 = churn」，R85 已定论；
+#     本轮之所以是反例：64 个格子里 16 个 `no`，**缺口 > 0**）。
+#   ⚠ Phase 1 立判据时必须逐处同步 —— R96 实测是 **7 处 / 8 个文件**：① `check_all.py` 的
+#     **ASCII 树行**（极易漏，R72 H2e 会点名）② `check_all.py` 的 `MIN_GUARDS`
+#     ③ `GUARD_CONTRACT` ④ `tests/test_matlabc.py` 写死的 `MIN_GUARDS == N`
+#     ⑤ README 门表行 ⑥ README 散文门数（两侧各一处）⑦ `CONTRIBUTING.md`
+#     ⑧ `matlabc.py` 帮助正文。旧清单写「6 处」并**漏了 `CONTRIBUTING.md`** ——
+#     它被 N1 扫描（`DOC_NUMBER_CLAIM_FILES` 的第四个文件），漏改就是红。
+#     ⚠ 而 `matlabc.py` 的两处**体积快照**（`HELP_BYTES_SNAPSHOT` / `HELP_CANON_SNAPSHOT`）
+#     本轮**逐字节不变** —— `19` → `20` 是**等长**替换，不触发折行。这是**实测**结论，
+#     不是推断：改完两个臂各跑一次，读数仍是 59577 / 49311。
 #   ⚠ **动态库的诚实边界不可跨越**：不执行、不反汇编、不符号执行（`binfmt/__init__.py:38-40`）；
 #     Mach-O `verified=False`（`macho.py:191`）；CUDA cubin 不解析（`elf.py:11-20`）。
 #     Phase 7 的 5 轮全部落在这三条边界之内。
-23 | 1  | t3   | parity_registry        | 能力对等登记表（人读 + `<!-- PARITY v1 -->` 机器块）+ **第 21 道门** `check_parity_registry.py` 判据族 **E1–E6**（两向：登记未实现⇒红 / 实现未登记⇒红 / `na` 无理由⇒红）；**门数 19→20** + 6 处级联 | -
+23 | 1  | t3   | parity_registry        | 能力对等登记表 `docs/PARITY_MATLAB_C_PY.md`（人读 16 能力 × 4 语言 + `<!-- PARITY v1 -->` 机器块）+ **第 20 道门**（第 21 个护栏脚本）`check_parity_registry.py` 判据族 **E1–E6**（两向：登记未实现⇒红 / 实现未登记⇒红 / `na` **不许掩盖没实现**⇒红 / 理由陈旧⇒红 / 人读表 ⇄ 机器块⇒红 / 未行使必须说出来）；**门数 19→20** + **7 处级联**；实测记分牌 40 yes / 16 no / 8 na | -
 24 | 2  | t3   | ir_entity_common       | 语言无关 **Entity 契约**（COMMON 实体字段三语言同形）+ 契约测试；**不改既有读数**（逐位相等口径） | -
 25 | 3  | t3   | py_ast_frontend        | **Python 前端 `ast` 化**（双层：`ast` 优先 / 语法失败降级到现有扫描器且**降级必须进 `limitations`**）；解锁 class/方法/装饰器/注解/相对导入 | -
 26 | 4  | t3   | c_entity_layer         | **C 实体层**：struct/union/enum/typedef/全局变量/字段识别（R87 的 `_is_type_decl` 只做排除，需补正向） | -

@@ -23,7 +23,8 @@
         ├─▶ check_legal_parity.py        许可与署名双轨：MIT 正文 ⇄ 版权人 ⇄ 必究 ⇄ 徽章 ⇄ 版本
         ├─▶ check_unified_graph.py       统一图四条恒等式 + T1 图前提（含「注入一条边即破」）
         ├─▶ check_kernel_snapshot.py     全树规模读数 + 分析流程登记（契约 W1..W7）
-        └─▶ check_subprocess_hygiene.py   子进程必须切 stdin 且不会永久挂住
+        ├─▶ check_subprocess_hygiene.py   子进程必须切 stdin 且不会永久挂住
+        └─▶ check_parity_registry.py     能力对等登记表（16 能力 × 4 语言）必须与**实测**一致，两向（E1–E6）
         │
         ├─ 每道护栏都要能跑通（rc=0）
         ├─ 每道护栏都要有 --selftest（两向自证：坏样本要红、好样本要过）
@@ -168,7 +169,11 @@ GUARD_TIMEOUT = 600.0
 # ⇒ 站表 + 「恰好一个 current 分析器」+ **产物链拓扑**（每站 in ⊆ 前序 out）
 # + 站数分母 + 仓内落点存在性。**不加闸门数**（缺口为 0 时加闸 = churn），
 # 只提高既有判据的分辨率。
-MIN_GUARDS = 19
+# R96 / Phase 1 / 槽 23：19 → 20。加的是**新闸门**（不是给既有门加判据族）——
+# 「能力对等」此前**一格判据都没有**（64 个格子里 16 个 `no`，缺口 > 0），
+# 正是 R85 那句「缺口为 0 时加闸 = churn」**不**适用的一类。
+# 全部 21 个 `check_*.py` = 20 道门 + 本 runner。
+MIN_GUARDS = 20
 
 
 def _write_help(text):

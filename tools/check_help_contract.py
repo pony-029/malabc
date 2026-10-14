@@ -312,6 +312,13 @@ GUARD_CONTRACT = {
            "产物指纹与磁盘不符或产物表是空集）",
         2: "缺输入（docs/KERNEL_RUN.md 或 matlabc.py 不在，或任一块不可解析）",
     },
+    "tools/check_parity_registry.py": {
+        0: "能力对等登记表与实测一致（E1–E6：形状 / 登记⇄实测两向 / 理由两向 / "
+           "能力名单两向 / 人读表⇄机器块逐格 / 未行使必须说出来）",
+        1: "有违规（形状非法 / 登记与实测不符 / 理由缺失或陈旧 / 能力名单不符 / "
+           "人读表与机器块不一致 / 夹具或 CLI 跑不起来）",
+        2: "缺输入（docs/PARITY_MATLAB_C_PY.md 不在，或机器块不可解析）",
+    },
 }
 
 GUARD_SCRIPTS = tuple(sorted(GUARD_CONTRACT))
