@@ -228,6 +228,19 @@
 #   ⚠ 挂 `t4` 而不是 `t3`：R98 ⑯ —— 新槽落到 blocked 时环路按 `line` 停，
 #   挂 `t3` 会静默跳过排在那里的 25–29。
 37 | 9  | t4   | engine_lines_field     | 引擎对 C/py/js 的文件字典补**加性** `lines` 字段（`len(scrub/dedent(text).split("\n"))`，空文件算 1）⇒ C11 从「如实说明」升级为**三语料真比对**，对照页内核格改用**引擎产物**而非同公式重扫值；**不动边、不动 checks** | -
+#   R99 追加轮 38（线路仍 `t4`）：**MATLAB 站点接入 C/Python/JS 的同一份基础层**。
+#   `renderers/csite.py::render_c_site` 加两个**默认值即原行为**的加性参数
+#   （`skip_index` / `src_subdir`），`render_browse_site` 在末尾调用它 ⇒
+#   `site_same_page_names` 由 `matlab=no` **实测转为 yes**（四语言同一批页面名）。
+#   ⚠ 同一轮抓到并修掉两个**真缺陷**：① `_kind_color` 用内置 `hash()` ⇒ 受
+#   `PYTHONHASHSEED` 随机化、跨进程不稳定 ⇒ 站点产物**不可逐字节复现**（改 `zlib.crc32`）；
+#   ② `_clean_browse_dir` 顶层清单**两向都错**（多幽灵 `review.html`、少 5 个真生成的页）。
+#   ⚠ 本轮闸门数**不变（仍 20）**、判据族仍 E1–E6 —— 改的是**呈现层**，不是引擎能力；
+#   内核 C/ASM 臂的**分析产物**零变化（`files` / `lines` / `rc` / `std_files` / `std_includes`
+#   仍与 R81 全等），只是 `provenance` 刷新 —— 改了 `matlabc.py` ⇒ 快照门 W2 要求
+#   **重跑**（禁止只改表），已按门给的路子重跑 `probe_kernel_r84.py --arms c asm`。
+#   ⚠ 挂 `t4` 而不是 `t3`（R98 ⑯）。
+38 | 9  | t4   | site_unify_baseline    | MATLAB `--browse` 站点接入 C/Py/JS **同一份**基础层（`render_c_site` 加性参数 `skip_index`/`src_subdir`）⇒ `site_same_page_names` 四语言 **yes**；同时修站点产物**不可逐字节复现**（`_kind_color` 的 `hash()` 受 `PYTHONHASHSEED` 影响）与 `_clean_browse_dir` 白名单**两向都错**；**不动边、不动 checks** | -
 ```
 
 ### Phase 0f · REA 能力移植 Ⅰ：静态缓解措施（轮 11 · `t2`）

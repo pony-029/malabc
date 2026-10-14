@@ -23519,6 +23519,61 @@ def _safe_page(outdir, name, render_fn):
         return False
 
 
+def _matlab_as_csite_model(model):
+    """R99：把 MATLAB 模型适配成 `renderers/csite.py::render_c_site` 的形状。
+
+    只喂**基础层**要用的键（`files[].functions[].calls`）。两处必须转形，
+    否则站点上会静默出错而不报错：
+
+      1) MATLAB 的 `MatlabFunction.calls` 是 **set of 对象**（无序）——
+         本模块要的是**有序**的 `[name, line]` 二元组。所以优先走
+         `call_sites`（`(stmt_start, m_start, m_end, info)`，**源码序**）；
+         直接用 set 会让站点产物**每次运行顺序都不同**（R85 的确定性纪律）。
+      2) 名字取 `info.name`。本模块的 `_callee_names` 对**字符串**元素返回
+         `?`，只有 `[name, line]` 二元组才取 `c[0]` ⇒ 不转形的话
+         「我调用谁」整列会变成问号（页面能开、看着正常、内容是错的）。
+
+    依赖键留空（`imports`）：MATLAB 的依赖语义不是 `import` / `#include`，
+    本模块对取不到的键渲染**空表**而不是报错 —— 这是刻意的
+    「不假装有」。
+    """
+    files = []
+    for mf in (model.files or []):
+        fns = []
+        for fn in (mf.functions or []):
+            calls = []
+            seen = set()
+
+            def _push(nm, line):
+                if not nm:
+                    return
+                k = u"%s" % nm
+                k = k.lower()
+                if k in seen:
+                    return
+                seen.add(k)
+                calls.append([u"%s" % nm, int(line or 0)])
+
+            for site in (fn.call_sites or []):
+                if isinstance(site, (list, tuple)) and len(site) >= 4:
+                    _push(getattr(site[3], "name", None), site[0])
+            if not calls:
+                # 兜底：`call_sites` 为空时用 `calls` 集，但**必须排序** ——
+                # set 的迭代序不确定，直接用它会让产物两次运行不一致。
+                for info in sorted((fn.calls or []),
+                                   key=lambda x: (getattr(x, "name", u"") or u"").lower()):
+                    _push(getattr(info, "name", None), 0)
+            fns.append({"name": fn.name, "line": fn.line, "calls": calls,
+                        "complexity": getattr(fn, "complexity", 1)})
+        try:
+            _p = u"%s" % mf.path
+        except Exception:
+            _p = None
+        files.append({"rel": mf.rel, "path": _p, "functions": fns,
+                      "imports": [], "includes": []})
+    return {"files": files, "edges": [], "unresolved": [], "lang": "matlab"}
+
+
 def render_browse_site(model, outdir, reproducible=False, enabled=None,
                        max_nodes=None, offline=False, ai_mode="off",
                        checks_for_sarif=None):
@@ -23989,6 +24044,34 @@ def render_browse_site(model, outdir, reproducible=False, enabled=None,
     # FE-21：将各页专用样式表（page_css/*.css）复制到站点根目录及每个含 .html 的子目录，
     # 使外链化后的 <link href="dims.css"> 等可解析。此前该函数从未被调用，
     # 导致全部 page_css 链接悬空（FE-21 外链化形同虚设）。
+    # ---- R99：基础层（与 C / Python / JS 站点**同一份代码、同一批页面名**）----
+    # 用户原话「三种语言的展现完全不一样」被登记表量化在
+    # `site_same_page_names`（matlab=no，其余三家 yes）。根因是引擎里有**两条
+    # 互不相干**的站点出口：本函数（40+ 个语言专属页）与
+    # `renderers/csite.py`（C/py/js/asm 共用的 7 类页，两套页面名**一个都不重合**）。
+    # 这里把基础层也跑一遍：同一份渲染代码、落到**同一个站点根**，于是
+    # `funcs.html` / `file/` / `dir/` / `deps.html` / `rule/` 四语言同名同形。
+    #   * `skip_index=True`     保住本函数自己的 `index.html` 与 `site-quality.json`
+    #     （基础层不覆盖它们；其余页面照常落盘）
+    #   * `src_subdir="xref_src"` 本函数的源码页目录也叫 `src/` 但命名规则不同
+    #     （`<rel>.m.html` vs `<扁平名>.html`），写进同一目录会互相污染
+    try:
+        from renderers.csite import render_c_site as _render_c_site
+    except Exception as _exc:      # 基础层缺席**必须说出来**，不许静默
+        _render_c_site = None
+        print("[WARN] 基础层站点缺席（renderers.csite 不可用）：%s" % _exc,
+              file=sys.stderr)
+    if _render_c_site is not None:
+        try:
+            _q = _render_c_site(_matlab_as_csite_model(model), str(root),
+                                str(outdir), css_text=BROWSE_CSS, lang="matlab",
+                                display="MATLAB", dep_key="imports",
+                                skip_index=True, src_subdir="xref_src")
+            print("[OK] MATLAB 交叉引用基础层：%d 页（与 C/Python/JS 站点同名同形："
+                  "funcs / file / dir / deps）· %.1f MB"
+                  % (_q["pages"], _q["bytes"] / 1048576.0))
+        except Exception as _exc:
+            print("[WARN] 基础层站点生成失败：%s" % _exc, file=sys.stderr)
     write_page_css_tree(outdir)
     write_report_css(str(outdir))
     # FE-21+：将 browse.css 复制到站点根目录及每个含 .html 的子目录（与 page_css 同机制）。

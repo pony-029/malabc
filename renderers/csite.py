@@ -56,6 +56,7 @@ import io
 import math
 import os
 import re
+import zlib
 
 # ---------------------------------------------------------------------------
 # 样式：browse.css = 调用方传入的基础样式（BROWSE_CSS）+ 本片段。
@@ -196,8 +197,20 @@ def _flat(rel):
 def _kind_color(kind):
     if kind in KIND_COLORS:
         return KIND_COLORS[kind]
-    return _KIND_COLOR_FALLBACK[abs(hash(kind)) % len(_KIND_COLOR_FALLBACK)] \
-        if kind else "#6e7781"
+    if not kind:
+        return "#6e7781"
+    # ⚠ 绝不能用内置 `hash()`：`str` 的哈希受 **PYTHONHASHSEED 随机化**影响，
+    #   跨进程**不稳定** ⇒ 同一个 kind 两次运行分到不同颜色，站点产物因此
+    #   **不可逐字节复现**（与本模块 docstring 的「两次运行逐字节稳定」直接
+    #   冲突）。R99 实测：同一份代码连跑两次，`index.html` 与 `rule/*.html`
+    #   的配色全变、内容一字不差。改用 `zlib.crc32` —— 标准库、跨进程稳定、
+    #   与 PYTHONHASHSEED 无关。
+    # ⚠ `%` 的优先级低于属性取值：`u"%s" % kind.encode(...)` 会**先**对
+    #   `kind` 取 `.encode` ⇒ 非 `str` 的 kind 直接 AttributeError，
+    #   整站 try/except 兜住后**一个页面都不落盘**（R99 实测：门夹具上
+    #   py/js 的 browse_site 由 yes 变假）。先 `%s` 归一成字符串再 encode。
+    _h = zlib.crc32((u"%s" % kind).encode("utf-8"))
+    return _KIND_COLOR_FALLBACK[_h % len(_KIND_COLOR_FALLBACK)]
 
 
 def _clip(s, n):
@@ -492,7 +505,8 @@ def render_c_site(c_model, root, outdir, heuristics=None, css_text=None,
                   binaries=None, attribution=None,
                   src_budget=48 * 1024 * 1024, src_max_file=256 * 1024,
                   legacy_max_files=LEGACY_SINGLE_PAGE_MAX_FILES, top_index=200,
-                  graph_max_nodes=GRAPH_MAX_NODES, graph_iters=GRAPH_ITERS):
+                  graph_max_nodes=GRAPH_MAX_NODES, graph_iters=GRAPH_ITERS,
+                  skip_index=False, src_subdir=u"src"):
     """生成**语言无关的交叉引用站点**，返回统计 dict。
 
     c_model       `build_c_model` / `_build_ext_model` 的返回值
@@ -528,6 +542,13 @@ def render_c_site(c_model, root, outdir, heuristics=None, css_text=None,
                   单页（内核级外推 0.9–1.7 GB 的无用单页，见
                   `LEGACY_BYTES_PER_FILE_LOW/HIGH`），改在索引里说明。
     top_index     funcs.html 三张榜各自的**有界**行数（扇入 / 扇出 / 未解析名）。
+    skip_index    R99：True 时**不写** `index.html` 与 `site-quality.json`。
+                  这两件是「站点汇总产物」；本模块被 MATLAB 站点路径复用时，
+                  站点根已有 `render_browse_site` 的富页入口与自己的质检快照，
+                  基础层不覆盖它们，其余页面照常落盘 ⇒ 四语言**页面名同形**。
+    src_subdir    R99：源码页子目录名（默认 `src`）。MATLAB 的源码页目录
+                  也叫 `src/` 但命名规则不同（`<rel>.m.html`），两者写进
+                  同一个目录会互相污染 ⇒ MATLAB 那次调用传 `xref_src`。
     graph_max_nodes  R93：单张调用关系图的**节点上限**（默认
                   `GRAPH_MAX_NODES`）。力导向是 O(n^2 * 迭代)，`kernel/sched`
                   实测最大文件页 461 节点 => 5.82 s/页，整棵内核外推 0.6 h。
@@ -822,7 +843,7 @@ def render_c_site(c_model, root, outdir, heuristics=None, css_text=None,
     def _src_link(flat, line):
         n = int(line or 0)
         if flat and flat in src_flat:
-            return u'<a href="../src/%s.html#L%d">%d</a>' % (_esc(flat), n, n)
+            return (u'<a href="../%s/%s.html#L%d">%d</a>' % (src_subdir, _esc(flat), n, n))
         return u'<span class="muted">%d</span>' % n
 
     def _file_graph(entry, pre=u""):
@@ -864,7 +885,7 @@ def render_c_site(c_model, root, outdir, heuristics=None, css_text=None,
             if not flat:
                 return None
             if flat in src_flat:
-                return u"%ssrc/%s.html#L%d" % (pre, flat, int(line or 0))
+                return (u"%s%s/%s.html#L%d" % (pre, src_subdir, flat, int(line or 0)))
             return u"%sfile/%s.html" % (pre, flat)
 
         # 本文件的定义先全部建节点（即使它没有任何调用点也要有）。
@@ -1069,8 +1090,8 @@ def render_c_site(c_model, root, outdir, heuristics=None, css_text=None,
         out = _head(e["rel"], u"../", brand=brand, nav=nav, legacy=legacy_href)
         out.append(u'<h1 class="cs-mono">%s</h1>' % _esc(e["rel"]))
         if e["flat"] in src_flat:
-            out.append(u'<p><a href="../src/%s.html">查看本文件源码页（带行锚点）'
-                       u"&rarr;</a></p>" % _esc(e["flat"]))
+            out.append(u'<p><a href="../%s/%s.html">查看本文件源码页（带行锚点）'
+                       u"&rarr;</a></p>" % (src_subdir, _esc(e["flat"])))
         out.append(_cards([
             (len(fns), u"函数"), (len(_deps), dep_label.lstrip(u"#")),
             (len(my_alerts), u"告警"), (len(out_e), u"出边"),
@@ -1206,8 +1227,9 @@ def render_c_site(c_model, root, outdir, heuristics=None, css_text=None,
                         if ce is not None else _esc(f))
                 # 行号链到**调用方所在文件**的源码页锚点：从「谁调用了它」
                 # 一跳就到调用现场，这是交叉引用文档的关键一跳。
-                _ln = (u'<a href="../src/%s.html#L%d">%d</a>'
-                       % (_esc(ce["flat"]), int(ln or 0), int(ln or 0))
+                _ln = (u'<a href="../%s/%s.html#L%d">%d</a>'
+                       % (src_subdir, _esc(ce["flat"]),
+                          int(ln or 0), int(ln or 0))
                        if (ce is not None and ce["flat"] in src_flat)
                        else _num(ln))
                 out.append(u'<tr><td class="cs-mono">%s</td><td class="cs-mono">%s</td>'
@@ -1245,7 +1267,7 @@ def render_c_site(c_model, root, outdir, heuristics=None, css_text=None,
                        u'<span class="cs-lc">%s</span></div>'
                        % (i + 1, i + 1, _esc(ln.replace(u"\t", u"    "))))
         out.append(u"</div></main></body></html>")
-        _n = _emit(u"src/%s.html" % e["flat"], u"\n".join(out))
+        _n = _emit(u"%s/%s.html" % (src_subdir, e["flat"]), u"\n".join(out))
         n_bytes += _n
         n_src_bytes += _n
         n_pages += 1
@@ -1607,8 +1629,16 @@ def render_c_site(c_model, root, outdir, heuristics=None, css_text=None,
                       _num(LEGACY_BYTES_PER_FILE_LOW),
                       _num(LEGACY_BYTES_PER_FILE_HIGH), _lo, _hi))
     out.append(u"</main></body></html>")
-    n_bytes += _emit(u"index.html", u"\n".join(out))
-    n_pages += 1
+    if skip_index:
+        # R99：MATLAB 路径**不覆盖**站点根的 index.html —— 那里已有
+        # `render_browse_site` 的富页入口（40+ 个语言专属页）。基础层的
+        # 其余页面（funcs / file / dir / deps / rule / binaries）照常落盘，
+        # 于是四语言的站点**页面名同形** —— 这正是登记表里
+        # `site_same_page_names` 那一格从 `no` 变 `yes` 的实现。
+        pass
+    else:
+        n_bytes += _emit(u"index.html", u"\n".join(out))
+        n_pages += 1
 
     # 3d) 样式：基础样式 + 本模块片段，写到根与每个含 .html 的子目录
     css = (css_text or u"") + CSITE_CSS
@@ -1655,7 +1685,11 @@ def render_c_site(c_model, root, outdir, heuristics=None, css_text=None,
         "graph_nodes_dropped": n_graph_dropped,
     }
     import json as _json
-    _write_text(os.path.join(outdir, "site-quality.json"),
-                _json.dumps(q, ensure_ascii=False, indent=2, sort_keys=True))
+    if not skip_index:
+        # R99：`site-quality.json` 与 `index.html` 同属**站点汇总产物** ——
+        # MATLAB 路径下这两件都已有自己的版本，基础层不覆盖它们。
+        _write_text(os.path.join(outdir, "site-quality.json"),
+                    _json.dumps(q, ensure_ascii=False, indent=2,
+                               sort_keys=True))
     q["wrote_bytes"] = n_bytes
     return q

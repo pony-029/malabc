@@ -37,32 +37,35 @@
 | `heuristics_channel` | no | yes | yes | yes | 载荷 `heuristics` 非空（无注释函数触发一条） |
 | `asm_insights` | na | yes | na | na | 载荷出现 `asm` 键 |
 | `browse_site` | yes | yes | yes | yes | `--browse` 产出站点且含 HTML |
-| `site_same_page_names` | no | yes | yes | yes | 站点同时有 `index.html` / `funcs.html` / `file/` / `dir/` |
+| `site_same_page_names` | yes | yes | yes | yes | 站点同时有 `index.html` / `funcs.html` / `file/` / `dir/` |
 
-**合计 64 格：`yes` 40 · `no` 16 · `na` 8。**
+**合计 64 格：`yes` 41 · `no` 15 · `na` 8。**
 
 ## 3. 三类发现
 
-### 3.1 「四家都有」的 4 条共性底座
+### 3.1 「四家都有」的 5 条共性底座
 
-`functions`、`call_edges`、`call_edges_cross_file`、`browse_site`
-四项四语言全绿 —— 跨文件调用、站点产出这些**已经真的通了**（R86–R92 的移植结果
-在这一层得到独立确认）。
+`functions`、`call_edges`、`call_edges_cross_file`、`browse_site`、
+`site_same_page_names` **五项四语言全绿** —— 跨文件调用、站点产出、
+**站点页面名同形**这些**已经真的通了**（R86–R92 的移植结果，加上 R99
+把 MATLAB 站点接上 C/Py/JS 的同一份基础层代码 `renderers/csite.py`）。
 
 ### 3.2 特有的通道：不是缺口，是**口径分裂**
 
-有四项能力在 MATLAB 侧走**另一条通道**，而 C / Py / JS 共用一条：
+有三项能力在 MATLAB 侧走**另一条通道**，而 C / Py / JS 共用一条：
 
 | 能力 | C / Python / JS | MATLAB |
 | --- | --- | --- |
 | `metrics_complexity` | 函数载荷自带 `complexity` | 只在 Markdown 报告与站点 `complexity.html` |
 | `unresolved_attribution` | 载荷 `unresolved` 数组 | **没有**未解析归因出口（站点却有 `unresolved.html`） |
 | `heuristics_channel` | 载荷 `heuristics` 数组 | 检查结果分在 `p204_p223` / `uninitialized` 等各自键里 |
-| `site_same_page_names` | 10 个顶层页（`file/`+`funcs.html`+`dir/`） | 46 个顶层页（`dirs/`+`func_detail.html`+…） |
 
-这四条是本轮**最有用的读数**：它们说明「对等」不只是「有没有」，还有
-**「同一个东西从哪条通道出来」**。R92 让 C / Py / JS 的站点同形；MATLAB 的站点
-是另一套，两者在页集层面**不同形** —— 这正是槽 29（画布对等）的靶。
+这三条是本轮**最有用的读数**：它们说明「对等」不只是「有没有」，还有
+**「同一个东西从哪条通道出来」**。R92 让 C / Py / JS 的站点同形；
+**R99 把 MATLAB 站点也接上同一份基础层代码**（`renderers/csite.py`），
+于是四语言的 `funcs.html` / `file/` / `dir/` / `deps.html` / `rule/`
+**同名同形** —— `site_same_page_names` 那一格由实测从 `no` 变 `yes`。
+剩下三条仍是槽 28 / 槽 29 的靶。
 
 ### 3.3 真实的缺口：16 格，按可修性排序
 
@@ -74,7 +77,7 @@
 | `call_edges_oneline_body`（Py / JS） | 2 | 单行函数体里的调用点收不到（JS：定义行自身被跳过；Py：同形） | 槽 25 |
 | `deps_edges_json`（Py / JS） | 2 | 依赖边只进站点 `deps.html`，**不进载荷**（口径分裂） | 槽 28（度量对等，顺带修假边） |
 | `callgraph_projection`（MATLAB） | 1 | 给了 `--callgraph` **静默不产出**（rc=0、无文件）—— 「没听懂却假装听懂」 | 槽 24–29 任一 |
-| `metrics_complexity` / `unresolved_attribution` / `heuristics_channel` / `site_same_page_names`（MATLAB） | 4 | 见 3.2 的口径分裂 | 槽 28 / 槽 29 |
+| `metrics_complexity` / `unresolved_attribution` / `heuristics_channel`（MATLAB） | 3 | 见 3.2 的口径分裂 | 槽 28 / 槽 29 |
 
 ⚠ `callgraph_projection` 那一格值得单独说：**它不是「不支持」，是「假装修持」**。
 CLI 收下开关、退出码 0、终端没有任何提示、盘上没有文件 —— 用户会以为画好了。
@@ -143,9 +146,8 @@ cap.asm_insights.why.py | Python 是解释型语言，没有汇编层可分析
 cap.asm_insights.why.js | JavaScript 是解释型语言，没有汇编层可分析
 cap.browse_site | matlab=yes c=yes py=yes js=yes
 cap.browse_site.evidence | `--browse` 产出站点且含 HTML
-cap.site_same_page_names | matlab=no c=yes py=yes js=yes
+cap.site_same_page_names | matlab=yes c=yes py=yes js=yes
 cap.site_same_page_names.evidence | 站点同时有 `index.html` / `funcs.html` / `file/` / `dir/`
-cap.site_same_page_names.why.matlab | MATLAB 站点是另一套：46 个顶层页（`dirs/` + `func_detail.html` + `members.html` …），与 C / Py / JS 的 10 页不同名
 ```
 <!-- /PARITY v1 -->
 
