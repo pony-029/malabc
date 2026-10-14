@@ -12,7 +12,7 @@
 
 | 问题 | 结论 |
 |---|---|
-| 用户要的「看下效果」交付了吗 | **是**。三份**可点开、可跳转**的产物：内核看板（C）/ `sympy_doc.html`（Python，21.9 MB 单文件）+ `site/sympy/`（3,312 页站点）/ `cbt_doc.html`（MATLAB，7.1 MB）+ `site/cbt/` |
+| 用户要的「看下效果」交付了吗 | **是**。三份**可点开、可跳转**的产物：内核看板（C）/ `sympy_doc.html`（Python，21.9 MB 单文件）+ `site/sympy/`（3,312 页站点）/ `cbt_doc.html`（MATLAB，7.1 MB）+ `site/cbt/index.html`（**3,335 个文件**） |
 | 「一个语料一份生成器」还是「一份生成器吃所有语料」 | **后者**。`_r98/build_corpus_doc.py`（1,215 行 / 60 KB）是**语料无关**的：语言差异全部收进 `LANGS` 表 + 两个复算函数（`recompute_py` / `recompute_matlab`） |
 | 生成期对账有几条 | **9 条**（C1–C10，C6 历史上已并入）—— 三种配置**全部 0 失败**，且 C9 是「**独立复算 == 产物**」的逐条对账 |
 | 本轮抓到的最硬的东西 | ① MATLAB 产物 `edges` 与 JSON `functions[].calls` 是**同一关系的两种序**（源码调用序 vs 字母序）⇒ 只用 JSON **不可能**复算顺序；② 真实 MATLAB 里 `set.X` / `get.X` 的派生 `name` **撞车**（`rel:name` 不唯一）；③ 「`--root` 给错一层」会**静默**产出荒谬读数 |
@@ -92,7 +92,7 @@ def recompute_matlab(files):  # 限定名级：照 matlabc.py:32498-32531 重建
 |---|---|---|---|---|
 | Linux 6.19.14 | C | 62,704 文件 / 743,509 函数 / 7,060,966 边 | `_kernel/dashboard/kernel_dashboard.html` | 整树不做站点（页数不划算） |
 | sympy | Python | 1,570 文件 / 38,052 函数 / 1,783,121 边 | `_r98/out/sympy_doc.html`（21.9 MB） | `_r98/site/sympy/index.html`（**3,312 页 / 238 MiB**） |
-| COBRA Toolbox | MATLAB | 2,438 文件 / 4,115 函数 / 40,298 边 | `_r98/out/cbt_doc.html`（7.1 MB） | `_r98/site/cbt/` |
+| COBRA Toolbox | MATLAB | 2,438 文件 / 4,115 函数 / 40,298 边 | `_r98/out/cbt_doc.html`（7.1 MB） | `_r98/site/cbt/index.html`（**3,335 个文件**：`unified.html` / `class_hierarchy.html` / `schedule.html` / `callgraph.svg` / `dirs/` / `src/`） |
 
 **「真跑」而不是「看着像」**：`_r98/smoke_doc.js` 用桩 DOM 把内嵌 JS 逐条路由渲染一遍
 （`#/ov` `#/dep` `#/graph` `#/chk` `#/self` `#/file/N` `#/func/N` `#/dir/X` …），
@@ -294,7 +294,10 @@ if _loc_n < _n:
 1. **顺序通道缺失**：MATLAB 的 `edges` 顺序**无法**从 JSON 复算 ⇒ 顺序类回归目前看不见（§4 黑帽）。
 2. **生成器未入库**：`_r98/build_corpus_doc.py` + `build_compare.py` 仍在仓外；
    R91 的 `build_py_callgraph_doc.py` 入库债也仍在。
-3. **cobratoolbox 的 `--browse` 站点**：本轮已启动，仍在生成中（不阻塞台账）。
+3. **cobratoolbox 的 `--browse` 站点**：启动时仍在跑；**已生成完毕** —— 实测落盘 **3,335 个文件**
+   （`index.html` 47.9 MB / `unified.html` / `class_hierarchy.html` / `schedule.html` / `callgraph.svg` /
+   `combined_graph.svg` / `metrics.html` / `matlab_lib.html` / `dirs/` / `src/`）。⚠ 复盘此处**曾写「仍在生成中」**，
+   生成完成后当场改掉 —— **陈旧陈述与真坏长得一样**（R83 ④）。
 4. **`set.X`/`get.X` 同名**：已量化、已有复现，**未修**（口径类，须独立轮次）。
 5. **`resolution.external = 0` 写成哨兵**（R98 债务延续）。
 6. **`unresolved_names_in_project = 0`** 而 `unresolved_names = 2590` —— 这个 0 需要一次口径复核。
