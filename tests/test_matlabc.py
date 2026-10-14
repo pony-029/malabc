@@ -19105,7 +19105,16 @@ def test_r65_measure_half_two_way():
     probs, st = kr.classify_measured(measured, kr.RED_TESTS, kr.SKIP_TESTS,
                                      kr.GREEN_REFS)
     assert probs == [], probs
-    assert st["dist"].get("failed") == len(kr.RED_TESTS), st
+    # ⚠ R95：`dist` 的**缺键就是** 0 条（这是 `classify_measured` 的定义）。
+    #   R94 把 6 个从未提交的产物全部迁进仓后，登记被合法清空
+    #   （`RED_TESTS=0 / SKIP_TESTS=0`）⇒ 没有任何红要测 ⇒ `dist` 里没有
+    #   `"failed"` 键 ⇒ 原写法 `.get("failed")` 返回 `None`，而 `len({}) == 0`，
+    #   于是在**语义之外**变红。改成**逐桶**断言 + 划分恒等式（下面那条），
+    #   并在 K8 处用**合成分布**补一条**不退化**的判据。
+    assert st["dist"].get("failed", 0) == len(kr.RED_TESTS), st
+    assert st["dist"].get("skipped", 0) == len(kr.SKIP_TESTS), st
+    assert st["dist"].get("passed", 0) == len(kr.GREEN_REFS), st
+    assert sum(st["dist"].values()) == len(names), st
 
     # R94 修：原为写死的 `liar = "test_syntax_color_tokens"`（同一病灶：它原先
     #   在 GREEN_REFS 里，迁入 fe_audit.py 后摘表 ⇒ `measured` 取不到）。
@@ -19122,8 +19131,19 @@ def test_r65_measure_half_two_way():
     #   里（因为引用 fe_audit.py），R94 把 fe_audit.py 迁进来后就摘了表 —— 于是
     #   `measured` 里根本没有这个名字，`.get()` 返回 None，断言在**语义之外**红。
     #   本条要的是「一条实测为 failed 的真测试」，改成从 RED_TESTS 里**按实测**挑。
-    liar2 = next(n for n in kr.RED_TESTS
-                 if measured.get(n) in ("failed", "error"))
+    # R95 修：登记表空了就**没有真红可用** →→ 原写法在空集上抛
+    #   **StopIteration**（是个语义之外的崩溃，不是一条判据）。
+    #   但 `classify_measured` 是**纯函数**，`measured` 就是它的**入参** ⇒
+    #   真红不在时改用**合成分布**驱动同一个纯函数（正是 `--selftest` 的用法），
+    #   **不许静默跳过**：空集上不判 = 判据消失。真红还在时仍优先用**真测量数据**。
+    _real_failed = [n for n in measured
+                    if measured.get(n) in ("failed", "error")]
+    if _real_failed:
+        liar2 = _real_failed[0]
+    else:
+        liar2 = "synthetic_failed_probe"    # 合成：只做纯函数入参
+        measured = dict(measured)
+        measured[liar2] = "failed"
     assert measured.get(liar2) in ("failed", "error"), measured.get(liar2)
     p3, _ = kr.classify_measured(measured, {}, {}, {liar2: ("dummy_art.py",)})
     assert any(x.startswith("K8") and liar2 in x for x in p3), p3
