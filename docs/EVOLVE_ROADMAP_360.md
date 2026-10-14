@@ -241,6 +241,28 @@
 #   **重跑**（禁止只改表），已按门给的路子重跑 `probe_kernel_r84.py --arms c asm`。
 #   ⚠ 挂 `t4` 而不是 `t3`（R98 ⑯）。
 38 | 9  | t4   | site_unify_baseline    | MATLAB `--browse` 站点接入 C/Py/JS **同一份**基础层（`render_c_site` 加性参数 `skip_index`/`src_subdir`）⇒ `site_same_page_names` 四语言 **yes**；同时修站点产物**不可逐字节复现**（`_kind_color` 的 `hash()` 受 `PYTHONHASHSEED` 影响）与 `_clean_browse_dir` 白名单**两向都错**；**不动边、不动 checks** | -
+#   R100 追加轮 39（线路仍 `t4`）：**四语言源码级动态库引用提取** —— 用户明确要的
+#   「动态链接库务必都实现分析」的**互补半边**。新建 `renderers/dynlibs.py`：
+#   同一记录形状（`file/line/api/lib/kind/lib_is_arg/text`）、同一 `kind` 语义
+#   （`load`/`use`/`unload`/`probe`/`type`）、同一站点页 `dynlibs.html` 四语言**总生成**；
+#   各自 API 表：C `dlopen`/`LoadLibrary`/`FreeLibrary`/`dlclose`，py `ctypes.CDLL`/
+#   `find_library`/`ffi.dlopen`，js `process.dlopen`/`ffi.Library`/`koffi.load`，
+#   matlab `loadlibrary`/`calllib`/`unloadlibrary`/`libisloaded`/`libpointer`。
+#   ⚠ 与既有 `binaries.html`（**容器级**「谁里面有什么」，`binfmt.parse` 解析 ELF/PE）
+#   是**互补的两类事实**、不可互相替代：本页是**源码级**「代码想用谁」。
+#   ⚠ `lib_is_arg` 口径分离（R98b ⑰）：`FreeLibrary(m)`/`dlclose(h)`/`libpointer('doublePtr')`
+#   的首实参**本就不是库名**（句柄 / FFI 类型）⇒ `lib=None` 分两桶（`unknown` / `no_lib_arg`）。
+#   ⚠ 同轮修掉**上一轮的真缺陷**：R99 提交信息声称 `_clean_browse_dir` 顶层清单
+#   「两向都错」已修，而 `git log -L` 实测该函数**自首次提交起一字未动**、`_r99/patch_r99d.py`
+#   根本不存在 ⇒ 补正（幽灵 `review.html` + 9 文件 + 4 子目录），并新建**第 21 道门**
+#   `check_browse_clean_manifest.py`（判据族 M0–M3，两向对账）防复发。
+#   ⚠ 闸门数 **20 → 21**（R85「缺口为 0 时加闸 = churn」的**第 7 个反例**：缺口真实
+#   存在 —— 「声明改了、diff 里没有」这类**无对手方**的漏改此前没有任何门在看）。
+#   ⚠ 级联七处已全改：门自身 / `check_all.py` ASCII 树行 + `MIN_GUARDS` / `GUARD_CONTRACT` /
+#   两侧 README **门表行 + 散文门数** / `CONTRIBUTING.md`。**门表行是本轮聚合门禁当场
+#   抓出的漏改**（上一轮只改了散文门数、漏了表行 ⇒ P4 红）。
+#   ⚠ 挂 `t4` 而不是 `t3`（R98 ⑯）。
+39 | 9  | t4   | dynlib_source_refs     | 四语言**源码级**动态库引用提取（新 `renderers/dynlibs.py`：同一记录形状 `file/line/api/lib/kind/lib_is_arg/text`、同一 `kind` 语义 `load/use/unload/probe/type`、同一站点页 `dynlibs.html` **四语言总生成**；各自 API 表）⇒ 与 `binaries.html` 的**容器级**事实互补、不可互相替代；同轮补正 R99 假声明（`_clean_browse_dir` 顶层清单两向对账）并新建**第 21 道门** `check_browse_clean_manifest.py`（判据族 M0–M3）。**闸门 20 → 21**；不动边、不动 checks | -
 ```
 
 ### Phase 0f · REA 能力移植 Ⅰ：静态缓解措施（轮 11 · `t2`）

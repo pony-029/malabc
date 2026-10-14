@@ -18,6 +18,7 @@ C 前端原有的单页报告 `c_report.html` 把「全部函数 + 全部调用�
     src/<扁平名>.html   **源码页**：带 `#L<行>` 锚点，供函数表 / 告警 / 入边跳转
     rule/<kind>.html    每条检查规则一页：按文件聚合计数的 TOP + 有界明细
     binaries.html       **动态链接库页**（给了二进制读数时）：容器 / 依赖 / 导出 / 缓解措施 / 归因
+    dynlibs.html        **源码级动态库引用页**（R100，四语言总生成）：「代码想用谁」—— 与 binaries.html 互补
     browse.css          站点样式（调用方传入的基础样式 + 本模块自有片段）
     site-quality.json   站点读数快照（无时间戳 ⇒ 两次运行逐字节稳定）
 
@@ -57,6 +58,8 @@ import math
 import os
 import re
 import zlib
+
+from . import dynlibs as _dynlibs
 
 # ---------------------------------------------------------------------------
 # 样式：browse.css = 调用方传入的基础样式（BROWSE_CSS）+ 本片段。
@@ -587,7 +590,8 @@ def render_c_site(c_model, root, outdir, heuristics=None, css_text=None,
     legacy_too_many = len(files) > legacy_max_files
     write_legacy = (lang == "c" and not legacy_too_many)
     legacy_href = u"c_report.html" if write_legacy else None
-    nav = [(u"funcs.html", u"函数索引"), (u"deps.html", u"文件依赖")]
+    nav = [(u"funcs.html", u"函数索引"), (u"deps.html", u"文件依赖"),
+           (u"dynlibs.html", u"动态链接库引用")]
     if binaries:
         nav.append((u"binaries.html", u"动态链接库"))
     dep_label = u"#include" if dep_key == "includes" else u"import"
@@ -613,6 +617,31 @@ def render_c_site(c_model, root, outdir, heuristics=None, css_text=None,
         else:
             seen_flat[flat] = 0
         entries.append({"rel": rel, "path": p or None, "flat": flat, "pf": pf})
+
+    # ---- 1b·R100：源码级动态库引用（四语言共用一页 dynlibs.html）----
+    # 与 `binaries` 形参（**容器解析**，需要文件递过来）是两路：这一路
+    # 只读源码字面量 ⇒ 语料里一个库文件都没有也能出结果。读失败**不静默**
+    # （`dynlib_read_fail` 计数并上页面）。
+    dynlib_refs = []
+    dynlib_read_fail = 0
+    if lang in _dynlibs.SUPPORTED_LANGS:
+        for e in entries:
+            _p = e["path"]
+            if not _p:
+                continue
+            try:
+                _txt = io.open(_p, "r", encoding="utf-8",
+                               errors="replace").read()
+            except Exception:
+                dynlib_read_fail += 1
+                continue
+            for _r in _dynlibs.extract_dynlib_refs(e["rel"], _txt, lang):
+                _r["flat"] = e["flat"]
+                dynlib_refs.append(_r)
+        dynlib_refs.sort(key=lambda r: (r["file"], r["line"], r["api"],
+                                        r["lib"] or u""))
+    _agg = (_dynlibs.summarize(dynlib_refs)
+            if lang in _dynlibs.SUPPORTED_LANGS else None)
 
     # ---- 2) 索引 ----
     # 告警的 file 字段用的是 pf["rel"]（`_rel_of` 的口径）⇒ 按它回指到条目。
@@ -1480,6 +1509,97 @@ def render_c_site(c_model, root, outdir, heuristics=None, css_text=None,
         n_bytes += _emit(u"binaries.html", u"\n".join(out))
         n_pages += 1
 
+    # 3c·R100：源码级动态库引用页 dynlibs.html（**四语言总生成**）
+    # 与 3b 的 binaries.html 是两路：那一页回答「递过来的二进制里有什么」
+    # （`binfmt.parse` 的容器读数，需要文件真的存在），本页回答「源码里想用谁」
+    # —— 只读字面量，所以语料里一个库文件都没有也能出结果。两者互补：
+    # 只有前者会漏掉「写了但没递文件」，只有后者会漏掉「递了文件但没写」。
+    # 页面**总生成**（含 0 条、以及本语言不支持两种情形）：页面名四语言同形，
+    # 而「没有这条能力」与「恰好没有引用」在页面上被分开写出来。
+    out = _head(u"动态链接库引用", u"", brand=brand, nav=nav, legacy=legacy_href)
+    out.append(u"<h1>动态链接库引用</h1>")
+    out.append(u'<div class="cs-note">本页是**源码静态可见**的库引用：字面量实参'
+               u"被提取；运行期才拼出来的名字（<code>dlopen(buf)</code>）"
+               u"只记调用点、库名留空 —— 引擎**不跟踪运行期绑定**。"
+               u"「容器里到底有什么」（导出 / 依赖 / 缓解措施）在另一页："
+               u"<code>binaries.html</code>（那条路需要把文件递过来）。</div>")
+    if _agg is None:
+        out.append(u'<p class="muted">本语言（<code>%s</code>）目前**没有**源码级'
+                   u"动态库引用提取 —— 已支持：%s。</p>"
+                   % (_esc(lang),
+                      _esc(u" / ".join(sorted(_dynlibs.SUPPORTED_LANGS)))))
+    else:
+        out.append(_cards([(_agg["total"], u"引用条数"),
+                           (_agg["n_libs"], u"涉及库"),
+                           (_agg["n_files"], u"涉及文件"),
+                           (_agg["n_unknown"], u"运行期才知道")]))
+        if dynlib_read_fail:
+            out.append(u'<div class="cs-note">有 <b>%s</b> 个文件**读不到**'
+                       u"（未纳入统计）—— 静默跳过会让「这文件没有引用」与"
+                       u"「没读到」长得一样。</div>" % _num(dynlib_read_fail))
+        libs = _agg["libs"]
+        out.append(u"<h2>按库聚合（%s 个）</h2>" % _num(len(libs)))
+        if libs:
+            out.append(u'<table class="cs-t"><thead><tr><th>库名</th>'
+                       u'<th class="cs-num">引用</th><th class="cs-num">文件</th>'
+                       u"<th>API</th><th>语义</th></tr></thead><tbody>")
+            for x in libs:
+                out.append(u'<tr><td class="cs-mono">%s</td>'
+                           u'<td class="cs-num">%s</td><td class="cs-num">%s</td>'
+                           u"<td>%s</td><td>%s</td></tr>"
+                           % (_esc(x["lib"]), _num(x["count"]),
+                              _num(x["n_files"]),
+                              _esc(u", ".join(x["apis"])),
+                              _esc(u", ".join(x["kinds"]))))
+            out.append(u"</tbody></table>")
+        else:
+            out.append(u'<p class="muted">本语料没有出现任何库名字面量。</p>')
+        # 明细表只列**首实参本该是库名**的调用；**本来就不带库名**的
+        # （句柄 / FFI 类型）在下节单列。两件事不合并不重复：
+        #   * 合并会让人把条数加两遍；
+        #   * 不分口径会让 `libpointer('int32Ptr')` 看起来像
+        #     「运行期才知道」（R98b ⑰ 混口径）。
+        _detail = [r for r in dynlib_refs if r.get("lib_is_arg", True)]
+        shown = _detail[:max_rule_rows]
+        out.append(u"<h2>逐条明细（%s 条%s）</h2>"
+                   % (_num(len(_detail)),
+                      u"，此处展开前 %s" % _num(max_rule_rows)
+                      if len(_detail) > max_rule_rows else u""))
+        if shown:
+            out.append(u'<table class="cs-t"><thead><tr><th>文件</th>'
+                       u'<th class="cs-num">行</th><th>API</th><th>库名</th>'
+                       u"<th>代码</th></tr></thead><tbody>")
+            for r in shown:
+                out.append(u'<tr><td><a href="file/%s.html" class="cs-mono">%s</a></td>'
+                           u'<td class="cs-num">%s</td><td class="cs-mono">%s</td>'
+                           u'<td class="cs-mono">%s</td><td class="cs-mono">%s</td></tr>'
+                           % (_esc(r.get("flat") or u""), _esc(r.get("file")),
+                              _num(r.get("line") or 0), _esc(r.get("api")),
+                              _esc(r.get("lib") or u"(运行期才知道)"),
+                              _esc(r.get("text") or u"")))
+            out.append(u"</tbody></table>")
+        else:
+            out.append(u'<p class="muted">零条。</p>')
+        if _agg["n_no_lib_arg"]:
+            out.append(u"<h2>本来就不带库名的调用（%s 条）</h2>"
+                       % _num(_agg["n_no_lib_arg"]))
+            out.append(u'<p class="muted">这些 API 的首实参不是库名'
+                       u"（句柄 / FFI 类型），**不是**「没解析出来」。</p>")
+            out.append(u'<table class="cs-t"><thead><tr><th>文件</th>'
+                       u'<th class="cs-num">行</th><th>API</th>'
+                       u"<th>代码</th></tr></thead><tbody>")
+            for r in _agg["no_lib_arg"][:max_rule_rows]:
+                out.append(u'<tr><td><a href="file/%s.html" class="cs-mono">%s</a></td>'
+                           u'<td class="cs-num">%s</td><td class="cs-mono">%s</td>'
+                           u'<td class="cs-mono">%s</td></tr>'
+                           % (_esc(r.get("flat") or u""), _esc(r.get("file")),
+                              _num(r.get("line") or 0), _esc(r.get("api")),
+                              _esc(r.get("text") or u"")))
+            out.append(u"</tbody></table>")
+    out.append(u"</main></body></html>")
+    n_bytes += _emit(u"dynlibs.html", u"\n".join(out))
+    n_pages += 1
+
     # 3c) 索引页
     total_funcs = sum(len(e["pf"].get("functions") or []) for e in entries)
     cx_vals = [fn.get("complexity") or 0 for e in entries
@@ -1493,7 +1613,8 @@ def render_c_site(c_model, root, outdir, heuristics=None, css_text=None,
                u"说明（单页报告在语料级规模下会到 GB 级）。</p>")
     out.append(u'<div class="cs-note"><b>站点地图</b>：'
                u'<a href="funcs.html">函数索引</a>（扇入 / 扇出 / 未解析名三张榜）· '
-               u'<a href="deps.html">文件依赖</a>（%s 解析结果）%s · '
+               u'<a href="deps.html">文件依赖</a>（%s 解析结果）· '
+               u'<a href="dynlibs.html">动态链接库引用</a>%s · '
                u'本页 = 文件清单与目录下钻'
                u"</div>"
                % (_esc(dep_label),
@@ -1673,6 +1794,10 @@ def render_c_site(c_model, root, outdir, heuristics=None, css_text=None,
         "src_skipped_size": n_src_skip_size,
         "src_skipped_budget": n_src_skip_budget,
         "binaries": len(binaries or []),
+        "dynlib_refs": len(dynlib_refs),
+        "dynlib_libs": (_agg["n_libs"] if _agg else 0),
+        "dynlib_files": (_agg["n_files"] if _agg else 0),
+        "dynlib_read_fail": dynlib_read_fail,
         "legacy_single_page": bool(write_legacy),
         "pages": n_pages,
         "bytes": n_bytes,

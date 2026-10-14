@@ -215,6 +215,11 @@ GUARD_CONTRACT = {
         1: "发现违规",
         2: "缺输入 / 环境不可用（无法导入 binfmt）",
     },
+    "tools/check_browse_clean_manifest.py": {
+        0: "清理清单与代码生成点两向一致（M1–M3）",
+        1: "发现差异（清单遗漏 / 幽灵，顶层文件与子目录各两向）",
+        2: "缺输入（找不到 matlabc.py / renderers/csite.py 或目标函数）",
+    },
     "tools/check_doc_flags.py": {
         0: "文档/帮助正文的开关全部真实存在（NO_HELP_SCRIPTS）",
         1: "有文档宣传了不存在的开关",
@@ -628,7 +633,7 @@ HELP_BYTES_SNAPSHOT = {
     # （index/file/funcs/deps/dir/src/rule + binaries 动态链接库页）。
     # 合法增长 58856 -> **59577**（+721，远超本臂 ±64 B 分辨率 ⇒ 必须显式更新）。
     # ⚠ 这不是放宽判据：`HELP_DRIFT_BYTES` 一个字没动。
-    "matlabc.py": 59577,
+    "matlabc.py": 60179,
     "matlabc_flow.py": 2075,
     "matlabc_ask.py": 919,
     "matlabc_mcp.py": 0,
@@ -704,7 +709,7 @@ HELP_CANON_COLUMNS = 10000
 # 不同的缓存键一致），`_r91/measure_help_r91.py` 现在就是两跑。
 HELP_CANON_SNAPSHOT = {
     # R92：同一笔改动（规范形与解释器、宽度都无关，所以 +571 就是真实内容改动）。
-    "matlabc.py": 49311,
+    "matlabc.py": 49878,
     "matlabc_flow.py": 1701,
     "matlabc_ask.py": 756,
     "matlabc_mcp.py": 0,

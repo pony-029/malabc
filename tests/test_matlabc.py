@@ -18828,7 +18828,8 @@ def test_r61_gate_registry_mentions_the_new_guard():
     # 这个字面量**故意**写死 —— 它就是门数棘轮：谁改了门数，谁就得在这里露面。
     # R96：19 → 20（新增 `tools/check_parity_registry.py`，判据族 E1–E6，
     #   Phase 1 / 槽 23）。与 R94 同一条纪律：下面这个字面量**故意**写死。
-    assert ca.MIN_GUARDS == 20, ca.MIN_GUARDS
+    # R100：20 → 21（新增 `tools/check_browse_clean_manifest.py`，判据族 M0–M3，槽 39 / 线路 `t4`）。同一条纪律。
+    assert ca.MIN_GUARDS == 21, ca.MIN_GUARDS
     hc = _r37_load("check_help_contract")
     assert "tools/check_c_frontend_shapes.py" in hc.GUARD_CONTRACT
     assert hc.real_guard_count() == ca.MIN_GUARDS, (

@@ -92,6 +92,13 @@ matlabc — 代码结构梳理与静态分析工具（纯 Python，零依赖，�
     谁加载了谁、符号绑定到哪个 DSO，请用外部装置：`ltrace`、`strace -e openat`、
     glibc 的 `LD_DEBUG=bindings` —— 它们是运行期装置，静态分析原理上给不出
     这个答案。
+    R100：**源码里写出来的库引用**（`loadlibrary` / `calllib` /
+    `ctypes.CDLL` / `ffi.Library` / `process.dlopen`）按**同一条纪律**
+    处理 —— 只认字面量实参；运行期拼出来的名字（`dlopen(buf)`）只记
+    调用点、库名留空。它**不违反**上面那句「不跟踪运行期绑定」：不跟踪
+    绑定，只提取字面量。落点是 `--browse` 站点的 `dynlibs.html`（四语言
+    同名同形），与 `binaries.html` 互补 —— 后者要你把文件递过来
+    （`--binary` / `--binary-attach`），前者只看代码。
   * GPU：CUDA kernel 名从 cubin 的 `.text._Z` 节名表提取；**PTX 路径基本提不出
     kernel 名**（真 entry 极少）。提不到时报告会写明原因，不静默给 0。
   * Mach-O：解析器已实现，且已有**合成夹具**验证（LC_SEGMENT_64 段/节 +
@@ -111,7 +118,7 @@ matlabc — 代码结构梳理与静态分析工具（纯 Python，零依赖，�
 质量门（改代码前先看这里）
 ────────────────────────────────────────────────────────────────────────
 
-  python tools/check_all.py     # 一次跑完 20 道登记制护栏，各自还会跑 --selftest
+  python tools/check_all.py     # 一次跑完 21 道登记制护栏，各自还会跑 --selftest
 
   每道护栏都要求**两向自证**：坏样本必须变红、好样本必须放行，并打印
   机器可读的 `SELFTEST COUNTS {"bad": N, "good": M}`。只会在好天气下变绿的
@@ -23576,7 +23583,8 @@ def _matlab_as_csite_model(model):
 
 def render_browse_site(model, outdir, reproducible=False, enabled=None,
                        max_nodes=None, offline=False, ai_mode="off",
-                       checks_for_sarif=None):
+                       checks_for_sarif=None, binaries=None,
+                       attribution=None):
     """生成可交互跳转的 HTML 源码浏览站点。返回入口 index.html 路径。
 
     model：统一分析数据层（build_analysis_model 返回值），包含 files / index /
@@ -23584,6 +23592,15 @@ def render_browse_site(model, outdir, reproducible=False, enabled=None,
     由 main 统一构建后传入，避免在多个渲染函数间重复计算。
     enabled：启用的静态检查名集合（None = 全部），用于告警阈值配置化。
     reproducible=True 时省略索引页生成时间戳（P51）。
+    binaries：R100：`--binary-attach` / `--binary` 的**容器读数**列表
+              （`binfmt.parse` 的摘要），透传给基础层 ⇒ MATLAB 站点也出
+              `binaries.html`（与 C/Python/JS 站点同名同形）。None ⇒ 不出
+              那一页 —— 与基础层「只显示**明说出来的**二进制」同一口径。
+    attribution：R100：二进制归因行（`未解析调用 → 归到了谁`）。MATLAB 侧的
+              归因（`_emit_binary_attach`）**晚于**站点生成（后者在
+              `_emit_report_outputs` 里），所以这一路暂不传；C/Python/JS 的
+              站点路径在站点之前就已算好归因，传得进。**这不是省略**：
+              站点页只在真给了归因时才画那张表，没给就不画。
     """
     files = model.files
     # P225-F：AI CLI 引入时机。off=不引入；prompts=仅离线提示词；
@@ -24066,7 +24083,8 @@ def render_browse_site(model, outdir, reproducible=False, enabled=None,
             _q = _render_c_site(_matlab_as_csite_model(model), str(root),
                                 str(outdir), css_text=BROWSE_CSS, lang="matlab",
                                 display="MATLAB", dep_key="imports",
-                                skip_index=True, src_subdir="xref_src")
+                                skip_index=True, src_subdir="xref_src",
+                                binaries=binaries, attribution=attribution)
             print("[OK] MATLAB 交叉引用基础层：%d 页（与 C/Python/JS 站点同名同形："
                   "funcs / file / dir / deps）· %.1f MB"
                   % (_q["pages"], _q["bytes"] / 1048576.0))
@@ -30453,24 +30471,36 @@ def _clean_browse_dir(outdir):
     out = Path(outdir)
     if not out.exists():
         return
-    # 删除 src/ 子目录（内含全部源码页 + 共享 _cgdata.js，整体重写最稳妥）
-    src = out / "src"
-    if src.is_dir():
-        shutil.rmtree(src, ignore_errors=True)
-    # 删除 dirs/ 子目录（目录索引页，P65）
-    dirs = out / "dirs"
-    if dirs.is_dir():
-        shutil.rmtree(dirs, ignore_errors=True)
-    # 删除顶层已知产物文件（与 render_browse_site 生成的清单保持一致）
-    for name in ("index.html", "matlab_lib.html", "metrics.html",
-                 "unresolved.html", "class_hierarchy.html", "members.html",
-                 "annotations.html", "checks.html", "complexity.html",
-                 "compliance.html", "review.html",
-                 "dir_matrix.html", "taint.html", "todo.html", "c_report.html",
-                 "dims.html", "dims_check.html", "struct_members.html",
-                 "varflow.html", "schedule.html",
-                 "operator_impact.html", "calibration.html", "overview.html",
-                 "callgraph.svg", "combined_graph.svg"):
+    # 删除子目录（内含整批页面，整体重写最稳妥）：
+    #   src/       本函数自己的源码页（`<rel>.m.html`）
+    #   xref_src/  基础层源码页（R99 起；`<扁平名>.html`）
+    #   dirs/      本函数的目录索引页（P65）
+    #   dir/ file/ rule/   基础层的目录 / 文件 / 规则页
+    # ⚠ 子目录与下面的顶层清单都必须与**代码里真实的生成点**两向对账
+    #   （无遗漏 / 无幽灵），由 tools/check_browse_clean_manifest.py 自维持地守。
+    #   R99 的提交信息声称改过本清单，**实际 diff 里没有这一处** —— 幽灵
+    #   `review.html` 与 9 项遗漏因此留到 R100 才被静态对账抓出。
+    for _sub in ("src", "xref_src", "dirs", "dir", "file", "rule"):
+        _p = out / _sub
+        if _p.is_dir():
+            shutil.rmtree(_p, ignore_errors=True)
+    # 删除顶层已知产物文件（与 render_browse_site + renderers/csite.py 的
+    # 生成点保持一致）：
+    for name in (
+            # ---- 本函数（MATLAB 语言专属页）----
+            "index.html", "func_detail.html", "unified.html",
+            "folder_impact.html", "var_taint.html", "ai_prompts.html",
+            "matlab_lib.html", "dims.html", "varflow.html", "schedule.html",
+            "struct_members.html", "dims_check.html", "overview.html",
+            "metrics.html", "class_hierarchy.html", "annotations.html",
+            "complexity.html", "dir_matrix.html", "todo.html",
+            "c_report.html", "unresolved.html", "checks.html",
+            "compliance.html", "taint.html", "members.html",
+            "operator_impact.html", "calibration.html",
+            # ---- 基础层（R99 起四语言共用同一批页面名）----
+            "funcs.html", "deps.html", "binaries.html", "dynlibs.html",
+            # ---- 顶层图 ----
+            "callgraph.svg", "combined_graph.svg"):
         p = out / name
         if p.exists():
             try:
@@ -31588,12 +31618,17 @@ def _emit_report_outputs(args, model, files, index, edges, stats, root,
         _ai_mode = getattr(args, "ai_mode", "off") or "off"
         if getattr(args, "ai", False) and _ai_mode == "off":
             _ai_mode = "prompts"
+        # R100：把「明说出来的二进制」一并递给站点 —— MATLAB 侧此前从不
+        # 生成 binaries.html，而 C/Python/JS 三条路早就有（`_emit_lang_site`）。
+        # attribution 这一路仍是 None：MATLAB 的归因晚于站点生成，见
+        # `render_browse_site` 的 docstring。
         idx = render_browse_site(model, args.browse, reproducible=args.reproducible,
                                  enabled=_parse_checks_arg(args.checks),
                                  ai_mode=_ai_mode,
                                  checks_for_sarif=checks_for_sarif,
                                  max_nodes=args.max_nodes,
-                                 offline=_offline)
+                                 offline=_offline,
+                                 binaries=_binary_site_payload(args))
         print(f"[OK] 交互式源码浏览站点已生成：{idx}")
     return ok
 
