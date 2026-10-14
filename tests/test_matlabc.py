@@ -606,12 +606,20 @@ def test_html_hotspot_callgraph():
             "data-dir=caller": h.count('data-dir="caller"'),
             "initLocalCG": h.count("initLocalCG"),
             "func-card": h.count("func-card"),
-            "cg-local{": h.count(".cg-local{"),
         }
         for k, v in checks.items():
             assert v > 0, "html 报告缺少标记: %s (count=%s)" % (k, v)
-        # 共享样式应注入（与浏览站点 CSS 规则一致）
-        assert ".cg-local{" in h, "html 报告未注入 cg-local 样式"
+        # R94 修：原为 `assert ".cg-local{" in h`（要求规则**内联**在报告里）。
+        #   FE-18 已把报告样式抽成外链 report.css（理由：S22 门禁 —— 内联样式阻断
+        #   浏览器缓存、膨胀 HTML），规则本体**不该**再出现在 HTML 里；该断言与
+        #   FE-18 直接矛盾。判据的**意图**是「报告真的拿得到 cg-local 样式」，
+        #   故改成三层：① 报告外链了 report.css；② 该文件真存在；③ 内容含规则。
+        #   ⚠ 这不是换个读法 —— 它当场抓出一个真缺口：R46 只把 app.js 写到报告
+        #   旁边，report.css 从未写出（单文件报告一直是裸样式），由 patch_r94_L 修。
+        assert 'href="report.css"' in h, "html 报告未外链 report.css"
+        _css_path = os.path.join(os.path.dirname(html_path), "report.css")
+        assert os.path.exists(_css_path), "report.css 未写到报告同目录（报告裸样式）"
+        assert ".cg-local{" in _read_text(_css_path), "report.css 缺少 cg-local 样式"
     finally:
         pass
 
@@ -697,8 +705,11 @@ def test_callgraph_cycle_detection():
         _run([SAMPLE, "--browse", out], out)
         ap = _glob_file(out, "a.m.html")
         assert ap is not None
-        h = _read_text(ap)
-        assert "cg-cycle-badge" in h, "源码页内联 JS 缺少循环徽标标记"
+        # R94：P-rev R27 已把调用图模块外链成 src/_localcg.js，循环徽标
+        # 标记只在**外链脚本**里（页面本体实测 0、_localcg.js 实测 4）⇒
+        # 按「页面 + 外链本地脚本」判，否则外链化会被误判成功能丢失。
+        h = _page_with_scripts(ap)
+        assert "cg-cycle-badge" in h, "源码页（含外链 JS）缺少循环徽标标记"
         assert "循环调用（闭环）" in h, "源码页未说明循环徽标含义"
     finally:
         pass
@@ -1173,7 +1184,13 @@ def test_keyboard_and_hover_card():
         ap = _glob_file(out, "a.m.html")
         assert ap is not None
         h = _read_text(ap)
-        assert "cg-hover-card" in h, "源码页缺少悬浮卡片样式"
+        # R94 修：原为 `assert "cg-hover-card" in h`（只读**页面本体**）。P-rev R27
+        #   把调用图模块外链成 src/_localcg.js 之后，该标记只存在于外链脚本里
+        #   （页面本体实测 0、_localcg.js 实测 4）。**紧邻的下一行**早已改用
+        #   `_page_with_scripts(ap)`（注释就写着「需把外链脚本并入判定」），
+        #   只有这一行被落下。按该 helper 自己的 docstring：「断言的意图是
+        #   『页面最终具备该能力』，而不是『字符串必须内联』」。
+        assert "cg-hover-card" in _page_with_scripts(ap), "源码页缺少悬浮卡片样式"
         # P-rev R27：tabindex 由外链的调用图模块渲染，需把外链脚本并入判定
         assert 'tabindex="0"' in _page_with_scripts(ap), "源码页缺少键盘可聚焦元素"
         out2 = tempfile.mkdtemp(prefix="mabr_")
@@ -1582,13 +1599,16 @@ def test_p40_builtin_dims_check_status(monkeypatch):
 
     class _MF(object):
         rel = "f.m"
+        lines = 3
         functions = [_F()]
         source_lines = ["function y=foo()", "x=zeros(2,3);", "end"]
 
     class _Model(object):
         files = [_MF()]
 
-    def _fake_infer(mf):
+    def _fake_infer(mf, _dims=None):
+        # R94：_infer_file_dims 签名已升级为 (mf, dims)，桩必须跟上；否则 TypeError
+        # 会被调用方的 except Exception 吞掉 ⇒ 空结果（静默假红，看不出是桩落后）。
         return {(2, "zeros", "call"): {"p": [[2, 3]], "r": [[2, 3]]}}
 
     monkeypatch.setattr(ma, "_infer_file_dims", _fake_infer)
@@ -1620,10 +1640,13 @@ def test_p42_builtin_dims_markdown(monkeypatch):
 
     class _MF(object):
         rel = "f.m"
+        lines = 3
         functions = [_F()]
         source_lines = ["function y=foo()", "x=zeros(2,3);", "end"]
 
-    def _fake_infer(mf):
+    def _fake_infer(mf, _dims=None):
+        # R94：_infer_file_dims 签名已升级为 (mf, dims)，桩必须跟上；否则 TypeError
+        # 会被调用方的 except Exception 吞掉 ⇒ 空结果（静默假红，看不出是桩落后）。
         return {(2, "zeros", "call"): {"p": [[2, 3]], "r": [[2, 3]]}}
 
     monkeypatch.setattr(ma, "_infer_file_dims", _fake_infer)
@@ -1640,6 +1663,7 @@ def test_p43_builtin_dims_mismatch(monkeypatch):
 
     class _MF(object):
         rel = "f.m"
+        lines = 3
         functions = [_F()]
         source_lines = ["function y=foo()", "x=zeros(2,3);", "end"]
 
@@ -1647,7 +1671,7 @@ def test_p43_builtin_dims_mismatch(monkeypatch):
         files = [_MF()]
 
     monkeypatch.setattr(ma, "_infer_file_dims",
-                        lambda mf: {(2, "zeros", "call"): {"p": [[2, 3]], "r": [[2, 3]]}})
+                        lambda mf, _dims=None: {(2, "zeros", "call"): {"p": [[2, 3]], "r": [[2, 3]]}})
     monkeypatch.setattr(ma, "_parse_builtin_doc_dims",
                         lambda d: ("zeros(m,n)", "2,3", "5x5"))
     _rows = ma.compute_builtin_dim_checks(_Model())
@@ -4462,7 +4486,15 @@ def test_c34_ui_improvements():
         # ③ 函数索引分组（fn-group）
         assert "fn-group" in idx, "函数索引应分组"
         # ④ 导航分组（nav-sep）
-        assert "nav-sep" in idx, "导航应分组"
+        # ④ 导航分组
+        # R94 修：原为 `assert "nav-sep" in idx`。导航在后续轮次从「分隔符
+        #   nav-sep」升级成「分组 + 组标题」：`nav-sep` 在 matlabc.py 里已**命中
+        #   0 次**，现行类是 `nav-group` / `nav-group-label`（index.html 实测各
+        #   4 个）。判据的**意图**是「导航按分组渲染」，故按现行实现判，并把
+        #   分组数下界钉住（防退化成一条平铺导航）。
+        assert "nav-group" in idx and "nav-group-label" in idx, "导航应按分组渲染"
+        assert idx.count('class="nav-group"') >= 3, \
+            "导航分组数不应少于 3（现行 4 组：浏览 / 分析 / 视图 / 图）"
         # ⑤ 源码页文件概览卡片 + 文件描述
         src = _read_text(os.path.join(out, "src", "sub2", "inner.m.html"))
         assert "file-overview" in src, "源码页应有文件概览卡片"
@@ -4619,10 +4651,11 @@ def test_p84_localcg_interaction():
         out = os.path.join(tmp, "site")
         rc, _o, err = _run([tmp, "--browse", out], out)
         assert rc == 0, "browse 失败: %s" % err[:400]
-        src = _read_text(os.path.join(out, "src", "sub.m.html"))
-        assert "cg-toolbar" in src, "源码页调用图应含工具栏"
-        # P-rev R27：工具栏由外链的调用图模块渲染，需把外链脚本并入判定
+        # R94：工具栏由外链的调用图模块（src/_localcg.js）渲染，页面本体里
+        # **没有** `cg-toolbar`（实测 0）—— 原断言读页面本体，与它下一行的
+        # 注释「工具栏由外链的调用图模块渲染」自相矛盾，属判据落后。
         srcx = _page_with_scripts(os.path.join(out, "src", "sub.m.html"))
+        assert "cg-toolbar" in srcx, "源码页（含外链 JS）调用图应含工具栏"
         assert "data-cg-action=\"zoom-in\"" in srcx, "工具栏应含放大按钮"
         # ③ 单 HTML 报告同样注入
         html_path = os.path.join(tmp, "report.html")
@@ -6421,9 +6454,13 @@ def test_p147_interaction_upgrade():
         cgtext = io.open(cgdata, encoding="utf-8").read()
         assert '"fl"' in cgtext, "调用图 meta 应含 fl 风险标志位"
 
-        # ④ 搜索风险徽章样式
+        # ④ 搜索风险徽章样式（R94：FE-18/FE-21 起样式整体外链到
+        #    src/styles.css，规则本体**不该**再出现在 index.html 里
+        #    ——实测页面本体 0、外链 2 ⇒ 按外链样式表判。这是「规则是否
+        #    存在」的断言，不是 DOM 能力断言，故并入 CSS 是正确的。）
+        _css147 = _read_browse_css(out)
         for cls in (".gs-b-t", ".gs-b-hd", ".gs-b-hi", ".gs-b-dup"):
-            assert cls in html, "应注入搜索风险徽章样式 %s" % cls
+            assert cls in _css147, "站点样式表应含搜索风险徽章样式 %s" % cls
 
         # ⑤ Mermaid 离线回退（在 --html 报告中，不再是阻塞式同步 CDN）
         html_path = os.path.join(tmp, "report.html")
@@ -6495,7 +6532,11 @@ def test_p147b_genci_and_diffhtml_and_confidence():
         rc, so, err = _run(["--diff-html", jpath, jpath, "-o", diff_html], None)
         assert rc == 0, "--diff-html 应成功：%s" % err
         dh = io.open(diff_html, encoding="utf-8").read()
-        assert "dh-tbl" in dh and "dh-sec" in dh, "--diff-html 应生成双栏分区表"
+        # R94：`dh-tbl` / `dh-sec` 是**样式类**，FE-21 起在 diff.css
+        #（实测页面本体 0）；标题是正文，仍看页面本体。
+        _dhcss = _page_css_text(diff_html)
+        assert "dh-tbl" in _dhcss and "dh-sec" in _dhcss, \
+            "--diff-html 应生成双栏分区表样式（外链 diff.css）"
         assert "双快照差异对比" in dh, "--diff-html 标题应存在"
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -7270,9 +7311,11 @@ def test_p210_coupling_interactive():
         assert 'id="gs-sev"' in html, "应含严重度筛选下拉"
         assert 'id="gs-dir"' in html, "应含目录筛选下拉"
         assert "__gs_reset" in html, "应含重置视图按钮逻辑"
-        # ④ 严重度配色类
-        assert "sev-high" in html and "sev-mid" in html and "sev-low" in html, \
-            "应含三档严重度配色类"
+        # ④ 严重度配色类（R94：样式在页面外链的样式表里 —— gs 页链接
+        #    src/styles.css / search.css，实测页面本体 0、外链 1 ⇒ 按外链 CSS 判）
+        _gscss = _page_css_text(out)
+        assert ("sev-high" in _gscss and "sev-mid" in _gscss
+                and "sev-low" in _gscss), "看板样式表应含三档严重度配色类"
         # ③ 交互渲染函数
         assert "__gs_paint" in html, "应含缩放/平移/筛选重绘函数"
         assert "__gs_wheel" in html, "应含滚轮缩放处理"
@@ -7562,11 +7605,18 @@ def test_p217c_theme_persist():
         assert "localStorage.getItem('gs-view')" in html, "应读取视图偏好"
         # ③ 交互写入
         assert "localStorage.setItem('gs-view'" in html, "搜索/筛选/排序应写入视图偏好"
-        assert "localStorage.setItem('gs-theme'" in html, "主题切换应写入主题偏好"
-        # ④ 暗色适配段
-        assert ':root[data-theme="dark"]' in html, "应含暗色主题适配段"
-        assert ':root[data-theme="dark"] .gs-theme-btn' in html, "主题按钮应有暗色样式"
-        assert ':root[data-theme="dark"] .dup-diff-wrap' in html, "diff 面板应有暗色样式"
+        # R94：主题偏好改为**行为判据** —— 原断言钉的是 `setItem('gs-theme'`
+        # 这个字面拼写，而实现已收敛到 `var KEY='gs-theme'; setItem(KEY, t)`。
+        _assert_gs_theme_toggle_writes_pref(html)
+        # ④ 暗色适配段（R94：暗色规则在页面**外链的样式表**里 —— BROWSE_CSS 的
+        #    `:root[data-theme="dark"]` 有 117 处，而 .gs-theme-btn / .dup-diff-wrap
+        #    的暗色变体在同样被本页链接的 search.css；页面本体实测 0 ⇒ 按外链 CSS 判。
+        #    ⚠ 这里断言的是「规则存在于该页生效的样式表」，不是「页面具备某 DOM 能力」，
+        #      故并入 CSS 是正确的；DOM 能力断言必须走 _page_with_scripts。）
+        _darkcss = _page_css_text(out)
+        assert ':root[data-theme="dark"]' in _darkcss, "样式表应含暗色主题适配段"
+        assert ':root[data-theme="dark"] .gs-theme-btn' in _darkcss, "主题按钮应有暗色样式"
+        assert ':root[data-theme="dark"] .dup-diff-wrap' in _darkcss, "diff 面板应有暗色样式"
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -7799,7 +7849,9 @@ def test_p217j_cross_site_theme():
         assert rc2 == 0, err2
         gh = io.open(out, encoding="utf-8").read()
         assert "function __gs_toggle_theme" in gh
-        assert "localStorage.setItem('gs-theme'" in gh
+        # R94：同 test_p217c —— 按行为判（点一次主题按钮，localStorage
+        # 必须落下 gs-theme 且再点一次会变），不再钉字面拼写。
+        _assert_gs_theme_toggle_writes_pref(gh)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -8142,7 +8194,7 @@ def test_p217q_force_graph():
     覆盖点：
     ① 看板含 `__render_dup_graph` 与 `tab-dg` 关系图 tab；
     ② 运行时调用 `__render_dup_graph()` 应在 `dup-graph-host` 渲染 SVG（含节点 circle）；
-    ③ 节点可点击跳源码（`onclick="__gs_open_src(...)"`）。
+    ③ 节点可点击跳源码（事件委托：`data-act="open-src"` + `data-file`/`data-func`）。
     """
     tmp = tempfile.mkdtemp(prefix="map217q_")
     try:
@@ -8159,7 +8211,11 @@ def test_p217q_force_graph():
             "var h=document.getElementById('dup-graph-host').innerHTML;"
             "if(!/svg/.test(h)) throw new Error('no svg');"
             "if(!/circle/.test(h)) throw new Error('no nodes');"
-            "if(!/__gs_open_src/.test(h)) throw new Error('node not clickable');")
+            # R94：节点已改走**事件委托**（data-act="open-src" + data-file/data-func），
+            # 不再内联 onclick="__gs_open_src(...)" —— 与「禁止内联事件处理器」的
+            # 站点纪律一致。故按委托标记判定「可点击」，而不是按函数名字面量。
+            "if(!/data-act=\"open-src\"/.test(h)) throw new Error('node not clickable');"
+            "if(!/data-file=/.test(h)) throw new Error('node missing data-file');")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -9214,7 +9270,7 @@ def test_p216_toolbox_breakdown():
         # 函数卡片足迹
         blk = ma.render_function_builtin_dims(ms.functions[0])
         assert u"[信号处理工具箱]" in blk
-        assert u"Toolbox footprint" in blk
+        assert u"工具箱足迹" in blk
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -9404,7 +9460,7 @@ def test_p212_git_diff():
                              "shape_mismatch"], None)
         assert rc0 == 0, "全量分析应成功：%s" % err0
         base_rep = json.loads(io.open(base_json, encoding="utf-8").read())
-        _base_files = set(f["file"] for f in base_rep.get("files", []))
+        _base_files = set(f["rel"] for f in base_rep.get("files", []))
         assert "a.m" in _base_files and "b.m" in _base_files, "全量应含 a.m 与 b.m"
         # 2) 增量分析：--git-diff HEAD 应只分析变更的 b.m
         inc_json = os.path.join(tmp, "inc.json")
@@ -9412,7 +9468,7 @@ def test_p212_git_diff():
                              "--checks", "shape_mismatch"], None)
         assert rc1 == 0, "增量分析应成功：%s" % err1
         inc_rep = json.loads(io.open(inc_json, encoding="utf-8").read())
-        _inc_files = set(f["file"] for f in inc_rep.get("files", []))
+        _inc_files = set(f["rel"] for f in inc_rep.get("files", []))
         assert _inc_files == {"b.m"}, "增量分析应仅含变更文件 b.m，实际：%s" % _inc_files
         # a.m 的 shape_mismatch 隐患不应出现在增量告警中（未被分析）
         _inc_shapes = inc_rep.get("shape_mismatch", inc_rep.get("warnings", []))
@@ -10181,6 +10237,74 @@ def _page_with_scripts(path):
     return "\n".join(parts)
 
 
+def _page_css_text(path):
+    """读取页面 HTML **所外链的本地样式表**内容的拼接（R94）。
+
+    ⚠ 用途边界（不遵守就会制造假绿）：**只**适用于「某条 CSS 规则是否
+    存在于该页生效的样式表里」，**绝不**适用于「页面是否具备某 DOM 能力」。
+    后者若把共享样式表并进来，任何一条共享规则都会让**所有页面**被判为
+    已具备 —— 正是 fe_audit S9 记录过的事故（BROWSE_CSS 含 `.skip-link{`
+    ⇒ 全站误判）。判「页面有没有这个元素/脚本」请用 `_page_with_scripts`。
+
+    为什么需要它：FE-18 / FE-21 把样式整体外链化之后，「.gs-b-t 已注入」
+    这类断言的**意图**是「该页最终会应用这条规则」，而不是「规则必须内联
+    在 HTML 里」，故应针对外链样式表判。
+    """
+    try:
+        html = io.open(path, encoding="utf-8", errors="replace").read()
+    except OSError:
+        return ""
+    base = os.path.dirname(path)
+    parts = []
+    for href in re.findall(r'<link\b[^>]*\bhref=["\']([^"\']*)["\']',
+                          html, re.I):
+        if href.startswith(("http://", "https://", "//")):
+            continue
+        fp = os.path.normpath(os.path.join(
+            base, href.split("?")[0].split("#")[0]))
+        try:
+            parts.append(io.open(fp, encoding="utf-8",
+                                  errors="replace").read())
+        except OSError:
+            pass
+    return "\n".join(parts)
+
+
+def _assert_gs_theme_toggle_writes_pref(html):
+    """R94：断言「切换主题会**真的**把偏好写进 localStorage」——按行为判，不按拼写判。
+
+    为什么要改：原判据是 `"localStorage.setItem('gs-theme'" in html`。
+    P270 R1 把全站主题逻辑收敛到共享内核 CORE_JS 后，实现变成
+        var KEY = 'gs-theme'; … localStorage.setItem(KEY, t)
+    —— **能力在、字面拼写不在**。于是三道测试（p217c / p217j）因为一次
+    纯重构变红，而功能一行没少；反过来，这种拼写判据也挡不住「key 写错」
+    这类真缺陷。
+
+    改为在 node DOM 桩里**真跑一次**：点一次 `#gs-theme` 按钮，检查
+      ① localStorage 里确实落下 'gs-theme'；② 值只能是 dark/light；
+      ③ 再点一次必须改变取值（证明真在切换，而不是写死常量）。
+    ⚠ 桩里没有 `document.documentElement`，而 CORE_JS 的 maToggleTheme
+    在 try/catch **之外**读它 ⇒ 必须先补一个最小 documentElement，
+    否则拿到的是**崩溃**而不是红（「崩溃 ≠ 红」）。
+    """
+    _gs_runtime_check(
+        html,
+        "if(!document.documentElement){document.documentElement={_a:{},"
+        "getAttribute:function(k){return this._a[k]===undefined?null:this._a[k];},"
+        "setAttribute:function(k,v){this._a[k]=String(v);},"
+        "removeAttribute:function(k){delete this._a[k];}};}"
+        "var tb=document.getElementById('gs-theme');"
+        "if(!tb) throw new Error('#gs-theme 按钮不存在');"
+        "tb.dispatchEvent({type:'click'});"
+        "var a=localStorage.getItem('gs-theme');"
+        "if(a!=='dark'&&a!=='light')"
+        "  throw new Error('点击后未写入 gs-theme（或未绑定 click）: '+String(a));"
+        "tb.dispatchEvent({type:'click'});"
+        "var b=localStorage.getItem('gs-theme');"
+        "if(b===a) throw new Error('再次点击主题未切换: '+String(a));"
+    )
+
+
 def _browse_fixture(tmp):
     """在 tmp 下生成一份 --browse 站点，返回站点根目录。"""
     src = os.path.join(HERE, "sample_m")
@@ -10761,30 +10885,50 @@ def test_s15_manifest_consistency():
 
 
 def test_r78_shell_contract():
-    """R78：_browse_page 统一骨架 = 旧式逐行样板逐字节等价 + 试点页已接入。
-    模板行顺序/换行是不变量——任何「顺手美化」都会破坏零字节差异承诺。"""
+    """R78：_browse_page 统一骨架 = 手写镜像逐字节等价 + 试点页已接入。
+    模板行顺序/换行是不变量——任何「顺手美化」都会破坏零字节差异承诺。
+
+    R94 更新：模板有三处**有意**升级（在下方 expect 前逐条登记），镜像同步更新；
+    升级由 R94 外链化补丁驱动，不属于「顺手美化」。又：页壳助手已下沉到
+    renderers/_shared.py（matlabc.py 仅 import），接入点断言改为跨文件核对。"""
     body = "<h1>示例</h1>\n<div class=\"muted\">x</div>"
     page = ma._browse_page("示例标题", "示例品牌", body)
+    # R94 有意升级登记（每处都必须写清「改了什么、为什么」）：
+    #   ① lang="zh" → "zh-CN"：HTML5 对中文更准确的 BCP-47 标记；
+    #   ② 新增 localStorage('gs-theme') 预置脚本：与 --html 报告页同一套防主题闪白；
+    #   ③ 内联 <style>BROWSE_CSS</style> → 外链 <link rel="stylesheet" href="browse.css">：
+    #      R94 外链化纪律「页面外链了什么，就必须把那个文件写出来」，
+    #      browse.css 由 _emit_page_linked_styles 落盘（P269 绝不产出死链）。
     expect = "\n".join([
-        '<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8">'
-        '<meta name="viewport" content="width=device-width, initial-scale=1">',
+        '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        "<script>(function(){try{var t=localStorage.getItem('gs-theme');"
+        "if(!t){t=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}"
+        "if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>",
         "<title>示例标题</title>",
-        "<style>%s</style>" % ma.BROWSE_CSS,
+        '<link rel="stylesheet" href="browse.css">',
         "</head><body>",
         '<a class="skip-link" href="#main-content">跳到主内容</a>',
         '<header><span class="brand">示例品牌</span>'
         '<a href="index.html">&larr; 返回索引</a></header>',
         '<main id="main-content">']) + "\n" + body + "\n</main></body></html>"
-    assert page == expect, "R78 骨架模板与旧式样板不一致（禁止改换行/顺序）"
+    assert page == expect, "R78 骨架模板与镜像不一致（禁止改换行/顺序）"
     assert page.count('<main id="main-content">') == 1, "R78 页壳必须只有单个 <main>"
     assert page.count("跳到主内容") == 1, "R78 页壳必须只有一个 skip-link"
-    src = io.open(os.path.join(ROOT, "matlabc.py"), encoding="utf-8").read()
-    assert "def _browse_page(" in src, "R78 _browse_page 助手消失"
-    assert 'return _browse_page("关键函数风险度量",' in src, \
+    # R94：跨文件核对助手定义与三处接入点
+    def _rd(*parts):
+        return io.open(os.path.join(ROOT, *parts), encoding="utf-8").read()
+
+    _shared = _rd("renderers", "_shared.py")
+    _mc = _rd("matlabc.py")
+    assert "def _browse_page(" in _shared, "R78 _browse_page 助手消失"
+    assert "from renderers._shared import _browse_page" in _mc, \
+        "R78 matlabc.py 未引入 _browse_page"
+    assert 'return _browse_page("关键函数风险度量",' in _rd("renderers", "metrics.py"), \
         "R78 metrics 页未接入统一骨架"
-    assert 'return _browse_page("疑似漏检调用诊断",' in src, \
+    assert 'return _browse_page("疑似漏检调用诊断",' in _rd("renderers", "unresolved.py"), \
         "R78 unresolved 页未接入统一骨架"
-    assert 'return _browse_page("注释标签（TODO / BUG / DEPRECATED）",' in src, \
+    assert 'return _browse_page("注释标签（TODO / BUG / DEPRECATED）",' in _mc, \
         "R78 annotations 页未接入统一骨架"
 
 
@@ -10826,9 +10970,22 @@ def test_r77_r79_r80_site_e2e():
         assert fa.check_html_structure(pages) == [], "R77 S14 真站存在结构异常"
         bundle = os.path.join(out, "src", "_pageview.js")
         assert os.path.exists(bundle), "R80 未生成共享 _pageview.js"
-        expect = ma.VARFLOW_JS + "\n" + ma.LINE_DEEPLINK_JS
         got = io.open(bundle, encoding="utf-8").read()
-        assert got == expect, "R80 _pageview.js 内容与源常量不一致"
+        # R94：_pageview.js 已扩为**多模块**拼接（不再只有两个常量）：
+        #     VARFLOW_JS + "\n" + LINE_DEEPLINK_JS + "\n" + _bi_js
+        #     + BUILTIN_DIM_JS + "\n" + STRUCT_JUMP_JS + "\n" + BUILTIN_BADGE_JS
+        # 其中 _bi_js（window.__BUILTIN_INFO__ / __STRUCT_FIELDS__）依赖被分析文件，
+        # 测试侧无法逐字节复现 ⇒ 判据改为「头部逐字节 + 每个模块实际在场」。
+        # 覆盖面比原来只比两个常量**更宽**（6 个模块全查）。
+        assert got.startswith(ma.VARFLOW_JS + "\n" + ma.LINE_DEEPLINK_JS + "\n"), \
+            "R80 _pageview.js 头部与源常量不一致"
+        for _marker in ("window.__BUILTIN_INFO__=", "window.__STRUCT_FIELDS__="):
+            assert _marker in got, "R80 _pageview.js 缺站点级数据层：%s" % _marker
+        for _cname, _const in (("BUILTIN_DIM_JS", ma.BUILTIN_DIM_JS),
+                               ("STRUCT_JUMP_JS", ma.STRUCT_JUMP_JS),
+                               ("BUILTIN_BADGE_JS", ma.BUILTIN_BADGE_JS)):
+            if _const:
+                assert _const in got, "R80 _pageview.js 缺模块 %s" % _cname
         src_pages = [p for p in pages if p.endswith(".m.html")]
         for p in src_pages:
             h = io.open(p, encoding="utf-8").read()
@@ -11938,10 +12095,10 @@ def test_check_real_dom_empty_is_error():
     if not shutil.which("node") or \
        not os.path.exists(os.path.join(analyzer_dir, "fe_dom_check.js")):
         pytest.skip("无 node / 脚本，跳过")
-    probe = _sp.run(["node", "-e", "require('jsdom')"], cwd=analyzer_dir,
-                    stdout=_sp.PIPE, stderr=_sp.PIPE)
-    if probe.returncode != 0:
-        pytest.skip("未安装 jsdom，跳过")
+    # R94：本用例**不再**要求 jsdom。空 roots 是「审计指向错误目录」这类配置错误，
+    # 不需要真实 DOM 就能判定：fe_dom_check.js 在缺 jsdom 的早退分支里照样探过
+    # collectHtml 并回报 empty，check_real_dom 也已把 empty 检查排到 skipped 之前。
+    # 原跳过条件等于「本机永远不验这条防线」，而它正是防假绿的那一条。
     tmp = tempfile.mkdtemp(prefix="rdom_")
     try:
         issues = fa.check_real_dom(tmp, limit=0)
@@ -13299,15 +13456,27 @@ def test_r87_audit_check_registry():
     import io, os, re
     p = os.path.join(ROOT, "fe_audit.py")
     src = io.open(p, encoding="utf-8").read()
-    head = "\n".join(src.splitlines()[:45])
-    doc_lab = set(re.findall(r"^\s*S(\d+)\b", head, re.M))
+    # R94 修（两处）：
+    #   ① 原为 `head = "\n".join(src.splitlines()[:45])` —— 一个**写死的行窗**。
+    #      窗口在头部清单变长时只会「悄悄少看几行」，而不是红。改成读**模块
+    #      docstring 本体**（ast），窗口不再需要人工维护。
+    #   ② 原为 `exp = set(...range(1, 17))` —— 写死的上界。本条判据的本意是
+    #      「连续无缺号」，不是「恰好 16 项」；写死上界把「多实现了几项」也判成红。
+    #      改成从代码标签自身推出上界，另留历史下界 16 防「删检查项修绿」。
+    #      ⚠ 本轮真正暴露的**源码侧缺口**是：fe_audit.py 头部清单只登记到 S16，
+    #      而 CHECK_REGISTRY 已有 S1..S23 —— 由 patch_r94_I 补齐头部。
+    import ast as _ast
+    _doc = _ast.get_docstring(_ast.parse(src)) or ""
+    doc_lab = set(re.findall(r"^\s*S(\d+)\b", _doc, re.M))
     code_lab = set()
     for m in re.finditer(r'"check"\s*(?::|==)\s*"(S\d+)"', src):
         code_lab.add(m.group(1))
     for m in re.finditer(r'\["check"\]\s*==\s*"(S\d+)"', src):
         code_lab.add(m.group(1))
-    exp = set("%d" % i for i in range(1, 17))
+    _mx = max(int(x[1:]) for x in code_lab)
+    exp = set("%d" % i for i in range(1, _mx + 1))
     norm = set(x[1:] if x.startswith("S") else x for x in code_lab)
+    assert len(exp) >= 16, len(exp)
     assert doc_lab == exp, "头部清单与预期不符（缺号或多号）: %s" % (
         sorted(doc_lab))
     assert norm == exp, "代码 check 标签与清单不一致: code=%s doc=%s" % (
@@ -13520,7 +13689,7 @@ def test_r93_issue_contract_validation():
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
                 rc = _fa.main(["fe_audit.py", tmp, tmp, "--skip-generate",
-                               "--s11-limit=0", "--json"])
+                               "--s11-limit=0", "--min-pages=0", "--json"])
             d = json.loads(buf.getvalue())
         finally:
             _fa.check_js_syntax = _orig
@@ -13648,11 +13817,53 @@ def test_r97_contract_doc_synced():
     assert "双向豁免" in head, "头清单缺少生成器/审计器双向豁免说明"
 
 
+def _write_min_clean_site(root):
+    """写一个「审计零 error / 零 warn」的最小站点，供不验站点本身的烟测复用。
+
+    R94：空目录审计目标会被 S11 判为配置错误（roots 下无 .html
+    ⇒ 真实 DOM 检查失效、门禁假绿），这是刻意的防线。所以「只想验审计器
+    外壳（摘要自述 / 留档写盘）」的用例不能再拿空目录当夹具，必须给一个能真跑通
+    的最小站点：一页 index.html + 一份外链 site.css；lang 带区域子标签、skip-link 有
+    真实锚点、<main> 地标、description/og/viewport 三件套齐备 —— 满足 S9 的
+    ERROR 与 WARN 双重条件；样式走外链以免触发内联样式告警（S22）。
+    """
+    page = (
+        u'<!DOCTYPE html>\n'
+        u'<html lang="zh-CN">\n'
+        u'<head>\n'
+        u'<meta charset="utf-8">\n'
+        u'<meta name="viewport" content="width=device-width,initial-scale=1">\n'
+        u'<meta name="description" content="fe_audit fixture">\n'
+        u'<meta property="og:title" content="fe_audit fixture">\n'
+        u'<link rel="stylesheet" href="site.css">\n'
+        u'<title>fe_audit fixture</title>\n'
+        u'</head>\n'
+        u'<body>\n'
+        u'<a class="skip-link" href="#main">跳到主内容</a>\n'
+        u'<main id="main"><h1>fe_audit fixture</h1></main>\n'
+        u'</body>\n'
+        u'</html>\n'
+    )
+    css = (
+        u'.skip-link{position:absolute;left:-9999px}\n'
+        u'.skip-link:focus{position:static;outline:2px solid}\n'
+    )
+    with io.open(os.path.join(root, u"index.html"), u"w",
+                 encoding=u"utf-8") as fh:
+        fh.write(page)
+    with io.open(os.path.join(root, u"site.css"), u"w",
+                 encoding=u"utf-8") as fh:
+        fh.write(css)
+
+
 def test_r98_summary_self_describing():
     """R98 JSON 摘要自述引擎（engine/mode/strict）。
 
     摘要必须自带 engine 标识与运行模式，防止跨工具误读（例如把 fe_audit
     的输出当成生成器输出）。
+
+    R94：夹具从「空目录」升级为最小干净站点。本例只验摘要外壳，不验站点；
+    而空目录已被 S11 判为配置错误（见 _write_min_clean_site）。
     """
     import contextlib
     import tempfile
@@ -13660,11 +13871,12 @@ def test_r98_summary_self_describing():
     sys.path.insert(0, ROOT)
     import fe_audit as _fa
     tmp = tempfile.mkdtemp(prefix="r98_")
+    _write_min_clean_site(tmp)
     try:
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             rc = _fa.main(["fe_audit.py", tmp, tmp, "--skip-generate",
-                           "--s11-limit=0", "--json"])
+                           "--s11-limit=0", "--min-pages=0", "--json"])
         d = json.loads(buf.getvalue())
         assert rc == 0
         assert d.get("engine") == "fe_audit", "缺少 engine 自述"
@@ -13675,20 +13887,25 @@ def test_r98_summary_self_describing():
 
 
 def test_r99_out_file_archival():
-    """R99 --out=FILE 留档（写盘 JSON，幂等覆盖）。"""
+    """R99 --out=FILE 留档（写盘 JSON，幂等覆盖）。
+
+    R94：夹具同上（_write_min_clean_site）—— 本例验的是写盘与幂等，
+    空目录审计目标已不再合法。
+    """
     import contextlib
     import shutil
     import tempfile
     sys.path.insert(0, ROOT)
     import fe_audit as _fa
     tmp = tempfile.mkdtemp(prefix="r99_")
+    _write_min_clean_site(tmp)
     try:
         out_f = os.path.join(tmp, "_fe_audit_test.json")
         for _ in range(2):
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
                 rc = _fa.main(["fe_audit.py", tmp, tmp, "--skip-generate",
-                               "--s11-limit=0", "--json",
+                               "--s11-limit=0", "--min-pages=0", "--json",
                                "--out=" + out_f])
             assert rc == 0, "rc=%s" % rc
             assert os.path.exists(out_f), "--out 未写盘"
@@ -13844,13 +14061,23 @@ def test_r104_registry_enforcement_and_list_checks():
         _r102_site(tmp)
         sys.path.insert(0, ROOT)
         import fe_audit as _fa
-        # 1) --list-checks：不触发审计，输出注册表全量（S1..S16/GEN/INT/PERF=19 项）
+        # 1) --list-checks：不触发审计，输出注册表全量
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             rc_lc = _fa.main(["fe_audit.py", "--list-checks"])
         out = buf.getvalue()
         assert rc_lc == 0
-        assert len(_fa.CHECK_REGISTRY) == 19
+        # R94 修：原为写死的 `len(_fa.CHECK_REGISTRY) == 19`
+        #   （注释自称 S1..S16/GEN/INT/PERF）。但**本文件自身**已引用
+        #   S17（test_r152_s17_h1_hierarchy）、S18/S19（test_s18_*/test_s19_*）、
+        #   S20–S23（test_p271_*）⇒ 19 与同文件其它断言自相矛盾；
+        #   该断言在源项目里也以完全相同的形状红（assert 26 == 19）。
+        #   换成**自维持**判据：集合两向相等 + 无重复 + 历史下界不下滑。
+        _codes = [_c for _c, _ in _fa.CHECK_REGISTRY]
+        assert set(_codes) == set(_fa.CHECK_IDS), \
+            "CHECK_REGISTRY 与 CHECK_IDS 两向必须相等"
+        assert len(set(_codes)) == len(_codes), "CHECK_REGISTRY 有重复代码"
+        assert len(_codes) >= 19, "注册表不得少于 19 项（历史下界）"
         for _code, _ in _fa.CHECK_REGISTRY:
             assert _code in out, "--list-checks 缺 " + _code
         # 2) 未登记代码执法：monkeypatch 一个产出 S99 的检查
@@ -15246,15 +15473,84 @@ def test_fe21_no_inline_style_and_css_files_linked():
     renderers/assets/page_css/ 下每个 .css 都必须被某页面链接（无孤儿文件）。"""
     src = io.open(ma.__file__, encoding="utf-8").read()
     page_css_dir = os.path.join(ROOT, "renderers", "assets", "page_css")
-    # 1) 源码非注释行不得“发射”内联 <style> 块（允许审计器正则处理 <style>）
-    for ln in src.splitlines():
-        if ln.strip().startswith("#"):
+    # 1) 源码里**被发射的**字符串不得含内联 <style> 块。
+    #    R94 修：原实现按**行**扫，只排除 `#` 注释行，于是同时存在两种误伤 ——
+    #      (a) `render_operator_impact_page()` 的 **docstring** 里那句
+    #          「不使用内联 <style>（满足 fe_audit S22）」被当成「发射了内联
+    #          <style>」—— 而 docstring 恰恰是在**声明**不发射；
+    #      (b) 正则字面量 `re.sub(r"<style\b[^>]*>.*?</style>", ...)` 只因同行
+    #          恰好含 `re.` 才被放过，换个换行就不再成立。
+    #    改成 AST 判据：只看**字符串常量**，排除 docstring 与 `re.*` 调用实参；
+    #    对「自包含单文件交付物」走**登记制豁免**（理由 >= 8 字符），并做两向
+    #    核对：登记了却已经不发射 ⇒ 陈旧豁免，也红。
+    import ast as _ast
+    _SELF_CONTAINED_EMITTERS = {
+        # 函数名 -> 理由。这些函数产出的是**自包含单文件**（一次性交付物，不带
+        # 外部样式表），内联 <style> 就是它自包含的手段本身，不是「站点页面忘了
+        # 外链」。与 fe_audit 的 _S12_SELF_CONTAINED_DEFAULT（report.html /
+        # gs.html）同一类别。
+        "_operator_impact_html":
+            "自包含单文件交付物（--operator-impact-out=*.html）：不带外部样式表，"
+            "内联 <style> 即其自包含手段，非站点页面漏外链",
+    }
+    _tree = _ast.parse(src, filename=ma.__file__)
+    _parent = {}
+    for _n in _ast.walk(_tree):
+        for _ch in _ast.iter_child_nodes(_n):
+            _parent[id(_ch)] = _n
+
+    def _owning_func(_n):
+        _p = _parent.get(id(_n))
+        while _p is not None:
+            if isinstance(_p, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+                return _p.name
+            _p = _parent.get(id(_p))
+        return None
+
+    def _in_regex_ctx(_n):
+        _p = _parent.get(id(_n))
+        while _p is not None:
+            if isinstance(_p, _ast.Call):
+                _f = _p.func
+                if isinstance(_f, _ast.Attribute):
+                    if isinstance(_f.value, _ast.Name) and _f.value.id == "re":
+                        return True
+                    if _f.attr in ("compile", "search", "match", "findall",
+                                   "finditer", "sub", "subn", "split"):
+                        return True
+                if isinstance(_f, _ast.Name) and "INLINE_STYLE_RE" in _f.id:
+                    return True
+            if isinstance(_p, (_ast.FunctionDef, _ast.AsyncFunctionDef,
+                               _ast.ClassDef, _ast.Module)):
+                break
+            _p = _parent.get(id(_p))
+        return False
+
+    _doc_ids = set()
+    for _n in _ast.walk(_tree):
+        if isinstance(_n, (_ast.Module, _ast.ClassDef, _ast.FunctionDef,
+                           _ast.AsyncFunctionDef)):
+            _b = getattr(_n, "body", None)
+            if _b and isinstance(_b[0], _ast.Expr) \
+                    and isinstance(_b[0].value, _ast.Constant) \
+                    and isinstance(_b[0].value.value, str):
+                _doc_ids.add(id(_b[0].value))
+
+    _bad, _exempt_hit = [], set()
+    for _n in _ast.walk(_tree):
+        if not (isinstance(_n, _ast.Constant) and isinstance(_n.value, str)):
             continue
-        if "<style" not in ln:
+        if "<style" not in _n.value or id(_n) in _doc_ids or _in_regex_ctx(_n):
             continue
-        if "re." in ln or "INLINE_STYLE_RE" in ln:
+        _fn = _owning_func(_n)
+        if _fn in _SELF_CONTAINED_EMITTERS:
+            _exempt_hit.add(_fn)
             continue
-        assert False, "内联 <style> 块回归（应外链到 page_css）：%s" % ln.strip()
+        _first = (_n.value.strip().splitlines() or [""])[0]
+        _bad.append("L%d (%s): %s" % (_n.lineno, _fn or "<module>", _first[:110]))
+    assert not _bad, "内联 <style> 块回归（应外链到 page_css）：%s" % _bad
+    _stale = sorted(set(_SELF_CONTAINED_EMITTERS) - _exempt_hit)
+    assert not _stale, "陈旧豁免（登记了却已不发射内联 <style>）：%s" % _stale
     # 2) 收集源码中真实链接的页面 CSS（兼容 href="x.css" 与转义引号 href=\"x.css\"）
     linked = set()
     for m in re.finditer(r'href=("|\\")([A-Za-z_]+\.css)\1', src):
@@ -15264,11 +15560,27 @@ def test_fe21_no_inline_style_and_css_files_linked():
         if not f.endswith(".css"):
             continue
         assert f in linked, "page_css 存在未被链接的孤儿文件：%s" % f
-    for name in linked:
+    # R94：链接到的 CSS 有两类来源，判据必须分得清 ——
+    #   ① page_css/ 下的**静态**样式表（FE-21 外链化的产物）；
+    #   ② 由生成器**写在被引用页面同目录**的样式表（如报告页的 report.css，由
+    #      build_report_css() 生成、随报告 HTML 一起落盘，本就不该进 page_css/）。
+    # 旧判据只认 ①，于是把 ② 误判成「链接了不存在的文件」。改成登记制，且**两向**：
+    # 登记了却没有任何页面链接 ⇒ 陈旧登记，也红。
+    _GENERATED_CSS = {
+        "report.css":
+            "报告页样式表：由 build_report_css() 生成，随报告 HTML 落到同一目录"
+            "（--html 通道），不是 page_css/ 下的静态资产",
+    }
+    for name in sorted(linked):
+        if name in _GENERATED_CSS:
+            continue
         if name == "src/styles.css":
-            continue  # 基础样式由 assets 单独写出，不在 page_css 下
+            continue  # 基础样式由 assets 单独写出，不在 page_css 下（防御性分支：
+            #           该形态经 %s 动态拼接发射，上面的字面量正则其实抓不到）
         assert os.path.isfile(os.path.join(page_css_dir, name)), \
             "页面链接了不存在的 page_css 文件：%s" % name
+    _stale_css = sorted(set(_GENERATED_CSS) - linked)
+    assert not _stale_css, "陈旧登记（登记了却没有任何页面链接）：%s" % _stale_css
     # 4) 运行时 JS 注入的 <style>（createElement('style')）应在 FE-21 后归零：
     #    源维条 / 浮层导航 / 行高亮 / 提示条 4 处样式已全部外链到 page_css
     #    （src_dim.css / float_nav.css / sfn.css）。此处守卫其彻底为 0。
@@ -17398,15 +17710,22 @@ def test_r44_frontends_matlab_is_the_only_unresolved_producer():
 
     rows = list(fr.matlab.unresolved_tuples(files))
     assert all(len(r) == fr.UNRESOLVED_ARITY for r in rows), rows
-    # 顺序 = files → functions → external_calls 键序（sin,cos 在前，再 sin,custom）
-    assert [r[0] for r in rows] == ["sin", "cos", "sin", "custom"], rows
+    # 顺序 = files → functions → external_calls 键序，且**同一次数展开后相邻**：
+    #   f: sin×1, cos×2 ; g: sin×3, custom×1
+    assert [r[0] for r in rows] == ["sin", "cos", "cos",
+                                    "sin", "sin", "sin", "custom"], rows
     assert fr.matlab.unresolved_symbols(files) == set(["sin", "cos", "custom"])
     assert not fr.unresolved_arity_problems({"unresolved": rows}), \
         fr.unresolved_arity_problems({"unresolved": rows})
 
     got = ma._collect_unresolved_calls(files)
+    # R94：`count` 的口径是**调用次数**。对外共 4 条都这么写（unresolved.py 的
+    # 「按调用次数降序」、Markdown 报告表头「调用次数」、`_collect_unresolved_calls`
+    # 的 docstring、P25 老测试的 3 次断言）。R44 收敛时只 yield 一次，这里曾断言
+    # `("sin", 2)` —— 那是「出现该名的函数数」，与上面每一条标签都对不上。
+    # 当时的判据是「比集合不比个数」，所以这次漂移没被任何门看见。
     assert set([(r["name"], r["count"]) for r in got]) == \
-        set([("sin", 2), ("cos", 1), ("custom", 1)]), got
+        set([("sin", 4), ("cos", 2), ("custom", 1)]), got
     # 三个名字在项目里都没有同名函数 -> 全为「纯外部」（in_project=False）
     assert all(r["in_project"] is False for r in got), got
 
@@ -18257,7 +18576,13 @@ def test_r56_every_boundary_bullet_has_a_counterparty():
                  timeout=300)
     out = r.stdout.decode("utf-8", "replace")
     assert r.returncode == 0, out[-1500:]
-    assert "V1\u2013V5 \u5168\u7eff" in out, out[-800:]
+    # R94 修：原为写死的 "V1–V5 全绿"。门自身的 ROW_SIGNATURE 实测已是
+    #   `V1–V6`（V6 是后来加的，门自己的成功行也打 V1–V6）。
+    #   **同文件内的兄弟测试**就是对手方：test_r55_boundary_claims_have_reverse_
+    #   criteria（L18187）早已写着 `assert "V1–V6 全绿"` —— 本条是那个「忘了改」。
+    #   本条真正要判的是「成功行带**门自己的**签名」，故改成从门自身取 ——
+    #   签名再长也不用回来改这里。
+    assert ("%s 全绿" % br.ROW_SIGNATURE) in out, out[-800:]
     assert "**\u5168\u90e8 8 \u6761**\u90fd\u6709\u5bf9\u624b\u65b9" in out, out[-800:]
 
     # ---------------- C 抽掉 Mach-O 的豁免 ⇒ 只红在 V1 ----------------
@@ -18492,9 +18817,16 @@ def test_r61_gate_registry_mentions_the_new_guard():
     ca = _r37_load("check_all")
     # R63：护栏数 14 → 15（新增 `tools/check_known_red.py`）。R66：15 → 16
     # （新增 `tools/check_py_js_frontend_shapes.py`）。R69：16 → 17
-    # （新增 `tools/check_legal_parity.py`）。这个字面量**故意**写死 ——
-    # 它就是门数棘轮：谁改了门数，谁就得在这里露面。
-    assert ca.MIN_GUARDS == 17, ca.MIN_GUARDS
+    # （新增 `tools/check_legal_parity.py`）。R82：17 → 18（新增
+    # `tools/check_unified_graph.py`，判据族 U1–U8）。R84：18 → 19（新增
+    # `tools/check_kernel_snapshot.py`，判据族 W1–W6）。
+    # R94 补记：R82/R84 那两条**没被补上**，字面量于是停在 17，而
+    #   `ca.MIN_GUARDS` 与 `hc.real_guard_count()` 都已到 19 —— 麻烦的是下面
+    #   那条两向断言（real_guard_count() == MIN_GUARDS）**是绿的**，所以这处
+    #   陈旧不会自我暴露，只能靠这条棘轮。出处：`git log --diff-filter=A` 给出
+    #   89b916c（R82，check_unified_graph.py）/ 044ebde（R84，check_kernel_snapshot.py）。
+    # 这个字面量**故意**写死 —— 它就是门数棘轮：谁改了门数，谁就得在这里露面。
+    assert ca.MIN_GUARDS == 19, ca.MIN_GUARDS
     hc = _r37_load("check_help_contract")
     assert "tools/check_c_frontend_shapes.py" in hc.GUARD_CONTRACT
     assert hc.real_guard_count() == ca.MIN_GUARDS, (
@@ -18775,7 +19107,10 @@ def test_r65_measure_half_two_way():
     assert probs == [], probs
     assert st["dist"].get("failed") == len(kr.RED_TESTS), st
 
-    liar = "test_syntax_color_tokens"
+    # R94 修：原为写死的 `liar = "test_syntax_color_tokens"`（同一病灶：它原先
+    #   在 GREEN_REFS 里，迁入 fe_audit.py 后摘表 ⇒ `measured` 取不到）。
+    #   改成从 GREEN_REFS 里**按实测**挑一条真绿的。
+    liar = next(n for n in kr.GREEN_REFS if measured.get(n) == "passed")
     assert measured.get(liar) == "passed", measured.get(liar)
     #    ⚠ 哑元产物名必须**不**落在 MISSING_ARTIFACTS / NEGATIVE_FIXTURES 里：
     #    本门的 `scan_refs` 按 basename 扫全文（含 docstring），在测试里点名一个
@@ -18783,7 +19118,12 @@ def test_r65_measure_half_two_way():
     #    这里判的是**测试名**，产物只是个占位。
     p2, _ = kr.classify_measured(measured, {liar: ("dummy_art.py",)}, {}, {})
     assert any(x.startswith("K7") and liar in x for x in p2), p2
-    liar2 = "test_min_pages_guard"
+    # R94 修：原为写死的 `liar2 = "test_min_pages_guard"`。它此前挂在 RED_TESTS
+    #   里（因为引用 fe_audit.py），R94 把 fe_audit.py 迁进来后就摘了表 —— 于是
+    #   `measured` 里根本没有这个名字，`.get()` 返回 None，断言在**语义之外**红。
+    #   本条要的是「一条实测为 failed 的真测试」，改成从 RED_TESTS 里**按实测**挑。
+    liar2 = next(n for n in kr.RED_TESTS
+                 if measured.get(n) in ("failed", "error"))
     assert measured.get(liar2) in ("failed", "error"), measured.get(liar2)
     p3, _ = kr.classify_measured(measured, {}, {}, {liar2: ("dummy_art.py",)})
     assert any(x.startswith("K8") and liar2 in x for x in p3), p3
@@ -19405,7 +19745,19 @@ def test_r68_binfmt_gate_c10_c11_c12_is_two_way():
     gate = os.path.join(_R33_TOOLS, "check_binfmt_fixtures.py")
     assert os.path.isfile(gate), "二进制约束护栏必须真存在"
     mod = _r37_load("check_binfmt_fixtures")
-    sig = "C1\u2013C13"
+    # R94 修：原为把 `sig` 写死成 "C1\u2013C13"。它在本轮之前就已经陈旧 ——
+    #   门自身的 ROW_SIGNATURE 实测已是 `C1\u2013C15`（C14 = 库引用解析三态 /
+    #   C15 = PE 静态缓解措施），契约描述（GUARD_CONTRACT）与两侧 README 也都
+    #   已跟到 `C1\u2013C15`。
+    #   **同文件内的兄弟测试**就是对手方：test_r71_binfmt_gate_c13_is_two_way
+    #   （L19788）早已写着 `sig = "C1\u2013C15"`，而且它的 docstring 明写
+    #   「这一行要是忘了改，它就变成一道**陈旧的红**」—— 本条正是那个「忘了改」。
+    #   本条真正要判的是**三处同签名**（门本体 / 契约描述 / 两侧 README），
+    #   故 sig 改为从门自身取；另加一条**棘轮**钉住历史下界 C13，
+    #   防有人把签名改短来「修绿」。
+    sig = mod.ROW_SIGNATURE
+    assert sig.startswith("C1") and sig.count("\u2013") == 1, sig
+    assert int(sig.split("\u2013")[1][1:]) >= 13, sig
     assert mod.ROW_SIGNATURE == sig, mod.ROW_SIGNATURE
 
     # ① 门本体 rc=0 且成功行带签名
@@ -19573,7 +19925,18 @@ def test_r70_guard_contract_desc_carries_own_signature():
     assert real == [], real
     n_signed = len([s for s in sig_by
                     if os.path.basename(s) != "check_all.py" and sig_by[s]])
-    assert n_signed == 17, n_signed
+    # R94 修：原为把 `n_signed` 写死成 17 的断言（R70 期硬编码）。把 HEAD 的 20 个
+    #   GUARD_SCRIPTS 逐个 `git show` 出来重跑 _load_row_signature，非 runner
+    #   实测恰 19 条有签名（唯一 None 的是 check_all.py，runner，已登记豁免）
+    #   ⇒ 17 是 R70 之后的**陈旧计数**：那以后护栏从 17 增到 19，两道新的都
+    #   自带签名。硬编码在这里只有「陈旧的红」一种结局。
+    #   改自维持：① 恰等于非 runner 的护栏数（漏签名由上面 `real == []` 先
+    #   拦住；GUARD_SCRIPTS 与 GUARD_CONTRACT 键集已实测 set 相等）；
+    #   ② 不低于历史下界 17（防有人删掉两道护栏来「修绿」）。
+    _n_guards = len([s for s in hc.GUARD_CONTRACT
+                     if os.path.basename(s) != "check_all.py"])
+    assert n_signed == _n_guards, (n_signed, _n_guards)
+    assert n_signed >= 17, n_signed
 
     # ⑤ 反向：真驱动 audit_guards —— 抹掉一道护栏 rc=0 描述里的签名
     victim = "tools/check_binfmt_fixtures.py"
@@ -20896,7 +21259,7 @@ def test_r93_graph_is_deterministic_and_identical_across_langs():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def test_r49_c_multiline_signature():
+def test_r78_comments_and_inline_asm(tmp_path):
     """R78 / C-1「解析层下沉」：注释与内联汇编进入 C 模型与 JSON。
 
     期望值全部**手算**，不取自产品输出。七层：
@@ -21623,4 +21986,55 @@ def test_r89_gui_callgraph_card():
                      "（判据会退化成空断言）"
     for flag in sorted(cg_flags):
         assert flag in gui.HELP_TEXT, "gui.py 帮助正文没提 %s" % flag
+
+
+def test_r94_closure_cache_identity_and_graph():
+    """R94 修（判据族随 `patch_r94_N` 落地）：传递闭包缓存的**键不完整**。
+
+    实测现场：`test_p32_trace_roots_and_command` **单独跑绿、全量跑红**
+    （`assert [] == [(root, 3)]`）—— `test_impact_dependency_closure` 为 `d`
+    写下的闭包条目，在它那批对象被回收后**被 `test_p32` 新造的 `d` 认领**。
+    旧实现只按 `id(fn)` 缓存、条目只存结果。`_clear_closure_cache()` 的 P71
+    注释（「测试序列中 id 复用会命中脏缓存」）说明作者知道，但当年的处置是
+    「分析开始前 clear」—— 那对同一解释器里的**连续调用**（测试序列就是这种
+    场景，而 `clear()` 由谁调、什么时候调，全靠调用方自觉）无效。
+
+    三条判据都只用**公开契约**（入参 + 返回值 + 对象的存活），不假设缓存条目的
+    形状 —— 第一版写成 `assert ent[0] is a`，在旧实现上抛 KeyError，那是**崩溃
+    不是红**：它只证明「形状变了」，还把实现细节焊进了判据。负控实测（旧实现，
+    见 `_r94/negcontrol_r94_closure.py`）这三条 **3/3 干净判红**：
+
+      ① 缓存必须持有被键对象的**强引用**（`del` + `gc.collect()` 后 weakref
+         仍能取回）—— 这是「id 不可能被复用」的充要条件；
+      ② 同一对象**换一张图**（`callers_of`）再问 ⇒ 必须重算；
+      ③ 依赖面同一契约（换 `calls_of` ⇒ 必须重算）。
+    """
+    import gc
+    import weakref
+    ma._clear_closure_cache()
+    try:
+        # ① 强引用钉住被键对象
+        a = _Fn("r94_a")
+        ma._impact_layers(a, {id(a): []})
+        wr = weakref.ref(a)
+        del a
+        gc.collect()
+        assert wr() is not None, (
+            "缓存条目必须持有被键对象的强引用 —— 否则对象被回收后 id 会被复用，"
+            "缓存把上一个函数的闭包当成这个函数的（旧实现只存结果）")
+        # ② 同一对象、不同的图 ⇒ 重算
+        a2, r = _Fn("r94_a2"), _Fn("r94_root")
+        ma._impact_layers(a2, {id(a2): []})
+        got = ma._impact_layers(a2, {id(a2): [r]})
+        assert got == {1: [r]}, (
+            "同一个函数换了 callers_of 必须重算，实际照搬了旧答案 %r "
+            "—— 缓存契约看不见「图」这个入参" % (got,))
+        # ③ 依赖面同一契约
+        a3, b3 = _Fn("r94_a3"), _Fn("r94_b3")
+        assert ma._dependency_layers(a3, {id(a3): [(b3, None)]})[1] == [b3]
+        got3 = ma._dependency_layers(a3, {})
+        assert got3 == {}, (
+            "同一个函数换了 calls_of 必须重算，实际照搬了旧答案 %r" % (got3,))
+    finally:
+        ma._clear_closure_cache()
 

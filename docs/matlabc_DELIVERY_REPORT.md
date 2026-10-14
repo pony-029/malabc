@@ -1,6 +1,6 @@
 # matlabc 最终交付报告
 
-> 版本：v1.16.40 ｜ 生成日期：2026-08-27 ｜ 状态：生产就绪（Production-Ready）
+> 版本：v1.16.72 ｜ 生成日期：2026-10-14 ｜ 状态：生产就绪（Production-Ready）
 
 ---
 
@@ -8,7 +8,7 @@
 
 `matlabc` 是一个**纯 Python、零第三方运行时依赖**的 MATLAB 静态结构分析工具，用于在无 MATLAB 环境下快速梳理 MATLAB 工程的结构、调用关系、数据流与关键函数风险。
 
-- **单文件架构**：核心逻辑集中于 `matlabc.py`（约 15,597 行），无任何第三方 import（仅标准库），部署即拷贝即用。
+- **单文件架构**：核心分析逻辑集中于 `matlabc.py`（33,501 行），前端渲染已拆分到 `renderers/` 子包，无任何第三方 import（仅标准库），部署即拷贝即用。
 - **兼容性**：严格兼容 **Python 3.6.5**（长期固定基线），不使用 3.7+ 语法。
 - **安装方式**：`pip install -e .` 后可用 `matlabc` 命令，亦可 `python matlabc.py` / `python -m matlabc` 直接运行。
 
@@ -18,13 +18,13 @@
 
 | 指标 | 数值 |
 | --- | --- |
-| 版本 | v1.16.56 |
-| 核心代码行数 | ~16,320 行 |
-| 模块级函数 | 275 个 |
-| 类 | 8 个（`MatlabFunction` / `MatlabClass` / `MatlabFile` + P90 `BaseFrontend`/`PyFrontend`/`JsFrontend`/`CFrontend`/`MatlabFrontend`） |
+| 版本 | v1.16.72 |
+| 核心代码行数 | 33,501 行（`matlabc.py`，R94 实测） |
+| 模块级函数 | 590 个（AST 实测） |
+| 类 | 9 个（`MatlabFunction` / `MatlabClass` / `MatlabFile` + P90 `BaseFrontend`/`PyFrontend`/`JsFrontend`/`CFrontend`/`MatlabFrontend`） |
 | 顶层常量 / 正则 / JS/CSS 数据块 | 34 个（含 `GLOBAL_SEARCH_JS` 全站搜索浮层、`UNIFIED_GRAPH_JS` 统一画布脚本） |
-| 测试代码 | **154 项测试** |
-| 回归样本 | 9 个 `.m` 文件（含 1 个子目录、1 个类、嵌套函数、`arguments` 块、同名函数等） |
+| 测试代码 | **505 项测试**（`tests/test_matlabc.py`，AST 实测） |
+| 回归样本 | 13 个 `.m` 文件（含 1 个子目录、1 个类、嵌套函数、`arguments` 块、同名函数等） |
 
 ---
 
@@ -1660,12 +1660,35 @@ P214 把 C3 抑制扩到四档后，`checks.html` 仅展示"已抑制 N 条"的�
 
 | 文件 | 说明 |
 | --- | --- |
-| `matlabc.py` | 核心实现（单文件，v1.16.64，约 16,390 行） |
+| `matlabc.py` | 核心实现（33,501 行，v1.16.72；前端渲染已拆分到 `renderers/` 子包） |
 | `tests/test_matlabc.py` | 回归测试矩阵（含 P214 块级抑制） |
-| `tests/sample_m/` | 12 文件回归样本（含 3 个生产形态样本） |
+| `tests/sample_m/` | 13 文件回归样本（含 3 个生产形态样本） |
 | `matlabc_README.md` | 使用文档 + 完整版本历史 |
 | `matlabc_STRUCTURE.md` | 代码结构索引（自动生成） |
 | `matlabc_JSON_SCHEMA.md` | JSON 输出字段契约 |
 | `setup.py` | 打包配置（console_scripts 入口） |
 | `analyzer_config.example.json` | 配置文件示例 |
 | `matlabc_DELIVERY_REPORT.md` | 本交付报告 |
+
+
+### 3.47.41 R82–R94 演进（v1.16.65 → v1.16.72）
+
+> 下面每一条在 `matlabc_README.md` 的版本历史表里都有对应行（那里是详细叙述，
+> 这里只做索引）。这一节是 R94 补的：报告此前停在 v1.16.64。
+
+| 版本 | 主题 |
+| --- | --- |
+| v1.16.65 | P217 函数调用/内置/维度三分区面板（`③ 工具箱足迹`）+ AI 流程 JSON 参数化 |
+| v1.16.66 | P221 算子目录全量统计 + 维度精确化 + 静态/动态边界友好化 |
+| v1.16.67 | P222 国产大模型接入（12 个预设 + 中文别名） |
+| v1.16.68 | R33 `--binary-attach`：源码侧未解析调用 ⇔ 二进制对账（三态归因） |
+| v1.16.69 | R34–R41：预处理感知（`#if 0`）、构建系统接入、可证伪归因链 |
+| v1.16.70 | R42：历史引用可豁免，但必须带理由（门一上线就抓住了它自己的文档） |
+| v1.16.71 | R43：公平基线门在真机上跑通，并抓出它自己的两处缺口 |
+| v1.16.72 | R44：「解析不到的调用只有一个判定点」从五份逐字复制变成一份可证伪的唯一事实源 |
+
+**R45–R94 另有一条长线标在 `docs/KERNEL_RUN.md`**：整棵 Linux 6.19.14 内核语料
+（C 族 62,704 文件 / 743,509 函数 / 7,060,966 调用边）作为**发布前基线**，并配一道
+专门的圆门（`tools/check_kernel_snapshot.py`，判据族 W1–W6）把「只写不校」的全树读数钉住。
+本地回归矩阵在 R94 已扩到 **505 项**，并配 **20 个**护栏脚本
+（`tools/check_all.py` 聚合，`MIN_GUARDS=19`）。

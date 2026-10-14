@@ -810,7 +810,11 @@ def render_snapshot_browse_site(data, outdir):
                                 data.get("type_mismatch") or []),
              "dead_code": _snapshot_attach_file(idx,
                                 data.get("dead_code") or []),
-             "suppressed": {"names": 0, "all": 0, "lines": 0},
+             # R94：必须与 render_checks_page 的四键契约一致
+             # （names / all / lines / blocks）。此前漏了 blocks ⇒ 渲染 checks.html
+             # 时取 suppressed["blocks"] 直接 KeyError，整个快照回放站点生成失败（P124）。
+             "suppressed": {"names": 0, "all": 0, "lines": 0, "blocks": 0,
+                            "details": []},
          })),
         ("unresolved.html", "疑似漏检调用",
          render_unresolved_page(_snapshot_unresolved_rows(data, idx),

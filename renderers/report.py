@@ -3,7 +3,8 @@
 import re
 import html as html_mod
 from renderers.assets import (
-    CORE_JS, GLOBAL_SEARCH_JS, KBD_JS, DEEPLINK_JS, LOCALCG_INIT_JS, HTML_CG_CSS, P271_A11Y_CSS)
+    GLOBAL_SEARCH_JS, KBD_JS, LOCALCG_INIT_JS, HTML_CG_CSS,
+    KBD_A11Y_CSS, P271_A11Y_CSS)
 
 
 def _inline_md(s):
@@ -16,7 +17,12 @@ def _inline_md(s):
 
 def build_report_css():
     """FE-18：把报告页原本内联的 <style> 抽成外部 report.css（S22 门禁：内联样式
-    会阻断样式缓存、膨胀 HTML）。静态样式 + HTML_CG_CSS + P271_A11Y_CSS 合并输出。"""
+    会阻断样式缓存、膨胀 HTML）。静态样式 + HTML_CG_CSS + P271_A11Y_CSS +
+    KBD_A11Y_CSS 合并输出。
+
+    R94：末项是**必需的**——报告页注入了 KBD_JS（「?」帮助浮层），而浮层样式
+    此前只躺在 browse.css 里；不带上它，浮层就是个连 position:fixed 都没有的裸块。
+    """
     return (
         "body { font-family: \"Microsoft YaHei\", \"Segoe UI\", sans-serif; "
         "max-width: 1100px; margin: 24px auto; padding: 0 20px; color: #222; }\n"
@@ -30,7 +36,7 @@ def build_report_css():
         "pre { background: #f8f8f8; padding: 12px; border-radius: 6px; overflow-x: auto; }\n"
         ".mermaid { text-align: center; background: #fafafa; padding: 12px; "
         "border-radius: 8px; margin: 16px 0; }\n"
-        + HTML_CG_CSS + "\n" + P271_A11Y_CSS + "\n"
+        + HTML_CG_CSS + "\n" + P271_A11Y_CSS + KBD_A11Y_CSS
     )
 
 
@@ -122,14 +128,24 @@ def render_html(markdown_body, mermaid_txt, title="MATLAB 代码结构分析报�
     点击 +/- 增量展开子树），使两种输出在核心可视化上保持一致、且全部受回归测试覆盖。
     """
     mmd = html_mod.escape(mermaid_txt) if mermaid_txt else ""
-    # P270：共享内核（主题统一，与 --browse / --global-state 同源单一实现）
-    core_js = CORE_JS
+    # P270：共享内核（主题统一）——报告页的 CORE_JS 走**外链** app.js
+    #（由 _write_shared_app_js 落盘），与 --browse / --global-state 同源同一份实现。
+    # ⚠ R94：这里原本还有 `core_js = CORE_JS`，赋值后从未被引用（死码），已删。
     # P271 R4：报告页挂载命令面板（Ctrl+K）——复用与浏览站点完全相同的实现，
     # 数据取自本页已注入的 window.__CG__.meta（函数名索引），不额外增加体积。
     search_js = GLOBAL_SEARCH_JS
-    # P270 R4/R3：键盘导航/无障碍层 + 可分享深链层（与 browse/global-state 同源）
+    # P270 R4：键盘导航/无障碍层——与 browse/global-state 同源同一份 KBD_JS。
+    # ⚠ R94 修：原为 `kbd_js = KBD_JS` 而模板里**从未注入**（死赋值；实测
+    # report.html 的 __kbd_toggle=0）⇒ 报告页的「?」帮助 / Esc / t 主题全都没有。
+    # 现真正注入到 </main> 之前，配套样式见 build_report_css 里的 KBD_A11Y_CSS。
     kbd_js = KBD_JS
-    dl_js = DEEPLINK_JS
+    # P270 R3：可分享深链层——报告页**刻意不注入** DEEPLINK_JS。
+    # ⚠ R94 修：原为 `dl_js = DEEPLINK_JS`，同样是死赋值，且与本条注释**互相矛盾**
+    #（注释宣称「视图状态同步到 URL hash」，实际一行都没进去）。为什么不注入：
+    # 该层的 hash 方案是 tab/f/sort/q/page，而报告页是自包含单文件、没有这几个
+    # 视图状态；它能分享的定位由浏览器**原生锚点**承担（热点图 #hs-fn-<gid>、
+    # 度量表 fn-<名>-<行>，由命令面板的 __GS_FN_HREF__ 生成）。注入一个没有
+    # 对手方的脚本只会膨胀产物。
     # 5轮收尾改进 R3（S3 外部 CDN 白名单）：默认离线优先——**不注入** mermaid CDN，
     # 自动把 Mermaid 源码以 <pre> 展示（仍可人工阅读/复制），保证零外网请求，
     # 适配纯内网/离线环境（本工具的主要使用场景）。仅当显式 --mermaid-cdn 时才注入。
@@ -197,9 +213,9 @@ def render_html(markdown_body, mermaid_txt, title="MATLAB 代码结构分析报�
 <meta property="og:description" content="MATLAB 代码结构分析报告：调用图 / 圈复杂度 / 目录影响面 / 跨文件耦合分析">
 <!-- P270：共享内核（主题统一，与 --browse / --global-state 同源） -->
 <script src="app.js" defer></script>
-<!-- P270 R4：键盘导航/无障碍层（? 帮助 / Esc 关闭 / t 主题 / 跳转） -->
-
-<!-- P270 R3：可分享深链层（视图状态同步到 URL hash） -->
+<!-- P270 R4：键盘导航/无障碍层（? 帮助 / Esc 关闭 / t 主题 / 跳转）——脚本见页尾 -->
+<!-- P270 R3：可分享深链层**不适用**于本页（自包含单文件，没有 tab/筛选/排序状态；
+     可分享的定位由原生锚点 #hs-fn-* / fn-<名>-<行> 承担），故不注入。 -->
 
 <!-- P147 离线优先；P269：--offline 时连 CDN 注入也一并省略，零外网请求 -->
 {mermaid_boot}
@@ -230,6 +246,10 @@ def render_html(markdown_body, mermaid_txt, title="MATLAB 代码结构分析报�
 {unresolved_html}
 {hotspot_html}
 {cg_script}
+<!-- P270 R4：键盘导航/无障碍层（? 帮助 / Esc 关闭 / t 主题 / 跳转 / Alt+←→ 穿梭）。
+     注入点选在页尾：与紧随其后的命令面板同一策略——脚本执行时 document.body 已就绪，
+     KBD_JS 的 keydown 委托也不需要更早生效。 -->
+<script>{kbd_js}</script>
 <!-- P271 R4：报告页挂载命令面板（Ctrl+K）——自包含单文件没有详情/源码页可跳，
      故用自定义解析器把函数映射到**页内锚点**（热点图 hs-fn-<gid> 或度量表 fn-<名>-<行>）；
      解析不到就返回 null，该项不显示，绝不产出死链。 -->

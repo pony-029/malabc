@@ -11,6 +11,10 @@ MATLAB 前端与 C/Py/JS 三者的 IR 形状**不同**，这一点必须说清�
     而不是按调用点。所以它产出的是「(名字, 行, rel) 流」，行是该函数**定义行**
     （老实现即如此，`_collect_unresolved_calls` 的 rows 只暴露名字与计数，
     行号仅用于 `matches`）。
+    R94 明确一句用词：「按名字聚合」说的是**展示形态**（下游把同名归并成一行），
+    而**元组的条数**必须等于「调用次数」—— 即同一次数展开成多条同名元组
+    （见 `unresolved_tuples` 内注释：R44 曾漏掉这一步，`count` 悄悄从「调用次数」
+    漂成「出现该名的函数数」，而所有对外标签仍写着「调用次数」）。
 
 抹平这两种形状（比如硬把 external_calls 塞进 func_index 判定）会遇到一个真问题：
 `external_calls` 的含义是「**解析期**未知的外部调用」，而 `func_index` 判定要求
@@ -41,8 +45,19 @@ def unresolved_tuples(files):
         rel = getattr(mf, "rel", None)
         for fn in getattr(mf, "functions", None) or []:
             ext = getattr(fn, "external_calls", None) or {}
+            _line = getattr(fn, "line", None)
             for name in ext:
-                yield (name, getattr(fn, "line", None), rel)
+                # R94：按**次数**展开。`external_calls` 是「名字 -> 次数」，而
+                # 「调用次数」是本诊断的对外口径（页面写「按调用次数降序」、Markdown
+                # 报告表头写「调用次数」、老实现读的也是次数）。R44 收敛到本函数时
+                # 只 yield 一次，`count` 于是悄悄变成「出现该名的函数数」——
+                # 当时的判据明写「比集合不比个数」，个数变化不在守卫范围内，
+                # 所以这次口径漂移既没被门看见、也被 R44 的新单测追认了。
+                # 展开后：形状仍是 3 段元组、名字顺序仍是
+                # files -> functions -> external_calls 键序（并列项顺序只取决于
+                # 首次插入顺序），而下游 `cnt[name] += 1` 回到「调用次数」。
+                for _ in range(ext.get(name) or 0):
+                    yield (name, _line, rel)
 
 
 def unresolved_symbols(files):

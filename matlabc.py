@@ -201,6 +201,23 @@ def _rel_to_src_asset(from_rel, asset):
     return ("../" * depth) + asset
 
 
+def _write_asset(path, text):
+    """写站点静态资产（JS/CSS）：**显式 LF**，不经文本模式换行转换。
+
+    为什么必须显式（实测，不是洁癖）：Windows 上 `Path.write_text()` 默认把 "\\n"
+    翻成 "\\r\\n"，每行白多 1 字节。R94 实测 tests/sample_m 产物：
+    `src/_localcg.js` 70,541B（内部常量仅 69,146B，差 1,395 = 行数）、
+    `src/_pageview.js` 41,671B（773 行）、`src/_search-lazy.js` 1,852B（52 行），
+    合计 2,220 字节纯浪费 —— 恰好把 fe_audit S12 的首屏外链 JS 预算顶穿
+    （实测 152,827B > 150,000B），把「真实增长 2%」与「换行口径错误」混成一笔账。
+
+    网页资产本就按 LF 交付，本仓 `renderers/assets/page_css/*.css` 一直如此；
+    这里统一改成按**字节**写，让「生成即交付」的字节数可被直接解释。
+    """
+    with open(str(path), "wb") as _fh:
+        _fh.write(text.encode("utf-8"))
+
+
 
 
 
@@ -586,7 +603,7 @@ _LATEX_RE = re.compile(r"\\\(|\\\[|\\begin\{|\$\$?[^\$\n]+\$\$?")
 
 _CG_CACHE = {}
 
-from renderers.assets import write_browse_css_tree, write_page_css_tree, BROWSE_CSS, CONTEXT_LINK_JS, CORE_JS, DEEPLINK_JS, KBD_JS, THEME_JS, GLOBAL_SEARCH_JS, LOCALCG_INIT_JS, VIEWSTATE_JS, LINE_DEEPLINK_JS, WORKBENCH_JS, SYMBOLS_JS, EDITLOOP_JS, LAZY_SEARCH_JS, GRAPH_JS, VARFLOW_JS, CG_PULSE_CSS, HTML_CG_CSS, MATHJAX_INIT_JS
+from renderers.assets import write_browse_css_tree, write_page_css_tree, BROWSE_CSS, PAGE_CSS_FILES, page_css_dir, CONTEXT_LINK_JS, CORE_JS, DEEPLINK_JS, KBD_JS, THEME_JS, GLOBAL_SEARCH_JS, LOCALCG_INIT_JS, VIEWSTATE_JS, LINE_DEEPLINK_JS, WORKBENCH_JS, SYMBOLS_JS, EDITLOOP_JS, LAZY_SEARCH_JS, GRAPH_JS, VARFLOW_JS, CG_PULSE_CSS, HTML_CG_CSS, MATHJAX_INIT_JS
 if __name__ == "__main__" and "matlabc" not in _sys.modules:
     # 脚本可导入技巧：允许 renderers 子包在 `python matlabc.py` 直接运行时，
     # 仍能通过 `from matlabc import <name>` 解析到本脚本（同一模块对象）。
@@ -4123,6 +4140,17 @@ def _py36_blank_token(lines, tok):
         lines[r1 - 1] = " " * c1 + last[c1:]
 
 
+def _py36_is_fstring_token(literal):
+    """判断一个 STRING token 的字面量是否为 f-string（前缀含 f/F）。
+
+    仅用于解释器 < 3.12 的退化路径：那时 tokenize 不抛 FSTRING_START/MIDDLE/END，
+    f-string 整体退化成一个普通 STRING token，前缀形如 f / F / rf / fr / Rf 等；
+    普通字符串前缀（r / b / u 或空前缀）不含 f，故可借此区分真 f-string 与
+    「恰好含有调试表达式字样的普通字符串」（后者正是本函数要防的误报源）。"""
+    m = re.match(r"^([A-Za-z]{0,3})['\"]", literal)
+    return bool(m) and "f" in m.group(1).lower()
+
+
 def _py36_extract(text):
     """返回 (code, fstrings)：
       * code —— 字符串 / 注释 / f-string 替换为等长空白后的代码文本；
@@ -4133,7 +4161,10 @@ def _py36_extract(text):
     FSTRING_* token 再在纯代码上扫描；f-string 内部 {x=} 等必须在剥除前对原文
     单独检测，故用 tokenize 的 FSTRING_START..FSTRING_END 区间重建原文收集。
     （3.6 无 FSTRING_* token 类型，此时退化：f-string 整体在 3.6 必然 SyntaxError，
-    由 AST 通道的 parse_error 兜底覆盖。）"""
+    由 AST 通道的 parse_error 兜底覆盖。）
+    （<3.12 的解释器同样没有 FSTRING_*，但那时 f-string 语法已合法、AST 通道
+    不会报 ⇒ 由 _py36_is_fstring_token 在 STRING token 上按前缀补收，两条
+    f-string 规则才能在 3.8-3.11 上生效。）"""
     import tokenize as _tok
     orig_lines = text.split("\n")   # 只读副本：重建 f-string 原文用（不受剥除影响）
     lines = list(orig_lines)        # 可变副本：token 剥除作用于此
@@ -4161,6 +4192,12 @@ def _py36_extract(text):
                     pending = None
                 _py36_blank_token(lines, tok)
             elif tok.type == _tok.STRING or tok.type == _tok.COMMENT:
+                if tok.type == _tok.STRING and _py36_is_fstring_token(tok.string):
+                    # 解释器 < 3.12 不提供 FSTRING_START/MIDDLE/END，f-string 会退化
+                    # 成一个普通 STRING token（前缀含 f/F）。必须在此补收，否则
+                    # f-string 两条专属规则在 3.8-3.11 上静默失效（AST 通道不报、
+                    # 正则通道又拿不到原文）。
+                    fstrings.append((tok.start[0], tok.string))
                 _py36_blank_token(lines, tok)
     except Exception:
         pass  # 词法层失败（极少数损坏文件）时回退为原样扫描
@@ -18744,6 +18781,9 @@ def _run_global_state(args, files, model, stats, checks_for_sarif, dup_trend=Non
     try:
         with open(out_path, "w", encoding="utf-8") as fh:
             fh.write(html)
+        # R94：补齐本页外链的样式表（src/styles.css / search.css），
+        #   否则独立写出时两条 <link> 全悬空 ⇒ 看板整页裸奔。
+        _emit_page_linked_styles(out_path)
         print("[P204 --global-state] 已生成 %s（global %d / persistent %d，"
               "跨文件冲突 %d）" % (out_path, len(g_rows), len(p_rows), n_conflict))
     except Exception as e:
@@ -19023,6 +19063,9 @@ def _run_diff_html(args):
         + '</div></body></html>')
     if getattr(args, "output", None):
         _write_output(args.output, html, "P147 双栏差异 HTML")
+        # R94：补齐 diff.html 外链的 diff.css —— 此前从不产出 ⇒ 悬空样式表，
+        #   浏览器静默丢弃（退出码仍是 0），双栏表渲染成无边框纯文本。
+        _emit_page_linked_styles(args.output)
     else:
         print("[P147 --diff-html] 请使用 -o 指定输出 HTML 路径，例如：")
         print("  matlabc --diff-html base.json cur.json -o diff.html")
@@ -20746,7 +20789,9 @@ def render_func_detail_page(model, cg_json, flags, gid_of=None):
         "<title>函数详情 · MATLAB 分析器</title>",
         "<link rel=\"stylesheet\" href=\"src/styles.css\">",
         '<script defer src="src/_cgdata.js"></script>',
-        '<script defer src="src/_index.js"></script>',
+        # R94：_index.js（命令面板跳转索引）不再进首屏 —— 它唯一的消费方正是
+        # _search.js，而后者自 R35 起已是懒加载（_search-lazy.js 首次交互才注入）。
+        # 数据留在首屏是纯死重（S12 实测 992B/页），改由该桩一并按需注入。
         "<script>window.__FD_FLAGS__ = ",
         json.dumps(js_flags),
         ";</script>",
@@ -20826,7 +20871,7 @@ def render_unified_page(cg_json, write_assets=True):
         "<link rel=\"stylesheet\" href=\"src/styles.css\">",
         '<link rel="stylesheet" href="structure.css">'
         '<script defer src="src/_cgdata.js"></script>',
-        '<script defer src="src/_index.js"></script>',
+        # R94：_index.js 移出首屏（见 func_detail 页同处注释）。
         "</head>", "<body>",
         # P271 R5：无障碍基线——跳转到主内容的 skip link
         '<a class="skip-link" href="#main-content">跳到主内容</a>',
@@ -21116,7 +21161,7 @@ def render_directory_page(dir_label, files, calls_of, empty_dirs=None):
         A("<div class=\"muted\">该目录内函数之间无相互调用。</div>")
     # P103/P104：目录页同样挂载全站搜索浮层（Ctrl+K / '/'）与函数详情跳转数据
     A('<script defer src="../src/_cgdata.js"></script>')
-    A('<script defer src="../src/_index.js"></script>')
+    # R94：_index.js 移出首屏（由 _search-lazy.js 按需注入）。
     A('<script>window.__CG_SITE_REL__="../";</script>')
     A('<script defer src="../src/_search-lazy.js"></script>')
     A('<script defer src="../src/_symbols.js"></script>')
@@ -23018,10 +23063,9 @@ BUILTIN_BADGE_JS = r"""
 (function(){
   // 在每处内置函数调用旁常驻显示「真实返回维度」（与 BUILTIN_DIM_JS 的徽标 / 行内 / 悬停模式无关），
   // 让「真实维度展示」无需任何交互即可见。无可靠实参维度（如 reshape 推导失败的 '?'）则不显示。
-  var css = '.dim-tag{display:inline-block;margin-left:4px;padding:0 6px;border-radius:999px;'
-    + 'background:#e6f4ea;color:#1a7f37;border:1px solid #a3d9b1;font-size:11px;'
-    + 'font-weight:600;vertical-align:middle;white-space:nowrap;}';
-  var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+  // FE-21 收尾：`.dim-tag` 规则已外链到 src/styles.css（BROWSE_CSS），
+  // 不再由 JS 于运行期动态注入样式元素 —— 运行时注入的样式无法被浏览器
+  // 缓存、也难审计；fe_audit S22 与 test_fe21 都要求此类注入彻底归零。
   var cells = document.querySelectorAll('.tk-builtin[data-dim]');
   for(var i = 0; i < cells.length; i++){
     var tk = cells[i];
@@ -23510,28 +23554,27 @@ def render_browse_site(model, outdir, reproducible=False, enabled=None,
     # 前端按需下钻渲染（彻底替代旧版「按 MAX_CALLGRAPH_DEPTH 截断」的服务端 SVG）。
     cg_json, _gid_of = _build_global_cg(files, fn_to_file, calls_of, callers_of, model,
                                         max_nodes=max_nodes)
-    (src_dir / "_cgdata.js").write_text(
-        "window.__CG__=%s;" % cg_json, encoding="utf-8")
+    _write_asset(src_dir / "_cgdata.js", "window.__CG__=%s;" % cg_json)
     # P107：全站函数搜索浮层（复用 __CG__.meta，Ctrl+K 跳转函数详情，离线零依赖）
     # P270：前置拼接共享内核 CORE_JS（主题统一），使所有引用 _search.js 的页面
     #       自动获得一致的主题行为，无需各页重复实现。
-    (src_dir / "_search.js").write_text(CORE_JS + "\n" + KBD_JS + "\n" + GLOBAL_SEARCH_JS,
-                                        encoding="utf-8")
+    _write_asset(src_dir / "_search.js",
+                 CORE_JS + "\n" + KBD_JS + "\n" + GLOBAL_SEARCH_JS)
     # P-rev R35：按需加载搜索模块。写一个极小的「懒加载桩」_search-lazy.js：
     # 它只安装 Ctrl+K / '/' 监听与「首次滚动」触发，第一次真正需要时才动态注入
     # 完整 _search.js（38KB）。这样 38KB 从首屏关键路径上移除，功能完全不变。
-    (src_dir / "_search-lazy.js").write_text(LAZY_SEARCH_JS, encoding="utf-8")
+    _write_asset(src_dir / "_search-lazy.js", LAZY_SEARCH_JS)
     # P-rev S2：跨页上下文联动总线——点击任意带 data-sym 的符号，广播到 localStorage，
     # 其它已打开的页面监听到后自动高亮同名符号并滚动定位（信息主动找人）。
-    (src_dir / "_ctxlink.js").write_text(CONTEXT_LINK_JS, encoding="utf-8")
+    _write_asset(src_dir / "_ctxlink.js", CONTEXT_LINK_JS)
     # P-rev S4：个人工作台（标注/收藏/最近视图），纯本地持久。
-    (src_dir / "_workbench.js").write_text(WORKBENCH_JS, encoding="utf-8")
+    _write_asset(src_dir / "_workbench.js", WORKBENCH_JS)
     # P-rev R9：设计令牌 + 暗色主题切换。
-    (src_dir / "_theme.js").write_text(THEME_JS, encoding="utf-8")
+    _write_asset(src_dir / "_theme.js", THEME_JS)
     # P-rev R22：统一符号消费层（运行时按 symbols.json 自动标注 data-sym）。
-    (src_dir / "_symbols.js").write_text(SYMBOLS_JS, encoding="utf-8")
+    _write_asset(src_dir / "_symbols.js", SYMBOLS_JS)
     # P-rev R27：调用图模块外链化（源码页共享，避免每页内联 63KB）。
-    (src_dir / "_localcg.js").write_text(LOCALCG_INIT_JS, encoding="utf-8")
+    _write_asset(src_dir / "_localcg.js", LOCALCG_INIT_JS)
     # P-rev R80：变量流 + 源码行深链两模块外链化——此前每个源码页各内联
     # VARFLOW_JS 与 LINE_DEEPLINK_JS 一份，N 个源码文件即重复 N 份；两份脚本
     # 均只读 DOM、无页面私有数据，收编为站点级 _pageview.js 一次写入即可。
@@ -23551,8 +23594,10 @@ def render_browse_site(model, outdir, reproducible=False, enabled=None,
         print("[WARN] 结构体字段索引生成失败（降级为空索引）：%s" % _e)
         _sf_idx = {}
     # D-R11：结构体字段索引同样固定键序，避免跨进程哈希随机化污染产物
+    # R94：内联 JSON 用紧凑分隔符（默认 ", " / ": "）——语义不变，纯字节回收。
     _sf_js = ("window.__STRUCT_FIELDS__="
-              + json.dumps(_sf_idx, ensure_ascii=False, sort_keys=True) + ";\n")
+              + json.dumps(_sf_idx, ensure_ascii=False, sort_keys=True,
+                           separators=(",", ":")) + ";\n")
     # D-R11：--reproducible 曾**未兑现**。真因在 `_bi_info`：
     #     _bi_info = {_b: builtin_detail_obj(_b) for _b in _bi_used}   # _bi_used 是 set
     #   str 的哈希随机化（PYTHONHASHSEED）使 set 的迭代顺序跨进程漂移，于是
@@ -23560,14 +23605,14 @@ def render_browse_site(model, outdir, reproducible=False, enabled=None,
     #   并级联污染 manifest.json（它记录每页 sha256，是**下游受害文件**）。
     #   修法：固定键序。这是「同一份输入 → 同一份字节」的最小充分条件。
     _bi_js = ("window.__BUILTIN_INFO__="
-              + json.dumps(_bi_info, ensure_ascii=False, sort_keys=True)
+              + json.dumps(_bi_info, ensure_ascii=False, sort_keys=True,
+                           separators=(",", ":"))
               + ";\n" + _sf_js)
-    (src_dir / "_pageview.js").write_text(
-        VARFLOW_JS + "\n" + LINE_DEEPLINK_JS + "\n" + _bi_js
-        + BUILTIN_DIM_JS + "\n" + STRUCT_JUMP_JS + "\n" + BUILTIN_BADGE_JS,
-        encoding="utf-8")
+    _write_asset(src_dir / "_pageview.js",
+                 VARFLOW_JS + "\n" + LINE_DEEPLINK_JS + "\n" + _bi_js
+                 + BUILTIN_DIM_JS + "\n" + STRUCT_JUMP_JS + "\n" + BUILTIN_BADGE_JS)
     # FE-6：共享样式表外链化（消除每页 ~950 行 BROWSE_CSS 内联重复，浏览器缓存一次）
-    (src_dir / "styles.css").write_text(BROWSE_CSS, encoding="utf-8")
+    _write_asset(src_dir / "styles.css", BROWSE_CSS)
     # P-rev R17：统一符号数据层 symbols.json —— 把「符号标识 + 类型 + 定义位置 +
     # 直接被调用数 + 传递影响闭包」一次性落盘，前端所有联动/引导只消费该文件，
     # 不再逐模板拼 data-sym 键（避免遗漏与不一致）。
@@ -23730,9 +23775,10 @@ def render_browse_site(model, outdir, reproducible=False, enabled=None,
     try:
         import json as _json
         _gsi = _build_gs_index(files, None)
-        (src_dir / "_index.js").write_text(
-            "window.__GS_INDEX__=%s;" % _json.dumps(_gsi, ensure_ascii=False),
-            encoding="utf-8")
+        _write_asset(src_dir / "_index.js",
+                     "window.__GS_INDEX__=%s;"
+                     % _json.dumps(_gsi, ensure_ascii=False,
+                                   separators=(",", ":")))
     except (ValueError, OSError, TypeError, AttributeError):
         pass        # 索引是增强能力，失败不影响站点生成
 
@@ -24621,24 +24667,39 @@ def _clear_closure_cache():
 
 
 def _impact_layers(fn, callers_of):
-    """影响面：谁（直接 + 间接）调用了 fn → 沿 callers_of（上游）传递闭包（带缓存）。"""
+    """影响面：谁（直接 + 间接）调用了 fn → 沿 callers_of（上游）传递闭包（带缓存）。
+
+    R94：条目是 **`(fn, callers_of, result)`** —— 缓存**自己持有对象与图的强引用**，
+    所以只要条目在，`id(fn)` 在结构上不可能被复用；`ent[0] is not fn` 再兜住
+    「同 id 不同对象」。旧实现只存 result、键只有 `id(fn)`，于是①**id 复用**会把
+    上一个函数的闭包当成这个函数的（实测：`test_p32_trace_roots_and_command`
+    单独跑绿、全量跑红 —— `assert [] == [(root, 3)]`），②**同一个对象换一张图**
+    会照搬旧答案（缓存契约看不见 `callers_of` 这个入参）。
+    P71 当年只补了 `clear()`，那只对「一次分析进程」有效，对同一解释器里的连续
+    调用（**测试序列**就是这种场景）无效 —— 这里堵根因。
+    """
     key = id(fn)
-    cached = _IMPACT_CACHE.get(key)
-    if cached is None:
-        cached = _transitive_closure(fn, lambda f: callers_of.get(id(f), []))
-        _IMPACT_CACHE[key] = cached
-    return cached
+    ent = _IMPACT_CACHE.get(key)
+    if ent is None or ent[0] is not fn or ent[1] is not callers_of:
+        ent = (fn, callers_of,
+               _transitive_closure(fn, lambda f: callers_of.get(id(f), [])))
+        _IMPACT_CACHE[key] = ent
+    return ent[2]
 
 
 def _dependency_layers(fn, calls_of):
-    """依赖面：fn（直接 + 间接）调用了谁 → 沿 calls_of（下游）传递闭包（带缓存）。"""
+    """依赖面：fn（直接 + 间接）调用了谁 → 沿 calls_of（下游）传递闭包（带缓存）。
+
+    R94：与 `_impact_layers` 同修 —— 条目 `(fn, calls_of, result)`，
+    既堵 `id(fn)` 复用，也认「同一个对象换了图」。
+    """
     key = id(fn)
-    cached = _DEPENDENCY_CACHE.get(key)
-    if cached is None:
-        cached = _transitive_closure(
-            fn, lambda f: [cf for (cf, _dmf) in calls_of.get(id(f), [])])
-        _DEPENDENCY_CACHE[key] = cached
-    return cached
+    ent = _DEPENDENCY_CACHE.get(key)
+    if ent is None or ent[0] is not fn or ent[1] is not calls_of:
+        ent = (fn, calls_of, _transitive_closure(
+            fn, lambda f: [cf for (cf, _dmf) in calls_of.get(id(f), [])]))
+        _DEPENDENCY_CACHE[key] = ent
+    return ent[2]
 
 
 def _trace_roots(fn, callers_of):
@@ -25932,7 +25993,10 @@ def render_checks_page(checks):
     dead = checks["dead_code"]
     total = len(uninit) + len(mismatch) + len(dead)
     hi_uninit = sum(1 for r in uninit if r.get("confidence") == "high")
-    suppressed = checks.get("suppressed", {"names": 0, "all": 0, "lines": 0, "blocks": 0})
+    # R94：合并而非整体替换 —— 调用方给的 suppressed 可能字段不齐（历史上快照回放侧
+    # 就漏过 blocks 键）。渲染层不该因数据残缺而让整站生成失败，缺省一律按 0 计。
+    suppressed = {"names": 0, "all": 0, "lines": 0, "blocks": 0}
+    suppressed.update(checks.get("suppressed") or {})
     supp_total = suppressed["names"] + suppressed["all"] + suppressed["lines"] + suppressed["blocks"]
     A("<div class=\"muted\">聚合未初始化变量（高）、类型不一致（中）、死代码（低）三类静态检查告警，"
       "共 <b>%d</b> 条（其中未初始化高置信 <b>%d</b> 条）。点击跳转到对应源码行。</div>" % (total, hi_uninit))
@@ -28561,9 +28625,10 @@ def render_source_page(mf, index, files, fn_to_file, callers_of, calls_of, root,
     site_rel = _cg_site_rel(mf.rel)
     A("<script src=\"%s\" defer></script>" % html_mod.escape(cg_asset))
     A("<script>window.__CG_SITE_REL__=\"%s\";</script>" % site_rel)
-    # P270：命令面板索引（函数/文件/目录/全局变量），须在搜索脚本之前加载
-    _index_asset = _rel_to_src_asset(mf.rel, "_index.js")
-    A("<script src=\"%s\" defer></script>" % html_mod.escape(_index_asset))
+    # R94：命令面板索引（函数/文件/目录/全局变量）不再进首屏 —— 它唯一的消费方
+    # 正是 _search.js，而后者自 R35 起已是懒加载（由 _search-lazy.js 按需注入）。
+    # 索引文件照旧生成（src/_index.js），只是改由该桩在首次需要时取用：
+    # 既省下 992B/页首屏外链，也少一次请求。次序「索引先于搜索脚本」由桩保证。
     # P107：全站搜索浮层（Ctrl+K / '/'）——复用 __CG__.meta + __GS_INDEX__
     _search_asset = _rel_to_src_asset(mf.rel, "_search-lazy.js")
     A("<script src=\"%s\" defer></script>" % html_mod.escape(_search_asset))
@@ -29166,6 +29231,13 @@ def _site_nav_html(active, ai):
             ("dir_matrix.html", "目录耦合", "dir_matrix"),
             ("taint.html", "污点分析", "taint"),
             ("todo.html", "待办清单", "todo"),
+            # R94：varflow.html / schedule.html 一直是**无条件生成**的，
+            #   但共享导航表漏了它们 ⇒ 两页成为不可达孤儿（fe_audit S7 报 WARN，
+            #   --strict 硬门禁因此 rc=1）。从 index.html 全站 BFS 实测：43 页
+            #   可达 41，孤儿恰这两页。此处补登记（与「顶层已知产物」清理清单对齐 —
+            #   那份清单里两页本来就在）。
+            ("varflow.html", "变量流", "varflow"),
+            ("schedule.html", "调度流程", "schedule"),
             ("c_report.html", "C报告", "c_report"),
             ("metrics.html", "风险度量", "metrics"),
             ("unresolved.html", "疑似漏检", "unresolved"),
@@ -29444,7 +29516,7 @@ def render_browse_index(files, index, callers_of, stats, root, rel, calls_of=Non
     A("<script>window.__SEARCH_DATA__ = %s;</script>" % json.dumps(search_data, ensure_ascii=False))
     # P103/P104：首页同样挂载全局调用图数据与全站搜索浮层（Ctrl+K / '/'）
     A('<script defer src="src/_cgdata.js"></script>')
-    A('<script defer src="src/_index.js"></script>')
+    # R94：_index.js 移出首屏（由 _search-lazy.js 按需注入）。
     A('<script>window.__CG_SITE_REL__="";</script>')
     A('<script defer src="src/_search-lazy.js"></script>')
     A('<script defer src="src/_symbols.js"></script>')
@@ -30870,6 +30942,91 @@ def _write_shared_app_js(html_path):
         print("[WARN] 共享内核 app.js 写入失败：%s" % _e, file=sys.stderr)
 
 
+def _write_shared_report_css(html_path):
+    # R94：把「报告页样式表」落到 HTML 报告同目录，使 <link href="report.css">
+    #   引用可解析。R46 只补了 <script src="app.js"> 那一半，report.css 这一半
+    #   一直是断的 —— 于是单文件报告**裸样式**渲染（cg-local 等规则全不生效）。
+    #   与 --browse 站点复用同一份 build_report_css()（单一数据源）。
+    if not html_path or html_path == "-":
+        return
+    _outdir = os.path.dirname(os.path.abspath(html_path))
+    try:
+        from renderers.report import write_report_css as _wrc
+        if not _wrc(_outdir):
+            print("[WARN] 报告样式表 report.css 写入失败", file=sys.stderr)
+    except Exception as _e:
+        print("[WARN] 报告样式表 report.css 写入失败：%s" % _e, file=sys.stderr)
+
+def _emit_page_linked_styles(page_path):
+    """R94：把页面 `<link rel="stylesheet">` 指向的**本地**样式表补写到页面旁边。
+
+    为什么（真事故，不是洁癖）：FE-18 / FE-21 把样式整体外链化后，站内页面靠
+    站点写入器（write_browse_css_tree / write_page_css_tree）拿到 CSS；而
+    `--global-state` / `--diff-html -o` 这类「写到用户任意指定路径」的产物
+    **不经过**站点写入器 ⇒ `<link href="src/styles.css">` 指向一个**从不产出**
+    的文件。浏览器对悬空样式表是**静默丢弃**的：CLI 退出码 0、日志还写着
+    「已生成」，页面却整页裸奔（实测：独立 gs.html 悬空 2 条、diff.html 悬空
+    1 条；而写进 --browse 站点根时两条都解析得到）。P269 已为
+    func_detail.html 立过同一条纪律 ——「绝不产出死链」—— 此处把它推广到
+    样式表，判据是：**页面外链了什么，就必须把那个文件写出来**。
+
+    幂等：目标已存在则跳过 ⇒ 站点布局下是纯 no-op（不覆盖站点写入器的产物）。
+    只处理本地引用（http/https///data: 跳过）；`..` 越界引用跳过；名字不认识时
+    **不臆造内容**，只告警 —— 宁可响亮地报，也不要安静地留一个悬空 <link>。
+
+    与 `--html` 的关系：报告页外链的 `report.css` / `app.js` 由
+    `_write_shared_report_css` / `_write_shared_app_js` 产出（同一纪律的两半）。
+    """
+    if not page_path or page_path == "-":
+        return 0
+    try:
+        with open(page_path, "r", encoding="utf-8", errors="replace") as _fh:
+            _html = _fh.read()
+    except (IOError, OSError):
+        return 0
+    _dir = os.path.dirname(os.path.abspath(page_path)) or "."
+    _written = 0
+    _seen = set()
+    for _ref in re.findall(r'<link\b[^>]*\bhref=["\']([^"\']+)["\']',
+                          _html, re.I):
+        if _ref.startswith(("http://", "https://", "//", "data:")):
+            continue
+        _rel = _ref.split("?")[0].split("#")[0].replace("/", os.sep)
+        if not _rel or _rel.startswith("..") or _rel in _seen:
+            continue
+        _seen.add(_rel)
+        _dst = os.path.normpath(os.path.join(_dir, _rel))
+        if os.path.exists(_dst):
+            continue
+        _name = os.path.basename(_rel)
+        _text = None
+        if _name == "styles.css":
+            _text = BROWSE_CSS
+        elif _name in PAGE_CSS_FILES:
+            _cdir = page_css_dir()
+            _src = os.path.join(_cdir, _name) if _cdir else None
+            if _src and os.path.isfile(_src):
+                try:
+                    with open(_src, "r", encoding="utf-8") as _cf:
+                        _text = _cf.read()
+                except (IOError, OSError):
+                    _text = None
+        if _text is None:
+            print("[WARN] 未能产出 %s 外链的样式表 %s —— 该 <link> 会悬空"
+                  % (page_path, _rel), file=sys.stderr)
+            continue
+        try:
+            _parent = os.path.dirname(_dst)
+            if _parent and not os.path.isdir(_parent):
+                os.makedirs(_parent)
+            with open(_dst, "w", encoding="utf-8", newline="\n") as _wf:
+                _wf.write(_text)
+            _written += 1
+        except (IOError, OSError) as _e:
+            print("[WARN] 样式表 %s 写入失败：%s" % (_dst, _e), file=sys.stderr)
+    return _written
+
+
 def _emit_gen_tests(args, files, root, c_model):
     # P90：--gen-tests 按函数生成测试骨架（MATLAB 前端 + 混合模式的 C 前端）
     if not args.gen_tests:
@@ -31335,6 +31492,11 @@ def _emit_report_outputs(args, model, files, index, edges, stats, root,
             print(f"[OK] HTML 报告已写入：{args.html}")
             # 报告页头部通过 <script src="app.js"> 加载「共享主题内核」（P270）。
             _write_shared_app_js(args.html)
+            # R94：报告 <head> 还有 <link rel="stylesheet" href="report.css">，
+            #   但该文件**从未**写到报告旁边（R46 只补了 app.js 那一半）⇒
+            #   单文件报告实际是**裸样式**的：cg-local / cg-host / cg-hover-card
+            #   等规则全不生效。与 R46 同一处、同一病灶，补上另一半。
+            _write_shared_report_css(args.html)
         else:
             ok = False
 
@@ -32212,7 +32374,9 @@ def main(argv=None):
             print("[P212 --git-diff] 增量分析：变更 .m 文件 %d 个（基准 %s%s）"
                   % (len(paths), _base, " --cached" if _staged else ""))
             # P212 跳过全递归 collect，避免扫整个仓库
-            _skip_full_collect = True
+            # （必须是 args 属性：下一行读的正是 getattr(args, ...)；写成局部变量
+            #  会静默失效 ⇒ 增量分析每次都退化成全量扫描）
+            args._skip_full_collect = True
     if not getattr(args, "_skip_full_collect", False):
         paths = collect_files(root, recursive=not args.no_recursive, exclude=args.exclude)
     # P87/P93：纯语言模式（--lang c/py/js）不要求存在 .m 文件，前端报告独立于 MATLAB 流程

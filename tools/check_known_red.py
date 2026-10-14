@@ -4,10 +4,11 @@
 
 动因（R63；承接 R49 起的 C''''0/C13-0，**沿用十余轮、始终最高优先**）：
 `tests/test_matlabc.py` 里有一整条前端审计线（R81–R149）以及打包/配置类测试，
-它们被测的对象 —— `fe_audit.py`、`fe_dom_check.js`、
-`.github/workflows/frontend-gate.yml`、`_fe_capability.json`、`setup.py`、
-`analyzer_config.example.json` —— **在 git 全历史里从未提交过**（`git log --all`
-为空，磁盘上也没有副本）。于是这批测试在**未改动基线**上就是红的。
+它们被测的对象里，**R94 已把三件迁了进来**（`fe_audit.py`、`fe_dom_check.js`、
+`_fe_capability.json` —— 来自同族的 `pony-agent/matlabc`，测试契约逐条对上）；
+仍从未提交的是 —— `.github/workflows/frontend-gate.yml`、`setup.py`、
+`analyzer_config.example.json`（`git log --all` 为空，磁盘上也没有副本）。
+迁移前这批测试在**未改动基线**上就是红的。
 
 这件事真正的危害不是"红了几条"，而是 **红变成了背景色**：
 
@@ -22,6 +23,13 @@
      并**两向**核对（多一条没登记 ⇒ 红；登记了却对不上 ⇒ 也红）；
   ③ 顺手把 **类 A「路径漂移」** 的残留钉住：`os.path.join(<根>, "<文件名>")`
      的单段写法若指向一个**在根与 `docs/` 都不存在**的文件，也必须登记。
+  ⚠ **R94-Q 更新（登记被清空的第一次）**：三件产物补上之后，`MISSING_ARTIFACTS`
+  与 `RED_TESTS` 双双清空，本门进入**目标态**。这不是「门没用了」——
+  `NEGATIVE_FIXTURES` 仍有一条负样本，K1/K2/K3/K5 照旧被行使；而且 K5
+  （`os.path.join(<根>, "<单段文件名>")` 指向根与 `docs/` 都不存在的文件 ⇒ 红）
+  只有在登记清空之后才**真正开始替所有路径兜底** —— 以前它是「登记之外的新缺口」，
+  现在是「全部缺口」。空登记把 K5 从补集判据变成了全集判据。
+
   ④ （R65 / C14-1）再补一条**实测半**：真跑登记过的 nodeid 集合，把「登记说的结局」
      与「实测的结局」对账 —— 前三条全是**静态**的：它们管「有没有登记」，
      不管「登记说的是不是真的」。
@@ -47,6 +55,12 @@
   ② 把它登记进 RED 桶，理由指向 `fe_audit.py`；③ 这条边界写在这里。
   **本门的口径仍然只覆盖「正文点名」**：经由产品在运行时产生的依赖，静态扫描
   看不见 —— 写下来，免得下一轮以为它已经被罩住了。
+
+  ⚠ **R94 更新**：⑤ 那条现场已不成立 —— `fe_audit.py` 迁入后，
+  `matlabc._selfcheck_html_tree` 的 `import fe_audit` 不再失败，
+  `test_r88_generator_selfcheck` 随之转绿并被摘出 RED 桶。
+  **但这条边界本身留着**：下一个「经由产品在运行时依赖某件缺失产物」的测试
+  仍然会活在本门之外，静态扫描照样看不见。
 
 一图看懂（谁在跟谁说话）：
 
@@ -137,30 +151,13 @@ TESTS_REL = os.path.join("tests", "test_matlabc.py")
 # 每条的理由必须逐字含 basename（K3），且该文件必须真的不存在（K2）。
 # ---------------------------------------------------------------------------
 MISSING_ARTIFACTS = {
-    "fe_audit.py":
-        "`fe_audit.py`：R81–R149 的**前端审计器**（站点死链 / 无障碍 / SEO / "
-        "预算 / 能力注册表 / 幂等写入 / 严格退出码…）：`git log --all` 为空、磁盘上无副本，"
-        "但它有整整一条测试线在描述它的契约。做与不做是需要单独决策的一件事。",
-    "fe_dom_check.js":
-        "`fe_dom_check.js`：`fe_audit.py` 的 DOM 子检查（由 node 跑的 jsdom "
-        "脚本）：同上，从未提交。",
-    ".github/workflows/frontend-gate.yml":
-        "`frontend-gate.yml`：把前端审计接进 CI 的工作流；从未提交；"
-        "`test_p271_ci_gate_workflow_usable` "
-        "要求它「实际可用」而不是一份写给别人看的示例。",
-    "_fe_capability.json":
-        "`_fe_capability.json`：`fe_audit.py` 的能力金样（golden），由 "
-        "`fe_audit.py --capability-out=` "
-        "生成，因而随审计器一起缺失。",
-    "setup.py":
-        "`setup.py`：打包入口；从未提交。它的契约已经由 `test_p54` / `test_p55` "
-        "逐条写明"
-        "（version == VERSION、`matlabc=matlabc:main`、`py_modules=[\"matlabc\"]`）"
-        "—— 这是**补文件**就能拿回来的一类，不是「永远不做」。",
-    "analyzer_config.example.json":
-        "`analyzer_config.example.json`：示例配置文件；从未提交；`test_p54` / "
-        "`test_p72` 要求它含 `reproducible` "
-        "与 `incremental` 两个字段。",
+    # R94-Q 清空。三件曾经「从未提交」的产物**都补上了**，四条依赖它们的测试
+    # 实测转绿（test_p54 / test_p55 / test_p72 / test_p271_ci_gate_workflow_usable）。
+    # 这正是 K2 那个「反作用力」设计要的结果：文件一出现，登记就陈旧 ⇒ 红 ⇒
+    # 逼你把测试从「已知红」里摘下来，**看它们是不是真绿**（实测：是）。
+    #
+    # ⚠ 空字典 ≠ 空判据：NEGATIVE_FIXTURES 仍有一条，artifacts 因此非空，
+    #   K1 / K2 / K3 / K5 四条照旧可被行使。别因为这里是空的就把门删了。
 }
 
 # 负样本登记：**就该不存在**的文件（由测试断言"缺输入必须红"）。
@@ -176,87 +173,20 @@ NEGATIVE_FIXTURES = {
 #   值 = 该测试引用到的产物元组（同一个测试引用两个产物时两个都写）。
 # ---------------------------------------------------------------------------
 RED_TESTS = {
-    # 实测 47 条：引用了缺失产物 ⇒ 今天**失败**。
-    "test_check_real_dom_empty_is_error": ("fe_dom_check.js",),
-    "test_min_pages_guard": ("fe_audit.py",),
-    "test_p271_ci_gate_workflow_usable":
-        (".github/workflows/frontend-gate.yml", "fe_audit.py"),
-    "test_p271_r4_callgraph_keyboard": ("fe_dom_check.js",),
-    "test_p54_docs_consistency":
-        ("analyzer_config.example.json", "setup.py"),
-    "test_p55_packaging_entrypoints": ("setup.py",),
-    "test_p72_incremental_stats_and_doc_sync": ("analyzer_config.example.json",),
-    "test_r100_usage_doc_has_new_flags": ("fe_audit.py",),
-    "test_r103_warn_ok_strict_progressive": ("fe_audit.py",),
-    "test_r104_registry_enforcement_and_list_checks": ("fe_audit.py",),
-    "test_r105_usage_doc_sync": ("fe_audit.py",),
-    "test_r106_out_file_matches_stdout_summary": ("fe_audit.py",),
-    "test_r109_samples_option": ("fe_audit.py",),
-    "test_r110_elapsed_ms_in_summary": ("fe_audit.py",),
-    "test_r111_capability_flags": ("fe_audit.py",),
-    "test_r113_capability_golden": ("fe_audit.py",),
-    "test_r114_rerun_field": ("fe_audit.py",),
-    "test_r115_failed_files_listing": ("fe_audit.py",),
-    "test_r116_explain_and_notes_completeness": ("fe_audit.py",),
-    "test_r118_stdout_out_byte_identical": ("fe_audit.py",),
-    "test_r120_schema_in_capability": ("fe_audit.py",),
-    "test_r121_repo_capability_golden": ("_fe_capability.json", "fe_audit.py"),
-    "test_r122_delta_comparator": ("fe_audit.py",),
-    "test_r123_page_stats": ("fe_audit.py",),
-    "test_r124_text_meta_line": ("fe_audit.py",),
-    "test_r125_against_baseline": ("fe_audit.py",),
-    "test_r126_registry_json_notes": ("fe_audit.py",),
-    "test_r132_config_print": ("fe_audit.py",),
-    "test_r139_list_ignores": ("fe_audit.py",),
-    "test_r143_selftest_cli": ("fe_audit.py",),
-    "test_r144_selftest_json": ("fe_audit.py",),
-    "test_r149_schema_json": ("fe_audit.py",),
-    "test_r81_doc_fact_sync": ("fe_audit.py",),
-    "test_r85_r86_site_quality_gate": ("fe_audit.py",),
-    "test_r87_audit_check_registry": ("fe_audit.py",),
-    # R89：**从所有门之外捞回来的那一条**。它此前不在任何桶里 ——
-    # 因为它依赖 `fe_audit.py` 的方式是「经由 `matlabc.py` 在运行时 import」，
-    # 正文里没点过名字 ⇒ `scan_refs` 扫不到（见模块 docstring 第 ⑤ 条）。
-    # 现在测试正文里已经点名 `fe_audit.py`，这条登记才有 K1 的对手方。
-    "test_r88_generator_selfcheck": ("fe_audit.py",),
-    "test_r89_strict_exit_codes": ("fe_audit.py", "fe_dom_check.js"),
-    "test_r92_fe_artifact_exemption": ("fe_audit.py", "fe_dom_check.js"),
-    "test_r93_issue_contract_validation": ("fe_audit.py",),
-    "test_r94_collect_html_excludes_audit_artifacts": ("fe_dom_check.js",),
-    "test_r95_audit_idempotence": ("fe_audit.py",),
-    "test_r96_audit_write_policing": ("fe_audit.py",),
-    "test_r97_contract_doc_synced": ("fe_audit.py",),
-    "test_r98_summary_self_describing": ("fe_audit.py",),
-    "test_r99_out_file_archival": ("fe_audit.py",),
-    "test_selftest_json_schema_stable": ("fe_audit.py",),
-    "test_trend_dir_override": ("fe_audit.py",),
-    "test_trend_panel_units_and_py36": ("fe_audit.py",),
+    # R94-Q 清空：不再有「因缺少从未提交的产物而恒红」的测试。
+    # 这一桶**空着**才是它的目标态 —— 它存在的意义是「有界、具名、只缩不长」。
 }
 
 SKIP_TESTS = {
-    # 实测 8 条：引用了缺失产物，但自己**优雅跳过**（K4 要求源码里真有 pytest.skip）。
-    "test_fe_dom_check_signals_empty": ("fe_dom_check.js",),
-    "test_fe_dom_check_skips_huge_page": ("fe_dom_check.js",),
-    "test_p271_fe_audit_gate_selfcheck": ("fe_audit.py",),
-    "test_p271_fe_audit_hard_gate_clean": ("fe_audit.py",),
-    "test_p271_fe_audit_ratchet_baseline": ("fe_audit.py",),
-    "test_p271_real_dom_interaction_check": ("fe_dom_check.js",),
-    "test_s11_full_coverage": ("fe_dom_check.js",),
-    "test_s11_sampling_note_not_warn": ("fe_dom_check.js",),
+
 }
 
 GREEN_REFS = {
-    # 实测 4 条：引用了登记产物、但跑起来**是绿的**。
-    # 前 3 条是**真引用**（不依赖它 / 早退 / 断言它不存在）；
-    # 第 4 条（R63）是**散文提及** —— `scan_refs` 按 basename 扫全文、**含 docstring**，
-    # 所以「在测试文档里点名一个已登记产物」本身就等于一条登记义务。这不是 bug，
-    # 是本门「宁可多登记一条，也不少登记」的**代价**，而 R63 亲自踩了一脚：
-    # 新写的 docstring 里提到登记表里的那个构建脚本，主路径当场 K1 红。
-    # 处置**不是**禁止散文点名（那会让文档变哑），而是把它登记在册、让它看得见。
-    "test_r101_reference_site_clean_gate": ("fe_audit.py",),
-    "test_syntax_color_tokens": ("fe_audit.py",),
+    # R94-Q：原来还有一条 `test_r63_read_doc_resolves_root_then_docs_two_way ->
+    # ("setup.py",)` —— 那条测试只是拿 `setup.py` 当**举例**写进了 docstring
+    # （「test_p54 真正缺的是 setup.py，却先死在 matlabc_README.md 上」），
+    # 产物不再登记后这层「引用关系」也就不存在了 ⇒ 留着就是**陈旧登记**（K1 的红）。
     "test_r31_binary_cli_missing_file_is_red": ("no_such_lib_xyz.so",),
-    "test_r63_read_doc_resolves_root_then_docs_two_way": ("setup.py",),
 }
 
 # K5 的扫描：只认「`os.path.join(<根>, "<单段文件名>")`」这一种写法。

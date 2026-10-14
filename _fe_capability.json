@@ -1,0 +1,110 @@
+{
+ "checks": [
+  {
+   "code": "S1",
+   "title": "JS 语法"
+  },
+  {
+   "code": "S2",
+   "title": "内部链接"
+  },
+  {
+   "code": "S3",
+   "title": "外部 CDN"
+  },
+  {
+   "code": "S4",
+   "title": "锚点完整性"
+  },
+  {
+   "code": "S5",
+   "title": "JS 运行时"
+  },
+  {
+   "code": "S6",
+   "title": "JS href"
+  },
+  {
+   "code": "S7",
+   "title": "孤立页面"
+  },
+  {
+   "code": "S8",
+   "title": "锚点与 id 协同"
+  },
+  {
+   "code": "S9",
+   "title": "a11y 基线"
+  },
+  {
+   "code": "S10",
+   "title": "硬编码导航"
+  },
+  {
+   "code": "S11",
+   "title": "真实 DOM"
+  },
+  {
+   "code": "S12",
+   "title": "性能预算"
+  },
+  {
+   "code": "S13",
+   "title": "重复 id"
+  },
+  {
+   "code": "S14",
+   "title": "HTML 结构"
+  },
+  {
+   "code": "S15",
+   "title": "产物-清单一致性"
+  },
+  {
+   "code": "S16",
+   "title": "质量快照一致性"
+  },
+  {
+   "code": "S17",
+   "title": "一级标题"
+  },
+  {
+   "code": "S18",
+   "title": "图片尺寸/CLS"
+  },
+  {
+   "code": "S19",
+   "title": "重复标题"
+  },
+  {
+   "code": "S20",
+   "title": "内联事件处理器"
+  },
+  {
+   "code": "S21",
+   "title": "外部脚本延迟"
+  },
+  {
+   "code": "S22",
+   "title": "内联样式"
+  },
+  {
+   "code": "S23",
+   "title": "图片替代文本"
+  },
+  {
+   "code": "GEN",
+   "title": "生成"
+  },
+  {
+   "code": "INT",
+   "title": "内部错误"
+  },
+  {
+   "code": "PERF",
+   "title": "审计器耗时预算"
+  }
+ ],
+ "engine": "fe_audit",
+ "schema": 3
+}

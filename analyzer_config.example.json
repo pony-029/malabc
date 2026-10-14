@@ -1,0 +1,19 @@
+{
+  "_comment": "matlabc 配置文件样例。用法：python matlabc.py <项目目录> --config analyzer_config.example.json",
+  "_priority": "CLI 显式给出的值优先；本文件只补「你没显式指定」的那些（见 --help 的「配置文件」一节）。",
+  "_keys": "键名与 CLI 参数一一对应（argparse dest，共 61 个受支持键）。",
+  "_example_ci": "下面这套是「CI 里可复现 + 可增量」的基线：JSON 不带时间戳 ⇒ 同一项目两次输出逐字节一致，可直接做 diff 门禁。",
+  "json_level": "summary",
+  "reproducible": true,
+  "incremental": true,
+  "checks": "all",
+  "exclude": ".git,node_modules,__pycache__,build,dist,third_party",
+  "recursive": true,
+  "file_graph": false,
+  "folder_graph": false,
+  "mixed": false,
+  "max_warnings": 0,
+  "fail_on_diff": false,
+  "offline": false,
+  "mermaid_cdn": false
+}

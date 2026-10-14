@@ -86,6 +86,14 @@ POPEN_STREAMING = {
         "p.wait() 并返回 None（调用方按红处理）；已设 stdin=DEVNULL。"
         "这里 stdin 尤其关键：被它驱动的 `matlabc.py` 会去 import 本仓的 stdio "
         "组件，继承 stdin 就可能重演 R62-R31e 的挂死。",
+    "fe_audit.py|_run":
+        "前端审计器的唯一通用子进程入口（R94 迁入；`node --check` 逐个语法检查 / "
+        "jsdom 真实 DOM / 批处理脚本）。Popen 之后紧跟 "
+        "communicate(timeout=timeout)，timeout 由调用方传入（S11 走 "
+        "`--s11-timeout`，批处理走模块常量 BATCH_TIMEOUT=120）；超时则 kill + "
+        "communicate() 并返回 rc=124，调用方按 ERROR 处理。已设 stdin=DEVNULL —— "
+        "这一条是必需的：审计器自身在 CI 里是被 `--json` 管道驱动的，"
+        "node 子进程若继承 stdin 就会去抢调度方的字节。",
 }
 
 # S4：`**kwargs` 间接传参的调用点 —— 静态看不到 stdout/stdin 到底是什么，

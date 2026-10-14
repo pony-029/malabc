@@ -1,0 +1,89 @@
+# =============================================================================
+# 前端产物质量门禁（正式工作流）
+# -----------------------------------------------------------------------------
+# 这条工作流的**契约**在 tests/test_matlabc.py::test_p271_ci_gate_workflow_usable，
+# 它刻意只校三件「CI 里才会暴露、本地很难发现」的事：
+#   ① 合法 YAML 且至少一个 job；
+#   ② env.FE_SRC 必须指向**仓库里真实存在**且含 .m 的目录
+#      —— 早期示例写死 `matlab_src`（本仓库根本没有），一进 CI 第一步就挂；
+#   ③ 用到的 fe_audit.py 参数必须是它真支持的
+#      （--json / --offline / --enforce-offline / --strict / --hard-gate）。
+#
+# 三个 job 的分工：
+#   audit  前端审计硬门禁（零 WARN 退出码纪律 + 零外部引用 + 性能预算）
+#   site   真实生成 --browse 站点与 --html 报告，证明「分析器本身跑得动」
+#   shell  跑仓库自带的护栏脚本（tools/check_all.py）
+#
+# ⚠ 诚实声明：audit 的 S11 检查需要 jsdom，CI 里用 npm 装上 —— 缺失时该项降级为
+#   WARN，而 --strict 把 WARN 当失败，所以这一步不是可选项。本地没有 node 时这条
+#   工作流跑不动，那属于环境，不是「工作流写错了」。
+# =============================================================================
+name: frontend-gate
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+env:
+  FE_SRC: tests/sample_m
+  FE_OUT: _fe_out
+  SITE: site-offline
+
+jobs:
+  audit:
+    name: 前端审计硬门禁
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: 安装 jsdom（S11 前提，见文件头「诚实声明」）
+        run: npm install --no-save jsdom
+      - name: 前端审计（--strict + --offline + --enforce-offline）
+        run: python fe_audit.py "${{ env.FE_SRC }}" "${{ env.FE_OUT }}" --strict --offline --enforce-offline
+      - name: 前端审计 JSON 报告（供下游消费）
+        if: always()
+        run: python fe_audit.py "${{ env.FE_SRC }}" "${{ env.FE_OUT }}" --json --offline --enforce-offline || true
+      - name: 上传审计产物
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fe-audit-out
+          path: ${{ env.FE_OUT }}
+          if-no-files-found: warn
+
+  site:
+    name: 站点与报告能生成
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: --browse 站点（离线，零外部引用）
+        run: python matlabc.py "${{ env.FE_SRC }}" --browse "${{ env.SITE }}" --offline
+      - name: --html 单文件报告
+        run: python matlabc.py "${{ env.FE_SRC }}" --html report.html
+      - name: 报告与站点同源的样式表必须落地（R94 实测过的缺口）
+        run: test -f report.css && test -f "${{ env.SITE }}/browse.css"
+      - name: 上传站点与报告
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-and-report
+          path: |
+            ${{ env.SITE }}
+            report.html
+            report.css
+
+  shell:
+    name: 仓库护栏脚本
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: 20 个护栏脚本（tools/check_all.py）
+        run: python tools/check_all.py
