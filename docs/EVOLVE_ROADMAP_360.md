@@ -22,6 +22,7 @@
   0          Phase 0  ✅已落地   底座    门数 17→18 全绿；两道新护栏两向变异可见
   0d         Phase 0d ✅已落地   base    门数 18→19 全绿；内核全树（63,051 文件）读数与 R81 逐位**且逐类**相同
   0e         Phase 0e ✅已落地   base    门数**仍 19**（不加闸，只提分辨率）；判据族 W1–W5 → **W1–W6**；内核分析流程 13 站在册
+  0n         Phase 0n ✅已落地   t2      门数**仍 19**（不加闸，只提分辨率）；判据族 W1–W6 → **W1–W7**；运行产物由门**现算**核对（表 ⇄ 磁盘）
   1 –  60    Phase A           T1 异步  整树内核语料上：边数守恒恒等式成立；async 边 > 0
  61 – 140    Phase B           T2 跳    unresolved 四类分母齐；每跳有装置；旧键逐位不变
 141 – 210    Phase C           T3 算子  三处对齐有差集分母；estimated 可识别；insn_top 干净
@@ -151,15 +152,26 @@
 8  | 0c | base | declared_source_gate    | declared_sites 必须带**已登记的独立来源**（含 from_dict 侧门） | -
 9  | 0d | base | kernel_snapshot_gate    | 全树规模读数登记表：出处+口径 / 三档分母并列 / 汇总↔明细恒等式 / 与 R81 逐位**且逐类**（第 19 道门 W1–W5） | -
 10 | 0e | base | kernel_pipeline_gate    | 分析流程登记：13 站站表形状 / 恰一个 current 驱动 / 产物链拓扑 / 仓内落点存在（第 19 道门 W1–W5 → W1–W6） | -
-11 | 0f | t2   | rea_binfmt_mitigations  | REA 移植第一片：`Segment`（只读，perms）+ 静态缓解措施两档（ELF `inferred` / PE `observed`；`None` ≠ `False`） | -
-12 | 0g | t2   | rea_lib_resolution      | REA 移植第二片：**库名 → 磁盘文件 → 依赖下钻**（`binfmt/resolve.py` + `--lib-resolve/--lib-path/--lib-max-nodes` + GUI 卡片）+ C14/C15 | -
-13 | 0h | t2   | call_relations_proj     | 调用关系的**有界投影**（`callrel.py` + `--callgraph` 系列 + 判据族 F7）：度数 TOP-N / 名字级 SCC / 跨文件四桶 / 焦点 BFS / 截断显式 | -
-14 | 0i | t2   | c_attr_spec_family      | C 前端**属性说明符**缺陷族（`__attribute__` 既不是定义也不是调用）：类型定义不产假函数 / 属性头与组内参数不产假调用 / 判据族 **F1–F7 → F1–F8** | -
-15 | 0j | t2   | callgraph_identity_defsite | 调用图的**节点身份口径**：默认换成「定义落点」（同名不同文件**不合并** ⇒ 假环当场散开、**边一条不删**）；老口径`callee-name` 仍可显式选中；判据族 **F1–F8 → F1–F9** | -
-16 | 0k | t2   | callgraph_local_scope   | 调用图的**解析阶梯**：rung1 同文件优先（调用者所在文件里**恰一份**定义）+ rung2 `#include` 闭包（**三明治**判定，只对 TU 根）；`resolution` 五档对手方（之和 ≡ `edges_total`）；非 C 语言门；判据族 **F1–F9 → F1–F10** | -
-17 | 0l | t2   | rel_of_root_relative   | `matlabc._rel_of()` 算的是「相对 **cwd**」而不是「相对**被分析根**」⇒ 被分析目录在 cwd **之外**时 `rel` 塌成 **basename**（同名不同目录**被合并**）；修法 = `_rel_of` 增**根参数**（**不是**把 basename 换成绝对路径）；判据族 F10 族内加半边 **F10l**（签名仍 `F1–F10`） | -
-18 | 0m | t2   | callgraph_edge_cap      | 焦点子图**边数无上限**（R87 起 node cap 有、edge cap 没有 ⇒ 有界投影只对上一半）：`--callgraph-max-edges N`（**默认 0 = 不限** ⇒ 不给开关时产物**除 `version` 3→4 外逐字节不变**）；截断**显式上报**（`hit_edge_cap` + `edges_shown/edges_total`）；判据族 F10 族内加半边 **F10m**（签名仍 `F1–F10`） | -
-19 | A  | t1   | -                       | R82-A3 Py/JS 后端（await 必须不产生 async 边） | 未实现
+11 | 0f | t2   | rea_binfmt_mitigations  | REA 移植第一片：`Segment`（只读，perms）+ 静态缓解措施两档（ELF inferred / PE observed；None ≠ False；PE 上 RELRO / exec-stack 恒 null） | -
+12 | 0g | t2   | rea_lib_resolution      | REA 移植第二片：库名 → 磁盘文件 → 依赖下钻（`binfmt/resolve.py` + `--lib-resolve/--lib-path/--lib-max-nodes` + GUI 卡片） | -
+13 | 0h | t2   | call_relations_proj     | 调用关系的**有界投影**（`callrel.py` + `--callgraph` 系列 + 判据族 F7）：度数 TOP-N / 名字级 SCC / 跨文件四桶 / 焦点 BFS / 截断显式 —— 修用户实测的「结果里看不到谁调用谁」 | -
+14 | 0i | t2   | c_attr_spec_family      | C 前端**属性说明符**缺陷族：`__attribute__` 既不是函数定义、也不是调用 —— 三个泄漏通道（类型定义产假函数 / 属性头产假边 / 组内参数产假未解析）全部堵住，判据族 F1–F7 → F1–F8 | -
+15 | 0j | t2   | callgraph_identity_defsite | 调用图的**节点身份口径**换成「定义落点」（`definition-site`，设为默认）—— 名字级合并造出来的**假环**当场散开，且**一条边都不删**；老口径保留为可复现基线 | -
+16 | 0k | t2   | callgraph_local_scope   | 调用图的**解析阶梯**：被调侧多份定义时，用 C 自己的作用域规则把可判定的那部分钉住（rung1 同文件 / rung2 翻译单元·三明治），同时把「救回了多少」变成一个**有分母**的数 | -
+17 | 0l | t2   | rel_of_root_relative   | `matlabc._rel_of()` 的**根相对化**：`rel` 是所有读数共用的那一层（阶梯 / `cross_file` 分桶 / include 图 / 焦点子图），而它算的是「相对 **cwd**」—— 被分析根落在 cwd **之外**时回退成 **basename** ⇒ 同名不同目录的文件被**合并**（R83 意义上的**口径类**缺陷：错起来所有读数一起错、且全都自洽） | -
+18 | 0m | t2   | callgraph_edge_cap      | 焦点子图的**边数上限**：R87 只给了**节点**上限，边**没有** —— 内核默认根 **34 节点 / 19,469 边**、`hit_node_cap=false`，也就是「有界投影」只对上了一半，而 `truncated` 里只有 `hit_node_cap` ⇒ **「看不全」可以不上报**（R83 意义上的**能力被砍成一半**） | -
+#   R95 的 Phase 0n（**产物现算核对**：第 19 道门 W1–W6 → **W1–W7**）**占用槽 19** ——
+#   它把槽 19 原来那行 `R82-A3`（Py/JS 后端）**退役**：A3 的目标已被 Phase 1–8 的
+#   轮 25（`py_ast_frontend`）与轮 28（`metrics_parity`）覆盖，而它自 R82 起连续
+#   被 blocked（19 轮一次没动）⇒ 留着只会让环路每轮多 SKIP 一次。
+#   退役判据 = 「有替代轮次，**且替代轮次未 blocked**」（不是「我不想做了」）。
+#   **其余槽位一个不动** —— 不做整体顺延（那会让 13 行轮号全动，而本轮没有理由碰它们）。
+#   ⚠ **直接轮次**：R92 / R93（合并为 `a08cdaf`）与 R94（`1f38077` / `2aab3d7` /
+#   `dda24f4`）是**不经环路**的直接轮次（用户当场指定下一步），不占路线图槽位；
+#   台账 `_r82/rounds.jsonl` 只记**环路**轮次，所以它们不出现在台账里（仍是 19 行 / 轮 0–18）。
+#   R95 同属直接轮次，但它**回答路线图里的一个缺口**（`docs/KERNEL_RUN.md` 的「运行产物」
+#   表**没有对手方**）⇒ 登记进槽 19，好让下一次环路驱动有**未 blocked** 的行可跑。
+19 | 0n | t2   | kernel_gate_w7          | 第 19 道门的判据族 **W1–W6 → W1–W7**：运行产物由门**现算**核对（表 ⇄ 磁盘 / 空集必红 / `-` ⇄ 不存在**两向** / 未登记字段必红）—— **门数仍 19**（不加闸，只提分辨率） | -
 20 | A  | t1   | -                       | R82-A4 MATLAB 后端（parfor/parfeval/batch/timer） | 未实现
 21 | A  | t1   | -                       | R82-A5 asm 间接跳转 ⇒ unknown（不猜） | 未实现
 22 | A  | t1   | -                       | R82-A6 站点/报告新增「异步」列 + 未识别并发站点计数 | 未实现
@@ -170,7 +182,10 @@
 #   （只在某语言存在，非适用语言**必须显式写理由**）/ CROSS（调用图·度量·站点·SARIF·
 #   门禁·二进制，对所有语言同构）。不分类就动手 ⇒ 必然把 MATLAB 的
 #   lowerCamelCase 硬套到 C，让 Linux 内核整树红。
-#   ⚠ 第 19–22 轮全是 `A t1` 且 blocked ⇒ 环路会一路 SKIP 到底；下面 12 轮**全部无 blocked**。
+#   ⚠ 槽 19 已由 **Phase 0n（R95）**占用并落地 ⇒ 剩下 **20–22 轮是 `A t1` 且 blocked**，
+#   环路会在 19 之后一路 SKIP 到 23；下面 12 轮（槽 23–35）**全部无 blocked**。
+#   （原文写「第 19–22 轮全是 `A t1`」—— 槽 19 让位后那句话**当场失效**。
+#    失效的散文比缺的散文危险：环路读到它不报错，人读到它也不报错。）
 #   ⚠ **门数 19 → 20**（第 21 道门 `check_parity_registry.py`，判据族 E1–E6）——只在第 23 轮发生，
 #     其余各轮**不加闸门**（「缺口为 0 时加闸 = churn」，R85 已定论）。
 #   ⚠ Phase 1 立判据时必须逐处同步 6 处级联：`check_all.py` 的 **ASCII 树行**（极易漏）/

@@ -22,7 +22,7 @@
         ├─▶ check_known_red.py            「永久红」必须两向登记在册，红集只缩不长
         ├─▶ check_legal_parity.py        许可与署名双轨：MIT 正文 ⇄ 版权人 ⇄ 必究 ⇄ 徽章 ⇄ 版本
         ├─▶ check_unified_graph.py       统一图四条恒等式 + T1 图前提（含「注入一条边即破」）
-        ├─▶ check_kernel_snapshot.py     全树规模读数 + 分析流程登记（契约 W1..W6）
+        ├─▶ check_kernel_snapshot.py     全树规模读数 + 分析流程登记（契约 W1..W7）
         └─▶ check_subprocess_hygiene.py   子进程必须切 stdin 且不会永久挂住
         │
         ├─ 每道护栏都要能跑通（rc=0）

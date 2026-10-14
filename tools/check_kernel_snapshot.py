@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""全树规模读数（跑次登记表）+ 分析流程登记的登记制护栏 —— 判据族 W1–W6。
+"""全树规模读数（跑次登记表）+ 分析流程登记的登记制护栏 —— 判据族 W1–W7。
 
 它回答两个问题：
   1. **文档里那张「内核全树跑出来的数字」还成立吗？**
@@ -28,8 +28,18 @@
 （1.3 GB 语料与 13 分钟预算都不属于一道静态门）。它只回答：
 「那张表与那条流程自称的那件事，今天还成立吗？」
 
+为什么还要 W7（R95，**第五个形态**）：登记表里那张「运行产物（本表生成时逐个
+现算）」表，**在生成之后没有任何判据再看它一眼** —— 生成器的 `--check` 在本仓
+**零调用点**，而 `audit()` 与产物有关的判据只有 `provenance.*` 两行。实测后果：
+`kernel_c_summary.json`(10-14 02:40) 与 `kernel_callgraph.json`(10-13 22:47)
+来自**两个不同的构建**，表头却只钉一份 `provenance` ⇒ 一张表混了两趟读数，
+谁也不报（与 R88 在 `AGG_r84.json` 合并逻辑里修过的是**同一个病换了载体**）。
+W7 把「表 ⇄ 磁盘」这条对手方补上：产物字节数与 sha256 由**门自己现算**核对。
+⚠ 产物在**仓外**（`_kernel/` 不在新克隆里）⇒ 磁盘上没有该产物时该条**未行使**
+（与跨文档分母同一条口径），但**必须打印出来**，绝不静默当成「对得上」。
+
 退出码：
-    0  = W1–W6 全部通过
+    0  = W1–W7 全部通过
     1  = 发现违规
     2  = 缺输入（登记表不在 / 任一块缺失 / 格式不可解析 / `matlabc.py` 不在）
 """
@@ -38,7 +48,7 @@ import os
 import re
 import sys
 
-ROW_SIGNATURE = "W1–W6"
+ROW_SIGNATURE = "W1–W7"
 
 _here = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_here)
@@ -57,6 +67,12 @@ BLOCK_CLOSE = "<!-- /KERNEL-RUN -->"
 # 而**没有任何东西在看** —— 指针没有对手方时，它指空了也看不出来（L85）。
 SNAPSHOT_POINTER = "KERNEL_RUN.md"
 CLOCK_KEYS = ("peak_mb", "seconds")
+
+# W7（R95）：登记表里**逐个现算**的**仓外**产物名单。
+# 名字写在这里（门的分母）而**不**从块里现推 —— 块里那几条 `artifact.<名>.*`
+# 是生成器写的，若门的名单也由块推出来，「生成器漏登记一份产物」就永远看不出来。
+ARTIFACT_NAMES = ("kernel_c_summary.json", "kernel_asm_summary.json",
+                  "kernel_callgraph.json")
 
 # 每臂都必须出现的键（缺一个 ⇒ W1 红）。数字型键统一在 _num() 里转换。
 ARM_KEYS = ("files", "lines", "funcs", "edges", "unresolved", "includes",
@@ -219,12 +235,15 @@ def _delta_verdict(declared, key, va, vb, tail=""):
 
 # --------------------------------------------------------------- 判据
 def audit(kv, doc_text, matlabc_sha=None, matlabc_bytes=None,
-          unknown_doc_denominator=None, readmes=None, declared=None):
+          unknown_doc_denominator=None, readmes=None, declared=None,
+          artifacts=None):
     """返回 problems 列表（空 = 全过）。所有外部事实都可注入 ⇒ 可两向自证。
 
     `readmes` = {显示名: 文本}；为 None 表示「这一条未行使」（自证的多数用例）。
     `declared` = {读数键: {"base":…, "cur":…, "reason":…}}（R87）；为 None 时
     W5 退化为原始的「逐位全等」判据 —— 即「这一条未行使」。
+    `artifacts` = {产物名: {"bytes": int, "sha256": 前 16 位}}（R95/W7）。
+    **不存在的产物不进字典**（= 该条未行使）；为 None 时 W7 整体未行使。
     """
     probs = []
 
@@ -408,6 +427,59 @@ def audit(kv, doc_text, matlabc_sha=None, matlabc_bytes=None,
         if ghost:
             probs.append("W5 KERNEL-DELTA 登记了本轮不存在的读数 %r —— "
                          "幽灵登记（键名拼错，或该读数已不在块里）" % (ghost,))
+
+    # ---- W7：产物**现算**核对（R95）----
+    # 见模块 docstring 的第五个形态。四条纪律：
+    #   * 空集必须红（反例不能是空集，§4h-2）；
+    #   * 「表写 `-`」与「磁盘没有」是**两个相反的方向**，都要有对手方；
+    #   * 缺产物 ⇒ 该条**未行使**（产物在仓外，新克隆里没有 `_kernel/`），
+    #     但调用方**必须说出来**，绝不静默当成「对得上」；
+    #   * 键名拼错（`sha1` / `size`）是一类**静默失效**，必须单独点名 ——
+    #     否则那条核对会因为「根本没这条键」而永远不跑。
+    a_keys = [k for k in kv if k.startswith("artifact.")]
+    a_core = [k for k in a_keys if k.rsplit(".", 1)[-1] in ("bytes", "sha256")]
+    a_odd = [k for k in a_keys if k != "artifact.dir" and k not in a_core]
+    if a_odd:
+        probs.append("W7 artifact.* 里有未登记字段 %r —— 只认 `.dir` / `.bytes` / "
+                     "`.sha256`（拼错的键会让那一份产物的核对照样静默失效）"
+                     % (sorted(a_odd)[:4],))
+    if not a_core:
+        probs.append("W7 一份产物的 bytes/sha256 都没有 —— 空集上 `现算 == 表` "
+                     "恒真（反例不能是空集）")
+    else:
+        a_names = sorted(set(k[len("artifact."):].rsplit(".", 1)[0]
+                             for k in a_core))
+        if not (kv.get("artifact.dir") or "").strip():
+            probs.append("W7 缺 `artifact.dir` —— 产物路径无处可寻，"
+                         "下面每一份的现算核对都会静默失效")
+        for nm in a_names:
+            kb = kv.get("artifact.%s.bytes" % nm)
+            ks = kv.get("artifact.%s.sha256" % nm)
+            if (kb is None) != (ks is None):
+                probs.append("W7 产物 %s 的 bytes/sha256 必须**成对**出现（缺 %s）"
+                             % (nm, "bytes" if kb is None else "sha256"))
+                continue
+            if (kb == "-") != (ks == "-"):
+                probs.append("W7 产物 %s 的「不在」必须**两列同时**写 `-`"
+                             "（现为 bytes=%r / sha256=%r）" % (nm, kb, ks))
+                continue
+            disk = (artifacts or {}).get(nm)
+            if ks == "-":
+                if disk is not None:
+                    probs.append("W7 表说产物 %s「不在」（`-`），磁盘上却有一份"
+                                 "（%d B）—— 表被手改，或产物被补上而没重生成表"
+                                 % (nm, disk.get("bytes", -1)))
+                continue
+            if disk is None:
+                continue          # 未行使：仓外产物不在本机（main() 会打印出来）
+            nb = _num(kv, "artifact.%s.bytes" % nm, probs)
+            if nb is not None and nb != disk.get("bytes"):
+                probs.append("W7 产物 %s 字节数不符：表 %d，磁盘现算 %s —— "
+                             "产物在表生成之后被替换（或表被手改）"
+                             % (nm, nb, disk.get("bytes")))
+            if ks != disk.get("sha256"):
+                probs.append("W7 产物 %s sha256 不符：表 %s，磁盘现算 %s"
+                             % (nm, ks[:16], str(disk.get("sha256"))[:16]))
     return probs
 
 
@@ -644,10 +716,26 @@ def main(argv=None):
             else:
                 probs.append("W5d KERNEL-DELTA 键 %r 既不是 `.base`/`.cur` 也不是 "
                              "`.reason`" % (_k,))
+    # ---- W7：仓外产物由门**自己现算**核对（缺产物 ⇒ 该条未行使，但要说出来）----
+    artifacts = {}
+    _adir = (kv.get("artifact.dir") or "").strip()
+    if _adir and _adir != "-":
+        for _nm in ARTIFACT_NAMES:
+            _ap = os.path.join(_adir, _nm)
+            if os.path.isfile(_ap):
+                artifacts[_nm] = {"bytes": os.path.getsize(_ap),
+                                  "sha256": sha256_file(_ap)[:16]}
+    if artifacts:
+        print("  产物现算核对：%d 份（%s）"
+              % (len(artifacts), ", ".join(sorted(artifacts))))
+    else:
+        print("  [跳过] W7 现算核对未行使 —— 本机没有仓外产物"
+              "（artifact.dir=%s）" % (_adir or "(缺)"))
+
     probs.extend(audit(kv, text, matlabc_sha=sha256_file(mc_p),
                        matlabc_bytes=os.path.getsize(mc_p),
                        unknown_doc_denominator=unk, readmes=readmes,
-                       declared=declared_map))
+                       declared=declared_map, artifacts=artifacts))
 
     # ---- W6：流程块（**同一个文件里的第二个围栏块**）----
     # 「缺输入必须能红」：流程块不在 ⇒ rc=2，绝不当成「没有流程要核」而静默放行。
@@ -682,6 +770,7 @@ def main(argv=None):
           "汇总↔明细恒等式 + 与 R81 基线逐位/逐类对照（R87：差异必须登记、"
           "写明原因，陈旧登记与幽灵登记同样红）+ 唯一事实源指针；"
           "流程登记：站表形状 + 恰一个 current 驱动 + 产物链拓扑 + 仓内落点存在；"
+          "产物现算核对（R95：表 ⇄ 磁盘，缺产物即未行使 + 空集必红）；"
           "判据族 %s）" % ROW_SIGNATURE)
     return 0
 
@@ -702,6 +791,15 @@ def _mkdoc(over=None):
         "baseline.path": r"E:\x\r81\AGG_r81.json",
         "baseline.sha256": "b" * 64,
         "crossdoc.unknown_sites_files": "3",
+        # R95/W7：产物条目（`artifact.dir` + 每份产物的 bytes/sha256）。
+        # 自证里多数用例把 `artifacts` 留成 None ⇒ W7 未行使；专项用例注入磁盘侧。
+        "artifact.dir": r"E:\x\_kernel\r84",
+        "artifact.kernel_c_summary.json.bytes": "11355506",
+        "artifact.kernel_c_summary.json.sha256": "c" * 16,
+        "artifact.kernel_asm_summary.json.bytes": "486229",
+        "artifact.kernel_asm_summary.json.sha256": "d" * 16,
+        "artifact.kernel_callgraph.json.bytes": "4358990",
+        "artifact.kernel_callgraph.json.sha256": "e" * 16,
         "arm_c.kind.alpha": "7",
         "arm_c.kind.beta": "3",
         "base_c.kind.alpha": "7",
@@ -1056,6 +1154,50 @@ def _selftest():
 
     # 反例 W6：流程块缺失（缺输入必须能红，不许静默当成「没有流程要核」）
     expect("W6 流程块整块缺失", _p6("正文里没有流程块\n"), True)
+
+    # ---- R95/W7：产物现算核对**六个方向**都要有对手方 ----
+    _disk = {"kernel_c_summary.json": {"bytes": 11355506, "sha256": "c" * 16},
+             "kernel_asm_summary.json": {"bytes": 486229, "sha256": "d" * 16},
+             "kernel_callgraph.json": {"bytes": 4358990, "sha256": "e" * 16}}
+    kv2, _ = parse_block(text)
+    expect("W7 表与磁盘逐份一致", audit(kv2, text, "a" * 64, 100, 3,
+                                    artifacts=_disk), False)
+    kv2, _ = parse_block(text)
+    expect("W7 产物不在本机（该条未行使，不许静默当对得上）",
+           audit(kv2, text, "a" * 64, 100, 3, artifacts={}), False)
+    kv2, _ = parse_block(_mkdoc({"artifact.kernel_c_summary.json.bytes": "1"}))
+    expect("W7 字节数与磁盘不符（产物被换过）",
+           audit(kv2, text, "a" * 64, 100, 3, artifacts=_disk), True)
+    kv2, _ = parse_block(_mkdoc({"artifact.kernel_callgraph.json.sha256":
+                                 "f" * 16}))
+    expect("W7 sha256 与磁盘不符",
+           audit(kv2, text, "a" * 64, 100, 3, artifacts=_disk), True)
+    kv2, _ = parse_block(_mkdoc({"artifact.kernel_c_summary.json.bytes": "-",
+                                 "artifact.kernel_c_summary.json.sha256": "-"}))
+    expect("W7 表说不在、磁盘却有一份（表被手改）",
+           audit(kv2, text, "a" * 64, 100, 3, artifacts=_disk), True)
+    kv2, _ = parse_block(_mkdoc({"artifact.kernel_asm_summary.json.sha256": None}))
+    expect("W7 bytes/sha256 只登记一半",
+           audit(kv2, text, "a" * 64, 100, 3, artifacts=_disk), True)
+    kv2, _ = parse_block(_mkdoc({"artifact.kernel_asm_summary.json.bytes": "-"}))
+    expect("W7 「不在」只写了一列",
+           audit(kv2, text, "a" * 64, 100, 3, artifacts=_disk), True)
+    kv2, _ = parse_block(_mkdoc({"artifact.kernel_c_summary.json.sha1": "x"}))
+    expect("W7 未登记字段（键名拼错 ⇒ 那条核对永远不跑）",
+           audit(kv2, text, "a" * 64, 100, 3, artifacts=_disk), True)
+    _allkeys = list(parse_block(_mkdoc())[0])
+    kv2, _ = parse_block(_mkdoc(dict((k, None) for k in _allkeys
+                                     if k.startswith("artifact."))))
+    expect("W7 产物条目为空集（恒真）",
+           audit(kv2, text, "a" * 64, 100, 3, artifacts=_disk), True)
+    kv2, _ = parse_block(_mkdoc(dict(
+        (k, None) for k in _allkeys
+        if k.startswith("artifact.") and k.endswith((".bytes", ".sha256")))))
+    expect("W7 只写了 artifact.dir（没有一份产物）",
+           audit(kv2, text, "a" * 64, 100, 3, artifacts=_disk), True)
+    kv2, _ = parse_block(_mkdoc({"artifact.dir": None}))
+    expect("W7 缺 artifact.dir（路径无处可寻）",
+           audit(kv2, text, "a" * 64, 100, 3, artifacts=_disk), True)
 
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     if fails:

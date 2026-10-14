@@ -2,7 +2,7 @@
 
 > **这不是判据，是一次登记的读数。** 由 `_r82/gen_kernel_run_doc.py` 从实测
 > `AGG_r84.json` + 两遍文件系统扫描 + 流程站表生成；门
-> `tools/check_kernel_snapshot.py`（判据族 **W1–W6**）钉住它：出处 + **口径**、
+> `tools/check_kernel_snapshot.py`（判据族 **W1–W7**）钉住它：出处 + **口径**、
 > 三档分母**并列**、汇总↔明细**恒等式**、与 R81 基线**逐位且逐类**对照、
 > 唯一事实源指针与跨文档分母一致，以及**流程站表 / 恰一个 current 驱动 /
 > 产物链拓扑 / 仓内落点存在**（W6）。
@@ -106,7 +106,7 @@ pipeline.stations | 13
 |---|---|---|
 | `661 s / 10.8 GB` | R75（`_kernel/analyze_kernel.py`） | `cwd=REPO` ⇒ 记录到的路径退化成 basename |
 | `793.4 s / 13.1 GB` | R81（`_kernel/rerun_kernel_r81.py`） | `cwd=CORPUS` ⇒ 真相对路径 |
-| `1879.7 s / 12.8 GB` | R84（本轮，`_r82/probe_kernel_r84.py`） | `cwd=CORPUS`（与 R81 同口径） |
+| `2103.4 s / 10.4 GB` | R84（本轮，`_r82/probe_kernel_r84.py`） | `cwd=CORPUS`（与 R81 同口径） |
 
 三者**都不是错的** —— 错的是「把它们混着引用而不写出口径」。
 所以本表第一件要登记的东西不是数字，是**口径**（`provenance.cwd_convention`），
@@ -141,8 +141,8 @@ W2 会对它做非空断言。
 | `heuristics` | 1262817 | 1262829 | **不同** | | | |
 | `json_bytes` | 11355506 | 11355505 | **不同** | | | |
 | `rc` | 0 | 0 | ✅ | | | |
-| `peak_mb` | 7730.3 | 13136.5 | 不可裁决 | 148.0 | 128.3 | 不可裁决 |
-| `seconds` | 493.6 | 793.4 | 不可裁决 | 2.7 | 2.4 | 不可裁决 |
+| `peak_mb` | 10627.9 | 13136.5 | 不可裁决 | 140.7 | 128.3 | 不可裁决 |
+| `seconds` | 2103.4 | 793.4 | 不可裁决 | 2.9 | 2.4 | 不可裁决 |
 
 汇编臂（`--lang asm`）的规模：**1369** 文件 / **381729** 行。
 
@@ -173,9 +173,9 @@ W5 只比**与时钟无关**的计数器，且**逐类**比对启发式分解：
 
 | 项 | 值 |
 |---|---|
-| 被测物 `matlabc.py` sha256 | `00069f2538c32e8810a302c16f15673583d4d1688db00326c960e262b937b6a5` |
-| 被测物字节数 | 1674472 |
-| 生成时 HEAD | `a08cdaf93e0059cfe98d9db98c66f76c91be996b` |
+| 被测物 `matlabc.py` sha256 | `69aeee2275261ebb766478fa7a999c100a6df89ce243e23aaded77e283da7dac` |
+| 被测物字节数 | 1684810 |
+| 生成时 HEAD | `dda24f4930a924974d8d2e121723cbbd60442cf9` |
 | 基线 `AGG_r81.json` sha256 | `c6ba4cab681edd521cd674126a80b3716ff56a479de6d3463cab4a31b6e19374` |
 | 跨文档 | `docs/UNKNOWN_SITES.md` 那档分母 = 340（本表同值） |
 
@@ -278,7 +278,7 @@ arm_c.unresolved.reason | 同两个方向：假 unresolved（属性组内参数�
 python _r82/probe_kernel_r84.py --provenance   # 只读：打印指纹，不写盘
 python _r82/probe_kernel_r84.py --arms c asm   # 真跑（~13 min / ~13 GB）
 python _r82/gen_kernel_run_doc.py              # 重生成本表
-python tools/check_kernel_snapshot.py          # 门（W1–W6）
+python tools/check_kernel_snapshot.py          # 门（W1–W7）
 ```
 
 ## 7. 三块的分工
@@ -299,9 +299,9 @@ R81 的已声明变化**（哪些读数变了、为什么变）。分开的理�
 arm_asm.files | 1369
 arm_asm.json_bytes | 486229
 arm_asm.lines | 381729
-arm_asm.peak_mb | 137.6
+arm_asm.peak_mb | 140.7
 arm_asm.rc | 0
-arm_asm.seconds | 3
+arm_asm.seconds | 2.9
 arm_c.edges | 7060966
 arm_c.files | 62704
 arm_c.funcs | 743509
@@ -319,10 +319,17 @@ arm_c.kind.c_uninit_pointer | 458330
 arm_c.kind.c_unused_static | 230066
 arm_c.kind.c_use_after_free | 657
 arm_c.lines | 36155901
-arm_c.peak_mb | 13143.6
+arm_c.peak_mb | 10627.9
 arm_c.rc | 0
-arm_c.seconds | 1879.7
+arm_c.seconds | 2103.4
 arm_c.unresolved | 1295143
+artifact.dir | E:\matlabc\_kernel\r84
+artifact.kernel_asm_summary.json.bytes | 486229
+artifact.kernel_asm_summary.json.sha256 | dff8383318922938
+artifact.kernel_c_summary.json.bytes | 11355506
+artifact.kernel_c_summary.json.sha256 | 9a6bd04cfd6c7341
+artifact.kernel_callgraph.json.bytes | 4358990
+artifact.kernel_callgraph.json.sha256 | c426096624900f81
 base_asm.files | 1369
 base_asm.json_bytes | 486229
 base_asm.lines | 381729
@@ -359,8 +366,8 @@ corpus.files_repo_plus_oss | 340
 corpus.path | E:\matlabc\_kernel\corpus\linux-6.19.14
 crossdoc.unknown_sites_files | 340
 provenance.cwd_convention | cwd=corpus (target=.)
-provenance.git_head | a08cdaf93e0059cfe98d9db98c66f76c91be996b
-provenance.matlabc_bytes | 1674472
-provenance.matlabc_sha256 | 00069f2538c32e8810a302c16f15673583d4d1688db00326c960e262b937b6a5
+provenance.git_head | dda24f4930a924974d8d2e121723cbbd60442cf9
+provenance.matlabc_bytes | 1684810
+provenance.matlabc_sha256 | 69aeee2275261ebb766478fa7a999c100a6df89ce243e23aaded77e283da7dac
 ```
 <!-- /KERNEL-RUN -->
