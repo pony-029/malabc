@@ -318,6 +318,28 @@ def parse_pytest_summary(text):
     return got
 
 
+def failed_nodeids(text, limit=20):
+    """从 pytest `-rf` 短摘要里取失败条目（`FAILED tests/…::test_x - …`）。
+
+    为什么必须有它：门只报「2 failed」时，读者**没有入口**去裁定
+    「量具错还是对象错」—— 失败清单本该是归因的起点，却在 `_run_tests`
+    捕获后被整个丢掉了（R98 ⑮ 在门自己身上复现）。
+
+    返回去重后的行；超过 `limit` 条时补一行汇总（**截断必须说出来**，
+    否则「列出的就是全部」又是新误读）。**取不到就返回 []**：
+    本函数只做展示，判红由 `test_baseline_problem` 负责。
+    """
+    seen = []
+    for ln in text.splitlines():
+        s = ln.strip()
+        if (s.startswith("FAILED ") or s.startswith("ERROR ")) and s not in seen:
+            seen.append(s)
+    extra = len(seen) - limit
+    if extra > 0:
+        return seen[:limit] + ["……另有 %d 条未列出（摘要被截断）" % extra]
+    return seen
+
+
 def test_baseline_problem(got, baseline, python_ver=None):
     """两向核对测试结果与基线。返回问题串（空 = 过）。纯函数，自证直接测它。"""
     if got is None:
@@ -389,6 +411,9 @@ def tests_gate_problem(tools_dir, python_exe=None, timeout=TEST_TIMEOUT):
     _got = parse_pytest_summary(text)
     # 实测汇总**必须**打出来：基线里的数字只能来自实测，不许靠猜。
     print("check_all: 实测汇总 (failed, passed, skipped) = %s" % (_got,))
+    # R102b：红数必须带名字 —— 只报计数等于把归因的起点丢掉。
+    for _ln in failed_nodeids(text):
+        print("check_all:   %s" % _ln)
     return test_baseline_problem(_got, baseline, python_ver=PYVER)
 
 

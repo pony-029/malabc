@@ -1,12 +1,26 @@
 {
   "failed": 0,
   "measured_by": "python tools/check_all.py --with-tests",
+  "non_determinism_seen": [
+    {
+      "failed": 2,
+      "passed": 532,
+      "run": "R102 9IIkWn (--with-tests, 复跑)",
+      "skipped": 4
+    },
+    {
+      "failed": 0,
+      "passed": 534,
+      "run": "R102 WZAXp3 (--with-tests)",
+      "skipped": 4
+    }
+  ],
   "passed": 534,
   "passed_tolerance": 5,
-  "passed_tolerance_why": "容差不为 0 是**实测**结论，不是宽松：R101 对同一棵树跑两次全量，分别得 `508 passed` 与 `509 passed`（**总数恒 532**）。`skipped` 里 4 条取决于本机是否装了 node / jsdom，`passed` 于是跟着上下浮动。⚠ `failed` **不给容差**：0 就是 0。",
+  "passed_tolerance_why": "容差不为 0 是**实测**结论，不是宽松：R101 对同一棵树跑两次全量，分别得 `508 passed` 与 `509 passed`（**总数恒 532**）。`skipped` 里 4 条取决于本机是否装了 node / jsdom，`passed` 于是跟着上下浮动。⚠ `failed` **不给容差**：0 就是 0。 ⚠ R102b 第二次实测（**同一棵树** `e139daf`）：`0/534` 与 `2/532` ⇒ 差的 2 条在红与绿之间翻面，总数恒 534 —— 与 R101 那次同源。",
   "python_version": "3.10.10",
   "recorded_round": "R102",
   "schema": "malabc.test-baseline/1",
   "skipped": 4,
-  "why": "[R102] 把「整套 tests/ 的红数」变成**两向核对**的事实源。缺口是实测出来的：`tools/check_all.py` 结构性地只跑 tools/ 下的护栏、**不跑 tests/**，于是整套 tests/ 从 R99 起红着 23 条而没有任何门看得见（各轮只跑定点用例，R100 只跑了一条）。R102 逐条归因并修完（详见 docs/SUPERPOWER_REVIEW_R102.md），据此记录基线。⚠ **已知非确定**：R101 对**同一棵树**跑了两次全量，给出 `24 failed / 508 passed` 与 `23 failed / 509 passed`（**总数恒 532**）⇒ **至少一支用例与宿主负载相关**；逐条 `FAILED` 列表只有后一次（23 条），第一跑多出的那一条**无日志可查**、如实记为边界。所以本门报红时，先看是不是那支非确定用例，再判真回归。"
+  "why": "[R102] 把「整套 tests/ 的红数」变成**两向核对**的事实源。缺口是实测出来的：`tools/check_all.py` 结构性地只跑 tools/ 下的护栏、**不跑 tests/**，于是整套 tests/ 从 R99 起红着 23 条而没有任何门看得见（各轮只跑定点用例，R100 只跑了一条）。R102 逐条归因并修完（详见 docs/SUPERPOWER_REVIEW_R102.md），据此记录基线。⚠ **已知非确定**：R101 对**同一棵树**跑了两次全量，给出 `24 failed / 508 passed` 与 `23 failed / 509 passed`（**总数恒 532**）⇒ **至少一支用例与宿主负载相关**；逐条 `FAILED` 列表只有后一次（23 条），第一跑多出的那一条**无日志可查**、如实记为边界。所以本门报红时，先看是不是那支非确定用例，再判真回归。\n⚠ **R102b 补记（第二次实测，同一棵树）**：`e139daf` 上 `--with-tests` 跑了两次，得 `0 failed / 534 passed` 与 `2 failed / 532 passed`（**总数恒 534**）——与上面 R101 那次**同一形状**，但这次发生在**已修完 23 条红之后**的树上 ⇒ 是本测试集自身的非确定性，不是历史遗留。两次的失败名单**当时都没被留住**（`_run_tests` 只把 pytest 输出喂给汇总解析器），所以本轮先补**观测量**：门现在会把 `-rf` 摘要里的 `FAILED/ERROR` 行原样打印（`failed_nodeids`，8 个两向样本自证）。`failed` **仍为 0** —— 没有名字与机理之前放宽，等于把真回归一起放过。"
 }
