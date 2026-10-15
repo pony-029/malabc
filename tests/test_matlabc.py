@@ -2461,6 +2461,68 @@ def test_p53_realistic_sample():
     assert "duplicate" in use_fn.ambiguous_calls, "use 的 duplicate 调用应标记歧义"
 
 
+def _md_fence_problems(text):
+    """R104b：Markdown **代码围栏结构**的纯判据（不碰文件系统，可两向自证）。
+
+    返回 `(problems, n_fences)`。判两件事：
+      ① **零长度代码块**：按围栏出现顺序两两配对（第 1 个是开、第 2 个是关…），
+         若某对的两行**紧邻**，就是一个空块 —— 紧随其后的内容会被挤到围栏**外**，
+         而**再后面**的内容会被下一对围栏吞进去（表格不再渲染）。
+      ② **围栏总数必须为偶数**：否则文件末尾整段被吞进代码块。
+    ⚠ 「相邻围栏」**不都是**缺陷：「关旧块 + 开新块」也相邻（`R87` 第 38/39 行即此
+    形态，**正常**）⇒ 必须按**序号奇偶**分开/关，不能只看相邻。
+    """
+    lines = text.replace("\r\n", "\n").split("\n")
+    idx = [i + 1 for i, ln in enumerate(lines) if ln.strip().startswith("```")]
+    problems = []
+    for k in range(0, len(idx) - 1, 2):
+        if idx[k + 1] == idx[k] + 1:
+            problems.append("第 %d 行是零长度代码块（围栏紧邻）" % idx[k])
+    if len(idx) % 2:
+        problems.append("围栏总数 %d 为奇数 ⇒ 末尾内容被吞进代码块" % len(idx))
+    return problems, len(idx)
+
+
+def test_r104b_docs_markdown_fence_structure():
+    """R104b 回归：`docs/*.md` 与仓库根部 `*.md` 的代码围栏结构 —— **零长度代码块为 0、
+    围栏总数为偶**。
+
+    动因是**产物上的真缺陷**（不是假设）：`docs/SUPERPOWER_REVIEW_R104.md` 由装配脚本
+    插占位符产出，留下一对**相邻围栏**（开、紧随其后关）⇒ 零长度代码块，两层后果：
+      ① 真正要展示的两行 JSONL 掉到围栏**外**（失去原样展示）；
+      ② 紧随其后的「余量表 + 两条注记」被**下一对**围栏吞进代码块（表格不再渲染）。
+    两层都不产生任何错误，只是读起来不对 —— 靠人眼几乎抓不到；而围栏**总数仍是偶数**
+    ⇒ 只看奇偶的判据也看不见它（所以这里**两条都判**）。
+    """
+    ddir = os.path.join(ROOT, "docs")
+    files = [os.path.join(ddir, n) for n in sorted(os.listdir(ddir))
+             if n.endswith(".md")]
+    files += [os.path.join(ROOT, n) for n in sorted(os.listdir(ROOT))
+              if n.endswith(".md")]
+    # 扫描范围**现算**并断言非空（R99 ④）：分母失效时「0 处异常」是恒真判据
+    assert len(files) >= 50, "待扫文档过少（%d 份）—— 扫描范围疑似失效" % len(files)
+    bad = []
+    for path in files:
+        probs, _n = _md_fence_problems(_read_text(path))
+        for pr in probs:
+            bad.append("%s: %s"
+                       % (os.path.relpath(path, ROOT).replace("\\", "/"), pr))
+    assert not bad, ("文档代码围栏结构异常 %d 处（零长度代码块 / 奇数围栏）：\n  - %s"
+                     % (len(bad), "\n  - ".join(bad[:10])))
+    # 两向自证：好样本必须 0 问题，坏样本必须被抓到（否则上面那条可能恒真）
+    good = "A\n```\nx\n```\n```\ny\n```\nB\n"      # 关旧块+开新块相邻：正常
+    good_probs, good_n = _md_fence_problems(good)
+    assert good_probs == [] and good_n == 4, \
+        "好样本应 0 问题且 4 个围栏，实际 %r / %d" % (good_probs, good_n)
+    for name, sample, want_line in (("零长度代码块", "A\n```\n```\nX\n```\nY\n```\n", 2),
+                                    ("奇数围栏", "A\n```\nX\n", None)):
+        probs, _n2 = _md_fence_problems(sample)
+        assert probs, "%s 样本应被抓到，实际 0 问题" % name
+        if want_line is not None:
+            assert ("第 %d 行是零长度代码块" % want_line) in probs[0], \
+                "%s 应报告第 %d 行，实际 %r" % (name, want_line, probs)
+
+
 def test_p54_docs_consistency():
     """P54 回归：文档 ↔ 实现一致性——setup.py 版本、README 版本历史/功能特性/配置字段、
     示例 JSON、STRUCTURE.md 版本与代码实现同步，杜绝连续迭代后的文档漂移。"""
