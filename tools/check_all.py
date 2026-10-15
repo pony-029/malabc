@@ -63,7 +63,7 @@
 
 退出码：
     0  = 全部护栏通过（且各自自证通过）；`--with-tests` 时还要求整套 tests/ 与基线一致
-    1  = 有护栏失败，或护栏缺自证（`SELFTEST COUNTS` 行缺失 / 格式非法），或门数少于下限，或（`--with-tests` 时）整套 tests/ 与基线不符（红数变多/变少、通过数掉出容差、换解释器、取不到汇总行全部判红；两条判据**独立结算**——护栏红不会挡住测试门的读数）
+    1  = 有护栏失败，或护栏缺自证（`SELFTEST COUNTS` 行缺失 / 格式非法），或门数少于下限，或（`--with-tests` 时）整套 tests/ 与基线不符（红数变多/变少、通过数掉出容差、换解释器、取不到汇总行全部判红），或（`--with-tests` 时）余量侧信道坏（坏记录 / 有调用点却零记录）；三条判据**独立结算**——任一条红都不挡住其余两条的读数
     2  = 找不到护栏（--tools-dir 下没有 check_*.py → 缺输入，红）
 """
 import io
@@ -340,6 +340,115 @@ def failed_nodeids(text, limit=20):
     return seen
 
 
+# [R104] 性能余量**侧信道**：`tests/test_matlabc.py::_emit_perf_margin` 把
+#   「实测 / 上限 / 余量」写成一行 JSON，路径由本门通过环境变量传进去。
+#
+# 为什么必须有它（R103 ㉜）：性能门**通过时什么都不打印** ⇒ 余量可以悄悄翻面
+#   （R103 实测：`p77` 仅 1.72×、`c28` 1.38–1.47×，而抖动那次恰好翻 2 条）。
+# 路径**由门自己新建**（跑 pytest 前建临时文件、跑完读它）⇒ 不可能读到陈旧读数；
+# 不设环境变量时测试侧一个字节都不写。
+PERF_MARGIN_ENV = "MALABC_PERF_MARGIN_LOG"
+PERF_MARGIN_SRC = os.path.join("tests", "test_matlabc.py")
+
+
+def parse_perf_margins(text):
+    """解析余量侧信道 JSONL ⇒ (records, problems)。纯函数，自证直接测它。
+
+    `records` 按余量**升序**（最紧的在前）；`problems` 是坏行 / 坏字段说明。
+    **空文本不算问题**：空集由 `perf_margin_problem` 结合调用点数判
+    （R95/R99 ④：集合判据必须先断言输入非空）。
+    """
+    records, problems = [], []
+    for i, ln in enumerate(text.splitlines(), 1):
+        s = ln.strip()
+        if not s:
+            continue
+        try:
+            rec = json.loads(s)
+        except ValueError as exc:
+            problems.append("第 %d 行不是 JSON：%s" % (i, exc))
+            continue
+        if not isinstance(rec, dict):
+            problems.append("第 %d 行不是对象" % i)
+            continue
+        miss = [k for k in ("node", "measured", "limit", "ratio", "unit",
+                            "kind")
+                if k not in rec]
+        if miss:
+            problems.append("第 %d 行缺字段 %s" % (i, miss))
+            continue
+        if rec["kind"] not in ("budget", "tolerance"):
+            problems.append("第 %d 行 kind 不是 budget/tolerance：%r"
+                            % (i, rec["kind"]))
+            continue
+        if not (isinstance(rec["measured"], (int, float))
+                and isinstance(rec["limit"], (int, float))
+                and not isinstance(rec["measured"], bool)
+                and not isinstance(rec["limit"], bool)):
+            problems.append("第 %d 行 measured/limit 不是数字" % i)
+            continue
+        if rec["measured"] <= 0 or rec["limit"] <= 0:
+            problems.append("第 %d 行 measured/limit 必须 > 0（否则余量算不出来）" % i)
+            continue
+        records.append(rec)
+    records.sort(key=lambda r: r["ratio"])
+    return records, problems
+
+
+def count_perf_margin_callsites(src):
+    """源内 `_emit_perf_margin(...)` **调用点**数 —— 分母**从被测量的源现算**。
+
+    ⚠ 分母不许手写（R90 ①：量具的尺度要写进量具；㉛：候选集要能推导）。
+    定义行（`def _emit_perf_margin`）与注释行不计。
+    """
+    n = 0
+    for ln in src.splitlines():
+        s = ln.strip()
+        if s.startswith("def ") or s.startswith("#"):
+            continue
+        if "_emit_perf_margin(" in s:
+            n += 1
+    return n
+
+
+def perf_margin_problem(records, problems, callsites):
+    """余量侧信道的判据。返回问题串（空 = 过）。纯函数，自证直接测它。
+
+    ⚠ 强度只许升（R102 ㉖），且每条都对应一种**静默失效**：
+      * 源内 0 个调用点 ⇒ 红：机制被删空，判据恒真（空集 ④）；
+      * 坏记录 ⇒ 红：畸形行不许被当成「没有这条」（陈旧的红与真坏长得一样，R83 ④）；
+      * 有调用点却 0 条记录 ⇒ 红：**这正是 ㉜ 要防的那一种** —— 绿灯读数没接上，
+        余量又会悄悄翻面，而 rc 依然是 0。
+    """
+    if callsites <= 0:
+        return ("%s 里一个 `_emit_perf_margin(` 调用点都没有 —— 余量侧信道是空集，"
+                "判据会恒真（R95/R99 ④：先断言输入非空）" % PERF_MARGIN_SRC)
+    if problems:
+        return "性能余量侧信道有坏记录：%s" % problems[0]
+    if not records:
+        return ("性能余量侧信道**一条记录都没有**（源内 %d 个调用点）—— "
+                "绿灯读数没接上，余量又会悄悄翻面（R103 ㉜）" % callsites)
+    if not [r for r in records if r.get("kind") == "budget"]:
+        return ("余量侧信道里**一条预算门记录都没有**（只有宽限断言）—— "
+                "「有记录」被宽限记录单独满足 ⇒ 判据退化成空判据")
+    return None
+
+
+def format_perf_margin_lines(records, callsites):
+    """把余量按**最紧在前**排成可读行：绿灯也要报「实测 / 上限 / 余量」。"""
+    out = []
+    for r in records:
+        tag = "" if r.get("kind") == "budget" else "  [宽限断言]"
+        out.append("check_all:   %-40s 实测 %9.3f%s  上限 %9.3f%s  余量 %5.2fx%s"
+                   % (r["node"], r["measured"], r["unit"],
+                      r["limit"], r["unit"], r["ratio"], tag))
+    _nb = len([r for r in records if r.get("kind") == "budget"])
+    out.append("check_all:   余量记录 %d 条（预算 %d / 宽限 %d）/ 源内调用点 %d 处"
+               "（按余量升序，最紧在前；`[宽限断言]` 的比值本来就该≈1.0）"
+               % (len(records), _nb, len(records) - _nb, callsites))
+    return out
+
+
 def test_baseline_problem(got, baseline, python_ver=None):
     """两向核对测试结果与基线。返回问题串（空 = 过）。纯函数，自证直接测它。"""
     if got is None:
@@ -371,10 +480,15 @@ def test_baseline_problem(got, baseline, python_ver=None):
     return None
 
 
-def _run_tests(root, py, timeout):
+def _run_tests(root, py, timeout, margin_log=None):
     """跑整套 pytest，返回 (rc, 输出文本)；起不来/挂死返回 (None, "")。"""
     env = dict(os.environ)
     env.pop("PYTHONPATH", None)      # tests/ 要求 PYTHONPATH 不生效（显式不设）
+    # [R104] 余量侧信道路径**由门给**（门自己新建的临时文件）⇒ 不可能陈旧。
+    if margin_log:
+        env[PERF_MARGIN_ENV] = margin_log
+    else:
+        env.pop(PERF_MARGIN_ENV, None)
     cmd = [py, "-m", "pytest", "tests/", "-q", "-rf", "--tb=no"]
     try:
         p = subprocess.Popen(cmd, cwd=root, env=env,
@@ -404,7 +518,22 @@ def tests_gate_problem(tools_dir, python_exe=None, timeout=TEST_TIMEOUT):
     except (ValueError, OSError) as exc:
         return "测试基线读不了或不是 JSON：%s" % exc
     py = python_exe or sys.executable
-    rc, text = _run_tests(root, py, timeout)
+    # [R104] 侧信道临时文件：**每次跑 pytest 前新建**（无陈旧读数），跑完删。
+    _mdir = tempfile.mkdtemp(prefix="malabc_perf_")
+    _mlog = os.path.join(_mdir, "margins.jsonl")
+    try:
+        rc, text = _run_tests(root, py, timeout, margin_log=_mlog)
+        _mtext = ""
+        if os.path.isfile(_mlog):
+            with io.open(_mlog, encoding="utf-8") as fh:
+                _mtext = fh.read()
+        _src = ""
+        _sp = os.path.join(root, PERF_MARGIN_SRC)
+        if os.path.isfile(_sp):
+            with io.open(_sp, encoding="utf-8") as fh:
+                _src = fh.read()
+    finally:
+        shutil.rmtree(_mdir, ignore_errors=True)
     if rc is None:
         return "pytest 超过 %.0fs 未退出（挂死 → 红）" % timeout
     print("check_all: pytest 退出码 %d" % rc)
@@ -414,7 +543,20 @@ def tests_gate_problem(tools_dir, python_exe=None, timeout=TEST_TIMEOUT):
     # R102b：红数必须带名字 —— 只报计数等于把归因的起点丢掉。
     for _ln in failed_nodeids(text):
         print("check_all:   %s" % _ln)
-    return test_baseline_problem(_got, baseline, python_ver=PYVER)
+    # [R104] 余量**在变红之前**就要可见：按最紧在前打表（㉜）。
+    _cs = count_perf_margin_callsites(_src)
+    _recs, _mprobs = parse_perf_margins(_mtext)
+    for _ln in format_perf_margin_lines(_recs, _cs):
+        print(_ln)
+    # 两条判据**各自独立结算**（R102：一条红不许挡住另一条的读数）。
+    _probs = []
+    _pb = test_baseline_problem(_got, baseline, python_ver=PYVER)
+    if _pb:
+        _probs.append(_pb)
+    _pm = perf_margin_problem(_recs, _mprobs, _cs)
+    if _pm:
+        _probs.append(_pm)
+    return "；".join(_probs) if _probs else None
 
 
 def main(argv):
@@ -502,6 +644,9 @@ def _selftest():
       ⑧ [R102] 测试基线两向核对（纯函数，不跑 pytest）：红数变多 / 变少 /
          通过数掉下容差 / 换了解释器 / 取不到汇总行，**五种都必须红**；
          再加上解析器本身的三个样本
+      ⑨ [R104] 性能余量侧信道（纯函数，不跑 pytest）：坏行 / measured≤0 /
+         缺字段 / 有调用点却零记录**都必须红**，好样本必须过；调用点分母
+         不许把定义行与注释行算进去
     """
     bad = good = 0
     tmp = tempfile.mkdtemp(prefix="chk_all_selftest_")
@@ -630,6 +775,49 @@ def _selftest():
         else:
             bad += 1
             print("  [selftest] parse_pytest_summary 解析不对")
+
+        # ⑨ [R104] 性能余量侧信道：坏的四种 + 好的一种 + 分母两向。
+        _okl = ('{"kind": "budget", "limit": 5.0, "measured": 3.5, '
+                '"node": "c28", '
+                '"ratio": 1.4285714285714286, "unit": "s"}')
+        _r9, _p9 = parse_perf_margins(_okl + "\n")
+        if len(_r9) == 1 and not _p9 and \
+                abs(_r9[0]["ratio"] - 5.0 / 3.5) < 1e-9:
+            good += 1
+        else:
+            bad += 1
+            print("  [selftest] 余量解析器读不出好行：%r / %r" % (_r9, _p9))
+        _cases9 = (
+            (_okl + "\n{不是 JSON\n", 1, "坏行"),
+            ('{"kind": "budget", "limit": 5.0, "measured": 0, '
+             '"node": "c28", "ratio": 0, "unit": "s"}\n', 1, "measured<=0"),
+            ('{"kind": "budget", "limit": 5.0, "node": "c28"}\n', 1, "缺字段"),
+            ("", 1, "有调用点却零记录"),
+            ('{"kind": "weird", "limit": 5.0, "measured": 1.0, '
+             '"node": "x", "ratio": 5.0, "unit": "s"}\n', 1, "kind 非法"),
+            ('{"kind": "tolerance", "limit": 5.0, "measured": 1.0, '
+             '"node": "x", "ratio": 5.0, "unit": "s"}\n', 1,
+             "只有宽限记录 ⇒ 没有预算门记录"),
+        )
+        for _t9, _c9, _w9 in _cases9:
+            _rr, _pp = parse_perf_margins(_t9)
+            if perf_margin_problem(_rr, _pp, _c9):
+                good += 1
+            else:
+                bad += 1
+                print("  [selftest] 余量判据样本「%s」没判红" % _w9)
+        if perf_margin_problem(_r9, [], 2) is None:
+            good += 1
+        else:
+            bad += 1
+            print("  [selftest] 余量判据把好样本判红了")
+        if count_perf_margin_callsites("x\n    _emit_perf_margin(1, 2, 3)\n"
+                                       "def _emit_perf_margin(n, m, l):\n") == 1 \
+                and count_perf_margin_callsites("# _emit_perf_margin(\n") == 0:
+            good += 1
+        else:
+            bad += 1
+            print("  [selftest] 调用点分母算错（定义行/注释行不该计）")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return bad, good

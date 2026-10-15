@@ -52,6 +52,39 @@ _PY = sys.executable
 CYCLE = "\u21ba"  # ↺
 
 
+_PERF_MARGIN_ENV = "MALABC_PERF_MARGIN_LOG"
+
+
+def _emit_perf_margin(node, measured, limit, unit="s", kind="budget"):
+    """R104：性能门**通过时**也必须留下「实测 / 上限 / 余量」。
+
+    为什么不用 `print`（白帽实测，不是推断）：测试门 `tools/check_all.py
+    --with-tests` 用 `python -m pytest tests/ -q -rf --tb=no` 跑，**没有 `-s`**
+    ⇒ 通过用例的 stdout 被 pytest 捕获后**丢弃**，`print` 出来等于没写
+    （与「声明改了、diff 里没有」同族）。所以走**机器可读侧信道**：向
+    `$MALABC_PERF_MARGIN_LOG` 追加一行 JSON。
+
+    **环境变量没设时一个字节都不写** ⇒ 直接 `pytest tests/` 无副作用，也不存在
+    「读到上一次的陈旧读数」。侧信道只**记录**：不做断言、不改变测试结果 ——
+    写失败必须让测试保持原样（判据在门里 `perf_margin_problem`）。
+    """
+    path = os.environ.get(_PERF_MARGIN_ENV)
+    if not path:
+        return
+    measured = float(measured)
+    limit = float(limit)
+    # ⚠ `kind` 是**标签**不是修饰：`budget` = 真预算门；`tolerance` = 宽限断言
+    #   （比值本来就该≈1.0）。R104 第一版把后者**瞒掉了**，而实测翻面的正是它。
+    rec = {"node": node, "measured": measured, "limit": limit, "unit": unit,
+           "kind": kind,
+           "ratio": (limit / measured) if measured > 0 else 0.0}
+    try:
+        with io.open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, ensure_ascii=False, sort_keys=True) + "\n")
+    except (OSError, ValueError):
+        pass
+
+
 def _run(args, outdir):
     cmd = [_PY, ANALYZER] + args
     proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -3150,6 +3183,8 @@ def test_p77_incremental_perf_benchmark():
         n_pages = _count_pages("s_first3")
         assert n_pages > 0, "站点一页都没产出 —— 归一化分母为 0，判据会恒真"
         _budget = 0.075 * n_pages
+        # R104：**断言之前**记录 —— 通过时也留读数（㉜：绿灯也要报数）
+        _emit_perf_margin("p77_incremental_perf_benchmark", dt_first, _budget)
         assert dt_first < _budget, \
             ("首次全量解析单价退化（%.2fs / %d 页 = %.1f ms/页；"
              "门禁 75 ms/页 ⇒ 上限 %.1fs）"
@@ -3163,6 +3198,11 @@ def test_p77_incremental_perf_benchmark():
         # 真正的性能门禁是上方的 60s 绝对阈值（防 O(n²) 退化）；这里退化为
         # 「增量不显著变慢」的宽限断言（+0.8s 容差），既保留「缓存没有反向拖慢」
         # 的语义，又彻底消除小文件下的抖动。
+        # R104b：这条**也要报数** —— 它是 R104 唯一实测翻红的那条；
+        #   ⚠ 它的 +0.8s 是**绝对**容差，标定于「跑一轮 ≈2.1s」的年代，
+        #   而现在一轮 ≈82s（分母涨了 ~39 倍）⇒ 容差没有跟着涨。
+        _emit_perf_margin("p77_incremental_perf_benchmark/inc", dt_inc,
+                          dt_first + 0.8, kind="tolerance")
         assert dt_inc < dt_first + 0.8, \
             "增量运行不应显著慢于首次（dt_first=%.3fs dt_inc=%.3fs）" % (dt_first, dt_inc)
     finally:
@@ -4339,6 +4379,8 @@ def test_c28_uninit_performance():
         t = time.time()
         ma._detect_uninitialized(mf)
         dt = time.time() - t
+        # R104：绝对阈值也要报数（这条是本轮最紧的两条之一）
+        _emit_perf_margin("c28_uninit_performance", dt, 5.0)
         assert dt < 5.0, "_detect_uninitialized 应在 5s 内完成（实际 %.2fs，疑似 O(n²)）" % dt
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
