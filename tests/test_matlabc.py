@@ -22274,3 +22274,141 @@ def test_r102_roadmap_plan_block_is_parseable():
                "```\n")
     bp2, _n2, _r2 = _r102_plan_block_problems(bad_txt)
     assert len(bp2) == 2, "少一列 + 轮号重复应各报一条，实得 %s" % (bp2,)
+
+
+def _r103_plan_objectives(text):
+    """R103：取计划块每行的 `objective`（第 5 列），与 `_r102_plan_block_problems` 同一规则。
+
+    为什么不复用 `_r82/evolve_loop.py::load_plan()`：`tests/` 若去 import 仓外的
+    环路脚本，就把「仓内可判」重新变回「只有仓外能判」—— 那正是 R102 §6.3 的病根。
+    """
+    lines = text.split("\n")
+    start = None
+    for i, ln in enumerate(lines):
+        if re.match(r"^#\s*ROUNDS:PLAN\s+v(\d+)\b", ln.strip()):
+            start = i
+            break
+    if start is None:
+        return ["找不到 `# ROUNDS:PLAN v<N>` 头"], {}
+    probs, out = [], {}
+    for i in range(start + 1, len(lines)):
+        s = lines[i].strip()
+        if s.startswith("```"):
+            break
+        if not s or s.startswith("#"):
+            continue
+        cells = [c.strip() for c in s.split("|")]
+        if len(cells) != 6:
+            probs.append("第 %d 行列数 = %d（要求恰 6）" % (i + 1, len(cells)))
+            continue
+        if not re.match(r"^\d+$", cells[0]):
+            probs.append("第 %d 行首列不是轮号" % (i + 1))
+            continue
+        rn = int(cells[0])
+        if rn in out:
+            probs.append("轮号重复：%d" % rn)
+            continue
+        out[rn] = cells[4]
+    if not out:
+        probs.append("计划块取不到任何 objective —— 空集会让判据恒真")
+    return probs, out
+
+
+def _r103_ledger_digest_problems(plan_text, digest_obj):
+    """R103：台账摘要（`docs/PLAN_LEDGER_DIGEST.json`）⇄ 计划表。返回问题串。
+
+    要替代的仓外事实：`_r82/rounds.jsonl` 里每轮的 `objective` 必须与计划表**逐字**
+    相等（`_r82/evolve_loop.py::ledger_plan_problems`）。R101 正是在这半边破了
+    （槽 23 的 objective 被追了一句注记）⇒ 环路 `return 2`，坏了两轮**没有门在看**。
+    本判据用**指纹**代替原文：只比 sha256，台账原文仍不入库。
+
+    ⚠ **集合关系只能是 摘要 ⊆ 计划**，不能是 `==`：`ledger_plan_problems` 的
+    docstring 明确写着「反方向（计划里有、台账里没有）是**正常**的 —— 那是还没跑的
+    计划」。写成 `==` 会把「刚加进计划、尚未执行」误判成红（口径错比功能错危险）。
+    """
+    probs, obj_by_round = _r103_plan_objectives(plan_text)
+    if probs:
+        return ["计划块坏形状：%s" % probs]
+    rounds = digest_obj.get("rounds")
+    if not isinstance(rounds, dict) or not rounds:
+        return ["摘要文件里没有 `rounds` 或为空 —— 空集先断言非空（R99 ④）"]
+    bad = []
+    for k in sorted(rounds, key=lambda x: int(x)):
+        try:
+            rn = int(k)
+        except ValueError:
+            bad.append("摘要的键不是轮号：%r" % (k,))
+            continue
+        if rn not in obj_by_round:
+            bad.append("台账第 %d 轮不在计划表里（环路会 `return 2`）" % rn)
+            continue
+        got = hashlib.sha256(obj_by_round[rn].encode("utf-8")).hexdigest()
+        if got != rounds[k]:
+            bad.append("第 %d 轮的 objective 指纹不符：计划=%s / 摘要=%s"
+                       " —— 计划表被改过（环路会 `return 2`）"
+                       % (rn, got[:16], str(rounds[k])[:16]))
+    return bad
+
+
+def test_r103_plan_objective_digest_matches_ledger():
+    """R103：把「已入账轮次的 objective 与台账逐字相等」钉进**仓内**。
+
+    这是 `test_r102_roadmap_plan_block_is_parseable` 明确划出去的**另一半**：
+    R102 只判了「块能不能被解析成 6 列」，而 R101 那次事故的另一半
+    （槽 23 的 objective 漂移 26 字）当时**只有一个仓外探针**在看着。
+    R102b 已立下纪律：**一次性手工探针 = 下一轮同形状的事故**。
+    """
+    p_plan = os.path.join(ROOT, "docs", "EVOLVE_ROADMAP_360.md")
+    p_dig = os.path.join(ROOT, "docs", "PLAN_LEDGER_DIGEST.json")
+    assert os.path.isfile(p_plan), "缺输入：%s" % p_plan
+    assert os.path.isfile(p_dig), "缺输入：%s" % p_dig
+    plan_text = _read_text(p_plan)
+    digest = json.loads(_read_text(p_dig))
+
+    # ① 真文件：计划块可解析 + 摘要与之一致 + 摘要是计划的非空子集
+    probs, obj_by_round = _r103_plan_objectives(plan_text)
+    assert probs == [], "计划块坏形状：%s" % probs
+    got = _r103_ledger_digest_problems(plan_text, digest)
+    assert got == [], "台账摘要与计划表不符：%s" % got
+    n = len(digest["rounds"])
+    assert n > 0 and n <= len(obj_by_round), \
+        "摘要 %d 条 / 计划 %d 槽（摘要必须是计划的非空子集）" % (n, len(obj_by_round))
+    assert digest.get("schema") == "malabc.plan-ledger-digest/1", \
+        "摘要 schema 不符：%r" % digest.get("schema")
+
+    # ② 正向控制：合成的好对必须绿（挡住「判定器永远报红」）
+    ok_plan = ("# ROUNDS:PLAN v1\n"
+               "0 | 0 | base | a | 目标甲 | -\n"
+               "1 | 0 | base | b | 目标乙 | -\n"
+               "```\n")
+    ok_dig = {"schema": "malabc.plan-ledger-digest/1",
+              "rounds": {"0": hashlib.sha256(u"目标甲".encode("utf-8")).hexdigest()}}
+    assert _r103_ledger_digest_problems(ok_plan, ok_dig) == [], "判定器对**好**对报红"
+
+    # ③ 反向控制：把计划某行的 objective 改一个字 ⇒ 必须红
+    rn0 = int(sorted(digest["rounds"], key=lambda x: int(x))[0])
+    pat = re.compile(r"^\s*%d\s*\|" % rn0)
+    lines = plan_text.split("\n")
+    hit = [i for i, ln in enumerate(lines) if pat.match(ln) and ln.count("|") == 5]
+    assert len(hit) == 1, "第 %d 轮那行定位到 %d 处" % (rn0, len(hit))
+    cols = lines[hit[0]].split("|")
+    cols[4] = cols[4] + u"改"
+    lines[hit[0]] = "|".join(cols)
+    assert _r103_ledger_digest_problems("\n".join(lines), digest), \
+        "计划表的 objective 被改动却不报红 —— 那是空判据"
+
+    # ④ 反向控制：摘要指纹改错 ⇒ 必须红
+    bad_dig = {"schema": "malabc.plan-ledger-digest/1",
+               "rounds": dict(digest["rounds"])}
+    bad_dig["rounds"][str(rn0)] = "0" * 64
+    assert _r103_ledger_digest_problems(plan_text, bad_dig), "摘要指纹被改错却不报红"
+
+    # ⑤ 反向控制：摘要里塞一个计划里没有的轮号 ⇒ 必须红
+    ghost = {"schema": "malabc.plan-ledger-digest/1",
+             "rounds": dict(digest["rounds"])}
+    ghost["rounds"][str(max(obj_by_round) + 7)] = "0" * 64
+    assert _r103_ledger_digest_problems(plan_text, ghost), "摘要里的幽灵轮号不报红"
+
+    # ⑥ 反向控制：摘要为空 ⇒ 必须红（空集先断言非空，R99 ④）
+    assert _r103_ledger_digest_problems(plan_text, {"rounds": {}}), \
+        "空 rounds 不报红 —— 空集会让判据恒真"

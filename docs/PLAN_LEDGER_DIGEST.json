@@ -1,0 +1,30 @@
+{
+  "generated_by": "_r103/gen_plan_ledger_digest.py",
+  "rounds": {
+    "0": "673c666bdc3491f676bf905eafe6119f6106c0015df45f0280dc52ca0b2e9b4f",
+    "1": "e63af173ef1c6924eca25f0b9f9a3440bfe269747b8255f68ad4f9cb14f722ba",
+    "10": "372973957ba6ff1534eaa9832b7260a6fdf8e479639bcdbeef32925b79477f89",
+    "11": "7b7fab539b5418d5e046f9daeaf250729c38347ec2d107451d718df9b1581265",
+    "12": "e4ac6c3f92d501d9e9f65dafe3015adb067382a063ed5deb94a8393fff332d49",
+    "13": "49cfb914d413931d0797ad73cd0701e3c0cc8427a53bf50305157edd09c6fe57",
+    "14": "710970c989c55e4c7063dae0ef0b7217aebd4910dc96fea94df79fb5cdb9d564",
+    "15": "a9cfae2fdb082fe1b21bf07484c65ef7c75c72c06993826d7d6810540e446259",
+    "16": "e6347bd6dc9aecfcd9e0d8869c5211da184a7705aad7508976223a29963df0ca",
+    "17": "c038b4c43a49020a8bbcdb9c02f51f4d5b33bcfc90532da5160a7bc416834f67",
+    "18": "214f247993d1a62b0e01774f39e0e4d956ebda7dc09943bd3d1885cb8d8d9890",
+    "19": "0703b9e390e7ca9af89dfda2ea99c2f92cfd3d0f3a5a4d9813d2bb794483fba7",
+    "2": "cf88563e4b00fb885cc5dc2618881cf2692329d04563ea126d9cc41cd389e9a9",
+    "23": "be3f895f4e35cadd79871aa441f21cd63ba842322eccab62f67ef4884154bd56",
+    "24": "8d523cd13932db0b39e4437f9744bea47e39baee9747fbd46812ea8e0d8c00dc",
+    "3": "7504c0121b12092069bcffbbed92886f95c10c04b6e63df9197f16a40a48aaed",
+    "36": "ecf8015c08b029209ed1ff0d4893a4d4fab5e7e6f7f649d589bc03e14f4240c4",
+    "4": "87779085d0b4f7867a3d7c5c432d6dd80dac799c8a52d0beeb7c349bfb505ba2",
+    "5": "a38357afdbc102c99b1ae5c37226e52ba5b991e8e95d5fec2387fb0f372e19ec",
+    "6": "54b78932ca4728abac274a85092b64ebed36584c271720120b320398d95bf02d",
+    "7": "f4483be4615346ea78bbc53539125e662f9f88d02bbea4d50f22ec8f70c4b2af",
+    "8": "cf166fc9043f15d3d777863a28f8a0a6f644519b2d6194ab8ad05fc578936bb0",
+    "9": "052381a586c07598faf81dde60fd42e9096aeeb5adcdfb6d99b21afb0e1f080e"
+  },
+  "schema": "malabc.plan-ledger-digest/1",
+  "why": "把仓外台账（_r82\\rounds.jsonl）的 objective 指纹钉进仓内：计划表任何一行的 objective 被改动 ⇒ 指纹不符 ⇒ 红。R101 的环路砖死就是这条事实只存在于仓外探针里（R102 §6）。**只放指纹，台账原文不入库**。集合关系只声明「摘要 ⊆ 计划」，反方向（计划有、台账没有）正常 —— 那是还没跑的计划。⚠ 本文件**故意不记**计划槽数与台账行数：记了就会在每次加槽时报「陈旧」，把陈旧训练成噪音（R83 ④）。那两条关系由仓内用例**现算**断言。"
+}
