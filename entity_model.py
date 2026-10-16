@@ -38,8 +38,11 @@ enum / typedef / 全局变量，Python 有 class / 方法 / 字段。三家的**
 `tests/test_entity_contract.py` 的 **C6**）。**失效的散文比缺的散文危险** ——
 留着它，下一个人会据此以为「改了适配器也不会动任何读数」。
 
-C 侧仍未接线（`LANG_SUPPORT["c"]` 是 `no` 且写着理由，槽 26）；MATLAB 侧
-一直有数据源，本轮起与 Python 由**同一份判据**核对。
+C 侧自 **R106 / 槽 26** 起也已接线（`LANG_SUPPORT["c"]` 是 `yes`，
+适配器 `c_entities`）—— 三家因此第一次都有实体数据源，且由**同一份**
+判据（`conformance_problems` / `support_problems`）核对。
+⚠ 覆盖面缺口（不是契约违约）：C 的
+`typedef` 目标类型没有契约槽位；C **全局变量**本轮不报。
 
 用法
 ====
@@ -239,6 +242,71 @@ def _is_property(decorators):
     return False
 
 
+def _txt(x):
+    """安全转字符串：字符串原样，`None` 走空串（**不写 `None`** —— 契约哨兵）。"""
+    if _is_str(x):
+        return x
+    return u"" if x is None else u"%s" % x
+
+
+def _line_of(x):
+    """行号：非负整数原样，其余走哨兵 0（「不知道」与「第 0 行」都记 0，
+    契约就是这么定的 —— 不许在这一层臆造一个更「像」的数）。"""
+    return x if (_is_int(x) and x >= 0) else 0
+
+
+def c_entities(files):
+    """R106 / 槽 26：把 C 载荷的**每文件字典**归一化成契约实体。
+
+    读的是 C 前端的原生键（`structs` / `unions` / `enums` / `typedefs`，
+    由 `matlabc.py::_scan_c_entities` 产出）。文件缺这些键时**按空处理**：
+    正常 C 文件本来就可能没有类型定义，而 `--json-level summary` 档**不带**
+    实体明细（那是「只留签名」的一档）—— 两种「缺键」对适配器是同一件事，
+    分辨它们不是本层的职责。
+
+    ⚠ 两处**已知的信息损失**，写在这里而不是让它消失：
+      * **`typedef` 的目标类型**（`typedef struct Pair Pair;` 里的 `struct Pair`）
+        在契约里**没有槽位**（`ENTITY_FIELDS` 不含 `type`）⇒ 报 `kind=typedef`
+        与别名，指向什么**不报**。这是契约的形状决定的，不是漏读。
+      * **C 全局变量本轮不报**（`_scan_c_entities` 只认 4 类**类型定义**）。
+        契约的 `ENTITY_KINDS` 里 `global` 对 C 因此恒不出现 —— 而契约**不要求**
+        每种 kind 都出现（`conformance_problems` 只校验形状），所以这不是违约，
+        是**覆盖面缺口**。缺口如实写进 `docs/PARITY_MATLAB_C_PY.md` 的 C 行
+        `evidence`，不在本层编一个空壳。
+    """
+    out = []
+    for mf in files or []:
+        if not isinstance(mf, dict):
+            continue
+        rel = mf.get("rel") or ""
+        for key, kind, mem_key in (("structs", "struct", "fields"),
+                                   ("unions", "union", "fields"),
+                                   ("enums", "enum", "enumerators")):
+            for e in mf.get(key) or []:
+                if not isinstance(e, dict):
+                    continue
+                members = []
+                for m in e.get(mem_key) or []:
+                    if not isinstance(m, dict):
+                        continue
+                    if kind == "enum":
+                        members.append(blank_member(
+                            _txt(m.get("name")), "enumerator", u"",
+                            _line_of(m.get("line"))))
+                    else:
+                        members.append(blank_member(
+                            _txt(m.get("name")), "field",
+                            _txt(m.get("type")), _line_of(m.get("line"))))
+                out.append(blank_entity(kind, _txt(e.get("name")), rel,
+                                        _line_of(e.get("line")), members))
+        for t in mf.get("typedefs") or []:
+            if not isinstance(t, dict):
+                continue
+            out.append(blank_entity("typedef", _txt(t.get("name")), rel,
+                                    _line_of(t.get("line"))))
+    return out
+
+
 def py_entities(files):
     """把 Python 载荷的**每文件字典**归一化成契约实体。
 
@@ -287,9 +355,7 @@ def py_entities(files):
 # ---------------------------------------------------------------------------
 LANG_SUPPORT = {
     "matlab": {"status": "yes", "adapter": matlab_entities, "reason": ""},
-    "c": {"status": "no", "adapter": None,
-          "reason": u"C 实体层（struct/union/enum/typedef/全局变量）尚未实现"
-                    u"（槽 26 c_entity_layer）"},
+    "c": {"status": "yes", "adapter": c_entities, "reason": ""},
     "py": {"status": "yes", "adapter": py_entities, "reason": ""},
 }
 
@@ -349,6 +415,22 @@ def _selftest():
                            blank_member("getArea", "method")], ["handle"])
     expect("clean entity", entity_problems(good_e), False)
     expect("empty set conforms", conformance_problems([]), False)
+    # R106 / 槽 26：C 适配器的正例 —— 拿**真实现会产出的原生形态**喂它
+    _cfiles = [{"rel": "ent.h",
+                "structs": [{"name": "Pair", "line": 1,
+                             "fields": [{"name": "a", "type": "int",
+                                         "line": 1}]}],
+                "unions": [],
+                "enums": [{"name": "Color", "line": 3,
+                           "enumerators": [{"name": "RED",
+                                            "line": 3}]}],
+                "typedefs": [{"name": "Pair", "line": 2}]}]
+    expect("c adapter: conforms",
+           conformance_problems(c_entities(_cfiles)), False)
+    # 反例：C 的**引用形态**（只有 `struct X *p;`）不该被编成实体 ——
+    #   适配器对缺键按空处理 ⇒ 仍是空集 ⇒ 合规（不是「报了一条假的」）
+    expect("c adapter: ref-only file stays empty",
+           conformance_problems(c_entities([{"rel": "use.c"}])), False)
     expect("shipped table clean", support_problems(), False)
 
     no_bases = dict(good_e)

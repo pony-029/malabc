@@ -27,6 +27,11 @@
         ├─▶ check_parity_registry.py     能力对等登记表（16 能力 × 4 语言）必须与**实测**一致，两向（E1–E6）
         └─▶ check_browse_clean_manifest.py  `--browse` 清理清单 ⇄ 代码生成点两向对账（M1–M3；起因为 R99「声明改了、diff 里没有」）
         │
+        ├─ 仓级闸门 [R106]：计划块 `action` 必须 ∈ 在册动作 ∪ `-`（在册动作由摘要文件**现算**，
+        │                   `-` 必须写 `blocked_reason`，在册动作不许带理由 —— 环路的归因错与
+        │                   「计划读数与实际不符」各有一个对手方）
+        ├─ 仓级闸门 [R106]：`docs/*.md` + 根部 `*.md` 的代码围栏结构（零长度代码块 / 奇数围栏）
+        │
         ├─ 每道护栏都要能跑通（rc=0）
         ├─ 每道护栏都要有 --selftest（两向自证：坏样本要红、好样本要过）
         ├─ 门数不得少于 MIN_GUARDS（R33/C'9：删掉一道门也会变红）
@@ -36,7 +41,7 @@
             而这种「静默失效」与没有这条判据只差一层错觉；R102 实测修掉）
         │
         ▼
-    0 = 全绿   1 = 有护栏失败/缺自证/门数不足/**测试基线不合**
+    0 = 全绿   1 = 有护栏失败/缺自证/门数不足/**测试基线不合**/**仓级闸门红**
     2 = 找不到护栏（缺输入 → 红）
 
 为什么需要它：护栏分散成多个 `tools/check_*.py`，靠人记得逐个跑等于没有门。
@@ -45,7 +50,10 @@
 
 它自己也必须**能红**：`--selftest` 用临时目录造样本，证明
 「坏护栏会被抓、好护栏会被放、缺自证的护栏会被抓、空目录会红、
-**永不退出的护栏会被超时判红**、**门数少于下限会被判红**」。
+**永不退出的护栏会被超时判红**、**门数少于下限会被判红**」；
+R106 起还包括两个仓级结构闸门的样本 —— **计划块**（动作拼错 / `-` 无理由 /
+在册动作带理由 / 摘要 `actions` 为空 / 列数不足 / 找不到块）与**围栏结构**
+（零长度代码块 / 奇数围栏 / 「关旧块+开新块」相邻必须放行），缺一个样本都算退化。
 一个只会在好天气下变绿的 runner，本身也是一道假门；
 一条会**永远挂住**的链比一道闸门更糟 —— 所以每个子进程都带 `stdin=DEVNULL`
 与墙钟超时（见 `_run` 的注释：这是 R62-R31e 修掉的一个真缺陷）。
@@ -63,7 +71,7 @@
 
 退出码：
     0  = 全部护栏通过（且各自自证通过）；`--with-tests` 时还要求整套 tests/ 与基线一致
-    1  = 有护栏失败，或护栏缺自证（`SELFTEST COUNTS` 行缺失 / 格式非法），或门数少于下限，或（`--with-tests` 时）整套 tests/ 与基线不符（红数变多/变少、通过数掉出容差、换解释器、取不到汇总行全部判红），或（`--with-tests` 时）余量侧信道坏（坏记录 / 有调用点却零记录）；三条判据**独立结算**——任一条红都不挡住其余两条的读数
+    1  = 有护栏失败，或护栏缺自证（`SELFTEST COUNTS` 行缺失 / 格式非法），或门数少于下限，或（`--with-tests` 时）整套 tests/ 与基线不符（红数变多/变少、通过数掉出容差、换解释器、取不到汇总行全部判红），或（`--with-tests` 时）余量侧信道坏（坏记录 / 有调用点却零记录），或**仓级结构闸门红**（计划块 `action` 不在册 / `-` 没写理由 / 在册动作带理由 / 文档出现零长度代码块或奇数围栏 / 闸门缺输入）；各条判据**独立结算**——任一条红都不挡住其余各条的读数
     2  = 找不到护栏（--tools-dir 下没有 check_*.py → 缺输入，红）
 """
 import io
@@ -240,8 +248,25 @@ def _run(py, argv, cwd=None, timeout=GUARD_TIMEOUT):
         return p.returncode, out.decode("utf-8", "replace")
     except subprocess.TimeoutExpired:
         p.kill()
-        p.wait()
-        return None, "超时 >%.0fs（护栏不退出 —— 按红处理）" % timeout
+        # R106：超时**必须带上证据** —— 以前只报「挂死（超时）」，既不说跑了
+        #   多久、也不说它已经打出了什么 ⇒ 那是本门自己的**归因盲区**
+        #   （R102 ㉙ 同族：红数没有名字）。实测动因：2026-10-16 的
+        #   `--with-tests` 第二轮里 `check_ir_attribution.py(selftest)`
+        #   报「挂死（超时）」，而同一命令空载单跑 5 次全部 rc=0 / ≈1 s ⇒
+        #   从门给出的读数**分不出**「真挂」与「环境把 600s 吃完了」。
+        #   ⚠ 证据**不能**从 `TimeoutExpired.output` 取：实测在 3.10.10 与
+        #   3.13.14 上它**都是 `None`**（见 `_r106/probe_timeout_evidence.py`）
+        #   ⇒ 只能 kill 之后**再 communicate 一次**。
+        try:
+            _rest, _ = p.communicate(timeout=30)
+        except subprocess.TimeoutExpired:
+            _rest = b""
+        _lines = [ln for ln in (_rest or b"").decode("utf-8", "replace"
+                                             ).splitlines() if ln.strip()]
+        _tail = "\n".join(_lines[-6:]) if _lines else "（一行都没打）"
+        return None, ("超时 >%.0fs（护栏不退出 —— 按红处理）；"
+                      "它已经打出来的最后 %d 行：\n%s"
+                      % (timeout, min(6, len(_lines)), _tail))
 
 
 def run_guards(tools_dir, python_exe=None, timeout=GUARD_TIMEOUT):
@@ -297,6 +322,216 @@ TEST_TIMEOUT = 5400.0
 PYVER = "%d.%d.%d" % sys.version_info[:3]
 # [R102] 测试基线文件（相对仓库根）。它是「测试红数」的唯一事实源，两向核对。
 TEST_BASELINE_PATH = os.path.join("docs", "TEST_BASELINE.json")
+
+
+# ── [R106] 仓级结构闸门（闸门，**不是**护栏脚本 ⇒ 不进 `MIN_GUARDS`）───────
+#
+# 它们守的是**本仓文档与计划自身**的结构，而不是某个模块的行为：
+#   ① 计划块（`docs/EVOLVE_ROADMAP_360.md` 的 `# ROUNDS:PLAN v1`）的 `action`
+#      必须 ∈ 在册动作 ∪ `-`；`-` 必须写 `blocked_reason`；在册动作不许带理由。
+#   ② `docs/*.md` 与仓库根部 `*.md` 的代码围栏结构（零长度代码块 / 奇数围栏）。
+#
+# 为什么在 runner 里、为什么不放 `tests/`：见本文件顶部本轮的注记
+# （零级联 + 「排不上队的判据与没有判据只差一层错觉」）。
+# ⚠ 本节**不许**出现以判据前缀开头的字符串字面量（理由见顶部注记 1）。
+PLAN_FILE = os.path.join("docs", "EVOLVE_ROADMAP_360.md")
+PLAN_ACTIONS_FILE = os.path.join("docs", "PLAN_LEDGER_DIGEST.json")
+PLAN_COLS = 6
+# 待扫文档的下界（与 `tests/test_matlabc.py::test_r104b_docs_markdown_fence_structure`
+# 同一条口径）：分母失效时「0 处异常」是恒真判据（R99 ④）。
+FENCE_MIN_DOCS = 50
+
+
+def plan_block_rows(text):
+    """从 `# ROUNDS:PLAN v1` 块取数据行 ⇒ `(问题列表, [行字典])`。
+
+    形状口径与 `_r82/evolve_loop.py::load_plan` **同一条**（恰 6 列 / 首列是轮号 /
+    块以 ``` 闭合 / 空行与 `#` 开头的注释跳过 / `-` 就是「无」）。
+
+    为什么要在这里写第二份：runner 在**仓内**，不能 import 仓外脚本
+    （R102 §6.3 的病根正是「仓内可判」退化成「只有仓外能判」）。
+    两份口径漂移会被对方当场抓住：列数一变，环路 `load_plan` 返回 `None`
+    （整块不可信、`return 2`），而这里报「列数 ≠ 6」—— 两边同时红。
+    """
+    lines = text.replace("\r\n", "\n").split("\n")
+    start = None
+    for i, ln in enumerate(lines):
+        if re.match(r"^#\s*ROUNDS:PLAN\s+v\d+\b", ln.strip()):
+            start = i
+            break
+    if start is None:
+        return ["找不到 `# ROUNDS:PLAN v<N>` 块（缺输入 → 红）"], []
+    rows, seen, probs = [], set(), []
+    for i in range(start + 1, len(lines)):
+        s = lines[i].strip()
+        if s.startswith("```"):
+            break
+        if not s or s.startswith("#"):
+            continue
+        cells = [c.strip() for c in s.split("|")]
+        if len(cells) != PLAN_COLS:
+            probs.append("第 %d 行列数 = %d（要求恰 %d）"
+                         % (i + 1, len(cells), PLAN_COLS))
+            continue
+        if not re.match(r"^\d+$", cells[0]):
+            probs.append("第 %d 行首列不是轮号" % (i + 1))
+            continue
+        rn = int(cells[0])
+        if rn in seen:
+            probs.append("轮号重复：%d" % rn)
+            continue
+        seen.add(rn)
+        rows.append({"round": rn, "action": cells[3],
+                     "blocked_reason": cells[5]})
+    if not rows:
+        probs.append("计划块取不到任何数据行 —— 空集会让判据恒真（R99 ④）")
+    return probs, rows
+
+
+def plan_gate_problems(plan_text, digest):
+    """计划块 ⇄ 在册动作 ⇄ `blocked_reason` ⇒ 问题列表（空 = 过）。
+
+    纯函数（不碰文件系统）⇒ 自证可以直接喂文本。
+
+    ⚠ **口径的来处（R106 实测）**：本判据的原版（R105 §8 写的
+    「`action ⊆ ACTIONS ∪ {'-'}`」）装上后真树**红 27 项**。逐条归因后确认那
+    27 行是**合法形态**——槽名当 `action`（人工轮），台账里 `accepted`——真正
+    缺的是「**为什么它不是环路动作**」那一格。所以判据按 R105 §8 自己的原话
+    收敛成两支：**在册**（环路会真的跑它）与**不在册但说出理由**。
+
+    * `action` 在册 ⇒ `blocked_reason` 必须是 `-`：那一格环路**不读**
+      （`run_loop` 只在动作缺失时取它）⇒ 留着理由会让读者以为这条停了，
+      而它会照跑（**计划读数与实际不符**）。
+    * `action` 不在册（含 `-`）⇒ `blocked_reason` 必须写出理由：否则
+      「人工轮」与「拼错的动作名」在读数上**分不开**。
+    * `action` 是空串 ⇒ 红：既不是动作也不是 `-`，环路会**静默**记 `blocked`。
+
+    ⚠ **诚实的边界**：本判据抓不住**拼错的动作名** —— 它落在「不在册」那一支，
+    只会被要求写理由。要抓住它必须给两个命名空间一个**显式标记**
+    （如人工轮写 `slot:<名字>`），那时「裸名字」才等价于错（下一槽的设计题）。
+    """
+    probs, rows = plan_block_rows(plan_text)
+    if probs:
+        return ["计划块坏形状：%s" % probs]
+    if not isinstance(digest, dict):
+        return ["动作摘要不是 JSON 对象（缺输入 → 红）"]
+    acts = digest.get("actions")
+    if not isinstance(acts, list) or not acts:
+        return ["动作摘要里没有非空的 `actions` —— 空集先断言非空（R99 ④）；"
+                "它由 `_r103/gen_plan_ledger_digest.py` 从环路 `ACTIONS` 现算"]
+    known = set(a for a in acts if isinstance(a, str))
+    bad = []
+    for r in rows:
+        act, why = r["action"], r["blocked_reason"]
+        rn = r["round"]
+        if act == "":
+            bad.append("第 %d 行：`action` 是空串 —— 既不是环路动作也不是 `-`，"
+                       "环路会静默记 `blocked`（要「无」就写 `-`）" % rn)
+            continue
+        if act in known:
+            if why and why != "-":
+                bad.append("第 %d 行：`action` %r 在册（环路会**真的跑它**），"
+                           "却带着 `blocked_reason` —— 那一格环路不读，"
+                           "读者却以为这条停了（计划读数与实际不符）"
+                           % (rn, act))
+            continue
+        # 不在册（含 `-`）：必须说出「为什么它不是环路动作」。
+        if not why or why == "-":
+            bad.append("第 %d 行：`action` %r **不是环路动作**，却没写 "
+                       "`blocked_reason` —— 人工轮与「拼错的动作名」在读数上"
+                       "分不开（不在册 ⇒ 写理由）" % (rn, act))
+    return bad
+
+
+def plan_gate_from_disk(root):
+    """读盘上的计划块与动作摘要 ⇒ 问题列表。缺输入一律红（绝不退回旧副本）。"""
+    miss = [p for p in (PLAN_FILE, PLAN_ACTIONS_FILE)
+            if not os.path.isfile(os.path.join(root, p))]
+    if miss:
+        return ["缺输入（缺输入 → 红）：%s" % miss]
+    pp = os.path.join(root, PLAN_FILE)
+    dp = os.path.join(root, PLAN_ACTIONS_FILE)
+    try:
+        with io.open(pp, encoding="utf-8") as fh:
+            plan_text = fh.read()
+        with io.open(dp, encoding="utf-8") as fh:
+            digest = json.load(fh)
+    except (OSError, ValueError) as exc:
+        return ["计划块 / 动作摘要读不了：%s" % exc]
+    _probs, rows = plan_block_rows(plan_text)
+    acts = digest.get("actions") if isinstance(digest, dict) else None
+    bad = plan_gate_problems(plan_text, digest)
+    # 绿灯也要报读数（R103 ㉜：通过时什么都不打印 ⇒ 余量/口径可以悄悄翻面）。
+    print("check_all: 计划块闸门：数据行 %d / 在册动作 %d 个 / 违规 %d 项"
+          "（源 %s + %s）"
+          % (len(rows), len(acts) if isinstance(acts, list) else -1,
+             len(bad), PLAN_FILE.replace("\\", "/"),
+             PLAN_ACTIONS_FILE.replace("\\", "/")))
+    return bad
+
+
+def md_fence_problems(text):
+    """Markdown 代码围栏结构的纯判据 ⇒ `(问题列表, 围栏数)`。
+
+    本函数是本条判据的**唯一实现**：`tests/test_matlabc.py::_md_fence_problems`
+    自 R106 起转调这里（同一份判据有两份实现必然漂移，而漂移的判据不是判据）。
+    两条判据：
+
+    * **零长度代码块**：按出现顺序两两配对（第 1 个是开、第 2 个是关…），某一
+      对的两行**紧邻**即空块 —— 紧随其后的内容被挤到围栏**外**，再后面的内容
+      被下一对围栏吞进去（表格不再渲染）。
+    * **围栏总数必须为偶数**：否则文件末尾整段被吞进代码块。
+
+    ⚠ 「相邻围栏」**不都是**缺陷：「关旧块 + 开新块」也相邻（正常）⇒ 必须按
+    **序号奇偶**分开/关，不能只看相邻。R104b 实测：缺陷躺在**已推送**的提交里，
+    而**围栏总数仍是偶数** ⇒ 只看奇偶的判据看不见它（所以两条都判）。
+    """
+    lines = text.replace("\r\n", "\n").split("\n")
+    idx = [i + 1 for i, ln in enumerate(lines) if ln.strip().startswith("```")]
+    problems = []
+    for k in range(0, len(idx) - 1, 2):
+        if idx[k + 1] == idx[k] + 1:
+            problems.append("第 %d 行是零长度代码块（围栏紧邻）" % idx[k])
+    if len(idx) % 2:
+        problems.append("围栏总数 %d 为奇数 ⇒ 末尾内容被吞进代码块" % len(idx))
+    return problems, len(idx)
+
+
+def _fence_docs(root):
+    """待扫文档 = `docs/*.md` + 仓库根部 `*.md`（与 R104b 用例**同范围**）。"""
+    out = []
+    ddir = os.path.join(root, "docs")
+    if os.path.isdir(ddir):
+        out += [os.path.join(ddir, n) for n in sorted(os.listdir(ddir))
+                if n.endswith(".md")]
+    out += [os.path.join(root, n) for n in sorted(os.listdir(root))
+            if n.endswith(".md")]
+    return out
+
+
+def docs_fence_gate(root):
+    """扫本仓 markdown 的围栏结构 ⇒ 问题列表。范围**现算并断言非空**（R99 ④）。"""
+    files = _fence_docs(root)
+    if len(files) < FENCE_MIN_DOCS:
+        return ["待扫文档过少（%d 份 < 下界 %d）—— 分母失效时「0 处异常」是"
+                "恒真判据（R99 ④）" % (len(files), FENCE_MIN_DOCS)]
+    bad, n_fences = [], 0
+    for path in files:
+        try:
+            with io.open(path, encoding="utf-8", errors="replace") as fh:
+                txt = fh.read()
+        except OSError as exc:
+            bad.append("%s: 读不了（%s）"
+                       % (os.path.relpath(path, root).replace("\\", "/"), exc))
+            continue
+        probs, n = md_fence_problems(txt)
+        n_fences += n
+        for pr in probs:
+            bad.append("%s: %s"
+                       % (os.path.relpath(path, root).replace("\\", "/"), pr))
+    print("check_all: 文档围栏闸门：扫 %d 份文档 / 围栏 %d 个 / 违规 %d 项"
+          "（docs/*.md + 根部 *.md）" % (len(files), n_fences, len(bad)))
+    return bad
 
 
 def parse_pytest_summary(text):
@@ -570,9 +805,11 @@ def main(argv):
     if "--selftest" in argv:
         bad, good = _selftest()
         print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
-        # 这里的 good 数的是**自证断言条数**（9 条），与 MIN_GUARDS（护栏道数）
-        # 是两件事 —— 别把它们调成同一个变量。
-        return 0 if (bad == 0 and good >= 9) else 1
+        # 这里的 good 数的是**自证断言条数**（R106 **实测** 37 条 —— 写补丁时手数
+        # 成 34、改判据后又手数成 35，两次都被实跑当场抓住：读数只认实测），
+        # 与 MIN_GUARDS（护栏道数）是两件事 —— 别把它们调成同一个变量。
+        # ⚠ 下界只许升（R102 ㉖）：它就是「样本被删掉」的对手方。
+        return 0 if (bad == 0 and good >= 37) else 1
 
     tools_dir = os.path.dirname(os.path.abspath(__file__))
     if "--tools-dir" in argv:
@@ -594,6 +831,11 @@ def main(argv):
     _guard_prob = _guard_count_problem(len(guards), MIN_GUARDS,
                                        True) if _local else None
 
+    # [R106] 仓级结构闸门（各条判据**独立结算**：任一条红都不挡住其余各条的读数）。
+    _root = os.path.dirname(os.path.abspath(tools_dir))
+    _plan_prob = plan_gate_from_disk(_root) if _local else None
+    _doc_prob = docs_fence_gate(_root) if _local else None
+
     # [R102] 完整门禁（显式 --with-tests）：再跑整套 tests/ 并核对基线。
     #
     # ⚠ **两条判据必须各自独立行使**（R102 修的第二个结构性缺陷）：
@@ -610,6 +852,14 @@ def main(argv):
         print("check_all: %d 项失败：%s" % (len(bad), bad))
     if _guard_prob:
         print("check_all: " + _guard_prob)
+    if _plan_prob:
+        print("check_all: 计划块闸门：%d 项违规：" % len(_plan_prob))
+        for _p in _plan_prob:
+            print("check_all:   - " + _p)
+    if _doc_prob:
+        print("check_all: 文档围栏闸门：%d 项违规：" % len(_doc_prob))
+        for _p in _doc_prob:
+            print("check_all:   - " + _p)
     if _tests_prob:
         print("check_all: " + _tests_prob)
     elif "--with-tests" in argv and _local:
@@ -619,7 +869,7 @@ def main(argv):
         #   与上面 `_tests_prob` 独立行使是同一条纪律的另一半：
         #   **正反两面都要能独立看见**。
         print("check_all: 测试基线一致（%s）" % TEST_BASELINE_PATH)
-    if bad or _guard_prob or _tests_prob:
+    if bad or _guard_prob or _tests_prob or _plan_prob or _doc_prob:
         return 1
     print("check_all: OK（%d 个护栏，全部通过且各自自证；门数下限 %d）"
           % (len(guards), MIN_GUARDS))
@@ -818,6 +1068,50 @@ def _selftest():
         else:
             bad += 1
             print("  [selftest] 调用点分母算错（定义行/注释行不该计）")
+        # ⑩ [R106] 仓级结构闸门（纯函数，不读盘）：计划块三条判据（+ 两条缺输入）
+        #    与围栏两条判据 —— 坏样本必须红、好样本必须绿，否则「0 违规」可能
+        #    只是恒真。样本一律**构造**，不读真文件（真文件由本轮的 ✓ 行来证）。
+        _plangood = ("# ROUNDS:PLAN v1\n"
+                     "0 | 0 | base | act_alpha | 目标甲 | -\n"
+                     "1 | A  | t1   | -         | 目标乙 | 还没落地\n"
+                     "```\n")
+        _actsok = {"actions": ["act_alpha", "act_beta"]}
+        _plancases = (
+            (_plangood, _actsok, False, "好计划块"),
+            (_plangood.replace("act_alpha", "act_alph"), _actsok, True,
+             "不在册又没写理由（拼错的动作名即落在此支）"),
+            (_plangood.replace("目标乙 | 还没落地", "目标乙 | -"), _actsok, True,
+             "`-` 却没写理由"),
+            (_plangood.replace("act_alpha | 目标甲 | -",
+                               "act_alpha | 目标甲 | 有理由"), _actsok, True,
+             "在册动作带着理由"),
+            (_plangood.replace("act_alpha | 目标甲 | -",
+                               "act_slot_x | 目标甲 | 非环路动作：手工完成"),
+             _actsok, False, "非环路动作 + 写了理由（27 行的形态）"),
+            (_plangood.replace("act_alpha", ""), _actsok, True, "action 是空串"),
+            (_plangood, {"actions": []}, True, "摘要 actions 为空"),
+            (_plangood.replace(" | 目标甲 | -", ""), _actsok, True,
+             "列数不足 6"),
+            ("没有计划头\n", _actsok, True, "找不到计划块"),
+        )
+        for _pt, _dg, _want, _w in _plancases:
+            if bool(plan_gate_problems(_pt, _dg)) == _want:
+                good += 1
+            else:
+                bad += 1
+                print("  [selftest] 计划块闸门样本「%s」判反" % _w)
+        _fgood = "A\n```\nx\n```\n```\ny\n```\nB\n"   # 关旧块+开新块相邻：正常
+        _fencecases = (
+            (_fgood, False, "好围栏（相邻但分属两对）"),
+            ("A\n```\n```\nX\n```\nY\n```\n", True, "零长度代码块"),
+            ("A\n```\nX\n", True, "奇数围栏"),
+        )
+        for _ft, _want, _w in _fencecases:
+            if bool(md_fence_problems(_ft)[0]) == _want:
+                good += 1
+            else:
+                bad += 1
+                print("  [selftest] 围栏判据样本「%s」判反" % _w)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return bad, good

@@ -8012,6 +8012,12 @@ def _c_file_payload(pf, level="full"):
     if level == "full":
         out["comments"] = pf.get("comments", [])
         out["asm"] = pf.get("asm", [])
+        # R106 / 槽 26：C 实体明细 —— 与 `functions` 明细**同档**。
+        #   summary 档是「只留签名、一个字的明细都不带」的那一档，
+        #   所以这里**不许**给它开例外（开了 summary 就不再是签名档）。
+        for _k in ("structs", "unions", "enums", "typedefs"):
+            if pf.get(_k):
+                out[_k] = pf[_k]
     return out
 
 
@@ -8277,6 +8283,202 @@ def _is_type_decl(toks, decl_start, i):
         elif depth == 0 and t[1] == "typedef":
             return True
     return False
+
+
+def _c_match_brace(toks, j):
+    """`toks[j]` 必须是 `{`；返回配对 `}` 的下标（未闭合返回 None）。"""
+    d = 0
+    k = j
+    n = len(toks)
+    while k < n:
+        kind, txt, _ln, _off = toks[k]
+        if kind == "punct":
+            if txt == "{":
+                d += 1
+            elif txt == "}":
+                d -= 1
+                if d == 0:
+                    return k
+        k += 1
+    return None
+
+
+def _c_declarators(seg):
+    """把一段声明拆成若干 `{"name", "type", "line"}`。
+
+    C 的逗号声明（`int a, *b;`）里**只有第一个逗号组**带类型，后面的组继承它
+    —— 不继承就会把 `b` 报成「无类型」，那是**编出来**的信息。
+    ⚠ 名字取该组里**最后一个** id：`struct Pair *next` 里 `Pair` 是标签、
+    `next` 才是成员名。类型是**启发式**的（数组 / 位域的尾巴会跟着名字走），
+    本层只保证**名字与行号**是真的 —— 这一条写在 docstring 里，不靠读者猜。
+    """
+    groups = [[]]
+    d = 0
+    for t in seg:
+        if t[0] == "punct" and t[1] in "([":
+            d += 1
+        elif t[0] == "punct" and t[1] in ")]":
+            d -= 1
+        elif t[0] == "punct" and t[1] == "," and d == 0:
+            groups.append([])
+            continue
+        groups[-1].append(t)
+    out = []
+    base = None
+    for gi, g in enumerate(groups):
+        ids = [t for t in g if t[0] == "id"]
+        if not ids:
+            continue
+        last = ids[-1]
+        pre = g[:g.index(last)]
+        ty = " ".join(t[1] for t in pre).strip()
+        if gi == 0:
+            base = ty
+        elif ty:
+            ty = ("%s %s" % (base or "", ty)).strip()
+        else:
+            ty = base or ""
+        out.append({"name": last[1], "type": ty, "line": last[2]})
+    return out
+
+
+def _c_struct_fields(body):
+    """结构体 / 联合体体内的字段。
+
+    嵌套 `{ … }`（匿名联合 / 匿名结构体成员）**整段跳过** —— 它的字段属于
+    **内层**实体，硬解会把两层混成一层（而契约里一层就是一个实体）。
+    """
+    out = []
+    seg = []
+    d = 0
+    nested = False
+    for t in body:
+        kind, txt, _ln, _off = t
+        if kind == "punct" and txt == "{":
+            d += 1
+            nested = True
+            continue
+        if kind == "punct" and txt == "}":
+            d -= 1
+            continue
+        if kind == "punct" and txt == ";" and d == 0:
+            if not nested:
+                out.extend(_c_declarators(seg))
+            seg = []
+            nested = False
+            continue
+        if d == 0:
+            seg.append(t)
+    return out
+
+
+def _c_enum_items(body):
+    """`enum` 体内的枚举成员（顶层 `,` 分隔，每组的第一个 id 是名字）。
+
+    `RED = 1` ⇒ 名字 `RED`（`= 1` 是初值，不是名字）；`A, B` ⇒ 两个。
+    """
+    out = []
+    cur = None
+    d = 0
+    for t in body:
+        kind, txt, ln, _off = t
+        if kind == "punct":
+            if txt in "([{":
+                d += 1
+            elif txt in ")]}":
+                d -= 1
+            elif txt == "," and d == 0:
+                if cur:
+                    out.append(cur)
+                cur = None
+                continue
+        if kind == "id" and d == 0 and cur is None:
+            cur = {"name": txt, "line": ln}
+    if cur:
+        out.append(cur)
+    return out
+
+
+def _c_typedef_alias(toks, i):
+    """从 `typedef`（下标 i）扫到**顶层** `;`，返回 `(别名, 行号, 同行/后)`。
+
+    别名 = `;` 之前**最后一个** id：`typedef unsigned int u32;` ⇒ `u32`；
+    `typedef struct Pair *PPair;` ⇒ `PPair`（`*` 不参与）。
+    找不到 ⇒ None（调用方必须能处理「没有别名」）。
+    ⚠ **不**返回「下一位置」让调用方跳过分号：`typedef struct X { … } Y;`
+    的分号之前还躺着**一个真的结构体定义**，跳过去就会把它整段吞掉
+    （本补丁的第一版就是这么写的，夹具 `ent.h` 上当场少报一个 struct）。
+    """
+    n = len(toks)
+    d = 0
+    last = None
+    k = i + 1
+    while k < n:
+        kind, txt, ln, _off = toks[k]
+        if kind == "punct":
+            if txt in "([{":
+                d += 1
+            elif txt in ")]}":
+                d -= 1
+            elif txt == ";" and d <= 0:
+                return (last[0], last[1]) if last else None
+        elif kind == "id" and d == 0:
+            last = (txt, ln)
+        k += 1
+    return None
+
+
+def _scan_c_entities(text):
+    """R106 / 槽 26：C **实体层** —— struct / union / enum / typedef。
+
+    返回 `{"structs": [...], "unions": [...], "enums": [...], "typedefs": [...]}`，
+    **不在这里归一化**成契约实体 —— 归一化只有 `entity_model.c_entities`
+    一处事实源（§4x-5：一个量只许有一份实现）。
+
+      * struct / union：`{"name", "line", "fields": [{"name", "type", "line"}]}`
+      * enum：`{"name", "line", "enumerators": [{"name", "line"}]}`
+      * typedef：`{"name", "line"}`
+
+    ⚠ 只认**定义**：`struct X { … }` / `union X { … }` / `enum X { … }` /
+    `typedef … X ;`。`struct X *p;` 只是**引用**，`struct X;` 是**前向声明**
+    —— 两者都不是实体定义，都不报。
+    ⚠ **匿名**类型（`struct { … } v;`）不报：契约要求 `name` 非空，**编一个
+    假名比不报更坏**（R97 的哨兵纪律：未知要能跟「确实没有」分开）。这条缺口
+    如实写进 `docs/PARITY_MATLAB_C_PY.md` 的 C 行理由，不在本层编。
+    """
+    toks = _c_lex(text)
+    n = len(toks)
+    out = {"structs": [], "unions": [], "enums": [], "typedefs": []}
+    i = 0
+    while i < n:
+        kind, txt, _ln, _off = toks[i]
+        if kind != "id":
+            i += 1
+            continue
+        if txt == "typedef":
+            got = _c_typedef_alias(toks, i)
+            if got:
+                out["typedefs"].append({"name": got[0], "line": got[1]})
+            i += 1
+            continue
+        if txt in ("struct", "union", "enum"):
+            j = i + 1
+            if (j + 1 < n and toks[j][0] == "id"
+                    and toks[j + 1][0] == "punct" and toks[j + 1][1] == "{"):
+                end = _c_match_brace(toks, j + 1)
+                if end is not None:
+                    body = toks[j + 2:end]
+                    rec = {"name": toks[j][1], "line": toks[j][2]}
+                    if txt == "enum":
+                        rec["enumerators"] = _c_enum_items(body)
+                    else:
+                        rec["fields"] = _c_struct_fields(body)
+                    out[{"struct": "structs", "union": "unions",
+                         "enum": "enums"}[txt]].append(rec)
+                    i = end + 1
+                    continue
+        i += 1
+    return out
 
 
 def _scan_c_definitions(text):
@@ -8657,10 +8859,14 @@ def _parse_c_source(text, rel, path):
     comments = _c_comments(text)
     asm = _c_inline_asm(text)
     _attach_asm_funcs(asm, funcs)
+    _ents = _scan_c_entities(text)
     return {
         "rel": rel, "path": path, "functions": funcs,
         "includes": sorted(set(includes)), "macros": macros,
         "comments": comments, "asm": asm,
+        # R106 / 槽 26：C 实体层（原生键，归一化在 entity_model）
+        "structs": _ents["structs"], "unions": _ents["unions"],
+        "enums": _ents["enums"], "typedefs": _ents["typedefs"],
     }
 
 
@@ -10724,6 +10930,71 @@ def _apply_unified_gates(model, heuristics, args, root, lang):
 # `definition-site` 口径下 `hub_of` 返回的是**节点名**（如 `real @ h.c`），
 # 而 `focus_subgraph` 的匹配规则也在 callrel 里 —— 两处分居会让默认根认不出
 # 自己的子图（探针 D3 就是为把这条钉住）。
+
+
+def _ml_callgraph_edges(edges):
+    """R106：把 MATLAB 主流程的三元边归一成 `callrel` 认的**四元**边。
+
+    形状来源（现读源码，不是猜）：
+      * MATLAB 主流程 `edges.append((caller_label, callee_label, cross))`
+        —— 标签是 `"<rel>:<函数名>"`，第 3 个元素是 `cross` **布尔**；
+      * `callrel.call_relations` 的契约是 `(caller, callee, line, rel)`。
+
+    ⚠ 两处**如实的降级**，不许静默：
+      * **MATLAB 的边不带行号**（第 3 位是 `cross`，它回答的是「跨不跨文件」，
+        不是行号）⇒ `line` 走哨兵 **0**。臆造一个「看起来像」的行号比 0 更坏：
+        0 与「确实没有」在契约里是同一个哨兵，假行号会让人以为有真读数。
+      * `rel` 从 `caller_label` 的左半**拆**出来（`rsplit(":", 1)[0]`）；
+        标签里没有 `:` 时写空串（哨兵），**不猜**文件名。
+    """
+    out = []
+    for e in edges or []:
+        try:
+            a, b = e[0], e[1]
+        except (TypeError, IndexError):
+            continue
+        rel = a.rsplit(":", 1)[0] if (isinstance(a, str) and ":" in a) else ""
+        out.append((a, b, 0, rel))
+    return out
+
+
+def _ml_callgraph_unresolved(edges):
+    """R106：MATLAB 边的**未解析计数**。
+
+    推导依据（可复核）：`callee_label` 只在**解析到文件**时才写成
+    `"<rel>:<函数名>"`；未解析到文件时它退化成裸函数名
+    （`callee_rel` 为 None 的那一支）。所以「标签里没有 `:`」⇔ 未解析。
+    这是**同一份边上的重读**，不是另算一遍。
+    """
+    n = 0
+    for e in edges or []:
+        try:
+            b = e[1]
+        except (TypeError, IndexError):
+            continue
+        if isinstance(b, str) and ":" not in b:
+            n += 1
+    return n
+
+
+def _ml_callgraph_model(edges):
+    """R106：给 `_emit_call_relations` 一个 MATLAB 形状的模型字典。
+
+    只带它**真正读**的 4 个键：
+      * `lang="matlab"` —— 让局部作用域阶梯**如实**只启用 rung 1
+        （非 C 没有 include 图；这件事由产物 `local_scope.include_map` /
+        `rungs` 报出来，**不是**静默降级）；
+      * `edges` —— 上面归一过的四元；
+      * `unresolved` —— `unresolved_total` 只用它的**长度**，
+        内容不参与图，所以这里给的是「按标签推导出的条数」而不是完整记录；
+      * `func_index` —— 空表：MATLAB 的节点身份已在标签里（`rel:name`），
+        不需要名字→定义的反查（C 需要，因为它的边只带名字）。
+    """
+    _n = _ml_callgraph_unresolved(edges)
+    return {"lang": "matlab",
+            "edges": _ml_callgraph_edges(edges),
+            "unresolved": [None] * _n,
+            "func_index": {}}
 
 
 def _emit_call_relations(model, args, label="C"):
@@ -32803,6 +33074,18 @@ def main(argv=None):
 
     ok = _emit_report_outputs(args, model, files, index, edges, stats, root,
                               checks_for_sarif=checks_for_sarif)
+    # R106：MATLAB 路径的 `--callgraph` 出口。此前 `_emit_call_relations`
+    #   全仓只有两个调用点（C 路径 `_run_c_only` / 扩展前端 `_run_ext_only`），
+    #   **MATLAB 主流程一次没调** ⇒ 给了 `--callgraph` 是「静默不产出」
+    #   （rc=0、无文件、无提示）。R101 §377 记成 MATLAB 四个 `no` 通道之一，
+    #   R102 §7-5 确认是**缺陷**而不是缺口 —— 用户明确要的「调用关系可互点」
+    #   在 MATLAB 上根本走不到。
+    #   位置说明：C / 扩展前端把它放在**所有写盘之后**（那里终端最显眼）；
+    #   主流程的边在这里已经组装完且 `ok` 已就位 —— 出口的语义是「边可用」，
+    #   不是「排在最后」，所以两处顺序不同不构成语义分叉。
+    if not _emit_call_relations(_ml_callgraph_model(edges), args,
+                               label="MATLAB"):
+        ok = False
     _emit_gen_tests(args, files, root, c_model)
 
     # R33/C'3：--binary-attach —— 正常分析后，把源码侧未解析调用拿到二进制里对账。

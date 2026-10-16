@@ -412,13 +412,45 @@ def s_classes(run):
     return False
 
 
+def _nonempty_entity(v):
+    """「内容非空」：非空 `list` / 非空 `dict` 才算。
+
+    ⚠ 标量**不算**（`entities: "none"` / `types: 3`）—— 它既不是通道也不是
+    数据；旧口径下这种值连「键存在」都不满足，新口径下同样不算，两边一致。
+    """
+    if isinstance(v, (list, dict)):
+        return len(v) > 0
+    return False
+
+
 def s_entities(run):
+    """R106 / 槽 42：实体通道 —— **内容非空**才算有。
+
+    为什么要升格（R102 §7-7）：旧口径是「`ENTITY_KEYS` 任一**出现**即真」，
+    于是 `{"entities": []}` 这种**空壳键**同样能把该语言刷成 `yes` ——
+    而 R101 自己就写下过「js 写 `"entities": []` 等于宣称一条不存在的通道」。
+    空壳键与真实现在**读数上分不开**，这正是旧口径的漏洞。
+
+    ⚠ 与 `matlabc.py::_ext_entity_entries` 的「有键 / 无键」语义**不冲突** ——
+    两层回答的是**两个不同的问题**：
+      * 那一层：载荷里**有没有这条通道**（js / asm 没有实体层 ⇒ 一个键都不写，
+        所以写空数组才是撒谎）⇒ 「有键 = 有通道」在那个问题下是**对的**；
+      * 本层：这条通道**本次吐没吐出东西**。py 的 `entities` 键永远在，但
+        「读到 0 个类」与「读到 3 个类」在**能力对等**这个问题上不是一件事 ——
+        而夹具里**确实有** class / struct ⇒ 真实现**必然**给出非空。
+    要求「非空」不会把「有通道、本次为空」误判成「没有通道」：那个区分由
+    那一层负责，本层只回答「本次有没有真数据」。
+    """
     payload = run["json"] or {}
-    if any(k in payload for k in ENTITY_KEYS):
-        return True
-    for f in payload.get("files") or []:
-        if any(k in f for k in ENTITY_KEYS):
+    for k in ENTITY_KEYS:
+        if _nonempty_entity(payload.get(k)):
             return True
+    for f in payload.get("files") or []:
+        if not isinstance(f, dict):
+            continue
+        for k in ENTITY_KEYS:
+            if _nonempty_entity(f.get(k)):
+                return True
     return False
 
 
@@ -1230,6 +1262,29 @@ def _selftest():
            derived_number_problems(ok_txt, LANGS, CAPABILITIES, ok_kv,
                                    [("README.md", None),
                                     ("README_CN.md", None)]), True)
+
+    # ---- R106 / 槽 42：实体通道的**分辨力**（旧口径的漏洞就在这一向）----
+    # ⚠ 不能用「当场红」自证：实测四语言在两条口径下**取值完全相同**
+    #   （matlab / py 本就有真数据，c / js 本就没有键）⇒ 升格不改任何一格。
+    #   能证的是**分辨力**：空壳样本旧口径放行、新口径抓住。
+    def _ent_probs(payload):
+        _run = {"lang": "c", "json": payload, "pages": [], "cg": None,
+                "deps_html": ""}
+        return [] if s_entities(_run) else ["no"]
+
+    expect("entity 空壳键（entities: []）不构成通道",
+           _ent_probs({"entities": []}), True)
+    expect("entity 空 dict（structs: {}）不构成通道",
+           _ent_probs({"structs": {}}), True)
+    expect("entity 标量（types: \"x\"）不构成通道",
+           _ent_probs({"types": "x"}), True)
+    expect("entity 每文件里的空壳键也不构成通道",
+           _ent_probs({"files": [{"rel": "a.c", "structs": []}]}), True)
+    expect("entity 真数据（顶层非空 dict）构成通道",
+           _ent_probs({"field_access": {"v": {}}}), False)
+    expect("entity 真数据（每文件非空 list）构成通道",
+           _ent_probs({"files": [{"rel": "a.c", "structs": [
+               {"name": "Pair", "line": 1, "fields": []}]}]}), False)
 
     # ---- 块解析坏样本 ----
     kv12, p12 = parse_block("no block here")

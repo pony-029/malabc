@@ -22,6 +22,8 @@ C / Python 适配器时**只改这里**。
      **逐项等于** `py_entities(payload["files"])`（`--json-level full`）；
      另核 `ast` 拒收时**降级必须可见**（`parser`=lexical + `limitations`
      非空 + `classes` 是空数组而不是缺键）。
+  C7 C 适配器对**真产物**归一化后合规、与引擎读数逐项相等，且**注释里的类型
+     定义不被误报**（分辨力）；登记表同步为 `yes`。
 """
 import ast
 import json
@@ -84,6 +86,43 @@ def _run_matlab_fixture():
     return payload
 
 
+# R106 / C7 夹具：一份**头文件**（类型定义都在这儿）+ 一份**引用它**的 .c。
+# 最后一行是**反例**：注释里写一个类型定义 —— 它**不许**变成实体。
+FIXTURE_C = u"""struct Pair { int a; int b; };
+enum Color { RED, GREEN };
+typedef struct Pair Pair;
+/* struct Ghost { int x; }; */
+"""
+
+FIXTURE_C_USE = u"""#include "ent.h"
+int main(void) { return 0; }
+"""
+
+
+def _run_c_fixture():
+    """真跑一次引擎（`--lang c`），返回**整份载荷**。
+
+    ⚠ 为什么连 `.c` 一起写：只放 `.h` 时 C 臂的文件集**可能**是空集，
+    那时「载荷里没有实体」是恒真的假绿（R99 ④ 那一族）。两份文件都在，
+    `include_edges` 也顺带被行使。
+    """
+    tmp = tempfile.mkdtemp(prefix="r106_entc_")
+    src = os.path.join(tmp, "fx")
+    os.mkdir(src)
+    for name, text in (("ent.h", FIXTURE_C), ("use.c", FIXTURE_C_USE)):
+        with open(os.path.join(src, name), "wb") as fh:
+            fh.write(text.replace("\n", "\r\n").encode("utf-8"))
+    out = os.path.join(tmp, "out.json")
+    proc = subprocess.run([sys.executable, ANALYZER, src, "--lang", "c",
+                           "--json-level", "full", "--json", out],
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    assert proc.returncode == 0, \
+        "引擎跑 C 夹具失败：rc=%s\n%s" % (
+            proc.returncode, proc.stderr.decode("utf-8", "replace")[-800:])
+    with open(out, "rb") as fh:
+        return json.loads(fh.read().decode("utf-8"))
+
+
 def test_r97_contract_constants_selfconsistent():
     """C1：常量集非空、无重复；版本是正整数。"""
     assert isinstance(em.CONTRACT_VERSION, int) and em.CONTRACT_VERSION > 0
@@ -128,6 +167,53 @@ def test_r97_matlab_adapter_matches_real_payload():
     for m in ce["members"]:
         assert m["type"] == "" and m["line"] == 0, \
             "该层只有名字，type/line 必须是哨兵：%r" % m
+
+
+def test_r106_c_adapter_matches_real_payload():
+    """C7：C 适配器接**真产物** —— 合规、逐项等于引擎读数、**注释不误报**。
+
+    R106 / 槽 26 把 C 从 `no` 改成 `yes`；这一条是那次改动的**对手方**：
+    没有它，`LANG_SUPPORT["c"]` 的 `yes` 只被 `callable` 核过 ——
+    而「它是函数」与「它真能归一化真产物」是两件事（本仓：宣称不是证据）。
+    """
+    payload = _run_c_fixture()
+    files = payload.get("files")
+    assert isinstance(files, list) and files, "载荷必须有 files"
+
+    # ① 独立读数：引擎报了什么（不经过适配器）
+    hdrs = [mf for mf in files if mf["rel"].endswith("ent.h")]
+    assert len(hdrs) == 1, "应恰有 1 个 ent.h，实得 %r" % [m["rel"] for m in files]
+    h = hdrs[0]
+    assert [s["name"] for s in (h.get("structs") or [])] == ["Pair"], h.get("structs")
+    assert [e["name"] for e in (h.get("enums") or [])] == ["Color"], h.get("enums")
+    assert [t["name"] for t in (h.get("typedefs") or [])] == ["Pair"], h.get("typedefs")
+    assert (h.get("unions") or []) == [], h.get("unions")
+
+    # ② 契约：适配器对同一份 files 的输出必须合规
+    ents = em.c_entities(files)
+    probs = em.conformance_problems(ents)
+    assert not probs, "C 适配器产物不合契约：\n  " + "\n  ".join(probs)
+
+    # ③ 逐项核对（期望表独立于适配器的实现）
+    kinds = sorted((e["kind"], e["name"]) for e in ents)
+    assert kinds == [("enum", "Color"), ("struct", "Pair"),
+                     ("typedef", "Pair")], kinds
+    st = [e for e in ents if e["kind"] == "struct"][0]
+    assert st["file"] == "ent.h" and st["line"] == 1, st
+    assert [(m["kind"], m["name"], m["type"]) for m in st["members"]] == \
+        [("field", "a", "int"), ("field", "b", "int")], st["members"]
+    en = [e for e in ents if e["kind"] == "enum"][0]
+    assert [m["name"] for m in en["members"]] == ["RED", "GREEN"], en["members"]
+    assert all(m["kind"] == "enumerator" for m in en["members"]), en["members"]
+
+    # ④ 分辨力：注释里的 `struct Ghost` **不许**变成实体
+    assert "Ghost" not in [e["name"] for e in ents], \
+        "注释里的类型定义被误报成实体：%r" % ents
+
+    # ⑤ 登记表必须与实现同轮改（陈旧登记与幽灵登记同样红）
+    assert em.LANG_SUPPORT["c"]["status"] == "yes", \
+        "适配器接上产物后，登记表必须同时改成 yes"
+    assert em.support_problems() == [], em.support_problems()
 
 
 def test_r97_adapter_is_pure():

@@ -202,7 +202,8 @@ ENTRY_SCRIPTS = tuple(sorted(CONTRACT))
 GUARD_CONTRACT = {
     "tools/check_all.py": {
         0: "全部护栏通过",
-        1: "有护栏失败，或护栏缺自证",
+        1: "有护栏失败，或护栏缺自证，或仓级结构闸门红（计划块 action 不在册 / "
+           "文档围栏结构坏）",
         2: "找不到护栏（缺输入）",
     },
     "tools/check_baseline.py": {

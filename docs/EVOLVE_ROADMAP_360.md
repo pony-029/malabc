@@ -143,6 +143,15 @@
 #   判据必须**先设计成两向**：① 给了上限就一定要 `len(edges) <= cap` 且**显式上报截断**（`hit_edge_cap`）；
 #   ② **不给开关时读数逐位不变**，产物**只差 `version` 那一个字段**（见上面的修正 —— 否则它就不是「加上限」而是「改默认」）。
 #   ⚠ 不许静默截断 —— 截断不上报就是把「看不全」伪装成「全部」。
+# ⚠ **`action` 列的命名空间（R106 立规 + 装闸门）**：这一列只有两种合法形态 ——
+#   ① 环路的**在册动作**（`_r82/evolve_loop.py::ACTIONS` 的键）：环路会**真的跑它**，
+#      所以 `blocked_reason` 必须是 `-`（那一格环路**不读**，留着理由会让读者以为这条停了）；
+#   ② **非环路动作**（含 `-`，例如人工轮的槽名）：必须在 `blocked_reason` 里写出
+#      **为什么它不是环路动作**（否则「人工轮」与「拼错的动作名」在读数上分不开）。
+#   闸门 = `tools/check_all.py::plan_gate_problems`（**仓级闸门**，每次 `check_all` 都跑）：
+#   在册 ⇒ 理由必须为 `-`；不在册 ⇒ 理由必须非空；`action` 空串 ⇒ 红。
+#   ⚠ **诚实的边界**：闸门**抓不住拼错的动作名**（它落在「不在册」那一支，只会被要求写理由）。
+#   要抓住它，必须给两个命名空间一个**显式标记**（例如人工轮写 `slot:<名字>`）—— 下一槽的设计题。
 0  | 0  | base | phase0_acceptance       | Phase 0 验收：门数 17→18 全绿 + U1–U5 两向自证 | -
 1  | 0  | base | conservation_two_way    | 统一图守恒判定器两向成立（干净 0 / 注入 ≥1 / 还原 0） | -
 2  | 0  | base | py36_census             | 3.6.5 语法门在新增模块上仍绿 | -
@@ -154,14 +163,14 @@
 8  | 0c | base | declared_source_gate    | declared_sites 必须带**已登记的独立来源**（含 from_dict 侧门） | -
 9  | 0d | base | kernel_snapshot_gate    | 全树规模读数登记表：出处+口径 / 三档分母并列 / 汇总↔明细恒等式 / 与 R81 逐位**且逐类**（第 19 道门 W1–W5） | -
 10 | 0e | base | kernel_pipeline_gate    | 分析流程登记：13 站站表形状 / 恰一个 current 驱动 / 产物链拓扑 / 仓内落点存在（第 19 道门 W1–W5 → W1–W6） | -
-11 | 0f | t2   | rea_binfmt_mitigations  | REA 移植第一片：`Segment`（只读，perms）+ 静态缓解措施两档（ELF inferred / PE observed；None ≠ False；PE 上 RELRO / exec-stack 恒 null） | -
-12 | 0g | t2   | rea_lib_resolution      | REA 移植第二片：库名 → 磁盘文件 → 依赖下钻（`binfmt/resolve.py` + `--lib-resolve/--lib-path/--lib-max-nodes` + GUI 卡片） | -
-13 | 0h | t2   | call_relations_proj     | 调用关系的**有界投影**（`callrel.py` + `--callgraph` 系列 + 判据族 F7）：度数 TOP-N / 名字级 SCC / 跨文件四桶 / 焦点 BFS / 截断显式 —— 修用户实测的「结果里看不到谁调用谁」 | -
-14 | 0i | t2   | c_attr_spec_family      | C 前端**属性说明符**缺陷族：`__attribute__` 既不是函数定义、也不是调用 —— 三个泄漏通道（类型定义产假函数 / 属性头产假边 / 组内参数产假未解析）全部堵住，判据族 F1–F7 → F1–F8 | -
-15 | 0j | t2   | callgraph_identity_defsite | 调用图的**节点身份口径**换成「定义落点」（`definition-site`，设为默认）—— 名字级合并造出来的**假环**当场散开，且**一条边都不删**；老口径保留为可复现基线 | -
-16 | 0k | t2   | callgraph_local_scope   | 调用图的**解析阶梯**：被调侧多份定义时，用 C 自己的作用域规则把可判定的那部分钉住（rung1 同文件 / rung2 翻译单元·三明治），同时把「救回了多少」变成一个**有分母**的数 | -
-17 | 0l | t2   | rel_of_root_relative   | `matlabc._rel_of()` 的**根相对化**：`rel` 是所有读数共用的那一层（阶梯 / `cross_file` 分桶 / include 图 / 焦点子图），而它算的是「相对 **cwd**」—— 被分析根落在 cwd **之外**时回退成 **basename** ⇒ 同名不同目录的文件被**合并**（R83 意义上的**口径类**缺陷：错起来所有读数一起错、且全都自洽） | -
-18 | 0m | t2   | callgraph_edge_cap      | 焦点子图的**边数上限**：R87 只给了**节点**上限，边**没有** —— 内核默认根 **34 节点 / 19,469 边**、`hit_node_cap=false`，也就是「有界投影」只对上了一半，而 `truncated` 里只有 `hit_node_cap` ⇒ **「看不全」可以不上报**（R83 意义上的**能力被砍成一半**） | -
+11 | 0f | t2   | rea_binfmt_mitigations  | REA 移植第一片：`Segment`（只读，perms）+ 静态缓解措施两档（ELF inferred / PE observed；None ≠ False；PE 上 RELRO / exec-stack 恒 null） | 非环路动作：本轮**手工完成**（台账第 11 轮 accepted；环路的 `ACTIONS` 只覆盖 Phase 0）
+12 | 0g | t2   | rea_lib_resolution      | REA 移植第二片：库名 → 磁盘文件 → 依赖下钻（`binfmt/resolve.py` + `--lib-resolve/--lib-path/--lib-max-nodes` + GUI 卡片） | 非环路动作：本轮**手工完成**（台账第 12 轮 accepted；环路的 `ACTIONS` 只覆盖 Phase 0）
+13 | 0h | t2   | call_relations_proj     | 调用关系的**有界投影**（`callrel.py` + `--callgraph` 系列 + 判据族 F7）：度数 TOP-N / 名字级 SCC / 跨文件四桶 / 焦点 BFS / 截断显式 —— 修用户实测的「结果里看不到谁调用谁」 | 非环路动作：本轮**手工完成**（台账第 13 轮 accepted；环路的 `ACTIONS` 只覆盖 Phase 0）
+14 | 0i | t2   | c_attr_spec_family      | C 前端**属性说明符**缺陷族：`__attribute__` 既不是函数定义、也不是调用 —— 三个泄漏通道（类型定义产假函数 / 属性头产假边 / 组内参数产假未解析）全部堵住，判据族 F1–F7 → F1–F8 | 非环路动作：本轮**手工完成**（台账第 14 轮 accepted；环路的 `ACTIONS` 只覆盖 Phase 0）
+15 | 0j | t2   | callgraph_identity_defsite | 调用图的**节点身份口径**换成「定义落点」（`definition-site`，设为默认）—— 名字级合并造出来的**假环**当场散开，且**一条边都不删**；老口径保留为可复现基线 | 非环路动作：本轮**手工完成**（台账第 15 轮 accepted；环路的 `ACTIONS` 只覆盖 Phase 0）
+16 | 0k | t2   | callgraph_local_scope   | 调用图的**解析阶梯**：被调侧多份定义时，用 C 自己的作用域规则把可判定的那部分钉住（rung1 同文件 / rung2 翻译单元·三明治），同时把「救回了多少」变成一个**有分母**的数 | 非环路动作：本轮**手工完成**（台账第 16 轮 accepted；环路的 `ACTIONS` 只覆盖 Phase 0）
+17 | 0l | t2   | rel_of_root_relative   | `matlabc._rel_of()` 的**根相对化**：`rel` 是所有读数共用的那一层（阶梯 / `cross_file` 分桶 / include 图 / 焦点子图），而它算的是「相对 **cwd**」—— 被分析根落在 cwd **之外**时回退成 **basename** ⇒ 同名不同目录的文件被**合并**（R83 意义上的**口径类**缺陷：错起来所有读数一起错、且全都自洽） | 非环路动作：本轮**手工完成**（台账第 17 轮 accepted；环路的 `ACTIONS` 只覆盖 Phase 0）
+18 | 0m | t2   | callgraph_edge_cap      | 焦点子图的**边数上限**：R87 只给了**节点**上限，边**没有** —— 内核默认根 **34 节点 / 19,469 边**、`hit_node_cap=false`，也就是「有界投影」只对上了一半，而 `truncated` 里只有 `hit_node_cap` ⇒ **「看不全」可以不上报**（R83 意义上的**能力被砍成一半**） | 非环路动作：本轮**手工完成**（台账第 18 轮 accepted；环路的 `ACTIONS` 只覆盖 Phase 0）
 #   R95 的 Phase 0n（**产物现算核对**：第 19 道门 W1–W6 → **W1–W7**）**占用槽 19** ——
 #   它把槽 19 原来那行 `R82-A3`（Py/JS 后端）**退役**：A3 的目标已被 Phase 1–8 的
 #   轮 25（`py_ast_frontend`）与轮 28（`metrics_parity`）覆盖，而它自 R82 起连续
@@ -173,7 +182,7 @@
 #   台账 `_r82/rounds.jsonl` 只记**环路**轮次，所以它们不出现在台账里（仍是 19 行 / 轮 0–18）。
 #   R95 同属直接轮次，但它**回答路线图里的一个缺口**（`docs/KERNEL_RUN.md` 的「运行产物」
 #   表**没有对手方**）⇒ 登记进槽 19，好让下一次环路驱动有**未 blocked** 的行可跑。
-19 | 0n | t2   | kernel_gate_w7          | 第 19 道门的判据族 **W1–W6 → W1–W7**：运行产物由门**现算**核对（表 ⇄ 磁盘 / 空集必红 / `-` ⇄ 不存在**两向** / 未登记字段必红）—— **门数仍 19**（不加闸，只提分辨率） | -
+19 | 0n | t2   | kernel_gate_w7          | 第 19 道门的判据族 **W1–W6 → W1–W7**：运行产物由门**现算**核对（表 ⇄ 磁盘 / 空集必红 / `-` ⇄ 不存在**两向** / 未登记字段必红）—— **门数仍 19**（不加闸，只提分辨率） | 非环路动作：本轮**手工完成**（台账第 19 轮 accepted；环路的 `ACTIONS` 只覆盖 Phase 0）
 20 | A  | t1   | -                       | R82-A4 MATLAB 后端（parfor/parfeval/batch/timer） | 未实现
 21 | A  | t1   | -                       | R82-A5 asm 间接跳转 ⇒ unknown（不猜） | 未实现
 22 | A  | t1   | -                       | R82-A6 站点/报告新增「异步」列 + 未识别并发站点计数 | 未实现
@@ -215,8 +224,8 @@
 #   也就是说：**F1 把列数修好之后，环路仍然起不来**（两道砖死叠在一起）。
 #   注记已移出 objective（那条事实保留在槽 25 的注释与复盘文档里）。
 #   ⚠ 判据函数**一字未动** —— 量具没坏，它正确地抓到了漂移。
-23 | 1  | t3   | parity_registry        | 能力对等登记表 `docs/PARITY_MATLAB_C_PY.md`（人读 16 能力 × 4 语言 + `<!-- PARITY v1 -->` 机器块）+ **第 20 道门**（第 21 个护栏脚本）`check_parity_registry.py` 判据族 **E1–E6**（两向：登记未实现⇒红 / 实现未登记⇒红 / `na` **不许掩盖没实现**⇒红 / 理由陈旧⇒红 / 人读表 ⇄ 机器块⇒红 / 未行使必须说出来）；**门数 19→20** + **7 处级联**；实测记分牌 40 yes / 16 no / 8 na | -
-24 | 2  | t3   | ir_entity_common       | 语言无关 **Entity 契约**（COMMON 实体字段三语言同形）+ 契约测试；**不改既有读数**（逐位相等口径） | -
+23 | 1  | t3   | parity_registry        | 能力对等登记表 `docs/PARITY_MATLAB_C_PY.md`（人读 16 能力 × 4 语言 + `<!-- PARITY v1 -->` 机器块）+ **第 20 道门**（第 21 个护栏脚本）`check_parity_registry.py` 判据族 **E1–E6**（两向：登记未实现⇒红 / 实现未登记⇒红 / `na` **不许掩盖没实现**⇒红 / 理由陈旧⇒红 / 人读表 ⇄ 机器块⇒红 / 未行使必须说出来）；**门数 19→20** + **7 处级联**；实测记分牌 40 yes / 16 no / 8 na | 非环路动作：本轮**手工完成**（台账第 23 轮 accepted；环路的 `ACTIONS` 只覆盖 Phase 0）
+24 | 2  | t3   | ir_entity_common       | 语言无关 **Entity 契约**（COMMON 实体字段三语言同形）+ 契约测试；**不改既有读数**（逐位相等口径） | 非环路动作：本轮**手工完成**（台账第 24 轮 accepted；环路的 `ACTIONS` 只覆盖 Phase 0）
 #   ⚠ **R102 修 F1（真缺陷 · 环路砖死）**：上面这条槽的末列原本是
 #   **R101 的落地记录**，且以 ` |` 收尾 ⇒ 该行切成 **7 列**。
 #   `evolve_loop.load_plan()` 对「列数 != 6」是**整块 `return None`**，
@@ -233,29 +242,29 @@
 #   `tests/test_matlabc.py::test_r102_roadmap_plan_block_is_parseable`。
 #   R101 的落地记录（原样保留，一字不改）：
 #   **R101 落地**：新建 `pyast_frontend.py`（41,699 B / 933 行；自证 `bad 13 / good 19`）；`matlabc.py` 七处锚点接线（复杂度关键字改引用 `pyast_frontend.COMPLEXITY_KEYWORDS`；载荷 `include_edges` 现算 + 新增 `entities`）；`entity_model.py` py 适配器 + `LANG_SUPPORT` 的 py 由 `no` 改 `yes`；对等表 **py 5 格 + js `deps_edges_json` 1 格**转绿（记分牌 47 `yes` / 9 `no` / 8 `na`）；顺带堵 E5「派生数字」判据空洞；复盘 `docs/SUPERPOWER_REVIEW_R101.md`
-25 | 3  | t3   | py_ast_frontend        | **Python 前端 `ast` 化**（双层：`ast` 优先 / 语法失败降级到现有扫描器且**降级必须进 `limitations`**）；解锁 class/方法/装饰器/注解/相对导入 | -
-26 | 4  | t3   | c_entity_layer         | **C 实体层**：struct/union/enum/typedef/全局变量/字段识别（R87 的 `_is_type_decl` 只做排除，需补正向） | -
-27 | 5  | t3   | rule_family_parity      | 规则族对等 **5 类 × 3 语言 = 15 格**；头一步是**真实语料误报晢查**（先量后改）；裁定 `py_unused_import` 严重度唯一事实源 | -
-28 | 6  | t3   | metrics_parity          | **度量对等**：`_compute_function_metrics` 提到语言无关层 + 三语言同形 `metrics.html`（risk/tag 四档）；顺带修 Python 假边 | -
-29 | 6  | t3   | canvas_parity           | **图的表现力对等**：把 MATLAB 的**统一画布**（多类型节点 + 可开关边型 + 点聚焦 + 双击跳源码）、**目录影响面闭包**、**调度流程视图** 移植到 C/Py；⚠ **硬约束：不得为此引入 JavaScript**（C/Py 站点零 JS 是其可归档性的卖点，`csite.py` 实测 `<script>` 0 次必须保持 0） | -
-30 | 7  | t2   | bin_closure             | **动态库闭合**：库导出符号 ↔ 我方 unresolved **双向**对账（`resolved_by` + `exports_unused`） | -
-31 | 7  | t2   | bin_graph               | **库依赖图**（binhop 渲染）+ 站点可点库卡片（每个库一张卡、卡间有边） | -
-32 | 7  | t2   | bin_sarif_json          | 二进制信息**进 SARIF**（新增 ruleId，不再塔成 `c_heuristics`）+ **完整 BinaryReport 进 JSON** | -
-33 | 7  | t2   | py_ext_module          | **Python 扩展模块**：`.pyd` 进 `MODULE_EXTS` + `PyInit_*` 导出语义 + 扩展模块归因 | -
-34 | 7  | t2   | bin_parity_gate         | 动态库能力对等判据并入 E 族（**E7–E10**） | -
-35 | 8  | t3   | kernel_full_recheck     | 三语言内核全树实测 + `check_kernel_snapshot` W2 刷新 + 发布验收 | -
+25 | 3  | t3   | py_ast_frontend        | **Python 前端 `ast` 化**（双层：`ast` 优先 / 语法失败降级到现有扫描器且**降级必须进 `limitations`**）；解锁 class/方法/装饰器/注解/相对导入 | 非环路动作：本槽**待手工落地**（尚未入台账；环路的 `ACTIONS` 只覆盖 Phase 0）
+26 | 4  | t3   | c_entity_layer         | **C 实体层**：struct/union/enum/typedef/全局变量/字段识别（R87 的 `_is_type_decl` 只做排除，需补正向） | 非环路动作：本槽**待手工落地**（尚未入台账；环路的 `ACTIONS` 只覆盖 Phase 0）
+27 | 5  | t3   | rule_family_parity      | 规则族对等 **5 类 × 3 语言 = 15 格**；头一步是**真实语料误报晢查**（先量后改）；裁定 `py_unused_import` 严重度唯一事实源 | 非环路动作：本槽**待手工落地**（尚未入台账；环路的 `ACTIONS` 只覆盖 Phase 0）
+28 | 6  | t3   | metrics_parity          | **度量对等**：`_compute_function_metrics` 提到语言无关层 + 三语言同形 `metrics.html`（risk/tag 四档）；顺带修 Python 假边 | 非环路动作：本槽**待手工落地**（尚未入台账；环路的 `ACTIONS` 只覆盖 Phase 0）
+29 | 6  | t3   | canvas_parity           | **图的表现力对等**：把 MATLAB 的**统一画布**（多类型节点 + 可开关边型 + 点聚焦 + 双击跳源码）、**目录影响面闭包**、**调度流程视图** 移植到 C/Py；⚠ **硬约束：不得为此引入 JavaScript**（C/Py 站点零 JS 是其可归档性的卖点，`csite.py` 实测 `<script>` 0 次必须保持 0） | 非环路动作：本槽**待手工落地**（尚未入台账；环路的 `ACTIONS` 只覆盖 Phase 0）
+30 | 7  | t2   | bin_closure             | **动态库闭合**：库导出符号 ↔ 我方 unresolved **双向**对账（`resolved_by` + `exports_unused`） | 非环路动作：本槽**待手工落地**（尚未入台账；环路的 `ACTIONS` 只覆盖 Phase 0）
+31 | 7  | t2   | bin_graph               | **库依赖图**（binhop 渲染）+ 站点可点库卡片（每个库一张卡、卡间有边） | 非环路动作：本槽**待手工落地**（尚未入台账；环路的 `ACTIONS` 只覆盖 Phase 0）
+32 | 7  | t2   | bin_sarif_json          | 二进制信息**进 SARIF**（新增 ruleId，不再塔成 `c_heuristics`）+ **完整 BinaryReport 进 JSON** | 非环路动作：本槽**待手工落地**（尚未入台账；环路的 `ACTIONS` 只覆盖 Phase 0）
+33 | 7  | t2   | py_ext_module          | **Python 扩展模块**：`.pyd` 进 `MODULE_EXTS` + `PyInit_*` 导出语义 + 扩展模块归因 | 非环路动作：本槽**待手工落地**（尚未入台账；环路的 `ACTIONS` 只覆盖 Phase 0）
+34 | 7  | t2   | bin_parity_gate         | 动态库能力对等判据并入 E 族（**E7–E10**） | 非环路动作：本槽**待手工落地**（尚未入台账；环路的 `ACTIONS` 只覆盖 Phase 0）
+35 | 8  | t3   | kernel_full_recheck     | 三语言内核全树实测 + `check_kernel_snapshot` W2 刷新 + 发布验收 | 非环路动作：本槽**待手工落地**（尚未入台账；环路的 `ACTIONS` 只覆盖 Phase 0）
 #   R98 的 Phase 9（**三语料实测 + 跨语言可跳转文档生成器**）**追加在计划末尾**（轮 36，线路 `t4`）：
 #   既有的 25–35 一个不动、**不重排** —— 轮号是台账里已登记的事实，而 R97 的 detail 里写过「等槽 25/26 真接上适配器」这类**指向具体槽号**的话，重排会让那句历史文本当场变错。
 #   新增线路 `t4`（跨语言呈现层）而不是挂 `t3`：万一这条槽落到 `blocked`，环路只停 `t4`，不会误伤 `t3` 上排队的 26–29。
 #   ⚠ 本轮闸门数**不变（仍 20）**，且 `matlabc.py` **一个字节没动** —— 修的是**呈现层量具**的两处口径（边序不可复算 / 限定名不唯一），不是引擎能力；另有 `files_located` 把「`--root` 给错」从静默变成拒绝落盘。
-36 | 9  | t4   | corpus_demo_three_langs | 三语料实测（Linux 内核 C / sympy Python / COBRA Toolbox MATLAB）+ 语料无关可跳转交叉引用文档生成器；呈现层两处口径修正（边序不可复算 / 限定名不唯一） | -
+36 | 9  | t4   | corpus_demo_three_langs | 三语料实测（Linux 内核 C / sympy Python / COBRA Toolbox MATLAB）+ 语料无关可跳转交叉引用文档生成器；呈现层两处口径修正（边序不可复算 / 限定名不唯一） | 非环路动作：本轮**手工完成**（台账第 36 轮 accepted；环路的 `ACTIONS` 只覆盖 Phase 0）
 #   R98 收尾追加轮 37（线路仍 `t4`）：引擎对 C/py/js 补**加性** `lines` 字段。
 #   ⚠ 轮 36 的 objective 保持**逐字等于台账**（写「两处」）—— 台账是不可改的事实。
 #     收尾时又抓到**第三处**口径修正（**行数口径混用**：冻结的内核行数是 runner 的 POSIX，
 #     引擎的 C 路径根本不产行数），已写进 `docs/SUPERPOWER_REVIEW_R98.md` §3.7，**不追改台账**。
 #   ⚠ 挂 `t4` 而不是 `t3`：R98 ⑯ —— 新槽落到 blocked 时环路按 `line` 停，
 #   挂 `t3` 会静默跳过排在那里的 25–29。
-37 | 9  | t4   | engine_lines_field     | 引擎对 C/py/js 的文件字典补**加性** `lines` 字段（`len(scrub/dedent(text).split("\n"))`，空文件算 1）⇒ C11 从「如实说明」升级为**三语料真比对**，对照页内核格改用**引擎产物**而非同公式重扫值；**不动边、不动 checks** | -
+37 | 9  | t4   | engine_lines_field     | 引擎对 C/py/js 的文件字典补**加性** `lines` 字段（`len(scrub/dedent(text).split("\n"))`，空文件算 1）⇒ C11 从「如实说明」升级为**三语料真比对**，对照页内核格改用**引擎产物**而非同公式重扫值；**不动边、不动 checks** | 非环路动作：本槽**待手工落地**（尚未入台账；环路的 `ACTIONS` 只覆盖 Phase 0）
 #   R99 追加轮 38（线路仍 `t4`）：**MATLAB 站点接入 C/Python/JS 的同一份基础层**。
 #   `renderers/csite.py::render_c_site` 加两个**默认值即原行为**的加性参数
 #   （`skip_index` / `src_subdir`），`render_browse_site` 在末尾调用它 ⇒
@@ -268,7 +277,7 @@
 #   仍与 R81 全等），只是 `provenance` 刷新 —— 改了 `matlabc.py` ⇒ 快照门 W2 要求
 #   **重跑**（禁止只改表），已按门给的路子重跑 `probe_kernel_r84.py --arms c asm`。
 #   ⚠ 挂 `t4` 而不是 `t3`（R98 ⑯）。
-38 | 9  | t4   | site_unify_baseline    | MATLAB `--browse` 站点接入 C/Py/JS **同一份**基础层（`render_c_site` 加性参数 `skip_index`/`src_subdir`）⇒ `site_same_page_names` 四语言 **yes**；同时修站点产物**不可逐字节复现**（`_kind_color` 的 `hash()` 受 `PYTHONHASHSEED` 影响）与 `_clean_browse_dir` 白名单**两向都错**；**不动边、不动 checks** | -
+38 | 9  | t4   | site_unify_baseline    | MATLAB `--browse` 站点接入 C/Py/JS **同一份**基础层（`render_c_site` 加性参数 `skip_index`/`src_subdir`）⇒ `site_same_page_names` 四语言 **yes**；同时修站点产物**不可逐字节复现**（`_kind_color` 的 `hash()` 受 `PYTHONHASHSEED` 影响）与 `_clean_browse_dir` 白名单**两向都错**；**不动边、不动 checks** | 非环路动作：本槽**待手工落地**（尚未入台账；环路的 `ACTIONS` 只覆盖 Phase 0）
 #   R100 追加轮 39（线路仍 `t4`）：**四语言源码级动态库引用提取** —— 用户明确要的
 #   「动态链接库务必都实现分析」的**互补半边**。新建 `renderers/dynlibs.py`：
 #   同一记录形状（`file/line/api/lib/kind/lib_is_arg/text`）、同一 `kind` 语义
@@ -290,7 +299,7 @@
 #   两侧 README **门表行 + 散文门数** / `CONTRIBUTING.md`。**门表行是本轮聚合门禁当场
 #   抓出的漏改**（上一轮只改了散文门数、漏了表行 ⇒ P4 红）。
 #   ⚠ 挂 `t4` 而不是 `t3`（R98 ⑯）。
-39 | 9  | t4   | dynlib_source_refs     | 四语言**源码级**动态库引用提取（新 `renderers/dynlibs.py`：同一记录形状 `file/line/api/lib/kind/lib_is_arg/text`、同一 `kind` 语义 `load/use/unload/probe/type`、同一站点页 `dynlibs.html` **四语言总生成**；各自 API 表）⇒ 与 `binaries.html` 的**容器级**事实互补、不可互相替代；同轮补正 R99 假声明（`_clean_browse_dir` 顶层清单两向对账）并新建**第 21 道门** `check_browse_clean_manifest.py`（判据族 M0–M3）。**闸门 20 → 21**；不动边、不动 checks | -
+39 | 9  | t4   | dynlib_source_refs     | 四语言**源码级**动态库引用提取（新 `renderers/dynlibs.py`：同一记录形状 `file/line/api/lib/kind/lib_is_arg/text`、同一 `kind` 语义 `load/use/unload/probe/type`、同一站点页 `dynlibs.html` **四语言总生成**；各自 API 表）⇒ 与 `binaries.html` 的**容器级**事实互补、不可互相替代；同轮补正 R99 假声明（`_clean_browse_dir` 顶层清单两向对账）并新建**第 21 道门** `check_browse_clean_manifest.py`（判据族 M0–M3）。**闸门 20 → 21**；不动边、不动 checks | 非环路动作：本槽**待手工落地**（尚未入台账；环路的 `ACTIONS` 只覆盖 Phase 0）
 # ⚠ **R102 的 Phase 9（测试网 + 完整门禁）**：缺口是**实测**出来的 ——
 #   `tools/check_all.py` **结构性**只跑 `tools/` 下的护栏、**不跑 `tests/`**，
 #   于是整套 `tests/` 从 R99 起红着 23 条而**没有任何门看得见**（各轮只跑定点
@@ -319,7 +328,7 @@
 #   跨命名空间表同一条纪律）；通过数掉出容差 / 换解释器 / 取不到汇总行 ⇒ 红。
 #   ⚠ 挂 `t4` 而不是 `t3`（R98 ⑯：新槽要挂**不会被别人 blocked 拖住**的线）。
 #   同轮不动边、不动 checks、不改任何判据签名。
-40 | 9  | t4   | test_net_gate          | **测试网补上对手方**：整套 `tests/` 与基线两向核对（`tools/check_all.py --with-tests` + `docs/TEST_BASELINE.json`），并把「站点页定位器必须指名家族」钉成自维持用例；同轮修完 R99 起积压的 23 条红 | -
+40 | 9  | t4   | test_net_gate          | **测试网补上对手方**：整套 `tests/` 与基线两向核对（`tools/check_all.py --with-tests` + `docs/TEST_BASELINE.json`），并把「站点页定位器必须指名家族」钉成自维持用例；同轮修完 R99 起积压的 23 条红 | 非环路动作：本槽**待手工落地**（尚未入台账；环路的 `ACTIONS` 只覆盖 Phase 0）
 #
 # ── 槽 41（R103）：台账事实入仓 + 非确定用例定性 ──────────────────────────
 #   为什么：R101 的环路砖死坏了两轮没人知道，唯一原因是「已入账轮次的

@@ -1,4 +1,15 @@
 {
+  "actions": [
+    "caliber_two_way",
+    "concurrency_denominator",
+    "conservation_two_way",
+    "declared_source_gate",
+    "kernel_pipeline_gate",
+    "kernel_snapshot_gate",
+    "phase0_acceptance",
+    "py36_census",
+    "u7_selftest"
+  ],
   "generated_by": "_r103/gen_plan_ledger_digest.py",
   "rounds": {
     "0": "673c666bdc3491f676bf905eafe6119f6106c0015df45f0280dc52ca0b2e9b4f",
@@ -25,6 +36,6 @@
     "8": "cf166fc9043f15d3d777863a28f8a0a6f644519b2d6194ab8ad05fc578936bb0",
     "9": "052381a586c07598faf81dde60fd42e9096aeeb5adcdfb6d99b21afb0e1f080e"
   },
-  "schema": "malabc.plan-ledger-digest/1",
-  "why": "把仓外台账（_r82\\rounds.jsonl）的 objective 指纹钉进仓内：计划表任何一行的 objective 被改动 ⇒ 指纹不符 ⇒ 红。R101 的环路砖死就是这条事实只存在于仓外探针里（R102 §6）。**只放指纹，台账原文不入库**。集合关系只声明「摘要 ⊆ 计划」，反方向（计划有、台账没有）正常 —— 那是还没跑的计划。⚠ 本文件**故意不记**计划槽数与台账行数：记了就会在每次加槽时报「陈旧」，把陈旧训练成噪音（R83 ④）。那两条关系由仓内用例**现算**断言。"
+  "schema": "malabc.plan-ledger-digest/2",
+  "why": "把仓外台账（_r82\\rounds.jsonl）的 objective 指纹钉进仓内：计划表任何一行的 objective 被改动 ⇒ 指纹不符 ⇒ 红。R101 的环路砖死就是这条事实只存在于仓外探针里（R102 §6）。**只放指纹，台账原文不入库**。集合关系只声明「摘要 ⊆ 计划」，反方向（计划有、台账没有）正常 —— 那是还没跑的计划。⚠ 本文件**故意不记**计划槽数与台账行数：记了就会在每次加槽时报「陈旧」，把陈旧训练成噪音（R83 ④）。那两条关系由仓内用例**现算**断言。⚠ /2（R106）：新增 `actions` = 环路 `ACTIONS` 的**在册动作清单**。它与上面「故意不记槽数/行数」**不冲突**：那两条是**每轮都变**的计数（记了就把陈旧训练成噪音），而动作清单只在环路**新增一种动作**时才变；它必须入仓，否则「计划块的动作是否在册」在仓内**无从推导**（R103 ㉛：候选集要能推导，不能人工挑）。"
 }

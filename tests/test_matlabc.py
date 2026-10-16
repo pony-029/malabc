@@ -2464,23 +2464,20 @@ def test_p53_realistic_sample():
 def _md_fence_problems(text):
     """R104b：Markdown **代码围栏结构**的纯判据（不碰文件系统，可两向自证）。
 
-    返回 `(problems, n_fences)`。判两件事：
-      ① **零长度代码块**：按围栏出现顺序两两配对（第 1 个是开、第 2 个是关…），
-         若某对的两行**紧邻**，就是一个空块 —— 紧随其后的内容会被挤到围栏**外**，
-         而**再后面**的内容会被下一对围栏吞进去（表格不再渲染）。
-      ② **围栏总数必须为偶数**：否则文件末尾整段被吞进代码块。
-    ⚠ 「相邻围栏」**不都是**缺陷：「关旧块 + 开新块」也相邻（`R87` 第 38/39 行即此
-    形态，**正常**）⇒ 必须按**序号奇偶**分开/关，不能只看相邻。
+    ⚠ R106 起**转调** `tools/check_all.py::md_fence_problems` —— 那条判据的
+    **唯一实现**在仓级闸门里（它常开地跑，不必 `--with-tests`）。保留这个包装是
+    为了让本文件的用例与那道闸门跑**同一份**口径：同一份判据有两份实现必然漂移，
+    而漂移的判据不是判据（本仓「唯一判定点」纪律的同一条）。
+
+    两条判据（零长度代码块 / 围栏总数为偶）与「相邻围栏不都是缺陷（关旧块 +
+    开新块也相邻，正常）」的完整口径见被调函数的 docstring —— 那里才是事实源。
     """
-    lines = text.replace("\r\n", "\n").split("\n")
-    idx = [i + 1 for i, ln in enumerate(lines) if ln.strip().startswith("```")]
-    problems = []
-    for k in range(0, len(idx) - 1, 2):
-        if idx[k + 1] == idx[k] + 1:
-            problems.append("第 %d 行是零长度代码块（围栏紧邻）" % idx[k])
-    if len(idx) % 2:
-        problems.append("围栏总数 %d 为奇数 ⇒ 末尾内容被吞进代码块" % len(idx))
-    return problems, len(idx)
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    try:
+        import check_all as _ca
+    finally:
+        sys.path.pop(0)
+    return _ca.md_fence_problems(text)
 
 
 def test_r104b_docs_markdown_fence_structure():
@@ -2521,6 +2518,114 @@ def test_r104b_docs_markdown_fence_structure():
         if want_line is not None:
             assert ("第 %d 行是零长度代码块" % want_line) in probs[0], \
                 "%s 应报告第 %d 行，实际 %r" % (name, want_line, probs)
+
+
+def _plan_block_sample(rows):
+    """R106：按**盘上同一形状**拼一份最小计划块（`轮号 | 阶段 | 线路 | 动作 | 目标 | 理由`）。
+
+    ⚠ 形状必须与盘上一致（**无首尾 `|`**、`#` 行是注释）：样例比被测物宽松或严格，
+    判据就会在样例上绿、在真树红（或反过来）—— 那样的自证什么也证不了。
+    ⚠ 数据行前不能出现围栏：取行函数遇到围栏就停，会得到空集。
+    """
+    body = "\n".join(" | ".join(c) for c in rows)
+    return ("# ROUNDS:PLAN v1\n"
+            "# round | phase | line | action | objective | blocked_reason\n"
+            "%s\n```\n" % body)
+
+
+def test_r106_repo_plan_block_gate():
+    """R106 回归：`docs/EVOLVE_ROADMAP_360.md` 计划块的 `action` 列 ⇄ 在册动作 ⇄
+    `blocked_reason` —— **仓内可重跑**，把 R105 §8 的债务 ② 从「仓外一次性探针」
+    搬进仓内（R102 ㉕：一次性手工探针 = 下一轮同形状的事故）。
+
+    判据**转调** `tools/check_all.py::plan_gate_problems`（唯一实现在仓级闸门里，
+    它常开地跑、不必 `--with-tests`）：同一份判据有两份实现必然漂移。
+
+    口径的来处是**实测**：R105 §8 原话那版（`action ⊆ ACTIONS ∪ {'-'}`）装上后真树
+    红 27 项。逐条归因（查 `_r82/rounds.jsonl`）确认那 27 行是**合法历史形态** ——
+    槽名当 `action`（人工轮）、台账里 `accepted` —— 真正缺的是「为什么它不是环路
+    动作」那一格。所以收敛成两支：**在册 ⇒ 理由必须是 `-`**（环路真会跑它，那一格
+    不读，留着理由会让读者以为这条停了）；**不在册（含 `-`）⇒ 理由必须非空**
+    （否则「人工轮」与「拼错的动作名」在读数上分不开）。诚实的边界（抓不住拼错的
+    动作名）见被调函数的 docstring。
+    """
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    try:
+        import check_all as ca
+    finally:
+        sys.path.pop(0)
+    plan_text = _read_text(os.path.join(ROOT, "docs", "EVOLVE_ROADMAP_360.md"))
+    digest = json.loads(
+        _read_text(os.path.join(ROOT, "docs", "PLAN_LEDGER_DIGEST.json")))
+    # 分母现算并断言非空（R99 ④）：取不到行时「0 违规」是恒真判据。
+    shape_probs, rows = ca.plan_block_rows(plan_text)
+    assert not shape_probs, "计划块形状坏：%r" % shape_probs
+    assert len(rows) >= 40, "计划块数据行过少（%d 行）—— 分母疑似失效" % len(rows)
+    known = digest.get("actions")
+    assert isinstance(known, list) and known, "动作摘要缺非空 `actions`（缺输入 → 红）"
+    probs = ca.plan_gate_problems(plan_text, digest)
+    assert not probs, (
+        "计划块闸门违规 %d 项：\n  - %s"
+        % (len(probs), "\n  - ".join(probs[:10])))
+
+    def _p(act_cell, why_cell):
+        return ca.plan_gate_problems(
+            _plan_block_sample([["7", "0b", "base", act_cell, "obj", why_cell]]),
+            digest)
+
+    # 两向自证：缺任何一面，上面那条断言都可能恒真。
+    act = known[0]
+    ok = _p(act, "-")
+    assert ok == [], "在册动作 + 理由 `-` 应 0 问题，实际 %r" % ok
+    got = _p(act, "理由")
+    assert got and "在册" in got[0], "在册动作带理由应被抓到，实际 %r" % got
+    ok2 = _p("slot:foo", "理由")
+    assert ok2 == [], "不在册 + 有理由应 0 问题，实际 %r" % ok2
+    got2 = _p("slot:foo", "-")
+    assert got2 and "不是环路动作" in got2[0], (
+        "不在册且无理由应被抓到，实际 %r" % got2)
+    assert _p("-", "-"), "`-` 且无理由应被抓到"
+    got3 = _p("", "-")
+    assert got3 and "空串" in got3[0], "空 `action` 应被抓到，实际 %r" % got3
+    # 缺输入也要红（缺输入 → 红，绝不退回旧副本）
+    assert ca.plan_gate_problems(plan_text, {}), "动作摘要没有 `actions` 时应红"
+    assert ca.plan_gate_problems("这里没有计划块", digest), "找不到计划块时应红"
+
+
+def test_r106_guard_timeout_carries_partial_output():
+    """R106：护栏**超时的读数必须带证据**（部分输出 + 计时），否则红不可归因。
+
+    动因是**实测**（2026-10-16）：`tools/check_all.py --with-tests` 第二轮报
+    `check_ir_attribution.py(selftest)`「挂死（超时）」，而同一命令空载单跑 5 次
+    全部 rc=0 / ≈1 s ⇒ 从门给出的读数**分不出**「真挂死」与「环境把 600 s 吃完了」。
+    这与 R102 ㉙「红数没有名字 ⇒ 门自己就是归因盲区」是同一族缺陷。
+
+    ⚠ 关键实测（钉住实现方式）：`subprocess.TimeoutExpired.output` 在
+    **3.10.10 与 3.13.14 上都是 `None`** ⇒ 证据**不能**从它取，只能在 `kill()`
+    之后**再 `communicate()` 一次**。本用例把这条钉死 —— 否则很容易写成一条
+    「看着实现了、其实永远只会说『一行都没打』」的假装置。
+
+    两向：
+      ① 会挂的子进程 ⇒ rc 为 None，且消息里**必须**出现它已经打出来的标记行；
+      ② 不挂的子进程 ⇒ rc=0 且输出原样返回（保证改动没弄坏正常路径）。
+    """
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    try:
+        import check_all as ca
+    finally:
+        sys.path.pop(0)
+    # ① 挂住的子进程：先打标记再睡很久（-u 关缓冲，否则 kill 时标记还在缓冲区）
+    rc, out = ca._run(_PY, ["-u", "-c",
+                            "import time,sys;print('R106_PARTIAL_MARKER');"
+                            "sys.stdout.flush();time.sleep(60)"], timeout=3)
+    assert rc is None, "超时应当返回 rc=None，实际 %r" % (rc,)
+    assert "R106_PARTIAL_MARKER" in out, (
+        "超时读数里**必须**带上子进程已经打出来的部分输出（否则红不可归因）；"
+        "实际 %r" % out)
+    assert "超时" in out, "消息里应当有「超时」二字，实际 %r" % out
+    # ② 不挂的子进程：同一入口、同一参数形状，输出必须原样回
+    rc2, out2 = ca._run(_PY, ["-u", "-c", "print('R106_OK')"], timeout=60)
+    assert rc2 == 0 and "R106_OK" in out2, (rc2, out2)
 
 
 def test_p54_docs_consistency():
@@ -4325,6 +4430,8 @@ def test_c22_stress_test():
         rc, _o, err = _run([tmp, "--browse", out, "--json", jp, "--reproducible"], tmp)
         dt = time.time() - t
         assert rc == 0, "压力测试运行失败: %s" % err[:500]
+        # R106：绿灯也要留「实测 / 上限 / 余量」（R103 ㉜：通过时什么都不打印）
+        _emit_perf_margin("c22_stress_test", dt, 60.0)
         assert dt < 60.0, "30 文件全量分析应 < 60s（实际 %.2fs）" % dt
         # 关键产出存在
         assert os.path.exists(os.path.join(out, "index.html")), "索引页应存在"
@@ -4445,6 +4552,8 @@ def test_c25_large_project():
         rc, _o, err = _run([tmp, "--browse", out, "--json", jp, "--reproducible"], tmp)
         dt = time.time() - t
         assert rc == 0, "300 文件压力测试运行失败: %s" % err[:500]
+        # R106：绿灯也要留「实测 / 上限 / 余量」（R103 ㉜：通过时什么都不打印）
+        _emit_perf_margin("c25_large_project", dt, 180.0)
         assert dt < 180.0, "300 文件全量分析应 < 180s（实际 %.2fs）" % dt
         # 关键产出存在
         for name in ("index.html", "class_hierarchy.html", "members.html",
@@ -6793,8 +6902,10 @@ def test_p150_watch_and_incrjson_and_taint_svg():
 
         # ② --watch 产物（短轮询，验证站点与产物生成；限时终止避免挂起）
         site = os.path.join(tmp, "site")
+        import time
         proc = subprocess.Popen([_PY, ANALYZER, tdir, "--browse", site,
                                  "--watch", "0.3"])
+        _w0 = time.time()
         try:
             proc.wait(timeout=6)
         except subprocess.TimeoutExpired:
@@ -6803,6 +6914,11 @@ def test_p150_watch_and_incrjson_and_taint_svg():
                 proc.wait(timeout=3)
             except subprocess.TimeoutExpired:
                 proc.kill()
+        # R106：这一格**不是预算门** —— `--watch` 本来就不退，`timeout=6` 是
+        #   **限时终止的轮询上界**（比值本来就该 ≈1.0）⇒ 如实记 `tolerance`，
+        #   免得下一轮把它误读成「余量 1.0× 的性能门」（R104 ㉝：两操作数同量纲）。
+        _emit_perf_margin("p150_watch_and_incrjson_and_taint_svg",
+                          time.time() - _w0, 6.0, kind="tolerance")
         wh = os.path.join(site, "watch.html")
         st = os.path.join(site, "watch_status.json")
         assert os.path.isfile(wh), "--watch 应生成 watch.html"
@@ -9743,7 +9859,8 @@ def test_p210_benchmark():
         assert rep.get("cg_node_count") <= 400, \
             "__CG__ 节点数应 ≤ max_nodes(400)，截断失效：%s" % rep.get("cg_node_count")
         assert rep.get("max_nodes_enforced") is True, "应断言 max_nodes 截断生效"
-        # ③ 时延上限
+        # ③ 时延上限（R106：量与这条断言**同一条** —— `elapsed_sec` 本身）
+        _emit_perf_margin("p210_benchmark", rep.get("elapsed_sec", 1e9), 180)
         assert rep.get("elapsed_sec", 1e9) <= 180, "构建时延应 ≤ 超时上限"
         assert rep.get("time_within_limit") is True, "时延应在上限内"
     finally:
@@ -9949,6 +10066,71 @@ def test_p160_gate():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _poll_status_gate(st_path, want, deadline_s=20.0):
+    """轮询 `watch_status.json` 直到 `gate` 字段 == `want`；返回 `(ok, 最后一次读到的 dict)`。
+
+    ⚠ 为什么必须轮询（本条是实测出来的，不是预防性写法）：本仓 `--with-tests`
+    第三次实测在 `test_p161_watch_gate` 上红，读到的是中间态
+    `{'state': 'analyzing', ...}`（**没有** `gate` 键）。机理是**竞态** ——
+    用例等的是 `.gate_fail` 标记，断言的却是状态文件里的 `gate` 字段，而
+    **标记与状态是两次独立的写**（顺序不保证）⇒ 会读到中间态。在**未改动**的
+    HEAD 树上连跑 5 次即 **4 绿 1 红** ⇒ 既有 flaky，不是哪一轮引入的。
+
+    修法原则是「两个操作数必须同量纲」在**时序**上的对应物：
+    **等待的对象必须就是断言的对象**（这里就是 `gate` 字段本身）。
+
+    超时后**如实返回最后一次读到的内容**（读不到 / 坏 JSON ⇒ `None`）⇒
+    调用方的断言照旧执行并**报出实际值**（不静默、不跳过、不抛）。
+    """
+    import io
+    import json as _json
+    import time
+    end = time.time() + deadline_s
+    last = None
+    while time.time() < end:
+        try:
+            last = _json.loads(io.open(st_path, encoding="utf-8").read())
+        except Exception:
+            last = None
+        if last is not None and last.get("gate") is want:
+            return True, last
+        time.sleep(0.2)
+    return False, last
+
+
+def test_r106_poll_status_gate_two_ways():
+    """两向自证：等到 ⇒ True + 值；等不到 ⇒ 超时并**如实返回最后读到的内容**。
+
+    第二向尤其重要：文件不存在 / 内容是坏 JSON 时必须返回 `None` 而**不抛异常**
+    —— 若它抛了，调用方的断言就会被异常替换，「读到中间态要能报出实际值」
+    这条保证就落空了（与「看着实现了、其实从不工作」的假装置同族）。
+    """
+    import io
+    import json as _json
+    import shutil
+    import tempfile
+    tmp = tempfile.mkdtemp(prefix="pma_pollgate_")
+    try:
+        st = os.path.join(tmp, "watch_status.json")
+        with io.open(st, "w", encoding="utf-8") as fh:
+            fh.write(_json.dumps({"gate": True, "state": "analyzing"}))
+        ok, got = _poll_status_gate(st, True, 1.0)
+        assert ok and got.get("gate") is True, (ok, got)
+        # 期望 False 而文件恒为 True ⇒ 超时，且返回**最后读到的值**（不是 None）
+        ok2, got2 = _poll_status_gate(st, False, 0.6)
+        assert not ok2 and got2.get("gate") is True, (ok2, got2)
+        # 文件不存在 ⇒ 超时 + None，且**不抛**
+        ok3, got3 = _poll_status_gate(os.path.join(tmp, "nope.json"), True, 0.6)
+        assert not ok3 and got3 is None, (ok3, got3)
+        # 内容是坏 JSON ⇒ 同样超时 + None
+        with io.open(st, "w", encoding="utf-8") as fh:
+            fh.write("{ not json")
+        ok4, got4 = _poll_status_gate(st, True, 0.6)
+        assert not ok4 and got4 is None, (ok4, got4)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def test_p161_watch_gate():
     """P161：--watch + --gate 联动，门禁 verdict 透传到 .gate_fail 标记与状态 JSON。"""
     import io
@@ -9985,10 +10167,13 @@ def test_p161_watch_gate():
         #    -> 下一轮门禁失败 -> .gate_fail 应被创建
         # 先等首轮基准稳定（标记不应出现）
         _deadline = time.time() + 20
+        _p0 = time.time()
         while time.time() < _deadline:
             if os.path.exists(st_path):
                 break
             time.sleep(0.2)
+        # R106：这三段是**轮询截止**（deadline），量与限同量纲（秒）
+        _emit_perf_margin("p161_watch_gate/phase1", time.time() - _p0, 20.0)
         assert os.path.exists(st_path), "应生成 watch_status.json"
         _st0 = _json.loads(io.open(st_path, encoding="utf-8").read())
         assert _st0.get("gate") in (None, True), \
@@ -10000,32 +10185,39 @@ def test_p161_watch_gate():
             fh.write("function y = ok1(x)\n y = x + 9;\n end\n"
                      "function z = bad(x)\n z = w + 1;\n end\n")  # w 仍未初始化
         _deadline2 = time.time() + 20
+        _p1 = time.time()
         while time.time() < _deadline2:
             if os.path.exists(marker):
                 break
             time.sleep(0.2)
+        _emit_perf_margin("p161_watch_gate/phase2", time.time() - _p1, 20.0)
         assert os.path.exists(marker), "门禁失败时应生成 .gate_fail 标记"
 
         # 状态 JSON 应含 gate=false
-        _st = _json.loads(io.open(st_path, encoding="utf-8").read())
-        assert _st.get("gate") is False, \
-            "watch_status.json 应含 gate=false：%r" % _st
+        # ⚠ 必须**轮询到断言的字段**：等 `.gate_fail` 与写 `gate` 是两次独立的写
+        #   （顺序不保证）⇒ 直接读会偶发读到中间态（实测 state='analyzing'、无 gate 键）。
+        _ok2, _st = _poll_status_gate(st_path, False, 20.0)
+        assert _ok2 and _st.get("gate") is False, \
+            "watch_status.json 应含 gate=false（20s 内）：%r" % (_st,)
 
         # ② 修复未初始化（删除 bad 的未初始化引用）-> 下一次轮询门禁通过 -> 标记应被删除
         with io.open(os.path.join(src, "a.m"), "w", encoding="utf-8") as fh:
             fh.write("function y = ok1(x)\n y = x + 1;\n end\n"
                      "function z = good(x)\n z = x + 2;\n end\n")  # 无未初始化
         _deadline3 = time.time() + 20
+        _p2 = time.time()
         while time.time() < _deadline3:
             if not os.path.exists(marker):
                 break
             time.sleep(0.2)
+        _emit_perf_margin("p161_watch_gate/phase3", time.time() - _p2, 20.0)
         assert not os.path.exists(marker), "门禁通过后 .gate_fail 应被删除"
 
         # 状态 JSON 应含 gate=true
-        _st2 = _json.loads(io.open(st_path, encoding="utf-8").read())
-        assert _st2.get("gate") is True, \
-            "修复后 watch_status.json 应含 gate=true：%r" % _st2
+        # ⚠ 同上：`--with-tests` 第三次实测正是在这里红的（读到中间态）。
+        _ok3, _st2 = _poll_status_gate(st_path, True, 20.0)
+        assert _ok3 and _st2.get("gate") is True, \
+            "修复后 watch_status.json 应含 gate=true（20s 内）：%r" % (_st2,)
     finally:
         try:
             proc.terminate()
@@ -16379,6 +16571,7 @@ def test_r31_doc_flags_guard_returns_promptly():
     r = _r31_run([os.path.join("tools", "check_doc_flags.py")], timeout=120)
     dt = _t.time() - t0
     assert r.returncode == 0, r.stdout.decode("utf-8", "replace")[:600]
+    _emit_perf_margin("r31_doc_flags_guard_returns_promptly", dt, 60.0)
     assert dt < 60.0, ("护栏耗时 %.1fs（上界 60s）—— stdin 继承或缺超时回归" % dt)
 
 
@@ -16395,7 +16588,9 @@ def test_r31_stdio_server_help_needs_devnull_stdin():
                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                        timeout=60)
     assert r.returncode == 0, r.stdout.decode("utf-8", "replace")[:400]
-    assert _t.time() - t0 < 30.0
+    _dt = _t.time() - t0
+    _emit_perf_margin("r31_stdio_server_help_needs_devnull_stdin", _dt, 30.0)
+    assert _dt < 30.0
     sys.path.insert(0, _R31_TOOLS)
     import check_doc_flags as _cdf
     assert "matlabc_mcp.py" in _cdf.NO_HELP_SCRIPTS
@@ -16513,9 +16708,14 @@ def test_r32_entry_help_returns_promptly_without_side_effects():
     等于「问帮助得到沉默」；`tools/check_all.py --help` 则会把整套护栏跑一遍（≈30s）。
     两者都在这条测试的墙钟上界与输出非空断言下无处藏身。
     """
+    import time
     expect = ("matlabc.py", "matlabc_flow.py", "matlabc_ask.py", "gui.py")
     for name in expect:
+        _t0 = time.time()
         r = _r31_run([name, "--help"], timeout=60)
+        _emit_perf_margin(
+            "r32_entry_help_returns_promptly_without_side_effects",
+            time.time() - _t0, 60.0)
         out = r.stdout.decode("utf-8", "replace")
         assert r.returncode == 0, "%s --help rc=%s\n%s" % (name, r.returncode,
                                                            out[:400])
@@ -16524,7 +16724,11 @@ def test_r32_entry_help_returns_promptly_without_side_effects():
         assert "--help" in out or "usage:" in out, out[:300]
 
     # check_all.py 的 --help 必须**不跑护栏**：它的输出里不应出现任何护栏的 OK 行。
+    _t0 = time.time()
     r = _r31_run(["tools/check_all.py", "--help"], timeout=60)
+    _emit_perf_margin(
+        "r32_entry_help_returns_promptly_without_side_effects/check_all",
+        time.time() - _t0, 60.0)
     out = r.stdout.decode("utf-8", "replace")
     assert r.returncode == 0, out[:400]
     assert "check_doc_flags: OK" not in out and "check_py36_clean: OK" not in out, \
@@ -16842,9 +17046,14 @@ def test_r33_guard_exit_code_contract_and_help_volume_ratchet():
         "stdio server 不该有非零体积界"
 
     # 真测：逐个把 `--help` 量一遍，两侧都断言（缩水与臃肿都要红）。
+    import time
     for name, span in chc.HELP_BYTES.items():
         lo, hi = span
+        _t0 = time.time()
         r = _r31_run([name, "--help"], timeout=60)
+        _emit_perf_margin(
+            "r33_guard_exit_code_contract_and_help_volume_ratchet",
+            time.time() - _t0, 60.0)
         assert r.returncode == 0, "%s --help rc=%s" % (name, r.returncode)
         n = len(r.stdout or b"")
         assert lo <= n <= hi, \
@@ -20678,6 +20887,16 @@ _R72_EXTRA_NS = {
     #   这是**检测器已知的宽读**，不是判据缺口；按本表两向规则登记，
     #   并把事实写在这里（不许只加一行不写理由）。
     "tools/check_browse_clean_manifest.py": {"R"},
+    # R106：与上一行**同一种现象** —— 检测器宽读，不是判据缺口。
+    #   本门（第 20 道门）`ROW_SIGNATURE` 是 `E1–E6`，实发也只在 E1–E6；
+    #   本轮给 `s_entities` 升格时新写了一句 docstring，**开头**就是轮次
+    #   引用「R106 / 槽 42：…」⇒ `observed_judgement_prefixes` 按定义扫
+    #   **字符串字面量**，把这个「第几轮」读成了判据码 `R`。
+    #   这条红是 `tools/check_all.py --with-tests` 第二次跑**当场抓到的**
+    #   （`(1, 538, 4)` 里唯一那一条），说明该判据确实在行使。
+    #   ⚠ 边界：要真消掉它只能改匹配口径，而放宽口径会同时放过
+    #   「发了一族却没声明」（H2a 的原始动因）⇒ 按本表登记是正确处置。
+    "tools/check_parity_registry.py": {"R"},
 }
 
 
@@ -22546,7 +22765,9 @@ def test_r103_plan_objective_digest_matches_ledger():
     n = len(digest["rounds"])
     assert n > 0 and n <= len(obj_by_round), \
         "摘要 %d 条 / 计划 %d 槽（摘要必须是计划的非空子集）" % (n, len(obj_by_round))
-    assert digest.get("schema") == "malabc.plan-ledger-digest/1", \
+    # R106：schema 升 /2 —— 摘要新增 `actions`（在册动作清单），
+    # 而本仓既有规矩是「形状版本：键的增删改都要 +1」（同 `callrel.CALLREL_VERSION`）。
+    assert digest.get("schema") == "malabc.plan-ledger-digest/2", \
         "摘要 schema 不符：%r" % digest.get("schema")
 
     # ② 正向控制：合成的好对必须绿（挡住「判定器永远报红」）

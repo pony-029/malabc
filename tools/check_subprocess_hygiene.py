@@ -101,6 +101,10 @@ POPEN_STREAMING = {
         "communicate() 并返回 rc=124，调用方按 ERROR 处理。已设 stdin=DEVNULL —— "
         "这一条是必需的：审计器自身在 CI 里是被 `--json` 管道驱动的，"
         "node 子进程若继承 stdin 就会去抢调度方的字节。",
+    "harness/hunt_flaky_r102.py|run_one":
+        "[R106] 追捕装置（从仓外 `_r102/` 迁入 `harness/`）：`Popen` 之后紧跟 `communicate(timeout=1800)`，超时则 terminate/kill 并按「逃逸 / 挂死」报出来。已设 stdin=DEVNULL —— 它是被**逐条重复跑**的那个装置，本机负载正来自它，继承 stdin 会与调用方的输入竞争。它由 `SCAN_DIRS` 里的点号（递归全仓）进入本门范围，不是被单独加进去的。放 `harness/` 而不是 `tools/`：它**不是判据**（`tools/` 只有 `check_*.py`，且有三道门在管那份清单）。",
+    "harness/mutate_r103.py|run_test":
+        "[R106] 追捕装置（从仓外 `_r103/` 迁入 `harness/`）：两向自证里跑**一条**用例的 `Popen`，随后 `communicate(timeout=900)` —— 单条用例的墙钟上限，比整套的 5400 小一个量级；已设 stdin=DEVNULL。同上：它不是判据，不进门禁清单。",
 }
 
 # S4：`**kwargs` 间接传参的调用点 —— 静态看不到 stdout/stdin 到底是什么，
