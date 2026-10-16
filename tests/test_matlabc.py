@@ -2584,6 +2584,65 @@ def test_r107_perf_margin_nodes_derived_and_skip_aware():
     assert sk == set([spans[0][2]]) and not skp, (sk, skp, spans[0])
 
 
+def test_r108_site_meta_description_is_language_specific():
+    """R108：站点描述的**语言口径** —— 四语言各说各的。
+
+    与对等表门的 `s_site_meta_description` 是**两个独立的量具**，量的不是一件事：
+      * 那道门读的是**产物**（真跑公开 CLI 生成出来的站点页正文）；
+      * 本用例读的是**构造**（`_site_meta` 这个纯函数的输出 + `_finalize_html_str`
+        在给定 `desc` / `short` 下的行为）。
+    两者不一致就是真信号 ——「描述函数对、但站点出口没接上」或者「接上了、但把
+    MATLAB 的措辞传给了 C」。同一件事量两遍才叫「有两向」；只量一遍只是「有个数」。
+
+    为什么判据要两向：R108 白帽读数实测到的是**两半**缺陷 —— 修前 MATLAB 55 页
+    **全带**描述（措辞写死 MATLAB）、C 26 / py 22 / js 22 页**一个都没有**。
+    只补覆盖率会得到「四家同一句话」；只改措辞会得到「三家还是零页」。所以下面
+    既断言**语言对**，也断言**认不出语言时不假称任何语言**。
+    """
+    import matlabc as ma
+
+    # ① 每种语言的描述只说自己那一个语言名 —— 不许出现别人的名字。
+    metas = dict((l, ma._site_meta(l)) for l in ma._SITE_DISPLAY)
+    for lang, (desc, short) in metas.items():
+        assert ma._SITE_DISPLAY[lang] in desc, \
+            "%s 的描述里没有本语言名：%r" % (lang, desc)
+        for other, (_odesc, _oshort) in metas.items():
+            if other == lang:
+                continue
+            odisp = ma._SITE_DISPLAY[other]
+            assert odisp not in desc, \
+                "%s 的描述里出现了 %s 的名字：%r" % (lang, other, desc)
+            assert odisp not in short, \
+                "%s 的短标题里出现了 %s 的名字：%r" % (lang, other, short)
+
+    # ② 认不出语言 ⇒ **中性**措辞（不假称任何语言），而不是退回 MATLAB。
+    #    `"C"` 也在负样本里：显示名/大写码不是语言码，同样不许假称。
+    for bad in ("asm", "", None, "cpp", "C"):
+        desc, short = ma._site_meta(bad)
+        assert desc == ma._SITE_DESC_NEUTRAL, \
+            "未知语言 %r 的描述不是中性：%r" % (bad, desc)
+        assert short == ma._SITE_SHORT_NEUTRAL
+        for disp in ma._SITE_DISPLAY.values():
+            assert disp not in desc, "中性描述里出现了语言名 %s：%r" % (disp, desc)
+
+    # ③ 端到端一页：给定 desc 时注入的是**那个语言**的措辞；不给时逐字保持旧行为。
+    raw = ('<!DOCTYPE html><html lang="zh-CN"><head><title>t</title></head>'
+           '<body><table><tr><th>h</th></tr></table></body></html>')
+    cdesc, cshort = ma._site_meta("c")
+    out_c = ma._finalize_html_str(raw, desc=cdesc, short=cshort)
+    assert "C 代码静态分析站点" in out_c, "C 页的描述不是 C 的措辞"
+    assert "MATLAB" not in out_c, "C 页的描述里出现了 MATLAB"
+    #    负样本（判据必须**有分辨力**）：同一入口喂 MATLAB 的措辞 ⇒ 上面那条
+    #    「C 代码静态分析站点 in …」当场不成立。
+    mdesc, mshort = ma._site_meta("matlab")
+    out_m = ma._finalize_html_str(raw, desc=mdesc, short=mshort)
+    assert "MATLAB 代码静态分析站点" in out_m
+    assert "C 代码静态分析站点" not in out_m
+    #    不给 desc ⇒ 旧行为（模块常量 `_SITE_DESC`），既有调用点与两处老用例不变。
+    out_def = ma._finalize_html_str(raw)
+    assert "MATLAB 代码静态分析站点" in out_def, "不给 desc 时没有退回旧行为"
+
+
 def _plan_block_sample(rows):
     """R106：按**盘上同一形状**拼一份最小计划块（`轮号 | 阶段 | 线路 | 动作 | 目标 | 理由`）。
 

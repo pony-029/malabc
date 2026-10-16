@@ -509,7 +509,7 @@ def render_c_site(c_model, root, outdir, heuristics=None, css_text=None,
                   src_budget=48 * 1024 * 1024, src_max_file=256 * 1024,
                   legacy_max_files=LEGACY_SINGLE_PAGE_MAX_FILES, top_index=200,
                   graph_max_nodes=GRAPH_MAX_NODES, graph_iters=GRAPH_ITERS,
-                  skip_index=False, src_subdir=u"src"):
+                  skip_index=False, src_subdir=u"src", finalize_page=None):
     """生成**语言无关的交叉引用站点**，返回统计 dict。
 
     c_model       `build_c_model` / `_build_ext_model` 的返回值
@@ -552,6 +552,11 @@ def render_c_site(c_model, root, outdir, heuristics=None, css_text=None,
     src_subdir    R99：源码页子目录名（默认 `src`）。MATLAB 的源码页目录
                   也叫 `src/` 但命名规则不同（`<rel>.m.html`），两者写进
                   同一个目录会互相污染 ⇒ MATLAB 那次调用传 `xref_src`。
+    finalize_page R108：页面**写盘前**的逐页收尾钩子 `fn(html) -> html`。
+                  `matlabc.py` 的 `_emit_lang_site` 用它补「横切元信息」
+                  （viewport / description / Open Graph / 表头 scope）——
+                  那是它自己那份 `_finalize_html_str`，本模块**不 import 它**
+                  （避免反向依赖）。不给 ⇒ 逐字节等于 R107 的产物。
     graph_max_nodes  R93：单张调用关系图的**节点上限**（默认
                   `GRAPH_MAX_NODES`）。力导向是 O(n^2 * 迭代)，`kernel/sched`
                   实测最大文件页 461 节点 => 5.82 s/页，整棵内核外推 0.6 h。
@@ -800,6 +805,11 @@ def render_c_site(c_model, root, outdir, heuristics=None, css_text=None,
     n_graph_dropped = 0
 
     def _emit(rel_path, text):
+        # R108：横切元信息在**写盘前**逐页补 —— 而不是等整个站点写完再回头扫目录。
+        #   下面的 `n_bytes += _emit(...)` 就是本模块对外报「站点多大」的那个数；
+        #   事后补会让它少算收尾加进去的几百字节/页，而没有任何判据看得见。
+        if finalize_page is not None:
+            text = finalize_page(text)
         n = _write_text(os.path.join(outdir, rel_path.replace(u"/", os.sep)), text)
         return n
 

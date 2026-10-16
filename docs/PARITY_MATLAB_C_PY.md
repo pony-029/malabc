@@ -38,17 +38,21 @@
 | `asm_insights` | na | yes | na | na | 载荷出现 `asm` 键 |
 | `browse_site` | yes | yes | yes | yes | `--browse` 产出站点且含 HTML |
 | `site_same_page_names` | yes | yes | yes | yes | 站点同时有 `index.html` / `funcs.html` / `file/` / `dir/` |
+| `site_meta_description` | yes | yes | yes | yes | 站点**每个** .html 页都带 `meta name=description` / `og:description`，且措辞是**本语言**的 |
 
-**合计 64 格：`yes` 49 · `no` 7 · `na` 8。**
+**合计 68 格：`yes` 53 · `no` 7 · `na` 8。**
 
 ## 3. 三类发现
 
-### 3.1 「四家都有」的 5 条共性底座
+### 3.1 「四家都有」的 6 条共性底座
 
 `functions`、`call_edges`、`call_edges_cross_file`、`browse_site`、
-`site_same_page_names` **五项四语言全绿** —— 跨文件调用、站点产出、
-**站点页面名同形**这些**已经真的通了**（R86–R92 的移植结果，加上 R99
-把 MATLAB 站点接上 C/Py/JS 的同一份基础层代码 `renderers/csite.py`）。
+`site_same_page_names`、`site_meta_description` **六项四语言全绿** ——
+跨文件调用、站点产出、**站点页面名同形**、**站点横切元信息（description /
+Open Graph，措辞按语言）**这些**已经真的通了**（R86–R92 的移植结果，加上 R99
+把 MATLAB 站点接上 C/Py/JS 的同一份基础层代码 `renderers/csite.py`，以及
+R108 把那条横切收尾路径接到三语言自己的站点出口上 —— 此前它**只有 MATLAB
+走得到**，且描述字符串写死 MATLAB 措辞）。
 
 ### 3.2 特有的通道：不是缺口，是**口径分裂**
 
@@ -141,6 +145,8 @@ cap.browse_site | matlab=yes c=yes py=yes js=yes
 cap.browse_site.evidence | `--browse` 产出站点且含 HTML
 cap.site_same_page_names | matlab=yes c=yes py=yes js=yes
 cap.site_same_page_names.evidence | 站点同时有 `index.html` / `funcs.html` / `file/` / `dir/`
+cap.site_meta_description | matlab=yes c=yes py=yes js=yes
+cap.site_meta_description.evidence | 站点**每个** .html 页都带 `meta name=description` / `og:description`，且措辞是**本语言**的
 ```
 <!-- /PARITY v1 -->
 
@@ -148,7 +154,7 @@ cap.site_same_page_names.evidence | 站点同时有 `index.html` / `funcs.html` 
 
 1. 在临时目录里写四份合成夹具（每语言一份，每种调用形态一个专属文件）；
 2. 每语言跑一次公开 CLI（`--json --json-level full --callgraph --browse`）；
-3. 从**产物**读 56 个在册探针的信号（`yes` / `no`）；
+3. 从**产物**读 60 个在册探针的信号（`yes` / `no`）；
 4. 与机器块逐格对账（E2），逆向也响；理由两向（E3）；能力名单两向（E4）；
    **文档 ⇄ 机器块**（E5：人读表**逐格**，**加上**合计行 / §3.3 缺口标题与缺口表求和 /
    两份 README 的记分牌**现算再比**）；缺输入 / CLI 跑不起来 / 实测空集一律红（E6）。
@@ -164,6 +170,7 @@ cap.site_same_page_names.evidence | 站点同时有 `index.html` / `funcs.html` 
 | 3 | 度量对等（槽 28） | `metrics_complexity` 的 MATLAB 列（`deps_edges_json` 的 Py / JS 列已被 R101 修掉） |
 | 4 | 画布对等（槽 29） | `site_same_page_names` 的 MATLAB 列 |
 | 5 | ~~任一槽顺手~~ **R106 已落地** | `callgraph_projection` 的 MATLAB 列（**真产出**：3 元边 → 4 元契约 + 主流程补上出口调用） |
+| 6 | ~~站点横切元信息的四语言对等~~ **R108 已落地** | `site_meta_description` 的**四列**（此前 `_finalize_site_html` 的唯一调用点在 MATLAB 的 `render_browse_site` 里，三语言的站点出口从没调它，且描述写死 MATLAB 措辞 —— 实测 55 / **0** / **0** / **0** 页带描述） |
 
 ⚠ 顺序不是「重要程度」，是**可修性**。第 1 / 2 / 5 项 R101 与 R106 已落地
 （每一条都由本门**实测**确认，不是声明）；剩下第 3 项（度量口径分裂）与

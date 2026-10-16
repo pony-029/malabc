@@ -54,11 +54,20 @@ E1–E6（六个方向）
 同一个道理的另一个方向：登记 `yes` / `no` 而门里**没有**探针 ⇒ 也红
 （**无法核对的宣称不是宣称**）。
 
+R108 加的一格：`site_meta_description`
+-------------------------------------
+四家**都** `yes`。加它的原因是一次**读数**：`--browse` 的横切元信息
+（description / Open Graph / 表头 scope）原本**只有 MATLAB 站点**走得到
+（`_finalize_site_html` 的唯一调用点在 `render_browse_site` 里），而描述字符串
+还写死成 MATLAB 措辞 —— 实测 MATLAB 55 页全带、C 26 / py 22 / js 22 页一个都
+没有。原有的 16 个能力里**没有一格在看它**，于是这件事在本仓的登记体系里无主。
+两向判据（有 + 措辞是本语言的）见 `s_site_meta_description`。
+
 「加判据族、不加闸门」的第 6 个反例
 ----------------------------------
 本门是**新闸门**（护栏 20 → 21，门 19 → 20），不是给既有门加判据族 —— 因为
 「能力对等」此前**一格判据都没有**（缺口 > 0）。R85 的定论「缺口为 0 时加闸 =
-churn」在这里不适用：这 64 个格子里有 16 个是 `no`，一个都不及格。
+churn」在这里不适用：立门时这 64 个格子里有 16 个是 `no`，一个都不及格。
 
 用法
 ====
@@ -117,6 +126,7 @@ CAPABILITIES = (
     "asm_insights",
     "browse_site",
     "site_same_page_names",
+    "site_meta_description",
 )
 
 # 每格的「怎么测的」（也进登记表的 `cap.<名>.evidence`，两处必须一致）。
@@ -137,6 +147,8 @@ EVIDENCE = {
     "asm_insights": "载荷出现 `asm` 键",
     "browse_site": "`--browse` 产出站点且含 HTML",
     "site_same_page_names": "站点同时有 `index.html` / `funcs.html` / `file/` / `dir/`",
+    "site_meta_description": "站点**每个** .html 页都带 `meta name=description` / "
+                             "`og:description`，且措辞是**本语言**的",
 }
 
 # ---------------------------------------------------------------------------
@@ -231,6 +243,18 @@ ENTITY_KEYS = ("entities", "structs", "enums", "typedefs", "field_access",
                "types")
 CORE_PAGES = ("index.html", "funcs.html")
 
+# R108：站点描述里**必须出现**的那截措辞，按语言。为什么按整截而不是「出现
+# `MATLAB` 这个词」：MATLAB 站点里该词出现就是对的，别的语言里出现才是错的 ——
+# 判据必须是「本语言那一截在不在」。用整截还顺带挡住「四个语言都写同一句话」
+# 这种「修了，但四家还是同形」的假修。
+# ⚠ 取值必须与 `matlabc.py::_SITE_DISPLAY` + `_SITE_DESC_FMT` 拼出来的一致。
+SITE_DESC_MARK = {
+    "matlab": "MATLAB 代码静态分析站点",
+    "c": "C 代码静态分析站点",
+    "py": "Python 代码静态分析站点",
+    "js": "JavaScript 代码静态分析站点",
+}
+
 # ---------------------------------------------------------------------------
 # 探针名单：`(能力, 语言)` 在册 ⇒ 该格**可测**，只能填 yes/no。
 # 不在册 ⇒ 该格是 na 的候选，理由必须说清语言形态上为什么测不了。
@@ -252,6 +276,7 @@ PROBED = frozenset(
     + [("asm_insights", "c")]
     + [("browse_site", l) for l in LANGS]
     + [("site_same_page_names", l) for l in LANGS]
+    + [("site_meta_description", l) for l in LANGS]
 )
 
 
@@ -298,7 +323,7 @@ def run_fixture(lang, dirpath, python_exe=None, cli=None):
     cg = os.path.join(base, "%s_cg.json" % lang)
     site = os.path.join(base, "%s_site" % lang)
     run = {"lang": lang, "rc": None, "json": None, "cg": None, "pages": [],
-           "deps_html": "", "err": None}
+           "deps_html": "", "site": site, "err": None}
     argv = [py, cli, dirpath, "--lang", lang, "--json", out_json,
             "--json-level", "full", "--callgraph", cg, "--browse", site]
     try:
@@ -496,6 +521,45 @@ def s_site_same_page_names(run):
     return any(p.startswith("dir/") for p in pages)
 
 
+def s_site_meta_description(run):
+    """R108：站点横切元信息 —— **每个** .html 页都带 description / og:description，
+    且措辞是**本语言**的。
+
+    为什么把「措辞是不是本语言的」也算进这一格：R108 白帽读数量到的是**两半**
+    缺陷，不是一半 ——
+      * 修前：MATLAB 55 页**全带**描述（且都写着「MATLAB 代码静态分析站点」），
+        C 26 / py 22 / js 22 页**一个都没有**；
+      * 只补覆盖率（把三语言也接到收尾函数上）会得到「四家都有一句**同形**的
+        描述」—— 那仍是原始抱怨「四种语言展现完全不一样」的同一形态，只是从
+        「有的有、有的没有」换成了「四家同一句话」。所以判据要两向：
+        **有** + **是本语言的**。
+
+    这条信号**能单独打红**（D3）：把 `_emit_lang_site` 传的 `_site_meta(lang)`
+    换成 `_site_meta("matlab")` ⇒ 三语言描述变 MATLAB 措辞 ⇒ 红；
+    把 `finalize_page=` 去掉 ⇒ 四家都变「一页都没有」⇒ 红。
+    """
+    mark = SITE_DESC_MARK.get(run["lang"])
+    if not mark or not run.get("site"):
+        return False
+    n_html = n_desc = 0
+    for rel in run["pages"]:
+        if not rel.lower().endswith((".html", ".htm")):
+            continue
+        n_html += 1
+        try:
+            with io.open(os.path.join(run["site"], rel.replace("/", os.sep)),
+                         encoding="utf-8", errors="replace") as fh:
+                txt = fh.read()
+        except OSError:
+            continue                       # 读不到 ⇒ 计数对不上 ⇒ 下面红
+        if not re.search(r'<meta[^>]+name=["\']description', txt, re.I):
+            continue                       # 这一页没有描述 ⇒ 覆盖率不完整 ⇒ 红
+        n_desc += 1
+        if mark not in txt:
+            return False                   # 有描述，但不是本语言的措辞
+    return n_html > 0 and n_desc == n_html
+
+
 SIGNALS = {
     "functions": s_functions,
     "call_edges": s_call_edges,
@@ -513,6 +577,7 @@ SIGNALS = {
     "asm_insights": s_asm_insights,
     "browse_site": s_browse_site,
     "site_same_page_names": s_site_same_page_names,
+    "site_meta_description": s_site_meta_description,
 }
 
 

@@ -11406,6 +11406,11 @@ def _emit_lang_site(model, root, args, lang, display, dep_key, heuristics,
             print("[ERROR] 创建站点目录失败：%s" % exc, file=sys.stderr)
             return False
     ok = True
+    # R108：本语言站点的横切元信息 + 逐页收尾钩子（见 `_site_meta` /
+    #   `renderers/csite.py::render_c_site(finalize_page=…)`）。
+    _site_long, _site_short = _site_meta(lang, display)
+    _fin_page = (lambda _h: _finalize_html_str(_h, desc=_site_long,
+                                               short=_site_short))
     n_files = len(model.get("files") or [])
     wrote_legacy = False
     if legacy_single is not None:
@@ -11418,6 +11423,11 @@ def _emit_lang_site(model, root, args, lang, display, dep_key, heuristics,
             except Exception as exc:
                 print("[ERROR] 写入旧单页报告失败：%s" % exc, file=sys.stderr)
                 ok = False
+            # R108：旧单页由 `io.open` 直接写出 ⇒ 不走 `finalize_page` 钩子，
+            #   这里自己补一次。薄索引 `index.html` **不补**：`render_c_site`
+            #   成功时必然用它自己那份覆盖它（实测 `skip_index=False` 必写）。
+            _finalize_site_page(os.path.join(outdir, "c_report.html"),
+                                _site_long, _site_short)
         else:
             # 不静默：跳过一个产物必须在终端说清为什么。
             print("[NOTE] 文件数 %d 超过 %d：跳过旧单页 c_report.html"
@@ -11440,7 +11450,8 @@ def _emit_lang_site(model, root, args, lang, display, dep_key, heuristics,
                           kind_meta_fn=_operator_meta_fallback,
                           lang=lang, display=display, dep_key=dep_key,
                           dep_edges=dep_edges,
-                          binaries=binaries or None, attribution=attribution)
+                          binaries=binaries or None, attribution=attribution,
+                          finalize_page=_fin_page)
         print("[OK] %s 分页站点：%d 页（%d 文件页 + %d 规则页 + %d 目录页 + "
               "%d 源码页 + 索引）· %.1f MB"
               % (display, q["pages"], q["files"], q["rule_kinds"],
@@ -21554,11 +21565,41 @@ def _selfcheck_html_tree(outdir):
         pass  # 自检失败不影响生成主流程
 
 
-_SITE_DESC = "MATLAB 代码静态分析站点：函数索引、调用关系、依赖与质量全景"
+# R108：站点描述按**语言**给出。此前这里是一个写死 MATLAB 措辞的常量，被下面的
+#   `_finalize_html_str` 无条件使用 —— 而那个收尾函数**只有 MATLAB 站点**走得到
+#   （`_finalize_site_html` 的唯一调用点在 `render_browse_site` 里）；C / Py / JS 的
+#   站点出口 `_emit_lang_site` 一次都没调它。R108 实测四语言站点（在册夹具）：
+#   MATLAB 55 页**全带**描述且都写着「MATLAB 代码静态分析站点」、C 26 / py 22 / js 22
+#   页**一个都没有** —— 同一个特性按语言分裂成「有（措辞还是别人的）」与「没有」。
+_SITE_DESC_FMT = "%s 代码静态分析站点：函数索引、调用关系、依赖与质量全景"
+_SITE_SHORT_FMT = "%s 静态分析站点"
+_SITE_DESC_NEUTRAL = "代码静态分析站点：函数索引、调用关系、依赖与质量全景"
+_SITE_SHORT_NEUTRAL = "静态分析站点"
+# 语言标签 -> 显示名。与 `renderers/csite.py::render_c_site(lang=…)` 同一套取值。
+_SITE_DISPLAY = {"matlab": "MATLAB", "c": "C", "py": "Python", "js": "JavaScript"}
+# 兼容既有引用（MATLAB 路径的默认描述）。
+_SITE_DESC = _SITE_DESC_FMT % _SITE_DISPLAY["matlab"]
 
 
-def _finalize_html_str(src):
+def _site_meta(lang=None, display=None):
+    """按语言给站点元信息，返回 `(长描述, 短标题兜底)` 一对。
+
+    ⚠ 语言认不出来时**不退回 MATLAB 措辞** —— 那正是本轮修掉的那个错
+    （给 C 站点写「MATLAB 代码静态分析站点」）。退回**不假称任何语言**的中性
+    措辞：宁可不说，不假称。`display` 只在 `lang` 不在表里时才用（调用方传的
+    显示名可能比语言码更细，但**语言码优先**，免得显示名一变描述就跟着漂）。
+    """
+    name = _SITE_DISPLAY.get(lang) or display
+    if not name:
+        return _SITE_DESC_NEUTRAL, _SITE_SHORT_NEUTRAL
+    return _SITE_DESC_FMT % name, _SITE_SHORT_FMT % name
+
+
+def _finalize_html_str(src, desc=None, short=None):
     """对单个页面的 HTML 源码补全「每页都该有」的横切元信息（纯函数，便于复用）。
+
+    R108：`desc` / `short` 是站点描述的**语言相关**来源（见 `_site_meta`）。
+    都不给时退回常量 `_SITE_DESC` ⇒ 既有调用点与两处用例逐字不变。
 
     背景：站点约 90 处页面头部各自硬编码，导致 meta description / Open Graph /
     viewport / 表头 scope 这类「横切属性」无法一处修复。逐个改 90 处既易漏、
@@ -21567,6 +21608,10 @@ def _finalize_html_str(src):
     """
     if "<html" not in src[:4000].lower() and "<!doctype" not in src[:200].lower():
         return src
+    # R108：描述在**遮蔽之前**定下来 —— 下面 description 与 og:description 两个
+    #   分支都要用它，放进各自的 `if` 里会在「本分支没进、另一个分支进了」时抛
+    #   NameError（原文直接拼全局常量 `_SITE_DESC`，所以没这个问题）。
+    _d = desc or _SITE_DESC
     # R(收尾)3：先把 <script>/<style> 内部内容遮蔽，避免后续正则在「内联 JS 里的字面
     # <th>/<head> 文本」上误伤（例如 JS 字符串含 "<th>" 会被错误注入 scope，直接破坏
     # 生成器 JS）。注入完成后再把内容原样还原。
@@ -21587,7 +21632,7 @@ def _finalize_html_str(src):
     _mt = re.search(r'<title[^>]*>(.*?)</title>', out, re.S | re.I)
     _title = re.sub(r"\s+", " ", _mt.group(1)).strip() if _mt else ""
     if not re.search(r'<meta[^>]+name=["\']description', out, re.I):
-        _desc = ((_title + " — " + _SITE_DESC) if _title else _SITE_DESC)
+        _desc = ((_title + " — " + _d) if _title else _d)
         _desc = re.sub(r"\s+", " ", _desc).replace('"', "'")[:160]
         # 用 lambda 而非替换模板：标题可能含 Windows 路径反斜杠，
         # 放进替换串会被 re 当成转义而抛 bad escape。
@@ -21598,13 +21643,13 @@ def _finalize_html_str(src):
             out, count=1, flags=re.I)
     # 3) Open Graph：社交 / IM 分享预览
     if not re.search(r'property=["\']og:', out, re.I):
-        _ogt = (_title or "MATLAB 静态分析站点").replace('"', "'")[:120]
+        _ogt = (_title or short or "MATLAB 静态分析站点").replace('"', "'")[:120]
         out = re.sub(
             r'(<head[^>]*>)',
             lambda m, _t=_ogt: m.group(1)
             + '<meta property="og:type" content="website">'
             + '<meta property="og:title" content="' + _t + '">'
-            + '<meta property="og:description" content="' + _SITE_DESC + '">',
+            + '<meta property="og:description" content="' + _d + '">',
             out, count=1, flags=re.I)
     # 4) 表头 scope：区分列/行表头，屏幕阅读器才能正确朗读单元格归属
     if "<th" in out.lower():
@@ -21639,8 +21684,10 @@ def _finalize_html_str(src):
     return out
 
 
-def _finalize_site_html(outdir):
+def _finalize_site_html(outdir, desc=None, short=None):
     """遍历站点目录，对全部 .html 页面统一补全横切元信息（供 --browse 收尾调用）。
+
+    R108：`desc` / `short` 透传给 `_finalize_html_str`（语言相关的站点描述）。
 
     必须在 _write_site_manifest 之前调用：manifest 记录各页 sha256（供 fe_audit
     S15 做「产物-清单一致性」对账），若在其之后再改页面会直接触发 sha 不符 ERROR。
@@ -21655,7 +21702,7 @@ def _finalize_site_html(outdir):
             src = p.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError, ValueError):
             continue
-        out = _finalize_html_str(src)
+        out = _finalize_html_str(src, desc=desc, short=short)
         if out != src:
             try:
                 p.write_text(out, encoding="utf-8")
@@ -21663,6 +21710,37 @@ def _finalize_site_html(outdir):
             except OSError:
                 pass
     return changed
+
+
+def _finalize_site_page(path, desc, short):
+    """对**单个**已落盘页面补横切元信息（幂等）。返回是否改动（0/1）。
+
+    R108：给「不经过 `renderers/csite.py::_write_text` 写出的页」用 ——
+    `_emit_lang_site` 里那份旧单页 `c_report.html` 由 `io.open` 直接写出，
+    走不到 `render_c_site(finalize_page=…)` 的钩子。
+
+    ⚠ **按字节读写**，不显式指定换行：这一支可能落在 `_write_text` 写出的
+    **LF** 站点页上，也可能落在那份 `io.open(..., "w")` 写出的旧单页上
+    （Windows 下是 CRLF）。指定任何一种换行都会静默改写另一种。
+    """
+    try:
+        with io.open(path, "rb") as fh:
+            raw = fh.read()
+    except OSError:
+        return 0
+    try:
+        src = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return 0
+    out = _finalize_html_str(src, desc=desc, short=short)
+    if out == src:
+        return 0
+    try:
+        with io.open(path, "wb") as fh:
+            fh.write(out.encode("utf-8"))
+        return 1
+    except OSError:
+        return 0
 
 
 def _shp_to_list(shp):
@@ -24449,7 +24527,10 @@ def render_browse_site(model, outdir, reproducible=False, enabled=None,
     write_browse_css_tree(outdir)
     # R102：横切元信息补全必须在**全部**页面写完之后的最后一刻做
     #   （含基础层 + 样式树），理由见本函数上半段那条注记。
-    _finalize_site_html(outdir)
+    # R108：MATLAB 的描述也从 `_site_meta` 来（此前是把常量 `_SITE_DESC` 拼进去，
+    #   于是「描述」这一项在四语言之间**只有措辞来源**的区别，没有语言的区别）。
+    _site_long, _site_short = _site_meta("matlab")
+    _finalize_site_html(outdir, desc=_site_long, short=_site_short)
     _write_site_quality(outdir)
     _write_site_manifest(outdir, reproducible=reproducible)
     # P-rev R88：站点刚写完即自检，结构/重复 id 问题第一时间在 stderr 亮相。
@@ -32166,6 +32247,9 @@ def main(argv=None):
                     help="输出结构化 JSON（函数/类/调用边/编码等全量数据）")
     ap.add_argument("--callgraph", metavar="PATH", default=cfg.get("callgraph"),
                     help="R86-3：导出**调用关系的有界投影**（谁调用谁）。"
+                         "**四语言都能用**：matlab 与 c / py / js 走同一条出口"
+                         "（MATLAB 侧自 R106 起接通 —— 在那之前它收下开关却"
+                         "**静默不产出**）。"
                          "扩展名决定格式：.json（结构化：扇入/扇出 TOP-N、调用环 "
                          "SCC、跨文件/跨目录计数、焦点子图）/ .dot（Graphviz）"
                          "/ .mmd（Mermaid）。"
@@ -32176,7 +32260,8 @@ def main(argv=None):
                          "配 --callgraph-focus <函数名>。注意 --json-level summary "
                          "的载荷**结构上不含 edges**（只有计数），"
                          "所以调用关系只能从这里拿。"
-                         "例：python matlabc.py ./linux --lang c --callgraph cg.json")
+                         "例：python matlabc.py ./linux --lang c --callgraph cg.json"
+                         "；python matlabc.py ./proj --lang py --callgraph cg.mmd")
     ap.add_argument("--callgraph-focus", metavar="NAME", default=None,
                     help="R86-3：以 NAME 为中心做 BFS 展开子图（**双向**：它调了谁、"
                          "谁调了它）。不给则自动取扇入最高的枢纽函数，"
