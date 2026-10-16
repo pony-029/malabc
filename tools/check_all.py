@@ -30,7 +30,8 @@
         ├─ 仓级闸门 [R106]：计划块 `action` 必须 ∈ 在册动作 ∪ `-`（在册动作由摘要文件**现算**，
         │                   `-` 必须写 `blocked_reason`，在册动作不许带理由 —— 环路的归因错与
         │                   「计划读数与实际不符」各有一个对手方）
-        ├─ 仓级闸门 [R106]：`docs/*.md` + 根部 `*.md` 的代码围栏结构（零长度代码块 / 奇数围栏）
+        ├─ 仓级闸门 [R106/R107]：**全仓** `*.md`（跳过登记目录）的代码围栏结构
+        │                   （零长度代码块 / 奇数围栏；下界 85 份 ⇒ 扫描面缩回也红）
         │
         ├─ 每道护栏都要能跑通（rc=0）
         ├─ 每道护栏都要有 --selftest（两向自证：坏样本要红、好样本要过）
@@ -74,6 +75,7 @@ R106 起还包括两个仓级结构闸门的样本 —— **计划块**（动作
     1  = 有护栏失败，或护栏缺自证（`SELFTEST COUNTS` 行缺失 / 格式非法），或门数少于下限，或（`--with-tests` 时）整套 tests/ 与基线不符（红数变多/变少、通过数掉出容差、换解释器、取不到汇总行全部判红），或（`--with-tests` 时）余量侧信道坏（坏记录 / 有调用点却零记录），或**仓级结构闸门红**（计划块 `action` 不在册 / `-` 没写理由 / 在册动作带理由 / 文档出现零长度代码块或奇数围栏 / 闸门缺输入）；各条判据**独立结算**——任一条红都不挡住其余各条的读数
     2  = 找不到护栏（--tools-dir 下没有 check_*.py → 缺输入，红）
 """
+import ast
 import io
 import json
 import os
@@ -329,7 +331,7 @@ TEST_BASELINE_PATH = os.path.join("docs", "TEST_BASELINE.json")
 # 它们守的是**本仓文档与计划自身**的结构，而不是某个模块的行为：
 #   ① 计划块（`docs/EVOLVE_ROADMAP_360.md` 的 `# ROUNDS:PLAN v1`）的 `action`
 #      必须 ∈ 在册动作 ∪ `-`；`-` 必须写 `blocked_reason`；在册动作不许带理由。
-#   ② `docs/*.md` 与仓库根部 `*.md` 的代码围栏结构（零长度代码块 / 奇数围栏）。
+#   ② **全仓** `*.md` 的代码围栏结构（零长度代码块 / 奇数围栏；跳过登记目录）。
 #
 # 为什么在 runner 里、为什么不放 `tests/`：见本文件顶部本轮的注记
 # （零级联 + 「排不上队的判据与没有判据只差一层错觉」）。
@@ -339,7 +341,13 @@ PLAN_ACTIONS_FILE = os.path.join("docs", "PLAN_LEDGER_DIGEST.json")
 PLAN_COLS = 6
 # 待扫文档的下界（与 `tests/test_matlabc.py::test_r104b_docs_markdown_fence_structure`
 # 同一条口径）：分母失效时「0 处异常」是恒真判据（R99 ④）。
-FENCE_MIN_DOCS = 50
+# R107：扫描面从「`docs/*.md` + 根部 `*.md`」扩到**全仓**（实测 88 份，此前漏扫 13 份）
+# ⇒ 下界随之上抬到 85：**谁把扫描面偷偷缩回 75 份，当场红** —— 扩面本身也要有对手方。
+FENCE_MIN_DOCS = 85
+# 不扫的目录（按目录名，闭集）。扩面前**先测过**：那 13 份此前漏扫的文件逐个喂给
+# 本门的判据，**0 份脏**（`_r107/probe_fence_all.py`）—— 所以扩面不会误伤。
+FENCE_SKIP_DIRS = frozenset((".git", "__pycache__", "node_modules", ".workbuddy",
+                             ".pytest_cache", "dist_bin", "_build"))
 
 
 def plan_block_rows(text):
@@ -498,15 +506,22 @@ def md_fence_problems(text):
 
 
 def _fence_docs(root):
-    """待扫文档 = `docs/*.md` + 仓库根部 `*.md`（与 R104b 用例**同范围**）。"""
+    """待扫文档 = 仓库里**全部** `*.md`（跳过 `FENCE_SKIP_DIRS` 里的目录）。
+
+    ⚠ R107 之前这里是「`docs/*.md` + 仓库根部 `*.md`」—— 实测**漏扫 13 份**
+    （`harness/README.md` / `flow/*.md` / `docs/analysis/*.md` /
+    `ci-examples/README.md`）。漏扫的代价不是假红，是**假绿**：那些文档的围栏
+    坏掉时，本门照样打印「违规 0 项」（R104b 的同族 —— 围栏缺陷不报错，只是
+    读起来不对，而围栏总数仍是偶数时连奇偶判据也看不见）。
+    扩面前**先测**：13 份逐个喂给 `md_fence_problems`，**0 份脏**。
+    """
     out = []
-    ddir = os.path.join(root, "docs")
-    if os.path.isdir(ddir):
-        out += [os.path.join(ddir, n) for n in sorted(os.listdir(ddir))
-                if n.endswith(".md")]
-    out += [os.path.join(root, n) for n in sorted(os.listdir(root))
-            if n.endswith(".md")]
-    return out
+    for dp, dn, fn in os.walk(root):
+        dn[:] = [d for d in dn if d not in FENCE_SKIP_DIRS]
+        for f in fn:
+            if f.endswith(".md"):
+                out.append(os.path.join(dp, f))
+    return sorted(out)
 
 
 def docs_fence_gate(root):
@@ -530,7 +545,9 @@ def docs_fence_gate(root):
             bad.append("%s: %s"
                        % (os.path.relpath(path, root).replace("\\", "/"), pr))
     print("check_all: 文档围栏闸门：扫 %d 份文档 / 围栏 %d 个 / 违规 %d 项"
-          "（docs/*.md + 根部 *.md）" % (len(files), n_fences, len(bad)))
+          "（全仓 *.md，跳过 %d 个登记目录；下界 %d 份）"
+          % (len(files), n_fences, len(bad), len(FENCE_SKIP_DIRS),
+             FENCE_MIN_DOCS))
     return bad
 
 
@@ -646,14 +663,109 @@ def count_perf_margin_callsites(src):
     return n
 
 
-def perf_margin_problem(records, problems, callsites):
+PERF_MARGIN_CALLEE = "_emit_perf_margin"
+# 跳过行格式**实测**（本机 Python310 + pytest；Windows 上路径带反斜杠，行号是
+# `pytest.skip(...)` **调用点**那一行，不是 def 行）：
+#     SKIPPED [1] tests\test_matlabc.py:12199: 无 node，跳过硬门禁全绿校验
+# ⇒ 文件名与行号之间是「最后一个 `.py` 后的 `:数字:`」，用非贪婪配 `(.+?):(\d+):`。
+_SKIP_LINE_RE = re.compile(r"^SKIPPED\s+\[\d+\]\s+(.+?):(\d+):")
+
+
+def _ast_str_const(node):
+    """取字符串字面量的值 —— 同时兼容 py3.6/3.7 与 py3.8+。
+
+    ⚠ 本仓要求 Py3.6.5 兼容 ⇒ 不许只写 `isinstance(node, ast.Constant)`：
+    3.6/3.7 上字符串字面量的节点类型是 `ast.Str`（值在 `.s`），那样写在那边
+    **一个都取不到** —— 而「取不到」在本判据里的方向是**恒真**（空集）。
+    取值顺序先 `.value`（3.8+）后 `.s`（3.6/3.7）：反过来的话，3.8–3.13 上
+    访问 `.s` 会发 DeprecationWarning（本仓有用例在 `-W error` 形态下跑，会被误伤）。
+    """
+    v = getattr(node, "value", None)
+    if isinstance(v, str):
+        return v
+    v = getattr(node, "s", None)
+    return v if isinstance(v, str) else None
+
+
+def perf_margin_nodes(src):
+    """从**源码字面量**推导余量节点名 ⇒ `(nodes, spans)`，纯函数。
+
+    `nodes` = {节点名: 宿主测试函数名}（键已排序）；`spans` =
+    [(起行, 止行, 函数名), …]，用来把 pytest 报的 `文件:行号` 映射回宿主 ——
+    起行**含装饰器行**（`pytest.mark.skipif` 这一类跳过报的是装饰器那一行）。
+    源码解析不了 ⇒ `(None, None)`：**缺输入 → 红**，绝不静默退化成空集。
+
+    为什么必须从源码推导（R90 ① / R103 ㉛）：候选集若人工挑，漏一个就永远不红
+    —— 而「漏掉的那个」正是 R103 实测里余量悄悄翻面的那两条。节点名与函数名
+    都**现读现算**，本函数里不写死任何一个。
+    """
+    try:
+        tree = ast.parse(src)
+    except (SyntaxError, ValueError):
+        return None, None
+    nodes, spans = {}, []
+    for fn in tree.body:
+        if not isinstance(fn, ast.FunctionDef):
+            continue
+        _start = min([fn.lineno] + [d.lineno for d in fn.decorator_list])
+        spans.append((_start, getattr(fn, "end_lineno", None) or fn.lineno,
+                      fn.name))
+        for sub in ast.walk(fn):
+            if not isinstance(sub, ast.Call) or not sub.args:
+                continue
+            if getattr(sub.func, "id", None) != PERF_MARGIN_CALLEE:
+                continue
+            lit = _ast_str_const(sub.args[0])
+            if lit is not None:
+                nodes.setdefault(lit, fn.name)
+    return dict((k, nodes[k]) for k in sorted(nodes)), spans
+
+
+def parse_skipped_hosts(text, spans):
+    """从 pytest `-rs` 摘要行抽「被跳过的宿主测试名」 ⇒ `(hosts, problems)`。
+
+    只认 `PERF_MARGIN_SRC` 那一个文件的跳过行（别的测试文件的跳过与本判据无关）。
+    行号落在任何函数的 `[起, 止]` 之外 ⇒ 记进 `problems`（**不许静默丢弃**：
+    静默丢弃正是「缺记录被读成读数没接上」的成因）。空文本 ⇒ 空集且无问题
+    ——「这一跑没有跳过」是合法状态，不是缺输入。
+    """
+    want = PERF_MARGIN_SRC.replace("\\", "/")
+    hosts, problems = set(), []
+    for ln in text.splitlines():
+        m = _SKIP_LINE_RE.match(ln.strip())
+        if not m:
+            continue
+        if m.group(1).replace("\\", "/") != want:
+            continue
+        try:
+            no = int(m.group(2))
+        except ValueError:
+            problems.append("跳过行号读不出整数：%s" % ln.strip()[:120])
+            continue
+        hit = [nm for (a, b, nm) in spans if a <= no <= b]
+        if len(hit) == 1:
+            hosts.add(hit[0])
+        else:
+            problems.append("跳过行 %d 落在 %d 个测试函数里（应恰 1 个）—— %s"
+                            % (no, len(hit), ln.strip()[:120]))
+    return hosts, problems
+
+
+def perf_margin_problem(records, problems, callsites, expected=None,
+                        skipped=None):
     """余量侧信道的判据。返回问题串（空 = 过）。纯函数，自证直接测它。
 
-    ⚠ 强度只许升（R102 ㉖），且每条都对应一种**静默失效**：
+    ⚠ 强度只许升（R102 ㉖），每条都对应一种**静默失效**：
       * 源内 0 个调用点 ⇒ 红：机制被删空，判据恒真（空集 ④）；
       * 坏记录 ⇒ 红：畸形行不许被当成「没有这条」（陈旧的红与真坏长得一样，R83 ④）；
       * 有调用点却 0 条记录 ⇒ 红：**这正是 ㉜ 要防的那一种** —— 绿灯读数没接上，
-        余量又会悄悄翻面，而 rc 依然是 0。
+        余量又会悄悄翻面，而 rc 依然是 0；
+      * [R107] `expected` 由**源码字面量**推导 ⇒ **逐个**节点都要有记录，除非它的
+        宿主测试**这一跑真的被跳过**（`skipped`）—— 否则「本机没装 node」与
+        「读数没接上」在读数上长得一模一样（`expected=None` = 读不出源码 ⇒ 红）；
+      * [R107] 记录里的节点名必须都在源码里：**陈旧登记也红**（登记表两向的同一半）；
+      * [R107] 文本口径的调用点数必须等于 AST 口径的节点数 —— 同一个量两个都对却
+        不同的答案时，至少有一个在说谎（R99 ④：空集 / 分母先自证）。
     """
     if callsites <= 0:
         return ("%s 里一个 `_emit_perf_margin(` 调用点都没有 —— 余量侧信道是空集，"
@@ -666,11 +778,37 @@ def perf_margin_problem(records, problems, callsites):
     if not [r for r in records if r.get("kind") == "budget"]:
         return ("余量侧信道里**一条预算门记录都没有**（只有宽限断言）—— "
                 "「有记录」被宽限记录单独满足 ⇒ 判据退化成空判据")
+    if expected is None:
+        return ("读不出 %s 里的 `_emit_perf_margin` 节点名（源码解析不了 ⇒ "
+                "缺输入 → 红）：少了这一环，「每个绿灯读数都接上了」就无从判定"
+                % PERF_MARGIN_SRC)
+    if len(expected) != callsites:
+        return ("`_emit_perf_margin` 的**两个口径不一致**：文本数出 %d 个调用点，"
+                "AST 从字面量推出 %d 个节点名 —— 同一个量两个都对却不同的答案，"
+                "至少有一个在说谎（R99 ④）" % (callsites, len(expected)))
+    have = set(r["node"] for r in records)
+    _skip = set(skipped or ())
+    miss = sorted(n for n in expected
+                  if n not in have and expected[n] not in _skip)
+    if miss:
+        return ("余量侧信道缺 %d 个节点的记录：%s（源码共 %d 个节点）—— "
+                "它们的宿主测试**没有**被跳过，所以不是「本机没装 node」那种"
+                "合法缺失，而是绿灯读数没接上（R103 ㉜）"
+                % (len(miss), miss, len(expected)))
+    stale = sorted(n for n in have if n not in expected)
+    if stale:
+        return ("余量侧信道里有 %d 个**不在源码里**的节点名：%s —— "
+                "记录与源码不是同一份（陈旧登记 / 读到了旧源）"
+                % (len(stale), stale))
     return None
 
 
-def format_perf_margin_lines(records, callsites):
-    """把余量按**最紧在前**排成可读行：绿灯也要报「实测 / 上限 / 余量」。"""
+def format_perf_margin_lines(records, callsites, nodes=None):
+    """把余量按**最紧在前**排成可读行：绿灯也要报「实测 / 上限 / 余量」。
+
+    `nodes` 给了（源码推导出的节点名全集）就**一并报覆盖度** —— 只报「有多少条
+    记录」看不出「有没有哪个节点一条都没接上」，而后者才是 ㉜ 要防的那一种。
+    """
     out = []
     for r in records:
         tag = "" if r.get("kind") == "budget" else "  [宽限断言]"
@@ -678,9 +816,13 @@ def format_perf_margin_lines(records, callsites):
                    % (r["node"], r["measured"], r["unit"],
                       r["limit"], r["unit"], r["ratio"], tag))
     _nb = len([r for r in records if r.get("kind") == "budget"])
-    out.append("check_all:   余量记录 %d 条（预算 %d / 宽限 %d）/ 源内调用点 %d 处"
-               "（按余量升序，最紧在前；`[宽限断言]` 的比值本来就该≈1.0）"
-               % (len(records), _nb, len(records) - _nb, callsites))
+    _last = ("check_all:   余量记录 %d 条（预算 %d / 宽限 %d）/ 源内调用点 %d 处"
+             % (len(records), _nb, len(records) - _nb, callsites))
+    if nodes is not None:
+        _last += "；源码节点覆盖 %d/%d" % (
+            len(set(r["node"] for r in records) & set(nodes)), len(nodes))
+    _last += "（按余量升序，最紧在前；`[宽限断言]` 的比值本来就该≈1.0）"
+    out.append(_last)
     return out
 
 
@@ -724,7 +866,9 @@ def _run_tests(root, py, timeout, margin_log=None):
         env[PERF_MARGIN_ENV] = margin_log
     else:
         env.pop(PERF_MARGIN_ENV, None)
-    cmd = [py, "-m", "pytest", "tests/", "-q", "-rf", "--tb=no"]
+    # [R107] 加 `-rs`：跳过条目必须带**行号** —— 没有它，「本机没装 node 所以这条
+    #   读数缺席」与「读数根本没接上」在输出里长得一模一样（都只是少一条记录）。
+    cmd = [py, "-m", "pytest", "tests/", "-q", "-rf", "-rs", "--tb=no"]
     try:
         p = subprocess.Popen(cmd, cwd=root, env=env,
                              stdin=subprocess.DEVNULL,
@@ -781,16 +925,26 @@ def tests_gate_problem(tools_dir, python_exe=None, timeout=TEST_TIMEOUT):
     # [R104] 余量**在变红之前**就要可见：按最紧在前打表（㉜）。
     _cs = count_perf_margin_callsites(_src)
     _recs, _mprobs = parse_perf_margins(_mtext)
-    for _ln in format_perf_margin_lines(_recs, _cs):
+    # [R107] 节点名**从源码字面量推导**（㉛：候选集要能推导，不能人工挑），并把
+    #   pytest `-rs` 报出的**被跳过行号**映射回宿主测试 ⇒ 让「本机没装 node」
+    #   与「读数没接上」分得开（此前两者在读数上是同一件事）。
+    _exp, _spans = perf_margin_nodes(_src)
+    _skhosts, _skprobs = parse_skipped_hosts(text, _spans or [])
+    _sknodes = set(n for n, h in (_exp or {}).items() if h in _skhosts)
+    for _ln in format_perf_margin_lines(_recs, _cs, _exp):
         print(_ln)
-    # 两条判据**各自独立结算**（R102：一条红不许挡住另一条的读数）。
+    # 三条判据**各自独立结算**（R102 ㉔：一条红不许挡住另一条的读数）。
     _probs = []
     _pb = test_baseline_problem(_got, baseline, python_ver=PYVER)
     if _pb:
         _probs.append(_pb)
-    _pm = perf_margin_problem(_recs, _mprobs, _cs)
+    _pm = perf_margin_problem(_recs, _mprobs, _cs, expected=_exp,
+                              skipped=_sknodes)
     if _pm:
         _probs.append(_pm)
+    if _skprobs:
+        _probs.append("余量侧信道：pytest `-rs` 的跳过行解析有 %d 条告警 —— %s"
+                      % (len(_skprobs), _skprobs[0]))
     return "；".join(_probs) if _probs else None
 
 
@@ -805,11 +959,12 @@ def main(argv):
     if "--selftest" in argv:
         bad, good = _selftest()
         print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
-        # 这里的 good 数的是**自证断言条数**（R106 **实测** 37 条 —— 写补丁时手数
-        # 成 34、改判据后又手数成 35，两次都被实跑当场抓住：读数只认实测），
-        # 与 MIN_GUARDS（护栏道数）是两件事 —— 别把它们调成同一个变量。
+        # 这里的 good 数的是**自证断言条数**（R107 **实测** 45 条 —— R106 是 37，
+        # 本轮「余量判据」那一节新增 8 条；写补丁时手数过 34、35 两次，两次都被
+        # 实跑当场抓住：**读数只认实测**），与 MIN_GUARDS（护栏道数）是两件事 ——
+        # 别把它们调成同一个变量。
         # ⚠ 下界只许升（R102 ㉖）：它就是「样本被删掉」的对手方。
-        return 0 if (bad == 0 and good >= 37) else 1
+        return 0 if (bad == 0 and good >= 45) else 1
 
     tools_dir = os.path.dirname(os.path.abspath(__file__))
     if "--tools-dir" in argv:
@@ -1026,7 +1181,7 @@ def _selftest():
             bad += 1
             print("  [selftest] parse_pytest_summary 解析不对")
 
-        # ⑨ [R104] 性能余量侧信道：坏的四种 + 好的一种 + 分母两向。
+        # ⑨ [R104/R107] 性能余量侧信道：坏的八种 + 好的一种 + 分母四向。
         _okl = ('{"kind": "budget", "limit": 5.0, "measured": 3.5, '
                 '"node": "c28", '
                 '"ratio": 1.4285714285714286, "unit": "s"}')
@@ -1037,26 +1192,59 @@ def _selftest():
         else:
             bad += 1
             print("  [selftest] 余量解析器读不出好行：%r / %r" % (_r9, _p9))
+        # ⚠ R107：坏样本必须把 `expected` 一起给**对** —— 否则它们会因为
+        #   「推导不出节点名 ⇒ 缺输入」那条新分支而变红：**红了，但红错了理由**。
+        #   R91 的「子串包含让负向判据假绿」是同一类事故（判据响了，响的不是被测的那件事）。
+        _e1 = {"c28": "test_c28_uninit_performance"}
+        _e2 = {"c28": "test_c28_uninit_performance",
+               "c22": "test_c22_stress_test"}
         _cases9 = (
-            (_okl + "\n{不是 JSON\n", 1, "坏行"),
+            (_okl + "\n{不是 JSON\n", 1, _e1, "坏行"),
             ('{"kind": "budget", "limit": 5.0, "measured": 0, '
-             '"node": "c28", "ratio": 0, "unit": "s"}\n', 1, "measured<=0"),
-            ('{"kind": "budget", "limit": 5.0, "node": "c28"}\n', 1, "缺字段"),
-            ("", 1, "有调用点却零记录"),
+             '"node": "c28", "ratio": 0, "unit": "s"}\n', 1, _e1, "measured<=0"),
+            ('{"kind": "budget", "limit": 5.0, "node": "c28"}\n', 1, _e1,
+             "缺字段"),
+            ("", 1, _e1, "有调用点却零记录"),
             ('{"kind": "weird", "limit": 5.0, "measured": 1.0, '
-             '"node": "x", "ratio": 5.0, "unit": "s"}\n', 1, "kind 非法"),
+             '"node": "c28", "ratio": 5.0, "unit": "s"}\n', 1, _e1, "kind 非法"),
             ('{"kind": "tolerance", "limit": 5.0, "measured": 1.0, '
-             '"node": "x", "ratio": 5.0, "unit": "s"}\n', 1,
+             '"node": "c28", "ratio": 5.0, "unit": "s"}\n', 1, _e1,
              "只有宽限记录 ⇒ 没有预算门记录"),
+            (_okl + "\n", 2, _e2, "有节点一条记录都没有，且宿主没被跳过"),
+            (_okl + "\n", 1, _e2, "两个口径不一致（文本 1 / AST 2）"),
         )
-        for _t9, _c9, _w9 in _cases9:
+        for _t9, _c9, _e9, _w9 in _cases9:
             _rr, _pp = parse_perf_margins(_t9)
-            if perf_margin_problem(_rr, _pp, _c9):
+            if perf_margin_problem(_rr, _pp, _c9, expected=_e9):
                 good += 1
             else:
                 bad += 1
                 print("  [selftest] 余量判据样本「%s」没判红" % _w9)
-        if perf_margin_problem(_r9, [], 2) is None:
+        # R107：**陈旧登记**（记录里有、源码里没有的节点名）也要红 ——
+        # 「未登记 ⇒ 红」的另一面就是「陈旧登记 ⇒ 也红」。
+        _rr, _pp = parse_perf_margins(
+            _okl + "\n" + '{"kind": "budget", "limit": 5.0, "measured": 1.0, '
+            '"node": "c99", "ratio": 5.0, "unit": "s"}\n')
+        if perf_margin_problem(_rr, _pp, 1, expected=_e1):
+            good += 1
+        else:
+            bad += 1
+            print("  [selftest] 余量判据没抓住「记录里的节点名不在源码里」")
+        # R107：**感知 skipped** 的正向 —— 缺的那条记录，其宿主这一跑真被跳过了
+        _rr, _pp = parse_perf_margins(_okl + "\n")
+        if perf_margin_problem(_rr, _pp, 2, expected=_e2,
+                               skipped=["test_c22_stress_test"]) is None:
+            good += 1
+        else:
+            bad += 1
+            print("  [selftest] 余量判据把「宿主被跳过导致的缺记录」误判成红")
+        # R107：推导不出节点名（源码解析不了）⇒ 红，不许退化成弱判据
+        if perf_margin_problem(_r9, [], 1) is not None:
+            good += 1
+        else:
+            bad += 1
+            print("  [selftest] 余量判据在「读不出节点名」时竟然放行")
+        if perf_margin_problem(_r9, [], 1, expected=_e1) is None:
             good += 1
         else:
             bad += 1
@@ -1068,6 +1256,40 @@ def _selftest():
         else:
             bad += 1
             print("  [selftest] 调用点分母算错（定义行/注释行不该计）")
+        # [R107] AST 口径的节点名推导：**与文本口径各自独立**，且两向都要自证。
+        _nsrc = ("def test_a():\n"
+                 "    _emit_perf_margin(\"n_one\", 1.0, 2.0)\n"
+                 "    _emit_perf_margin('n_two', 1.0, 2.0)\n"
+                 "def test_b():\n"
+                 "    _emit_perf_margin(\n"
+                 "        \"n_three\", 1.0, 2.0)\n"
+                 "    _emit_perf_margin(NAME, 1.0, 2.0)\n"
+                 "# _emit_perf_margin(\"n_comment\", 1, 2)\n"
+                 "def _emit_perf_margin(node, m, l):\n"
+                 "    return None\n")
+        _n9, _sp9 = perf_margin_nodes(_nsrc)
+        if _n9 == {"n_one": "test_a", "n_three": "test_b", "n_two": "test_a"} \
+                and len(_sp9) == 3:
+            good += 1
+        else:
+            bad += 1
+            print("  [selftest] AST 节点推导不对：%r / %r" % (_n9, _sp9))
+        if perf_margin_nodes("def f(:\n") == (None, None):
+            good += 1
+        else:
+            bad += 1
+            print("  [selftest] 源码解析不了时未返回 (None, None)（缺输入 → 红）")
+        # 跳过行 → 宿主：样本按**实测形状**构造（反斜杠路径；行号 = skip 调用行）
+        _sk, _skp = parse_skipped_hosts(
+            "SKIPPED [1] tests\\test_matlabc.py:3: 无 node，跳过\n"
+            "SKIPPED [1] tests\\test_matlabc.py:99: 落不到任何函数里\n"
+            "SKIPPED [1] tests\\other_file.py:1: 别的文件，与本判据无关\n"
+            "1 failed, 2 passed, 1 skipped in 1s\n", _sp9)
+        if _sk == {"test_a"} and len(_skp) == 1:
+            good += 1
+        else:
+            bad += 1
+            print("  [selftest] 跳过行映射不对：%r / %r" % (_sk, _skp))
         # ⑩ [R106] 仓级结构闸门（纯函数，不读盘）：计划块三条判据（+ 两条缺输入）
         #    与围栏两条判据 —— 坏样本必须红、好样本必须绿，否则「0 违规」可能
         #    只是恒真。样本一律**构造**，不读真文件（真文件由本轮的 ✓ 行来证）。

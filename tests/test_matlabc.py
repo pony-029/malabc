@@ -2481,8 +2481,8 @@ def _md_fence_problems(text):
 
 
 def test_r104b_docs_markdown_fence_structure():
-    """R104b 回归：`docs/*.md` 与仓库根部 `*.md` 的代码围栏结构 —— **零长度代码块为 0、
-    围栏总数为偶**。
+    """R104b 回归（R107 扩面）：**全仓** `*.md`（跳过登记目录）的代码围栏结构 ——
+    **零长度代码块为 0、围栏总数为偶**。
 
     动因是**产物上的真缺陷**（不是假设）：`docs/SUPERPOWER_REVIEW_R104.md` 由装配脚本
     插占位符产出，留下一对**相邻围栏**（开、紧随其后关）⇒ 零长度代码块，两层后果：
@@ -2491,13 +2491,31 @@ def test_r104b_docs_markdown_fence_structure():
     两层都不产生任何错误，只是读起来不对 —— 靠人眼几乎抓不到；而围栏**总数仍是偶数**
     ⇒ 只看奇偶的判据也看不见它（所以这里**两条都判**）。
     """
-    ddir = os.path.join(ROOT, "docs")
-    files = [os.path.join(ddir, n) for n in sorted(os.listdir(ddir))
-             if n.endswith(".md")]
-    files += [os.path.join(ROOT, n) for n in sorted(os.listdir(ROOT))
-              if n.endswith(".md")]
-    # 扫描范围**现算**并断言非空（R99 ④）：分母失效时「0 处异常」是恒真判据
-    assert len(files) >= 50, "待扫文档过少（%d 份）—— 扫描范围疑似失效" % len(files)
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    try:
+        import check_all as _ca
+    finally:
+        sys.path.pop(0)
+    files = _ca._fence_docs(ROOT)
+    # 扫描范围**现算**并断言非空（R99 ④）：分母失效时「0 处异常」是恒真判据。
+    # R107：下界改取门自己那个常量（扫描面已从 75 份扩到 88 份）—— 两边各写一个
+    # 数字迟早分叉，而分叉的表现是「门说 88、用例还在按 50 判」。
+    assert len(files) >= _ca.FENCE_MIN_DOCS, \
+        "待扫文档过少（%d 份 < 下界 %d）—— 扫描范围疑似失效" % (
+            len(files), _ca.FENCE_MIN_DOCS)
+    # **独立复核范围**（R107）：本用例自己走一遍 os.walk，断言门的清单覆盖仓内
+    # **每一份** .md（除登记豁免的目录）——「门漏扫了一个目录」与「那个目录恰好
+    # 干净」必须分得开；只比总数的话，漏 3 份、别处多 3 份照样相等。
+    _seen = set()
+    for _dp, _dn, _fn in os.walk(ROOT):
+        _dn[:] = [d for d in _dn if d not in _ca.FENCE_SKIP_DIRS]
+        for _f in _fn:
+            if _f.endswith(".md"):
+                _seen.add(os.path.abspath(os.path.join(_dp, _f)))
+    _got = set(os.path.abspath(p) for p in files)
+    assert _got == _seen, (
+        "围栏扫描范围与独立复算不等 —— 门漏扫 %s / 多扫 %s"
+        % (sorted(_seen - _got)[:5], sorted(_got - _seen)[:5]))
     bad = []
     for path in files:
         probs, _n = _md_fence_problems(_read_text(path))
@@ -2518,6 +2536,52 @@ def test_r104b_docs_markdown_fence_structure():
         if want_line is not None:
             assert ("第 %d 行是零长度代码块" % want_line) in probs[0], \
                 "%s 应报告第 %d 行，实际 %r" % (name, want_line, probs)
+
+
+def test_r107_perf_margin_nodes_derived_and_skip_aware():
+    """R107：余量侧信道的**节点名必须从源码字面量推导**，且「缺一条记录」要能
+    区分「本机跳过了这个用例」与「绿灯读数根本没接上」。
+
+    为什么要有这条用例（而不只是门里那段实现）：门自己现算的分母**必须有一个
+    对手方** —— 这里用**另一套代码**（正则扫字面量）看同一个量，两套不一致就红。
+    与门里那条判据是两条独立结算的判据（R102 ㉔：一条红不许挡住另一条）。
+    """
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    try:
+        import check_all as ca
+    finally:
+        sys.path.pop(0)
+    src = io.open(os.path.join(ROOT, "tests", "test_matlabc.py"),
+                  encoding="utf-8", errors="replace").read()
+    nodes, spans = ca.perf_margin_nodes(src)
+    assert nodes, "AST 一个节点名都没推导出来（空集 ⇒ 判据恒真）"
+    assert len(nodes) >= 15, "推导出的节点名只有 %d 个（应 ≥15）" % len(nodes)
+    n_cs = ca.count_perf_margin_callsites(src)
+    assert len(nodes) == n_cs, (
+        "两个口径不一致：AST 推出 %d 个节点名，文本数出 %d 个调用点"
+        % (len(nodes), n_cs))
+    # **独立复核**（不调用门的实现）：用正则自己数一遍「首参是字符串字面量」的调用点
+    lit = set(re.findall(r'_emit_perf_margin\(\s*["\']([^"\']+)["\']', src))
+    assert lit == set(nodes), (
+        "正则口径与 AST 口径不等 —— 只在 AST: %s / 只在正则: %s"
+        % (sorted(set(nodes) - lit)[:5], sorted(lit - set(nodes))[:5]))
+    # 解析不了的源码 ⇒ (None, None)（缺输入 → 红，不许静默变成空集）
+    assert ca.perf_margin_nodes("def f(:\n") == (None, None)
+    # 两向：缺记录 + 宿主**被跳过** ⇒ 放行；同类缺失但宿主没被跳过 ⇒ 红
+    ok = ('{"kind": "budget", "limit": 5.0, "measured": 3.5, "node": "a", '
+          '"ratio": 1.43, "unit": "s"}\n')
+    recs, probs = ca.parse_perf_margins(ok)
+    exp = {"a": "test_a", "b": "test_b"}
+    assert ca.perf_margin_problem(recs, probs, 2, expected=exp,
+                                  skipped=["test_b"]) is None, \
+        "宿主被跳过导致的缺记录被误判成红"
+    assert ca.perf_margin_problem(recs, probs, 2, expected=exp), \
+        "宿主没被跳过却缺记录，竟然放行了"
+    # 跳过行 → 宿主：按**实测形状**（反斜杠路径；行号落在宿主函数体内）
+    _no = spans[0][0]
+    sk, skp = ca.parse_skipped_hosts(
+        "SKIPPED [1] tests\\test_matlabc.py:%d: 无 node\n" % _no, spans)
+    assert sk == set([spans[0][2]]) and not skp, (sk, skp, spans[0])
 
 
 def _plan_block_sample(rows):
