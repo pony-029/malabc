@@ -13,6 +13,8 @@
 | `root` | string | 被分析目录的路径 |
 | `stats` | object | 统计概览，见 §2 |
 | `edges` | array | 全部调用边（函数级），见 §3 |
+| `unresolved` | array | 未解析调用归因 `[{callee, line, file}]`（R109：名字取自**唯一产出点** `frontends/matlab.py::unresolved_tuples`，与 C/Py/JS 同键同形） |
+| `heuristics` | array | 启发式检查 `[{file, line, func, kind, msg, level}]`（R109：与 C/Py/JS 同键同形；MATLAB kind ∈ `m_missing_doc`） |
 | `files` | array | 每个 `.m` 文件的详情，见 §4 |
 | `call_graph` | object | 调用图（出入边 + 入口 + 同名歧义），见 §5 |
 | `folder_edges` | array | 目录间调用边（`--json` 时输出），见 §6 |
@@ -99,6 +101,7 @@
 | `qualified` | string | 完整名（含包/对象前缀） |
 | `kind` | string | 类型：`main` / `local` / `method` / `constructor` / `script` |
 | `line` | int | 定义行号 |
+| `complexity` | int | 圈复杂度（R109：与 C/Py/JS 函数载荷同名同义，`_compute_complexity` 的结果，缺省 1） |
 | `signature` | string | 函数签名（如 `function [y] = foo(x)`） |
 | `inputs` | array&lt;string&gt; | 输入参数名 |
 | `outputs` | array&lt;string&gt; | 输出参数名 |

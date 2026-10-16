@@ -14250,6 +14250,34 @@ def render_json(files, edges, stats, root, reproducible=False, calls_of=None,
         "root": str(root),
         "stats": stats,
         "edges": [{"caller": c, "callee": d, "cross_file": cr} for c, d, cr in edges],
+        # 槽 29 / R109：**未解析调用的归因出口**。
+        # 此前 MATLAB 的未解析调用**只在**站点 `unresolved.html` 与终端诊断里，
+        # 载荷没有任何出口 ⇒ 对等表 `unresolved_attribution` 那一格是 `no`。
+        # 名字**不是**在这里判定的：唯一产出点是
+        # `frontends/matlab.py::unresolved_tuples`（R44 收敛的那一处，登记在
+        # `frontends/__init__.py::IR_LANG_OWNERS`）。这里只是**消费者**，形状
+        # 对齐 C/Py/JS 的 `[{callee, line, file}]`。
+        # ⚠ 为什么写成字典字面量的键、而不是 `data["unresolved"] = ...`：后者会被
+        # `tools/check_ir_attribution.py` 的写点判据读成「第二个 unresolved 容器」
+        # （同 `_run_ext_only` 里那条长注释）。这里确实不是判定点 —— 写成下标
+        # 赋值会给出一个**假信号**。
+        "unresolved": [{"callee": _n, "line": _ln, "file": _rel}
+                       for _n, _ln, _rel in f_matlab.unresolved_tuples(files)],
+        # 槽 29 / R109：**启发式通道** —— 与 C/Py/JS **同一键、同一形状**
+        # `[{file, line, func, kind, msg, level}]`。
+        # 此前 MATLAB 的检查结果分落在 `uninitialized` / `dead_code` /
+        # `p204_p223` 等各自键里，没有统一的 `heuristics` 出口（对等表 §3.2
+        # 把它记作「口径分裂」）。本轮接的是**有直接 C 对应物**的那条规则：
+        # 「函数缺头部描述」→ `m_missing_doc`（C 侧 counterpart `c_missing_doc`），
+        # 数据取自本函数已算出的 `doc_todos`（不重复扫源码 ⇒ 不会出现第二份判定）。
+        # ⚠ 范围如实：其余检查类别仍留在各自键里、**未并入**这条通道。
+        "heuristics": [
+            {"file": _t.get("rel") or "", "line": _t.get("line") or 0,
+             "func": _t.get("func") or "", "kind": "m_missing_doc",
+             "msg": "函数缺少头部描述（description）", "level": "note"}
+            for _t in ((doc_todos or {}).get("todos") or [])
+            if "description" in (_t.get("missing") or [])
+        ],
         "files": [],
         # C3：跨文件 global/persistent 变量索引（跨文件数据流基础）
         "global_vars": _collect_global_vars(files),
@@ -14327,6 +14355,13 @@ def render_json(files, edges, stats, root, reproducible=False, calls_of=None,
                 {
                     "name": f.name, "qualified": f.qualified, "kind": f.kind,
                     "line": f.line, "signature": f.signature(),
+                    # 槽 29 / R109：圈复杂度进载荷。
+                    # 此前 MATLAB 的 complexity **只在** Markdown 报告与站点
+                    # `complexity.html` 里（`_compute_complexity(files)` 在本
+                    # 函数调用之前的主流程已跑过），载荷里没有这个键 ⇒ 对等表
+                    # `metrics_complexity` 那一格是 `no`。这是**接线**：数据早
+                    # 就算好了，缺的只是出口。与 C/Py/JS 的同名键同义（int）。
+                    "complexity": int(getattr(f, "complexity", 1) or 1),
                     "inputs": f.inputs, "outputs": f.outputs,
                     # A2：可变参数标志（varargout/varargin）
                     "variadic": {"varargout": f.is_variadic()[0],

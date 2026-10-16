@@ -31,16 +31,16 @@
 | `deps_site_page` | na | yes | yes | yes | 站点 `deps.html` 文本里出现依赖目标名 |
 | `classes` | yes | na | yes | no | 载荷 `files[].classes` 非空 |
 | `entities` | yes | yes | yes | no | 载荷里出现实体 / 字段类键（`field_access` / `types` / `structs` …） |
-| `metrics_complexity` | no | yes | yes | yes | 某个函数载荷 `complexity > 1` |
-| `unresolved_attribution` | no | yes | yes | yes | 载荷 `unresolved` 非空（调了一个项目里不存在的名字） |
+| `metrics_complexity` | yes | yes | yes | yes | 某个函数载荷 `complexity > 1` |
+| `unresolved_attribution` | yes | yes | yes | yes | 载荷 `unresolved` 非空（调了一个项目里不存在的名字） |
 | `callgraph_projection` | yes | yes | yes | yes | `--callgraph` 产物存在且 `call_relations.edges_total` 是整数 |
-| `heuristics_channel` | no | yes | yes | yes | 载荷 `heuristics` 非空（无注释函数触发一条） |
+| `heuristics_channel` | yes | yes | yes | yes | 载荷 `heuristics` 非空（无注释函数触发一条） |
 | `asm_insights` | na | yes | na | na | 载荷出现 `asm` 键 |
 | `browse_site` | yes | yes | yes | yes | `--browse` 产出站点且含 HTML |
 | `site_same_page_names` | yes | yes | yes | yes | 站点同时有 `index.html` / `funcs.html` / `file/` / `dir/` |
 | `site_meta_description` | yes | yes | yes | yes | 站点**每个** .html 页都带 `meta name=description` / `og:description`，且措辞是**本语言**的 |
 
-**合计 68 格：`yes` 53 · `no` 7 · `na` 8。**
+**合计 68 格：`yes` 56 · `no` 4 · `na` 8。**
 
 ## 3. 三类发现
 
@@ -54,24 +54,31 @@ Open Graph，措辞按语言）**这些**已经真的通了**（R86–R92 的移
 R108 把那条横切收尾路径接到三语言自己的站点出口上 —— 此前它**只有 MATLAB
 走得到**，且描述字符串写死 MATLAB 措辞）。
 
-### 3.2 特有的通道：不是缺口，是**口径分裂**
+### 3.2 曾经的口径分裂：**R109 已收到载荷上**
 
-有三项能力在 MATLAB 侧走**另一条通道**，而 C / Py / JS 共用一条：
+有三项能力曾在 MATLAB 侧走**另一条通道**，而 C / Py / JS 共用一条：
 
-| 能力 | C / Python / JS | MATLAB |
+| 能力 | C / Python / JS | MATLAB（R109 之前 → 现在） |
 | --- | --- | --- |
-| `metrics_complexity` | 函数载荷自带 `complexity` | 只在 Markdown 报告与站点 `complexity.html` |
-| `unresolved_attribution` | 载荷 `unresolved` 数组 | **没有**未解析归因出口（站点却有 `unresolved.html`） |
-| `heuristics_channel` | 载荷 `heuristics` 数组 | 检查结果分在 `p204_p223` / `uninitialized` 等各自键里 |
+| `metrics_complexity` | 函数载荷自带 `complexity` | 只在 Markdown 报告与站点 `complexity.html` → **载荷已补 `complexity`**（同一批数据：`_compute_complexity(files)` 早已在主流程跑过） |
+| `unresolved_attribution` | 载荷 `unresolved` 数组 | **没有**未解析归因出口（站点却有 `unresolved.html`）→ **载荷已补 `unresolved`**，名字取自唯一产出点 `frontends/matlab.py::unresolved_tuples` |
+| `heuristics_channel` | 载荷 `heuristics` 数组 | 检查结果分在 `p204_p223` / `uninitialized` 等各自键里 → **载荷已补 `heuristics`**（`m_missing_doc`，C 侧 counterpart `c_missing_doc`） |
 
-这三条是本轮**最有用的读数**：它们说明「对等」不只是「有没有」，还有
+这三条**曾**是最有用的读数：它们说明「对等」不只是「有没有」，还有
 **「同一个东西从哪条通道出来」**。R92 让 C / Py / JS 的站点同形；
 **R99 把 MATLAB 站点也接上同一份基础层代码**（`renderers/csite.py`），
 于是四语言的 `funcs.html` / `file/` / `dir/` / `deps.html` / `rule/`
 **同名同形** —— `site_same_page_names` 那一格由实测从 `no` 变 `yes`。
-剩下三条仍是槽 28 / 槽 29 的靶。
+**R109 把剩下三条也接到载荷上**（只做**接线**：不改判定点、不重复扫源码），
+本门实测三格**同时**由 `no` 变 `yes`。
 
-### 3.3 真实的缺口：7 格，按可修性排序
+⚠ 范围如实：`heuristics` 这条通道本轮只接上**有直接 C 对应物**的一类规则
+（「函数缺头部描述」）。MATLAB 其余检查类别仍留在 `uninitialized` /
+`dead_code` / `type_mismatch` / `shape_mismatch` / `p204_p223` 各自键里，
+**未并入**这条通道 —— 那一格的意思是「这条通道存在、键名与条目形状对齐」，
+**不是**「所有规则都走它」。
+
+### 3.3 真实的缺口：4 格，按可修性排序
 
 | 缺口 | 格数 | 形态 | 去向 |
 | --- | --- | --- | --- |
@@ -79,9 +86,14 @@ R108 把那条横切收尾路径接到三语言自己的站点出口上 —— �
 | `classes`（JS） | 1 | 载荷没有 `classes` 键：`class` 语法被识别成 `constructor` 等方法，**类本身丢失** | 槽 28 |
 | `call_edges_qualified`（JS） | 1 | 属性 / 方法调用不成边：前端跳过前一个字符是 `.` 的调用点 | 槽 28 |
 | `call_edges_oneline_body`（JS） | 1 | 定义行自身被跳过 ⇒ 花括号单行体里的调用点收不到 | 槽 28 |
-| `metrics_complexity` / `unresolved_attribution` / `heuristics_channel`（MATLAB） | 3 | 见 3.2 的口径分裂 | 槽 28 / 槽 29 |
 
 **R101 / 槽 25 把 Python 列从 5 格 `no` 清成 0 格**（`ast` 前端落地，降级到词法层时写 `limitations`），并**顺带**修好 `deps_edges_json` 的 JS 列（第 6 格）—— 那一格与 Py 是**同一处**口径分裂：载荷里 `"include_edges": []` 是硬编码的，而构建载荷的 `_run_ext_only` 是 py / js 共用的一段代码。所以这 6 格不是六个补丁，是**一处修在共用的那一层**。
+
+**R109 又清掉 3 格**（MATLAB 的 `metrics_complexity` /
+`unresolved_attribution` / `heuristics_channel`）：同样**不是三个补丁**，
+而是 `render_json` 里**两处**接线（每函数载荷补 `complexity`；顶层补
+`unresolved` + `heuristics`）—— 数据早就算好了，缺的只是出口。剩下
+**4 格全是 JS**，即槽 28。
 
 ⚠ `callgraph_projection` 的 MATLAB 列**曾**是「假装修持」的典型：CLI 收下开关、
 退出码 0、终端没有任何提示、盘上没有文件 —— 用户会以为画好了。
@@ -125,17 +137,14 @@ cap.classes.why.js | 载荷没有 `classes` 键：`class` 语法被识别成 `co
 cap.entities | matlab=yes c=yes py=yes js=no
 cap.entities.evidence | 载荷里出现实体 / 字段类键（`field_access` / `types` / `structs` …）
 cap.entities.why.js | JavaScript 的对象字面量与类字段不进载荷（没有实体层）
-cap.metrics_complexity | matlab=no c=yes py=yes js=yes
+cap.metrics_complexity | matlab=yes c=yes py=yes js=yes
 cap.metrics_complexity.evidence | 某个函数载荷 `complexity > 1`
-cap.metrics_complexity.why.matlab | MATLAB 的复杂度只落在 Markdown 报告与站点 `complexity.html`，函数载荷里没有 `complexity` 字段
-cap.unresolved_attribution | matlab=no c=yes py=yes js=yes
+cap.unresolved_attribution | matlab=yes c=yes py=yes js=yes
 cap.unresolved_attribution.evidence | 载荷 `unresolved` 非空（调了一个项目里不存在的名字）
-cap.unresolved_attribution.why.matlab | MATLAB 载荷没有 `unresolved` 键：未解析调用没有统一归因出口（站点却有 `unresolved.html`）
 cap.callgraph_projection | matlab=yes c=yes py=yes js=yes
 cap.callgraph_projection.evidence | `--callgraph` 产物存在且 `call_relations.edges_total` 是整数
-cap.heuristics_channel | matlab=no c=yes py=yes js=yes
+cap.heuristics_channel | matlab=yes c=yes py=yes js=yes
 cap.heuristics_channel.evidence | 载荷 `heuristics` 非空（无注释函数触发一条）
-cap.heuristics_channel.why.matlab | MATLAB 的检查结果分在 `p204_p223` / `uninitialized` / `shape_mismatch` 等各自键里，不共用 C / Py / JS 的 `heuristics` 数组
 cap.asm_insights | matlab=na c=yes py=na js=na
 cap.asm_insights.evidence | 载荷出现 `asm` 键
 cap.asm_insights.why.matlab | MATLAB 是解释型语言，没有汇编层可分析
@@ -167,11 +176,11 @@ cap.site_meta_description.evidence | 站点**每个** .html 页都带 `meta name
 | --- | --- | --- |
 | 1 | ~~Python 前端 `ast` 化（槽 25）~~ **R101 已落地** | `classes` / `entities` / `call_edges_qualified` / `call_edges_oneline_body` / `deps_edges_json` 的 **Py 列全绿**（5 格）+ `deps_edges_json` 的 JS 列（第 6 格，同一处口径分裂） |
 | 2 | ~~C 实体层（槽 26）~~ **R106 已落地** | `entities` 的 C 列 |
-| 3 | 度量对等（槽 28） | `metrics_complexity` 的 MATLAB 列（`deps_edges_json` 的 Py / JS 列已被 R101 修掉） |
-| 4 | 画布对等（槽 29） | `site_same_page_names` 的 MATLAB 列 |
+| 3 | ~~度量对等（槽 29）~~ **R109 已落地** | `metrics_complexity` / `unresolved_attribution` / `heuristics_channel` 的 **MATLAB 列**（三格同时；`deps_edges_json` 的 Py / JS 列已被 R101 修掉） |
+| 4 | ~~画布对等（槽 29）~~ **R99 已落地**（本表当时漏记，R109 补正） | `site_same_page_names` 的 MATLAB 列 |
 | 5 | ~~任一槽顺手~~ **R106 已落地** | `callgraph_projection` 的 MATLAB 列（**真产出**：3 元边 → 4 元契约 + 主流程补上出口调用） |
 | 6 | ~~站点横切元信息的四语言对等~~ **R108 已落地** | `site_meta_description` 的**四列**（此前 `_finalize_site_html` 的唯一调用点在 MATLAB 的 `render_browse_site` 里，三语言的站点出口从没调它，且描述写死 MATLAB 措辞 —— 实测 55 / **0** / **0** / **0** 页带描述） |
 
-⚠ 顺序不是「重要程度」，是**可修性**。第 1 / 2 / 5 项 R101 与 R106 已落地
-（每一条都由本门**实测**确认，不是声明）；剩下第 3 项（度量口径分裂）与
-第 4 项（画布对等，`site_same_page_names` 的 MATLAB 列）是槽 28 / 29 的靶。
+⚠ 顺序不是「重要程度」，是**可修性**。第 1 / 2 / 3 / 5 项已落地
+（R101 / R106 / R109；每一条都由本门**实测**确认，不是声明），第 4 项
+实际由 **R99** 一并清掉（本表当时漏记，R109 补正）。**剩下 4 格全是 JS**。

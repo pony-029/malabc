@@ -2643,6 +2643,94 @@ def test_r108_site_meta_description_is_language_specific():
     assert "MATLAB 代码静态分析站点" in out_def, "不给 desc 时没有退回旧行为"
 
 
+def test_r109_matlab_payload_wiring():
+    """R109 / 槽 29：MATLAB 载荷的三条「口径分裂」接线（`complexity` /
+    `unresolved` / `heuristics`）。
+
+    与对等表门的 `s_metrics_complexity` / `s_unresolved_attribution` /
+    `s_heuristics_channel` 是**两个独立的量具**，量的不是同一件事：
+      * 那道门用它**自己的**合成夹具 + 在**产物**上读的信号；
+      * 本用例用**自己的**夹具（一次只表达一件事）+ 自己的断言。
+    两处读数不一致才是真信号 ——「门过了但这个组合没接上」或者「接上了、
+    却把别的语言的命名空间串了」。
+
+    夹具两文件，各有**分辨力**职责：
+      `Mbranch.m` 有完整头部注释 + `if/elseif/else` ⇒ `complexity > 1`，
+                 且**不该**进 `heuristics`（有描述就不该被这条规则命中）；
+      `Mundoc.m`  无头部注释 + 调一个项目里不存在的名字 ⇒ 既进 `heuristics`
+                  也进 `unresolved`。
+    """
+    import json as _json
+    tmp = tempfile.mkdtemp(prefix="mabr109_")
+    try:
+        with io.open(os.path.join(tmp, "Mbranch.m"), "w", encoding="utf-8",
+                     newline="\n") as fh:
+            fh.write("function r = Mbranch(x)\n"
+                     "%MBRANCH  分支示例。\n"
+                     "%   这里是一段完整描述 —— 用来验证「有描述的函数不进启发式通道」。\n"
+                     "%\n"
+                     "%   输入:\n"
+                     "%       x - 输入值\n"
+                     "%   输出:\n"
+                     "%       r - 结果\n"
+                     "%   作者: R109\n"
+                     "%   版本: 1.0\n"
+                     "    if x > 0\n"
+                     "        r = 1;\n"
+                     "    elseif x > 1\n"
+                     "        r = 2;\n"
+                     "    else\n"
+                     "        r = 0;\n"
+                     "    end\n"
+                     "end\n")
+        with io.open(os.path.join(tmp, "Mundoc.m"), "w", encoding="utf-8",
+                     newline="\n") as fh:
+            fh.write("function y = Mundoc(x)\n    y = Mist(x);\nend\n")
+        json_path = os.path.join(tmp, "out.json")
+        rc, _o, err = _run([tmp, "--json", json_path, "--reproducible"], tmp)
+        assert rc == 0, "json 失败: %s" % err[:400]
+        data = _json.loads(_read_text(json_path))
+
+        # --- ① metrics_complexity --------------------------------------
+        cx = {}
+        for _f in data["files"]:
+            for _fn in _f["functions"]:
+                assert "complexity" in _fn, (
+                    "R109：函数载荷必须带 complexity（%s）" % _fn["name"])
+                cx[_fn["name"]] = _fn["complexity"]
+        assert cx["Mbranch"] > 1, (
+            "分支函数的 complexity 应 > 1，实测 %r" % (cx,))
+
+        # --- ② unresolved_attribution ---------------------------------
+        un = data["unresolved"]
+        assert un, "R109：未解析调用必须有载荷出口"
+        for _it in un:
+            assert set(_it) == {"callee", "line", "file"}, (
+                "unresolved 条目应与 C/Py/JS 同形，实测 %r" % sorted(_it))
+        # ⚠ MATLAB 的解析器把调用名折叠成小写（`external_calls` 的键即小写）——
+        # 载荷读的是**唯一产出点** `unresolved_tuples`，与站点页、终端诊断同源。
+        assert {_it["callee"] for _it in un} == {"mist"}, (
+            "未解析名字应恰为 {'mist'}，实测 %r"
+            % sorted(_it["callee"] for _it in un))
+
+        # --- ③ heuristics_channel -------------------------------------
+        hs = data["heuristics"]
+        assert hs, "R109：启发式通道必须有载荷出口"
+        for _it in hs:
+            assert set(_it) == {"file", "line", "func", "kind", "msg", "level"}, (
+                "heuristics 条目应与 C/Py/JS 同形，实测 %r" % sorted(_it))
+        assert sorted({_it["kind"] for _it in hs}) == ["m_missing_doc"], (
+            "kind 应恰为 ['m_missing_doc']，实测 %r"
+            % sorted({_it["kind"] for _it in hs}))
+        funcs = set(_it["func"] for _it in hs)
+        assert "Mundoc" in funcs, (
+            "无头部描述的函数应被命中，实测 %r" % sorted(funcs))
+        assert "Mbranch" not in funcs, (
+            "有完整头部描述的函数不该进这条通道（判据无分辨力）")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def _plan_block_sample(rows):
     """R106：按**盘上同一形状**拼一份最小计划块（`轮号 | 阶段 | 线路 | 动作 | 目标 | 理由`）。
 
