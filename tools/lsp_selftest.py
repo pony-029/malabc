@@ -23,6 +23,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 LSP = os.path.join(ROOT, "matlabc_lsp.py")
 CORPUS = os.path.join(ROOT, "tests", "sample_m")
+#: F3 的反例语料：`b` 未定义就被读（`--json` 的 uninitialized 有 1 条、
+#: heuristics 是 0 条 —— 所以它的诊断只可能来自 facts）。
+CORPUS_UNINIT = os.path.join(ROOT, "tests", "sample_uninit")
 
 _bad = 0
 _good = 0
@@ -68,9 +71,10 @@ class Client(object):
         n = int(headers["content-length"])
         return json.loads(self.p.stdout.read(n).decode("utf-8"))
 
-    def init(self):
+    def init(self, root=None):
         self.send({"jsonrpc": "2.0", "id": 1, "method": "initialize",
-                   "params": {"rootUri": _uri(CORPUS), "capabilities": {}}})
+                   "params": {"rootUri": _uri(root or CORPUS),
+                              "capabilities": {}}})
         return self.recv()
 
     def open(self, path):
@@ -195,6 +199,28 @@ def _symbols(c):
          "selectionRange 必须落在 range 内部（否则 VSCode 整批丢弃）")
 
 
+def _uninit(c):
+    """F3 的验收判据（R153 预备）：
+
+    `tests/sample_uninit/x.m` 里 `b` 未定义就被读 —— `--json` 的
+    `uninitialized` 键有 1 条，而 `heuristics` 是 0 条。所以**这条诊断
+    只能来自 facts**，它证明 LSP 的能力超出了 heuristics 通道。
+
+    ⚠ 现在（F3 之前）跑会红 —— 这正是它存在的意义：**F3 做完它才会绿**。
+    """
+    c.init(CORPUS_UNINIT)
+    x_m = os.path.join(CORPUS_UNINIT, "x.m")
+    d = c.open(x_m)
+    diags = ((d or {}).get("params") or {}).get("diagnostics") or []
+    _chk(len(diags) == 1, "x.m 应有 1 条 uninitialized 诊断，实际 %d"
+         % len(diags))
+    if diags:
+        _chk(diags[0].get("code") == "c_uninit_read", "code 应为 c_uninit_read")
+        _chk(diags[0]["range"]["start"]["line"] == 2,
+             "行号应为 2（0-based，源文件第 3 行）")
+        _chk(diags[0].get("severity") == 2, "severity 应为 2（warning）")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--diag", action="store_true")
@@ -203,6 +229,7 @@ def main(argv=None):
     ap.add_argument("--ref", action="store_true")
     ap.add_argument("--hover", action="store_true")
     ap.add_argument("--symbol", action="store_true")
+    ap.add_argument("--uninit", action="store_true")
     ap.add_argument("--help", action="store_true")
     args = ap.parse_args(argv)
 
@@ -227,6 +254,8 @@ def main(argv=None):
         groups = [("hover", _hover)]
     elif args.symbol:
         groups = [("symbol", _symbols)]
+    elif args.uninit:
+        groups = [("uninit", _uninit)]
     else:
         groups = [("diag", _diag), ("def", _def), ("ref", _ref),
                   ("hover", _hover), ("symbol", _symbols)]
