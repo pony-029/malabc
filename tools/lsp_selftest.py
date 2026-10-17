@@ -352,6 +352,79 @@ def _impact(c):
          "impact/missing-returns-null（不是空对象）")
 
 
+def _tokens(c):
+    """R219：语义 token 的类型分配。
+
+    判据的核心不是「有多少个 token」，而是**同类是否同色**：
+    `function y = a(x)` 的 `y` 是输出参数、`x` 是输入参数，
+    它们在函数体内的每次出现都必须同为 `parameter` ——
+    这正是用户反复抱怨的「同类东西两种颜色」。
+    """
+    TYPES = ["variable", "function", "property", "parameter"]
+
+    def decode(uri, lines):
+        c.send({"jsonrpc": "2.0", "id": 60,
+                "method": "textDocument/semanticTokens/full",
+                "params": {"textDocument": {"uri": uri}}})
+        r = c.recv() or {}
+        data = (r.get("result") or {}).get("data") or []
+        out = []
+        di = dc = 0
+        for i in range(0, len(data) - 4, 5):
+            dl, dch, ln, t, m = data[i:i + 5]
+            di += dl
+            dc = dch if dl else dc + dch
+            out.append((di, dc, lines[di][dc:dc + ln] if di < len(lines) else "",
+                        TYPES[t] if t < len(TYPES) else "?", m))
+        return out
+
+    path = os.path.join(CORPUS, "a.m")
+    c.init(CORPUS)
+    c.send({"jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": {"textDocument": {"uri": _uri(path),
+                                        "languageId": "matlab",
+                                        "version": 1, "text": "x"}}})
+    c.recv()
+    c.recv()
+    lines = io.open(path, encoding="utf-8").read().splitlines()
+    toks = decode(_uri(path), lines)
+
+    _chk(bool(toks), "tokens/not-empty")
+    # 第 1 行 `function y = a(x)`：y 输出、x 输入，都该是 parameter
+    line1 = [(col, txt, typ) for (ln, col, txt, typ, m) in toks if ln == 0]
+    ys = [ty for (c2, t, ty) in line1 if t == "y"]
+    xs = [ty for (c2, t, ty) in line1 if t == "x"]
+    _chk(ys == ["parameter"], "tokens/output-param-is-parameter（实际 %r）" % (ys,))
+    _chk(xs == ["parameter"], "tokens/input-param-is-parameter（实际 %r）" % (xs,))
+    # **同类同色**：函数体里每次出现的 x 都必须是 parameter
+    allx = set(typ for (ln, col, txt, typ, m) in toks if txt == "x")
+    _chk(allx == {"parameter"},
+         "tokens/x-is-parameter-everywhere（实际 %r）" % (sorted(allx),))
+    # 输出 y 在函数体里也不能变成 variable
+    ally = set(typ for (ln, col, txt, typ, m) in toks if txt == "y")
+    _chk(ally == {"parameter"},
+         "tokens/y-stays-parameter（实际 %r）" % (sorted(ally),))
+    # 函数定义处必须有 declaration 修饰位
+    decl = [m for (ln, col, txt, typ, m) in toks if typ == "function" and m & 1]
+    _chk(len(decl) == 3, "tokens/three-declarations（a.m 有 3 个函数，实际 %d）"
+         % len(decl))
+    # 空文件不许崩，且应为空数组
+    empty = os.path.join(CORPUS, "empty_tokens.m")
+    with io.open(empty, "w", encoding="utf-8", newline="") as fh:
+        fh.write(u"")
+    c.send({"jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": {"textDocument": {"uri": _uri(empty),
+                                        "languageId": "matlab",
+                                        "version": 1, "text": ""}}})
+    c.recv()
+    c.recv()
+    _chk(decode(_uri(empty), []) == [], "tokens/empty-file-no-tokens")
+    try:
+        os.remove(empty)
+    except OSError:
+        pass
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--diag", action="store_true")
@@ -364,6 +437,7 @@ def main(argv=None):
     ap.add_argument("--save", action="store_true")
     ap.add_argument("--field", action="store_true")
     ap.add_argument("--impact", action="store_true")
+    ap.add_argument("--tokens", action="store_true")
     ap.add_argument("--help", action="store_true")
     args = ap.parse_args(argv)
 
@@ -394,6 +468,8 @@ def main(argv=None):
         groups = [("field", _field)]
     elif args.impact:
         groups = [("impact", _impact)]
+    elif args.tokens:
+        groups = [("tokens", _tokens)]
     elif args.save:
         groups = [("save", _save)]
     else:

@@ -846,6 +846,52 @@ def _semantic_tokens(uri):
     if isinstance(fa, dict):
         fields = set(fa.keys())
 
+    # ---- 参数与局部变量：按**函数体范围**建作用域 ----
+    # R219：上一轮参数一律不标，理由是「不敢猜」。但参数列表在语法上是
+    # **确定的**：`function [z] = f(a, b, c)` 括号里那些就是参数。
+    # 局部变量只在「赋值左侧」才确定，所以只收那些。
+    #
+    # 关键：**一旦确定，就在该函数体内的所有出现处都标**。
+    # 只标定义处不标引用处，正是用户上一轮抱怨的「同类东西两种颜色」。
+    scopes = []          # [(start_line0, end_line0, params:set, locals:set)]
+    # 输入参数：`function ... (a, b, c)`；输出参数：`function y = ...` 或
+    # `function [z, w] = ...`。**两者都是签名的一部分**，都该标 `parameter`
+    # —— R219 第一版只抓括号内的输入，于是 `function y = a(x)` 的 `y`
+    # 因为函数体里有 `y = ...` 被误标成 `variable`。
+    fn_in = re.compile(r"^\s*function\b.*?\(([^)]*)\)")
+    fn_out = re.compile(r"^\s*function\s+(\[[^\]]*\]|\w+)\s*=")
+    for nm, ln in list(my_funcs.items()):
+        idx0 = max(0, ln - 1)
+        head = lines[idx0] if idx0 < len(lines) else ""
+        params = set()
+        m = fn_in.search(head)
+        if m:
+            for part in m.group(1).split(","):
+                p = part.strip().split("=")[0].strip()
+                if re.match(r"^[A-Za-z_]\w*$", p):
+                    params.add(p)
+        mo = fn_out.search(head)
+        if mo:
+            raw = mo.group(1).strip()
+            if raw.startswith("["):
+                raw = raw.strip("[]")
+            for part in raw.split(","):
+                p = part.strip()
+                if re.match(r"^[A-Za-z_]\w*$", p):
+                    params.add(p)
+        # 函数体范围：从这个 function 行到下一个 function 行（或文件尾）
+        end0 = len(lines) - 1
+        for nm2, ln2 in my_funcs.items():
+            if ln2 > ln:
+                end0 = min(end0, ln2 - 2)
+        locals_ = set()
+        for j in range(idx0, min(end0 + 1, len(lines))):
+            lm = re.match(r"^\s*([A-Za-z_]\w*)\s*=", lines[j])
+            if lm:
+                locals_.add(lm.group(1))
+        if params or locals_:
+            scopes.append((idx0, end0, params, locals_ - params))
+
     # ---- 逐行扫描，产出 (line, char, len, typeIdx, modMask) ----
     toks = []
     ident_rx = re.compile(r"[A-Za-z_]\w*")
@@ -887,6 +933,23 @@ def _semantic_tokens(uri):
             if word in all_funcs:
                 toks.append((i, start, len(word),
                              _SEM_TYPE_IDX["function"], 0))
+                continue
+            # 参数优先于局部变量（同名时它本来就是参数）
+            hit_scope = None
+            for (s0, e0, ps, ls) in scopes:
+                if s0 <= i <= e0:
+                    if word in ps:
+                        hit_scope = "parameter"
+                        break
+                    if word in ls:
+                        hit_scope = "variable"
+            if hit_scope == "parameter":
+                toks.append((i, start, len(word),
+                             _SEM_TYPE_IDX["parameter"], 0))
+                continue
+            if hit_scope == "variable":
+                toks.append((i, start, len(word),
+                             _SEM_TYPE_IDX["variable"], 0))
                 continue
     # ---- 编码成 LSP 的 delta 数组 ----
     toks.sort(key=lambda t: (t[0], t[1]))
