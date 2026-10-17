@@ -38,7 +38,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from matlabc_flow import analyze, gen_patch, count_alerts  # noqa: E402
+from matlabc_flow import analyze, gen_patch, count_alerts, load_alerts  # noqa: E402
 
 FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sample_ai_eval")
 SAMPLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sample_m")
@@ -71,10 +71,35 @@ SHAPE_BUG = (
 BAD_NEW_BUG = INJECT_BUG
 
 
+# R109：`note` 级告警按合约是**文档建议**（C 侧 `c_missing_doc` 同样是 `level="note"`），
+#   不是缺陷。`engine_fixed` 这条口径只取「非 note」子集，理由见 `_scan`。
+DOC_NOTE_LEVEL = "note"
+
+
 def _scan(directory):
-    """返回 (by_rule, total)，复用 matlabc_flow.analyze + count_alerts。"""
+    """返回 (by_rule, total, defect_total)。
+
+    `defect_total`（R109 新增）= **非 `note` 级**告警数。为什么必须有这一项 ——
+    **实测**，不是推断：
+
+      R109 给 MATLAB 载荷接上 `heuristics` 通道（与 C **同形**：条目键
+      `{file,func,kind,level,line,msg}`，文档类规则记 `level="note"`）。
+      于是本评测夹具的基线告警从 **0** 变成 **2 / 2 / 5 / 2**，
+      而逐条查下来 **全部是 `heuristic` / `note`**（见 R109 复盘 §10）。
+
+      而 `engine_fixed` 要测的是「**确定性引擎能否端到端修掉注入缺陷**」：
+      注入的是 dead_code（warning）/ uninitialized（error）；引擎修完它们之后，
+      **被注入文件自身的文档提示仍在**（引擎既不该修、也修不了它）
+      ⇒ 用「告警**总数**回到基线」当判据，会因为一个**与本评测无关的通道**翻红。
+
+    ⚠ **只在这一条口径上取子集**：`good_restores` / `bad_caught` / 通过率
+      仍用**全部**告警（比只算缺陷更严），一个字不改。
+    """
     report = analyze(directory, "matlab")
-    return count_alerts(report)
+    by_rule, total = count_alerts(report)
+    alerts = load_alerts(report)
+    defect = sum(1 for a in alerts if (a.get("level") or "") != DOC_NOTE_LEVEL)
+    return by_rule, total, defect
 
 
 def _copy_base(dst, kind):
@@ -137,19 +162,21 @@ def _run_scenario(spec, work):
     """对单个缺陷类跑全生命周期，返回该场景的指标细节。"""
     d = os.path.join(work, spec["id"])
     _copy_base(d, spec["base"])
-    base_by, base_total = _scan(d)
+    base_by, base_total, base_defect = _scan(d)
 
     # 注入缺陷
     inj_path = os.path.join(d, spec["inject_file"])
     with io.open(inj_path, "w", encoding="utf-8") as fh:
         fh.write(spec["inject_text"])
-    inj_by, inj_total = _scan(d)
+    inj_by, inj_total, inj_defect = _scan(d)
     delta = inj_total - base_total
 
     detail = {
         "case": spec["id"],
         "base_total": base_total,
+        "base_defect": base_defect,
         "injected_delta": delta,
+        "injected_defect_delta": inj_defect - base_defect,
         "engine_fixable": spec["engine_fixable"],
     }
     # 自校准：若注入未触发检测（delta<=0），记为 INJECTION_NO_OP，绝不误判通过
@@ -160,19 +187,21 @@ def _run_scenario(spec, work):
 
     # ---- 好补丁（门禁层）：删除注入文件，应回到基线 ----
     os.remove(inj_path)
-    good_by, good_total = _scan(d)
+    good_by, good_total, good_defect = _scan(d)
     good_restores = (good_total == base_total)
     detail["good_restores"] = good_restores
     detail["good_post_total"] = good_total
+    detail["good_post_defect"] = good_defect
 
     # ---- 坏补丁（壁垒层）：删注入文件，但新增一个未初始化缺陷文件 ----
     bad_new = os.path.join(d, "bad_%s.m" % spec["id"])
     with io.open(bad_new, "w", encoding="utf-8") as fh:
         fh.write(BAD_NEW_BUG)
-    bad_by, bad_total = _scan(d)
+    bad_by, bad_total, bad_defect = _scan(d)
     bad_caught = (bad_total > base_total)
     detail["bad_caught"] = bad_caught
     detail["bad_post_total"] = bad_total
+    detail["bad_post_defect"] = bad_defect
 
     # ---- 端到端：真实确定性引擎（仅 engine_fixable 类）----
     detail["engine_fixed"] = None
@@ -185,8 +214,11 @@ def _run_scenario(spec, work):
         engine_fixed = False
         if patch_txt and patch_txt.strip():
             if _apply_unified(eng, patch_txt):
-                eb, et = _scan(eng)
-                engine_fixed = (et == base_total)
+                eb, et, edef = _scan(eng)
+                # R109：比**缺陷**子集，不比总数（总数含与本评测无关的文档提示通道）。
+                engine_fixed = (edef == base_defect)
+                detail["engine_post_total"] = et
+                detail["engine_post_defect"] = edef
         detail["engine_fixed"] = engine_fixed
         detail["patch_bytes"] = len(patch_txt or "")
 
@@ -242,6 +274,8 @@ def _run_provider_smoke(work):
 def run_eval():
     metrics = {
         "baseline_total": None,
+        "baseline_defect_total": None,
+        "baseline_note_total": None,
         "fix_success_rate": None,
         "bad_fix_caught_rate": None,
         "alarm_net_reduction": None,
@@ -252,9 +286,11 @@ def run_eval():
     }
     work = tempfile.mkdtemp(prefix="eval_ai_fix_")
 
-    # 干净玩具基线（预期 0 告警）
-    base_by, base_total = _scan(FIXTURE)
+    # 干净玩具基线（预期 0 **缺陷**级告警；`note` 级文档提示可以有，见 `_scan`）
+    base_by, base_total, base_defect = _scan(FIXTURE)
     metrics["baseline_total"] = base_total
+    metrics["baseline_defect_total"] = base_defect
+    metrics["baseline_note_total"] = base_total - base_defect
 
     details = []
     for spec in SCENARIOS:

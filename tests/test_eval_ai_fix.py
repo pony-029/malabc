@@ -43,6 +43,20 @@ class TestAiFixEval(unittest.TestCase):
         self.assertGreaterEqual(m["alarm_net_reduction"], 1.0,
                                 "好补丁应完全消除注入缺陷告警")
 
+        # R109：`engine_fixed` 改为只比**非 `note` 级**告警（`note` 按合约是文档建议，
+        #   见 `eval_ai_fix._scan` 的说明）。**修量具必须同时抬强度**，否则这条口径
+        #   可能变成「空集上恒真」。下面两条把它钉在「有分辨力」那一面：
+        self.assertEqual(m["baseline_defect_total"], 0,
+                         "干净玩具基线不应有**缺陷级**告警（`note` 级文档提示可以有）")
+        for d in m["details"]:
+            if d.get("result") == "INJECTION_NO_OP":
+                continue
+            self.assertGreaterEqual(
+                d["injected_defect_delta"], 1,
+                "注入必须产生**缺陷级**告警，否则 engine_fixed 测的是空集"
+                "（%s：injected_defect_delta=%r）"
+                % (d.get("case"), d.get("injected_defect_delta")))
+
     def test_provider_smoke_default_skipped(self):
         # 无 provider 环境变量时，冒烟应优雅跳过（不报错、不影响门禁）
         m = eval_ai_fix.run_eval()
