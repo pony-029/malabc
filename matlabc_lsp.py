@@ -20,9 +20,68 @@
 退出码：0 = 正常 EOF / `exit`。
 """
 import json
+import os
 import sys
+from urllib.parse import unquote, urlparse
 
 VERSION = "0.1.0"
+
+#: 会话状态：`initialize` 存 root，`didOpen` 用它跑一次分析。
+_STATE = {"root": None, "cache": None}
+
+
+def _uri_to_path(uri):
+    """`file:///E:/a/b.m` -> `E:/a/b.m`（Windows 上要吃掉多余的斜杠）。"""
+    p = urlparse(uri)
+    path = unquote(p.path or "")
+    if os.name == "nt" and path.startswith("/") and len(path) > 2 and path[2] == ":":
+        path = path[1:]
+    return path
+
+
+def _diagnostics_for(uri):
+    """从 `analyzer.api.analyze` 的 `model.doc_todos` 派生诊断。
+
+    当前只有一类：`m_missing_doc`（函数缺头部描述）。它**正是** `--json` 的
+    `heuristics` 那一类（`render_json` 里现算的就是 `doc_todos` 里的 missing），
+    所以「LSP 诊断 == `--json` 的 heuristics」这条判据在**这一类上**成立。
+
+    ⚠ 范围如实：`uninitialized` / `shape_mismatch` / `dead_code` 等**未并入**
+    `--json` 的 `heuristics` 通道（`matlabc.py:14279` 的注释明说），所以这里也
+    不发 —— 否则 LSP 与 CLI 的口径会分叉。
+    """
+    root = _STATE.get("root")
+    if not root or not os.path.isdir(root):
+        return []
+    try:
+        import analyzer.api as A
+        if _STATE["cache"] is None:
+            _STATE["cache"] = A.analyze(root)
+        result = _STATE["cache"]
+    except Exception as exc:                   # 分析失败：发一条提示，别静默
+        _log("analyze 失败：%s" % exc)
+        return []
+
+    want = os.path.basename(_uri_to_path(uri)).lower()
+    todos = (getattr(getattr(result, "model", None), "doc_todos", None) or {}
+             ).get("todos") or []
+    out = []
+    for t in todos:
+        if "description" not in (t.get("missing") or []):
+            continue
+        rel = (t.get("rel") or "").replace("\\", "/")
+        if os.path.basename(rel).lower() != want:
+            continue
+        line0 = max(0, int(t.get("line") or 1) - 1)
+        out.append({
+            "range": {"start": {"line": line0, "character": 0},
+                      "end": {"line": line0, "character": 1}},
+            "severity": 3,                      # info：缺文档是提示，不是缺陷
+            "code": "m_missing_doc",
+            "source": "matlabc",
+            "message": "函数缺少头部描述（description）",
+        })
+    return out
 
 
 def _read_message(stream):
@@ -72,6 +131,15 @@ def handle(msg, out):
     mid = msg.get("id")
 
     if method == "initialize":
+        params = msg.get("params") or {}
+        root_uri = params.get("rootUri") or ""
+        if not root_uri:
+            folders = params.get("workspaceFolders") or []
+            if folders:
+                root_uri = folders[0].get("uri") or ""
+        root = _uri_to_path(root_uri) if root_uri else ""
+        _STATE["root"] = root if root and os.path.isdir(root) else None
+        _STATE["cache"] = None
         _write_message(out, {
             "jsonrpc": "2.0", "id": mid,
             "result": {
@@ -79,7 +147,7 @@ def handle(msg, out):
                 "serverInfo": {"name": "matlabc-lsp", "version": VERSION},
             },
         })
-        _log("initialize -> textDocumentSync=1")
+        _log("initialize -> textDocumentSync=1, root=%r" % (_STATE["root"],))
         return True
 
     if method == "shutdown":
@@ -92,14 +160,13 @@ def handle(msg, out):
 
     if method == "textDocument/didOpen":
         uri = ((msg.get("params") or {}).get("textDocument") or {}).get("uri", "")
-        # 先回包（不阻塞协议循环）；真正的分析随后异步做
+        diags = _diagnostics_for(uri)
         _write_message(out, {
             "jsonrpc": "2.0",
             "method": "textDocument/publishDiagnostics",
-            "params": {"uri": uri, "diagnostics": []},
+            "params": {"uri": uri, "diagnostics": diags},
         })
-        _log("didOpen %s（诊断暂为空：PipelineResult 上没有 heuristics，待 facts 层）"
-             % uri)
+        _log("didOpen %s -> %d 条诊断（m_missing_doc）" % (uri, len(diags)))
         return True
 
     if method == "textDocument/didClose":
