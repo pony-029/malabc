@@ -216,10 +216,29 @@ def figure_htmls(root):
     return out
 
 
+def _collect_sources(obj, out):
+    """递归收集任意层级的 `sources[].path`。
+
+    五种图型的节点字段不同（architecture=`components`、workflow/dataflow=`nodes`、
+    sequence=`participants`、lifecycle=`states`），所以不能按字段名取。
+    """
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k == "sources" and isinstance(v, list):
+                for s in v:
+                    if isinstance(s, dict) and isinstance(s.get("path"), str) and s["path"]:
+                        out.append(s["path"])
+            else:
+                _collect_sources(v, out)
+    elif isinstance(obj, list):
+        for x in obj:
+            _collect_sources(x, out)
+
+
 def candidate_outputs(root):
-    """({html_rel: candidate_rel}, {html_rel: revision}, 问题清单)。"""
+    """({html_rel: candidate_rel}, {html_rel: revision}, {html_rel: [src]}, 问题)。"""
     base = os.path.join(root, FIGURES.replace("/", os.sep))
-    outs, revs, bad = {}, {}, []
+    outs, revs, srcs, bad = {}, {}, {}, []
     for dirname in figure_dirs(root) or []:
         d = os.path.join(base, dirname)
         cand_names = [f for f in sorted(os.listdir(d))
@@ -247,7 +266,10 @@ def candidate_outputs(root):
                 bad.append("%s 与 %s 推出同一个产物 %s" % (outs[html_rel], rel, html_rel))
             outs[html_rel] = rel
             revs[html_rel] = (meta.get("repository") or {}).get("revision")
-    return outs, revs, bad
+            paths = []
+            _collect_sources(rec, paths)
+            srcs[html_rel] = paths
+    return outs, revs, srcs, bad
 
 
 def audit(root, on_problem, head=None):
@@ -276,7 +298,7 @@ def audit(root, on_problem, head=None):
             on_problem("FF2 %s 没有被 %s 引用（孤儿产物）" % (rel, INDEX))
 
     # FF3：候选 ⇄ 产物 两向
-    outs, revs, bad = candidate_outputs(root)
+    outs, revs, srcs, bad = candidate_outputs(root)
     for msg in bad:
         on_problem("FF3 " + msg)
     for rel in sorted(outs):
@@ -294,22 +316,27 @@ def audit(root, on_problem, head=None):
     #   ② rev == HEAD ⇒ 绿；
     #   ③ rev != HEAD ⇒ 只有**图所描述的源码**（WATCH_PATHS）在 rev..HEAD 之间
     #      被改过才红；只改了文档/门禁的提交不算过期。
+    # 判据口径（R119 调整）：**图引用的源码还在**才是「过期」的硬判据。
+    # 首版用「结构指纹」，在重构期误伤率 100% —— S1 只是把 main 拆成 cli_entry，
+    # 图的拓扑一点没变，却会让 11 张图全红。结构漂移降为提示，不判红。
     if head is None:
         print("  [跳过] FF6 未行使 —— 取不到 git HEAD")
     else:
-        _changed, _drift = {}, {}
         for rel in sorted(revs):
             rev = revs[rel]
             prob = watch_problem(rev, head, None)
-            if prob is None and rev and str(rev).lower() != head:
-                r = str(rev).lower()
-                if r not in _changed:
-                    _changed[r] = changed_since(root, r, head, WATCH_PATHS)
-                    _drift[r] = (structural_drift(root, r, head)
-                                 if _changed[r] else None)
-                prob = watch_problem(rev, head, _changed[r], _drift[r])
             if prob:
                 on_problem("FF6 %s %s" % (rel, prob))
+                continue
+            missing = [p for p in srcs.get(rel, ())
+                       if not os.path.isfile(os.path.join(root, p.replace("/", os.sep)))]
+            for p in missing[:3]:
+                on_problem("FF6 %s 引用的源码 %s 不存在 —— 图已过期，重跑 archify deliver"
+                           % (rel, p))
+            if rev and str(rev).lower() != head:
+                if structural_drift(root, str(rev).lower(), head):
+                    print("  [提示] FF6 %s 绑定的 revision 落后、matlabc.py 结构已变 —— "
+                          "建议重画（不判红）" % rel)
 
     # FF7：交付回执必须与产物同源 —— artifact.sha256 / bytes 等于磁盘现算。
     for rel in htmls:

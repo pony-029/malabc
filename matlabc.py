@@ -32182,8 +32182,14 @@ def maybe_run_ai_cli(outdir, files, model, stats, checks_for_sarif, ai_mode):
         print("[WARN] AI 调用失败（不影响主流程）：%s" % _e)
 
 
-def main(argv=None):
-    t_start = time.time()  # P48：记录开始时间，供摘要输出各阶段耗时
+def cli_entry(argv=None):
+    """只做参数：解析 argv / 读 config / 建 parser / parse_args / 归一化 --lang。
+
+    返回值 `(args, ap)`：`ap` 也要返回 —— 下游的 `ap.error(...)` 用它打印
+    usage 并以退出码 2 结束（R119 切分前它就在 main 的同一作用域里）。
+    本函数**不做任何分析、不写盘、不 print**（`--help` / `--version` 的
+    输出由 argparse 自己完成）。
+    """
     # 解析真正的参数前，先从 argv 中提取 --config（若存在），
     # 用其值为后续各参数提供"默认配置"。CLI 显式给出的参数始终优先于配置文件。
     argv = sys.argv[1:] if argv is None else list(argv)
@@ -32844,6 +32850,12 @@ def main(argv=None):
 
     # R62-R31d：--binary 二进制分析短路。与 --benchmark 同属「单次任务」型开关：
     # 不进源码分析流水线，直接产出报告后退出。
+    return args, ap
+
+
+def main(argv=None):
+    t_start = time.time()  # P48：记录开始时间，供摘要输出各阶段耗时
+    args, ap = cli_entry(argv)
     if getattr(args, "binary", None):
         _rc = _run_binary_analysis(args)
         sys.exit(_rc)
