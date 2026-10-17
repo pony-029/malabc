@@ -271,16 +271,30 @@ function activate(context) {
   const renderGraph = (name, info) => {
     const esc = (s) => String(s).replace(/[&<>"]/g, (c) => (
       { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    // 一个节点 = 函数名 + 定义行 + 被哪几行调用。
+    // 定义行与每个调用行都是**可点击的**（`command:` URI 不需要脚本权限）。
+    const link = (rel, line, text) =>
+      '<a href="command:malabc.openAt?' +
+      encodeURIComponent(JSON.stringify([rel, line])) + '">' + esc(text) + '</a>';
+
+    const nodeHtml = (d, prefix) => {
+      const calls = (d.call_lines || []).filter((x) => x > 0);
+      const callHtml = calls.length
+        ? '<span class="calls">调用自 ' +
+          calls.map((l) => link(d.rel, l, l)).join(' ') + '</span>'
+        : '<span class="calls entry">入口（无调用者）</span>';
+      return '<div class="node">' + prefix + esc(d.name) +
+        '<span class="where">' + link(d.rel, d.line, d.rel + ':' + d.line) +
+        '</span>' + callHtml + '</div>';
+    };
+
     const rows = [];
     rows.push('<div class="node root">' + esc(name) + '</div>');
     const direct = info.direct || [];
     const others = info.others || [];
     direct.forEach((d, i) => {
       const last = (i === direct.length - 1) && others.length === 0;
-      rows.push(
-        '<div class="node lv1">' + (last ? '└─ ' : '├─ ') +
-        esc(d.name) + '<span class="where">' + esc(d.rel) + ':' +
-        esc(d.line) + '</span></div>');
+      rows.push(nodeHtml(d, last ? '└─ ' : '├─ '));
     });
     let prevLevel = 1;
     others.forEach((d) => {
@@ -288,10 +302,7 @@ function activate(context) {
         rows.push('<div class="levelbar">第 ' + d.level + ' 层</div>');
         prevLevel = d.level;
       }
-      rows.push(
-        '<div class="node lv2">' + '│  '.repeat(d.level - 1) + '└─ ' +
-        esc(d.name) + '<span class="where">' + esc(d.rel) + ':' +
-        esc(d.line) + '</span></div>');
+      rows.push(nodeHtml(d, '│  '.repeat(d.level - 1) + '└─ '));
     });
     return '<!DOCTYPE html><html><body>' +
       '<h2>' + esc(name) + '</h2>' +
@@ -302,6 +313,23 @@ function activate(context) {
       '<p class="note">静态快照（打开时分析结果）。改代码后重新打开刷新。</p>' +
       '</body></html>';
   };
+
+  // 关系图里每个 `rel:line` 与每个调用行号都指向这个命令。
+  context.subscriptions.push(
+    vscode.commands.registerCommand('malabc.openAt', async (rel, line) => {
+      try {
+        const target = vscode.Uri.file(path.join(root, rel));
+        const doc = await vscode.workspace.openTextDocument(target);
+        const ed = await vscode.window.showTextDocument(doc);
+        const pos = new vscode.Position(Math.max(0, (line || 1) - 1), 0);
+        ed.selection = new vscode.Selection(pos, pos);
+        ed.revealRange(new vscode.Range(pos, pos),
+                       vscode.TextEditorRevealType.InCenter);
+      } catch (e) {
+        log('openAt 失败：' + (e && e.message));
+      }
+    })
+  );
 
   context.subscriptions.push(
     vscode.commands.registerCommand('malabc.previewGraph', async (name) => {
@@ -318,7 +346,9 @@ function activate(context) {
         }
         const panel = vscode.window.createWebviewPanel(
           'malabcGraph', '调用关系：' + name, vscode.ViewColumn.Beside,
-          { enableScripts: false });
+          // `enableCommandUris` 是点击链接的前提；`enableScripts` 仍然关着
+          // —— 命令 URI 由宿主执行，页面本身不需要脚本权限。
+          { enableScripts: false, enableCommandUris: true });
         const css = [
           'body{font-family:var(--vscode-editor-font-family,monospace);',
           'padding:14px;color:var(--vscode-editor-foreground);',
@@ -327,7 +357,11 @@ function activate(context) {
           '.sum{margin:0 0 14px;opacity:.65;font-size:12px;}',
           '.node{line-height:1.7;font-size:13px;}',
           '.node.root{font-weight:600;color:var(--vscode-textLink-foreground);}',
-          '.where{opacity:.5;margin-left:10px;font-size:11px;}',
+          '.where{opacity:.55;margin-left:10px;font-size:11px;}',
+          '.where a{color:var(--vscode-textLink-foreground);text-decoration:none;}',
+          '.calls{opacity:.45;margin-left:12px;font-size:11px;}',
+          '.calls a{color:var(--vscode-textLink-foreground);text-decoration:none;}',
+          '.calls.entry{opacity:.35;font-style:italic;}',
           '.levelbar{opacity:.4;font-size:11px;margin:10px 0 2px;',
           'border-top:1px solid var(--vscode-editorWidget-border);padding-top:6px;}',
           '.note{opacity:.4;font-size:11px;margin-top:18px;}',

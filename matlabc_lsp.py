@@ -184,12 +184,34 @@ def _save_cache(root, payload, result):
                     sig = fn.signature()
                 except Exception:
                     sig = getattr(fn, "name", "")
+                # `call_sites` 也要存：它是「被哪几行调用」的唯一来源。
+                # R232 第一版没存，于是**缓存命中后行号全变成 0** ——
+                # 判据 `impact/call-lines-are-1based` 当场抓住。
+                sites = []
+                for st in (getattr(fn, "call_sites", None) or []):
+                    try:
+                        line = int(st[0])
+                    except (IndexError, TypeError, ValueError):
+                        continue
+                    if len(st) >= 2 and isinstance(st[1], str):
+                        # 已经是缓存形状 —— 原样保留，否则二次写缓存会清空。
+                        sites.append([line, st[1]])
+                        continue
+                    try:
+                        tgt = st[3]
+                    except (IndexError, TypeError):
+                        continue
+                    trel = getattr(getattr(tgt, "mfile", None), "rel", "") or ""
+                    tname = getattr(tgt, "name", "") or ""
+                    if tname:
+                        sites.append([line, "%s:%s" % (trel, tname)])
                 fns.append({
                     "name": getattr(fn, "name", ""),
                     "line": getattr(fn, "line", 0),
                     "complexity": getattr(fn, "complexity", 0),
                     "header": getattr(fn, "header", None) or {},
                     "sig": sig,
+                    "call_sites": sites,
                 })
             files.append({
                 "rel": getattr(mf, "rel", "") or "",
@@ -270,6 +292,9 @@ def _load_cache(root):
                 # `_hover` 调 `fn.signature()`；SimpleNamespace 没有方法，
                 # 这里补一个，返回值就是缓存里存好的那串。
                 o.signature = (lambda s: (lambda: s))(fn.get("sig", ""))
+                # 缓存里的 `call_sites` 是 `[line, "rel:name"]`（内存版是
+                # `[line, col, end, MatlabFunction]`）。`_impact` 两边都收。
+                o.call_sites = [tuple(x) for x in (fn.get("call_sites") or [])]
                 fns.append(o)
             files.append(NS(rel=f.get("rel", ""),
                             header=f.get("header") or {},
@@ -1035,7 +1060,7 @@ def _semantic_tokens(uri):
     return {"data": data}
 
 
-def _impact(name, depth=3):
+def _impact(name, depth=30):
     """反向可达集：谁调用了 `name`，按层返回。
 
     和 CLI 的 `--impact` 是同一套算法（反向 BFS + `seen` 防环），
@@ -1058,7 +1083,37 @@ def _impact(name, depth=3):
     if name not in where:
         return None
 
-    rev = {}
+    # 反向图**带调用行号**：`edges` 只有 `(caller, callee)`，没有行号；
+    # 而 `call_sites` 每个元素是 `[line, col, end, callee_obj]` ——
+    # 有了它，才能回答「这个函数是被哪几行调用的」（R232）。
+    rev = {}                 # callee_key -> [(caller_key, line), ...]
+    for mf in (getattr(result, "files", None) or []):
+        rel0 = getattr(mf, "rel", "") or ""
+        for f0 in (getattr(mf, "functions", None) or []):
+            caller_key = "%s:%s" % (rel0, getattr(f0, "name", "") or "")
+            for site in (getattr(f0, "call_sites", None) or []):
+                # 两种形状：内存版 `[line, col, end, MatlabFunction]`，
+                # 缓存版 `[line, "rel:name"]`。两种都要认 —— 否则
+                # 「缓存命中后行号丢失」会让调用链退化成没有行号。
+                try:
+                    line = int(site[0])
+                except (IndexError, TypeError, ValueError):
+                    continue
+                if len(site) >= 2 and isinstance(site[1], str):
+                    trel, _, tname = site[1].rpartition(":")
+                else:
+                    try:
+                        tgt = site[3]
+                    except (IndexError, TypeError):
+                        continue
+                    trel = getattr(getattr(tgt, "mfile", None), "rel", "") or ""
+                    tname = getattr(tgt, "name", "") or ""
+                if not tname:
+                    continue
+                rev.setdefault("%s:%s" % (trel, tname), []).append(
+                    (caller_key, line))
+    # `edges` 里可能有 `call_sites` 覆盖不到的边（例如跨语言），补上
+    # —— 没有行号的边仍然要进图，否则会漏掉调用者。
     for e in (getattr(result, "edges", None) or []):
         if isinstance(e, dict):
             c, d = e.get("caller"), e.get("callee")
@@ -1068,9 +1123,11 @@ def _impact(name, depth=3):
             continue
         if not c or not d:
             continue
-        rev.setdefault(d, []).append(c)
+        lst = rev.setdefault(d, [])
+        if not any(x[0] == c for x in lst):
+            lst.append((c, 0))
 
-    def node_info(key):
+    def node_info(key, calls=None):
         rel, _, nm = key.rpartition(":")
         lines = where.get(nm) or []
         line = 0
@@ -1078,22 +1135,27 @@ def _impact(name, depth=3):
             if r == rel:
                 line = ln
                 break
-        return {"key": key, "name": nm, "rel": rel, "line": line}
+        info = {"key": key, "name": nm, "rel": rel, "line": line,
+                "call_lines": sorted(set(l for _c, l in (calls or [])) if calls
+                                     else [])}
+        return info
 
     start_keys = ["%s:%s" % (rel, name) for rel, _ln in where[name]]
     seen = set(start_keys)
     layer = list(start_keys)
     levels = []
+    # **一直向上走到入口**，不再固定 3 层：用户要的是"直到最顶一层"。
+    # 上限 30 只是防病态图（真正的深度由「没有调用者」自然终止）。
     for _ in range(max(1, int(depth))):
         nxt = []
         for k in layer:
-            for c in rev.get(k, []):
+            for c, _ln in rev.get(k, []):
                 if c not in seen:
                     seen.add(c)
                     nxt.append(c)
         if not nxt:
             break
-        levels.append([node_info(k) for k in sorted(nxt)])
+        levels.append([node_info(k, rev.get(k)) for k in sorted(nxt)])
         layer = nxt
 
     entries = [k for k in seen if not rev.get(k)]
@@ -1103,9 +1165,11 @@ def _impact(name, depth=3):
     others = []
     for li, lv in enumerate(levels[1:], start=2):
         for node in lv:
-            others.append({"key": node["key"], "name": node["name"],
-                           "rel": node["rel"], "line": node["line"],
-                           "level": li})
+            # **整份带上**，只加一个 `level`。
+            # R232 第一版手挑了四个字段，于是 `call_lines` 在 `others`
+            # 里丢了 —— 只有第 1 层能显示"被哪几行调用"，更深层不能，
+            # 又是一种「同类不一致」。
+            others.append(dict(node, level=li))
     return {
         "target": name,
         "definitions": [{"rel": r, "line": ln} for r, ln in where[name]],

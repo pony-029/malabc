@@ -342,6 +342,13 @@ def _impact(c):
         _chk(len(direct) == 1 and direct[0].get("rel") == "a.m",
              "impact/b-direct-is-a.m")
         _chk(direct[0].get("line") == 1, "impact/b-direct-line==1")
+        # R232：每个节点还要说清「被哪几行调用」。
+        # `edges` 不带行号，行号来自 `call_sites` —— 这是能否
+        # 「点一下就跳到调用处」的前提。
+        cl = direct[0].get("call_lines") or []
+        _chk(bool(cl), "impact/b-direct-has-call-lines（实际 %r）" % (cl,))
+        _chk(all(isinstance(x, int) and x > 0 for x in cl),
+             "impact/call-lines-are-1based（%r）" % (cl,))
         # 第 2 层：`switch_case` 调 `a`，`a` 调 `b`。
         # R227：QuickPick 原来只列第 1 层，分层算了却不返回 ——
         # 用户会以为"上游只有 a 一个"。
