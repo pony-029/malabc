@@ -261,12 +261,52 @@ function activate(context) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('malabc.showImpact', async (name, uriStr) => {
-      // 点击 CodeLens 时用 `--impact` 的 LSP 版（当前先给可操作提示：
-      // 真正的影响面面板留给下一轮，避免这一轮引入未验证的协议方法）。
-      out.show();
-      log('CodeLens 点击：' + name);
-      vscode.window.showInformationMessage(
-        'malabc: ' + name + ' —— 用 Shift+F12 查看所有调用者', '好');
+      // 点击 CodeLens：拉反向可达集，列出**直接调用者**，选中即跳过去。
+      // 这就是 CLI 的 `--impact`，只是在编辑器里可点。
+      try {
+        const r = await client.request('matlabc/impact', { name: name });
+        const info = r.result;
+        if (!info) {
+          vscode.window.showWarningMessage(
+            'malabc: 找不到 ' + name + ' 的定义');
+          return;
+        }
+        log('impact ' + name + ' -> total=' + info.total +
+            ' levels=' + info.levels + ' entries=' + info.entries);
+        const direct = info.direct || [];
+        if (!direct.length) {
+          vscode.window.showInformationMessage(
+            'malabc: ' + name + ' 没有调用者' +
+            (info.entries ? '（它是入口）' : '') +
+            ' · 复杂度由 CodeLens 显示');
+          return;
+        }
+        const items = direct.map((d) => ({
+          label: '$(symbol-function) ' + d.name,
+          description: d.rel + ':' + d.line,
+          detail: '跳到定义',
+          rel: d.rel,
+          line: d.line,
+        }));
+        const pick = await vscode.window.showQuickPick(items, {
+          placeHolder: name + ' 的 ' + direct.length + ' 个直接调用者' +
+                       (info.total > direct.length
+                         ? '（共 ' + info.total + ' 个间接）' : ''),
+        });
+        if (!pick) {
+          return;
+        }
+        const target = vscode.Uri.file(path.join(root, pick.rel));
+        const doc = await vscode.workspace.openTextDocument(target);
+        const ed = await vscode.window.showTextDocument(doc);
+        const pos = new vscode.Position(Math.max(0, (pick.line || 1) - 1), 0);
+        ed.selection = new vscode.Selection(pos, pos);
+        ed.revealRange(new vscode.Range(pos, pos),
+                       vscode.TextEditorRevealType.InCenter);
+      } catch (e) {
+        log('impact 失败：' + (e && e.message));
+        vscode.window.showErrorMessage('malabc: ' + (e && e.message));
+      }
     })
   );
 

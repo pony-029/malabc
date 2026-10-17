@@ -313,6 +313,45 @@ def _field(c):
         shutil.rmtree(work, ignore_errors=True)
 
 
+def _impact(c):
+    """R217：`matlabc/impact` —— CodeLens 点击时走的自定义方法。
+
+    判据用 `tests/sample_m` 的真实调用链：
+      `b` ← `a` ← `switch_case`（入口）
+    所以 `b` 必须有 1 个直接调用者 `a`，而 `switch_case` 必须 0 个。
+    """
+    c.init(CORPUS)
+    c.send({"jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": {"textDocument": {
+                "uri": _uri(os.path.join(CORPUS, "a.m")),
+                "languageId": "matlab", "version": 1, "text": "x"}}})
+    c.recv()
+    c.recv()
+
+    def call(name):
+        c.send({"jsonrpc": "2.0", "id": 50, "method": "matlabc/impact",
+                "params": {"name": name}})
+        r = c.recv() or {}
+        return r.get("result")
+
+    info = call("b")
+    _chk(isinstance(info, dict), "impact/b-returns-object")
+    if isinstance(info, dict):
+        _chk(info.get("total") == 2, "impact/b-total==2（b←a←switch_case）")
+        direct = info.get("direct") or []
+        _chk(len(direct) == 1 and direct[0].get("rel") == "a.m",
+             "impact/b-direct-is-a.m")
+        _chk(direct[0].get("line") == 1, "impact/b-direct-line==1")
+
+    info2 = call("switch_case")
+    _chk(isinstance(info2, dict) and info2.get("total") == 0,
+         "impact/switch_case-total==0（它是入口）")
+    _chk((info2 or {}).get("direct") == [], "impact/switch_case-no-direct")
+
+    _chk(call("no_such_function_xyz") is None,
+         "impact/missing-returns-null（不是空对象）")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--diag", action="store_true")
@@ -324,6 +363,7 @@ def main(argv=None):
     ap.add_argument("--uninit", action="store_true")
     ap.add_argument("--save", action="store_true")
     ap.add_argument("--field", action="store_true")
+    ap.add_argument("--impact", action="store_true")
     ap.add_argument("--help", action="store_true")
     args = ap.parse_args(argv)
 
@@ -352,6 +392,8 @@ def main(argv=None):
         groups = [("uninit", _uninit)]
     elif args.field:
         groups = [("field", _field)]
+    elif args.impact:
+        groups = [("impact", _impact)]
     elif args.save:
         groups = [("save", _save)]
     else:

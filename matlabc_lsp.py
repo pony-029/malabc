@@ -774,6 +774,79 @@ def _edge_counts(result):
     return callers, callees
 
 
+def _impact(name, depth=3):
+    """反向可达集：谁调用了 `name`，按层返回。
+
+    和 CLI 的 `--impact` 是同一套算法（反向 BFS + `seen` 防环），
+    区别只是这里的节点带 `(rel, line)`，**扩展侧可以直接跳过去**。
+
+    返回 `None` 表示找不到这个名字（不是"没有调用者"）。
+    """
+    result = _wait_result()
+    if result is None:
+        return None
+
+    # 名字 -> (rel, line)。同名函数多处定义时取第一个，并如实带上 `ambiguous` 数。
+    where = {}
+    for mf in (getattr(result, "files", None) or []):
+        rel = getattr(mf, "rel", "") or ""
+        for f in (getattr(mf, "functions", None) or []):
+            nm = getattr(f, "name", "") or ""
+            where.setdefault(nm, []).append(
+                (rel, int(getattr(f, "line", 0) or 1)))
+    if name not in where:
+        return None
+
+    rev = {}
+    for e in (getattr(result, "edges", None) or []):
+        if isinstance(e, dict):
+            c, d = e.get("caller"), e.get("callee")
+        elif isinstance(e, (list, tuple)) and len(e) >= 2:
+            c, d = e[0], e[1]
+        else:
+            continue
+        if not c or not d:
+            continue
+        rev.setdefault(d, []).append(c)
+
+    def node_info(key):
+        rel, _, nm = key.rpartition(":")
+        lines = where.get(nm) or []
+        line = 0
+        for r, ln in lines:
+            if r == rel:
+                line = ln
+                break
+        return {"key": key, "name": nm, "rel": rel, "line": line}
+
+    start_keys = ["%s:%s" % (rel, name) for rel, _ln in where[name]]
+    seen = set(start_keys)
+    layer = list(start_keys)
+    levels = []
+    for _ in range(max(1, int(depth))):
+        nxt = []
+        for k in layer:
+            for c in rev.get(k, []):
+                if c not in seen:
+                    seen.add(c)
+                    nxt.append(c)
+        if not nxt:
+            break
+        levels.append([node_info(k) for k in sorted(nxt)])
+        layer = nxt
+
+    entries = [k for k in seen if not rev.get(k)]
+    return {
+        "target": name,
+        "definitions": [{"rel": r, "line": ln} for r, ln in where[name]],
+        "ambiguous": max(0, len(where[name]) - 1),
+        "direct": levels[0] if levels else [],
+        "levels": len(levels),
+        "total": len(seen) - len(start_keys),
+        "entries": len(entries),
+    }
+
+
 def _code_lens(uri):
     """每个函数头顶一条：`↑3 调用者 · ↓12 被调用 · 复杂度 11`。
 
@@ -978,6 +1051,16 @@ def handle(msg, out):
         _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": syms})
         _log("documentSymbol %s -> %d"
              % (os.path.basename(_uri_to_path(uri)), len(syms)))
+        return True
+
+    if method == "matlabc/impact":
+        # 自定义方法（协议允许 `x/` 之外的私有前缀）。CodeLens 点击时用。
+        params = msg.get("params") or {}
+        name = params.get("name") or ""
+        info = _impact(name)
+        _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": info})
+        _log("impact %s -> %s" % (name, "none" if info is None
+                                  else "%d 个调用者" % info["total"]))
         return True
 
     if method == "textDocument/codeLens":
