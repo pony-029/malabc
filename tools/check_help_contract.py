@@ -446,7 +446,13 @@ def _sh_exit_literals(src):
 DOC_NUMBER_CLAIM_FILES = (
     # 文件 → **期望至少出现几条**这类宣称。0 表示"允许没有"。
     # 为什么要求条数：不然删掉那句话就等于**静默取消覆盖**，而 rc 依然是 0。
-    ("matlabc.py", 1),
+    #
+    # R247：帮助正文从 `matlabc.py` 搬到了 `matlabc_help.py`，那条宣称
+    # 也跟着搬了。**要求条数必须跟着搬家** —— 否则 N2 会以为覆盖被删了
+    # （它确实这么报警了，这正是它该做的）。`matlabc.py` 保留 0：它现在
+    # 只剩短 docstring，写错数字仍然会被 N1 抓到，但不强制它必须有。
+    ("matlabc.py", 0),
+    ("matlabc_help.py", 1),
     ("README.md", 1),
     ("README_CN.md", 1),
     ("CONTRIBUTING.md", 1),
@@ -807,6 +813,16 @@ def repo_root():
 
 
 def _docstring(path):
+    """取一个脚本的**帮助正文**，以及它的源码。
+
+    R247：`matlabc.py` 的帮助正文搬到了同目录的 `matlabc_help.py`
+    （原因见那个文件的 docstring：正文留在这里会让「改一句文案」改变
+    `matlabc.py` 的 sha256，从而作废一次 19 分钟的全库测量）。
+
+    所以这里按**约定**回退：若同目录存在 `<stem>_help.py` 且里面有
+    字符串常量 `HELP_TEXT`，就用它当正文；否则仍然用模块 docstring。
+    约定是显式的 —— 不是「猜哪个文件像帮助」。
+    """
     try:
         with io.open(path, "r", encoding="utf-8", errors="replace") as fh:
             src = fh.read()
@@ -816,7 +832,32 @@ def _docstring(path):
         tree = ast.parse(src)
     except SyntaxError:
         return src, None
-    return src, ast.get_docstring(tree, clean=False)
+    doc = ast.get_docstring(tree, clean=False)
+    if doc and "诚实的边界" in doc:
+        return src, doc
+
+    stem = os.path.splitext(os.path.basename(path))[0]
+    helper = os.path.join(os.path.dirname(os.path.abspath(path)),
+                          stem + "_help.py")
+    if os.path.isfile(helper):
+        try:
+            hsrc = io.open(helper, "r", encoding="utf-8",
+                           errors="replace").read()
+            htree = ast.parse(hsrc)
+        except (OSError, SyntaxError):
+            return src, doc
+        for node in htree.body:
+            if not isinstance(node, ast.Assign):
+                continue
+            for tgt in node.targets:
+                if isinstance(tgt, ast.Name) and tgt.id == "HELP_TEXT":
+                    try:
+                        val = ast.literal_eval(node.value)
+                    except (ValueError, SyntaxError):
+                        return src, doc
+                    if isinstance(val, str):
+                        return src, val
+    return src, doc
 
 
 def _is_sep_line(s):
