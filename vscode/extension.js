@@ -279,10 +279,13 @@ function activate(context) {
 
     // 上游节点：名字 + 定义行 + **被哪几行调用**。
     const upNode = (d, prefix) => {
-      const calls = (d.call_lines || []).filter((x) => x > 0);
-      const callHtml = calls.length
+      // 每个调用点带**自己所在的文件**：跨文件时 `d.rel` 是错的，
+      // 点过去会打开一个毫无关系的行（R256 修的就是这个）。
+      const sites = (d.call_sites || []).filter((s) => s && s.line > 0);
+      const callHtml = sites.length
         ? '<span class="calls">调用自 ' +
-          calls.map((l) => link(d.rel, l, l)).join(' ') + '</span>'
+          sites.map((s) => link(s.rel, s.line, s.rel + ':' + s.line))
+            .join(' ') + '</span>'
         : '<span class="calls entry">入口（无调用者）</span>';
       return '<div class="node">' + prefix + esc(d.name) +
         '<span class="where">' + link(d.rel, d.line, d.rel + ':' + d.line) +

@@ -1298,13 +1298,26 @@ def _impact(name, depth=30, down_depth=3):
             if r == rel:
                 line = ln
                 break
+        # **调用点必须带它所在的文件**（R256）。`call_lines` 是「调用发生在
+        # 哪一行」，而那些行在**调用者**的文件里 —— 首版把所有行号都挂到
+        # 节点自己的 `rel` 上，于是跨文件时点那个数字会打开**错误的文件**
+        # （实测 `a` 的 [5,8,9,12] 里 5 属于 switch_case.m，其余属于 a.m）。
+        sites = {}
+        for ck, ln in (calls or []):
+            try:
+                ln = int(ln)
+            except (TypeError, ValueError):
+                continue
+            if ln <= 0:
+                continue
+            crel, _, _cname = ck.rpartition(":")
+            sites[(crel, ln)] = {"rel": crel, "line": ln}
         info = {"key": key, "name": nm, "rel": rel, "line": line,
                 "complexity": (meta.get(key) or {}).get("complexity", 0),
                 "unresolved": (meta.get(key) or {}).get("unresolved", 0),
                 "unresolved_names": (meta.get(key) or {}).get(
                     "unresolved_names", []),
-                "call_lines": sorted(set(l for _c, l in (calls or [])) if calls
-                                     else [])}
+                "call_sites": [sites[k] for k in sorted(sites)]}
         return info
 
     start_keys = ["%s:%s" % (rel, name) for rel, _ln in where[name]]

@@ -347,10 +347,17 @@ def _impact(c):
         # R232：每个节点还要说清「被哪几行调用」。
         # `edges` 不带行号，行号来自 `call_sites` —— 这是能否
         # 「点一下就跳到调用处」的前提。
-        cl = direct[0].get("call_lines") or []
-        _chk(bool(cl), "impact/b-direct-has-call-lines（实际 %r）" % (cl,))
-        _chk(all(isinstance(x, int) and x > 0 for x in cl),
-             "impact/call-lines-are-1based（%r）" % (cl,))
+        cs = direct[0].get("call_sites") or []
+        _chk(bool(cs), "impact/b-direct-has-call-sites（实际 %r）" % (cs,))
+        _chk(all(isinstance(s.get("line"), int) and s["line"] > 0
+                 and isinstance(s.get("rel"), str) and s["rel"] for s in cs),
+             "impact/call-sites-carry-rel-and-1based-line（%r）" % (cs,))
+        # **跨文件回归**（R256）：`a` 既被 a.m 里的 b 调用，也被
+        # switch_case.m 调用。首版把所有调用行号都挂到节点自己的 rel 上，
+        # 于是 `switch_case.m` 的那几行会被点去 `a.m` 的同号行 ——
+        # 一个**看起来能用**的错误跳转，点下去不报错、只是去了错地方。
+        _chk(any(s["rel"] != direct[0].get("rel") for s in cs),
+             "impact/call-sites-keep-their-own-file（%r）" % (cs,))
         # 第 2 层：`switch_case` 调 `a`，`a` 调 `b`。
         # R227：QuickPick 原来只列第 1 层，分层算了却不返回 ——
         # 用户会以为"上游只有 a 一个"。
