@@ -134,7 +134,7 @@ LSP 不实现，用户按 F12 会**静默失败**（服务端回 `null`，扩展
 ## 改任何 CLI 入口后的全场景扫测（R160 起）
 
 ```powershell
-python tools/sweep_cli.py            # 91 个检查点 / 7 组 / 约 70 秒
+python tools/sweep_cli.py            # 103 个检查点 / 8 组 / 约 80 秒
 python tools/sweep_cli.py --only 5   # 只跑 LSP 边界组
 python tools/sweep_cli.py --selftest # 7 条：防护自身的自证
 python tools/sweep_cli.py --meta     # 11 条：**变异测试**（判据自己能不能红）
@@ -148,6 +148,8 @@ python tools/sweep_cli.py --meta     # 11 条：**变异测试**（判据自己�
 | 4 | 少见入口（`--version` / `--json-level`、**未知开关必须 rc=2**） |
 | **5** | **LSP 边界**：无 `rootUri` / 非 `.m` 文件 / 缺失文件 / **未知方法回 `-32601`** / 未知通知后连接存活 |
 | **6** | **四格式数字一致**（XML `stats` vs JSON、mermaid 节点数 vs 函数数、browse 提及的计数）+ **极端参数**（`--max-nodes 0/1/-1`、重复 `--json`、`json+xml` 同开、`--lang C` 被拒） |
+| **7** | **并发**：两个 `--json`（0.41s、内容相同）、两个 `--browse`（文件数相同）、三个混合进程。**必须用 `DEVNULL` 而不是 `PIPE`**，否则 Windows 句柄继承会让 `wait()` 挂死 |
+| **8** | **LSP 状态机**：连续 `didSave`（1→0→1 证明每次都重算）、`didClose` 后重开、空文件与脚本上的 hover/definition/documentSymbol（**空文件返回一个 `<script>` 占位符，不是 `[]`**） |
 
 **`--meta` 是最容易跳过、也最该跑的那一个。**
 它把三条防护各故意改错一次，看对应判据是否变红：
