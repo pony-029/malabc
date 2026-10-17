@@ -145,6 +145,120 @@ def _facts_from_result(result):
     return out
 
 
+def _cache_path(root):
+    return os.path.join(root, ".matlabc_lsp_cache.json")
+
+
+def _stamp(root):
+    """所有 `.m` 的**最大 mtime** —— 任何一个文件改过，缓存就作废。
+
+    **不能只看根目录的 mtime**：改的是子目录里的文件，根目录不变。
+    **也不能只看文件数**：文件数不变而内容改了，是最常见的情况。
+    """
+    newest = 0.0
+    try:
+        for dirpath, dirnames, names in os.walk(root):
+            dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+            for n in names:
+                if n.endswith(".m"):
+                    try:
+                        st = os.stat(os.path.join(dirpath, n))
+                        if st.st_mtime > newest:
+                            newest = st.st_mtime
+                    except OSError:
+                        pass
+    except OSError:
+        return 0.0
+    return newest
+
+
+def _save_cache(root, payload, result):
+    """把「结构层 + 诊断」写盘。失败不算错（缓存是可选的）。"""
+    try:
+        files = []
+        for mf in (getattr(result, "files", None) or []):
+            fns = []
+            for fn in (getattr(mf, "functions", None) or []):
+                try:
+                    sig = fn.signature()
+                except Exception:
+                    sig = getattr(fn, "name", "")
+                fns.append({
+                    "name": getattr(fn, "name", ""),
+                    "line": getattr(fn, "line", 0),
+                    "complexity": getattr(fn, "complexity", 0),
+                    "header": getattr(fn, "header", None) or {},
+                    "sig": sig,
+                })
+            files.append({
+                "rel": getattr(mf, "rel", "") or "",
+                "header": getattr(mf, "header", None) or {},
+                "functions": fns,
+            })
+        edges = []
+        for e in (getattr(result, "edges", None) or []):
+            if isinstance(e, dict):
+                edges.append([e.get("caller"), e.get("callee"),
+                              bool(e.get("cross_file"))])
+            elif isinstance(e, (list, tuple)) and len(e) >= 2:
+                edges.append([e[0], e[1], bool(e[2]) if len(e) > 2 else False])
+        doc = {"v": 1, "stamp": _stamp(root), "files": files,
+               "edges": edges, "payload": payload}
+        tmp = _cache_path(root) + ".tmp"
+        with io.open(tmp, "w", encoding="utf-8", newline="") as fh:
+            fh.write(json.dumps(doc, ensure_ascii=False))
+        os.replace(tmp, _cache_path(root))
+        _log("缓存已写 %d 文件 / %d 边" % (len(files), len(edges)))
+    except Exception as exc:
+        _log("缓存写入失败（不影响使用）：%r" % (exc,))
+
+
+def _load_cache(root):
+    """读缓存；**任何异常都当作没有缓存**（截断的 JSON / 旧 schema / 无权限）。"""
+    p = _cache_path(root)
+    if not os.path.isfile(p):
+        return None
+    try:
+        with io.open(p, "r", encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except Exception as exc:
+        _log("缓存不可读，忽略：%r" % (exc,))
+        return None
+    if not isinstance(doc, dict) or doc.get("v") != 1:
+        _log("缓存 schema 不符（v=%r），忽略" % (doc.get("v"),))
+        return None
+    try:
+        cur = _stamp(root)
+        if abs(float(doc.get("stamp") or 0) - cur) > 1e-6:
+            _log("缓存已过期（stamp %.0f -> %.0f）" % (doc.get("stamp") or 0, cur))
+            return None
+    except Exception:
+        return None
+    try:
+        from types import SimpleNamespace as NS
+        files = []
+        for f in doc.get("files") or []:
+            fns = []
+            for fn in f.get("functions") or []:
+                o = NS(name=fn.get("name", ""), line=fn.get("line", 0),
+                       complexity=fn.get("complexity", 0),
+                       header=fn.get("header") or {})
+                # `_hover` 调 `fn.signature()`；SimpleNamespace 没有方法，
+                # 这里补一个，返回值就是缓存里存好的那串。
+                o.signature = (lambda s: (lambda: s))(fn.get("sig", ""))
+                fns.append(o)
+            files.append(NS(rel=f.get("rel", ""),
+                            header=f.get("header") or {},
+                            functions=fns))
+        edges = [tuple(e) for e in (doc.get("edges") or [])]
+        result = NS(files=files, edges=edges)
+        _log("缓存命中：%d 文件 / %d 边" % (len(files), len(edges)))
+        return result, doc.get("payload") or {"heuristics": []}
+    except Exception as exc:
+        _log("缓存重建失败，忽略：%r" % (exc,))
+        return None
+
+
 def _run_json(root):
     """**进程内**跑分析，返回与 `--json` 同形的 `{"heuristics": [...]}`。
 
@@ -155,6 +269,14 @@ def _run_json(root):
     仍然传 `no_checks=True`：诊断只需要 `doc_todos`，而 `_collect_checks`
     占 63%（未关时）。
     """
+    # **先试磁盘缓存**：命中就跳过全部解析（第二次开同一项目从 35 秒到 0.2 秒）。
+    # `stamp` 校验保证「改过任何一个 .m 就作废」，所以命中时结果与重算一致。
+    hit = _load_cache(root)
+    if hit is not None:
+        result0, payload0 = hit
+        _STATE["result"] = result0
+        return payload0
+
     try:
         from analyzer.api import analyze
     except ImportError as exc:
@@ -175,7 +297,9 @@ def _run_json(root):
     # F3：改读 `facts`。它现在（F1 之后）与 `heuristics` 逐条相等，所以
     # 「诊断 == heuristics」那条旧判据仍然成立；等 facts 扩了两类，
     # 关系自动变成「⊇」——两者都是构造保证的，不需要两处对账。
-    return {"heuristics": _facts_from_result(result)}
+    payload = {"heuristics": _facts_from_result(result)}
+    _save_cache(root, payload, result)
+    return payload
 
 
 def _ident_at(lines, line0, char):

@@ -40,3 +40,4 @@ Thumbs.db
 .archify/
 .debt_trend.json
 .matlabc_cache.pkl
+.matlabc_lsp_cache.json
