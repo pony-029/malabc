@@ -835,6 +835,11 @@ def _lens(c):
             _chk(inf.get("unresolved") == 1,
                  "impact/target-unresolved==1（实际 %r）"
                  % (inf.get("unresolved"),))
+            # R255：只给数量等于给了一个没有内容的数字。名字必须带出来，
+            # 否则用户看到「另 1 未解析」也不知道该去查谁。
+            _chk(inf.get("unresolved_names") == ["some_toolbox_fn"],
+                 "impact/unresolved-names（实际 %r）"
+                 % (inf.get("unresolved_names"),))
             _chk(inf.get("down") == [],
                  "impact/no-fake-downstream（down 必须为空：它没有可跳的调用）")
         finally:

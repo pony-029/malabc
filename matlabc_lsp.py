@@ -1236,7 +1236,8 @@ def _impact(name, depth=30, down_depth=3):
                 # CodeLens 已经诚实了（0.6.4），但关系图里每个节点只显示
                 # 名字和行号 —— 用户从图上点进一个函数，仍会撞上那里
                 # 十几个跳不动的 `foo(...)`。
-                "unresolved": _unresolved_count(f)}
+                "unresolved": _unresolved_count(f),
+                "unresolved_names": _unresolved_names(f)}
     if name not in where:
         return None
 
@@ -1300,6 +1301,8 @@ def _impact(name, depth=30, down_depth=3):
         info = {"key": key, "name": nm, "rel": rel, "line": line,
                 "complexity": (meta.get(key) or {}).get("complexity", 0),
                 "unresolved": (meta.get(key) or {}).get("unresolved", 0),
+                "unresolved_names": (meta.get(key) or {}).get(
+                    "unresolved_names", []),
                 "call_lines": sorted(set(l for _c, l in (calls or [])) if calls
                                      else [])}
         return info
@@ -1378,6 +1381,8 @@ def _impact(name, depth=30, down_depth=3):
         # 所以既不会出现在上游也不会出现在下游 —— **不报就等于说它
         # 什么都不调用**，而事实相反。
         "unresolved": (meta.get(start_keys[0]) or {}).get("unresolved", 0),
+        "unresolved_names": (meta.get(start_keys[0]) or {}).get(
+            "unresolved_names", []),
     }
 
 
@@ -1395,6 +1400,24 @@ def _unresolved_count(f):
         for v in d.values():
             n += v if isinstance(v, int) else 1
     return n
+
+
+def _unresolved_names(f, limit=5):
+    """解析不到的名字，按出现次数从多到少，最多 `limit` 个。
+
+    R255：只报「另有 14 处未解析」是个**只有分子没有内容**的数字 ——
+    用户无法据此做任何事。名字我们本来就有（`external_calls` 的键），
+    把它们说出来，才知道该去查 `sedumi` 还是去查一个字段。
+    """
+    tally = {}
+    for key in ("external_calls", "indirect_calls"):
+        d = getattr(f, key, None) or {}
+        if not isinstance(d, dict):
+            continue
+        for k, v in d.items():
+            tally[k] = tally.get(k, 0) + (v if isinstance(v, int) else 1)
+    return [k for k, _n in sorted(tally.items(),
+                                  key=lambda kv: (-kv[1], kv[0]))][:limit]
 
 
 def _code_lens(uri):

@@ -294,9 +294,12 @@ function activate(context) {
     // 「它有多复杂、跳过去看什么」，多给一份上游信息只会让人分不清方向。
     const downNode = (d, prefix) => {
       // 它自己也可能有跳不动的调用 —— 标出来，否则用户点进去才发现。
+      // 只给数量等于给了一个没有内容的数字；名字才让人知道去查什么。
       const un = d.unresolved || 0;
+      const names = (d.unresolved_names || []).join('、');
       const unHtml = un
-        ? '<span class="calls">另 ' + un + ' 未解析</span>' : '';
+        ? '<span class="calls">另 ' + un + ' 未解析' +
+          (names ? '：' + esc(names) : '') + '</span>' : '';
       return '<div class="node">' + prefix + esc(d.name) +
         '<span class="where">' + link(d.rel, d.line, d.rel + ':' + d.line) +
         '</span><span class="calls">复杂度 ' + (d.complexity || 0) + '</span>' +
@@ -347,9 +350,10 @@ function activate(context) {
     if (!down.length) {
       // `down` 只含**能跳到定义**的调用。目标可能还有一堆 `foo(...)`
       // 解析不到 —— 那时说「叶子」就是在撒谎（R243）。
+      const nm = (info.unresolved_names || []).join('、');
       rows.push('<div class="empty">' + (info.unresolved
-        ? '没有可跳转的调用；另有 ' + info.unresolved +
-          ' 处调用无法定位（字段取值 / toolbox / 函数句柄）'
+        ? '没有可跳转的调用；另有 ' + info.unresolved + ' 处调用无法定位' +
+          (nm ? '：' + esc(nm) : '') + '（字段取值 / toolbox / 函数句柄）'
         : '不调用其他函数 —— 叶子。') + '</div>');
     } else {
       const dn = byLevel(down);
