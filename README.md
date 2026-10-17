@@ -902,7 +902,7 @@ judgements above:
 | `analyze_structure.py` | prints a single-file structural outline; a re-runnable baseline, not a gate |
 | `lsp_selftest.py` | the 19-judgement LSP suite — see `CONTRIBUTING` for when it must be run by hand |
 | `demo_lsp.py` | one command that exercises all five LSP capabilities and prints each result **next to the source line it lands on** — so you can check the jump rather than read JSON |
-| `update_kernel_prov.py` | first step of every probe close-out: writes the current `matlabc.py` sha / byte count back into `docs/KERNEL_RUN.md` (`--dry-run` prints without writing) |
+| `update_kernel_prov.py` | first step of every probe close-out: writes the analyser (`matlabc`) sha / byte count back into `docs/KERNEL_RUN.md` (`--dry-run` prints without writing) |
 
 ---
 
