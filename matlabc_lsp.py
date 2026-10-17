@@ -202,11 +202,24 @@ def _save_cache(root, payload, result):
                               bool(e.get("cross_file"))])
             elif isinstance(e, (list, tuple)) and len(e) >= 2:
                 edges.append([e[0], e[1], bool(e[2]) if len(e) > 2 else False])
-        doc = {"v": 1, "stamp": _stamp(root), "files": files,
+        # **每一步都留痕**：R209 在 YALMIP（1665 文件 / 20225 边）上
+        # 连 `.tmp` 都没留下，而 `sample_m` 一次就成功 —— 唯一的差异是规模。
+        # 没有这些日志，只能猜是「构造慢」「序列化失败」还是「replace 失败」。
+        _log("缓存构造完成 %d 文件 / %d 边" % (len(files), len(edges)))
+        stamp = _stamp(root)
+        _log("缓存 stamp=%.0f" % stamp)
+        doc = {"v": 1, "stamp": stamp, "files": files,
                "edges": edges, "payload": payload}
+        try:
+            js = json.dumps(doc, ensure_ascii=False)
+        except Exception as exc:
+            _log("缓存序列化失败（形状不可序列化）：%r" % (exc,))
+            return
+        _log("缓存序列化 %.1f KB" % (len(js) / 1024.0))
         tmp = _cache_path(root) + ".tmp"
         with io.open(tmp, "w", encoding="utf-8", newline="") as fh:
-            fh.write(json.dumps(doc, ensure_ascii=False))
+            fh.write(js)
+        _log("缓存临时文件已写，准备 rename")
         os.replace(tmp, _cache_path(root))
         _log("缓存已写 %d 文件 / %d 边" % (len(files), len(edges)))
     except Exception as exc:
