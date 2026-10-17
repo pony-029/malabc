@@ -862,7 +862,23 @@ def _semantic_tokens(uri):
     fn_out = re.compile(r"^\s*function\s+(\[[^\]]*\]|\w+)\s*=")
     for nm, ln in list(my_funcs.items()):
         idx0 = max(0, ln - 1)
-        head = lines[idx0] if idx0 < len(lines) else ""
+        # **多行签名**：MATLAB 用 `...` 续行。
+        #     function [alpha, beta] = ...
+        #         multi(first, second, ...
+        #               third)
+        # R219 只看 `lines[idx0]`，于是 `multi` 的参数一个都没认出来
+        # （实测：`tests/sample_sig/multi.m` 只标出了单行那个函数）。
+        # 判据是「行尾有 `...` 就继续拼」，比数括号深度更贴近语言规则。
+        chunk = []
+        j = idx0
+        while j < len(lines) and j < idx0 + 20:
+            raw = lines[j]
+            cont = raw.rstrip().endswith("...")
+            chunk.append(re.sub(r"\.\.\.\s*$", "", raw))
+            j += 1
+            if not cont:
+                break
+        head = " ".join(chunk)
         params = set()
         m = fn_in.search(head)
         if m:

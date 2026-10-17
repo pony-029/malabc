@@ -4462,7 +4462,26 @@ def parse_file(mfile, forced_encoding=None):
 
         # 1) function 定义
         if RE_FUNC_START.match(ln):
-            parsed = parse_function_line(ln)
+            # **多行签名**：MATLAB 的 `...` 续行。
+            #     function [alpha, beta] = ...
+            #         multi(first, second, ...
+            #               third)
+            # R220 实测：只传 `ln` 时，`parse_function_line` 拿不到函数名，
+            # 于是 `MatlabFunction.name == ""` —— 影响面远不止高亮：
+            # 跳转 / 引用 / 大纲 / `--impact` 全都认不出这个函数。
+            # 判据是「行尾有 `...` 就继续拼」，而不是数括号（更贴近语言规则）。
+            sig = ln
+            if ln.rstrip().endswith("..."):
+                parts = [re.sub(r"\.\.\.\s*$", "", ln)]
+                k = lineno          # `lineno` 是 1-based，`lines[lineno]` 就是下一行
+                while k < len(lines) and k < lineno + 20:
+                    nxt = lines[k]
+                    parts.append(re.sub(r"\.\.\.\s*$", "", nxt))
+                    k += 1
+                    if not nxt.rstrip().endswith("..."):
+                        break
+                sig = " ".join(parts)
+            parsed = parse_function_line(sig)
             if parsed:
                 qual, outs, ins, has_parens = parsed
                 short = qual.split(".")[-1]

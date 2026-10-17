@@ -362,11 +362,12 @@ def _tokens(c):
     """
     TYPES = ["variable", "function", "property", "parameter"]
 
-    def decode(uri, lines):
-        c.send({"jsonrpc": "2.0", "id": 60,
-                "method": "textDocument/semanticTokens/full",
-                "params": {"textDocument": {"uri": uri}}})
-        r = c.recv() or {}
+    def decode(uri, lines, client=None):
+        cc = client or c
+        cc.send({"jsonrpc": "2.0", "id": 60,
+                 "method": "textDocument/semanticTokens/full",
+                 "params": {"textDocument": {"uri": uri}}})
+        r = cc.recv() or {}
         data = (r.get("result") or {}).get("data") or []
         out = []
         di = dc = 0
@@ -423,6 +424,37 @@ def _tokens(c):
         os.remove(empty)
     except OSError:
         pass
+
+    # ---- 多行签名（R220）------------------------------------------
+    # `function [alpha, beta] = ...` 换行写时，解析器曾把函数名解析成空，
+    # 于是参数一个都标不出来。这一组钉的是「跨 `...` 续行的签名」。
+    sig_root = os.path.join(ROOT, "tests", "sample_sig")
+    if os.path.isdir(sig_root):
+        c2 = Client()
+        try:
+            sig_file = os.path.join(sig_root, "multi.m")
+            c2.init(sig_root)
+            c2.send({"jsonrpc": "2.0", "method": "textDocument/didOpen",
+                     "params": {"textDocument": {
+                         "uri": _uri(sig_file), "languageId": "matlab",
+                         "version": 1, "text": "x"}}})
+            c2.recv()
+            c2.recv()
+            slines = io.open(sig_file, encoding="utf-8").read().splitlines()
+            stoks = decode(_uri(sig_file), slines, client=c2)
+            typ = {}
+            for (ln, col, txt, t, m) in stoks:
+                typ.setdefault(txt, set()).add(t)
+            _chk(typ.get("first") == {"parameter"},
+                 "tokens/multi-line-input-param（实际 %r）" % (typ.get("first"),))
+            _chk(typ.get("third") == {"parameter"},
+                 "tokens/multi-line-third-param（实际 %r）" % (typ.get("third"),))
+            _chk(typ.get("alpha") == {"parameter"},
+                 "tokens/multi-line-output-param（实际 %r）" % (typ.get("alpha"),))
+            _chk(typ.get("multi") == {"function"},
+                 "tokens/multi-line-function-name（实际 %r）" % (typ.get("multi"),))
+        finally:
+            c2.close()
 
 
 def main(argv=None):
