@@ -32844,7 +32844,7 @@ def run_lang_path(args, root):
 
 PipelineResult = namedtuple(
     "PipelineResult",
-    "files index edges stats model c_model checks_for_sarif early_exit")
+    "files index edges stats model c_model checks_for_sarif early_exit facts")
 
 
 def run_pipeline(args, root, paths):
@@ -32989,18 +32989,18 @@ def run_pipeline(args, root, paths):
 
     # P-新增：--init-header 非破坏式缺头注释清单（不进入后续报告生成流程）
     if getattr(args, "init_header", False):
-        return PipelineResult(None, None, None, None, None, None, None,
+        return PipelineResult(None, None, None, None, None, None, None, None,
                               _report_missing_headers(files, root))
 
     # R5：--used-builtins 列出每个具体函数调用的内置函数及其输入/输出维度（不改动源码）
     if getattr(args, "used_builtins", False):
-        return PipelineResult(None, None, None, None, None, None, None,
+        return PipelineResult(None, None, None, None, None, None, None, None,
                               _report_used_builtins(files, root,
                                                     by_builtin=(getattr(args, "used_builtins_by", "function") == "builtin")))
 
     # R5：--dim-coverage 报告维度标注覆盖率（不改动源码）
     if getattr(args, "dim_coverage", False):
-        return PipelineResult(None, None, None, None, None, None, None,
+        return PipelineResult(None, None, None, None, None, None, None, None,
                               _report_dim_coverage(
                 files, root,
                 by_file=getattr(args, "dim_coverage_by_file", False)))
@@ -33038,10 +33038,27 @@ def run_pipeline(args, root, paths):
     _dup_opts = _build_dup_opts(args)
     checks_for_sarif = _collect_checks(files, _parse_checks_arg(args.checks),
                                        dup_opts=_dup_opts)
+
+    # R146 / F1：事实层**前置化**。只覆盖 `m_missing_doc`（与 `--json` 的
+    # `heuristics` 同一来源、同一过滤条件），所以 `--json` **逐字节不变** ——
+    # 这一步只把「报表里派生」变成「流水线里产」，为 F2/F3 建通道。
+    facts = []
+    for _t in (model.doc_todos or {}).get("todos") or []:
+        if "description" not in (_t.get("missing") or []):
+            continue
+        facts.append({
+            "kind": "issue",
+            "loc": {"file": _t.get("rel") or "", "line": _t.get("line") or 0},
+            "subject": "%s:%s" % (_t.get("rel") or "", _t.get("func") or ""),
+            "payload": {"rule_id": "m_missing_doc", "level": "note",
+                        "msg": "函数缺少头部描述（description）"},
+            "evidence": "ast",
+        })
+
     return PipelineResult(
         files=files, index=index, edges=edges, stats=stats,
         model=model, c_model=c_model,
-        checks_for_sarif=checks_for_sarif, early_exit=None)
+        checks_for_sarif=checks_for_sarif, early_exit=None, facts=facts)
 
 
 def main(argv=None):
@@ -33202,6 +33219,7 @@ def emit_outputs(args, result, root, t_start, gate_cfg=None):
                                    result.edges, result.stats)
     model, c_model = result.model, result.c_model
     checks_for_sarif = result.checks_for_sarif
+    facts = result.facts        # F1：本函数暂不消费；F3 会让 SARIF/LSP 从它派生
     _dup_opts = _build_dup_opts(args)
     ok = _emit_report_outputs(args, model, files, index, edges, stats, root,
                               checks_for_sarif=checks_for_sarif)
