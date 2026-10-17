@@ -98,3 +98,54 @@ rc=0
 **单条判据只能证明"这一条对"，扫测才能证明"它们彼此一致"。**
 
 **下一步**：把这份扫测固化成 `tools/sweep_cli.py`，作为第 26 道门（或 `CONTRIBUTING` 的第 6 条冒烟）。
+
+---
+
+## §5 第二轮：17 条全过，但**又是我写错了一处**
+
+第二轮覆盖第一轮没碰的东西：
+
+| 类别 | 判据 | 结果 |
+| --- | --- | --- |
+| **畸形输入** | 空文件 / 只有注释 / 语法错误（`function y = broken(a`） | **不崩，rc=0** |
+| **特殊文件名** | **中文名**（`中文名.m`）、**带空格**（`with space.m`） | **都出现在 `files` 里** |
+| `--mixed` | MATLAB + C 混合 | rc=0，有 `files` 也有 `c_model` |
+| **schema** | 15 个必需键（`version`/`stats`/`edges`/`heuristics`/…） | 全在 |
+| `--no-checks` 对 SARIF | 结果数**不增加** | full ≥ nc |
+| **往返** | `--json` → `--from-json` → `--json`，`files`/`edges`/`heuristics`/`stats` | **逐项相等** |
+| `--browse` 输出 | `index.html` 存在且含 `<html>`/`</html>` | ✓ |
+
+```
+SELFTEST COUNTS {"bad": 0, "good": 17}
+```
+
+### §5.1 我这次错在字段名
+
+第一版判据写：
+
+```python
+names = [f.get("file") for f in d["files"]]
+```
+
+**全部返回 `None`**。真实字段是 **`rel`**：
+
+```python
+sorted(f.keys()) = ['classes','encoding','functions','globals',
+                    'header','kind','lines','parse_errors','rel']
+```
+
+**又一次"凭印象写字段名"**（前面已有 `model.uninit`、`--checks default`、`shape_mismatch`）。
+
+**修法是先打印一次 `sorted(f.keys())`，再写判据。**
+
+### §5.2 两轮合计
+
+| 轮 | 检查点 | 通过 | 我的判据错 | 产品不一致 |
+| --- | --- | --- | --- | --- |
+| 第一轮 | 19 | 15 | 3 | **1**（`--lang c` 空目录 rc=0） |
+| 第二轮 | 17 | **17** | 1（当场改掉） | 0 |
+| **合计** | **36** | **32** | **4** | **1** |
+
+**36 个检查点里，4 个是我的判据错，1 个是产品行为不一致。**
+
+**「判据错」比「产品错」多 4 倍** —— 这是我的主要失误来源。
