@@ -98,6 +98,20 @@ python tools/check_all.py
 抓到——**只有第三次是在提交前**。前两次是靠 `check_kernel_snapshot` 报
 「字节数少了 34,228」才发现的。
 
+## 改 `matlabc_lsp.py` / `vscode/` 后必跑的三条（R151 起）
+
+LSP 的判据**不进 `check_all`** —— 它要起子进程、跑分析，与其它护栏"纯静态读文件"
+的性质不同，放进 runner 会把 24 道门从 2 分钟拖到 3 分钟。所以必须手工跑：
+
+1. `python tools/lsp_selftest.py` —— 三组 11 条：诊断（含**第一条必须是空**）、
+   definition（同文件 / 跨文件 / 注释空）、references（1 个引用 / 含定义 2 个 / 注释空）。
+2. `node vscode/test_extension.js` —— 模拟宿主，断言**注册了哪些 provider**（5 条）。
+3. `node vscode/test_client.js` —— 以真实 `matlabc_lsp.py` 为对端（6 条）。
+
+**为什么第 2 条不能省**：`registerDefinitionProvider` 是一个**承诺**。注册了但
+LSP 不实现，用户按 F12 会**静默失败**（服务端回 `null`，扩展映射成空数组）。
+反过来，LSP 实现了却没注册，用户根本看不见。**两边都得有判据。**
+
 ## 改 `main` / 分析入口后的五条冒烟（R119 起，R147/R164 扩）
 
 切分 `main` 时，**判据比代码重要**。五条都要跑，因为它们各自覆盖一条不同的路径：

@@ -74,10 +74,16 @@ class Client(object):
         return self.recv()
 
     def open(self, path):
+        """`didOpen` 会收到**两条** `publishDiagnostics`。
+
+        第一条是**空数组**（证明协议循环没被分析阻塞），第二条才是真结果。
+        返回第二条；第一条留在 `self.first_diag` 供 `_diag` 断言。
+        """
         self.send({"jsonrpc": "2.0", "method": "textDocument/didOpen",
                    "params": {"textDocument": {"uri": _uri(path),
                                                "languageId": "matlab",
                                                "version": 1, "text": "x=1;\n"}}})
+        self.first_diag = self.recv()
         return self.recv()
 
     def close(self):
@@ -99,9 +105,10 @@ def _diag(c):
     r = c.init()
     caps = ((r or {}).get("result") or {}).get("capabilities") or {}
     _chk(caps.get("textDocumentSync") == 1, "textDocumentSync 应为 1")
-    # `open()` 自己就把 didOpen 触发的 publishDiagnostics 读回来了
-    # （首版这里又调了一次 recv()，于是阻塞在没有第三条消息的 read 上）
+    # `open()` 读两条：第一条是空（先返回、再异步算），第二条才是真结果。
     d = c.open(os.path.join(CORPUS, "MyCls.m"))
+    _chk(((c.first_diag or {}).get("params") or {}).get("diagnostics") == [],
+         "didOpen 的第一条诊断必须是空数组（证明没阻塞协议循环）")
     diags = ((d or {}).get("params") or {}).get("diagnostics") or []
     _chk(len(diags) == 2, "MyCls.m 应 2 条诊断，实际 %d" % len(diags))
     _chk(all(x.get("code") == "m_missing_doc" for x in diags),
