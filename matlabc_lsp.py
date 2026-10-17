@@ -561,6 +561,28 @@ def handle(msg, out):
              % (os.path.basename(_uri_to_path(uri)), len(syms)))
         return True
 
+    if method == "textDocument/didSave":
+        # R153：`didOpen` 只在 `payload is None` 时算一次，所以保存之后
+        # 必须**显式作废**缓存，否则诊断永远是打开那一刻的旧结果。
+        # 这是 LSP 从"能看"到"能用"的分界：慢是等一会儿，旧是错。
+        params = msg.get("params") or {}
+        uri = (params.get("textDocument") or {}).get("uri", "")
+        root = _STATE.get("root")
+        if root:
+            with _STATE["lock"]:
+                _STATE["payload"] = None
+                _STATE["result"] = None
+                _STATE["payload"] = _run_json(root)
+        diags = _diagnostics_for(uri)
+        _write_message(out, {
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {"uri": uri, "diagnostics": diags},
+        })
+        _log("didSave %s -> %d 条（已重算）"
+             % (os.path.basename(_uri_to_path(uri)), len(diags)))
+        return True
+
     if method == "textDocument/didClose":
         return True
 
