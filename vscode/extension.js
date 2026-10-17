@@ -232,6 +232,38 @@ function activate(context) {
     })
   );
 
+  // ---- 语义高亮（R218）---------------------------------------------
+  // 官方 TextMate 是正则，分不清「局部变量 / 全局变量 / 结构体字段 /
+  // 内置函数 / 用户函数」；这五类只有解析器能分。
+  //
+  // **legend 必须与 LSP 侧 `_SEMANTIC_TYPES` / `_SEMANTIC_MODS` 完全同序**：
+  // 协议里 tokenType 就是个下标，顺序错一位颜色就整体错乱，而且不报错。
+  const semLegend = new vscode.SemanticTokensLegend(
+    ['variable', 'function', 'property', 'parameter'],
+    ['declaration', 'defaultLibrary', 'static']);
+  context.subscriptions.push(
+    vscode.languages.registerDocumentSemanticTokensProvider(
+      { language: 'matlab' },
+      {
+        provideDocumentSemanticTokens: async (doc) => {
+          try {
+            const r = await client.request(
+              'textDocument/semanticTokens/full',
+              { textDocument: { uri: doc.uri.toString() } });
+            const data = (r.result || {}).data || [];
+            if (!data.length) {
+              return null;   // 没识别出任何 token ⇒ 保留 TextMate 的原色
+            }
+            return new vscode.SemanticTokens(new Uint32Array(data));
+          } catch (e) {
+            log('semanticTokens 失败：' + (e && e.message));
+            return null;
+          }
+        },
+      },
+      semLegend)
+  );
+
   // ---- CodeLens：`↑3 调用者 · ↓12 被调用 · 复杂度 11`（R215）--------
   // 官方 CodeLens 只放 git 作者，**不显示调用关系**。这三组数字全在
   // `edges` 里，由 LSP 侧 `_code_lens` 直接给。

@@ -226,7 +226,7 @@ GUARD_CONTRACT = {
         2: "缺输入（tools/ 或 README 不在）",
     },
     "tools/check_lsp_doc_parity.py": {
-        0: "通过（LSP1–LSP3：代码实现的 textDocument/* 能力方法 ⇄ "
+        0: "通过（LSP1–LSP4：代码实现的 textDocument/* 能力方法 ⇄ "
            "vscode/README.md 能力表，双向一致且非空）",
         1: "有方向不一致（实现了没写 / 写了没实现）",
         2: "缺输入（matlabc_lsp.py 或 vscode/README.md 不在）",

@@ -21,10 +21,10 @@
 
 第 1 条防「实现了但没写」，第 2 条防「写了但没实现」。
 
-判据族 **LSP1–LSP3**。
+判据族 **LSP1–LSP4**。
 
 退出码：
-    0  = 双向一致（LSP1–LSP3 全绿）
+    0  = 双向一致（LSP1–LSP4 全绿）
     1  = 有方向不一致（实现了没写 / 写了没实现），或 --selftest 失败
     2  = 缺输入（matlabc_lsp.py 或 vscode/README.md 不在）
 """
@@ -38,9 +38,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 LSP = os.path.join(ROOT, "matlabc_lsp.py")
 VREADME = os.path.join(ROOT, "vscode", "README.md")
+EXTJS = os.path.join(ROOT, "vscode", "extension.js")
 
 #: P5 的对手方：本门在 README 质量门表那一行里声明的判据族。
-ROW_SIGNATURE = "LSP1–LSP3"
+ROW_SIGNATURE = "LSP1–LSP4"
 
 #: 不是「能力」的协议方法：生命周期与同步通知。
 NOT_CAPABILITY = {
@@ -70,6 +71,32 @@ def doc_methods(path=VREADME):
     with io.open(path, "r", encoding="utf-8") as fh:
         text = fh.read()
     return set(re.findall(r"`(textDocument/[A-Za-z]+)`", text)) - NOT_CAPABILITY
+
+
+def legend_pair(path_py=LSP, path_js=EXTJS):
+    """`(py_types, py_mods, js_types, js_mods)`；任一解析失败返回 `None`。
+
+    `matlabc_lsp.py` 的 `_SEMANTIC_TYPES` 与 `extension.js` 的
+    `SemanticTokensLegend([...], [...])` 必须**逐项同序**。
+    """
+    try:
+        py = io.open(path_py, "r", encoding="utf-8").read()
+        js = io.open(path_js, "r", encoding="utf-8").read()
+    except (IOError, OSError):
+        return None
+    t = re.search(r"_SEMANTIC_TYPES = \[(.+?)\]", py)
+    mo = re.search(r"_SEMANTIC_MODS = \[(.+?)\]", py)
+    m = re.search(r"SemanticTokensLegend\(\s*\[([^\]]+)\]\s*,\s*\[([^\]]+)\]",
+                  js, re.S)
+    if not (t and mo and m):
+        return None
+    py_types = re.findall(r'"(\w+)"', t.group(1))
+    py_mods = re.findall(r'"(\w+)"', mo.group(1))
+    js_types = [x.strip().strip("'\"") for x in m.group(1).split(",") if x.strip()]
+    js_mods = [x.strip().strip("'\"") for x in m.group(2).split(",") if x.strip()]
+    if not (py_types and py_mods and js_types and js_mods):
+        return None
+    return py_types, py_mods, js_types, js_mods
 
 
 def main(argv=None):
@@ -125,6 +152,22 @@ def main(argv=None):
     if not _chk(bool(code) and bool(doc), "LSP3 非空",
                 "方法集合为空：code=%d doc=%d" % (len(code), len(doc))):
         bad += 1
+
+    # D4：语义高亮的 legend 必须在两侧**同序**。
+    # 协议里 tokenType 就是一个下标，顺序错一位颜色整体错乱，
+    # **而且不会报任何错** —— 这种「静默错位」正是判据该守的地方。
+    lg = legend_pair()
+    if not _chk(lg is not None, "LSP4 语义 legend 可解析",
+                "找不到 _SEMANTIC_TYPES / _SEMANTIC_MODS 或 SemanticTokensLegend"):
+        bad += 1
+    else:
+        py_types, py_mods, js_types, js_mods = lg
+        if not _chk(py_types == js_types, "LSP4a tokenTypes 同序",
+                    "py=%r js=%r" % (py_types, js_types)):
+            bad += 1
+        if not _chk(py_mods == js_mods, "LSP4b tokenModifiers 同序",
+                    "py=%r js=%r" % (py_mods, js_mods)):
+            bad += 1
 
     if bad == 0:
         print("check_lsp_doc_parity: OK（代码 %d 个能力方法 ⇄ 文档 %d 个，双向一致）"

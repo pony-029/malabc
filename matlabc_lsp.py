@@ -28,6 +28,7 @@
 import io
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -774,6 +775,132 @@ def _edge_counts(result):
     return callers, callees
 
 
+#: 语义高亮的 token 类型。**顺序即编号**，扩展侧要照抄。
+_SEMANTIC_TYPES = ["variable", "function", "property", "parameter"]
+#: `declaration` = 定义处；`defaultLibrary` = MATLAB 内置；`static` = 全局变量。
+_SEMANTIC_MODS = ["declaration", "defaultLibrary", "static"]
+
+_SEM_TYPE_IDX = {t: i for i, t in enumerate(_SEMANTIC_TYPES)}
+_SEM_MOD_BIT = {m: 1 << i for i, m in enumerate(_SEMANTIC_MODS)}
+
+
+def _semantic_tokens(uri):
+    """语义高亮：只标**确定**的五类，宁可不标也不标错。
+
+    官方 TextMate 是**正则**，它分不清这五类：
+
+        x = 1;         局部变量
+        global G;      全局变量
+        s.field = 1;   结构体字段
+        numel(x)       MATLAB 内置
+        myfunc(x)      用户函数
+
+    而这五类的数据全在结果里（`globals` / `field_access` /
+    `builtin_calls` / `files[].functions`）。**这是官方结构上做不到的事**：
+    它没有解析器，只能按词法猜。
+
+    保守策略（对应判据 T4）：
+      - 只标函数**定义行**上的那个名字
+      - 只标**确实在** `builtin_calls` 里的调用
+      - 只标**确实在** `field_access` 里的字段
+      - 只标 `globals` 里声明过的名字
+    认不出来的标识符**一律不标**（留着 TextMate 的默认色）。
+    """
+    result = _wait_result()
+    if result is None:
+        return {"data": []}
+    path = _uri_to_path(uri)
+    root = _STATE.get("root") or ""
+    try:
+        rel = os.path.relpath(path, root).replace("\\", "/")
+    except Exception:
+        return {"data": []}
+    try:
+        with io.open(path, "r", encoding="utf-8", errors="replace") as fh:
+            lines = fh.read().splitlines()
+    except (IOError, OSError):
+        return {"data": []}
+
+    # ---- 收集本文件相关的名字集合 ----
+    my_funcs = {}                      # name -> 定义行（1-based）
+    all_funcs = set()
+    builtins = set()
+    globals_decl = set()
+    for mf in (getattr(result, "files", None) or []):
+        mrel = getattr(mf, "rel", "") or ""
+        for g in (getattr(mf, "globals", None) or []):
+            if mrel == rel:
+                globals_decl.add(str(g))
+        for f in (getattr(mf, "functions", None) or []):
+            nm = getattr(f, "name", "") or ""
+            if nm:
+                all_funcs.add(nm)
+                if mrel == rel:
+                    my_funcs.setdefault(nm, int(getattr(f, "line", 0) or 1))
+            bc = getattr(f, "builtin_calls", None) or {}
+            if isinstance(bc, dict):
+                builtins.update(bc.keys())
+
+    fields = set()
+    fa = getattr(result, "field_access", None)
+    if isinstance(fa, dict):
+        fields = set(fa.keys())
+
+    # ---- 逐行扫描，产出 (line, char, len, typeIdx, modMask) ----
+    toks = []
+    ident_rx = re.compile(r"[A-Za-z_]\w*")
+    for i, text in enumerate(lines):
+        # 注释行与注释尾一律跳过（和语法层保持一致，不改注释里的字）
+        code_end = len(text)
+        pct = text.find("%")
+        if pct >= 0:
+            # 粗略：`%` 之后不再标。字符串里出现 `%` 的情况极少，
+            # 且最坏后果是"少标几个"，不会标错。
+            code_end = pct
+        if code_end <= 0:
+            continue
+        code = text[:code_end]
+        for m in ident_rx.finditer(code):
+            word = m.group(0)
+            start, end = m.start(), m.end()
+            prev = code[start - 1] if start > 0 else ""
+            if prev == "." and word in fields:
+                toks.append((i, start, len(word),
+                             _SEM_TYPE_IDX["property"], 0))
+                continue
+            if word in my_funcs and i + 1 == my_funcs[word]:
+                toks.append((i, start, len(word),
+                             _SEM_TYPE_IDX["function"],
+                             _SEM_MOD_BIT["declaration"]))
+                continue
+            if word in builtins and (end >= len(code) or code[end:end + 1] == "("
+                                     or code[end:end + 1] == " "):
+                toks.append((i, start, len(word),
+                             _SEM_TYPE_IDX["function"],
+                             _SEM_MOD_BIT["defaultLibrary"]))
+                continue
+            if word in globals_decl:
+                toks.append((i, start, len(word),
+                             _SEM_TYPE_IDX["variable"],
+                             _SEM_MOD_BIT["static"]))
+                continue
+            if word in all_funcs:
+                toks.append((i, start, len(word),
+                             _SEM_TYPE_IDX["function"], 0))
+                continue
+    # ---- 编码成 LSP 的 delta 数组 ----
+    toks.sort(key=lambda t: (t[0], t[1]))
+    data = []
+    prev_line = 0
+    prev_char = 0
+    for line, char, length, tidx, mods in toks:
+        d_line = line - prev_line
+        d_char = char - prev_char if d_line == 0 else char
+        data.extend([d_line, d_char, length, tidx, mods])
+        prev_line, prev_char = line, char
+    return {"data": data}
+
+
 def _impact(name, depth=3):
     """反向可达集：谁调用了 `name`，按层返回。
 
@@ -963,6 +1090,16 @@ def handle(msg, out):
                     # 手写客户端不会自动转 provider，这里声明只是让协议
                     # 自洽；`vscode/extension.js` 里仍需自己 register。
                     "documentSymbolProvider": True,
+                    # R218：语义高亮。**legend 的顺序就是 tokenType 的编号**，
+                    # 扩展侧必须用同一份数组构造 `SemanticTokensLegend`，
+                    # 否则颜色会整体错位（而且不会报错，只会「颜色莫名其妙」）。
+                    "semanticTokensProvider": {
+                        "legend": {
+                            "tokenTypes": list(_SEMANTIC_TYPES),
+                            "tokenModifiers": list(_SEMANTIC_MODS),
+                        },
+                        "full": True,
+                    },
                 },
                 "serverInfo": {"name": "matlabc-lsp", "version": "0.1.0"},
             },
@@ -1061,6 +1198,16 @@ def handle(msg, out):
         _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": info})
         _log("impact %s -> %s" % (name, "none" if info is None
                                   else "%d 个调用者" % info["total"]))
+        return True
+
+    if method == "textDocument/semanticTokens/full":
+        params = msg.get("params") or {}
+        uri = (params.get("textDocument") or {}).get("uri", "")
+        toks = _semantic_tokens(uri)
+        _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": toks})
+        _log("semanticTokens %s -> %d 个 token"
+             % (os.path.basename(_uri_to_path(uri)),
+                len(toks.get("data") or []) // 5))
         return True
 
     if method == "textDocument/codeLens":
