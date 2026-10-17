@@ -2,7 +2,7 @@
   "name": "matlabc-lsp",
   "displayName": "malabc MATLAB LSP",
   "description": "MATLAB 侧的最小 LSP：诊断 + 转到定义 + 查找引用 + 悬停 + 符号大纲。零 npm 依赖。",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "publisher": "malabc",
   "engines": {
     "vscode": "^1.80.0"
@@ -22,6 +22,13 @@
         "aliases": ["MATLAB", "matlab"],
         "extensions": [".m"],
         "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "matlab",
+        "scopeName": "source.matlab",
+        "path": "./syntaxes/matlab.tmLanguage.json"
       }
     ],
     "configuration": {

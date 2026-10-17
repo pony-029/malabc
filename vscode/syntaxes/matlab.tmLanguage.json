@@ -1,0 +1,94 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "MATLAB",
+  "scopeName": "source.matlab",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#keywords" },
+    { "include": "#constants" },
+    { "include": "#functions" },
+    { "include": "#operators" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.percentage.matlab",
+          "begin": "%\\{",
+          "end": "%\\}",
+          "beginCaptures": { "0": { "name": "punctuation.definition.comment.begin.matlab" } },
+          "endCaptures": { "0": { "name": "punctuation.definition.comment.end.matlab" } }
+        },
+        {
+          "name": "comment.line.percentage.matlab",
+          "match": "%.*$",
+          "captures": { "0": { "name": "punctuation.definition.comment.matlab" } }
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.matlab",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            { "name": "constant.character.escape.matlab", "match": "\\\\." }
+          ]
+        },
+        {
+          "comment": "单引号在 MATLAB 里既是字符串也是转置；这里按字符串处理，转置会被算进去但不会破坏其余高亮。",
+          "name": "string.quoted.single.matlab",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            { "name": "constant.character.escape.matlab", "match": "''" }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.matlab",
+          "match": "(?<![\\w.])(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?[ij]?"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.matlab",
+          "match": "\\b(?:if|elseif|else|end|for|parfor|while|switch|case|otherwise|try|catch|return|break|continue|function|classdef|properties|methods|events|enumeration|global|persistent|spmd|import)\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.matlab",
+          "match": "\\b(?:true|false|pi|Inf|inf|NaN|nan|eps|i|j|end)\\b"
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "comment": "标识符紧跟左括号 —— 当作函数调用着色。",
+          "name": "support.function.matlab",
+          "match": "\\b([A-Za-z_]\\w*)(?=\\s*\\()"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.matlab",
+          "match": "(?:==|~=|<=|>=|&&|\\|\\||\\.\\*|\\./|\\.\\^|\\.\\\\|[+\\-*/\\\\^<>=&|~:])"
+        }
+      ]
+    }
+  }
+}
