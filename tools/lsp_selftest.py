@@ -14,6 +14,7 @@
 退出码：0 = 全过；1 = 有失败；2 = 缺输入（找不到 matlabc_lsp.py / 语料）。
 """
 import argparse
+import atexit
 import json
 import io
 import os
@@ -53,6 +54,11 @@ class Client(object):
             [sys.executable, LSP], cwd=ROOT,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE)
+        # **兜底回收**：`close()` 在 `finally` 里，但进程被 `Stop-Process`
+        # 杀掉时 `finally` 根本不执行 —— R176 清理出 4 个残留（2 个
+        # lsp_selftest + 2 个 matlabc_lsp）。正常退出时 atexit 会替我们
+        # 再调一次 `close()`，而 `close()` 里的 kill 对已死进程是空操作。
+        atexit.register(self.close)
 
     def send(self, obj):
         body = json.dumps(obj).encode("utf-8")

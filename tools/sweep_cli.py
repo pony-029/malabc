@@ -376,6 +376,10 @@ def _lsp_client():
                 [PY, os.path.join(ROOT, "matlabc_lsp.py")], cwd=ROOT,
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE)
+            # 兜底回收：进程被强制杀掉时 `finally` 不执行（R176 实测
+            # 泄漏过 4 个），atexit 至少覆盖正常退出。
+            import atexit as _atexit
+            _atexit.register(self.close)
 
         def send(self, obj):
             body = json.dumps(obj).encode("utf-8")
@@ -769,6 +773,21 @@ def _meta():
     c(n4 >= 1, "保留 generated_at 后应变红，实际 %d" % n4)
     c(any("idem" in x for x in f4),
       "变红的应含 idem/*，实际 %r" % (f4[:2],))
+
+    # 5. `_chk` 变成空操作：整组应当**一条也不计数**。
+    #    这是最根本的自检 —— 如果连计数都不发生，那 91 条"全绿"毫无意义。
+    orig_chk = _chk
+    globals()["_chk"] = lambda *a, **k: None
+    n5, _f5 = run_group(group4)
+    empty_good = _RESULT["good"]
+    globals()["_chk"] = orig_chk
+    c(n5 == 0 and empty_good == 0,
+      "空 _chk 时 group4 应 0 红 0 绿，实际 bad=%d good=%d"
+      % (n5, empty_good))
+    # 恢复后再跑一次，确认 group4 仍然有货（防止"整组本来就空"）
+    n5b, _ = run_group(group4)
+    c(n5b == 0 and _RESULT["good"] > 5,
+      "恢复 _chk 后 group4 应有 >5 条绿，实际 %d" % _RESULT["good"])
 
     print('META COUNTS {"bad": %d, "good": %d}' % (bad, good))
     return 0 if bad == 0 else 1
