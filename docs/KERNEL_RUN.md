@@ -106,7 +106,7 @@ pipeline.stations | 13
 |---|---|---|
 | `661 s / 10.8 GB` | R75（`_kernel/analyze_kernel.py`） | `cwd=REPO` ⇒ 记录到的路径退化成 basename |
 | `793.4 s / 13.1 GB` | R81（`_kernel/rerun_kernel_r81.py`） | `cwd=CORPUS` ⇒ 真相对路径 |
-| `3526.6 s / 10.8 GB` | 最新一趟（`_r82/probe_kernel_r84.py` @ `b778fe6`） | `cwd=CORPUS`（与 R81 同口径） |
+| `2239.2 s / 10.8 GB` | 最新一趟（`_r82/probe_kernel_r84.py` @ `c7abc01`） | `cwd=CORPUS`（与 R81 同口径） |
 
 三者**都不是错的** —— 错的是「把它们混着引用而不写出口径」。
 所以本表第一件要登记的东西不是数字，是**口径**（`provenance.cwd_convention`），
@@ -141,8 +141,8 @@ W2 会对它做非空断言。
 | `heuristics` | 1262817 | 1262829 | **不同** | | | |
 | `json_bytes` | 11355506 | 11355505 | **不同** | | | |
 | `rc` | 0 | 0 | ✅ | | | |
-| `peak_mb` | 11094.7 | 13136.5 | 不可裁决 | 150.4 | 128.3 | 不可裁决 |
-| `seconds` | 3526.6 | 793.4 | 不可裁决 | 3.4 | 2.4 | 不可裁决 |
+| `peak_mb` | 11089.6 | 13136.5 | 不可裁决 | 149 | 128.3 | 不可裁决 |
+| `seconds` | 2239.2 | 793.4 | 不可裁决 | 3.6 | 2.4 | 不可裁决 |
 
 汇编臂（`--lang asm`）的规模：**1369** 文件 / **381729** 行。
 
@@ -173,9 +173,9 @@ W5 只比**与时钟无关**的计数器，且**逐类**比对启发式分解：
 
 | 项 | 值 |
 |---|---|
-| 被测物 `matlabc.py` sha256 | `fa5ced627acf0fd28361ca06714823e5e18c0aa5309d1ae87d60e4508487464b` |
-| 被测物字节数 | 1714907 |
-| 生成时 HEAD | `b778fe6480898b676ed8088e1e16683474973953` |
+| 被测物 `matlabc.py` sha256 | `69bed231b013bb134833b925f769066c3d7b5c485ae1413aae2359a5ffb766d3` |
+| 被测物字节数 | 1717722 |
+| 生成时 HEAD | `c7abc014de0e5a32720fd69e87c773313d62a600` |
 | 基线 `AGG_r81.json` sha256 | `c6ba4cab681edd521cd674126a80b3716ff56a479de6d3463cab4a31b6e19374` |
 | 跨文档 | `docs/UNKNOWN_SITES.md` 那档分母 = 340（本表同值） |
 
@@ -299,9 +299,9 @@ R81 的已声明变化**（哪些读数变了、为什么变）。分开的理�
 arm_asm.files | 1369
 arm_asm.json_bytes | 486229
 arm_asm.lines | 381729
-arm_asm.peak_mb | 150.4
+arm_asm.peak_mb | 149
 arm_asm.rc | 0
-arm_asm.seconds | 3.4
+arm_asm.seconds | 3.6
 arm_c.edges | 7060966
 arm_c.files | 62704
 arm_c.funcs | 743509
@@ -319,9 +319,9 @@ arm_c.kind.c_uninit_pointer | 458330
 arm_c.kind.c_unused_static | 230066
 arm_c.kind.c_use_after_free | 657
 arm_c.lines | 36155901
-arm_c.peak_mb | 11094.7
+arm_c.peak_mb | 11089.6
 arm_c.rc | 0
-arm_c.seconds | 3526.6
+arm_c.seconds | 2239.2
 arm_c.unresolved | 1295143
 artifact.dir | E:\matlabc\_kernel\r84
 artifact.kernel_asm_summary.json.bytes | 486229
@@ -366,8 +366,8 @@ corpus.files_repo_plus_oss | 340
 corpus.path | E:\matlabc\_kernel\corpus\linux-6.19.14
 crossdoc.unknown_sites_files | 340
 provenance.cwd_convention | cwd=corpus (target=.)
-provenance.git_head | b778fe6480898b676ed8088e1e16683474973953
-provenance.matlabc_bytes | 1714907
-provenance.matlabc_sha256 | fa5ced627acf0fd28361ca06714823e5e18c0aa5309d1ae87d60e4508487464b
+provenance.git_head | c7abc014de0e5a32720fd69e87c773313d62a600
+provenance.matlabc_bytes | 1717722
+provenance.matlabc_sha256 | 69bed231b013bb134833b925f769066c3d7b5c485ae1413aae2359a5ffb766d3
 ```
 <!-- /KERNEL-RUN -->
