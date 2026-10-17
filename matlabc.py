@@ -32525,6 +32525,25 @@ def run_pipeline(args, root, paths):
             "evidence": "ast",
         })
 
+    # R155 / F3：把 `checks_for_sarif` 里的两类告警也变成事实。
+    # 只扩 `facts`，**不动 `--json` 的 `heuristics`** —— 后者保持零变化
+    # （判据：json_diff --ignore generated_at → rc=0）。
+    # `shape_mismatch` 不在 `checks_for_sarif` 里（它是 render_json 独有），
+    # 所以这里只有两类；那条仍由 render_json 自己算。
+    for _ck, _rule, _lvl in (("uninitialized", "c_uninit_read", "warning"),
+                             ("dead_code", "m_dead_code", "note")):
+        for _r in (checks_for_sarif.get(_ck) or []):
+            facts.append({
+                "kind": "issue",
+                "loc": {"file": _r.get("file") or "",
+                        "line": _r.get("line") or 0},
+                "subject": "%s:%s" % (_r.get("file") or "",
+                                      _r.get("func") or ""),
+                "payload": {"rule_id": _rule, "level": _lvl,
+                            "msg": _r.get("reason") or ""},
+                "evidence": "check",
+            })
+
     return PipelineResult(
         files=files, index=index, edges=edges, stats=stats,
         model=model, c_model=c_model,

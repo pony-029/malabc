@@ -160,7 +160,11 @@ def _run_json(root):
         _log("无法 import analyzer.api：%s" % exc)
         return None
     try:
-        result = analyze(root, no_checks=True)
+        # **不能传 `no_checks=True`**：F3 之后 facts 里那两类告警
+        # （`c_uninit_read` / `m_dead_code`）正是由 `_collect_checks` 产的，
+        # 关掉它等于把 F3 刚扩的东西全部丢掉 —— 实测 `--uninit` 会一直红。
+        # 代价是首次分析慢一些（1300 个 .m：0.73s -> 2.18s），仍在可用区间。
+        result = analyze(root)
     except Exception as exc:                  # 分析失败不能让服务挂掉
         _log("analyze 失败：%r" % (exc,))
         return None
