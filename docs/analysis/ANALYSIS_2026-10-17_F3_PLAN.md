@@ -122,14 +122,25 @@ json_diff before after --ignore generated_at  →  rc=0
 
 ---
 
-## §5 建议的执行顺序
+## §5 执行手册（R157 起，四步 + 排查）
 
-1. 先造 `tests/sample_m/uninit_demo.m`（含一处 `x = y + 1`，`y` 未定义）
-2. 跑 `--json`，确认 `uninitialized` 键里有它（**这证明数据源有货**）
-3. 再改 facts、改 LSP
-4. 判据：三条新的 + `--json` 不变 + 反例 0 条
+| 步 | 命令 | 期望 | 失败时查什么 |
+| --- | --- | --- | --- |
+| ① | `python C:\temp\f3_facts.py --apply` | 943 字节、锚点 1 处 | 锚点被 F2 改动过 ⇒ 重新测（行号会漂） |
+| ② | `json_diff before after --ignore generated_at` | `IDENTICAL` | facts 追加意外影响 `--json` ⇒ 查是否碰了 `heuristics` |
+| ③ | `python tools/lsp_selftest.py --uninit` | 从红转绿 | **先查 `loc["line"]` 是不是 1-based** |
+| ④ | `python tools/lsp_selftest.py` | 仍 19/19 | 换源有副作用 ⇒ 查 `_facts_from_result` 的六字段映射 |
 
-**第 1、2 步必须在改代码之前做**，否则会陷入"改完都绿，不知道是真是假"。
+**②③④ 的顺序不能变**：先证明「没弄坏输出」，再证明「有新能力」，最后证明「旧能力没退化」。
+
+**第 ③ 步最常见的错**：`loc["line"]` 是 **1-based**（`render_json` 的 `uninitialized`
+里 `line` 是源文件行号，实测 `x.m` 的 `b` 在第 3 行）。而 LSP 诊断要 **0-based**。
+`_diagnostics_for` 里已经 `- 1`，`_facts_from_result` 只做透传 ——
+**所以 `loc["line"]` 必须保持 1-based**。如果 `--uninit` 红且行号差 1，就是这里。
+
+**第 ① 步的锚点脆弱性**：`f3_facts.py` 用 `"evidence": "ast",\r\n        })\r\n`
+作为锚点。**F2 已经改过这一段附近**，所以执行前必须先 dry-run 看 `anchor matches: 1`。
+锚点漂了不要硬改，重新用 `ast` 定位那段 `facts = []` 的位置。
 
 ---
 
