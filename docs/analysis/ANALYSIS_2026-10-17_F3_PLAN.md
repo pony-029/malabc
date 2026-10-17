@@ -133,10 +133,14 @@ json_diff before after --ignore generated_at  →  rc=0
 
 **②③④ 的顺序不能变**：先证明「没弄坏输出」，再证明「有新能力」，最后证明「旧能力没退化」。
 
-**第 ③ 步最常见的错**：`loc["line"]` 是 **1-based**（`render_json` 的 `uninitialized`
-里 `line` 是源文件行号，实测 `x.m` 的 `b` 在第 3 行）。而 LSP 诊断要 **0-based**。
-`_diagnostics_for` 里已经 `- 1`，`_facts_from_result` 只做透传 ——
-**所以 `loc["line"]` 必须保持 1-based**。如果 `--uninit` 红且行号差 1，就是这里。
+**第 ③ 步最常见的错**：**已实测确认** `checks_for_sarif["uninitialized"][0]["line"] == 3`，
+而源文件第 3 行正是 `y = a + b;` —— 所以 `line` 是 **1-based**。
+LSP 诊断要 **0-based**，`_diagnostics_for` 里已经 `- 1`，`_facts_from_result` 只做透传。
+⇒ **`loc["line"]` 必须保持 1-based**，转成 0-based 只在一处（`_diagnostics_for`）。
+如果 `--uninit` 红且行号差 1，就是有人在这条链上加/减了两次。
+
+同一测还确认：`tests/sample_uninit` 的 `facts` 是 **0 条**（`x.m` 有 description），
+所以 F3 第 ③ 步转绿**只可能来自 checks 那两条**，不可能巧合地被 `m_missing_doc` 蒙对。
 
 **第 ① 步的锚点脆弱性**：`f3_facts.py` 用 `"evidence": "ast",\r\n        })\r\n`
 作为锚点。**F2 已经改过这一段附近**，所以执行前必须先 dry-run 看 `anchor matches: 1`。
