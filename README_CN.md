@@ -626,9 +626,12 @@ Agent 调用示例（伪代码）：
 python matlabc_lsp.py      # 在 stdin/stdout 上说 LSP
 ```
 
-> **已实测的已知边界**：第一次 `didOpen` 会跑一次**全量** `--json`
-> （62,704 个文件约 1,093 秒）。profile 显示其中 **63%** 是
-> `_collect_checks`，而 LSP 根本用不到它；解析只占 **9%**。
+> **已实测的已知边界**：第一次 `didOpen` 会跑一次全量 `--json`。
+> profile 显示其中 **63%** 是 `_collect_checks`，而 LSP 根本用不到它，
+> 解析只占 **9%**。因此服务端会传 `--no-checks`：1300 个文件上从 2.18 秒
+> 降到 **0.73 秒**（比值 0.335），而 `--json` 的键集合与 `heuristics`
+> 内容逐条不变。折算到 62,704 个文件约 **370 秒**，而不是 1,093 秒——
+> 对编辑器仍然太慢，所以下一步是单文件入口。
 > 详见 `docs/analysis/ANALYSIS_2026-10-17_LSP_PERF.md`。
 
 ---

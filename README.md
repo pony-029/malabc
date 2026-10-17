@@ -656,10 +656,14 @@ construction*, because the server reads the CLI output instead of recomputing.
 python matlabc_lsp.py      # speak LSP over stdin/stdout
 ```
 
-> **Known limit, measured**: the first `didOpen` runs a **full** `--json`
-> (1,093 s on 62,704 files). Profiling shows **63 %** of that is
-> `_collect_checks`, which the LSP does not need at all, while parsing is only
-> **9 %**. See `docs/analysis/ANALYSIS_2026-10-17_LSP_PERF.md`.
+> **Known limit, measured**: the first `didOpen` runs a full `--json`.
+> Profiling showed **63 %** of it was `_collect_checks`, which the LSP never
+> uses — parsing is only **9 %**. The server therefore passes `--no-checks`:
+> on 1,300 files that took the run from 2.18 s to **0.73 s** (ratio 0.335)
+> with `--json` identical in key set and `heuristics` content. Scaled to
+> 62,704 files that is roughly **370 s** instead of 1,093 s — still too slow
+> for an editor, which is why a single-file entry point is the next step.
+> See `docs/analysis/ANALYSIS_2026-10-17_LSP_PERF.md`.
 
 ---
 
