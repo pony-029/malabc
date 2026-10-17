@@ -607,6 +607,66 @@ Agent 调用示例（伪代码）：
 
 ---
 
+## 编辑器集成（LSP）
+
+`matlabc_lsp.py` 是一个最小 Language Server（stdio + JSON-RPC）。它**只跟
+`matlabc.py` 说话**，从不自己重算一遍分析：
+
+| 能力 | 行为 |
+| --- | --- |
+| `initialize` | `textDocumentSync = 1`（full） |
+| `textDocument/didOpen` | 推送诊断：**先发空数组**，再发真实结果 |
+| `publishDiagnostics` | `source = "matlabc"`，一条对应一个 `heuristics` 条目 |
+
+**唯一的硬判据**：某个文件的诊断，必须等于 `matlabc.py <root> --json` 里
+属于该文件的 `heuristics`。这条**构造上成立**——服务端读 CLI 的输出，
+而不是另算一遍。
+
+```powershell
+python matlabc_lsp.py      # 在 stdin/stdout 上说 LSP
+```
+
+> **已实测的已知边界**：第一次 `didOpen` 会跑一次**全量** `--json`
+> （62,704 个文件约 1,093 秒）。profile 显示其中 **63%** 是
+> `_collect_checks`，而 LSP 根本用不到它；解析只占 **9%**。
+> 详见 `docs/analysis/ANALYSIS_2026-10-17_LSP_PERF.md`。
+
+---
+
+## 编程接口与 Rust 运行时
+
+**import 分析器，而不是起子进程**——不 argparse、不 `sys.exit`、
+**0 字节泄漏到 stdout**（当 stdout 是 LSP 通道时，这一条是硬要求）：
+
+```python
+from analyzer.api import analyze, counts
+r = analyze("tests/sample_m")     # -> PipelineResult，不是报表
+counts(r)                         # {'files': 13, 'functions': 19, 'edges': 9, 'checks': 6}
+```
+
+`analyzer.index.Index` 只记录**哪些文件变了**（mtime+size 做快速路径，
+sha256 做真相）。它刻意**不缓存解析结果**——「哪些文件动了」与
+「缓存怎么失效」是两个不同的问题。
+
+```python
+from analyzer.index import Index
+d = Index("proj").refresh()       # d.added / d.changed / d.removed / d.unchanged
+```
+
+`malabc-rt` 是 **Rust 运行时骨架**（零依赖，`cargo test` 5 条通过）。
+它只求值标量 double：
+
+```powershell
+malabc-rt eval "1+2*3"     # 7
+malabc-rt eval "1/0"       # Inf
+malabc-rt eval "a+1"       # rc=1：unimplemented token 'a'
+```
+
+语句、数组、MATLAB 内建函数**都还没有**。它是骨架，不是运行时，
+它自己的 README 里也是这么写的。
+
+---
+
 ## 自验证质量门（Quality Gates）
 
 项目对自己能力的每一项宣称，都由**可执行的护栏**兜底。一条命令全跑：

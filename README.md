@@ -637,6 +637,66 @@ Agent call example (pseudocode):
 
 ---
 
+## Editor Integration (LSP)
+
+`matlabc_lsp.py` is a minimal Language Server (stdio, JSON-RPC). It speaks to
+`matlabc.py`, never re-implements the analysis:
+
+| capability | behaviour |
+| --- | --- |
+| `initialize` | `textDocumentSync = 1` (full) |
+| `textDocument/didOpen` | publishes diagnostics — an **empty** list first, then the real one |
+| `publishDiagnostics` | `source = "matlabc"`, one entry per `heuristics` item |
+
+**The only hard judgement**: the diagnostics for a file must equal the
+`heuristics` of `matlabc.py <root> --json` for that file. That holds *by
+construction*, because the server reads the CLI output instead of recomputing.
+
+```powershell
+python matlabc_lsp.py      # speak LSP over stdin/stdout
+```
+
+> **Known limit, measured**: the first `didOpen` runs a **full** `--json`
+> (1,093 s on 62,704 files). Profiling shows **63 %** of that is
+> `_collect_checks`, which the LSP does not need at all, while parsing is only
+> **9 %**. See `docs/analysis/ANALYSIS_2026-10-17_LSP_PERF.md`.
+
+---
+
+## Programmatic API and Rust Runtime
+
+Import the analyser instead of shelling out — no argparse, no `sys.exit`, and
+**0 bytes leaked to stdout** (which matters when stdout is an LSP channel):
+
+```python
+from analyzer.api import analyze, counts
+r = analyze("tests/sample_m")     # -> PipelineResult, not a report
+counts(r)                         # {'files': 13, 'functions': 19, 'edges': 9, 'checks': 6}
+```
+
+`analyzer.index.Index` tracks **which files changed** (mtime+size as a fast
+path, sha256 as the truth). It deliberately does **not** cache parse results —
+"which files moved" is a different problem from "cache invalidation".
+
+```python
+from analyzer.index import Index
+d = Index("proj").refresh()       # d.added / d.changed / d.removed / d.unchanged
+```
+
+`malabc-rt` is a **Rust runtime skeleton** (zero dependencies, `cargo test`
+5 passed). It evaluates scalar doubles only:
+
+```powershell
+malabc-rt eval "1+2*3"     # 7
+malabc-rt eval "1/0"       # Inf
+malabc-rt eval "a+1"       # rc=1: unimplemented token 'a'
+```
+
+Statements, arrays and MATLAB built-ins are **not** there yet. It is a
+skeleton, not a runtime, and it says so in its own README.
+
+---
+
 ## Quality Gates (self-verifying)
 
 The project's own claims are enforced by executable gates. One command runs them all:
