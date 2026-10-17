@@ -88,6 +88,10 @@ POPEN_STREAMING = {
         "这条与 `_run`（跑单道护栏）是**两条不同的链**：那条的墙钟上限是 "
         "GUARD_TIMEOUT=600，这条是整套测试的 5400。旧键只登记了 `_run`，"
         "所以新增这条链时门口当场报「未登记」—— 门的边界没有跟着代码漂。",
+    "tools/lsp_selftest.py|__init__":
+        "测试用 LSP 客户端（Client.__init__）：起 matlabc_lsp.py 做真实对端；"
+        "它是测试工具、不在产品路径上，且每次会话都由 close() 的 wait(10) 收尾。"
+        "超时由 recv() 的 readline 与 close() 的 wait 兜底，不会永久挂住",
     "tools/check_py36_clean.py|_run_gate":
         "Popen 之后紧跟 communicate(timeout=SCAN_TIMEOUT=600)，超时则 kill + "
         "p.wait() 并返回 None（调用方按红处理）；已设 stdin=DEVNULL。"
