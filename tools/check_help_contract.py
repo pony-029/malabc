@@ -121,7 +121,7 @@ import sys
 # 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
 ROW_SIGNATURE = "B0–B5"
 # H3（R73）：越出签名族、但仍由本门发出的判据前缀（O1 的两向对手方）。
-ROW_EXTRA = "CI1–CI3/G1–G2/H1–H3/N1–N4/O1–O7/R1–R5"
+ROW_EXTRA = "CI1–CI3/G1–G2/H1–H4/N1–N4/O1–O7/R1–R5"
 
 # ---------------------------------------------------------------------------
 # 退出码契约的唯一事实源。每个码都要在 evidence 指的文件里有真实依据
@@ -865,6 +865,27 @@ def _docstring(path):
     return src, doc
 
 
+def help_text_matches(help_text, rendered):
+    """`rendered` 是否**按顺序**包含 `help_text` 的每一非空行。
+
+    返回 `(是否匹配, 第一处缺失的行或 None)`。
+
+    R253：H4 用的就是它。为什么不是「整段子串」：argparse 会插入/重排
+    空行，于是正文一行不少、整段却对不上 —— **第一版就是这么在正确的
+    代码上变红的**。按行推进既能容忍空行差异，又能精确报出少了哪一行。
+    """
+    want = [x.strip() for x in (help_text or "").splitlines() if x.strip()]
+    have = [x.strip() for x in (rendered or "").splitlines()]
+    j = 0
+    for ln in want:
+        while j < len(have) and have[j] != ln:
+            j += 1
+        if j >= len(have):
+            return False, ln
+        j += 1
+    return True, None
+
+
 def help_body_leaked(src):
     """这段源码的**模块 docstring** 里是否含帮助正文（= 那个耦合回来了）。
 
@@ -1503,6 +1524,29 @@ def audit(root, on_problem, cache=None):
                                    HELP_CANON_SNAPSHOT[script])
                 if msg:
                     on_problem(msg)
+
+    # ---- H4（R253）：`HELP_TEXT` 必须**真的**是打印出来的正文 -----------
+    # 正文搬到 `matlabc_help.py` 之后，它是一份**独立副本**：改了却没接线
+    # （或 `epilog` 又指回 `__doc__`）不会有任何现象 —— R5 的字节漂移只能
+    # 发现「变了很多」，发现不了「这一份根本不是那一份」。
+    # 这条直接在渲染结果里找它：**文件里写的 vs 用户看到的**，必须是同一段。
+    _ck4 = "matlabc.py::--help@C%d" % HELP_CANON_COLUMNS
+    if _ck4 not in cache:
+        cache[_ck4] = _run_safe_example(
+            root, "matlabc.py", ["--help"],
+            env_extra={"COLUMNS": str(HELP_CANON_COLUMNS)})
+    _rc4, _out4 = cache[_ck4]
+    # 缓存里存的是**字节**（`_run_safe_example` 不做解码），这里显式解。
+    _txt4 = (_out4 or b"").decode("utf-8", "replace") \
+        if isinstance(_out4, (bytes, bytearray)) else (_out4 or "")
+    _ht4 = _docstring(os.path.join(root, "matlabc.py"))[1] or ""
+    if _rc4 == 0 and _txt4 and "诚实的边界" in _ht4:
+        _ok4, _lost = help_text_matches(_ht4, _txt4)
+        if not _ok4:
+            on_problem("H4 matlabc.py: `--help` 的输出里找不到这一行：%r —— "
+                       "`matlabc_help.HELP_TEXT` 改了却没接线（`epilog` 指回了"
+                       "别处），用户看到的帮助与文件里写的不是同一段"
+                       % ((_lost or "")[:60],))
     return n
 
 
@@ -2727,6 +2771,20 @@ def _selftest():
            help_body_leaked('"""分析器\n诚实的边界\n  * 一些 bullet\n"""'), True)
     expect("R249 H3 坏样本：语法坏掉时不冒充「已泄漏」",
            help_body_leaked("def broken(:\n"), False)
+
+    # ---- R253：H4 两向（纯函数，不碰仓库）------------------------------
+    # `expect(tag, detected, want_problem)` 的第三个参数是「**该不该**被判为
+    # 问题」。所以这里统一传 `not matched`，语义才是「匹配失败 = 问题」。
+    for _tag, _ht, _rd, _want in (
+            ("完全一致", "a\nb\nc", "usage\n\na\nb\nc\n", False),
+            # **复现那次假红**：argparse 插了空行，正文一行不少。
+            ("输出里插了空行也算匹配", "a\nb\nc", "usage\n\na\n\nb\n\nc", False),
+            ("少了一行", "a\nb\nc", "usage\na\n\nc", True)):
+        _ok4, _lost4 = help_text_matches(_ht, _rd)
+        expect("R253 H4：%s" % _tag, not _ok4, _want)
+    # 并且要能说出缺的是哪一行，否则报错等于没说。
+    expect("R253 H4：缺失行识别为 'b'",
+           help_text_matches("a\nb\nc", "usage\na\n\nc")[1] != "b", False)
 
     # ---- R51：诚实的边界逐字契约（纯函数；真实正文既作正例、又作登记对象） ----
     _bd = _docstring(os.path.join(repo_root(), "matlabc.py"))[1]
