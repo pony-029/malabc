@@ -855,11 +855,46 @@ def group10(tmp):
     _chk(rc == 2, "impact/missing-rc2", "rc=%d" % rc)
 
 
+def group11(tmp):
+    """R200 预览 / 结构体字段 / 内置函数 / 孤儿函数。"""
+    # --- preview：**必须含签名行**（R200 第一版用了 body_start，漏了 function 行）---
+    rc, so, se = run([CORPUS, "--preview", "b"])
+    _chk(rc == 0, "preview/rc0", "rc=%d %s" % (rc, se.strip()[:60]))
+    _chk("function z = b(x)" in so, "preview/includes-signature",
+         "预览一个函数却不含它的 function 行 —— 这是这个功能最不该犯的错")
+    _chk("a.m:6" in so, "preview/reports-line-range",
+         "应报 a.m:6 起（1-based）")
+    _chk("调用者" in so and "被调用" in so, "preview/has-context")
+
+    rc, so, se = run([CORPUS, "--preview", "no_such_fn_xyz"])
+    _chk(rc == 2, "preview/missing-rc2", "rc=%d" % rc)
+
+    # --- builtins：采集到了，且有条目 ---
+    rc, so, se = run([CORPUS, "--builtins"])
+    _chk(rc == 0, "builtins/rc0", "rc=%d %s" % (rc, se.strip()[:60]))
+    _chk("numel" in so, "builtins/lists-numel",
+         "sample_m 的 modern.m / parallel.m 都调了 numel")
+    _chk("内置函数" in so, "builtins/has-header")
+
+    # --- orphan：无调用者的在列，有调用者的不在列 ---
+    rc, so, se = run([CORPUS, "--orphan"])
+    _chk(rc == 0, "orphan/rc0", "rc=%d %s" % (rc, se.strip()[:60]))
+    _chk("MyCls.m:MyCls" in so, "orphan/lists-callerless",
+         "MyCls 没有调用者，应在列表里")
+    _chk("a.m:a" not in so, "orphan/excludes-called",
+         "a.m:a 被 switch_case 调用，不该出现在孤儿列表")
+
+    # --- field：不存在的字段必须 rc=2，不许静默 ---
+    rc, so, se = run([CORPUS, "--field", "no_such_field_xyz"])
+    _chk(rc == 2, "field/missing-rc2", "rc=%d" % rc)
+
+
 GROUPS = [("1 开关", group1), ("2 畸形/编码/规模", group2),
           ("3 联动/幂等", group3), ("4 少见入口", group4),
           ("5 LSP 边界", group5), ("6 格式一致/极端参数", group6),
           ("7 并发", group7), ("8 LSP 状态机", group8),
-          ("9 probe", group9), ("10 函数级视图", group10)]
+          ("9 probe", group9), ("10 函数级视图", group10),
+          ("11 预览/字段/内置/孤儿", group11)]
 
 
 def _selftest():

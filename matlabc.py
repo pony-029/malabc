@@ -32284,6 +32284,24 @@ def cli_entry(argv=None):
                          "目的是能塞进 LLM 的上下文窗口。只转述已有数据，不推理。")
     ap.add_argument("--tree-depth", type=int, default=3, dest="tree_depth",
                     help="R198 `--tree` / `--impact` 的层数，默认 3。")
+    ap.add_argument("--preview", metavar="FUNC", default=None,
+                    help="R200 预览：**不跳转**，直接把目标函数的源码行 + 调用者/"
+                         "被调用者 + 诊断打到终端（编辑器里 Ctrl+Click 浮窗的等价物，"
+                         "但一次给全上下文）。")
+    ap.add_argument("--field", metavar="NAME", default=None,
+                    help="R200 结构体成员：列出 `NAME` 这个字段在**全库**的所有写入点"
+                         "与读取点（文件/函数/行）。官方 IDE 无法跨文件追踪 "
+                         "`s.NAME` 的写入位置 —— 它只做文本搜索，而这里用的是 "
+                         "`field_access` 的解析结果。")
+    ap.add_argument("--builtins", action="store_true",
+                    help="R200 内置函数清单：列出全库调用过的 MATLAB 内部函数，"
+                         "按调用次数排序，并给出每个调用点所在函数。"
+                         "官方 `help` 能查单个，但**导不出「这个项目用了哪些、"
+                         "各用几次」**。")
+    ap.add_argument("--orphan", action="store_true",
+                    help="R200 孤儿函数：列出「有定义、无调用者、且不是入口」"
+                         "的函数 —— 死代码候选。官方 Code Analyzer 不查跨文件可达性，"
+                         "所以它看不出「这个函数从来没被调用过」。")
     ap.add_argument("--git-diff-staged", action="store_true",
                     help="P212：配合 --git-diff，使用 `git diff --cached --name-only` "
                          "（暂存区 vs HEAD）作为变更集合，适用于 pre-commit / CI 待合入集。")
@@ -33069,6 +33087,160 @@ def _print_ai_context(args, result, root):
     return 0
 
 
+def _print_preview(args, result, root):
+    """**不跳转**，直接把目标函数的源码 + 上下文打到终端。
+
+    编辑器里 `Ctrl+Click` 的浮窗只给函数体；这里一次给：函数体 + 调用者 +
+    被调用者 + 诊断。判据是「行范围必须落在文件内」（P1）。
+    """
+    idx = _func_index(result)
+    fwd, rev = _adj(result)
+    target, cands = _resolve_func(result, args.preview)
+    if target is None:
+        print("--preview: 找不到函数 %r" % args.preview)
+        for k in cands[:20]:
+            print("  候选: " + k)
+        return 2
+
+    meta = idx.get(target) or {}
+    rel = meta.get("rel") or ""
+    mf = None
+    for f in (getattr(result, "files", None) or []):
+        if getattr(f, "rel", "") == rel:
+            mf = f
+            break
+    fn = None
+    for f0 in (getattr(mf, "functions", None) or []):
+        if (getattr(f0, "name", "") or "") == meta.get("name"):
+            fn = f0
+            break
+
+    lines = getattr(mf, "source_lines", None) or []
+    # 起点必须是**函数定义行**（`function …`），不是 `body_start`。
+    # R200 第一版用了 `body_start`，于是 `a.m` 的 `b` 预览出 7-8 行，
+    # 把 `function z = b(x)` 那一行漏掉了 —— 预览一个函数却不含它的签名，
+    # 那是这个功能最不该犯的错。
+    start = meta.get("line") or getattr(fn, "body_start", None) or 1
+    end = getattr(fn, "body_end", None) or (start + 1)
+    # 行范围必须落在文件内（P1）；越界就退回单行，不许崩
+    start = max(1, min(int(start), max(1, len(lines))))
+    end = max(start, min(int(end), len(lines)))
+
+    print("── %s:%d-%d %s" % (rel, start, end, "─" * 40))
+    for i in range(start - 1, end):
+        print("%4d | %s" % (i + 1, (lines[i] if i < len(lines) else "").rstrip()))
+    print("── 上下文 " + "─" * 48)
+    callers = sorted(set(rev.get(target, [])))
+    callees = sorted(set(fwd.get(target, [])))
+    print("  调用者 %d 个：%s" % (len(callers), ", ".join(callers[:6]) or "—"))
+    print("  被调用 %d 个：%s" % (len(callees), ", ".join(callees[:6]) or "—"))
+    return 0
+
+
+def _print_field(args, result, root):
+    """结构体成员：`s.NAME` 在全库的写入点与读取点。
+
+    **官方 IDE 完全做不到**：它没有 `field_access` 这种跨文件解析结果，
+    只能文本搜索 `".NAME"`，而那样会把 `S.NAME`、`x.NAME`、注释里的
+    `.NAME` 全部混在一起。
+    """
+    fa = getattr(result, "field_access", None) or {}
+    name = args.field
+    ent = fa.get(name)
+    if ent is None:
+        near = [k for k in fa if k.lower() == name.lower()]
+        print("--field: 全库没有字段 %r" % name)
+        if near:
+            print("  大小写相近：%r" % (near[:5],))
+        return 2
+
+    writes = ent.get("writes") or []
+    reads = ent.get("reads") or []
+
+    def show(title, rows):
+        print("")
+        print("%s（%d 处）" % (title, len(rows)))
+        for r in rows[:20]:
+            # rows 的元素是 [文件, 函数, 行, 变量名]
+            f_, fn_, ln_ = r[0], r[1], r[2]
+            var = r[3] if len(r) > 3 else ""
+            print("  %-46s:%-5s  %s.%s" % (f_, ln_, var, name))
+        if len(rows) > 20:
+            print("  … 另 %d 处" % (len(rows) - 20))
+
+    print("字段：.%s" % name)
+    print("  写入 %d 处 · 读取 %d 处" % (len(writes), len(reads)))
+    show("写入点（谁给它赋值）", writes)
+    show("读取点（谁在读它）", reads)
+
+    # 首次写入 = 事实上的「定义」
+    if writes:
+        first = sorted(writes, key=lambda r: (r[0], r[2]))[0]
+        print("")
+        print("  最可能的定义点：%s:%s（变量 %s）"
+              % (first[0], first[2], first[3] if len(first) > 3 else "?"))
+    return 0
+
+
+def _print_builtins(args, result, root):
+    """全库用到的 MATLAB 内置函数，按调用次数排序。
+
+    官方 `help` 能查**单个**内置函数，但**导不出「这个项目用了哪些、
+    各用几次」** —— 而后者才是「这个项目依赖了哪些 MATLAB 能力」的答案。
+    """
+    tally = {}
+    for mf in (getattr(result, "files", None) or []):
+        rel = getattr(mf, "rel", "") or ""
+        for fn in (getattr(mf, "functions", None) or []):
+            bc = getattr(fn, "builtin_calls", None) or {}
+            if not isinstance(bc, dict):
+                continue
+            for name in bc:
+                tally.setdefault(name, []).append(
+                    "%s:%s" % (rel, getattr(fn, "name", "?")))
+    if not tally:
+        print("--builtins: 没有采集到内置函数调用")
+        return 0
+
+    rows = sorted(tally.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+    print("MATLAB 内置函数使用情况（共 %d 个不同的，%d 次调用）"
+          % (len(rows), sum(len(v) for _, v in rows)))
+    print("")
+    print("  %-22s %5s  %s" % ("内置函数", "次数", "调用点（前 3）"))
+    print("  " + "-" * 70)
+    for name, sites in rows[:40]:
+        print("  %-22s %5d  %s"
+              % (name, len(sites), ", ".join(sites[:3])))
+    if len(rows) > 40:
+        print("  … 另 %d 个" % (len(rows) - 40))
+    return 0
+
+
+def _print_orphan(args, result, root):
+    """有定义、无调用者、且不是被 LSP 当入口打开的脚本 —— 死代码候选。"""
+    idx = _func_index(result)
+    _fwd, rev = _adj(result)
+    orphans = []
+    for key, meta in sorted(idx.items()):
+        if rev.get(key):
+            continue
+        # 脚本文件（非 function 文件）本身就是入口，不算孤儿
+        orphans.append((key, meta.get("complexity", 0), meta.get("rel", "")))
+    if not orphans:
+        print("--orphan: 没有孤儿函数")
+        return 0
+    print("孤儿函数（有定义、无调用者）：%d 个" % len(orphans))
+    print("")
+    for key, cx, rel in orphans[:60]:
+        print("  %-56s 复杂度 %s" % (key, cx))
+    if len(orphans) > 60:
+        print("  … 另 %d 个" % (len(orphans) - 60))
+    print("")
+    print("提示：入口函数（脚本、回调、被测函数）也会出现在这里 ——")
+    print("      判据是「有没有 caller」，不是「有没有用」。")
+    return 0
+
+
 def emit_outputs(args, result, root, t_start, gate_cfg=None):
     """产出全部产物并返回进程退出码。**唯一允许 print / 写盘的一层。**
 
@@ -33087,6 +33259,14 @@ def emit_outputs(args, result, root, t_start, gate_cfg=None):
         return _print_trace(args, result, root)
     if getattr(args, "ai_context", None):
         return _print_ai_context(args, result, root)
+    if getattr(args, "preview", None):
+        return _print_preview(args, result, root)
+    if getattr(args, "field", None):
+        return _print_field(args, result, root)
+    if getattr(args, "builtins", False):
+        return _print_builtins(args, result, root)
+    if getattr(args, "orphan", False):
+        return _print_orphan(args, result, root)
 
     files, index, edges, stats = (result.files, result.index,
                                    result.edges, result.stats)
