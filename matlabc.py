@@ -6362,6 +6362,16 @@ def _default_sarif_base(root):
     return str(Path(str(root)) / ".codebuddy" / "analyzer" / "sarif_base.json")
 
 
+def _sarif_no_persist(args):
+    """`--sarif-no-persist`：只输出 SARIF，不往**被分析目录**写基线。
+
+    P94 的默认行为是把指纹存进 `<dir>/.codebuddy/analyzer/sarif_base.json`，
+    让下一次 `--sarif-diff` 零参数就能增量。它有用，但它让「分析是只读的」
+    这句话不成立 —— 只读场景（CI 的只读挂载、审计、别人的仓库）需要能关掉。
+    """
+    return bool(getattr(args, "sarif_no_persist", False))
+
+
 def _save_sarif_fingerprints(fps, path):
     """P94：把当前分析的全部告警指纹写入基线缓存文件。
 
@@ -10793,7 +10803,7 @@ def _persist_and_diff_sarif(checks_for_sarif, args, root, display):
     except Exception as exc:
         print("[WARN] SARIF 渲染/指纹提取失败：%s" % exc)
         return True
-    if args.sarif and not args.sarif_diff:
+    if args.sarif and not args.sarif_diff and not _sarif_no_persist(args):
         try:
             if _save_sarif_fingerprints(cur_fps, auto_base):
                 print("[INFO] SARIF 基线已持久化：%s（%d 条指纹）"
@@ -32509,6 +32519,10 @@ def cli_entry(argv=None):
     ap.add_argument("--sarif-diff", metavar="FILE", default=cfg.get("sarif_diff"),
                     help="输出 Markdown 格式的 SARIF 增量差异报告（新增/已修复告警表，"
                          "需同时指定 --sarif-base）")
+    ap.add_argument("--sarif-no-persist", action="store_true", default=False,
+                    help="R128：--sarif 默认把本次指纹写入被分析目录的 "
+                         ".codebuddy/analyzer/sarif_base.json，供下次 --sarif-diff "
+                         "零参数增量复用；加此开关则只输出不写盘，分析保持只读")
     ap.add_argument("--max-warnings", type=int, default=cfg.get("max_warnings", 0),
                     help="告警数超过该阈值时返回非零退出码（0=不限制，CI 质量门禁）")
     ap.add_argument("--gate-file", metavar="FILE", default=cfg.get("gate_file"),
@@ -33622,10 +33636,12 @@ def emit_outputs(args, result, root, t_start, gate_cfg=None):
             if base_fps is not None:
                 print(f"[INFO] 增量 SARIF：新增 {len(sarif_stats['added'])} 条，"
                       f"已修复 {len(sarif_stats['fixed'])} 条")
-            if auto_base:
+            if auto_base and not _sarif_no_persist(args):
                 cur_fps = _collect_sarif_fps_from_text(sarif_text)
                 if _save_sarif_fingerprints(cur_fps, auto_base):
                     print(f"[INFO] 基线已持久化：{auto_base}（{len(cur_fps)} 条指纹）")
+            elif auto_base:
+                print("[INFO] --sarif-no-persist：跳过基线写盘（分析保持只读）")
             elif _seed_missing_sarif_base:
                 # 显式指定但缺失的基线：用本次结果落盘建基，使下次运行即可增量。
                 if _write_output(args.sarif_base, sarif_text,
