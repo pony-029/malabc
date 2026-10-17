@@ -1,0 +1,15 @@
+[package]
+name = "malabc-rt"
+version = "0.1.0"
+edition = "2021"
+description = "M 语义参考实现的最小骨架（零外部依赖）"
+
+[[bin]]
+name = "malabc-rt"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 2
+
+# 没有 [dependencies]：这是刻意的。项目卖点是离线、零依赖、纯 stdlib，
+# 第一个 crate 就必须守住这条线，否则后面会一路引入 serde / clap。
