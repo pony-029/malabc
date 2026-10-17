@@ -15,6 +15,7 @@
 """
 import argparse
 import json
+import io
 import os
 import subprocess
 import sys
@@ -221,6 +222,46 @@ def _uninit(c):
         _chk(diags[0].get("severity") == 2, "severity 应为 2（warning）")
 
 
+def _save(c):
+    """R154：`didSave` 必须**重算**，不能重放打开那一刻的缓存。
+
+    ⚠ 这条判据要**改文件**，所以它 `copytree` 到临时目录再动手 ——
+    **绝不允许**直接改 `tests/sample_uninit`（那会污染仓库）。
+
+    判据是 `1 -> 0`：改掉未初始化读之后，`didSave` 必须让诊断归零。
+    只测「打开时有 1 条」是不够的 —— 重放缓存也会得到 1 条。
+    """
+    import shutil
+    import tempfile
+    work = tempfile.mkdtemp(prefix="lspsave_")
+    try:
+        target = os.path.join(work, "x.m")
+        with io.open(target, "w", encoding="utf-8", newline="") as fh:
+            fh.write(u"function y = x(a)\n% 反例语料\ny = a + b;\nend\n")
+        c.init(work)
+        u = _uri(target)
+        c.send({"jsonrpc": "2.0", "method": "textDocument/didOpen",
+                "params": {"textDocument": {"uri": u, "languageId": "matlab",
+                                            "version": 1, "text": "x=1;\n"}}})
+        c.recv()                       # 第一条：空
+        d0 = ((c.recv() or {}).get("params") or {}).get("diagnostics") or []
+        _chk(len(d0) == 1, "打开时应有 1 条诊断，实际 %d" % len(d0))
+
+        with io.open(target, "w", encoding="utf-8", newline="") as fh:
+            fh.write(u"function y = x(a)\n% 反例语料\ny = a + 1;\nend\n")
+
+        c.send({"jsonrpc": "2.0", "method": "textDocument/didSave",
+                "params": {"textDocument": {"uri": u}}})
+        after = c.recv() or {}
+        d1 = ((after.get("params") or {}).get("diagnostics") or [])
+        _chk(after.get("method") == "textDocument/publishDiagnostics",
+             "didSave 后应推 publishDiagnostics")
+        _chk(len(d1) == 0,
+             "改掉未初始化读后应为 0 条，实际 %d（说明没重算）" % len(d1))
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--diag", action="store_true")
@@ -230,6 +271,7 @@ def main(argv=None):
     ap.add_argument("--hover", action="store_true")
     ap.add_argument("--symbol", action="store_true")
     ap.add_argument("--uninit", action="store_true")
+    ap.add_argument("--save", action="store_true")
     ap.add_argument("--help", action="store_true")
     args = ap.parse_args(argv)
 
@@ -256,6 +298,8 @@ def main(argv=None):
         groups = [("symbol", _symbols)]
     elif args.uninit:
         groups = [("uninit", _uninit)]
+    elif args.save:
+        groups = [("save", _save)]
     else:
         groups = [("diag", _diag), ("def", _def), ("ref", _ref),
                   ("hover", _hover), ("symbol", _symbols)]
