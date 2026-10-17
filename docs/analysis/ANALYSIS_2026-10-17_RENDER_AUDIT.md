@@ -98,3 +98,40 @@ P1 已经让 `emit_outputs`（1,010 行）成为**唯一调用渲染的地方**�
 2. B2：按主题把 20 个单页分到 `renderers/matlab_pages.py`。
 3. B3：站点三个大函数搬到 `renderers/matlab_site.py`。
 4. 每批一次提交、一次整树重跑（`matlabc.py` 字节会变）。
+
+---
+
+## §7 可立即执行的第一批：3 个叶子（94 行）
+
+依赖分析实测（globs ∩ Load）：
+
+| 函数 | 行数 | 模块级依赖 |
+| --- | --- | --- |
+| 
+ender_tree | 23 | **0** |
+| 
+ender_call_detail | 35 | **0** |
+| 
+ender_call_chain | 36 | **0** |
+
+三者**零模块级依赖**，可整体搬到 
+enderers/matlab_kit.py（与已有的
+html_kit.py 同层）。它们唯一的外部输入就是参数。
+
+**判据**（两条，都现成）：
+
+1. --browse 站点目录：	ools/json_diff.py 不适用（不是 JSON），
+   用「文件集合 + 每个文件的 sha256」，忽略 index.html / manifest.json
+   里 generated_at 那一行。
+2. --json：	ools/json_diff.py before after --ignore generated_at → rc=0。
+
+**风险**：低（无依赖）。
+**收益**：94 行 + **为后续 22 个低依赖函数建立先例**（它们都需要
+_html_esc / _page_rel / _src_href_from_rel，而这些已经在 html_kit.py 里）。
+
+**注意**：
+ender_tree 被 
+ender_markdown_report 调用（后者 deps=15）。
+搬它时要改调用点——用 rom renderers.matlab_kit import render_tree 即可，
+不构成循环（matlab_kit 不 import matlabc）。
+
