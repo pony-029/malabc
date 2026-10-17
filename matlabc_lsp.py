@@ -587,7 +587,15 @@ def handle(msg, out):
         return True
 
     if mid is not None:
-        _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": None})
+        # R167：未实现的方法按 LSP 规范回 **-32601 MethodNotFound**。
+        # 原来回的是 `result: null` —— 那让客户端以为「方法存在，只是没结果」，
+        # 而且掩盖了「这个能力根本没实现」这件事。实测 `workspace/symbol`
+        # 收到的正是 `{"id":9,"result":null}`。
+        _write_message(out, {
+            "jsonrpc": "2.0", "id": mid,
+            "error": {"code": -32601,
+                      "message": "Method not found: %s" % method},
+        })
     return True
 
 
