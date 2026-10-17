@@ -695,6 +695,77 @@ def _doc(c):
     _chk("some_toolbox_fn" in body_ext, "doc/names-the-identifier")
 
 
+def _lens(c):
+    """R236：CodeLens —— 它一直是主推功能，却**一条判据都没有**。
+
+    这里钉三件事：
+      L1 每个函数恰好一条（不能漏、不能重复）
+      L2 调用数来自 `edges`，与真实链一致
+      L3 **`unresolved` 必须报出来**：`↓0` 不等于"不调用任何东西"，
+         函数体里可能有一堆解析不到的 `foo(...)`，而用户会在那些上
+         按 F12 得到「未找到」。
+    """
+    c.init(CORPUS)
+    c.send({"jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": {"textDocument": {
+                "uri": _uri(os.path.join(CORPUS, "a.m")),
+                "languageId": "matlab", "version": 1, "text": "x"}}})
+    c.recv()
+    c.recv()
+    c.send({"jsonrpc": "2.0", "id": 90, "method": "textDocument/codeLens",
+            "params": {"textDocument": {"uri": _uri(os.path.join(CORPUS, "a.m"))}}})
+    r = c.recv() or {}
+    lenses = r.get("result") or []
+    # a.m 有三个函数：a / b / c
+    _chk(len(lenses) == 3, "lens/one-per-function（实际 %d）" % len(lenses))
+    by = {}
+    for l in lenses:
+        d = l.get("data") or {}
+        by[d.get("name")] = d
+        # L1b：锚点必须在函数定义行（0-based）
+        if d.get("name") in ("a", "b", "c"):
+            _chk(l["range"]["start"]["line"] >= 0, "lens/range-nonneg")
+    _chk(set(by) == {"a", "b", "c"}, "lens/all-functions（实际 %r）"
+         % (sorted(by),))
+    # `a` 有两个调用者：`switch_case` 和 `b`（b 回调 a，这是语料里
+    # 刻意留的环）。**第一版写 1 是错的** —— 而它错得很有价值：
+    # 如果哪天环上少了一条边，这里就会掉到 1。
+    _chk((by.get("a") or {}).get("callers") == 2,
+         "lens/a-callers==2（switch_case + b 回调，实际 %r）"
+         % ((by.get("a") or {}).get("callers"),))
+    _chk((by.get("a") or {}).get("callees") == 2,
+         "lens/a-callees==2（实际 %r）" % ((by.get("a") or {}).get("callees"),))
+    _chk("unresolved" in (by.get("a") or {}), "lens/has-unresolved-field")
+
+    # L3：ext_call 调了本库没有的 `some_toolbox_fn` —— ↓0 但 unresolved 1
+    root2 = os.path.join(ROOT, "tests", "sample_doc")
+    if os.path.isdir(root2):
+        c2 = Client()
+        try:
+            f2 = os.path.join(root2, "ext_call.m")
+            c2.init(root2)
+            c2.send({"jsonrpc": "2.0", "method": "textDocument/didOpen",
+                     "params": {"textDocument": {"uri": _uri(f2),
+                                                 "languageId": "matlab",
+                                                 "version": 1, "text": "x"}}})
+            c2.recv()
+            c2.recv()
+            c2.send({"jsonrpc": "2.0", "id": 91,
+                     "method": "textDocument/codeLens",
+                     "params": {"textDocument": {"uri": _uri(f2)}}})
+            rr = c2.recv() or {}
+            ls = rr.get("result") or []
+            _chk(len(ls) == 1, "lens/ext-call-one（实际 %d）" % len(ls))
+            if ls:
+                d = ls[0].get("data") or {}
+                _chk(d.get("callees") == 0,
+                     "lens/ext-callees==0（实际 %r）" % (d.get("callees"),))
+                _chk(d.get("unresolved") == 1,
+                     "lens/ext-unresolved==1（实际 %r）" % (d.get("unresolved"),))
+        finally:
+            c2.close()
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--diag", action="store_true")
@@ -710,6 +781,7 @@ def main(argv=None):
     ap.add_argument("--tokens", action="store_true")
     ap.add_argument("--struct", action="store_true")
     ap.add_argument("--doc", action="store_true")
+    ap.add_argument("--lens", action="store_true")
     ap.add_argument("--help", action="store_true")
     args = ap.parse_args(argv)
 
@@ -746,6 +818,8 @@ def main(argv=None):
         groups = [("struct", _struct)]
     elif args.doc:
         groups = [("doc", _doc)]
+    elif args.lens:
+        groups = [("lens", _lens)]
     elif args.save:
         groups = [("save", _save)]
     else:

@@ -1318,6 +1318,22 @@ def _impact(name, depth=30, down_depth=3):
     }
 
 
+def _unresolved_count(f):
+    """这个函数体里有多少次调用**解析不到定义**（external + indirect）。
+
+    它们不在 `edges` 里，所以 `↓N` 从来不算它们 —— 而用户按 F12 恰恰是
+    在这些上失败。数字必须一起报，否则「3」会被当成分母。
+    """
+    n = 0
+    for key in ("external_calls", "indirect_calls"):
+        d = getattr(f, key, None) or {}
+        if not isinstance(d, dict):
+            continue
+        for v in d.values():
+            n += v if isinstance(v, int) else 1
+    return n
+
+
 def _code_lens(uri):
     """每个函数头顶一条：`↑3 调用者 · ↓12 被调用 · 复杂度 11`。
 
@@ -1352,6 +1368,12 @@ def _code_lens(uri):
                     "name": name,
                     "callers": callers.get(key, 0),
                     "callees": callees.get(key, 0),
+                    # `callees` 只数 `edges`（库内、可跳）。函数体里还有
+                    # 一堆 `foo(...)` 是解析不到的 —— 实测 YALMIP 有
+                    # 24582 次 external + 528 次 indirect，比 edges 还多。
+                    # **只报 3 会让这个数字看起来是全部**，而用户按 F12
+                    # 在那 17 个上一定是「找不到」。所以要一并报出来。
+                    "unresolved": _unresolved_count(f),
                     "complexity": getattr(f, "complexity", 0),
                 },
             })

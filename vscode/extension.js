@@ -451,9 +451,16 @@ function activate(context) {
           });
           return (r.result || []).map((l) => {
             const d = l.data || {};
+            // `↓N` 只数库内、可跳的调用；`unresolved` 是那些解析不到的
+            // （字段取值、toolbox、函数句柄）。**两者必须一起出现**，
+            // 否则用户会拿 N 当分母，然后在那 M 个上按 F12 得到「未找到」。
+            const un = d.unresolved || 0;
+            const title = '↑' + (d.callers || 0) + ' 调用者 · ↓' +
+                          (d.callees || 0) + ' 被调用' +
+                          (un ? '（另 ' + un + ' 未解析）' : '') +
+                          ' · 复杂度 ' + (d.complexity || 0);
             return new vscode.CodeLens(toRange(l.range), {
-              title: '↑' + (d.callers || 0) + ' 调用者 · ↓' +
-                     (d.callees || 0) + ' 被调用 · 复杂度 ' + (d.complexity || 0),
+              title: title,
               command: 'malabc.showImpact',
               arguments: [d.name, doc.uri.toString()],
             });
