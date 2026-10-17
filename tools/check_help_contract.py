@@ -206,6 +206,13 @@ GUARD_CONTRACT = {
            "文档围栏结构坏）",
         2: "找不到护栏（缺输入）",
     },
+    "tools/check_matlab_grammar.py": {
+        0: "通过（GR1–GR6：转置不开启字符串、三种转置写法、`%{` 必须独占一行、"
+           "所有正则可在 Python re 下编译、无 support.function 残留、"
+           "真实语料里没有跨行单引号字符串）",
+        1: "有判据失败（语法规则把转置当字符串，或块注释吃掉了行尾注释）",
+        2: "缺输入（vscode/syntaxes/matlab.tmLanguage.json 不在）",
+    },
     "tools/check_flag_coverage.py": {
         0: "通过（FC1–FC3：sweep_cli 的每个开关都被 args.* 读取过，"
            "名单非空，--help 已排除）",

@@ -14,9 +14,10 @@
     "comments": {
       "patterns": [
         {
+          "comment": "MATLAB 要求 `%{` / `%}` **独占一行**才算块注释。原来无条件匹配 `%{`，于是 `x=1; %{ 说明` 会开一个块注释并吃掉后面所有代码 —— 这是 R214 修的第二处不一致。",
           "name": "comment.block.percentage.matlab",
-          "begin": "%\\{",
-          "end": "%\\}",
+          "begin": "^\\s*%\\{\\s*$",
+          "end": "^\\s*%\\}\\s*$",
           "beginCaptures": { "0": { "name": "punctuation.definition.comment.begin.matlab" } },
           "endCaptures": { "0": { "name": "punctuation.definition.comment.end.matlab" } },
           "foreground": "#7A9E5B"
@@ -41,9 +42,9 @@
           ]
         },
         {
-          "comment": "单引号在 MATLAB 里既是字符串也是转置；这里按字符串处理，转置会被算进去但不会破坏其余高亮。",
+          "comment": "`'` 在 MATLAB 里既是字符串定界符也是转置。R214：只有「前面不是标识符/右括号/右方括号/右花括号/点/数字」时才当字符串 —— `X'`、`(A*B)'`、`s.f'` 都是转置，不再开启字符串。之前无条件匹配，一个 `X'` 就能把后面几十行染成字符串色。",
           "name": "string.quoted.single.matlab",
-          "begin": "'",
+          "begin": "(?<![\\w)\\]}.])'",
           "end": "'",
           "patterns": [
             { "name": "constant.character.escape.matlab", "match": "''" }

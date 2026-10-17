@@ -719,6 +719,7 @@ python tools/check_all.py        # 跑完 tools/check_*.py 全部护栏 + 各自
 | `check_py_js_frontend_shapes.py` | `G1–G7 (py/js)` — Python / JS 前端丢掉一个已经处理过一次的定义形态。独立装置（`_r66/probe_r66a_forms.py`）实测：Python 的 **8** 个真实形态里**漏 4 个**（`def one(): return 1`、`async def`、`-> bool` 返回注解、参数表跨行），JS 的 **10** 个里**漏 8 个**（`async function`、`export function`、`export default function`、`function*`、三种箭头）—— 同一台装置量 **C** 前端是 **0 漏**。第二台装置（`_r66/probe_r66b_domain.py`）量出形参是用 `\(([^)]*)\)` 取的，而它**不能含 `)`** —— 默认值里的嵌套括号（`x=(1, 2)` / `b = g(1, 2)`）会把参数截断、严重时整个定义都认不出来。R66 已把两处修掉（同装置复量：Python 0/8、JS 1/10、值域 0/8、假阳 0/7；剩的那 1 个是**有意披露**的对象方法简写）。本门用**公开 CLI** 跑四个合成夹具，钉住七条互不重叠的判据：Python 四形态（G1）、JS 七形态（G2）、形参值域含注解剥离与嵌套括号（G3）、不假阳（G4）、已披露的「不识别对象方法简写 / 匿名 default」边界**及其正向半边**（G5）、声明起点行号（G6）、不**过度**识别（三引号字符串 / 块注释 / 模板串里独占一行的定义必须不被认出，G7）。夹具完备性（`R2`）与棘轮（`R1`）挡住「判据悄悄缩水」 |
 | `check_flag_coverage.py` | `FC1–FC3` — `tools/sweep_cli.py` 的每个开关都必须在某处被 `args.*` 读到。今晚同一个错犯了两次：`--probe` 是 R180 加的、R184 才补判据；`--probe-cli` 是 R186 加的、R187 才补。**「功能加了但没验证」在代码里不留任何痕迹**——唯一的发现办法是数引用。 |
 | `check_tool_discoverability.py` | `TD1–TD3` — `tools/` 下每个非护栏脚本都必须在**两侧** README 里被提到。护栏有两个对手方（树 + 这张表），而普通工具**一个都没有**——`sweep_cli.py` 因此长到 118 条判据却从未进 README，`lsp_selftest.py` 因此红了六轮没人知道。 |
+| `check_matlab_grammar.py` | `GR1–GR6` —— TextMate 语法**不许把转置当字符串**：`X'` / `(A*B)'` / `s.f'` / `3'` 都不开字符串，而 `a = 'x'`、`{'a'}` 仍要开。`%{` 只有独占一行才是块注释。所有正则必须能在 `re` 下编译、`support.function` 不许回来、真实语料里**不许出现跨行单引号字符串**（MATLAB 字符串不跨行，跨行必是误判）。YALMIP 实测：旧规则 5 行误判（含 `norm.m:128`），新规则 0 行。 |
 | `check_lsp_doc_parity.py` | `LSP1–LSP3` — `vscode/README.md` 的能力表与 `matlabc_lsp.py` 真正实现的 `textDocument/*` 方法必须**双向一致**：实现了没写、写了没实现，两个方向都红。`check_readme_parity` 只比两份 README 彼此，**两边一起错它照样绿**。 |
 | `check_readme_parity.py` | `P1/P2/P4/P5` — 中英 README 的结构分叉 —— 小节数，以及逐节的表行 / 代码块 / mermaid 图数。它**故意不比对行数**，因为中文比英文紧凑。**P4（R61）** 把对手方从「另一侧文件」换成**事实**：每一侧 README 的「质量门表」都必须逐行列出 `tools/check_*.py` 里真实存在的脚本 —— 漏列 / 多列 / 重复行 / 表后紧跟悬空续行，都要红。光靠对等门**永远看不见**那个缺陷：两侧**同时**少了一行，逐节计数当然还相等 **P5（R62）**再把对手方换成「**那道门自己**」：每道护栏在源码里声明 `ROW_SIGNATURE`（本门自己的判据族，或只有它在用的机制名），并把它打进自己的成功行；两侧 README 的对应表行必须逐字含它 —— 把两行的描述整段对调，行的**集合**并没有变，所以光靠 P4 看不见。 |
 | `check_legal_parity.py` | `L1–L7` — 把「双轨许可」的隐形腐烂接上对手方。R69 把许可从「MIT」改成「**代码 MIT + 名称与品牌保留**」，而这个安排有三条其他任何门都看不见的腐烂方式：① MIT 正文被「顺手润色」—— GitHub 的 licensee 靠**正文**识别许可，一句改写就能让那枚 `license-MIT` 徽章变成假话，而此前**没有任何现有门读过 LICENSE 的正文**；② `LICENSE` 与 `LICENSE_CN` 只改了一侧的版权人，两份描述**同一份**授权的文件互相矛盾，而两份都还在、rc 依然是 0；③ README 的版本徽章陈旧 —— **R69 实测就是这个**：两侧 README 写着 `1.16.71`，而 `matlabc.py` 的 `VERSION` 已经是 `1.16.72`，此前完全无人管。L1 把 MIT 正文逐字保留（双轨的前提：**代码侧**必须仍是 MIT）；L2 让版权人在两份许可文件里成为单一事实源；L3 要求「侵权必究」不仅写进许可正文，还要在**每一个读者入口**（两侧 README、CONTRIBUTING）可见；L4 要求两侧 README 的徽章集合逐条相等，且 `license` 徽章仍是 `MIT`；L5 把 `version` 徽章钉在 `VERSION` 常量上；L6 保持 `LICENSE` 与 `LICENSE_CN` 的编号小节相等；L7 要求双轨在 README 的**许可证节内部**可见。为什么重要：本项目的专属说明刻意放在 MIT 授权**之后**的 *附录*里，正是为了让授权正文一字不动 —— 这个承诺在本门出现之前没有任何对手方 |
@@ -817,7 +818,7 @@ python matlabc.py <root> --ai-context "modules/global/compileQuadratic.m:compile
 
 ## 全场景扫测（手工跑，118 条判据）
 
-上面 27 道门是静态的、快的。这一套不是——它要起子进程与 LSP 服务端，所以**不进 `check_all`**，靠手工跑：
+上面 28 道门是静态的、快的。这一套不是——它要起子进程与 LSP 服务端，所以**不进 `check_all`**，靠手工跑：
 
 ```powershell
 python tools/sweep_cli.py              # 118 条 / 9 组 / 约 85 秒
@@ -871,7 +872,7 @@ python matlabc_flow.py --help     # 修复闭环：五站点流水线图 + 五�
 python matlabc_ask.py --help      # 问答式理解：事实底座如何装配成答案
 python matlabc_mcp.py --help      # MCP 服务：五个工具 + 「为什么 stdin 必须切断」
 python gui.py --help              # 图形界面：表单每一格等价于哪个命令行开关
-python tools/check_all.py --help  # 护栏总纲：27 道门各自拦什么
+python tools/check_all.py --help  # 护栏总纲：28 道门各自拦什么
 ```
 
 这不是口头承诺，而是被 `check_help_contract.py` 与 `check_doc_flags.py` 同时盯着的 ——
