@@ -117,6 +117,80 @@ def measure_source(text):
     }
 
 
+def measure_main(text):
+    """把 `main` 拆到**顶层语句**粒度，给出三段边界（P1 的验收尺）。
+
+    边界不是猜的：`parse_args(...)` 那一行是 cli_entry 的出口，
+    `_emit_report_outputs(...)` 那一行是 emit_outputs 的入口。
+    """
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return None
+    main = None
+    for n in tree.body:
+        if isinstance(n, ast.FunctionDef) and n.name == "main":
+            main = n
+            break
+    if main is None:
+        return None
+    lines = text.splitlines()
+    end = getattr(main, "end_lineno", main.lineno)
+    groups = {"argparse": 0, "analyze": 0, "render": 0, "other": 0}
+    parse_args_line = None
+    emit_line = None
+    first_analyze = None
+    for st in main.body:
+        s = st.lineno
+        names = []
+        for c in ast.walk(st):
+            if isinstance(c, ast.Call):
+                if isinstance(c.func, ast.Name):
+                    names.append(c.func.id)
+                elif isinstance(c.func, ast.Attribute):
+                    names.append(c.func.attr)
+        joined = " ".join(names)
+        if "parse_args" in joined and parse_args_line is None:
+            parse_args_line = s
+        if "_emit_report_outputs" in joined and emit_line is None:
+            emit_line = s
+        if "add_argument" in joined or "parse_args" in joined or "ArgumentParser" in joined:
+            kind = "argparse"
+        elif any(k in joined for k in ("render", "write", "dump", "print", "emit", "summar")):
+            kind = "render"
+        elif any(k in joined for k in ("parse", "analy", "scan", "check", "collect", "build")):
+            kind = "analyze"
+        else:
+            kind = "other"
+        groups[kind] += 1
+        # cli_entry 的终点取「parse_args 之后的第一条分析语句」：
+        # parse_args 与它之间的 9 行是前置校验（root.is_dir / binary 参数），
+        # 归 cli_entry 更贴职责（它们不产出任何模型数据）。
+        if kind == "analyze" and parse_args_line and s > parse_args_line and first_analyze is None:
+            first_analyze = s
+    segs = {}
+    split = first_analyze or (parse_args_line + 1 if parse_args_line else None)
+    if split and emit_line and main.lineno < split < emit_line <= end:
+        segs = {
+            "cli_entry": [main.lineno, split - 1, split - main.lineno],
+            "run_pipeline": [split, emit_line - 1, emit_line - split],
+            "emit_outputs": [emit_line, end, end - emit_line + 1],
+        }
+    return {
+        "start": main.lineno,
+        "end": end,
+        "lines": end - main.lineno + 1,
+        "stmts": len(main.body),
+        "groups": groups,
+        "parse_args_line": parse_args_line,
+        "first_analyze_line": first_analyze,
+        "emit_line": emit_line,
+        "segments": segs,
+        "first_line": (lines[main.lineno - 1].strip()[:70]
+                       if main.lineno - 1 < len(lines) else ""),
+    }
+
+
 def measure_git(root):
     """提交史读数；取不到 git 时返回 {"available": False}。"""
     def run(args):
@@ -187,6 +261,29 @@ def _selftest():
         print("  [selftest] 语法错误未被报出")
     except ValueError:
         good += 1
+    src2 = (
+        "def main(argv=None):\n"
+        "    ap = argparse.ArgumentParser()\n"
+        "    ap.add_argument('x')\n"
+        "    args = ap.parse_args(argv)\n"
+        "    files = collect_files(args)\n"
+        "    model = build_model(files)\n"
+        "    _emit_report_outputs(args, model)\n"
+        "    return 0\n"
+    )
+    ms = measure_main(src2)
+    if (ms and ms["stmts"] == 7 and ms["parse_args_line"] == 4
+            and ms["first_analyze_line"] == 5 and ms["emit_line"] == 7):
+        good += 1
+    else:
+        bad += 1
+        print("  [selftest] main 切分边界不对：%s" % (ms,))
+    if ms and [ms["segments"][k][2] for k in ("cli_entry", "run_pipeline", "emit_outputs")] == [4, 2, 2]:
+        good += 1
+    else:
+        bad += 1
+        print("  [selftest] 三段行数不对：%s" % (ms and ms.get("segments"),))
+
     # 真实文件必须能跑通（缺文件时这一条不成立，但也不该判红成「工具坏了」）
     if os.path.isfile(DEFAULT):
         real = measure_source(io.open(DEFAULT, "r", encoding="utf-8",
@@ -204,6 +301,7 @@ def main(argv=None):
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--file", default=DEFAULT)
     ap.add_argument("--no-git", action="store_true")
+    ap.add_argument("--main", action="store_true")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--help", action="store_true")
     args = ap.parse_args(argv)
@@ -226,6 +324,26 @@ def main(argv=None):
     except ValueError as exc:
         print("analyze_structure: %s" % exc)
         return 2
+
+    if args.main:
+        ms = measure_main(text)
+        if not ms:
+            print("analyze_structure: 找不到 main 函数")
+            return 2
+        if args.json:
+            print(json.dumps(ms, ensure_ascii=False, indent=2, sort_keys=True))
+            return 0
+        print("main            L%d..L%d（%d 行 / %d 条顶层语句）"
+              % (ms["start"], ms["end"], ms["lines"], ms["stmts"]))
+        print("boundaries      parse_args=L%s  _emit_report_outputs=L%s"
+              % (ms["parse_args_line"], ms["emit_line"]))
+        print("groups          " + "  ".join("%s:%d" % (k, ms["groups"][k])
+                                              for k in sorted(ms["groups"])))
+        for name in ("cli_entry", "run_pipeline", "emit_outputs"):
+            seg = ms["segments"].get(name)
+            if seg:
+                print("  %-13s L%-6d..L%-6d  %4d 行" % (name, seg[0], seg[1], seg[2]))
+        return 0
 
     m["file"] = os.path.basename(path)
     if not args.no_git:
