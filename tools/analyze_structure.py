@@ -168,14 +168,17 @@ def measure_main(text):
         # 归 cli_entry 更贴职责（它们不产出任何模型数据）。
         if kind == "analyze" and parse_args_line and s > parse_args_line and first_analyze is None:
             first_analyze = s
+    # S1 之后 `parse_args` 已移出 main ⇒ 三段退化成两段（pre_emit + emit_outputs）；
+    # S2b 完成后本工具会自动回到三段。**判据不该因为重构而失效**，所以两种形状都认。
     segs = {}
     split = first_analyze or (parse_args_line + 1 if parse_args_line else None)
-    if split and emit_line and main.lineno < split < emit_line <= end:
-        segs = {
-            "cli_entry": [main.lineno, split - 1, split - main.lineno],
-            "run_pipeline": [split, emit_line - 1, emit_line - split],
-            "emit_outputs": [emit_line, end, end - emit_line + 1],
-        }
+    if emit_line and main.lineno < emit_line <= end:
+        segs["emit_outputs"] = [emit_line, end, end - emit_line + 1]
+        if split and main.lineno < split < emit_line:
+            segs["pre_pipeline"] = [main.lineno, split - 1, split - main.lineno]
+            segs["run_pipeline"] = [split, emit_line - 1, emit_line - split]
+        else:
+            segs["pre_emit"] = [main.lineno, emit_line - 1, emit_line - main.lineno]
     return {
         "start": main.lineno,
         "end": end,
@@ -278,7 +281,7 @@ def _selftest():
     else:
         bad += 1
         print("  [selftest] main 切分边界不对：%s" % (ms,))
-    if ms and [ms["segments"][k][2] for k in ("cli_entry", "run_pipeline", "emit_outputs")] == [4, 2, 2]:
+    if ms and [ms["segments"][k][2] for k in ("pre_pipeline", "run_pipeline", "emit_outputs")] == [4, 2, 2]:
         good += 1
     else:
         bad += 1
@@ -339,7 +342,7 @@ def main(argv=None):
               % (ms["parse_args_line"], ms["emit_line"]))
         print("groups          " + "  ".join("%s:%d" % (k, ms["groups"][k])
                                               for k in sorted(ms["groups"])))
-        for name in ("cli_entry", "run_pipeline", "emit_outputs"):
+        for name in ("pre_pipeline", "run_pipeline", "pre_emit", "emit_outputs"):
             seg = ms["segments"].get(name)
             if seg:
                 print("  %-13s L%-6d..L%-6d  %4d 行" % (name, seg[0], seg[1], seg[2]))

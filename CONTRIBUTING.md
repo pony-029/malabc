@@ -82,6 +82,20 @@ python tools/check_all.py
    **1233.4 秒**（C 臂，62,704 文件）+ 2.4 秒（asm 臂）。
    **不要试图把门数从 `matlabc.py` 移出来解耦** —— N2 已经证明这条路不通。
 
+## 改 `main` / 分析入口后的三条冒烟（R119 起）
+
+切分 `main` 时，**判据比代码重要**。三条都要跑，因为它们各自覆盖一条不同的路径：
+
+1. `python matlabc.py --help` —— 与快照**逐字节**一致
+   （`check_help_contract` 的 R5c；规范形与解释器、终端宽度无关，分辨率 1 字节）。
+2. `python matlabc.py tests/sample_m --json <tmp>.json` ——
+   `files / edges / heuristics / unresolved` 四类计数与 `stats` 不变。
+3. `python matlabc.py <含 .c 的临时目录> --lang c` —— rc=0，且四个读数
+   （C 文件 / C 函数 / 未解析 / 启发式）与改前一致。
+
+**为什么第三条不能省**：只测前两条，`run_lang_path` 的 `c / py / js / asm` 四个分支里
+三个等于没测 —— 而 R121 抽的正是它们。自造一个 10 行的 `.c` 文件，成本远低于漏测。
+
 ## 提交约定
 
 - 提交信息建议 `类型: 简述`，类型如 `feat` / `fix` / `docs` / `refactor` / `test` / `ci`。
