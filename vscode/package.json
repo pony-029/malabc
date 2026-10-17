@@ -16,6 +16,14 @@
   ],
   "main": "./extension.js",
   "contributes": {
+    "languages": [
+      {
+        "id": "matlab",
+        "aliases": ["MATLAB", "matlab"],
+        "extensions": [".m"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
     "configuration": {
       "title": "malabc",
       "properties": {

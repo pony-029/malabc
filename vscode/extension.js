@@ -5,6 +5,7 @@
 
 'use strict';
 
+const fs = require('fs');
 const path = require('path');
 const vscode = require('vscode');
 const { LspClient } = require('./lspClient');
@@ -52,8 +53,22 @@ function activate(context) {
   if (!folders || folders.length === 0) return;
 
   const root = folders[0].uri.fsPath;
-  const lspPath = cfg.get('lspPath') || path.join(root, '..', 'matlabc_lsp.py');
+  // 默认路径：先看工作区根目录下有没有 `matlabc_lsp.py`（工作区就是 malabc 时），
+  // 再看它上一级（工作区是 malabc 的子目录时）。
+  // 原来只写了 `root/../matlabc_lsp.py` —— 工作区正好是 malabc 时它指向
+  // `E:\matlabc\matlabc_lsp.py`，**那个文件不存在**，扩展会静默失败。
+  const directLsp = path.join(root, 'matlabc_lsp.py');
+  const parentLsp = path.join(root, '..', 'matlabc_lsp.py');
+  const lspPath = cfg.get('lspPath')
+    || (fs.existsSync(directLsp) ? directLsp : parentLsp);
   const python = cfg.get('pythonPath', 'python');
+
+  if (!fs.existsSync(lspPath)) {
+    vscode.window.showErrorMessage(
+      'malabc: 找不到 matlabc_lsp.py（试过 ' + directLsp + ' 与 ' + parentLsp +
+      '）。请在设置里填 matlabc.lspPath。');
+    return;
+  }
 
   client = new LspClient({
     python: python,
