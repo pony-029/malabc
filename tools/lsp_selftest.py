@@ -453,6 +453,11 @@ def _tokens(c):
                  "tokens/multi-line-output-param（实际 %r）" % (typ.get("alpha"),))
             _chk(typ.get("multi") == {"function"},
                  "tokens/multi-line-function-name（实际 %r）" % (typ.get("multi"),))
+            # 函数名在签名的第 2 行，也必须拿到 declaration ——
+            # 否则它和单行函数在「定义处」这件事上不一致（R221）。
+            multi_decl = any((m & 1) for (ln, col, txt, t, m) in stoks
+                             if txt == "multi")
+            _chk(multi_decl, "tokens/multi-line-declaration")
         finally:
             c2.close()
 

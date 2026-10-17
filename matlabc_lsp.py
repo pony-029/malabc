@@ -854,6 +854,11 @@ def _semantic_tokens(uri):
     # 关键：**一旦确定，就在该函数体内的所有出现处都标**。
     # 只标定义处不标引用处，正是用户上一轮抱怨的「同类东西两种颜色」。
     scopes = []          # [(start_line0, end_line0, params:set, locals:set)]
+    # 函数名在**签名行范围**内都算 declaration。多行签名时函数名可能
+    # 落在第 2 行（`function [a,b] = ...` / `    multi(...)`），
+    # 而 `my_funcs[nm]` 只记第 1 行 ---- R220 留下的缺口：
+    # `multi` 因此拿不到 declaration 修饰，和单行的 `single` 不一致。
+    decl_span = {}       # name -> (start0, end0_of_signature)
     # 输入参数：`function ... (a, b, c)`；输出参数：`function y = ...` 或
     # `function [z, w] = ...`。**两者都是签名的一部分**，都该标 `parameter`
     # —— R219 第一版只抓括号内的输入，于是 `function y = a(x)` 的 `y`
@@ -879,6 +884,7 @@ def _semantic_tokens(uri):
             if not cont:
                 break
         head = " ".join(chunk)
+        decl_span[nm] = (idx0, max(idx0, j - 1))
         params = set()
         m = fn_in.search(head)
         if m:
@@ -930,7 +936,8 @@ def _semantic_tokens(uri):
                 toks.append((i, start, len(word),
                              _SEM_TYPE_IDX["property"], 0))
                 continue
-            if word in my_funcs and i + 1 == my_funcs[word]:
+            span = decl_span.get(word)
+            if span is not None and span[0] <= i <= span[1]:
                 toks.append((i, start, len(word),
                              _SEM_TYPE_IDX["function"],
                              _SEM_MOD_BIT["declaration"]))
