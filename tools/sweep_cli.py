@@ -519,6 +519,20 @@ def group6(tmp):
         _chk(int(m2.group(1)) == j_funcs, "fmt/xml-functions==json",
              "xml=%s json=%s" % (m2.group(1), j_funcs))
 
+    # **跨语料**再验一次：只用一个语料时，两边都是 13，
+    # 「XML 硬编码 13」也能通过。换成 1 个文件的语料再对一次。
+    uninit = os.path.join(ROOT, "tests", "sample_uninit")
+    if os.path.isdir(uninit):
+        rc, _, _ = run([uninit, "--xml", o("u.xml")])
+        _chk(rc == 0, "fmt/xml-cross-corpus-rc0")
+        if rc == 0:
+            ux = io.open(o("u.xml"), encoding="utf-8").read()
+            um = re.search(r"<stats>.*?<files>(\d+)</files>", ux, re.S)
+            _chk(um is not None and int(um.group(1)) == 1,
+                 "fmt/xml-cross-corpus-files==1",
+                 "sample_uninit 只有 1 个 .m，XML 报了 %s"
+                 % (um.group(1) if um else "NONE"))
+
     mmd = io.open(o("a.mmd"), encoding="utf-8").read()
     nodes = set(re.findall(r"^\s*(\w+)\[", mmd, re.M))
     _chk(len(nodes) == j_funcs, "fmt/mermaid-nodes==functions",
@@ -545,10 +559,15 @@ def group6(tmp):
         _chk(rc in (0, 2), "arg/max-nodes-%s" % v,
              "rc=%d %s" % (rc, se.strip()[:40]))
 
+    # 重复 `--json`：后一个覆盖前一个，**前一个文件根本不该被写**。
+    # 只断言「dup2 存在」是弱判据 —— 两个都写也会通过（R174 实测：确实只写 dup2）。
     rc, _, _ = run([CORPUS, "--json", o("dup1.json"), "--json", o("dup2.json"),
                     "--sarif-no-persist"])
     _chk(rc == 0 and os.path.exists(o("dup2.json")),
          "arg/repeat-json-last-wins")
+    _chk(not os.path.exists(o("dup1.json")),
+         "arg/repeat-json-first-not-written",
+         "dup1 也存在 ⇒ 两个 --json 都生效了，不是『后者覆盖』")
 
     rc, _, _ = run([CORPUS, "--json", o("both.json"), "--xml", o("both.xml"),
                     "--sarif-no-persist"])
