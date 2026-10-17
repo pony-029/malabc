@@ -98,6 +98,28 @@ python tools/check_all.py
 抓到——**只有第三次是在提交前**。前两次是靠 `check_kernel_snapshot` 报
 「字节数少了 34,228」才发现的。
 
+## 写判据前先 `--probe` 一次（R180 起）
+
+十四次判据错里，**十三次是「我以为的结构」错了**。现在有工具可以直接看真实返回：
+
+```powershell
+python tools/sweep_cli.py --probe textDocument/documentSymbol --probe-file a.m
+python tools/sweep_cli.py --probe textDocument/hover --probe-file a.m --probe-line 2 --probe-char 5
+python tools/sweep_cli.py --probe workspace/symbol     # 未实现的方法显示 -32601
+```
+
+输出是**真实 JSON**，不是文档描述。
+
+**它已经能复现的三次错**：
+
+| 我以为是 | 实际是 |
+| --- | --- |
+| `files[].file` | `files[].rel` |
+| `<files count="13">` | `<stats><files>13</files>` |
+| 空文件的 `documentSymbol` → `[]` | **1 个 `<script>` 占位符** |
+
+**规则**：判据里凡要取一个新字段，**先 `--probe` 打印一次，再写断言**。
+
 ## 两条已知的「产品决定」（不是 bug）
 
 这两条**看起来像缺陷，但都是有意的**。写下来的目的是：**半年后有人问「为什么不校验」时，有答案；以及将来改它时，知道条件是什么。**

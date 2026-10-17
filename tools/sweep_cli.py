@@ -882,6 +882,62 @@ def _meta():
     return 0 if bad == 0 else 1
 
 
+def _probe(method, rel_file=None, line=0, char=0, root=None):
+    """**打印任意 LSP 方法的真实返回**，而不是靠记忆猜它的形状。
+
+    R155–R179 十四次判据错，其中十三次是「我以为的结构」错了：
+    `files[].file`（实为 `rel`）、`<files count>`（实为 `<stats><files>`）、
+    空文件的 `documentSymbol`（实为 1 个 `<script>` 占位符）……
+
+    **写判据前先 `--probe` 一次，就不会再猜。**
+
+        sweep_cli.py --probe textDocument/documentSymbol --probe-file a.m
+        sweep_cli.py --probe textDocument/hover --probe-file a.m --probe-line 2
+        sweep_cli.py --probe textDocument/definition --probe-file a.m --probe-line 12
+    """
+    root = root or CORPUS
+    if not os.path.isdir(root):
+        print("sweep_cli: 缺输入（%s）" % root)
+        return 2
+    target = os.path.join(root, rel_file) if rel_file else None
+    if target and not os.path.isfile(target):
+        print("sweep_cli: 文件不存在（%s）" % target)
+        return 2
+
+    c = _lsp_client()
+    try:
+        r = c.init(root)
+        if r is None:
+            print("sweep_cli: initialize 无响应")
+            return 1
+        if target:
+            c.send({"jsonrpc": "2.0", "method": "textDocument/didOpen",
+                    "params": {"textDocument": {"uri": _uri(target),
+                                                "languageId": "matlab",
+                                                "version": 1, "text": "x"}}})
+            c.recv()
+            c.recv()
+            params = {"textDocument": {"uri": _uri(target)}}
+            if method in ("textDocument/hover", "textDocument/definition",
+                          "textDocument/references"):
+                params["position"] = {"line": int(line), "character": int(char)}
+            if method == "textDocument/references":
+                params["context"] = {"includeDeclaration": False}
+        else:
+            params = {}
+        c.send({"jsonrpc": "2.0", "id": 99, "method": method,
+                "params": params})
+        got = c.recv()
+    finally:
+        c.close()
+
+    if got is None:
+        print("（无响应 —— 若这是未实现的方法，协议上应回 -32601）")
+        return 1
+    print(json.dumps(got, ensure_ascii=False, indent=2))
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default=None,
@@ -894,6 +950,12 @@ def main(argv=None):
                     help="第一个失败就停")
     ap.add_argument("--repeat", type=int, default=1,
                     help="同一批判据连跑 N 次，每次都必须是 0 红（抓稳定性）")
+    ap.add_argument("--probe", default=None, metavar="METHOD",
+                    help="打印某个 LSP 方法的真实返回（写判据前先看一眼）")
+    ap.add_argument("--probe-file", default=None, metavar="REL",
+                    help="--probe 时先打开的相对文件（如 a.m）")
+    ap.add_argument("--probe-line", type=int, default=0)
+    ap.add_argument("--probe-char", type=int, default=0)
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--meta", action="store_true")
     ap.add_argument("--help", "-h", action="store_true")
@@ -907,6 +969,9 @@ def main(argv=None):
         for key, _fn in GROUPS:
             print("  " + key)
         return 0
+    if args.probe:
+        return _probe(args.probe, args.probe_file, args.probe_line,
+                      args.probe_char)
     if args.selftest:
         bad, good = _selftest()
         return 0 if bad == 0 and good >= 7 else 1
