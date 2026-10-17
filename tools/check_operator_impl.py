@@ -17,12 +17,16 @@
 
 C''5（R40）追加的第三条判据 —— **「不做」必须让用户看得见**：
     ∀ kind ∈ _UNIMPLEMENTED_KINDS:
-        kind 必须出现在 matlabc.py 的**模块 docstring** 里
+        kind 必须出现在 matlabc.py 的**帮助正文**里
     为什么：`_UNIMPLEMENTED_KINDS` 是源码里的字典，用户永远看不到它。
     一个「不做」的算子如果只写在源码里，用户从 `--help` 得到的印象仍是
     「这个工具会查未定义名」—— 那就是用沉默冒充能力。
-    而 matlabc.py 的模块 docstring **就是它的 --help 正文**，
-    所以这条判据等于「未实现项必须在帮助里说明理由」。
+
+    ⚠ R249 起，帮助正文**不再**是 `matlabc.py` 的模块 docstring，而是
+    同目录 `matlabc_help.py` 里的 `HELP_TEXT`（原因：正文留在被 W2 记
+    sha256 的文件里，改一句文案就作废一次 19 分钟的全库测量）。
+    所以这里按**显式约定**取正文：`<stem>_help.py` 存在就用它的
+    `HELP_TEXT`，否则退回模块 docstring。
 
 为什么用 `"kind": "<name>"` 而不是「名字出现过」：
     `_on("py_eval_usage")` 这种开关判断里也有名字，若按「出现过」判就会
@@ -100,6 +104,37 @@ def _keys_of(block, name):
     return re.findall(r'^\s{4}"([A-Za-z_][\w]*)"\s*:', head, re.M)
 
 
+def _help_text(path):
+    """帮助正文：同目录 `<stem>_help.py` 的 `HELP_TEXT`，否则模块 docstring。
+
+    R249：`matlabc.py` 的帮助正文搬到了 `matlabc_help.py`（正文留在被
+    W2 记 sha256 的文件里会让「改一句文案」作废一次全库测量）。这里按
+    显式约定回落 —— 合成样本没有兄弟 `_help.py`，行为不变。
+    """
+    import ast                     # 本文件原先把 ast 的 import 放在函数内
+    stem = os.path.splitext(os.path.basename(path))[0]
+    helper = os.path.join(os.path.dirname(os.path.abspath(path)),
+                          stem + "_help.py")
+    if os.path.isfile(helper):
+        try:
+            tree = ast.parse(io.open(helper, encoding="utf-8",
+                                     errors="replace").read())
+        except (OSError, SyntaxError):
+            tree = None
+        for node in (tree.body if tree else []):
+            if not isinstance(node, ast.Assign):
+                continue
+            for tgt in node.targets:
+                if isinstance(tgt, ast.Name) and tgt.id == "HELP_TEXT":
+                    try:
+                        val = ast.literal_eval(node.value)
+                    except (ValueError, SyntaxError):
+                        continue
+                    if isinstance(val, str):
+                        return val
+    return _module_docstring(path)
+
+
 def _module_docstring(path):
     """取模块 docstring；解析不了返回 None。
 
@@ -154,7 +189,7 @@ def analyze(src_path):
             findings["no_reason"].append(kind)
 
     # C''5（R40）：理由还必须出现在**模块 docstring**（即 --help 正文）里。
-    doc = _module_docstring(src_path) or ""
+    doc = _help_text(src_path) or ""
     for kind in unimpl:
         if kind not in doc:
             findings["undocumented"].append(kind)
