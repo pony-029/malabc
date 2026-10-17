@@ -8,7 +8,6 @@
     { "include": "#numbers" },
     { "include": "#keywords" },
     { "include": "#constants" },
-    { "include": "#functions" },
     { "include": "#operators" }
   ],
   "repository": {
@@ -71,17 +70,9 @@
     "constants": {
       "patterns": [
         {
+          "comment": "只保留真正不会歧义的常量。`i` / `j` 常被当循环变量，`end` 是关键字（已在上面的 keyword 规则里），都不能列进来 —— R212 实测：`for i = 1:size(X,1)` 的 i 被染成常量色，和 `X(:,1)` 的索引色并存，看起来就是「同类不一致」。",
           "name": "constant.language.matlab",
-          "match": "\\b(?:true|false|pi|Inf|inf|NaN|nan|eps|i|j|end)\\b"
-        }
-      ]
-    },
-    "functions": {
-      "patterns": [
-        {
-          "comment": "标识符紧跟左括号 —— 当作函数调用着色。",
-          "name": "support.function.matlab",
-          "match": "\\b([A-Za-z_]\\w*)(?=\\s*\\()"
+          "match": "\\b(?:true|false|pi|Inf|inf|NaN|nan|eps)\\b"
         }
       ]
     },
