@@ -24,16 +24,20 @@ model attrs: c_bridge, c_model, callers_of, calls_of, doc_todos, edges,
 
 | 名字 | 在 model 上？ | 实测条数（`tests/sample_m`） |
 | --- | --- | --- |
-| `uninit` | **是，但从不赋值** | 0 |
+| `uninit` | **是**（L19863–19868 真有赋值） | 0（该语料确实无此告警） |
 | `dead_code` | **否** | — |
 | `shape_mismatch` | **否** | — |
 
-**`model.uninit` 是一个死字段**：全仓 `grep` 只找到两处**读**它
-（`matlabc.py:465` 的注释、`21117` 的 docstring），**没有任何一处给它赋值**。
-它之所以存在且为空，是 `build_analysis_model` 的默认值。
+**`model.uninit` 有数据**：`build_analysis_model` 在 `return SimpleNamespace(...,
+uninit=uninit)` 里填入，值来自 L19855 的 `_detect_uninitialized(mf)` 循环。
 
-⇒ F2 不只是「把三类并入 facts」，还要**先让 `model.uninit` 真正有数据**
-——否则 LSP 与站点如果改读 `model.uninit`，会拿到「永远是 0 条」的假干净。
+> ⚠ 本文件初稿曾把 `model.uninit` 写成「死字段」，理由是 `grep "model.uninit ="`
+> 只找到两处**读**。那是个错误结论——赋值走的是 `SimpleNamespace(uninit=...)`
+> 这条 kwargs 路径，而我的 grep 模式根本没覆盖它。**「grep 没找到」不等于
+> 「不存在」**，这条已记进本节。
+
+**真正的问题不是「没数据」，而是「算了两遍」**：`render_json`（L14295）
+没有用 `model.uninit`，而是重新遍历 `files` 再调一次 `_detect_uninitialized(mf)`。
 
 ---
 
