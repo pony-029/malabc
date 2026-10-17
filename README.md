@@ -816,6 +816,43 @@ that only ever grows stops meaning anything.
 
 ---
 
+## Full-scenario sweep (hand-run, 111 checks)
+
+The 25 gates above are static and fast. This one is not — it starts subprocesses and LSP
+servers, so it stays out of `check_all` and is run by hand:
+
+```powershell
+python tools/sweep_cli.py              # 111 checks in 9 groups, ~85 s
+python tools/sweep_cli.py --only 1,3   # pick groups
+python tools/sweep_cli.py --json       # machine-readable, with per-group timings
+python tools/sweep_cli.py --repeat 2   # run twice; a >50% spread warns
+python tools/sweep_cli.py --meta       # 13 mutation checks: can the judgements go red?
+python tools/sweep_cli.py --probe textDocument/hover --probe-file a.m --probe-line 2
+```
+
+| group | covers |
+| --- | --- |
+| 1 | flags: json / xml / browse / mermaid / dot / sarif / compact / no-checks / reproducible, plus the empty-directory exit code of all four language branches |
+| 2 | malformed input (empty / comment-only / syntax error / Chinese names / names with spaces), scale (5000 lines / 8 levels), encoding (BOM / CRLF / LF / mixed) |
+| 3 | flag combinations, incremental cold vs warm, idempotency across three runs, `--mixed`, round-trip |
+| 4 | rarely used entries: `--version`, `--json-level`, unknown flags must give rc=2 |
+| 5 | LSP boundaries: no `rootUri`, non-`.m` file, missing file, unknown method returns `-32601` |
+| 6 | cross-format consistency (XML stats vs JSON, mermaid nodes vs functions) and extreme arguments |
+| 7 | concurrency: two `--json`, two `--browse`, three mixed |
+| 8 | LSP state machine: consecutive `didSave` (1→0→1), `didClose` then reopen, empty and script files |
+| 9 | `--probe` itself |
+
+**`--meta` is the one that matters most.** It breaks each guard on purpose and requires the
+corresponding judgement to turn red — a judgement that can never fail is decoration. It has
+already caught two: a test that ran three times inside the same second (so `generated_at` never
+differed and the stripping of it was never exercised), and one that only asserted "the last
+writer's file exists" without asserting "the first writer's file does not".
+
+**`--probe` exists because thirteen of the fourteen judgement errors in this project came from
+guessing a return shape instead of printing it.** Use it before asserting on any new field.
+
+---
+
 ## Built-in help (illustrated, one story per entry point)
 
 Each entry script's module docstring **is** its `--help` text, and all of them follow the same

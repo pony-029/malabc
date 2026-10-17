@@ -779,6 +779,37 @@ python tools/check_baseline.py --full    # 真基线：两侧各跑一次全量�
 
 ---
 
+## 全场景扫测（手工跑，111 条判据）
+
+上面 25 道门是静态的、快的。这一套不是——它要起子进程与 LSP 服务端，所以**不进 `check_all`**，靠手工跑：
+
+```powershell
+python tools/sweep_cli.py              # 111 条 / 9 组 / 约 85 秒
+python tools/sweep_cli.py --only 1,3   # 选组
+python tools/sweep_cli.py --json       # 机器可读，含每组耗时
+python tools/sweep_cli.py --repeat 2   # 连跑两轮；轮间耗时差 >50% 会告警
+python tools/sweep_cli.py --meta       # 13 条变异测试：判据能不能变红
+python tools/sweep_cli.py --probe textDocument/hover --probe-file a.m --probe-line 2
+```
+
+| 组 | 覆盖 |
+| --- | --- |
+| 1 | 开关：json / xml / browse / mermaid / dot / sarif / compact / no-checks / reproducible，以及**四个语言分支的空目录退出码** |
+| 2 | 畸形输入（空 / 只有注释 / 语法错误 / 中文名 / 带空格名）、规模（5000 行 / 8 层）、编码（BOM / CRLF / LF / 混合） |
+| 3 | 开关联动、增量冷热、三次幂等、`--mixed`、往返 |
+| 4 | 少见入口：`--version` / `--json-level`、未知开关必须 rc=2 |
+| 5 | LSP 边界：无 `rootUri`、非 `.m` 文件、缺失文件、未知方法回 `-32601` |
+| 6 | 四格式数字一致（XML `stats` vs JSON、mermaid 节点数 vs 函数数）+ 极端参数 |
+| 7 | 并发：两个 `--json`、两个 `--browse`、三个混合 |
+| 8 | LSP 状态机：连续 `didSave`（1→0→1）、`didClose` 后重开、空文件与脚本文件 |
+| 9 | `--probe` 自己 |
+
+**最该跑的是 `--meta`。** 它把每条防护**故意改错**一次，要求对应判据变红——**一条永远不会失败的判据只是装饰**。它已经抓到两个：一个测试三次跑在同一秒内（`generated_at` 从未不同，「剔除它」这件事从未被检验），另一个只断言「后者写的文件存在」而没断言「前者写的文件不存在」。
+
+**`--probe` 存在的原因：这个项目十四次判据错里，十三次是「猜返回结构」而不是「把它打印出来」。** 对任何新字段下断言前，先用它看一眼。
+
+---
+
 ## 内置帮助（每个入口都图文并茂）
 
 每个入口脚本的模块 docstring 就是它 `--help` 的正文，都按同一套骨架写：
