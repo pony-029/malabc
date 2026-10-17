@@ -51,6 +51,11 @@ R5 「帮助体积棘轮」（**三臂**，R64/C13-9 重构）：`--help` 受
     规范形（`_canon_help`）再做**逐字节相等**断言 ⇒ 分辨率 15,135 B → **1 B**。
     诚实声明：规范形**看不见布局**（缩进、折行位置），布局由臂 ①② 兜。
 
+R249「H3」帮助正文不得搬回被测文件：`docs/KERNEL_RUN.md` 的 provenance
+    记的是 `matlabc.py` 的 sha256，而帮助正文原来就是那个文件的模块
+    docstring ⇒ 改一句文案就改变被测身份，作废一次 19 分钟的全库测量
+    （R238）。现在正文在 `matlabc_help.py`；H3 守着它别搬回去。
+
 R51（C''''2）「诚实的边界」逐字契约：`--help` 的「诚实的边界」小节里每一条
     bullet 必须被登记表 `BOUNDARY_CLAIMS` **恰好一条**认领（未登记 → 红；
     指向已不存在的边界 → 红；前缀不唯一 → 红），且登记项声明的 token 必须
@@ -116,7 +121,7 @@ import sys
 # 对手方 = tools/check_readme_parity.py 的 P5（表行内容 ⇄ 门）。
 ROW_SIGNATURE = "B0–B5"
 # H3（R73）：越出签名族、但仍由本门发出的判据前缀（O1 的两向对手方）。
-ROW_EXTRA = "CI1–CI3/G1–G2/H1–H2/N1–N4/O1–O7/R1–R5"
+ROW_EXTRA = "CI1–CI3/G1–G2/H1–H3/N1–N4/O1–O7/R1–R5"
 
 # ---------------------------------------------------------------------------
 # 退出码契约的唯一事实源。每个码都要在 evidence 指的文件里有真实依据
@@ -2092,6 +2097,25 @@ def audit_guards(root, on_problem):
     for msg in signature_census_problems(GUARD_CONTRACT, sig_by_script,
                                          src_by_script):
         on_problem(msg)
+
+    # ---- H3（R249）：帮助正文不许搬回 `matlabc.py` ---------------------
+    # `docs/KERNEL_RUN.md` 的 provenance 记的就是 `matlabc.py` 的 sha256。
+    # 正文一旦回到那个文件里，**改一句文案就改变被测身份**，一次 19 分钟
+    # 的全库测量随之作废（R238 实测：只是把门数从 28 改成 29）。
+    # 现在正文住在 `matlabc_help.py`，这条守着它别再搬回去 ——
+    # 否则耦合会**悄悄**回来，而且没有任何现象提醒你。
+    try:
+        with io.open(os.path.join(root, "matlabc.py"), "r",
+                     encoding="utf-8", errors="replace") as _fh:
+            _mc_doc = ast.get_docstring(ast.parse(_fh.read()),
+                                        clean=False) or ""
+    except (OSError, SyntaxError):
+        _mc_doc = ""
+    if "诚实的边界" in _mc_doc:
+        on_problem("H3 matlabc.py 的模块 docstring 里又有帮助正文了 —— "
+                   "`docs/KERNEL_RUN.md` 记的是本文件的 sha256，正文留在这里"
+                   "会让「改一句文案」改变被测身份、作废一次 19 分钟的全库"
+                   "测量（R238 的成因）。正文应留在 `matlabc_help.py`")
     try:
         with io.open(os.path.join(root, "tools/check_all.py"), "r",
                      encoding="utf-8", errors="replace") as fh:
