@@ -367,7 +367,7 @@ corpus.path | E:\matlabc\_kernel\corpus\linux-6.19.14
 crossdoc.unknown_sites_files | 340
 provenance.cwd_convention | cwd=corpus (target=.)
 provenance.git_head | c7abc014de0e5a32720fd69e87c773313d62a600
-provenance.matlabc_bytes | 1690044
-provenance.matlabc_sha256 | 6df9fc676538e35e7000f1fc72df3d1a072409d1530fd3f56926280779c2c33b
+provenance.matlabc_bytes | 1691215
+provenance.matlabc_sha256 | d03d92cf78b9907b2e1f8f1ec76a1dfde1982fdd16bd55c90ff557b5c63d46d0
 ```
 <!-- /KERNEL-RUN -->
