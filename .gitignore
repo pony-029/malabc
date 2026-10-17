@@ -8,6 +8,13 @@ __pycache__/
 mc_flow_*.json
 eval_ai_fix_report.json
 
+# 临时备份 / 冲突残留（R241 踩过：变异测试留下的 package.json.bak 被
+# `git add -A` 一起提交了。备份文件只在验证期间存在，不该进历史）
+*.bak
+*.orig
+*.rej
+*.swp
+
 # 分析器 / 打包链产物（原先只在归档文档里「声称已落地」，实际缺失；
 # 多次分析或打包后会把整棵树污染进 git status —— 现在真正落地）
 .analyzer_*
