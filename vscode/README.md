@@ -3,6 +3,16 @@
 **零 npm 依赖**：不装 `vscode-languageclient`，手写协议客户端（`lspClient.js`，约 70 行）。
 符合本仓"离线、零依赖、内网可用"的设定。
 
+**零配置**：分析器（`matlabc_lsp.py` + `matlabc.py` + `analyzer/` 等）**打包在扩展里**。
+装完直接可用，不需要指定 `matlabc.lspPath`；本仓开发者仍可用设置覆盖成工作区那份。
+
+**后台预热**：`initialize` 一到就开始分析（Source Insight 式），**不等第一次 F12**。
+打开大仓库（如 YALMIP，1665 个 `.m`）时，约 35 秒后跳转/悬停/大纲全部 0 秒返回；
+在那之前按 F12 会等它算完（而不是静默失败）。
+
+**自带语法与图标**：`syntaxes/matlab.tmLanguage.json` 提供 MATLAB 高亮（注释单独绿色），
+`icons/matlab.svg` 让 `.m` 在资源管理器里一眼可辨。
+
 ## 现在能做什么
 
 | 能力 | 来源 | 状态 |
