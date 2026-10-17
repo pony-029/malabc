@@ -982,6 +982,52 @@ def _probe(method, rel_file=None, line=0, char=0, root=None):
     return 0
 
 
+def _probe_cli(root=None, extra=()):
+    """**打印 `--json` 的真实结构**，而不是靠记忆猜字段名。
+
+    和 `--probe` 是同一个思路（先打印再断言），只是对象从 LSP 换成 CLI。
+    R155–R184 的十五次判据错里，`files[].file`（实为 `rel`）、
+    `<files count>`（实为 `<stats><files>`）都属于这一类——**猜字段名**。
+
+        sweep_cli.py --probe-cli
+        sweep_cli.py --probe-cli tests/sample_uninit
+    """
+    root = root or CORPUS
+    if not os.path.isdir(root):
+        print("sweep_cli: 缺输入（%s）" % root)
+        return 2
+    import tempfile
+    fd, tmp = tempfile.mkstemp(suffix=".json", prefix="probecli_")
+    os.close(fd)
+    try:
+        rc, so, se = run([root, "--json", tmp, "--sarif-no-persist"]
+                         + list(extra))
+        if rc != 0:
+            print("sweep_cli: --json rc=%d\n%s" % (rc, se.strip()[:300]))
+            return 1
+        d = load(tmp)
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+
+    files = d.get("files") or []
+    edges = d.get("edges") or []
+    heur = d.get("heuristics") or []
+    out = {
+        "top_keys": sorted(d.keys()),
+        "stats_keys": sorted((d.get("stats") or {}).keys()),
+        "files0_keys": sorted((files[0] if files else {}).keys()),
+        "edges0": (edges[0] if edges else None),
+        "heuristics0": (heur[0] if heur else None),
+        "counts": {"files": len(files), "edges": len(edges),
+                   "heuristics": len(heur)},
+    }
+    print(json.dumps(out, ensure_ascii=False, indent=2))
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default=None,
@@ -1000,6 +1046,8 @@ def main(argv=None):
                     help="--probe 时先打开的相对文件（如 a.m）")
     ap.add_argument("--probe-line", type=int, default=0)
     ap.add_argument("--probe-char", type=int, default=0)
+    ap.add_argument("--probe-cli", default=None, metavar="ROOT",
+                    help="打印 `--json` 的真实结构（含 files[0] / stats 的键）")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--meta", action="store_true")
     ap.add_argument("--help", "-h", action="store_true")
@@ -1013,6 +1061,8 @@ def main(argv=None):
         for key, _fn in GROUPS:
             print("  " + key)
         return 0
+    if args.probe_cli is not None:
+        return _probe_cli(args.probe_cli or None)
     if args.probe:
         return _probe(args.probe, args.probe_file, args.probe_line,
                       args.probe_char)

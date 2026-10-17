@@ -790,6 +790,7 @@ python tools/sweep_cli.py --json       # 机器可读，含每组耗时
 python tools/sweep_cli.py --repeat 2   # 连跑两轮；轮间耗时差 >50% 会告警
 python tools/sweep_cli.py --meta       # 13 条变异测试：判据能不能变红
 python tools/sweep_cli.py --probe textDocument/hover --probe-file a.m --probe-line 2
+python tools/sweep_cli.py --probe-cli tests/sample_m   # 打印 --json 的结构
 ```
 
 | 组 | 覆盖 |

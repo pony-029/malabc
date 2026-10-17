@@ -828,6 +828,7 @@ python tools/sweep_cli.py --json       # machine-readable, with per-group timing
 python tools/sweep_cli.py --repeat 2   # run twice; a >50% spread warns
 python tools/sweep_cli.py --meta       # 13 mutation checks: can the judgements go red?
 python tools/sweep_cli.py --probe textDocument/hover --probe-file a.m --probe-line 2
+python tools/sweep_cli.py --probe-cli tests/sample_m   # print the --json shape
 ```
 
 | group | covers |
