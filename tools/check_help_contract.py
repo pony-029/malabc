@@ -206,6 +206,12 @@ GUARD_CONTRACT = {
            "文档围栏结构坏）",
         2: "找不到护栏（缺输入）",
     },
+    "tools/check_lsp_doc_parity.py": {
+        0: "通过（LSP1–LSP3：代码实现的 textDocument/* 能力方法 ⇄ "
+           "vscode/README.md 能力表，双向一致且非空）",
+        1: "有方向不一致（实现了没写 / 写了没实现）",
+        2: "缺输入（matlabc_lsp.py 或 vscode/README.md 不在）",
+    },
     "tools/check_baseline.py": {
         0: "通过（P1–P4/T1：默认模式＝前置条件 + 门自身两向自证；--full＝无回归）",
         1: "门自身两向自证失败，或 --full 发现回归",

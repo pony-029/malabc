@@ -270,6 +270,13 @@ REVERSE_CASES = (
                 "files": {"thing.rs": "fn main() {}\n"},
                 "stderr_must": ("[warn]", "Rust", "thing.rs"),
                 "stderr_must_not": ("Traceback",),
+                # R165 把 `--lang c` 的「无目标文件」从 rc=0 改成 rc=1，
+                # 与 py/js/asm/默认 MATLAB 分支统一（此前它是唯一例外，
+                # 会把「路径拼错」伪装成「分析成功，只是没文件」）。
+                # 这个 case 恰好落在那条路径上，所以期望随之改成 1。
+                "expect_rc": (1,),
+                # 这条路径 CLI 不写 JSON（rc!=0），所以别把 JSON 当载体。
+                "allow_no_json": True,
             },
         ),
     },
@@ -695,8 +702,14 @@ def check_run(root, python_exe, cid, run, tmpdir):
 
     per = funcs_by_rel(jt)
     if per is None:
-        probs.append("V6 case「%s」没有产出可解析的 JSON（--json 是判据的载体）" % cid)
-        per = {}
+        # `allow_no_json`：某些 case 判的是「无目标文件」这条路径，而那时
+        # CLI 按约定以非零码退出且**不写 JSON**（R165：`--lang c` 与
+        # py/js/asm/默认分支统一）。要求它产出 JSON 等于要求 rc=0。
+        if run.get("allow_no_json"):
+            per = {}
+        else:
+            probs.append("V6 case「%s」没有产出可解析的 JSON（--json 是判据的载体）" % cid)
+            per = {}
 
     for rel, want in sorted((run.get("expect_funcs") or {}).items()):
         nm = os.path.basename(rel)

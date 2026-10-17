@@ -1,0 +1,138 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""LSP 文档 ⇄ 代码 双向一致。
+
+    python tools/check_lsp_doc_parity.py            # 校验
+    python tools/check_lsp_doc_parity.py --selftest # 判据自证
+
+**为什么需要这道门**：`check_readme_parity` 只保证 README 的中英两侧
+**彼此对等**——两边一起错，它照样绿。R180/R181 实测两份文档同时过时：
+
+    README.md        说「诊断 == heuristics」，而 R161 之后是**超集**
+    README.md        没提 `didSave`（R153 就实现了）
+    vscode/README.md 说「诊断只有一类 m_missing_doc」，而 R161 之后是四类
+
+**根因**：文档里的「能力表」没有任何东西去核对代码。
+
+本门核对两件事：
+
+1. **代码里实现的 `textDocument/*` 方法** ⊆ **vscode/README.md 能力表里列出的**
+2. 能力表里列出的每个方法，**代码里必须真的有**
+
+第 1 条防「实现了但没写」，第 2 条防「写了但没实现」。
+
+判据族 **LSP1–LSP3**。
+
+退出码：
+    0  = 双向一致（LSP1–LSP3 全绿）
+    1  = 有方向不一致（实现了没写 / 写了没实现），或 --selftest 失败
+    2  = 缺输入（matlabc_lsp.py 或 vscode/README.md 不在）
+"""
+import argparse
+import io
+import os
+import re
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+LSP = os.path.join(ROOT, "matlabc_lsp.py")
+VREADME = os.path.join(ROOT, "vscode", "README.md")
+
+#: P5 的对手方：本门在 README 质量门表那一行里声明的判据族。
+ROW_SIGNATURE = "LSP1–LSP3"
+
+#: 不是「能力」的协议方法：生命周期与同步通知。
+NOT_CAPABILITY = {
+    "textDocument/didOpen", "textDocument/didClose", "textDocument/didSave",
+    "textDocument/didChange", "initialize", "shutdown", "exit",
+}
+
+
+def _chk(cond, name, detail=""):
+    if not cond:
+        print("  [FAIL] %-34s %s" % (name, detail))
+    return bool(cond)
+
+
+def code_methods(path=LSP):
+    """`matlabc_lsp.py` 里 `if method == "textDocument/xxx":` 出现的方法。"""
+    with io.open(path, "r", encoding="utf-8") as fh:
+        text = fh.read()
+    found = set(re.findall(r'method\s*==\s*"(textDocument/[A-Za-z]+)"', text))
+    return found - NOT_CAPABILITY
+
+
+def doc_methods(path=VREADME):
+    """`vscode/README.md` 能力表里反引号括起来的 `textDocument/*`。"""
+    if not os.path.isfile(path):
+        return None
+    with io.open(path, "r", encoding="utf-8") as fh:
+        text = fh.read()
+    return set(re.findall(r"`(textDocument/[A-Za-z]+)`", text)) - NOT_CAPABILITY
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--help", "-h", action="store_true")
+    args, _ = ap.parse_known_args(argv or sys.argv[1:])
+
+    if args.help:
+        sys.stdout.write(__doc__)
+        return 0
+
+    if args.selftest:
+        good = bad = 0
+        if _chk("textDocument/hover" in code_methods(), "自证：代码里能提到 hover"):
+            good += 1
+        else:
+            bad += 1
+        if _chk("textDocument/didOpen" not in code_methods(),
+                "自证：didOpen 不算能力"):
+            good += 1
+        else:
+            bad += 1
+        dm = doc_methods()
+        if _chk(dm is not None, "自证：vscode/README.md 存在"):
+            good += 1
+        else:
+            bad += 1
+        print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
+        return 0 if bad == 0 else 1
+
+    if not os.path.isfile(LSP):
+        print("check_lsp_doc_parity: 缺输入（%s）" % LSP)
+        return 2
+    code = code_methods()
+    doc = doc_methods()
+    if doc is None:
+        print("check_lsp_doc_parity: 缺输入（%s）" % VREADME)
+        return 2
+
+    bad = 0
+    # D1：代码实现了但文档没写
+    missing_in_doc = code - doc
+    if not _chk(not missing_in_doc, "LSP1 代码有、文档无",
+                "未写进 vscode/README.md：%r" % (sorted(missing_in_doc),)):
+        bad += 1
+    # D2：文档写了但代码没有
+    missing_in_code = doc - code
+    if not _chk(not missing_in_code, "LSP2 文档有、代码无",
+                "文档列了但没实现：%r" % (sorted(missing_in_code),)):
+        bad += 1
+    # D3：空集必红（两边都是空说明解析坏了）
+    if not _chk(bool(code) and bool(doc), "LSP3 非空",
+                "方法集合为空：code=%d doc=%d" % (len(code), len(doc))):
+        bad += 1
+
+    if bad == 0:
+        print("check_lsp_doc_parity: OK（代码 %d 个能力方法 ⇄ 文档 %d 个，双向一致）"
+              % (len(code), len(doc)))
+        return 0
+    print("check_lsp_doc_parity: %d 项不一致" % bad)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
