@@ -19,6 +19,7 @@
 
 退出码：0 = 正常 EOF / `exit`。
 """
+import io
 import json
 import os
 import sys
@@ -125,6 +126,73 @@ def _log(msg):
     sys.stderr.flush()
 
 
+def _word_at(text, line0, char):
+    """取 `line0` 行、`char` 所在位置的最长标识符（[A-Za-z0-9_]）。
+
+    返回 `(word, start, end)` 或 None。中文注释里的字不会匹配到函数名，
+    所以「在注释上请求定义」自然退化为 `[]`。
+    """
+    lines = text.splitlines()
+    if line0 < 0 or line0 >= len(lines):
+        return None
+    s = lines[line0]
+    i = min(max(0, char), len(s))
+    start, end = i, i
+    while start > 0 and (s[start - 1].isalnum() or s[start - 1] == "_"):
+        start -= 1
+    while end < len(s) and (s[end].isalnum() or s[end] == "_"):
+        end += 1
+    if start == end:
+        return None
+    word = s[start:end]
+    if not word or not (word[0].isalpha() or word[0] == "_"):
+        return None
+    return word, start, end
+
+
+def _definition(uri, pos):
+    """光标处标识符 → 它的定义位置。
+
+    查找顺序：**同文件优先**，其次全局唯一命中。找不到返回 None。
+
+    只读 `_STATE["cache"]`（`didOpen` 时算一次），**不再触发分析** ——
+    否则每次跳转都要跑一遍全量，IDE 里不可用。
+    """
+    cache = _STATE.get("cache")
+    if cache is None:
+        return None
+    path = _uri_to_path(uri)
+    try:
+        with io.open(path, "r", encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except (IOError, OSError):
+        return None
+    got = _word_at(text, int(pos.get("line", 0)), int(pos.get("character", 0)))
+    if not got:
+        return None
+    name = got[0]
+
+    hits = []
+    for mf in (getattr(cache, "files", None) or []):
+        for f in (getattr(mf, "functions", None) or []):
+            if getattr(f, "name", None) == name:
+                hits.append((mf.rel, f))
+    if not hits:
+        return None
+
+    want = os.path.basename(path).lower()
+    same = [h for h in hits if os.path.basename(h[0]).lower() == want]
+    rel, fn = (same or hits)[0]
+    line0 = max(0, int(getattr(fn, "line", 1) or 1) - 1)
+    root = _STATE.get("root") or ""
+    target = os.path.join(root, rel.replace("/", os.sep)) if root else rel
+    return {
+        "uri": "file:///" + target.replace("\\", "/").lstrip("/"),
+        "range": {"start": {"line": line0, "character": 0},
+                  "end": {"line": line0, "character": len(name)}},
+    }
+
+
 def handle(msg, out):
     """处理一帧。返回 False 表示退出循环。"""
     method = msg.get("method")
@@ -167,6 +235,18 @@ def handle(msg, out):
             "params": {"uri": uri, "diagnostics": diags},
         })
         _log("didOpen %s -> %d 条诊断（m_missing_doc）" % (uri, len(diags)))
+        return True
+
+    if method == "textDocument/definition":
+        params = msg.get("params") or {}
+        uri = (params.get("textDocument") or {}).get("uri", "")
+        pos = params.get("position") or {}
+        loc = _definition(uri, pos)
+        _write_message(out, {"jsonrpc": "2.0", "id": mid,
+                             "result": [loc] if loc else []})
+        _log("definition %s:%s -> %s" % (os.path.basename(_uri_to_path(uri)),
+                                         pos.get("line"),
+                                         "found" if loc else "none"))
         return True
 
     if method == "textDocument/didClose":
