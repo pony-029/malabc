@@ -264,6 +264,85 @@ function activate(context) {
       semLegend)
   );
 
+  // ---- 调用关系图预览窗口（R229）-------------------------------------
+  // CodeLens 的 QuickPick 适合"选一个就跳"，但看**整体形状**时它不够：
+  // 一个 QuickPick 列表看不出「这条链有三层」。
+  // 这里用一个旁开的 webview 画缩进树 —— 只读、静态，不需要脚本权限。
+  const renderGraph = (name, info) => {
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const rows = [];
+    rows.push('<div class="node root">' + esc(name) + '</div>');
+    const direct = info.direct || [];
+    const others = info.others || [];
+    direct.forEach((d, i) => {
+      const last = (i === direct.length - 1) && others.length === 0;
+      rows.push(
+        '<div class="node lv1">' + (last ? '└─ ' : '├─ ') +
+        esc(d.name) + '<span class="where">' + esc(d.rel) + ':' +
+        esc(d.line) + '</span></div>');
+    });
+    let prevLevel = 1;
+    others.forEach((d) => {
+      if (d.level !== prevLevel) {
+        rows.push('<div class="levelbar">第 ' + d.level + ' 层</div>');
+        prevLevel = d.level;
+      }
+      rows.push(
+        '<div class="node lv2">' + '│  '.repeat(d.level - 1) + '└─ ' +
+        esc(d.name) + '<span class="where">' + esc(d.rel) + ':' +
+        esc(d.line) + '</span></div>');
+    });
+    return '<!DOCTYPE html><html><body>' +
+      '<h2>' + esc(name) + '</h2>' +
+      '<p class="sum">' + direct.length + ' 个直接调用者 · ' +
+      others.length + ' 个间接 · ' + (info.entries || 0) + ' 个入口' +
+      (info.ambiguous ? ' · ' + info.ambiguous + ' 处同名定义' : '') + '</p>' +
+      rows.join('') +
+      '<p class="note">静态快照（打开时分析结果）。改代码后重新打开刷新。</p>' +
+      '</body></html>';
+  };
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('malabc.previewGraph', async (name) => {
+      if (!name) {
+        vscode.window.showWarningMessage('malabc: 请先从 CodeLens 点一个函数');
+        return;
+      }
+      try {
+        const r = await client.request('matlabc/impact', { name: name });
+        const info = r.result;
+        if (!info) {
+          vscode.window.showWarningMessage('malabc: 找不到 ' + name);
+          return;
+        }
+        const panel = vscode.window.createWebviewPanel(
+          'malabcGraph', '调用关系：' + name, vscode.ViewColumn.Beside,
+          { enableScripts: false });
+        const css = [
+          'body{font-family:var(--vscode-editor-font-family,monospace);',
+          'padding:14px;color:var(--vscode-editor-foreground);',
+          'background:var(--vscode-editor-background);}',
+          'h2{margin:0 0 4px;font-size:15px;}',
+          '.sum{margin:0 0 14px;opacity:.65;font-size:12px;}',
+          '.node{line-height:1.7;font-size:13px;}',
+          '.node.root{font-weight:600;color:var(--vscode-textLink-foreground);}',
+          '.where{opacity:.5;margin-left:10px;font-size:11px;}',
+          '.levelbar{opacity:.4;font-size:11px;margin:10px 0 2px;',
+          'border-top:1px solid var(--vscode-editorWidget-border);padding-top:6px;}',
+          '.note{opacity:.4;font-size:11px;margin-top:18px;}',
+        ].join('');
+        const html = renderGraph(name, info).replace(
+          '</body>', '<style>' + css + '</style></body>');
+        panel.webview.html = html;
+        log('previewGraph ' + name + ' -> total=' + info.total);
+      } catch (e) {
+        log('previewGraph 失败：' + (e && e.message));
+        vscode.window.showErrorMessage('malabc: ' + (e && e.message));
+      }
+    })
+  );
+
   // ---- CodeLens：`↑3 调用者 · ↓12 被调用 · 复杂度 11`（R215）--------
   // 官方 CodeLens 只放 git 作者，**不显示调用关系**。这三组数字全在
   // `edges` 里，由 LSP 侧 `_code_lens` 直接给。
@@ -306,11 +385,17 @@ function activate(context) {
         log('impact ' + name + ' -> total=' + info.total +
             ' levels=' + info.levels + ' entries=' + info.entries);
         const direct = info.direct || [];
-        if (!direct.length) {
-          vscode.window.showInformationMessage(
-            'malabc: ' + name + ' 没有调用者' +
-            (info.entries ? '（它是入口）' : '') +
-            ' · 复杂度由 CodeLens 显示');
+        if (!direct.length && !(info.others || []).length) {
+          // 没有上游时仍然让用户能打开关系图 —— 图上会是一个孤零零的
+          // 节点，那本身就是信息（「它是入口，没人调它」）。
+          const pick0 = await vscode.window.showQuickPick([
+            { label: '$(graph) 预览调用关系图',
+              description: '旁侧窗口 · 当前没有上游', preview: true },
+          ], { placeHolder: name + ' 没有调用者' +
+                          (info.entries ? '（它是入口）' : '') });
+          if (pick0 && pick0.preview) {
+            await vscode.commands.executeCommand('malabc.previewGraph', name);
+          }
           return;
         }
         // 直接调用者 + 间接（按层标注）。分隔条目不可选，
@@ -333,12 +418,21 @@ function activate(context) {
             pickable: true,
           });
         });
+        items.push({
+          label: '$(graph) 预览调用关系图',
+          description: '旁侧窗口 · 分层展开',
+          preview: true,
+        });
         const pick = await vscode.window.showQuickPick(items, {
           placeHolder: name + ' 的上游：' + direct.length + ' 个直接 · ' +
                        ((info.others || []).length) + ' 个间接' +
                        (info.entries ? ' · ' + info.entries + ' 个入口' : ''),
           matchOnDescription: true,
         });
+        if (pick && pick.preview) {
+          await vscode.commands.executeCommand('malabc.previewGraph', name);
+          return;
+        }
         if (!pick) {
           return;
         }

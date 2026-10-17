@@ -2,7 +2,7 @@
   "name": "matlabc-lsp",
   "displayName": "malabc MATLAB LSP",
   "description": "MATLAB 的编辑器智能：诊断 · 转到定义（含结构体成员）· 查找引用 · 悬停 · 大纲 · 保存即刷新。后台预热、零配置、零 npm 依赖。",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "publisher": "malabc",
   "engines": {
     "vscode": "^1.80.0"
@@ -19,8 +19,13 @@
     "languages": [
       {
         "id": "matlab",
-        "aliases": ["MATLAB", "matlab"],
-        "extensions": [".m"],
+        "aliases": [
+          "MATLAB",
+          "matlab"
+        ],
+        "extensions": [
+          ".m"
+        ],
         "configuration": "./language-configuration.json",
         "icon": {
           "light": "./icons/matlab.svg",
@@ -50,7 +55,11 @@
         },
         "matlabc.docLang": {
           "type": "string",
-          "enum": ["both", "zh", "en"],
+          "enum": [
+            "both",
+            "zh",
+            "en"
+          ],
           "enumDescriptions": [
             "中文在前，同时显示英文（默认）",
             "只显示中文",
@@ -65,7 +74,14 @@
           "description": "matlabc_lsp.py 的绝对路径；留空则用当前工作区的 ../matlabc_lsp.py"
         }
       }
-    }
+    },
+    "commands": [
+      {
+        "command": "malabc.previewGraph",
+        "title": "malabc: 预览调用关系图",
+        "category": "malabc"
+      }
+    ]
   },
   "dependencies": {}
 }
