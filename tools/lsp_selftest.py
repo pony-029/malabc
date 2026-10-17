@@ -351,6 +351,31 @@ def _impact(c):
     _chk(call("no_such_function_xyz") is None,
          "impact/missing-returns-null（不是空对象）")
 
+    # ---- 与 CLI 的 `--impact` 对账（R223）-----------------------------
+    # 同一个算法现在有**两份实现**：`matlabc.py` 的 `_print_impact` 和
+    # `matlabc_lsp.py` 的 `_impact`。两份实现迟早会分叉 —— 让它们互相
+    # 对账，比"相信它们一致"可靠。
+    try:
+        import subprocess
+        p = subprocess.run([sys.executable, os.path.join(ROOT, "matlabc.py"),
+                            CORPUS, "--impact", "b"],
+                           cwd=ROOT, stdin=subprocess.DEVNULL,
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           timeout=120)
+        out = (p.stdout or b"").decode("utf-8", "replace")
+        import re as _re
+        m1 = _re.search(r"直接调用者（1 层）\s+(\d+)", out)
+        m2 = _re.search(r"间接调用者（2 层及以上）\s+(\d+)", out)
+        _chk(m1 is not None and m2 is not None,
+             "impact/cli-output-parseable（%r）" % (out[:80],))
+        if m1 and m2 and isinstance(info, dict):
+            cli_total = int(m1.group(1)) + int(m2.group(1))
+            _chk(cli_total == info.get("total"),
+                 "impact/cli-matches-lsp（cli=%d lsp=%r）"
+                 % (cli_total, info.get("total")))
+    except Exception as exc:
+        _chk(False, "impact/cli-compare-failed（%r）" % (exc,))
+
 
 def _tokens(c):
     """R219：语义 token 的类型分配。
