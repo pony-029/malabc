@@ -2,7 +2,7 @@
   "name": "matlabc-lsp",
   "displayName": "malabc MATLAB LSP",
   "description": "MATLAB 的编辑器智能：诊断 · 转到定义（含结构体成员）· 查找引用 · 悬停 · 大纲 · 保存即刷新。后台预热、零配置、零 npm 依赖。",
-  "version": "0.3.5",
+  "version": "0.3.7",
   "publisher": "malabc",
   "engines": {
     "vscode": "^1.80.0"
@@ -47,6 +47,17 @@
           "type": "string",
           "default": "python",
           "description": "Python 解释器路径（需要能跑 matlabc_lsp.py）"
+        },
+        "matlabc.docLang": {
+          "type": "string",
+          "enum": ["both", "zh", "en"],
+          "enumDescriptions": [
+            "中文在前，同时显示英文（默认）",
+            "只显示中文",
+            "只显示英文"
+          ],
+          "default": "both",
+          "description": "内置函数悬停说明的语言。只影响 MATLAB 内置函数；你自己定义的函数始终显示其头部注释原文。"
         },
         "matlabc.lspPath": {
           "type": "string",

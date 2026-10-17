@@ -25,7 +25,10 @@ class LspClient {
     this.notificationHandler = null;
     this.stderrTail = [];
 
-    this.proc = spawn(this.python, [this.script], { cwd: this.cwd });
+    // `env` 用来把 `MATLABC_DOC_LANG` 传下去 —— LSP 是子进程，
+    // 读不到 VSCode 的设置，只能靠环境变量。
+    this.proc = spawn(this.python, [this.script],
+                      { cwd: this.cwd, env: opts.env || process.env });
     this.proc.stdout.on('data', (chunk) => this._onData(chunk));
     this.proc.stderr.on('data', (chunk) => {
       this.stderrTail.push(chunk.toString('utf8'));

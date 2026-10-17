@@ -117,6 +117,11 @@ function activate(context) {
     python: python,
     script: lspPath,
     cwd: path.dirname(lspPath),
+    // 说明语言：`both`（中文在前 + 英文）/ `zh` / `en`。
+    // 通过环境变量传，因为 LSP 是子进程，读不到 VSCode 的设置。
+    env: Object.assign({}, process.env, {
+      MATLABC_DOC_LANG: cfg.get('docLang', 'both'),
+    }),
   });
 
   collection = vscode.languages.createDiagnosticCollection('matlabc');

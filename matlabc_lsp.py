@@ -605,6 +605,59 @@ def _references(uri, pos, include_decl):
     return out
 
 
+#: 内置函数词典（`data/builtin_zh.json`）。惰性加载，只读一次。
+_BUILTIN_DOC = None
+
+#: 说明语言：`both`（默认，中文在前）/ `zh` / `en`。
+#: 由扩展通过环境变量传入 —— LSP 是子进程，读不到 VSCode 的设置。
+_DOC_LANG = os.environ.get("MATLABC_DOC_LANG", "both")
+
+
+def _builtin_doc(name):
+    """查内置函数的中英说明；查不到返回 `None`。"""
+    global _BUILTIN_DOC
+    if _BUILTIN_DOC is None:
+        here = os.path.dirname(os.path.abspath(__file__))
+        # 两个位置都要试：
+        #   ① `<here>/data/…`           —— 打包后（`extension/data/`）
+        #   ② `<here>/vscode/data/…`    —— 仓库内（`matlabc_lsp.py` 在仓库根，
+        #                                  词典在 `vscode/data/`）
+        cands = [
+            os.path.join(here, "data", "builtin_zh.json"),
+            os.path.join(here, "vscode", "data", "builtin_zh.json"),
+        ]
+        _BUILTIN_DOC = {}
+        for path in cands:
+            if not os.path.isfile(path):
+                continue
+            try:
+                with io.open(path, "r", encoding="utf-8") as fh:
+                    _BUILTIN_DOC = json.load(fh)
+                _log("内置词典已加载：%s（%d 条）" % (path, len(_BUILTIN_DOC)))
+                break
+            except Exception as exc:
+                _log("内置词典读取失败（%s）：%r" % (path, exc))
+        if not _BUILTIN_DOC:
+            _log("内置词典不存在，试过：%r" % (cands,))
+    return _BUILTIN_DOC.get(name)
+
+
+def _format_builtin(name, doc):
+    """中文优先，同时保留英文 —— 两个都要，因为 MATLAB 的文档生态是英文的。"""
+    zh = (doc.get("zh") or "").strip()
+    en = (doc.get("en") or "").strip()
+    parts = ["```matlab", "%s(...)" % name, "```", ""]
+    if _DOC_LANG in ("both", "zh") and zh:
+        parts.append("**%s**" % zh)
+    if _DOC_LANG == "both" and zh and en:
+        parts.append("")
+    if _DOC_LANG in ("both", "en") and en:
+        parts.append("_%s_" % en)
+    parts.append("")
+    parts.append("MATLAB 内置函数 · 用户未重写")
+    return "\n".join(parts)
+
+
 def _hover(uri, pos):
     """`textDocument/hover`：光标处标识符 -> 函数的签名 / 描述 / 复杂度。
 
@@ -635,6 +688,13 @@ def _hover(uri, pos):
         if hit:
             break
     if hit is None:
+        # **内置函数**：用户没重写它，就查中英词典（R213）。
+        # 「重写的函数除外」是这条分支的位置保证的 —— `files[]` 永远优先，
+        # 只有没被用户定义过的名字才会落到这里。
+        doc = _builtin_doc(name)
+        if doc:
+            return {"contents": {"kind": "markdown",
+                                 "value": _format_builtin(name, doc)}}
         return None
     mf, f = hit
 
