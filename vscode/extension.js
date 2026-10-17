@@ -277,7 +277,8 @@ function activate(context) {
       '<a href="command:malabc.openAt?' +
       encodeURIComponent(JSON.stringify([rel, line])) + '">' + esc(text) + '</a>';
 
-    const nodeHtml = (d, prefix) => {
+    // 上游节点：名字 + 定义行 + **被哪几行调用**。
+    const upNode = (d, prefix) => {
       const calls = (d.call_lines || []).filter((x) => x > 0);
       const callHtml = calls.length
         ? '<span class="calls">调用自 ' +
@@ -288,29 +289,67 @@ function activate(context) {
         '</span>' + callHtml + '</div>';
     };
 
+    // 下游节点：名字 + 定义行 + 复杂度。
+    // 这里**不显示「调用自」** —— 那是上游的语义。下游关心的是
+    // 「它有多复杂、跳过去看什么」，多给一份上游信息只会让人分不清方向。
+    const downNode = (d, prefix) => '<div class="node">' + prefix +
+      esc(d.name) +
+      '<span class="where">' + link(d.rel, d.line, d.rel + ':' + d.line) +
+      '</span><span class="calls">复杂度 ' + (d.complexity || 0) + '</span></div>';
+
     const rows = [];
     rows.push('<div class="node root">' + esc(name) + '</div>');
+
     const direct = info.direct || [];
     const others = info.others || [];
-    direct.forEach((d, i) => {
-      const last = (i === direct.length - 1) && others.length === 0;
-      rows.push(nodeHtml(d, last ? '└─ ' : '├─ '));
-    });
-    let prevLevel = 1;
-    others.forEach((d) => {
-      if (d.level !== prevLevel) {
-        rows.push('<div class="levelbar">第 ' + d.level + ' 层</div>');
-        prevLevel = d.level;
+    const down = info.down || [];
+
+    // ---- 上游 ----
+    rows.push('<div class="section">▲ 上游（谁调用它）</div>');
+    if (!direct.length && !others.length) {
+      rows.push('<div class="empty">没有调用者 —— 它是入口。</div>');
+    } else {
+      direct.forEach((d, i) => {
+        const last = (i === direct.length - 1) && others.length === 0;
+        rows.push(upNode(d, last ? '└─ ' : '├─ '));
+      });
+      let prevLevel = 1;
+      others.forEach((d) => {
+        if (d.level !== prevLevel) {
+          rows.push('<div class="levelbar">第 ' + d.level + ' 层</div>');
+          prevLevel = d.level;
+        }
+        rows.push(upNode(d, '│  '.repeat(d.level - 1) + '└─ '));
+      });
+    }
+
+    // ---- 下游 ----
+    rows.push('<div class="section">▼ 下游（它调用谁）</div>');
+    if (!down.length) {
+      rows.push('<div class="empty">不调用其他函数 —— 叶子。</div>');
+    } else {
+      let prevD = 1;
+      down.forEach((d) => {
+        if (d.level !== prevD) {
+          rows.push('<div class="levelbar">第 ' + d.level + ' 层</div>');
+          prevD = d.level;
+        }
+        rows.push(downNode(d, '│  '.repeat(d.level - 1) + '└─ '));
+      });
+      if (info.down_truncated) {
+        rows.push('<div class="empty">… 还有更深层，已按 3 层截断' +
+                  '（完整树见 CLI：--tree）</div>');
       }
-      rows.push(nodeHtml(d, '│  '.repeat(d.level - 1) + '└─ '));
-    });
+    }
+
     return '<!DOCTYPE html><html><body>' +
       '<h2>' + esc(name) + '</h2>' +
-      '<p class="sum">' + direct.length + ' 个直接调用者 · ' +
-      others.length + ' 个间接 · ' + (info.entries || 0) + ' 个入口' +
-      (info.ambiguous ? ' · ' + info.ambiguous + ' 处同名定义' : '') + '</p>' +
+      '<p class="sum">↑ ' + direct.length + ' 直接 · ' +
+      others.length + ' 间接 · ' + (info.entries || 0) + ' 入口' +
+      '　｜　↓ ' + (info.down_total || 0) + ' 个被调用' +
+      (info.ambiguous ? '　｜　' + info.ambiguous + ' 处同名定义' : '') + '</p>' +
       rows.join('') +
-      '<p class="note">静态快照（打开时分析结果）。改代码后重新打开刷新。</p>' +
+      '<p class="note">静态快照（打开时分析结果）。点击任意文件名或行号可跳转。</p>' +
       '</body></html>';
   };
 
@@ -362,6 +401,10 @@ function activate(context) {
           '.calls{opacity:.45;margin-left:12px;font-size:11px;}',
           '.calls a{color:var(--vscode-textLink-foreground);text-decoration:none;}',
           '.calls.entry{opacity:.35;font-style:italic;}',
+          '.section{margin:16px 0 6px;opacity:.75;font-size:12px;',
+          'border-bottom:1px solid var(--vscode-editorWidget-border);',
+          'padding-bottom:4px;}',
+          '.empty{opacity:.4;font-size:12px;font-style:italic;margin:4px 0 4px 8px;}',
           '.levelbar{opacity:.4;font-size:11px;margin:10px 0 2px;',
           'border-top:1px solid var(--vscode-editorWidget-border);padding-top:6px;}',
           '.note{opacity:.4;font-size:11px;margin-top:18px;}',

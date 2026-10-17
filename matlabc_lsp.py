@@ -176,8 +176,9 @@ def _stamp(root):
 def _save_cache(root, payload, result):
     """把「结构层 + 诊断」写盘。失败不算错（缓存是可选的）。"""
     try:
+        files_src = getattr(result, "files", None) or []
         files = []
-        for mf in (getattr(result, "files", None) or []):
+        for mf in files_src:
             fns = []
             for fn in (getattr(mf, "functions", None) or []):
                 try:
@@ -236,8 +237,18 @@ def _save_cache(root, payload, result):
         # （比如 `sample_uninit` 的 heuristics 就是 0，但 facts 有 1 条），
         # 所以不能拿「payload 是否为空」判断缓存完整度 —— 必须在写的时候
         # 明确记下「这份缓存是完整跑完的」。
-        doc = {"v": 1, "complete": True, "stamp": stamp, "files": files,
-               "edges": edges, "payload": payload}
+        # `field_access` 也必须存：结构体跳转全靠它（R201），而它同样
+        # **只在 `render_json` 里构建**，缓存重建的对象上没有。
+        # R233 实测：漏了它之后，缓存命中时 `s.name` 的跳转静默返回 `[]`。
+        try:
+            import matlabc as _M
+            field_access = _M._collect_cross_file_fields(files_src)
+        except Exception as exc:
+            _log("缓存里的 field_access 构建失败：%r" % (exc,))
+            field_access = {}
+        doc = {"v": 2, "complete": True, "stamp": stamp, "files": files,
+               "edges": edges, "payload": payload,
+               "field_access": field_access}
         try:
             js = json.dumps(doc, ensure_ascii=False)
         except Exception as exc:
@@ -265,8 +276,11 @@ def _load_cache(root):
     except Exception as exc:
         _log("缓存不可读，忽略：%r" % (exc,))
         return None
-    if not isinstance(doc, dict) or doc.get("v") != 1:
-        _log("缓存 schema 不符（v=%r），忽略" % (doc.get("v"),))
+    # **v=2**：R233 加了 `field_access`。v1 的缓存缺它，命中后结构体
+    # 跳转会静默失效 —— 宁可让用户多等一次分析，也不给一份"看起来能用
+    # 但某些功能是哑的"缓存。
+    if not isinstance(doc, dict) or doc.get("v") != 2:
+        _log("缓存 schema 不符（v=%r，需要 2），忽略" % (doc.get("v"),))
         return None
     if doc.get("complete") is not True:
         # 没有 `complete: true` 的是**旧缓存或半成品**（R216 之前写的全部如此）。
@@ -300,7 +314,8 @@ def _load_cache(root):
                             header=f.get("header") or {},
                             functions=fns))
         edges = [tuple(e) for e in (doc.get("edges") or [])]
-        result = NS(files=files, edges=edges)
+        result = NS(files=files, edges=edges,
+                    field_access=doc.get("field_access") or {})
         _log("缓存命中：%d 文件 / %d 边" % (len(files), len(edges)))
         return result, doc.get("payload") or {"heuristics": []}
     except Exception as exc:
@@ -394,15 +409,31 @@ def _wait_result(timeout=90.0):
 def _field_index(result):
     """跨文件字段索引（惰性、只算一次）。
 
+    两条来源，**顺序不能反**：
+
+      ① `_STATE["field_index"]` —— 本进程已经算过
+      ② `result.field_access` —— 缓存命中时由 `_load_cache` 挂上去的
+      ③ 现场算 —— 只有真正跑过 `analyze` 的完整结果才算得动
+
+    ⚠ 缓存重建的 `SimpleNamespace` **没有 `kind` / `source_lines`**，
+    所以 ③ 在那条路径上会 `AttributeError`。R233 实测：结构体跳转
+    因此静默返回 `[]` —— 用户看到的是「这个字段没有定义」，而不是
+    「缓存里缺了字段索引」。
+
     `field_access` **只在 `render_json` 里构建**（`matlabc.py` 的 L14133），
-    所以 `analyze()` 的 `result` 上没有它。LSP 走的是 `analyze`，
-    因此必须在这里自己调一次 `_collect_cross_file_fields`。
+    所以 `analyze()` 的 `result` 上没有它 —— 这就是为什么 ③ 必须自己
+    调一次 `_collect_cross_file_fields`。
 
     缓存挂在 `_STATE` 上：一次 `didOpen` 只付一次代价。
     """
     idx = _STATE.get("field_index")
     if idx is not None:
         return idx
+    # 缓存命中时 `_load_cache` 已经把索引挂在 `result` 上了。
+    cached = getattr(result, "field_access", None)
+    if isinstance(cached, dict) and cached:
+        _STATE["field_index"] = cached
+        return cached
     try:
         import matlabc as _M
         idx = _M._collect_cross_file_fields(
@@ -1060,10 +1091,10 @@ def _semantic_tokens(uri):
     return {"data": data}
 
 
-def _impact(name, depth=30):
-    """反向可达集：谁调用了 `name`，按层返回。
+def _impact(name, depth=30, down_depth=3):
+    """反向可达集：谁调用了 `name`；**外加正向一层：它调用了谁**。
 
-    和 CLI 的 `--impact` 是同一套算法（反向 BFS + `seen` 防环），
+    和 CLI 的 `--impact` 是同一套算法（BFS + `seen` 防环），
     区别只是这里的节点带 `(rel, line)`，**扩展侧可以直接跳过去**。
 
     返回 `None` 表示找不到这个名字（不是"没有调用者"）。
@@ -1074,12 +1105,15 @@ def _impact(name, depth=30):
 
     # 名字 -> (rel, line)。同名函数多处定义时取第一个，并如实带上 `ambiguous` 数。
     where = {}
+    meta = {}                # key -> {"complexity": n}
     for mf in (getattr(result, "files", None) or []):
         rel = getattr(mf, "rel", "") or ""
         for f in (getattr(mf, "functions", None) or []):
             nm = getattr(f, "name", "") or ""
             where.setdefault(nm, []).append(
                 (rel, int(getattr(f, "line", 0) or 1)))
+            meta["%s:%s" % (rel, nm)] = {
+                "complexity": int(getattr(f, "complexity", 0) or 0)}
     if name not in where:
         return None
 
@@ -1087,6 +1121,7 @@ def _impact(name, depth=30):
     # 而 `call_sites` 每个元素是 `[line, col, end, callee_obj]` ——
     # 有了它，才能回答「这个函数是被哪几行调用的」（R232）。
     rev = {}                 # callee_key -> [(caller_key, line), ...]
+    fwd = {}                 # caller_key -> [(callee_key, line), ...]
     for mf in (getattr(result, "files", None) or []):
         rel0 = getattr(mf, "rel", "") or ""
         for f0 in (getattr(mf, "functions", None) or []):
@@ -1110,8 +1145,9 @@ def _impact(name, depth=30):
                     tname = getattr(tgt, "name", "") or ""
                 if not tname:
                     continue
-                rev.setdefault("%s:%s" % (trel, tname), []).append(
-                    (caller_key, line))
+                callee_key = "%s:%s" % (trel, tname)
+                rev.setdefault(callee_key, []).append((caller_key, line))
+                fwd.setdefault(caller_key, []).append((callee_key, line))
     # `edges` 里可能有 `call_sites` 覆盖不到的边（例如跨语言），补上
     # —— 没有行号的边仍然要进图，否则会漏掉调用者。
     for e in (getattr(result, "edges", None) or []):
@@ -1126,6 +1162,9 @@ def _impact(name, depth=30):
         lst = rev.setdefault(d, [])
         if not any(x[0] == c for x in lst):
             lst.append((c, 0))
+        lst2 = fwd.setdefault(c, [])
+        if not any(x[0] == d for x in lst2):
+            lst2.append((d, 0))
 
     def node_info(key, calls=None):
         rel, _, nm = key.rpartition(":")
@@ -1136,6 +1175,7 @@ def _impact(name, depth=30):
                 line = ln
                 break
         info = {"key": key, "name": nm, "rel": rel, "line": line,
+                "complexity": (meta.get(key) or {}).get("complexity", 0),
                 "call_lines": sorted(set(l for _c, l in (calls or [])) if calls
                                      else [])}
         return info
@@ -1158,6 +1198,31 @@ def _impact(name, depth=30):
         levels.append([node_info(k, rev.get(k)) for k in sorted(nxt)])
         layer = nxt
 
+    # ---- 下游：它调用了谁（R233）------------------------------------
+    # 关系图原来只画上游。而 CodeLens 上明明写着 `↓12 被调用` ——
+    # 那个数字点开却什么都没有，等于把「能看」变成一个「不能查的数」。
+    # 数据是同一份 `call_sites`，只是这次走正向。
+    d_seen = set(start_keys)
+    d_layer = list(start_keys)
+    down_levels = []
+    down_truncated = False
+    limit = max(1, int(down_depth))
+    for i in range(limit):
+        nxt = []
+        for k in d_layer:
+            for c, _ln in fwd.get(k, []):
+                if c not in d_seen:
+                    d_seen.add(c)
+                    nxt.append(c)
+        if not nxt:
+            break
+        down_levels.append([node_info(k) for k in sorted(nxt)])
+        d_layer = nxt
+        if i == limit - 1 and any(fwd.get(k) for k in d_layer):
+            # 还有下一层但到了上限 —— 如实说「被截断」，
+            # 而不是让用户以为这就是全部。
+            down_truncated = True
+
     entries = [k for k in seen if not rev.get(k)]
     # `others`：第 2 层及以上的节点，带 `level`（1 起算）。
     # R227：QuickPick 原来只列直接调用者，而分层早就算出来了 ——
@@ -1179,6 +1244,12 @@ def _impact(name, depth=30):
         "levels": len(levels),
         "total": len(seen) - len(start_keys),
         "entries": len(entries),
+        # 下游（R233）
+        "down": [dict(node, level=i + 1)
+                 for i, lv in enumerate(down_levels) for node in lv],
+        "down_levels": len(down_levels),
+        "down_total": len(d_seen - set(start_keys)),
+        "down_truncated": down_truncated,
     }
 
 
@@ -1402,7 +1473,13 @@ def handle(msg, out):
         # 自定义方法（协议允许 `x/` 之外的私有前缀）。CodeLens 点击时用。
         params = msg.get("params") or {}
         name = params.get("name") or ""
-        info = _impact(name)
+        # `down_depth`：下游层数。默认 3 —— 往上要一直到入口，是因为
+        # 「谁影响我」必须穷尽；往下不穷尽，因为叶子可能几百个。
+        try:
+            dd = int(params.get("down_depth") or 3)
+        except (TypeError, ValueError):
+            dd = 3
+        info = _impact(name, down_depth=max(1, min(dd, 10)))
         _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": info})
         _log("impact %s -> %s" % (name, "none" if info is None
                                   else "%d 个调用者" % info["total"]))

@@ -18,8 +18,10 @@ import atexit
 import json
 import io
 import os
+import re
 import subprocess
 import sys
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -367,12 +369,53 @@ def _impact(c):
     _chk(call("no_such_function_xyz") is None,
          "impact/missing-returns-null（不是空对象）")
 
+    # ---- 下游（R233）--------------------------------------------------
+    # 关系图原来只画上游，而 CodeLens 上写着 `↓N 被调用` —— 那个数字
+    # 点开什么都没有。这里钉住「下游也要给，且与 `--tree` 同集合」。
+    infoa = call("a")
+    down = (infoa or {}).get("down") or []
+    dkeys = set("%s:%s" % (d["rel"], d["name"]) for d in down)
+    _chk((infoa or {}).get("down_levels") == 2,
+         "impact/a-down-levels==2（实际 %r）" % ((infoa or {}).get("down_levels"),))
+    # `a` 调 `b`、`c`；`c` 调 `d`（跨文件）
+    _chk(dkeys == {"a.m:b", "a.m:c", "d.m:d"},
+         "impact/a-down-set（实际 %r）" % (sorted(dkeys),))
+    lv1 = set(d["name"] for d in down if d.get("level") == 1)
+    lv2 = set(d["name"] for d in down if d.get("level") == 2)
+    _chk(lv1 == {"b", "c"}, "impact/a-down-level1（实际 %r）" % (sorted(lv1),))
+    _chk(lv2 == {"d"}, "impact/a-down-level2（实际 %r）" % (sorted(lv2),))
+    _chk(all("complexity" in d for d in down),
+         "impact/down-nodes-carry-complexity")
+    # 入口没有调用者，但**有**下游；叶子相反。两侧不能都空。
+    _chk(((infoa or {}).get("down_total") or 0) == 3,
+         "impact/a-down-total==3（实际 %r）" % ((infoa or {}).get("down_total"),))
+
+    # 与 CLI `--tree` 对账：同一个正向可达集，两份实现不许分叉。
+    try:
+        p = subprocess.run([sys.executable, os.path.join(ROOT, "matlabc.py"),
+                            CORPUS, "--tree", "a", "--tree-depth", "3"],
+                           cwd=ROOT, stdin=subprocess.DEVNULL,
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           timeout=120)
+        out = (p.stdout or b"").decode("utf-8", "replace")
+        seen = set(re.findall(r"[A-Za-z0-9_./\-]+\.m:[A-Za-z0-9_]+", out))
+        # CLI 会把目标自身也打出来，去掉它再比
+        seen.discard("a.m:a")
+        _chk(seen == dkeys,
+             "impact/down-matches-cli-tree（cli=%r lsp=%r）"
+             % (sorted(seen), sorted(dkeys)))
+    except Exception as exc:
+        _chk(False, "impact/down-tree-compare-failed（%r）" % (exc,))
+
     # ---- 与 CLI 的 `--impact` 对账（R223）-----------------------------
     # 同一个算法现在有**两份实现**：`matlabc.py` 的 `_print_impact` 和
     # `matlabc_lsp.py` 的 `_impact`。两份实现迟早会分叉 —— 让它们互相
     # 对账，比"相信它们一致"可靠。
     try:
-        import subprocess
+        # **不要在函数内 import subprocess**：Python 会把整个函数里出现的
+        # `subprocess` 都当成局部名，于是同一函数中更靠前的用法直接
+        # `UnboundLocalError`（R233 踩到，因为下游对账插在它前面）。
+        # 顶层已经 import 过了。
         p = subprocess.run([sys.executable, os.path.join(ROOT, "matlabc.py"),
                             CORPUS, "--impact", "b"],
                            cwd=ROOT, stdin=subprocess.DEVNULL,
@@ -547,6 +590,24 @@ def _struct(c):
     r3 = defn(4, 5)
     _chk(r3 == [] or (len(r3) == 1 and r3[0]["range"]["start"]["line"] == 2),
          "struct/dot-position-does-not-crash（%r）" % (r3,))
+
+    # ---- 缓存必须带 field_access（R233）--------------------------------
+    # 这一条不是"锦上添花"：`_field_index` 在缓存重建的 `SimpleNamespace`
+    # 上会 `AttributeError`，于是结构体跳转**静默返回 []**。
+    # 「冷启动能用、重启后不能用」是最难查的一类 —— 只能靠查产物形状。
+    cache = os.path.join(root, ".matlabc_lsp_cache.json")
+    deadline = time.time() + 30
+    while time.time() < deadline and not os.path.isfile(cache):
+        time.sleep(0.2)
+    _chk(os.path.isfile(cache), "struct/cache-written")
+    if os.path.isfile(cache):
+        try:
+            d = json.load(io.open(cache, encoding="utf-8"))
+        except Exception:
+            d = {}
+        _chk(d.get("v") == 2, "struct/cache-schema-v2（实际 %r）" % (d.get("v"),))
+        fa = d.get("field_access") or {}
+        _chk("name" in fa, "struct/cache-has-field-access（keys=%r）" % (list(fa)[:5],))
 
 
 def _doc(c):
