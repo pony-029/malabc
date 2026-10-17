@@ -23017,3 +23017,33 @@ def test_r103_plan_objective_digest_matches_ledger():
     # ⑥ 反向控制：摘要为空 ⇒ 必须红（空集先断言非空，R99 ④）
     assert _r103_ledger_digest_problems(plan_text, {"rounds": {}}), \
         "空 rounds 不报红 —— 空集会让判据恒真"
+
+
+def test_r164_dup_cache_uses_object_identity():
+    """R164 回归：`_DUP_CACHE` 按**对象身份**（`is`）判命中，不是按值。
+
+    覆盖点：
+
+    ① 同一个 `files` 对象第二次调用**直接返回同一个 list**（缓存命中）；
+    ② **不同的** `files` 对象（内容相同但 list 不同）必须重算 ——
+       这条防的是「用 `==` 或 `id()` 做 key」那类**静默错**：
+       `==` 会把「内容相同的另一份」当成命中，`id()` 会在对象释放后
+       复用 id，两者都会返回**别人的结果**而不报错。
+
+    把 `is` 改成 `==` 时，②必须变红 —— 那是这条测试唯一的存在意义。
+    """
+    import matlabc as ma
+    from analyzer.api import analyze
+
+    root = os.path.join(ROOT, "tests", "sample_m")
+    # `collect_files` 只回 Path 列表；`_detect_dup_code` 要的是已解析的
+    # `MatlabFile`（有 `.functions`）。所以用 `analyze()` 拿它的 `.files`。
+    r1 = analyze(root)
+    a = ma._detect_dup_code(r1.files)
+    b = ma._detect_dup_code(r1.files)
+    assert b is a, "同一个 files 对象应命中缓存（返回同一个 list 对象）"
+
+    r2 = analyze(root)                   # 另一次分析 -> 新的 list 对象
+    c = ma._detect_dup_code(r2.files)
+    assert c is not a, "不同的 files 对象必须重算，不许复用旧对象的结果"
+
