@@ -32853,6 +32853,48 @@ def cli_entry(argv=None):
     return args, ap
 
 
+def run_lang_path(args, root):
+    """纯语言模式（`--lang c|py|js|asm`）的分发。
+
+    返回 `None` 表示「不是纯语言模式，继续主流水线」；
+    返回整数表示「这条路已经走完，把它作为进程退出码」。
+
+    抽出来的原因：这些分支每一支都以 `return` 结束，且直接调用产物函数
+    （`_run_c_only` / `_run_ext_only`）—— 它们不属于「收集→解析→建模」那条
+    纯流水线，留在 `main` 里会让 S2 的切分同时改 6 处 return 语义。
+    """
+    if args.lang in ("c", "py", "js", "asm"):
+        if args.lang == "asm":
+            # R78 / C-1：汇编前端（浅层）—— 注册表收集 + 统一模型组装
+            _asm_paths = collect_asm_files(
+                root, recursive=not args.no_recursive,
+                exclude=args.exclude)
+            if not _asm_paths:
+                _warn_unsupported_sources(root, args, "汇编(.S/.s/.asm)")
+                print("未找到任何汇编文件：%s" % root, file=sys.stderr)
+                return 1
+            _asm_model = _build_ext_model(
+                _asm_paths, "asm", get_frontend("asm").parse_file, root)
+            return _run_ext_only(_asm_model, root, args, "asm")
+        if args.lang == "c":
+            c_paths = collect_c_files(root, recursive=not args.no_recursive,
+                                      exclude=args.exclude)
+            if not c_paths:
+                _warn_unsupported_sources(root, args, "C/C++")
+            c_model = build_c_model(c_paths, root)
+            return _run_c_only(c_model, root, args)
+        # P93：Python / JavaScript 前端——走注册表插件收集 + 统一模型组装
+        fe = get_frontend(args.lang)
+        ext_paths = fe.collect_files(root, recursive=not args.no_recursive,
+                                     exclude=args.exclude)
+        if not ext_paths:
+            _warn_unsupported_sources(root, args, args.lang)
+            print(f"未找到任何 {args.lang} 文件：{root}", file=sys.stderr)
+            return 1
+        ext_model = _build_ext_model(ext_paths, args.lang, fe.parse_file, root)
+        return _run_ext_only(ext_model, root, args, args.lang)
+
+
 def main(argv=None):
     t_start = time.time()  # P48：记录开始时间，供摘要输出各阶段耗时
     args, ap = cli_entry(argv)
@@ -32993,36 +33035,9 @@ def main(argv=None):
     # P87/P93：多语言后端扩展——C/Python/JS 前端（--lang c/py/js 纯语言模式；--mixed 混合）
     c_model = None
     c_bridge = []
-    if args.lang in ("c", "py", "js", "asm"):
-        if args.lang == "asm":
-            # R78 / C-1：汇编前端（浅层）—— 注册表收集 + 统一模型组装
-            _asm_paths = collect_asm_files(
-                root, recursive=not args.no_recursive,
-                exclude=args.exclude)
-            if not _asm_paths:
-                _warn_unsupported_sources(root, args, "汇编(.S/.s/.asm)")
-                print("未找到任何汇编文件：%s" % root, file=sys.stderr)
-                return 1
-            _asm_model = _build_ext_model(
-                _asm_paths, "asm", get_frontend("asm").parse_file, root)
-            return _run_ext_only(_asm_model, root, args, "asm")
-        if args.lang == "c":
-            c_paths = collect_c_files(root, recursive=not args.no_recursive,
-                                      exclude=args.exclude)
-            if not c_paths:
-                _warn_unsupported_sources(root, args, "C/C++")
-            c_model = build_c_model(c_paths, root)
-            return _run_c_only(c_model, root, args)
-        # P93：Python / JavaScript 前端——走注册表插件收集 + 统一模型组装
-        fe = get_frontend(args.lang)
-        ext_paths = fe.collect_files(root, recursive=not args.no_recursive,
-                                     exclude=args.exclude)
-        if not ext_paths:
-            _warn_unsupported_sources(root, args, args.lang)
-            print(f"未找到任何 {args.lang} 文件：{root}", file=sys.stderr)
-            return 1
-        ext_model = _build_ext_model(ext_paths, args.lang, fe.parse_file, root)
-        return _run_ext_only(ext_model, root, args, args.lang)
+    _rc = run_lang_path(args, root)
+    if _rc is not None:
+        return _rc
     if args.mixed:
         c_paths = collect_c_files(root, recursive=not args.no_recursive,
                                   exclude=args.exclude)
