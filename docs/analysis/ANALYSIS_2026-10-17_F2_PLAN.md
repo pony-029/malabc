@@ -61,31 +61,53 @@ uninit=uninit)` 里填入，值来自 L19855 的 `_detect_uninitialized(mf)` 循
 
 ## §3 F2 的最小改动（四处，都是加法）
 
-### 3.0 精确行号（实测，2026-10-17 19:40）
+### 3.0 精确行号（实测，2026-10-17 19:40；§3.1 的发现让表从 4 行缩到 3 行）
 
 | # | 改动 | 行号 |
 | --- | --- | --- |
-| ① | `run_pipeline` 存 `dead_code` / `shape_mismatch` | **L33029**（`model.doc_todos` 之后）、**L33045**（`facts = []` 处） |
-| ② | `render_json` 加 `model=None` + 优先读 | **L14229**（定义）、**L14295 / L14300 / L14310**（三个键） |
-| ③ | `render_xml` 加 `model=None` + 透传 | **L19701**（定义）、**L19706**（内部调 `render_json`） |
-| ④ | `emit_outputs` 传 `model` | **L33248** |
+| ① | `render_json` 加 `checks=None`，`uninitialized` / `dead_code` 优先读它 | **L14229**（定义）、**L14295 / L14300**（两个键） |
+| ② | `render_xml` 加 `checks=None` + 透传 | **L19701**（定义）、**L19706**（内部调 `render_json`） |
+| ③ | `emit_outputs` 传 `checks_for_sarif=checks_for_sarif` | **L33248** |
+| — | `run_pipeline` | **不用改**（`checks_for_sarif` 早就有了） |
+| — | `shape_mismatch` | 仍由 `render_json` 自己算（唯一无上游缓存者） |
 
 **并且发现第三处统计点**：L25879–25880 另有 `return {"uninitialized": ...,
-"dead_code": ..., "shape_mismatch": ..., "dup_code": ..., ...}` —— 这是站点侧
-自己算的一套。⇒ 「算 2–3 次」是保守估计，真实重复次数 ≥ 3。
+"dead_code": ..., "shape_mismatch": ..., "dup_code": ..., ...}` —— 那是
+`_collect_checks` 的返回，也就是 `checks_for_sarif` 本身。
 
-### 3.1 `run_pipeline` 末尾把三份结果存到 `model`
+### 3.1 **先别急着加计算 —— `checks_for_sarif` 里已经有了**
+
+实测 L25835：
 
 ```python
-model.uninit = [r for mf in files for r in _detect_uninitialized(mf)]
-model.dead_code = [r for mf in files for r in _detect_dead_code(mf)]
-model.shape_mismatch = _detect_shape_mismatch(files)
-facts.extend(_facts_from_checks(model.dead_code, "m_dead_code"))
-facts.extend(_facts_from_checks(model.shape_mismatch, "m_shape_mismatch"))
+def _collect_checks(files, enabled=None, dup_opts=None):
+    """C3：综合静态检查（未初始化 / 死代码 / 类型不一致），带 file 字段。
+    返回 {"uninitialized": [...], "dead_code": [...],
+          "type_mismatch": [...], "dup_code": [...]}。"""
 ```
 
-**注意 `model.uninit` 已经存在**（L19855 附近赋值），要先确认它的口径与
-`render_json` 里那行是否一致——不一致就是一处既有的口径分裂。
+而 `run_pipeline` 早就调了它（L33039）：
+
+```python
+checks_for_sarif = _collect_checks(files, _parse_checks_arg(args.checks),
+                                   dup_opts=_dup_opts)
+```
+
+⇒ **`uninitialized` 与 `dead_code` 已经算好了，就在 `result.checks_for_sarif` 里。**
+`render_json` 只是**没有用它**，而是重新遍历 `files` 再算一遍。
+
+**所以 ① 步不是「新增计算」，是「把已有的结果传进去」**：
+
+| 键 | `_collect_checks` | `render_json` | 能否直接复用 |
+| --- | --- | --- | --- |
+| `uninitialized` | ✅ | ✅ | **能**（键名相同） |
+| `dead_code` | ✅ | ✅ | **能** |
+| `type_mismatch` | ✅ | ❌ | — |
+| `dup_code` | ✅ | ❌ | — |
+| `shape_mismatch` | ❌ | ✅ | **不能**（`render_json` 独有） |
+
+**结论：改动从 4 处降到 3 处，且完全不碰 `run_pipeline`。**
+`shape_mismatch` 仍由 `render_json` 自己算（它是唯一没有上游缓存的那个）。
 
 ### 3.2 `render_json` 改为优先读 `model`
 
