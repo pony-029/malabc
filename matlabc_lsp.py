@@ -30,6 +30,7 @@ import json
 import os
 import sys
 import threading
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MATLABC = os.path.join(HERE, "matlabc.py")
@@ -330,6 +331,50 @@ def _uri_to_path(uri):
     return p.replace("/", os.sep)
 
 
+def _warm():
+    """后台预热：`initialize` 一到就开始分析，**不等 `didOpen`**。
+
+    这是 Source Insight 的做法 —— **导入项目即建索引**，用户点开文件时
+    结果已经在了，而不是等第一次 F12 才现算。
+
+    原来只在 `didOpen` 里分析，所以首次跳转要等：
+      - `E:\\matlabc` 这种大工作区 10 秒以上（R196 用户实测的「未找到定义」）
+      - 1665 文件的 YALMIP 约 4 秒
+
+    幂等：`payload` 已存在就直接返回（`didOpen` 之后会再调一次，那次是空转）。
+    """
+    root = _STATE.get("root")
+    if not root:
+        return
+    with _STATE["lock"]:
+        if _STATE["payload"] is not None:
+            return
+
+    # **必须区分「已就绪」与「正在跑」**：只检查 `payload is None` 时，
+    # `initialize` 的预热和 `didOpen` 的 `_later` 会**同时**跑一遍 analyze。
+    # 实测 YALMIP（1665 文件）：单次约 30s，双跑就变成 60s+，
+    # 而 `_wait_result` 等 90s 会超时 —— 用户看到「未找到定义」。
+    with _STATE["lock"]:
+        if _STATE.get("warming"):
+            return
+        _STATE["warming"] = True
+
+    t0 = time.time()
+    _log("预热开始 %s" % root)
+    try:
+        payload = _run_json(root)
+    finally:
+        with _STATE["lock"]:
+            _STATE["warming"] = False
+
+    with _STATE["lock"]:
+        if _STATE["payload"] is None:
+            _STATE["payload"] = payload
+    _log("预热完成 %s -> %.1fs，%d 条诊断"
+         % (root, time.time() - t0,
+            len((payload or {}).get("heuristics") or [])))
+
+
 def _diagnostics_for(uri):
     """从缓存的 payload 里取出**该文件**的诊断。
 
@@ -553,6 +598,9 @@ def handle(msg, out):
             },
         })
         _log("initialize root=%r" % (_STATE["root"],))
+        # **立刻开始预热**，不等用户打开文件。这是 Source Insight 的行为：
+        # 项目一导入就建索引，用户点开时结果已就绪。
+        threading.Thread(target=_warm, daemon=True).start()
         return True
 
     if method == "shutdown":
@@ -572,13 +620,15 @@ def handle(msg, out):
         })
 
         def _later():
-            root = _STATE.get("root")
-            if not root:
-                return
-            with _STATE["lock"]:
-                if _STATE["payload"] is None:
-                    _log("首次分析 %s" % root)
-                    _STATE["payload"] = _run_json(root)
+            # 复用 `_warm`（幂等）：`initialize` 已经预热时它立刻返回，
+            # 否则这里补一次。**不要复制一份分析逻辑** —— 两份迟早会分叉。
+            _warm()
+            # `_warm` 在「别处正在预热」时**立即返回**，此时 `payload`
+            # 还是 None。不等的话 `_diagnostics_for` 只能给出 0 条
+            # —— R202 实测 `--save` / `--uninit` 就是这样从绿变红的。
+            deadline = time.time() + 120.0
+            while time.time() < deadline and _STATE.get("payload") is None:
+                time.sleep(0.02)
             diags = _diagnostics_for(uri)
             _write_message(out, {
                 "jsonrpc": "2.0",
@@ -641,10 +691,14 @@ def handle(msg, out):
         uri = (params.get("textDocument") or {}).get("uri", "")
         root = _STATE.get("root")
         if root:
+            # **作废缓存要在锁内，重算必须在锁外**。
+            # R202 实测：把 `_run_json` 留在锁里，YALMIP（1665 文件、约 30s）
+            # 一次保存就会把协议循环堵住半分钟，期间 `definition` 全部排队。
             with _STATE["lock"]:
                 _STATE["payload"] = None
                 _STATE["result"] = None
-                _STATE["payload"] = _run_json(root)
+                _STATE["warming"] = False
+            _STATE["payload"] = _run_json(root)
         diags = _diagnostics_for(uri)
         _write_message(out, {
             "jsonrpc": "2.0",
