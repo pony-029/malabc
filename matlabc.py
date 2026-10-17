@@ -14061,7 +14061,7 @@ def _run_p204_p223_integration(files):
 def render_json(files, edges, stats, root, reproducible=False, calls_of=None,
                 callers_of=None, enabled=None, taint=None, doc_todos=None,
                 c_model=None, c_bridge=None, dup_opts=None,
-                unresolved_attribution=None):
+                unresolved_attribution=None, checks=None):
     """导出结构化 JSON（便于程序化处理 / 二次分析）。
 
     reproducible=True 时省略 generated_at（置空），使同一项目两次运行的输出
@@ -14124,13 +14124,20 @@ def render_json(files, edges, stats, root, reproducible=False, calls_of=None,
         # C3：常量折叠（命名常量定义求值）
         "constants": _collect_constants(files),
         # C3：疑似未初始化变量（读前无写；可用 --checks 关闭）
-        "uninitialized": ([r for mf in files for r in _detect_uninitialized(mf)]
-                          if _enabled("uninitialized") else []),
+        # F2：`checks`（= run_pipeline 的 `checks_for_sarif`）传入时**直接复用**，
+        # 不再重算 —— 它是 `_collect_checks` 的输出，与这里要的键名完全一致。
+        # `checks=None`（默认，测试与 --from-json 走这条）保留旧路径，语义不变。
+        "uninitialized": (
+            checks.get("uninitialized") if checks is not None else
+            ([r for mf in files for r in _detect_uninitialized(mf)]
+             if _enabled("uninitialized") else [])),
         # C3：变量类型推断（标量/向量/矩阵/结构体/字符串）
         "types": _collect_types(files),
         # C3：死代码检测（return 后不可达 + if 恒假分支；可用 --checks 关闭）
-        "dead_code": ([r for mf in files for r in _detect_dead_code(mf)]
-                      if _enabled("dead_code") else []),
+        "dead_code": (
+            checks.get("dead_code") if checks is not None else
+            ([r for mf in files for r in _detect_dead_code(mf)]
+             if _enabled("dead_code") else [])),
         # C3：跨函数类型流（函数返回值类型 + 调用方解构继承）
         "type_flow": _collect_type_flow(files),
         # C3：类型不一致告警（矩阵变量被赋标量等；可用 --checks 关闭）
@@ -19531,12 +19538,16 @@ def _indent_et(elem, level=0):
 
 
 def render_xml(files, edges, stats, root, reproducible=False, calls_of=None,
-               callers_of=None):
-    """B2：导出结构化 XML（与 --json 数据结构同构，供 doxygen 生态工具二次消费）。"""
+               callers_of=None, checks=None):
+    """B2：导出结构化 XML（与 --json 数据结构同构，供 doxygen 生态工具二次消费）。
+
+    `checks` 原样透传给内部的 `render_json` —— 否则 `--xml` 会自己再算一遍
+    `uninitialized` / `dead_code`，F2 的收益就只落在 `--json` 一条路上。
+    """
     import json as _json
     import xml.etree.ElementTree as ET
     data = _json.loads(render_json(files, edges, stats, root, reproducible,
-                                   calls_of, callers_of))
+                                   calls_of, callers_of, checks=checks))
     root_el = ET.Element("matlabc")
     root_el.set("version", str(VERSION))
     _dict_to_et(data, root_el)
@@ -32714,8 +32725,9 @@ def emit_outputs(args, result, root, t_start, gate_cfg=None):
                                                 c_model=model.c_model,
                                                 c_bridge=model.c_bridge,
                                                 dup_opts=_dup_opts,
-                                                unresolved_attribution=_binattr),
-                        "JSON"):
+                                                unresolved_attribution=_binattr,
+                                                checks=checks_for_sarif),
+                                                "JSON"):
             print(f"[OK] JSON 已写入：{args.json}")
         else:
             ok = False
