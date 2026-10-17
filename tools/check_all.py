@@ -1034,6 +1034,13 @@ def main(argv):
         return 1
     print("check_all: OK（%d 个护栏，全部通过且各自自证；门数下限 %d）"
           % (len(guards), MIN_GUARDS))
+    # R152：LSP 的判据**不在** runner 里 —— 它要起子进程 + 跑分析，放进来会把
+    # 24 道门从 2 分钟拖到 3 分钟。所以这里**只提示、不执行**：
+    # 让「忘了跑」变得可见，而不是让门变慢。
+    print("[提示] LSP 判据未纳入本 runner；改动 matlabc_lsp.py 或 vscode/ 后请手工跑：")
+    print("       python tools/lsp_selftest.py   （11 条：诊断 / 定义 / 引用）")
+    print("       node vscode/test_extension.js  （5 条：注册了哪些 provider）")
+    print("       node vscode/test_client.js     （6 条：以真实 LSP 为对端）")
     return 0
 
 
