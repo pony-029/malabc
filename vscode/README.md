@@ -11,6 +11,7 @@
 | 转到定义 | `textDocument/definition` | **同文件 + 跨文件**（判据 7 条） |
 | 查找引用 | `textDocument/references` | **函数级**（不是行级，见下；判据 6 条） |
 | 悬停 | `textDocument/hover` | **签名 + 描述 + 复杂度 + 定义位置**（判据 4 条） |
+| 符号大纲 | `textDocument/documentSymbol` | **函数列表**（Outliner / Ctrl+Shift+O；判据 4 条） |
 
 > 这两个 provider 曾经在扩展侧注册、LSP 侧却没实现——服务端回
 > `{"result": null}`，扩展拿到空数组，**F12 与 Shift+F12 静默失败**

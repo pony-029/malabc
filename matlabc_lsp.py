@@ -366,6 +366,58 @@ def _hover(uri, pos):
     return {"contents": {"kind": "markdown", "value": "\n".join(parts)}}
 
 
+#: LSP `SymbolKind.Function` = 12
+_SYMBOL_FUNCTION = 12
+#: LSP `SymbolKind.Class` = 5
+_SYMBOL_CLASS = 5
+
+
+def _document_symbols(uri):
+    """`textDocument/documentSymbol`：该文件的函数列表（大纲 / 符号面板）。
+
+    数据来自 `MatlabFunction.name` / `.line` / `.body_end` / `.kind`，
+    **不重新解析**。`kind == "classdef"` 的映射成 Class，其余映射成 Function。
+
+    `range` 覆盖函数体（`line..body_end`），`selectionRange` 只覆盖名字那一行——
+    LSP 要求后者**必须**落在前者内部，否则 VSCode 会拒绝整批符号。
+    """
+    result = _STATE.get("result")
+    root = _STATE.get("root")
+    if result is None or not root:
+        return []
+    path = _uri_to_path(uri)
+    try:
+        rel = os.path.relpath(path, root).replace(os.sep, "/")
+    except ValueError:
+        rel = os.path.basename(path)
+    want = os.path.basename(rel).lower()
+
+    out = []
+    for mf in (getattr(result, "files", None) or []):
+        if os.path.basename(getattr(mf, "rel", "") or "").lower() != want:
+            continue
+        for f in (getattr(mf, "functions", None) or []):
+            name = getattr(f, "name", "") or ""
+            if not name:
+                continue
+            start = max(0, int(getattr(f, "line", 1) or 1) - 1)
+            end = getattr(f, "body_end", None)
+            end0 = max(start, int(end) - 1) if end else start
+            kind = (_SYMBOL_CLASS
+                    if (getattr(f, "kind", "") or "") == "classdef"
+                    else _SYMBOL_FUNCTION)
+            out.append({
+                "name": name,
+                "kind": kind,
+                "range": {"start": {"line": start, "character": 0},
+                          "end": {"line": end0, "character": 0}},
+                "selectionRange": {"start": {"line": start, "character": 0},
+                                   "end": {"line": start,
+                                           "character": len(name)}},
+            })
+    return out
+
+
 # --------------------------------------------------------------------------
 # 协议处理
 # --------------------------------------------------------------------------
@@ -385,7 +437,12 @@ def handle(msg, out):
         _write_message(out, {
             "jsonrpc": "2.0", "id": mid,
             "result": {
-                "capabilities": {"textDocumentSync": 1},
+                "capabilities": {
+                    "textDocumentSync": 1,
+                    # 手写客户端不会自动转 provider，这里声明只是让协议
+                    # 自洽；`vscode/extension.js` 里仍需自己 register。
+                    "documentSymbolProvider": True,
+                },
                 "serverInfo": {"name": "matlabc-lsp", "version": "0.1.0"},
             },
         })
@@ -459,6 +516,15 @@ def handle(msg, out):
         _log("hover %s:%s -> %s"
              % (os.path.basename(_uri_to_path(uri)), pos.get("line"),
                 "hit" if info else "none"))
+        return True
+
+    if method == "textDocument/documentSymbol":
+        params = msg.get("params") or {}
+        uri = (params.get("textDocument") or {}).get("uri", "")
+        syms = _document_symbols(uri)
+        _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": syms})
+        _log("documentSymbol %s -> %d"
+             % (os.path.basename(_uri_to_path(uri)), len(syms)))
         return True
 
     if method == "textDocument/didClose":

@@ -177,6 +177,24 @@ def _hover(c):
     _chk((c.recv() or {}).get("result") is None, "注释上 hover 应为 null")
 
 
+def _symbols(c):
+    c.init()
+    a_m = os.path.join(CORPUS, "a.m")
+    c.open(a_m)
+    c.send({"jsonrpc": "2.0", "id": 2, "method": "textDocument/documentSymbol",
+            "params": {"textDocument": {"uri": _uri(a_m)}}})
+    syms = (c.recv() or {}).get("result") or []
+    _chk([s.get("name") for s in syms] == ["a", "b", "c"],
+         "a.m 应有 a/b/c 三个符号，实际 %r" % ([s.get("name") for s in syms],))
+    _chk([s["selectionRange"]["start"]["line"] for s in syms] == [0, 5, 10],
+         "行号应为 0/5/10")
+    _chk(all(s.get("kind") == 12 for s in syms), "kind 应为 12（Function）")
+    _chk(all(s["range"]["start"]["line"] <= s["selectionRange"]["start"]["line"]
+             and s["selectionRange"]["end"]["line"] <= s["range"]["end"]["line"]
+             for s in syms),
+         "selectionRange 必须落在 range 内部（否则 VSCode 整批丢弃）")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--diag", action="store_true")
@@ -184,6 +202,7 @@ def main(argv=None):
     ap.add_argument("--definition", action="store_true")
     ap.add_argument("--ref", action="store_true")
     ap.add_argument("--hover", action="store_true")
+    ap.add_argument("--symbol", action="store_true")
     ap.add_argument("--help", action="store_true")
     args = ap.parse_args(argv)
 
@@ -206,9 +225,11 @@ def main(argv=None):
         groups = [("ref", _ref)]
     elif args.hover:
         groups = [("hover", _hover)]
+    elif args.symbol:
+        groups = [("symbol", _symbols)]
     else:
         groups = [("diag", _diag), ("def", _def), ("ref", _ref),
-                  ("hover", _hover)]
+                  ("hover", _hover), ("symbol", _symbols)]
 
     for name, fn in groups:
         print("[%s]" % name)

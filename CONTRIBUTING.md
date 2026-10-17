@@ -103,9 +103,10 @@ python tools/check_all.py
 LSP 的判据**不进 `check_all`** —— 它要起子进程、跑分析，与其它护栏"纯静态读文件"
 的性质不同，放进 runner 会把 24 道门从 2 分钟拖到 3 分钟。所以必须手工跑：
 
-1. `python tools/lsp_selftest.py` —— 四组 **15 条**：诊断（含**第一条必须是空**）、
+1. `python tools/lsp_selftest.py` —— 五组 **19 条**：诊断（含**第一条必须是空**）、
    definition（同文件 / 跨文件 / 注释空）、references（1 个引用 / 含定义 2 个 / 注释空）、
-   hover（真实签名 / 来源文件 / 注释上 null）。
+   hover（真实签名 / 来源文件 / 注释上 null）、documentSymbol（a/b/c 三个符号 /
+   行号 0·5·10 / kind=12 / selectionRange 落在 range 内）。
 2. `node vscode/test_extension.js` —— 模拟宿主，断言**注册了哪些 provider**（5 条）。
 3. `node vscode/test_client.js` —— 以真实 `matlabc_lsp.py` 为对端（6 条）。
 

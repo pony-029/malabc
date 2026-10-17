@@ -22,11 +22,13 @@ function severityOf(n) {
   }
 }
 
+function toRange(r) {
+  return new vscode.Range(r.start.line, r.start.character,
+                          r.end.line, r.end.character);
+}
+
 function toLocation(loc) {
-  const uri = vscode.Uri.parse(loc.uri);
-  const r = new vscode.Range(loc.range.start.line, loc.range.start.character,
-                             loc.range.end.line, loc.range.end.character);
-  return new vscode.Location(uri, r);
+  return new vscode.Location(vscode.Uri.parse(loc.uri), toRange(loc.range));
 }
 
 function sendOpen(doc) {
@@ -127,6 +129,24 @@ function activate(context) {
         if (!c || !c.value) return undefined;
         const md = new vscode.MarkdownString(c.value);
         return new vscode.Hover(md);
+      },
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.languages.registerDocumentSymbolProvider({ language: 'matlab' }, {
+      provideDocumentSymbols: async (doc) => {
+        const r = await client.request('textDocument/documentSymbol', {
+          textDocument: { uri: doc.uri.toString() },
+        });
+        return (r.result || []).map((s) => {
+          const kind = s.kind === 12
+            ? vscode.SymbolKind.Function
+            : vscode.SymbolKind.Class;
+          const range = toRange(s.range);
+          const sel = toRange(s.selectionRange);
+          return new vscode.DocumentSymbol(s.name, '', kind, range, sel);
+        });
       },
     })
   );

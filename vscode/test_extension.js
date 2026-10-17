@@ -54,6 +54,10 @@ const fakeVscode = {
       registered.push('hover');
       return { dispose: () => disposed.push('hover') };
     },
+    registerDocumentSymbolProvider: () => {
+      registered.push('symbol');
+      return { dispose: () => disposed.push('symbol') };
+    },
   },
   Uri: {
     parse: (s) => ({ toString: () => s, fsPath: s, scheme: 'file' }),
@@ -80,6 +84,16 @@ const fakeVscode = {
   Hover: class {
     constructor(c) { this.contents = c; }
   },
+  SymbolKind: { Function: 12, Class: 5, Variable: 13 },
+  DocumentSymbol: class {
+    constructor(name, detail, kind, range, selectionRange) {
+      this.name = name;
+      this.detail = detail;
+      this.kind = kind;
+      this.range = range;
+      this.selectionRange = selectionRange;
+    }
+  },
   DiagnosticSeverity: { Error: 0, Warning: 1, Information: 2, Hint: 3 },
   window: { showErrorMessage: (m) => console.log('  [window] ' + m) },
 };
@@ -105,8 +119,9 @@ try {
 chk(registered.indexOf('definition') >= 0, '应注册 definitionProvider');
 chk(registered.indexOf('references') >= 0, '应注册 referenceProvider');
 chk(registered.indexOf('hover') >= 0, '应注册 hoverProvider');
-chk(ctx.subscriptions.length >= 4,
-  'subscriptions 应至少 4 项（definition + references + hover + 诊断集合），实际 '
+chk(registered.indexOf('symbol') >= 0, '应注册 documentSymbolProvider');
+chk(ctx.subscriptions.length >= 5,
+  'subscriptions 应至少 5 项（definition + references + hover + symbol + 诊断集合），实际 '
   + ctx.subscriptions.length);
 
 try {
