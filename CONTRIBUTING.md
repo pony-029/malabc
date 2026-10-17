@@ -82,6 +82,22 @@ python tools/check_all.py
    **1233.4 秒**（C 臂，62,704 文件）+ 2.4 秒（asm 臂）。
    **不要试图把门数从 `matlabc.py` 移出来解耦** —— N2 已经证明这条路不通。
 
+## 用脚本改仓库文件时的两条硬规则（R110 / R157）
+
+1. **写**：`io.open(path, "w", encoding="utf-8", newline="")`。
+   不加 `newline=""`，`\n` 会被转成平台默认（Windows 上是 CRLF，看起来"对"，
+   但和仓库约定的 CRLF 混在一起会产生 `\r\r\n`）。
+
+2. **读**：`io.open(path, "r", encoding="utf-8", newline="")`。**这条更隐蔽**：
+   不加 `newline=""`，Python 的 universal newlines 会在**读取时**就把 `\r\n`
+   变成 `\n`——于是 `read()` → 拼接 → `write()` 一次就把整个文件改成 LF，
+   而你以为只追加了几行。
+
+**实测记录**：这个坑已经踩了三次（R110 的 68,456 行 diff、R132 的 4 个
+`candidate.json`、R157 的 135 行），三次都被 `check_eol_convention` 的 **EO1**
+抓到——**只有第三次是在提交前**。前两次是靠 `check_kernel_snapshot` 报
+「字节数少了 34,228」才发现的。
+
 ## 改 `main` / 分析入口后的四条冒烟（R119 起，R147 扩）
 
 切分 `main` 时，**判据比代码重要**。四条都要跑，因为它们各自覆盖一条不同的路径：
