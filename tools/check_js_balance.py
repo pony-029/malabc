@@ -206,7 +206,12 @@ def main(argv=None):
         return 0
     if args.selftest:
         bad, good = run_cases()
+        # **`SELFTEST COUNTS` 这一行是 `check_all` 的契约**：runner 用
+        # `if "SELFTEST COUNTS" not in out: 判为缺自证`。R240 之前这里只
+        # 打 `JS SELFTEST {...}`，于是**单跑绿、进 runner 就红** ——
+        # 而我又一直只单跑，所以这道门的自证从未真正被 runner 承认过。
         print('JS SELFTEST {"bad": %d, "good": %d}' % (bad, good))
+        print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
         return 0 if bad == 0 else 1
 
     if not os.path.isdir(VDIR):

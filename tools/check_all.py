@@ -304,11 +304,26 @@ def run_guards(tools_dir, python_exe=None, timeout=GUARD_TIMEOUT):
         print("[%s] %-24s %s" % ("OK  " if ok else "FAIL", g, last))
         if not ok:
             bad.append(g if rc is not None else g + "(timeout)")
-        # 每个护栏必须自带并能通过 --selftest，否则是一道可能永远绿的门
+        # 每个护栏必须自带并能通过 --selftest，否则是一道可能永远绿的门。
+        #
+        # **报错必须说清缺什么**（R240）。原文案只写「缺失或不通过」，
+        # 而实际有两个独立条件：退出码 0，**以及输出里有 `SELFTEST COUNTS`
+        # 这一行**。R240 有两道门（新加的 JS 门和 grammar 门）恰好只打了
+        # 自家标签的 JSON、没打这一行 —— 单跑绿、进 runner 红，而报错
+        # 让人以为是判据不过，白找半天。
         s_rc, s_sout = _run(py, [p, "--selftest"], timeout=timeout)
-        if s_rc != 0 or "SELFTEST COUNTS" not in s_sout:
-            why = "挂死（超时）" if s_rc is None else "缺失或不通过"
-            print("[FAIL] %-24s （--selftest %s）" % (g, why))
+        has_counts = "SELFTEST COUNTS" in s_sout
+        if s_rc is None:
+            print("[FAIL] %-24s （--selftest 挂死：%ds 内没退出）"
+                  % (g, timeout))
+            bad.append(g + "(selftest)")
+        elif s_rc != 0:
+            print("[FAIL] %-24s （--selftest 退出码 %d，判据不过）"
+                  % (g, s_rc))
+            bad.append(g + "(selftest)")
+        elif not has_counts:
+            print("[FAIL] %-24s （--selftest 没输出 `SELFTEST COUNTS {...}` "
+                  "—— 这是 runner 认自证的唯一凭据）" % (g,))
             bad.append(g + "(selftest)")
     return bad, guards
 

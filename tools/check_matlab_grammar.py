@@ -222,6 +222,9 @@ def selftest():
         print("  [FAIL] 恢复无条件 %{ 后 G3 没变红")
 
     print("GRAMMAR SELFTEST {\"bad\": %d, \"good\": %d}" % (bad, good))
+    # `check_all` 认的是 `SELFTEST COUNTS` 这一行；只打 `GRAMMAR SELFTEST`
+    # 会让这道门**单跑绿、进 runner 红**（R240 实测，已红了一段时间）。
+    print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     return bad
 
 
