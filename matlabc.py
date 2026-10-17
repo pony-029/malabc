@@ -33241,15 +33241,21 @@ def main(argv=None):
     result = run_pipeline(args, root, paths)
     if result.early_exit is not None:
         return result.early_exit
+    return emit_outputs(args, result, root, t_start, gate_cfg)
+
+
+def emit_outputs(args, result, root, t_start, gate_cfg=None):
+    """产出全部产物并返回进程退出码。**唯一允许 print / 写盘的一层。**
+
+    与 `run_pipeline` 的分界：流水线只产出内存里的结果，本函数只消费它。
+    解包 7 个名字是为了让原来那 1,010 行**一行不用改**（与 S2b 同一手法）。
+    `t_start` 由调用方传入：它要报的是「整条命令」的耗时，不是本函数的。
+    """
     files, index, edges, stats = (result.files, result.index,
                                    result.edges, result.stats)
     model, c_model = result.model, result.c_model
     checks_for_sarif = result.checks_for_sarif
-    # `_dup_opts` 在流水线内算过一次；这里重算一次供后面的 `_emit_*` 使用
-    # （`_build_dup_opts` 是纯函数，重算幂等；不放进 PipelineResult 是为了不打乱
-    #  七字段的语义边界 —— 它只是 args 的派生配置，不是分析结果）
     _dup_opts = _build_dup_opts(args)
-
     ok = _emit_report_outputs(args, model, files, index, edges, stats, root,
                               checks_for_sarif=checks_for_sarif)
     # R106：MATLAB 路径的 `--callgraph` 出口。此前 `_emit_call_relations`
