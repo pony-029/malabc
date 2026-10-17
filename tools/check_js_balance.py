@@ -17,11 +17,16 @@
 R205 和 R213 两次「点了没反应」都是这么排查的：先看图，再看日志，
 最后才发现问题根本不在协议层。
 
-判据族 **JS1–JS3**：
+判据族 **JS1–JS4**：
 
-    JS1  `vscode/extension.js` 扫描零错误
-    JS2  `vscode/lspClient.js` 扫描零错误
-    JS3  两个文件都非空（防「扫了个空文件所以全绿」）
+    JS1  `vscode/extension.js` 非空，且扫描零错误
+    JS2  `vscode/lspClient.js` 非空，且扫描零错误
+    JS3  **扫描器自己的 10 条用例全过**（判据也要被检验：它第一版报过
+         300 条假错误，因为不认正则字面量 `/[&<>"]/g`）
+    JS4  `vscode/package.json` 可解析、`main` 指向的文件**真的存在**、
+         有 `engines.vscode`、声明了 `matlab` language。
+         **扩展「静默不激活」最常见的原因其实在清单里，不在 JS 里** ——
+         `main` 指向一个被改名的文件时，VSCode 连报错都不给
 
 **这是启发式，不是解析器**：它只认括号配平、字符串闭合、正则闭合。
 它抓不到 `const x = ;` 这种。**但它抓得到「编辑时漏了一个 `}` 或引号」**
@@ -32,17 +37,18 @@ R205 和 R213 两次「点了没反应」都是这么排查的：先看图，再
 `--selftest` 里专门留了这条用例（`JS3` 之外的第 4 例），防止再犯。
 
 退出码：
-    0  = 两个文件都配平
-    1  = 有文件配平失败（或字符串/正则未闭合）
-    2  = 缺输入（`vscode/` 下找不到这两个文件）
+    0  = 两个 JS 文件都配平、扫描器用例全过、`package.json` 骨架完整
+    1  = 有文件配平失败（或字符串/正则未闭合），或清单不合规
+    2  = 缺输入（`vscode/` 下找不到这两个 JS 或 `package.json`）
 """
 import argparse
 import io
+import json
 import os
 import sys
 
 #: 本门在 README 质量门表那一行里声明的判据族。
-ROW_SIGNATURE = "JS1–JS3"
+ROW_SIGNATURE = "JS1–JS4"
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VDIR = os.path.join(ROOT, "vscode")
@@ -240,6 +246,33 @@ def main(argv=None):
 
     cbad, cgood = run_cases()
     _chk(cbad == 0, "JS3 扫描器用例（%d 过 / %d 败）" % (cgood, cbad))
+
+    # ---- JS4：`package.json` 本身（R241）------------------------------
+    # 扩展「静默不激活」最常见的原因其实不是 JS 括号，而是**清单**：
+    # 解析失败、`main` 指向一个被改名的文件、少了 `engines.vscode`。
+    # VSCode 遇到这些要么不加载、要么加载了但没有任何贡献点 ——
+    # 症状和 JS 语法错一模一样（点了没反应），区别只在日志里多一行。
+    pkg_path = os.path.join(VDIR, "package.json")
+    pkg = None
+    try:
+        pkg = json.loads(io.open(pkg_path, encoding="utf-8").read())
+        _chk(isinstance(pkg, dict), "JS4 package.json 是对象")
+        if not isinstance(pkg, dict):
+            pkg = None
+    except Exception as exc:
+        _chk(False, "JS4 package.json 可解析（%r）" % (exc,))
+    if pkg is not None:
+        main_rel = pkg.get("main") or ""
+        _chk(bool(main_rel), "JS4 package.json 有 main")
+        _chk(bool(main_rel) and
+             os.path.isfile(os.path.join(VDIR, main_rel.replace("/", os.sep))),
+             "JS4 main 指向的文件存在（%r）" % (main_rel,))
+        _chk(bool((pkg.get("engines") or {}).get("vscode")),
+             "JS4 package.json 有 engines.vscode")
+        langs = ((pkg.get("contributes") or {}).get("languages") or [])
+        _chk(any(isinstance(l, dict) and l.get("id") == "matlab"
+                 for l in langs),
+             "JS4 package.json 声明了 matlab language")
 
     if _RESULT["bad"]:
         for f in _RESULT["fails"]:

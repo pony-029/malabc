@@ -207,10 +207,12 @@ GUARD_CONTRACT = {
         2: "找不到护栏（缺输入）",
     },
     "tools/check_js_balance.py": {
-        0: "通过（JS1–JS3：`vscode/extension.js` 与 `vscode/lspClient.js` "
-           "括号配平、字符串与正则闭合，且两文件都非空）",
-        1: "有文件配平失败 —— 扩展会静默不激活（用户看到「点了没反应」）",
-        2: "缺输入（`vscode/` 下找不到 extension.js 或 lspClient.js）",
+        0: "通过（JS1–JS4：两个 JS 文件括号配平、字符串与正则闭合且非空；"
+           "扫描器 10 条用例全过；`package.json` 可解析、`main` 指向的文件"
+           "存在、有 `engines.vscode` 与 `matlab` language）",
+        1: "有文件配平失败或清单不合规 —— 扩展会静默不激活"
+           "（用户看到「点了没反应」，日志里连 `activate()` 都没有）",
+        2: "缺输入（`vscode/` 下找不到 extension.js、lspClient.js 或 package.json）",
     },
     "tools/check_matlab_grammar.py": {
         0: "通过（GR1–GR6：转置不开启字符串、三种转置写法、`%{` 必须独占一行、"
