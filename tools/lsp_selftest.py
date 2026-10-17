@@ -871,9 +871,11 @@ def _lens(c):
             # R258：**服务端不许截断调用点**（展示层才截断，否则
             # 「另 N 处」算不出来）。`step` 被 `top` 在 9 个不同行上调用。
             #
-            # 顺带记录一个语义事实：`call_sites` **按行去重** —— 一行里
-            # 写三次 `step(a)+step(a)+step(a)` 只记 1 处。所以图中
-            # 「调用自 N」说的是**行数**，不是**次数**。
+            # 顺带记录一个语义事实：`call_sites` **每个语句只记一次** ——
+            # `step(a)+step(a)+step(a)` 是一个语句，只记 1 处；用 `...`
+            # 续行的多行也是同一语句，同样只记 1 处。所以图中
+            # 「调用自 N」说的是**语句数**，不是**调用次数**。
+            # （第一版注释写成「按行去重」，不准确 —— 行与语句不是一回事。）
             c2.send({"jsonrpc": "2.0", "id": 94, "method": "matlabc/impact",
                      "params": {"name": "leaf"}})
             rl = c2.recv() or {}
@@ -883,7 +885,7 @@ def _lens(c):
                  % (len(il.get("call_sites") or []),))
             _chk(all(s.get("rel") == "many_calls.m"
                      for s in (il.get("call_sites") or [])),
-                 "impact/call-sites-are-rows-not-counts（按行去重）")
+                 "impact/call-sites-per-statement（语句数，非调用次数）")
             _chk(inf.get("down") == [],
                  "impact/no-fake-downstream（down 必须为空：它没有可跳的调用）")
         finally:
