@@ -656,14 +656,19 @@ construction*, because the server reads the CLI output instead of recomputing.
 python matlabc_lsp.py      # speak LSP over stdin/stdout
 ```
 
-> **Known limit, measured**: the first `didOpen` runs a full `--json`.
-> Profiling showed **63 %** of it was `_collect_checks`, which the LSP never
-> uses — parsing is only **9 %**. The server therefore passes `--no-checks`:
-> on 1,300 files that took the run from 2.18 s to **0.73 s** (ratio 0.335)
-> with `--json` identical in key set and `heuristics` content. Scaled to
-> 62,704 files that is roughly **370 s** instead of 1,093 s — still too slow
-> for an editor, which is why a single-file entry point is the next step.
-> See `docs/analysis/ANALYSIS_2026-10-17_LSP_PERF.md`.
+> **Measured latency** on the MATLAB path with `--no-checks`: **13** `.m`
+> files → **0.37 s**; **1,300** → **5.92 s**. Cost scales with the number of
+> `.m` files in the workspace. (The 1,093 s figure quoted elsewhere belongs to
+> the **C** arm — 62,704 `.c` files with `--checks all` — and does not apply
+> to the LSP.)
+>
+> Profiling the MATLAB path showed **63 %** of the run was `_collect_checks`,
+> which the LSP never uses (parsing is only **9 %**), hence `--no-checks`.
+> A single-file entry point was measured and **ruled out**: `MyCls.m`
+> (a `classdef`) reports 2 missing-description entries in full mode and **0**
+> in single-file mode, because `doc_todos` depends on the cross-file
+> `callers_of`. See `docs/analysis/ANALYSIS_2026-10-17_LSP_PERF.md` and
+> `docs/analysis/ANALYSIS_2026-10-17_SINGLE_FILE.md`.
 
 ---
 
