@@ -815,6 +815,18 @@ def _lens(c):
                      "lens/ext-callees==0（实际 %r）" % (d.get("callees"),))
                 _chk(d.get("unresolved") == 1,
                      "lens/ext-unresolved==1（实际 %r）" % (d.get("unresolved"),))
+
+            # R243：关系图的目标节点也要带同一个数 —— 否则图上写
+            # 「叶子」（不调用任何东西），而它其实调用了一个跳不动的名字。
+            c2.send({"jsonrpc": "2.0", "id": 92, "method": "matlabc/impact",
+                     "params": {"name": "ext_call"}})
+            ri = c2.recv() or {}
+            inf = ri.get("result") or {}
+            _chk(inf.get("unresolved") == 1,
+                 "impact/target-unresolved==1（实际 %r）"
+                 % (inf.get("unresolved"),))
+            _chk(inf.get("down") == [],
+                 "impact/no-fake-downstream（down 必须为空：它没有可跳的调用）")
         finally:
             c2.close()
 

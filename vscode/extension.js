@@ -292,10 +292,16 @@ function activate(context) {
     // 下游节点：名字 + 定义行 + 复杂度。
     // 这里**不显示「调用自」** —— 那是上游的语义。下游关心的是
     // 「它有多复杂、跳过去看什么」，多给一份上游信息只会让人分不清方向。
-    const downNode = (d, prefix) => '<div class="node">' + prefix +
-      esc(d.name) +
-      '<span class="where">' + link(d.rel, d.line, d.rel + ':' + d.line) +
-      '</span><span class="calls">复杂度 ' + (d.complexity || 0) + '</span></div>';
+    const downNode = (d, prefix) => {
+      // 它自己也可能有跳不动的调用 —— 标出来，否则用户点进去才发现。
+      const un = d.unresolved || 0;
+      const unHtml = un
+        ? '<span class="calls">另 ' + un + ' 未解析</span>' : '';
+      return '<div class="node">' + prefix + esc(d.name) +
+        '<span class="where">' + link(d.rel, d.line, d.rel + ':' + d.line) +
+        '</span><span class="calls">复杂度 ' + (d.complexity || 0) + '</span>' +
+        unHtml + '</div>';
+    };
 
     const rows = [];
     rows.push('<div class="node root">' + esc(name) + '</div>');
@@ -339,7 +345,12 @@ function activate(context) {
     // ---- 下游 ----
     rows.push('<div class="section">▼ 下游（它调用谁）</div>');
     if (!down.length) {
-      rows.push('<div class="empty">不调用其他函数 —— 叶子。</div>');
+      // `down` 只含**能跳到定义**的调用。目标可能还有一堆 `foo(...)`
+      // 解析不到 —— 那时说「叶子」就是在撒谎（R243）。
+      rows.push('<div class="empty">' + (info.unresolved
+        ? '没有可跳转的调用；另有 ' + info.unresolved +
+          ' 处调用无法定位（字段取值 / toolbox / 函数句柄）'
+        : '不调用其他函数 —— 叶子。') + '</div>');
     } else {
       const dn = byLevel(down);
       Object.keys(dn).map(Number).sort((a, b) => a - b).forEach((lv) => {
@@ -366,6 +377,7 @@ function activate(context) {
       '<p class="sum">↑ ' + direct.length + ' 直接 · ' +
       others.length + ' 间接 · ' + (info.entries || 0) + ' 入口' +
       '　｜　↓ ' + (info.down_total || 0) + ' 个被调用' +
+      (info.unresolved ? '　｜　' + info.unresolved + ' 处调用无法定位' : '') +
       (info.ambiguous ? '　｜　' + info.ambiguous + ' 处同名定义' : '') + '</p>' +
       rows.join('') +
       '<p class="note">静态快照（打开时分析结果）。点击任意文件名或行号可跳转。</p>' +

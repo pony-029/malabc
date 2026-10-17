@@ -1222,7 +1222,12 @@ def _impact(name, depth=30, down_depth=3):
             where.setdefault(nm, []).append(
                 (rel, int(getattr(f, "line", 0) or 1)))
             meta["%s:%s" % (rel, nm)] = {
-                "complexity": int(getattr(f, "complexity", 0) or 0)}
+                "complexity": int(getattr(f, "complexity", 0) or 0),
+                # R243：每层节点也带上「它自己还有多少调用解析不到」。
+                # CodeLens 已经诚实了（0.6.4），但关系图里每个节点只显示
+                # 名字和行号 —— 用户从图上点进一个函数，仍会撞上那里
+                # 十几个跳不动的 `foo(...)`。
+                "unresolved": _unresolved_count(f)}
     if name not in where:
         return None
 
@@ -1285,6 +1290,7 @@ def _impact(name, depth=30, down_depth=3):
                 break
         info = {"key": key, "name": nm, "rel": rel, "line": line,
                 "complexity": (meta.get(key) or {}).get("complexity", 0),
+                "unresolved": (meta.get(key) or {}).get("unresolved", 0),
                 "call_lines": sorted(set(l for _c, l in (calls or [])) if calls
                                      else [])}
         return info
@@ -1359,6 +1365,10 @@ def _impact(name, depth=30, down_depth=3):
         "down_levels": len(down_levels),
         "down_total": len(d_seen - set(start_keys)),
         "down_truncated": down_truncated,
+        # 目标自身有多少次调用解析不到（R243）。它在 `edges` 里没有边，
+        # 所以既不会出现在上游也不会出现在下游 —— **不报就等于说它
+        # 什么都不调用**，而事实相反。
+        "unresolved": (meta.get(start_keys[0]) or {}).get("unresolved", 0),
     }
 
 
