@@ -776,7 +776,14 @@ def _meta():
 
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
-    ap.add_argument("--only", default=None)
+    ap.add_argument("--only", default=None,
+                    help="组号，可逗号分隔：1 / 1,3 / 5,6")
+    ap.add_argument("--list", action="store_true", help="列出所有组")
+    ap.add_argument("--json", dest="json_out", action="store_true",
+                    help="机器可读输出（一行 JSON）")
+    ap.add_argument("--quiet", action="store_true", help="只输出总结")
+    ap.add_argument("--fail-fast", dest="fail_fast", action="store_true",
+                    help="第一个失败就停")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--meta", action="store_true")
     ap.add_argument("--help", "-h", action="store_true")
@@ -785,6 +792,10 @@ def main(argv=None):
     if args.help:
         if not _write_help(__doc__):
             return 2
+        return 0
+    if args.list:
+        for key, _fn in GROUPS:
+            print("  " + key)
         return 0
     if args.selftest:
         bad, good = _selftest()
@@ -798,26 +809,56 @@ def main(argv=None):
         print("sweep_cli: 缺输入（%s）" % CORPUS)
         return 2
 
+    # `--only` 支持逗号分隔的多个组号（`1,3`），也接受单个数字前缀。
+    want = None
+    if args.only:
+        want = [x.strip() for x in args.only.split(",") if x.strip()]
+
     tmp = os.path.join(os.environ.get("TEMP", ROOT), "malabc_sweep")
     shutil.rmtree(tmp, ignore_errors=True)
     # `exist_ok=True`：上一次被中断的运行可能仍占着这个目录
     # （Windows 上 rmtree 失败但目录还在），不加它会 FileExistsError。
     os.makedirs(tmp, exist_ok=True)
+    timings = []
+    aborted = False
     try:
         for key, fn in GROUPS:
-            if args.only and not key.startswith(args.only):
+            if want and not any(key.startswith(w) for w in want):
                 continue
-            print("[%s]" % key)
+            if not args.quiet:
+                print("[%s]" % key)
+            b0, g0 = _RESULT["bad"], _RESULT["good"]
+            t0 = time.time()
             fn(tmp)
+            el = time.time() - t0
+            timings.append((key, el, _RESULT["bad"] - b0,
+                            _RESULT["good"] - g0))
+            if not args.quiet:
+                print("  -> %.2fs, %d ok, %d bad"
+                      % (el, _RESULT["good"] - g0, _RESULT["bad"] - b0))
+            if args.fail_fast and _RESULT["bad"] > b0:
+                aborted = True
+                break
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
     r = _RESULT
-    print('SWEEP COUNTS {"bad": %d, "good": %d}' % (r["bad"], r["good"]))
-    if r["fails"]:
-        print("FAILURES: " + " | ".join(r["fails"]))
-        return 1
-    return 0
+    total = sum(t[1] for t in timings)
+    if args.json_out:
+        print(json.dumps({
+            "bad": r["bad"], "good": r["good"],
+            "total_secs": round(total, 2),
+            "groups": [{"name": k, "secs": round(e, 2), "ok": g, "bad": b}
+                       for k, e, b, g in timings],
+            "failures": r["fails"], "aborted": aborted,
+        }, ensure_ascii=False))
+    else:
+        print('SWEEP COUNTS {"bad": %d, "good": %d, "secs": %.1f}'
+              % (r["bad"], r["good"], total))
+        if r["fails"]:
+            # 失败详情走 **stderr**：`> report.txt` 时正文保持干净。
+            sys.stderr.write("FAILURES: " + " | ".join(r["fails"]) + "\n")
+    return 1 if (r["bad"] or aborted) else 0
 
 
 def _write_help(text):
