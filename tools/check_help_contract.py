@@ -2810,7 +2810,7 @@ def _selftest():
                            set(CONTRACT.get("matlabc.py", {}).get("codes", {})))
     nd, n_ex = audit_doc_numbers(root, on_problem_collector(probs))
     nb, nbd = audit_boundary(root, on_problem_collector(probs))
-    print("  真实仓库：核对 %d 个入口脚本 + %d 个护栏脚本 + %d 个 CI 模板/示例"
+    print("  真实仓库：核对 %d 个入口脚本 + %d 个 check_*.py（含本脚本） + %d 个 CI 模板/示例"
           " + %d 份文档数字（其中 %d 处为显式豁免的历史引用）+ %d 条边界承诺"
           "（%d 份文档同源核对），发现 %d 项不一致"
           % (n, ng, nc, nd, n_ex, nb, nbd, len(probs)))
@@ -2900,7 +2900,7 @@ def main(argv=None):
         for p in probs:
             print("  - " + p)
         return 1
-    print("check_help_contract: OK（%d 个入口脚本 + %d 个护栏脚本 + %d 个 CI 模板/示例"
+    print("check_help_contract: OK（%d 个入口脚本 + %d 个 check_*.py（含本脚本） + %d 个 CI 模板/示例"
           "的退出码在代码与帮助之间双向一致；%d 份文档里的「N 道护栏」数字与事实"
           "一致（其中 %d 处为带理由的显式历史引用豁免，理由过短或陈旧的标记也会"
           "被反向抓出）；入口帮助骨架齐备；%d 条示例命令已真跑且 rc=0；"
