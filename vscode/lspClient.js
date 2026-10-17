@@ -27,6 +27,11 @@ class LspClient {
       this.stderrTail.push(chunk.toString('utf8'));
       if (this.stderrTail.length > 50) this.stderrTail.shift();
     });
+    // stdin 的 EPIPE 是**异步事件**，try/catch 抓不到：对端 python 先退出时，
+    // 任何一次 write 都会 throw 到进程级（实测把 VSCode 宿主带崩）。
+    // 这里吞掉——写失败本身已有 `pending` 的 15s 超时兜底。
+    this.proc.stdin.on('error', () => { /* ignore EPIPE */ });
+    this.proc.on('error', () => { /* spawn 失败：initialize 的 catch 会报 */ });
   }
 
   _onData(chunk) {
@@ -55,9 +60,14 @@ class LspClient {
   }
 
   _write(obj) {
+    if (!this.proc || this.proc.exitCode !== null || this.proc.killed) return;
     const body = Buffer.from(JSON.stringify(obj), 'utf8');
-    this.proc.stdin.write(`Content-Length: ${body.length}\r\n\r\n`);
-    this.proc.stdin.write(body);
+    try {
+      this.proc.stdin.write(`Content-Length: ${body.length}\r\n\r\n`);
+      this.proc.stdin.write(body);
+    } catch (e) {
+      // 同步写失败（EPIPE）—— 同上，交给超时兜底
+    }
   }
 
   request(method, params) {
