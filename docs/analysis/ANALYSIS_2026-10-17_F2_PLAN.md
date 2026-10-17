@@ -59,7 +59,7 @@ uninit=uninit)` 里填入，值来自 L19855 的 `_detect_uninitialized(mf)` 循
 
 ---
 
-## §3 F2 的最小改动（三处，都是加法）
+## §3 F2 的最小改动（四处，都是加法）
 
 ### 3.1 `run_pipeline` 末尾把三份结果存到 `model`
 
@@ -93,6 +93,23 @@ render_json(..., model=model)
 ```
 
 `emit_outputs` 里已经有 `model`（解包来的），传下去是一行。
+
+### 3.4 `render_xml` 也要透传（这是第 4 处，初版漏了）
+
+`render_json` 共 **7 处调用**：
+
+| 行 | 位置 | 需要传 model？ |
+| --- | --- | --- |
+| L14229 | 定义 | — |
+| **L19706** | **`render_xml` 内部** | **要**（否则 XML 又算一遍） |
+| L33248 | `emit_outputs` | **要** |
+| 4 处 | `tests/test_matlabc.py`（空 `files=[]`） | 不用（默认 None 走旧路径） |
+
+所以 `render_xml(files, edges, stats, root, ..., model=None)` 也要加同款参数，
+并把它透传给内部的 `render_json(...)`。
+
+**判据追加一条**：`--xml` 与 `--json` 同时比较（XML 是从 JSON 转的，
+如果 JSON 变了 XML 必变；反之若只 XML 变，说明透传漏了）。
 
 ---
 
