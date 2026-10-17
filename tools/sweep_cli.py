@@ -32,6 +32,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -286,12 +287,22 @@ def group3(tmp):
     # R170 的变异测试正是这样抓到它的（变异后只有 incr 那条红，idem 全绿）。
     # 现在三次运行的 `generated_at` 各不相同，`canon()` 必须真的剔除才能通过。
     runs = []
+    gens = []
     for i in range(3):
         p = o("idem%d.json" % i)
         rc, _, _ = run([CORPUS, "--json", p, "--sarif-no-persist"])
         _chk(rc == 0, "idem/run%d" % i)
         if rc == 0:
-            runs.append(canon(load(p)))
+            raw = load(p)
+            gens.append(raw.get("generated_at"))
+            runs.append(canon(raw))
+        # 三次必须在**不同的秒**里 —— 否则 `generated_at` 相同，
+        # 「canon 剔除它」这件事就永远测不到（R173 的变异测试抓到的）。
+        if i < 2:
+            time.sleep(1.05)
+    _chk(len(set(gens)) >= 2, "idem/timestamps-actually-differ",
+         "三次 generated_at 全同（%r）⇒ 这条判据测不到 canon 的剔除职责"
+         % (gens[:1],))
     _chk(len(set(runs)) == 1, "idem/three-identical",
          "distinct=%d（若为 3，先查 canon 有没有剔除 generated_at）"
          % len(set(runs)))
@@ -350,8 +361,212 @@ def group4(tmp):
          "%d vs %d" % (s1, s2))
 
 
+def _lsp_client():
+    """起一个 LSP，返回带**超时保护**的客户端。
+
+    R172 的教训：R166 那次脚本"卡住"不是因为服务端不回包，而是因为
+    它等**第三条**消息（`didOpen` 只发两条）。所以这里的 `recv` 一律
+    带超时，超时返回 `None` 而不是永久阻塞。
+    """
+    import threading
+
+    class C(object):
+        def __init__(self):
+            self.p = subprocess.Popen(
+                [PY, os.path.join(ROOT, "matlabc_lsp.py")], cwd=ROOT,
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE)
+
+        def send(self, obj):
+            body = json.dumps(obj).encode("utf-8")
+            self.p.stdin.write(b"Content-Length: %d\r\n\r\n" % len(body) + body)
+            self.p.stdin.flush()
+
+        def recv(self, timeout=8.0):
+            box = {}
+
+            def work():
+                try:
+                    h = {}
+                    while True:
+                        line = self.p.stdout.readline()
+                        if not line:
+                            return
+                        if line in (b"\r\n", b"\n"):
+                            break
+                        k, v = line.decode("ascii").split(":", 1)
+                        h[k.strip().lower()] = v.strip()
+                    box["m"] = json.loads(
+                        self.p.stdout.read(int(h["content-length"]))
+                        .decode("utf-8"))
+                except Exception:
+                    pass
+
+            t = threading.Thread(target=work)
+            t.daemon = True
+            t.start()
+            t.join(timeout)
+            return box.get("m")
+
+        def init(self, root=None):
+            self.send({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                       "params": {"rootUri": (_uri(root) if root else None),
+                                  "capabilities": {}}})
+            return self.recv()
+
+        def close(self):
+            try:
+                self.p.kill()
+            except Exception:
+                pass
+
+    return C()
+
+
+def _uri(p):
+    return "file:///" + str(p).replace("\\", "/").lstrip("/")
+
+
+def group5(tmp):
+    """LSP 边界：对畸形输入**不许崩**（功能对由 lsp_selftest 的 19 条证明）。"""
+    o = lambda n: os.path.join(tmp, n)
+
+    c = _lsp_client()
+    r = c.init(None)
+    _chk(bool(r and r.get("result")), "lsp/init-without-rootUri",
+         "%r" % (r,))
+    caps = ((r or {}).get("result") or {}).get("capabilities") or {}
+    _chk(caps.get("textDocumentSync") == 1, "lsp/textDocumentSync==1")
+    c.close()
+
+    txt = o("notes.txt")
+    write_text(txt, u"hello\n")
+    c = _lsp_client()
+    c.init(CORPUS)
+    c.send({"jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": {"textDocument": {"uri": _uri(txt),
+                                        "languageId": "plaintext",
+                                        "version": 1, "text": "hi"}}})
+    first = c.recv()
+    second = c.recv()
+    _chk(first is not None, "lsp/non-m-file-replies")
+    if second is not None:
+        _chk(len(((second.get("params") or {}).get("diagnostics")) or []) == 0,
+             "lsp/non-m-file-zero-diags")
+    c.close()
+
+    c = _lsp_client()
+    c.init(CORPUS)
+    c.send({"jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": {"textDocument": {"uri": _uri(o("nope.m")),
+                                        "languageId": "matlab",
+                                        "version": 1, "text": "x"}}})
+    a = c.recv()
+    b = c.recv()
+    _chk(a is not None, "lsp/missing-file-replies")
+    if b is not None:
+        _chk(len(((b.get("params") or {}).get("diagnostics")) or []) == 0,
+             "lsp/missing-file-zero-diags")
+    c.close()
+
+    # 未实现的方法必须回 -32601（R167 修的；这里是防退化）
+    c = _lsp_client()
+    c.init(CORPUS)
+    c.send({"jsonrpc": "2.0", "id": 9, "method": "workspace/symbol",
+            "params": {"query": "x"}})
+    r = c.recv()
+    _chk(r is not None, "lsp/unknown-method-replies", "静默不响应是协议违规")
+    _chk(((r or {}).get("error") or {}).get("code") == -32601,
+         "lsp/unknown-method--32601", "实际 %r" % (r,))
+    c.send({"jsonrpc": "2.0", "method": "some/notification"})
+    c.send({"jsonrpc": "2.0", "id": 10, "method": "shutdown"})
+    r = c.recv()
+    _chk(bool(r and r.get("id") == 10), "lsp/connection-survives",
+         "处理过未知通知后 shutdown 无响应")
+    c.close()
+
+
+def group6(tmp):
+    """四格式数字一致 + 极端参数。"""
+    o = lambda n: os.path.join(tmp, n)
+    import re
+
+    rc, _, _ = run([CORPUS, "--json", o("a.json"), "--sarif-no-persist"])
+    _chk(rc == 0, "fmt/json")
+    rc, _, _ = run([CORPUS, "--xml", o("a.xml")])
+    _chk(rc == 0, "fmt/xml")
+    rc, _, _ = run([CORPUS, "--browse", o("site")])
+    _chk(rc == 0, "fmt/browse")
+    rc, _, _ = run([CORPUS, "--mermaid", o("a.mmd")])
+    _chk(rc == 0, "fmt/mermaid")
+    rc, _, _ = run([CORPUS, "--sarif", o("a.sarif"), "--sarif-no-persist"])
+    _chk(rc == 0, "fmt/sarif")
+
+    d = load(o("a.json"))
+    st = d.get("stats") or {}
+    j_files = st.get("files")
+    j_funcs = st.get("functions")
+
+    xml_text = io.open(o("a.xml"), encoding="utf-8").read()
+    # 实测：`<files>` **没有 count 属性**，数字在 `<stats><files>N</files>`。
+    m = re.search(r"<stats>.*?<files>(\d+)</files>", xml_text, re.S)
+    _chk(m is not None, "fmt/xml-has-stats-files")
+    if m:
+        _chk(int(m.group(1)) == j_files, "fmt/xml-files==json",
+             "xml=%s json=%s" % (m.group(1), j_files))
+    m2 = re.search(r"<stats>.*?<functions>(\d+)</functions>", xml_text, re.S)
+    if m2:
+        _chk(int(m2.group(1)) == j_funcs, "fmt/xml-functions==json",
+             "xml=%s json=%s" % (m2.group(1), j_funcs))
+
+    mmd = io.open(o("a.mmd"), encoding="utf-8").read()
+    nodes = set(re.findall(r"^\s*(\w+)\[", mmd, re.M))
+    _chk(len(nodes) == j_funcs, "fmt/mermaid-nodes==functions",
+         "mermaid=%d json=%s" % (len(nodes), j_funcs))
+
+    idx = io.open(os.path.join(tmp, "site", "index.html"),
+                  encoding="utf-8").read()
+    _chk(str(j_files) in idx, "fmt/browse-mentions-files")
+
+    # SARIF 与 heuristics 是**不同类别**：`m_missing_doc` 不进 SARIF。
+    # 这是已知缺口（记录，不是失败）——如果哪天补上了，这条会红，那是信号。
+    sar = load(o("a.sarif"))
+    srun = (sar.get("runs") or [{}])[0]
+    rule_ids = set((r.get("ruleId") or "")
+                   for r in ((srun.get("tool") or {}).get("driver") or {})
+                   .get("rules") or [])
+    _chk("m_heuristics" not in rule_ids,
+         "fmt/sarif-still-lacks-m_heuristics（已知缺口，补上则此条变红）")
+
+    # 极端参数：都不许崩
+    for v in ("0", "1", "-1"):
+        rc, _, se = run([CORPUS, "--json", o("mn%s.json" % v.replace("-", "n")),
+                         "--max-nodes", v, "--sarif-no-persist"])
+        _chk(rc in (0, 2), "arg/max-nodes-%s" % v,
+             "rc=%d %s" % (rc, se.strip()[:40]))
+
+    rc, _, _ = run([CORPUS, "--json", o("dup1.json"), "--json", o("dup2.json"),
+                    "--sarif-no-persist"])
+    _chk(rc == 0 and os.path.exists(o("dup2.json")),
+         "arg/repeat-json-last-wins")
+
+    rc, _, _ = run([CORPUS, "--json", o("both.json"), "--xml", o("both.xml"),
+                    "--sarif-no-persist"])
+    _chk(rc == 0 and os.path.exists(o("both.json"))
+         and os.path.exists(o("both.xml")), "arg/json+xml-both")
+
+    rc, _, _ = run([CORPUS, "--lang", "C", "--json", o("u.json")])
+    _chk(rc == 2, "arg/lang-uppercase-rejected", "rc=%d（期望 2）" % rc)
+
+    deep = os.path.join(tmp, "d" * 30, "e" * 30, "out.json")
+    rc, _, _ = run([CORPUS, "--json", deep, "--sarif-no-persist"])
+    _chk(rc in (0, 1) and (rc != 0 or os.path.exists(deep)),
+         "arg/deep-output-path", "rc=%d" % rc)
+
+
 GROUPS = [("1 开关", group1), ("2 畸形/编码/规模", group2),
-          ("3 联动/幂等", group3), ("4 少见入口", group4)]
+          ("3 联动/幂等", group3), ("4 少见入口", group4),
+          ("5 LSP 边界", group5), ("6 格式一致/极端参数", group6)]
 
 
 def _selftest():
@@ -511,7 +726,9 @@ def main(argv=None):
 
     tmp = os.path.join(os.environ.get("TEMP", ROOT), "malabc_sweep")
     shutil.rmtree(tmp, ignore_errors=True)
-    os.makedirs(tmp)
+    # `exist_ok=True`：上一次被中断的运行可能仍占着这个目录
+    # （Windows 上 rmtree 失败但目录还在），不加它会 FileExistsError。
+    os.makedirs(tmp, exist_ok=True)
     try:
         for key, fn in GROUPS:
             if args.only and not key.startswith(args.only):

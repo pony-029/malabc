@@ -123,11 +123,20 @@ LSP 不实现，用户按 F12 会**静默失败**（服务端回 `null`，扩展
 ## 改任何 CLI 入口后的全场景扫测（R160 起）
 
 ```powershell
-python tools/sweep_cli.py            # 51 个检查点 / 4 组 / 约 25 秒
-python tools/sweep_cli.py --only 1   # 只跑开关组
+python tools/sweep_cli.py            # 79 个检查点 / 6 组 / 约 60 秒
+python tools/sweep_cli.py --only 5   # 只跑 LSP 边界组
 python tools/sweep_cli.py --selftest # 7 条：防护自身的自证
 python tools/sweep_cli.py --meta     # 11 条：**变异测试**（判据自己能不能红）
 ```
+
+| 组 | 覆盖 |
+| --- | --- |
+| 1 | 开关：`json`/`xml`/`browse`/`mermaid`/`dot`/`sarif`/`compact`/`no-checks`/`reproducible` + 四个语言分支的空目录 |
+| 2 | 畸形输入（空 / 只有注释 / **语法错误** / **中文名** / **带空格名**）、规模（**5000 行** / **8 层**）、编码（**BOM / CRLF / LF / 混合**） |
+| 3 | 联动（四开关同开）、**增量冷热**、**幂等三次**、`--mixed`、往返 |
+| 4 | 少见入口（`--version` / `--json-level`、**未知开关必须 rc=2**） |
+| **5** | **LSP 边界**：无 `rootUri` / 非 `.m` 文件 / 缺失文件 / **未知方法回 `-32601`** / 未知通知后连接存活 |
+| **6** | **四格式数字一致**（XML `stats` vs JSON、mermaid 节点数 vs 函数数、browse 提及的计数）+ **极端参数**（`--max-nodes 0/1/-1`、重复 `--json`、`json+xml` 同开、`--lang C` 被拒） |
 
 **`--meta` 是最容易跳过、也最该跑的那一个。**
 它把三条防护各故意改错一次，看对应判据是否变红：
