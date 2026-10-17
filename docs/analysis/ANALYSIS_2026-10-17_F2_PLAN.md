@@ -61,6 +61,19 @@ uninit=uninit)` 里填入，值来自 L19855 的 `_detect_uninitialized(mf)` 循
 
 ## §3 F2 的最小改动（四处，都是加法）
 
+### 3.0 精确行号（实测，2026-10-17 19:40）
+
+| # | 改动 | 行号 |
+| --- | --- | --- |
+| ① | `run_pipeline` 存 `dead_code` / `shape_mismatch` | **L33029**（`model.doc_todos` 之后）、**L33045**（`facts = []` 处） |
+| ② | `render_json` 加 `model=None` + 优先读 | **L14229**（定义）、**L14295 / L14300 / L14310**（三个键） |
+| ③ | `render_xml` 加 `model=None` + 透传 | **L19701**（定义）、**L19706**（内部调 `render_json`） |
+| ④ | `emit_outputs` 传 `model` | **L33248** |
+
+**并且发现第三处统计点**：L25879–25880 另有 `return {"uninitialized": ...,
+"dead_code": ..., "shape_mismatch": ..., "dup_code": ..., ...}` —— 这是站点侧
+自己算的一套。⇒ 「算 2–3 次」是保守估计，真实重复次数 ≥ 3。
+
 ### 3.1 `run_pipeline` 末尾把三份结果存到 `model`
 
 ```python
