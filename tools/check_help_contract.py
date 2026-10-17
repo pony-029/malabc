@@ -2819,12 +2819,50 @@ def _selftest():
     return 0
 
 
+def _list_prefixes(root):
+    """打印「判据前缀 → 主人」。**加新门前先跑一次**，别再撞。
+
+    R182/R188 连着两次撞前缀：`L1` 撞 `check_legal_parity`、
+    `T1` 撞 `check_baseline`。门会告诉你冲突，但那是**写完才发现**。
+    这里把「当前占用」提前摆出来。
+    """
+    import re as _re
+    tdir = os.path.join(root, "tools")
+    rows = []
+    for name in sorted(os.listdir(tdir)):
+        if not (name.startswith("check_") and name.endswith(".py")):
+            continue
+        p = os.path.join(tdir, name)
+        try:
+            with io.open(p, "r", encoding="utf-8") as fh:
+                text = fh.read()
+        except (IOError, OSError):
+            continue
+        m = _re.search(r'^ROW_SIGNATURE\s*=\s*"([^"]+)"', text, _re.M)
+        if m:
+            rows.append((m.group(1), name))
+    if not rows:
+        print("check_help_contract: 没有任何门声明 ROW_SIGNATURE（缺输入 → 红）")
+        return 2
+    w = max(len(s) for s, _ in rows)
+    for sig, name in rows:
+        print("  %-*s  %s" % (w, sig, name))
+    print("\n%d 个门声明了前缀；加新门前先在这里查一遍，"
+          "撞了就走 PREFIX_OWNERSHIP_* 或换字母。" % len(rows))
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--list-prefixes", dest="list_prefixes",
+                    action="store_true",
+                    help="打印「判据前缀 -> 主人」，加新门前先查")
     args = ap.parse_args(argv)
     if args.selftest:
         return _selftest()
+    if args.list_prefixes:
+        return _list_prefixes(repo_root())
 
     root = repo_root()
     if not os.path.isdir(os.path.join(root, "tools")):
