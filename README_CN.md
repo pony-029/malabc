@@ -818,6 +818,7 @@ python tools/sweep_cli.py --probe-cli tests/sample_m   # 打印 --json 的结构
 | `tree_diff.py` | 比两个目录的文件集合与内容（可按正则忽略行） |
 | `analyze_structure.py` | 打印单文件的结构大纲；是可重跑的基线，不是护栏 |
 | `lsp_selftest.py` | LSP 的 19 条判据套件——什么时候必须手工跑见 `CONTRIBUTING` |
+| `update_kernel_prov.py` | 每次探针收口的第一步：把当前 `matlabc.py` 的 sha / 字节数写回 `docs/KERNEL_RUN.md`（`--dry-run` 只打印不落盘） |
 
 ---
 

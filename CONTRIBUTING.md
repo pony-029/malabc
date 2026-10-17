@@ -98,6 +98,26 @@ python tools/check_all.py
 抓到——**只有第三次是在提交前**。前两次是靠 `check_kernel_snapshot` 报
 「字节数少了 34,228」才发现的。
 
+## 加新门之前先跑 `--list-prefixes`（R189 起）
+
+```powershell
+python tools/check_help_contract.py --list-prefixes
+```
+
+**一屏看全「判据前缀 → 主人」。** R182 和 R188 各撞了一次——`L1` 撞 `check_legal_parity`、`T1` 撞 `check_baseline`——**两次都是把整道门写完、接好五处线之后，才被 `O3` 告知**。
+
+**新门要接的五处**（少一处就有对应元门变红）：
+
+| # | 位置 | 谁来核对 |
+| --- | --- | --- |
+| 1 | `GUARD_CONTRACT` 的退出码 | `check_help_contract` G0b / H1 |
+| 2 | `check_all.py` 的 ASCII 树 | `check_help_contract` H2e |
+| 3 | 两份 README 的质量门表 | `check_readme_parity` P4 / P5 |
+| 4 | `check_all.py` 的 `MIN_GUARDS` | `check_all --selftest` |
+| 5 | 散文里的「N 道门」 | `check_help_contract` N1 |
+
+**第 5 处最容易漏**：上一轮 `25 → 26` 时它抓到 **9 处**（README ×2、README_CN ×2、CONTRIBUTING ×4、`matlabc.py` docstring ×1）。
+
 ## 写判据前先 `--probe` 一次（R180 起）
 
 十四次判据错里，**十三次是「我以为的结构」错了**。现在有工具可以直接看真实返回：

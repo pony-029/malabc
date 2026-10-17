@@ -862,6 +862,7 @@ judgements above:
 | `tree_diff.py` | compares two directory trees (file sets and contents, with regex line-ignores) |
 | `analyze_structure.py` | prints a single-file structural outline; a re-runnable baseline, not a gate |
 | `lsp_selftest.py` | the 19-judgement LSP suite — see `CONTRIBUTING` for when it must be run by hand |
+| `update_kernel_prov.py` | first step of every probe close-out: writes the current `matlabc.py` sha / byte count back into `docs/KERNEL_RUN.md` (`--dry-run` prints without writing) |
 
 ---
 
