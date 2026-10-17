@@ -63,6 +63,25 @@ python tools/check_all.py
    - [ ] 自证断言写的是**判据的检测结果**，不是「我的断言成立」——两者极易写反；
    - [ ] 新结论与上一次不同时，先重跑对照，再下判断。
 
+5. **新增 / 删除一道门 = 一次整树重跑，且必须与「门数同步」同提交。**
+   原因是一条链：门数散文写在 `matlabc.py` 的 docstring 里（**N2 要求它必须存在**，
+   去掉数字会被判「覆盖被静默取消」），而 `matlabc.py` 的 sha256 被
+   `check_kernel_snapshot` 的 **W2** 钉死。于是「加一道门」牵动 **7 个文件**：
+
+   | 落点 | 判据 |
+   | --- | --- |
+   | `tools/check_all.py` 的 `MIN_GUARDS` | 门数棘轮 |
+   | `tools/check_all.py` 的 docstring 树 | `check_help_contract` 的 H2 |
+   | `tools/check_help_contract.py` 的 `GUARD_CONTRACT` | H1 / G0b |
+   | 两份 README 的质量门表 | `check_readme_parity` 的 P4 / P5 |
+   | `matlabc.py` docstring 的门数 | N1 / N2 |
+   | `README*.md` / `CONTRIBUTING.md` 的散文数字 | N1 |
+   | `docs/KERNEL_RUN.md` 的 `provenance.matlabc_sha256` | W2 |
+
+   **实测代价**（R115–R116，23 → 24 道门）：改 7 个文件 + 整树重跑
+   **1233.4 秒**（C 臂，62,704 文件）+ 2.4 秒（asm 臂）。
+   **不要试图把门数从 `matlabc.py` 移出来解耦** —— N2 已经证明这条路不通。
+
 ## 提交约定
 
 - 提交信息建议 `类型: 简述`，类型如 `feat` / `fix` / `docs` / `refactor` / `test` / `ci`。
