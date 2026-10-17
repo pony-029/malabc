@@ -24169,9 +24169,14 @@ def render_browse_site(model, outdir, reproducible=False, enabled=None,
         (outdir / "compliance.html").write_text(
             render_compliance_page(files, _rv_findings, _rv_per_file, _rv_summary, _fan_in, _fan_trans),
             encoding="utf-8")
-    except Exception:
-        # 审查引擎异常不得影响主流程（站点生成优先）
-        pass
+    except Exception as _rv_err:
+        # 审查引擎异常不得影响主流程（站点生成优先）——**但不能静默**。
+        # R162 实测：搬走 render_compliance_page 后它抛 NameError，
+        # 这里 `pass` 掉，于是 compliance.html 整页消失、CLI 仍返回 0，
+        # 而 --json 完全看不出来（只有 --browse 的文件级对比能发现）。
+        sys.stderr.write(
+            "[WARN] compliance.html 生成失败，已跳过（站点其余部分不受影响）：%r\n"
+            % (_rv_err,))
 
     # 5.10) 目录耦合度矩阵（P82）——目录 × 目录耦合强度热力图 + 循环依赖高亮
     _safe_page(outdir, "dir_matrix.html",
