@@ -288,14 +288,21 @@ function activate(context) {
       encodeURIComponent(JSON.stringify([rel, line])) + '">' + esc(text) + '</a>';
 
     // 上游节点：名字 + 定义行 + **被哪几行调用**。
+    // 每个节点最多列 6 个调用点，剩下的说「另 N 处」。
+    // 9 个 `rel:line` 连排会把整行撑开，而**截断不报就是撒谎** ——
+    // 这一轮和上一轮（未解析名字）是同一个毛病。
+    const MAX_CALLS = 6;
     const upNode = (d, prefix) => {
       // 每个调用点带**自己所在的文件**：跨文件时 `d.rel` 是错的，
       // 点过去会打开一个毫无关系的行（R256 修的就是这个）。
       const sites = (d.call_sites || []).filter((s) => s && s.line > 0);
+      const shown = sites.slice(0, MAX_CALLS);
+      const rest = sites.length - shown.length;
       const callHtml = sites.length
         ? '<span class="calls">调用自 ' +
-          sites.map((s) => link(s.rel, s.line, s.rel + ':' + s.line))
-            .join(' ') + '</span>'
+          shown.map((s) => link(s.rel, s.line, s.rel + ':' + s.line))
+            .join(' ') +
+          (rest > 0 ? ' … 另 ' + rest + ' 处' : '') + '</span>'
         : '<span class="calls entry">入口（无调用者）</span>';
       return '<div class="node">' + prefix + esc(d.name) +
         '<span class="where">' + link(d.rel, d.line, d.rel + ':' + d.line) +

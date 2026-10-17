@@ -867,6 +867,23 @@ def _lens(c):
             _chk(im.get("unresolved") == 7,
                  "impact/many-ext-unresolved==7（实际 %r）"
                  % (im.get("unresolved"),))
+
+            # R258：**服务端不许截断调用点**（展示层才截断，否则
+            # 「另 N 处」算不出来）。`step` 被 `top` 在 9 个不同行上调用。
+            #
+            # 顺带记录一个语义事实：`call_sites` **按行去重** —— 一行里
+            # 写三次 `step(a)+step(a)+step(a)` 只记 1 处。所以图中
+            # 「调用自 N」说的是**行数**，不是**次数**。
+            c2.send({"jsonrpc": "2.0", "id": 94, "method": "matlabc/impact",
+                     "params": {"name": "leaf"}})
+            rl = c2.recv() or {}
+            il = ((rl.get("result") or {}).get("direct") or [{}])[0]
+            _chk(len(il.get("call_sites") or []) == 9,
+                 "impact/upstream-call-sites-complete（实际 %r）"
+                 % (len(il.get("call_sites") or []),))
+            _chk(all(s.get("rel") == "many_calls.m"
+                     for s in (il.get("call_sites") or [])),
+                 "impact/call-sites-are-rows-not-counts（按行去重）")
             _chk(inf.get("down") == [],
                  "impact/no-fake-downstream（down 必须为空：它没有可跳的调用）")
         finally:
