@@ -208,7 +208,12 @@ def _save_cache(root, payload, result):
         _log("缓存构造完成 %d 文件 / %d 边" % (len(files), len(edges)))
         stamp = _stamp(root)
         _log("缓存 stamp=%.0f" % stamp)
-        doc = {"v": 1, "stamp": stamp, "files": files,
+        # `complete` 是**必需字段**：R216 实测，一份 `payload` 为空的手工缓存
+        # 被命中后，诊断永远是 0 条。而「0 条诊断」本身是合法结果
+        # （比如 `sample_uninit` 的 heuristics 就是 0，但 facts 有 1 条），
+        # 所以不能拿「payload 是否为空」判断缓存完整度 —— 必须在写的时候
+        # 明确记下「这份缓存是完整跑完的」。
+        doc = {"v": 1, "complete": True, "stamp": stamp, "files": files,
                "edges": edges, "payload": payload}
         try:
             js = json.dumps(doc, ensure_ascii=False)
@@ -239,6 +244,11 @@ def _load_cache(root):
         return None
     if not isinstance(doc, dict) or doc.get("v") != 1:
         _log("缓存 schema 不符（v=%r），忽略" % (doc.get("v"),))
+        return None
+    if doc.get("complete") is not True:
+        # 没有 `complete: true` 的是**旧缓存或半成品**（R216 之前写的全部如此）。
+        # 认它们的后果是诊断永远为空，而用户看不出为什么。
+        _log("缓存不完整（缺 complete 标记），忽略并重算")
         return None
     try:
         cur = _stamp(root)
