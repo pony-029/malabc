@@ -747,6 +747,16 @@ def _doc(c):
          "doc/explains-missing-function（%r）" % (body_ext[:120],))
     _chk("some_toolbox_fn" in body_ext, "doc/names-the-identifier")
 
+    # R244：悬停在**函数自己**身上时，也要说清它有几次调用跳不动。
+    c.send({"jsonrpc": "2.0", "id": 82, "method": "textDocument/hover",
+            "params": {"textDocument": {"uri": _uri(ext)},
+                       "position": {"line": 0, "character": 15}}})
+    r_fn = c.recv() or {}
+    body_fn = (((r_fn.get("result") or {}).get("contents") or {})
+               .get("value") or "")
+    _chk("无法定位" in body_fn,
+         "doc/function-hover-reports-unresolved（%r）" % (body_fn[:140],))
+
 
 def _lens(c):
     """R236：CodeLens —— 它一直是主推功能，却**一条判据都没有**。

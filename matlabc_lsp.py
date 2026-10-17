@@ -960,10 +960,19 @@ def _hover(uri, pos):
             parts.append("| `%s` | %s | %s |"
                          % (cells[0], cells[1] or "—", cells[2] or ""))
 
+    # R244：把「有多少调用跳不动」也说出来。
+    # CodeLens 有了（R236）、关系图有了（R243），**悬停还没有** ——
+    # 而悬停是用户看一个陌生函数时最先碰到的地方。
+    un = _unresolved_count(f)
+    if un:
+        parts.append("")
+        parts.append("另有 **%d 处调用无法定位**（字段取值 / toolbox / "
+                     "函数句柄）—— 那些 `foo(...)` 按 F12 不会有结果。" % un)
+
     parts.append("")
     parts.append("复杂度 %s · 定义于 `%s:%d`"
                  % (getattr(f, "complexity", "?"), getattr(mf, "rel", ""),
-                    getattr(f, "line", 0)))
+                    getattr(mf, "line", 0)))
     return {"contents": {"kind": "markdown", "value": "\n".join(parts)}}
 
 
