@@ -42,6 +42,7 @@ FF4 编号重复 / FF4 编号数与目录数不等 / FF5 含脚本 / FF5 含外�
     2 = 缺输入（找不到 flow/index.html 或 flow/figures/）
 """
 import argparse
+import ast
 import hashlib
 import io
 import json
@@ -72,6 +73,98 @@ def sha256_file(path):
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+# 图「描述」的是这些源码；只改文档/门禁的提交不算让图过期。
+#
+# 只盯 `matlabc.py` 是**实测取舍**：把 `frontends/` `renderers/` `binfmt/` `facts.py`
+# 都放进来时，一次「新增 facts.py」就让 11 张图全红 —— 而图里那条「事实层」
+# 本来就已经画成计划节点，新增文件并不改变图的拓扑。
+# 判据必须能长期绿，否则它会被删掉；而 `matlabc.py` 用**结构指纹**（不是内容 sha）
+# 比较，改一行 docstring 不算过期。
+WATCH_PATHS = ("matlabc.py",)
+
+
+def _git(root, *args):
+    try:
+        out = subprocess.run(
+            ["git", "-C", root] + list(args),
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL, timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    return out.stdout.decode("utf-8", "replace")
+
+
+def changed_since(root, old_rev, head, paths):
+    """old_rev..head 之间改过的、且落在 paths 里的文件；取不到返回 None。"""
+    out = _git(root, "diff", "--name-only", old_rev + ".." + head, "--", *paths)
+    if out is None:
+        return None
+    return [x for x in out.splitlines() if x.strip()]
+
+
+def structure_fingerprint(text):
+    """`matlabc.py` 的**结构指纹**：排序后的「函数名:起始行」集合的 sha256。
+
+    为什么不用内容 sha：改一行 docstring 会让内容 sha 变，但图描述的**结构**
+    一点没变；用内容 sha 判「图过期」等于要求每次改文案都重画 11 张图。
+    """
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return None
+    sigs = []
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            sigs.append("%s:%d" % (n.name, n.lineno))
+    return hashlib.sha256("\n".join(sorted(sigs)).encode("utf-8")).hexdigest()
+
+
+def structural_drift(root, old_rev, head):
+    """两个提交之间 `matlabc.py` 的结构是否变了；取不到返回 None。"""
+    old = _git(root, "show", old_rev + ":matlabc.py")
+    new = _git(root, "show", head + ":matlabc.py")
+    if old is None or new is None:
+        return None
+    a = structure_fingerprint(old)
+    b = structure_fingerprint(new)
+    if a is None or b is None:
+        return None
+    return a != b
+
+
+def watch_problem(rev, head, changed, drift=None):
+    """FF6 的纯函数部分（可单测）。None=绿，否则返回问题串。
+
+    首版把「rev != HEAD」直接判红，实测**任何提交**都会让 11 张图全红 ——
+    那种门会被删掉，等于没有。所以拆成四层：
+      ① 格式必须是 40 位十六进制；
+      ② rev == HEAD ⇒ 绿；
+      ③ 只改了 `matlabc.py` ⇒ 比**结构指纹**，结构没变就绿（改文案不算过期）；
+      ④ 改了其它图相关文件（frontends/ renderers/ binfmt/ facts.py）⇒ 红。
+    """
+    if not rev:
+        return "没有 meta.repository.revision（无法判断是否过期）"
+    if not re.match(r"^[0-9a-f]{40}$", str(rev).lower()):
+        return "revision=%r 不是 40 位十六进制" % (str(rev)[:16],)
+    if str(rev).lower() == head:
+        return None
+    if changed is None:
+        return None          # 拿不到 diff ⇒ 未行使（调用方打印）
+    others = [p for p in changed if p != "matlabc.py"]
+    if others:
+        return ("绑定的 revision=%s 与 HEAD=%s 之间改过 %d 个图相关文件（%s）—— "
+                "图已过期，重跑 archify deliver"
+                % (str(rev)[:12], head[:12], len(others), ", ".join(others[:3])))
+    if "matlabc.py" in changed and drift is not False:
+        return ("绑定的 revision=%s 与 HEAD=%s 之间 matlabc.py 的**结构**变了"
+                "（结构指纹不等）—— 图已过期，重跑 archify deliver"
+                % (str(rev)[:12], head[:12]))
+    return None
 
 
 def git_head(root):
@@ -194,18 +287,29 @@ def audit(root, on_problem, head=None):
         if rel not in outs:
             on_problem("FF3 %s 推不出对应的候选（没有 candidate 声明它）" % rel)
 
-    # FF6：图不得过期 —— 候选里绑的 revision 必须就是当前 HEAD。
-    # 没有它，改了代码忘了重画图，这张图会永久「看起来对」。
+    # FF6：图不得「因为没变的东西而过期」，也不得「因为变了的东西而装作没过期」。
+    # 判据分三层（首版写成「rev != HEAD 即红」，实测任何提交都会让 11 张图全红 ——
+    # 那种门会被删掉，等于没有）：
+    #   ① revision 必须是 40 位十六进制；
+    #   ② rev == HEAD ⇒ 绿；
+    #   ③ rev != HEAD ⇒ 只有**图所描述的源码**（WATCH_PATHS）在 rev..HEAD 之间
+    #      被改过才红；只改了文档/门禁的提交不算过期。
     if head is None:
         print("  [跳过] FF6 未行使 —— 取不到 git HEAD")
     else:
+        _changed, _drift = {}, {}
         for rel in sorted(revs):
             rev = revs[rel]
-            if not rev:
-                on_problem("FF6 %s 没有 meta.repository.revision（无法判断是否过期）" % rel)
-            elif str(rev).lower() != head:
-                on_problem("FF6 %s 绑定的 revision=%s 与当前 HEAD=%s 不一致 —— 图已过期，"
-                           "重跑 archify deliver" % (rel, str(rev)[:12], head[:12]))
+            prob = watch_problem(rev, head, None)
+            if prob is None and rev and str(rev).lower() != head:
+                r = str(rev).lower()
+                if r not in _changed:
+                    _changed[r] = changed_since(root, r, head, WATCH_PATHS)
+                    _drift[r] = (structural_drift(root, r, head)
+                                 if _changed[r] else None)
+                prob = watch_problem(rev, head, _changed[r], _drift[r])
+            if prob:
+                on_problem("FF6 %s %s" % (rel, prob))
 
     # FF7：交付回执必须与产物同源 —— artifact.sha256 / bytes 等于磁盘现算。
     for rel in htmls:
@@ -380,17 +484,24 @@ def _selftest():
             print("  [selftest] FF4 编号数与目录数不等未红")
         shutil.rmtree(os.path.join(root, "flow", "figures", "d2"))
 
-        # FF6 图过期（候选绑的 revision 与 HEAD 不一致）
-        _mk(root, "flow/index.html", GOOD_INDEX)
-        _mk(root, "flow/figures/d1/candidate.json", _cand("f14-a.html", rev="b" * 40))
-        probs = []
-        audit(root, probs.append, head=HEAD)
-        if any(p.startswith("FF6") for p in probs):
-            good += 1
-        else:
-            bad += 1
-            print("  [selftest] FF6 图过期未红")
-        _mk(root, "flow/figures/d1/candidate.json", _cand("f14-a.html"))
+        # FF6 图过期：纯函数四层（格式 / 相等 / 结构指纹 / 其它图相关文件）
+        cases = [
+            (None, HEAD, None, None, True),                    # 缺 revision
+            ("zz" * 20, HEAD, None, None, True),               # 非 hex
+            (HEAD, HEAD, None, None, False),                   # 相等
+            ("b" * 40, HEAD, [], None, False),                 # 只改文档
+            ("b" * 40, HEAD, ["matlabc.py"], False, False),    # 改了但结构没变
+            ("b" * 40, HEAD, ["matlabc.py"], True, True),      # 结构变了
+            ("b" * 40, HEAD, ["renderers/csite.py"], None, True),  # 其它图相关文件
+        ]
+        for rev, hd, ch, dr, want_bad in cases:
+            got = watch_problem(rev, hd, ch, dr)
+            if bool(got) == want_bad:
+                good += 1
+            else:
+                bad += 1
+                print("  [selftest] watch_problem(%r,%r,%r,%r) -> %r"
+                      % (rev, hd, ch, dr, got))
 
         # FF7 回执与产物不一致（sha256 被改成别的值）
         _delivery(root, "figures/d1/f14-a.html", sha="0" * 64)
