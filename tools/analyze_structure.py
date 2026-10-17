@@ -194,6 +194,87 @@ def measure_main(text):
     }
 
 
+def _walk_names(node):
+    """收集 node 下的名字，**跳过嵌套函数 / lambda 的内部**（只记它们的定义名）。
+
+    不跳的话，嵌套函数自己的参数会被当成本层的自由变量（实测：`run_pipeline`
+    里的局部函数 `lookup(name)` 导致 `name` 被误报）。
+    """
+    loads, stores = set(), set()
+    for ch in ast.iter_child_nodes(node):
+        if isinstance(ch, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            stores.add(ch.name)
+            continue
+        if isinstance(ch, ast.Lambda):
+            continue
+        if isinstance(ch, ast.Name):
+            if isinstance(ch.ctx, ast.Load):
+                loads.add(ch.id)
+            else:
+                stores.add(ch.id)
+            continue
+        l2, s2 = _walk_names(ch)
+        loads |= l2
+        stores |= s2
+    return loads, stores
+
+
+def measure_free(text, func_name):
+    """某个函数的**自由变量**：既不是局部、也不是模块级、也不是 builtin。
+
+    切函数时用它一次算清跨边界变量 —— 比逐个 `NameError` 试错快十倍，而且穷尽。
+    """
+    import builtins
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return None
+    fn = None
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == func_name:
+            fn = n
+            break
+    if fn is None:
+        return None
+    local = set(a.arg for a in fn.args.args)
+    for n in ast.walk(fn):
+        if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
+            local.add(n.id)
+        elif isinstance(n, (ast.Import, ast.ImportFrom)):
+            for a in n.names:
+                local.add(a.asname or a.name.split(".")[0])
+        elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef,
+                            ast.ClassDef)) and n is not fn:
+            local.add(n.name)
+        elif isinstance(n, ast.ExceptHandler) and n.name:
+            local.add(n.name)
+        elif isinstance(n, ast.comprehension):
+            for t in ast.walk(n.target):
+                if isinstance(t, ast.Name):
+                    local.add(t.id)
+        elif isinstance(n, ast.Lambda):
+            for a in n.args.args:
+                local.add(a.arg)
+
+    loads, _stores = _walk_names(fn)
+
+    globs = set()
+    for n in tree.body:
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            globs.add(n.name)
+        elif isinstance(n, ast.Assign):
+            for t in n.targets:
+                if isinstance(t, ast.Name):
+                    globs.add(t.id)
+        elif isinstance(n, (ast.Import, ast.ImportFrom)):
+            for a in n.names:
+                globs.add(a.asname or a.name.split(".")[0])
+
+    bi = set(dir(builtins))
+    return sorted(x for x in loads
+                  if x not in local and x not in globs and x not in bi)
+
+
 def measure_git(root):
     """提交史读数；取不到 git 时返回 {"available": False}。"""
     def run(args):
@@ -287,6 +368,20 @@ def _selftest():
         bad += 1
         print("  [selftest] 三段行数不对：%s" % (ms and ms.get("segments"),))
 
+    src3 = (
+        "G = 1\n"
+        "def f(a):\n"
+        "    b = a + 1\n"
+        "    return b + G + missing_thing + len(a)\n"
+    )
+    fv = measure_free(src3, "f")
+    if fv == ["missing_thing"]:
+        good += 1
+    else:
+        bad += 1
+        print("  [selftest] 自由变量算错（G 是模块级、len 是 builtin、a/b 是局部）：%s"
+              % (fv,))
+
     # 真实文件必须能跑通（缺文件时这一条不成立，但也不该判红成「工具坏了」）
     if os.path.isfile(DEFAULT):
         real = measure_source(io.open(DEFAULT, "r", encoding="utf-8",
@@ -305,6 +400,7 @@ def main(argv=None):
     ap.add_argument("--file", default=DEFAULT)
     ap.add_argument("--no-git", action="store_true")
     ap.add_argument("--main", action="store_true")
+    ap.add_argument("--free", default=None, metavar="FUNC")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--help", action="store_true")
     args = ap.parse_args(argv)
@@ -327,6 +423,18 @@ def main(argv=None):
     except ValueError as exc:
         print("analyze_structure: %s" % exc)
         return 2
+
+    if args.free:
+        fv = measure_free(text, args.free)
+        if fv is None:
+            print("analyze_structure: 找不到函数 %s" % args.free)
+            return 2
+        if args.json:
+            print(json.dumps({"func": args.free, "free": fv},
+                             ensure_ascii=False, indent=2))
+            return 0
+        print("free(%s) = %s" % (args.free, fv if fv else "[]（无跨界变量）"))
+        return 0
 
     if args.main:
         ms = measure_main(text)
