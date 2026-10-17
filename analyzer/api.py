@@ -47,6 +47,12 @@ def analyze(root, **kw):
 
     抛 `ValueError` 表示目录不存在；其余异常原样向上抛（调用方负责呈现）。
     """
+    # `prev` / `changed` 不是 CLI 参数，先摘出来再交给 `_namespace`，
+    # 否则它会被当成未知的 `args` 属性。R152：让常驻进程（LSP）能复用
+    # 上次的解析结果——进程内、无序列化（`--incremental` 走 pickle，
+    # 在 13 个文件上反而慢 10 倍）。
+    prev = kw.pop("prev", None)
+    changed = kw.pop("changed", None)
     import matlabc as M
     ns = _namespace(**kw)
     root_p = Path(str(root))
@@ -54,7 +60,7 @@ def analyze(root, **kw):
         raise ValueError("目录不存在：%s" % root_p)
     paths = M.collect_files(root_p, recursive=not ns.no_recursive,
                             exclude=list(ns.exclude or ()))
-    return M.run_pipeline(ns, root_p, paths)
+    return M.run_pipeline(ns, root_p, paths, prev=prev, changed=changed)
 
 
 def counts(result):
