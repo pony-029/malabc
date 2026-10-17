@@ -167,14 +167,24 @@ function activate(context) {
       provideDefinition: async (doc, pos) => {
         log('F12 请求 ' + path.basename(doc.uri.fsPath) + ' ' +
             (pos.line + 1) + ':' + pos.character);
-        const r = await client.request('textDocument/definition', {
-          textDocument: { uri: doc.uri.toString() },
-          position: { line: pos.line, character: pos.character },
-        });
-        const arr = r.result || [];
-        log('F12 返回 ' + arr.length + ' 个位置 ' +
-            JSON.stringify(arr).slice(0, 240));
-        return arr.map(toLocation);
+        try {
+          const r = await client.request('textDocument/definition', {
+            textDocument: { uri: doc.uri.toString() },
+            position: { line: pos.line, character: pos.character },
+          });
+          const arr = r.result || [];
+          log('F12 返回 ' + arr.length + ' 个位置 ' +
+              JSON.stringify(arr).slice(0, 240));
+          return arr.map(toLocation);
+        } catch (e) {
+          // **必须 catch**：R205 之前这里没有，超时的 Promise rejection
+          // 会一直往上抛，VSCode 只显示「未找到定义」，日志里连「F12 返回」
+          // 都没有 —— 用户看到的就是「点了什么反应都没有」。
+          log('F12 失败：' + (e && e.message));
+          vscode.window.setStatusBarMessage(
+            'malabc: 跳转失败（' + (e && e.message) + '）', 6000);
+          return [];
+        }
       },
     })
   );
@@ -182,12 +192,17 @@ function activate(context) {
   context.subscriptions.push(
     vscode.languages.registerReferenceProvider({ language: 'matlab' }, {
       provideReferences: async (doc, pos, ctx) => {
-        const r = await client.request('textDocument/references', {
-          textDocument: { uri: doc.uri.toString() },
-          position: { line: pos.line, character: pos.character },
-          context: { includeDeclaration: ctx.includeDeclaration },
-        });
-        return (r.result || []).map(toLocation);
+        try {
+          const r = await client.request('textDocument/references', {
+            textDocument: { uri: doc.uri.toString() },
+            position: { line: pos.line, character: pos.character },
+            context: { includeDeclaration: ctx.includeDeclaration },
+          });
+          return (r.result || []).map(toLocation);
+        } catch (e) {
+          log('Shift+F12 失败：' + (e && e.message));
+          return [];
+        }
       },
     })
   );
@@ -195,14 +210,19 @@ function activate(context) {
   context.subscriptions.push(
     vscode.languages.registerHoverProvider({ language: 'matlab' }, {
       provideHover: async (doc, pos) => {
-        const r = await client.request('textDocument/hover', {
-          textDocument: { uri: doc.uri.toString() },
-          position: { line: pos.line, character: pos.character },
-        });
-        const c = r.result && r.result.contents;
-        if (!c || !c.value) return undefined;
-        const md = new vscode.MarkdownString(c.value);
-        return new vscode.Hover(md);
+        try {
+          const r = await client.request('textDocument/hover', {
+            textDocument: { uri: doc.uri.toString() },
+            position: { line: pos.line, character: pos.character },
+          });
+          const c = r.result && r.result.contents;
+          if (!c || !c.value) return undefined;
+          const md = new vscode.MarkdownString(c.value);
+          return new vscode.Hover(md);
+        } catch (e) {
+          log('hover 失败：' + (e && e.message));
+          return undefined;
+        }
       },
     })
   );
@@ -210,17 +230,22 @@ function activate(context) {
   context.subscriptions.push(
     vscode.languages.registerDocumentSymbolProvider({ language: 'matlab' }, {
       provideDocumentSymbols: async (doc) => {
-        const r = await client.request('textDocument/documentSymbol', {
-          textDocument: { uri: doc.uri.toString() },
-        });
-        return (r.result || []).map((s) => {
-          const kind = s.kind === 12
-            ? vscode.SymbolKind.Function
-            : vscode.SymbolKind.Class;
-          const range = toRange(s.range);
-          const sel = toRange(s.selectionRange);
-          return new vscode.DocumentSymbol(s.name, '', kind, range, sel);
-        });
+        try {
+          const r = await client.request('textDocument/documentSymbol', {
+            textDocument: { uri: doc.uri.toString() },
+          });
+          return (r.result || []).map((s) => {
+            const kind = s.kind === 12
+              ? vscode.SymbolKind.Function
+              : vscode.SymbolKind.Class;
+            const range = toRange(s.range);
+            const sel = toRange(s.selectionRange);
+            return new vscode.DocumentSymbol(s.name, '', kind, range, sel);
+          });
+        } catch (e) {
+          log('大纲失败：' + (e && e.message));
+          return [];
+        }
       },
     })
   );

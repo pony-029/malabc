@@ -10,6 +10,10 @@
 
 const { spawn } = require('child_process');
 
+//: 单次请求的上限。**必须大于首次预热**（大仓库 30–60 秒），
+//: 否则用户在预热完成前按 F12 会拿到一个没有解释的超时。
+const REQUEST_TIMEOUT_MS = 180000;
+
 class LspClient {
   constructor(opts) {
     this.python = opts.python || 'python';
@@ -75,12 +79,16 @@ class LspClient {
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
       this._write({ jsonrpc: '2.0', id, method, params });
+      // **超时必须比「首次预热」长**。R205 实测：YALMIP（1665 文件）预热
+      // 要 35 秒，而这里原来是 15 秒 —— 于是每次 F12 都在服务端算完之前
+      // 就 reject，`provideDefinition` 又没 catch，用户看到的就是
+      // 「点了什么反应都没有」（日志里只有「F12 请求」，没有「F12 返回」）。
       setTimeout(() => {
         if (this.pending.has(id)) {
           this.pending.delete(id);
-          reject(new Error(`timeout: ${method}`));
+          reject(new Error(`timeout: ${method}（${Math.round(REQUEST_TIMEOUT_MS / 1000)}s）`));
         }
-      }, 15000);
+      }, REQUEST_TIMEOUT_MS);
     });
   }
 

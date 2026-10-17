@@ -2,7 +2,7 @@
   "name": "matlabc-lsp",
   "displayName": "malabc MATLAB LSP",
   "description": "MATLAB 侧的最小 LSP：诊断 + 转到定义 + 查找引用 + 悬停 + 符号大纲。零 npm 依赖。",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "malabc",
   "engines": {
     "vscode": "^1.80.0"
