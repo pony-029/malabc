@@ -818,6 +818,41 @@ that only ever grows stops meaning anything.
 
 ---
 
+## Function-level views (R198)
+
+Four entries that answer questions the official IDE **structurally cannot**:
+
+| flag | question it answers | why MATLAB's IDE cannot |
+| --- | --- | --- |
+| **`--impact <func>`** | who calls this, transitively (and which entries reach it) | F12 is forward only. Reverse lookup means searching the folder for a name — which cannot tell `@sdpvar/get.m` from `@sdpvar/subsasgn.m`, nor follow polymorphic dispatch |
+| **`--tree <func>`** | what this calls, nested (Source Insight style) | no equivalent |
+| **`--trace <func>`** | how this function gets reached, from an entry | needs the reverse graph |
+| **`--ai-context <func>`** | everything about one function in **< 8 KB** | 27 MB of JSON does not fit an LLM context window; one function's context does (1000:1) |
+
+```powershell
+python matlabc.py <root> --impact b
+python matlabc.py <root> --tree a --tree-depth 4
+python matlabc.py <root> --trace b
+python matlabc.py <root> --ai-context "modules/global/compileQuadratic.m:compileQuadratic"
+```
+
+`--impact b` on `tests/sample_m`:
+
+```
+影响面：a.m:b
+  直接调用者（1 层）        1 个
+  间接调用者（2 层及以上）  1 个
+  可达入口（无调用者）      1 个
+    第 1 层（1）：a.m:a
+    第 2 层（1）：switch_case.m:switch_case
+```
+
+**All four consume `edges` only** — no new analysis, so they cost the same as `--json`.
+
+**`--ai-context` may only transcribe, never invent**: judgement A4 requires every
+function it names to exist in `edges`. Data given to an LLM must not contain
+invented call relationships, or the model will repeat them as fact.
+
 ## Full-scenario sweep (hand-run, 118 checks)
 
 The 27 gates above are static and fast. This one is not — it starts subprocesses and LSP

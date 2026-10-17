@@ -781,6 +781,40 @@ python tools/check_baseline.py --full    # 真基线：两侧各跑一次全量�
 
 ---
 
+## 函数级视图（R198）
+
+四个入口，回答官方 IDE **结构上回答不了**的问题：
+
+| 开关 | 回答什么 | 官方为什么做不到 |
+| --- | --- | --- |
+| **`--impact <func>`** | 谁调用了它（传递闭包），以及哪些入口能到达它 | F12 只能正向。反向只能「在文件夹里搜函数名」——区分不了 `@sdpvar/get.m` 与 `@sdpvar/subsasgn.m`，也跟不了多态派发 |
+| **`--tree <func>`** | 它调用了谁（Source Insight 式嵌套） | 没有等价物 |
+| **`--trace <func>`** | 它是怎么被跑到的（从入口到它） | 需要反向图 |
+| **`--ai-context <func>`** | 一个函数的**全部上下文压到 8 KB 以内** | 27 MB 的 JSON 塞不进 LLM 窗口；单个函数的上下文可以（1000:1） |
+
+```powershell
+python matlabc.py <root> --impact b
+python matlabc.py <root> --tree a --tree-depth 4
+python matlabc.py <root> --trace b
+python matlabc.py <root> --ai-context "modules/global/compileQuadratic.m:compileQuadratic"
+```
+
+`--impact b` 在 `tests/sample_m` 上的输出：
+
+```
+影响面：a.m:b
+  直接调用者（1 层）        1 个
+  间接调用者（2 层及以上）  1 个
+  可达入口（无调用者）      1 个
+    第 1 层（1）：a.m:a
+    第 2 层（1）：switch_case.m:switch_case
+```
+
+**四个都只消费 `edges`** —— 不做新分析，耗时与 `--json` 同量级。
+
+**`--ai-context` 只许转述、不许编造**：判据 A4 要求它提到的每个函数都必须在
+`edges` 里存在。**喂给 LLM 的数据里若有虚构的调用关系，模型会把它当事实复述出去。**
+
 ## 全场景扫测（手工跑，118 条判据）
 
 上面 27 道门是静态的、快的。这一套不是——它要起子进程与 LSP 服务端，所以**不进 `check_all`**，靠手工跑：
