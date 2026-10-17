@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "f3502791-5f25-4598-9074-f4c6d2519c26",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "E:\\matlabc\\malabc\\flow\\figures\\architecture-malabc-modules-20261017-113257\\candidate.json",
+  "output": "E:\\matlabc\\malabc\\flow\\figures\\architecture-malabc-modules-20261017-113257\\malabc-modules.html",
+  "specification": {
+    "sha256": "e4985ea2e36e8f261c3bfd62db0e919e2a9b6c8e754326f86c4bfb2001075fb0",
+    "bytes": 10633
+  },
+  "artifact": {
+    "sha256": "0504d16b8b0c0f7e841c6a81a25df710020c0153126dcbfb6559d8865a78cf1f",
+    "bytes": 850052
+  }
+}

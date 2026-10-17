@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "F14 入口层：三条入口，一个编排",
+    "locale": "zh-CN",
+    "output": "f14-layer-entry.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:pony-029/malabc.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "069fe5553a8939591a0c390f047854bf43d740d4"
+    }
+  },
+  "layout": { "mode": "grid", "cols": 4, "cellW": 196, "cellH": 92, "gapX": 64, "gapY": 72 },
+  "components": [
+    { "id": "user", "type": "external", "label": "用户 / CI", "sublabel": "命令行或流水线", "row": 0, "col": 0 },
+    { "id": "cli", "type": "frontend", "label": "CLI 入口", "sublabel": "argparse 60+ 开关", "tag": "唯一真入口", "row": 0, "col": 1, "sources": [{ "path": "matlabc.py", "line": 32242 }] },
+    { "id": "args", "type": "backend", "label": "参数归一", "sublabel": "默认值 + 配置合并", "row": 0, "col": 2, "sources": [{ "path": "gui.py", "line": 184 }] },
+    { "id": "orch", "type": "backend", "label": "编排入口", "sublabel": "分发 / 回收 / 落盘", "tag": "共享函数", "row": 0, "col": 3, "sources": [{ "path": "matlabc.py", "line": 8990 }] },
+    { "id": "gui", "type": "frontend", "label": "GUI 表单", "sublabel": "tkinter · 子进程", "row": 1, "col": 0, "sources": [{ "path": "gui.py", "line": 666 }] },
+    { "id": "mcp", "type": "external", "label": "MCP Server", "sublabel": "JSON-RPC · 5 tools", "tag": "每次起子进程", "row": 1, "col": 1, "sources": [{ "path": "matlabc_mcp.py", "line": 9 }] },
+    { "id": "ai", "type": "external", "label": "AI 层", "sublabel": "ask · agent_loop", "tag": "读产物 · 不判", "row": 1, "col": 2, "sources": [{ "path": "matlabc_ask.py", "line": 1 }] },
+    { "id": "artifacts", "type": "cloud", "label": "产物", "sublabel": "JSON · HTML · SARIF", "row": 1, "col": 3, "sources": [{ "path": "renderers/csite.py", "line": 503 }] }
+  ],
+  "connections": [
+    { "id": "user-cli", "from": "user", "to": "cli", "label": "argv", "variant": "emphasis" },
+    { "id": "gui-args", "from": "gui", "to": "args", "label": "build_cli_args" },
+    { "id": "cli-args", "from": "cli", "to": "args", "label": "argparse" },
+    { "id": "mcp-orch", "from": "mcp", "to": "orch", "label": "JSON-RPC" },
+    { "id": "ai-orch", "from": "ai", "to": "orch", "label": "问答 / 循环", "variant": "dashed" },
+    { "id": "args-orch", "from": "args", "to": "orch", "label": "参数" },
+    { "id": "orch-artifacts", "from": "orch", "to": "artifacts", "label": "落盘" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "三条入口，一个实现", "items": ["CLI 是唯一真入口", "GUI 与 MCP 只是拼参数 + 起子进程", "三者行为与命令行逐字节一致"] },
+    { "dot": "rose", "title": "AI 只读", "items": ["AI 层读产物做问答", "判定仍由规则与判据给出", "AI 不改写分析结果"] }
+  ]
+}

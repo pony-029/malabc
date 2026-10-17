@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "F19 融合总图：现状、接口层与计划",
+    "locale": "zh-CN",
+    "output": "f19-fusion.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:pony-029/malabc.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "069fe5553a8939591a0c390f047854bf43d740d4"
+    }
+  },
+  "layout": { "mode": "grid", "cols": 6, "cellW": 176, "cellH": 92, "gapX": 46, "gapY": 78 },
+  "components": [
+    { "id": "cli", "type": "frontend", "label": "CLI", "sublabel": "唯一入口", "tag": "已实现", "row": 0, "col": 0, "sources": [{ "path": "matlabc.py", "line": 32242 }] },
+    { "id": "orch", "type": "backend", "label": "分析编排", "sublabel": "matlabc.py", "tag": "已实现", "row": 0, "col": 1, "sources": [{ "path": "matlabc.py", "line": 8990 }] },
+    { "id": "fe", "type": "backend", "label": "多语言前端", "sublabel": "MATLAB / C / Py / JS", "tag": "已实现", "row": 0, "col": 2, "sources": [{ "path": "matlabc.py", "line": 8758 }] },
+    { "id": "ir", "type": "backend", "label": "调用判定", "sublabel": "resolve_calls", "tag": "已实现", "row": 0, "col": 3, "sources": [{ "path": "frontends/ir.py", "line": 64 }] },
+    { "id": "rel", "type": "backend", "label": "调用投影", "sublabel": "callrel", "tag": "已实现", "row": 0, "col": 4, "sources": [{ "path": "callrel.py", "line": 749 }] },
+    { "id": "site", "type": "cloud", "label": "站点 / SARIF", "sublabel": "人读 + CI", "tag": "已实现", "row": 0, "col": 5, "sources": [{ "path": "renderers/csite.py", "line": 503 }] },
+    { "id": "analyzer", "type": "backend", "label": "analyzer/ 抽取", "sublabel": "纯分析层", "tag": "计划 · P0", "row": 1, "col": 1 },
+    { "id": "facts", "type": "backend", "label": "事实层", "sublabel": "位置 + 证据 + supersede", "tag": "计划 · P0", "row": 1, "col": 3 },
+    { "id": "lsp", "type": "frontend", "label": "LSP 面", "sublabel": "诊断 / 定义 / 引用", "tag": "计划 · P1", "row": 1, "col": 4 },
+    { "id": "mcp2", "type": "external", "label": "MCP 常驻", "sublabel": "facts_query / run", "tag": "计划 · P2", "row": 1, "col": 5 },
+    { "id": "cdeep", "type": "backend", "label": "C L1–L6", "sublabel": "预处理 → 数据流", "tag": "计划 · P6", "row": 2, "col": 1 },
+    { "id": "dso", "type": "backend", "label": "DSO 链接图", "sublabel": "符号级 binhop", "tag": "计划 · P5", "row": 2, "col": 2 },
+    { "id": "runtime", "type": "backend", "label": "MATLAB 运行时", "sublabel": "Rust · exec facts", "tag": "计划 · P3", "row": 2, "col": 3 }
+  ],
+  "connections": [
+    { "id": "cli-orch", "from": "cli", "to": "orch", "label": "argv", "variant": "emphasis" },
+    { "id": "orch-fe", "from": "orch", "to": "fe", "label": "分发", "variant": "emphasis" },
+    { "id": "fe-ir", "from": "fe", "to": "ir", "label": "调用点", "variant": "emphasis" },
+    { "id": "ir-rel", "from": "ir", "to": "rel", "label": "edges", "variant": "emphasis" },
+    { "id": "rel-site", "from": "rel", "to": "site", "label": "读数", "variant": "emphasis" },
+    { "id": "orch-analyzer", "from": "orch", "to": "analyzer", "label": "抽出", "variant": "dashed" },
+    { "id": "analyzer-facts", "from": "analyzer", "to": "facts", "label": "产事实", "variant": "dashed" },
+    { "id": "facts-lsp", "from": "facts", "to": "lsp", "label": "按位置查", "variant": "dashed" },
+    { "id": "facts-mcp", "from": "facts", "to": "mcp2", "label": "按条件查", "variant": "dashed" },
+    { "id": "ir-dso", "from": "ir", "to": "dso", "label": "binhop", "variant": "dashed" },
+    { "id": "dso-facts", "from": "dso", "to": "facts", "label": "符号边", "variant": "dashed" },
+    { "id": "fe-cdeep", "from": "fe", "to": "cdeep", "label": "L1–L6", "variant": "dashed" },
+    { "id": "cdeep-facts", "from": "cdeep", "to": "facts", "label": "语义事实", "variant": "dashed" },
+    { "id": "runtime-facts", "from": "runtime", "to": "facts", "label": "exec 事实", "variant": "dashed" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "实线 = 今天跑得起来的", "items": ["CLI → 编排 → 前端 → 判定 → 投影 → 站点", "这条链已在 069fe55 上实测通过"] },
+    { "dot": "violet", "title": "虚线 = 计划，不是现状", "items": ["analyzer 抽取 / 事实层 / LSP / MCP 常驻", "C L1–L6 / DSO 链接图 / MATLAB 运行时", "虚线边一律没有对应的已实现代码"] },
+    { "dot": "amber", "title": "为什么先做事实层", "items": ["它是 LSP、MCP、运行时的共同底座", "不做它，三件事各自长出一套事实", "判据：facts 能重建 --json 的关键字段"] }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "bf189f24-9e16-485e-8535-8e3e61e33698",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "E:\\matlabc\\malabc\\flow\\figures\\architecture-layer-entry-20261017-1220\\candidate.json",
+  "output": "E:\\matlabc\\malabc\\flow\\figures\\architecture-layer-entry-20261017-1220\\f14-layer-entry.html",
+  "specification": {
+    "sha256": "f81aa2e8606336c98ba7fa051f6a8a79707abeb8c0dccc6db48001bf3ff8085a",
+    "bytes": 3003
+  },
+  "artifact": {
+    "sha256": "ae6bab82e2e0e4fc0d21606c10462647253b0405541d5029142cc5ecac0c36a1",
+    "bytes": 819559
+  }
+}

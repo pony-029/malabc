@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "98fc2c3c-0b39-4906-8ee5-622fb85cbc6b",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "E:\\matlabc\\malabc\\flow\\figures\\sequence-malabc-analysis-20261017-113257\\candidate.json",
+  "output": "E:\\matlabc\\malabc\\flow\\figures\\sequence-malabc-analysis-20261017-113257\\analysis-sequence.html",
+  "specification": {
+    "sha256": "e9310e87dc002d74dc56389acbd9446fa857a965d0bb0801542c19526c635dde",
+    "bytes": 6175
+  },
+  "artifact": {
+    "sha256": "cca41336040499ce6eb0dbfa9fcb48ad5670e42b2808e128be6ace61518d5c0d",
+    "bytes": 821236
+  }
+}

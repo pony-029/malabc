@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "F15 编排层：一个文件里的五件事",
+    "locale": "zh-CN",
+    "output": "f15-layer-orchestrator.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:pony-029/malabc.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "069fe5553a8939591a0c390f047854bf43d740d4"
+    }
+  },
+  "layout": { "mode": "grid", "cols": 5, "cellW": 186, "cellH": 92, "gapX": 56, "gapY": 72 },
+  "components": [
+    { "id": "collect", "type": "backend", "label": "收集文件", "sublabel": "扩展名 + 排除", "row": 0, "col": 0, "sources": [{ "path": "matlabc.py", "line": 7206 }] },
+    { "id": "dispatch", "type": "backend", "label": "按语言分发", "sublabel": "FRONTEND_REGISTRY", "tag": "插件注册表", "row": 0, "col": 1, "sources": [{ "path": "matlabc.py", "line": 8990 }] },
+    { "id": "checks", "type": "backend", "label": "静态检查", "sublabel": "规则 → 告警", "row": 0, "col": 2, "sources": [{ "path": "matlabc.py", "line": 9469 }] },
+    { "id": "assemble", "type": "backend", "label": "报告组装", "sublabel": "JSON 契约", "row": 0, "col": 3, "sources": [{ "path": "renderers/report.py", "line": 1 }] },
+    { "id": "emit", "type": "cloud", "label": "站点 / SARIF", "sublabel": "HTML · 2.1.0", "row": 0, "col": 4, "sources": [{ "path": "renderers/csite.py", "line": 503 }] },
+    { "id": "matlab", "type": "backend", "label": "MATLAB 前端", "sublabel": "函数 / 类 / 脚本", "row": 1, "col": 1, "sources": [{ "path": "matlabc.py", "line": 3523 }] },
+    { "id": "c", "type": "backend", "label": "C 前端", "sublabel": "词法 + 配平", "tag": "词法级", "row": 1, "col": 2, "sources": [{ "path": "matlabc.py", "line": 7255 }] },
+    { "id": "pyjs", "type": "backend", "label": "Python / JS", "sublabel": "ast 优先", "row": 1, "col": 3, "sources": [{ "path": "pyast_frontend.py", "line": 17 }] }
+  ],
+  "connections": [
+    { "id": "collect-dispatch", "from": "collect", "to": "dispatch", "label": "文件列表" },
+    { "id": "dispatch-matlab", "from": "dispatch", "to": "matlab", "label": "默认", "variant": "emphasis" },
+    { "id": "dispatch-c", "from": "dispatch", "to": "c", "label": "--lang c" },
+    { "id": "dispatch-pyjs", "from": "dispatch", "to": "pyjs", "label": "--lang py|js" },
+    { "id": "matlab-checks", "from": "matlab", "to": "checks", "label": "模型 + 调用" },
+    { "id": "c-checks", "from": "c", "to": "checks", "label": "模型 + 调用" },
+    { "id": "pyjs-checks", "from": "pyjs", "to": "checks", "label": "模型 + 调用" },
+    { "id": "checks-assemble", "from": "checks", "to": "assemble", "label": "告警" },
+    { "id": "assemble-emit", "from": "assemble", "to": "emit", "label": "渲染" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "一个文件承担五件事", "items": ["收集、分发、检查、组装、落盘都在 matlabc.py", "任何一处改动都可能碰到别人"] },
+    { "dot": "rose", "title": "为什么要抽取", "items": ["插件只能起子进程，冷启动压不到 2 秒", "抽取后 analyzer/ 可被 LSP 与 MCP 共用", "边界是：纯分析不 print、不 argparse、不 exit"] }
+  ]
+}

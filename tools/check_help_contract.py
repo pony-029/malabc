@@ -231,6 +231,17 @@ GUARD_CONTRACT = {
         1: "发现不对齐（引用悬空 / 孤儿产物 / 中英缺对 / 语言串台 / 形态不自足 / 骨架分叉 / 索引过期 / 尺寸不自洽 / 字体漂移 / 语言没落到文本层）",
         2: "缺输入（缺文档 / 缺 flow/diagrams/ / 一个候选都找不到）",
     },
+    "tools/check_flow_figures.py": {
+        0: "flow/index.html ⇄ flow/figures/ ⇄ 各候选三向对齐（FF1–FF7）",
+        1: "发现不对齐（索引死链 / 孤儿产物 / 候选推不出产物 / 编号重复 / "
+           "索引页含脚本或外链）",
+        2: "缺输入（找不到 flow/index.html 或 flow/figures/）",
+    },
+    "tools/check_facts_replay.py": {
+        0: "事实重放 == 报表计数，位置完备，种类封闭（FT1–FT3）",
+        1: "发现不一致（重放≠报表 / 事实无位置 / kind 越界）",
+        2: "缺输入（找不到 facts.py / matlabc.py / 语料，或 CLI 跑不起来）",
+    },
     "tools/check_help_contract.py": {
         0: "全部一致（B0–B5 + R1/R2/R3/R4/R5/R5c/R51 + G0/G0b/G1/G2 + N1/N3/N4 + H1/H2）",
         1: "发现不一致（R1/R1b/R2/R3/R4/R5/R5c/R51 任一红）",

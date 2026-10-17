@@ -1,0 +1,252 @@
+{
+  "schema_version": 3,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "告警到基线的闭环",
+    "output": "issue-closed-loop.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:pony-029/malabc.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "069fe5553a8939591a0c390f047854bf43d740d4"
+    },
+    "locale": "zh-CN"
+  },
+  "mainPath": [
+    "scan",
+    "issue",
+    "triage",
+    "propose",
+    "verify"
+  ],
+  "states": [
+    {
+      "id": "scan",
+      "type": "start",
+      "label": "扫描",
+      "sublabel": "规则跑一遍",
+      "tag": "入口",
+      "step": "01",
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "line": 9469
+        }
+      ]
+    },
+    {
+      "id": "issue",
+      "type": "active",
+      "label": "告警",
+      "sublabel": "rule_id + 证据",
+      "tag": "可定位",
+      "step": "02",
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "line": 9504
+        }
+      ]
+    },
+    {
+      "id": "triage",
+      "type": "decision",
+      "label": "分诊",
+      "sublabel": "真缺陷 / 假阳性",
+      "tag": "人工或基线",
+      "step": "03"
+    },
+    {
+      "id": "propose",
+      "type": "active",
+      "label": "生成补丁",
+      "sublabel": "确定性改写",
+      "tag": "--gen-apply-patch",
+      "step": "04",
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "line": 32729
+        }
+      ]
+    },
+    {
+      "id": "verify",
+      "type": "decision",
+      "label": "验证",
+      "sublabel": "应用前后对比",
+      "tag": "行为判据",
+      "step": "05"
+    },
+    {
+      "id": "accepted",
+      "type": "success",
+      "label": "接受",
+      "sublabel": "补丁进仓库",
+      "tag": "fixed",
+      "step": "06"
+    },
+    {
+      "id": "baseline",
+      "type": "waiting",
+      "label": "基线",
+      "sublabel": "SARIF 记账",
+      "tag": "只在减少",
+      "step": "07",
+      "sources": [
+        {
+          "path": "renderers/sarif.py",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "id": "rejected",
+      "type": "failure",
+      "label": "拒绝",
+      "sublabel": "假阳性或回归",
+      "tag": "保留证据"
+    },
+    {
+      "id": "monitor",
+      "type": "waiting",
+      "label": "趋势监控",
+      "sublabel": "度量 Sparkline",
+      "tag": "观察"
+    },
+    {
+      "id": "regressed",
+      "type": "failure",
+      "label": "回归",
+      "sublabel": "超过基线",
+      "tag": "报警"
+    },
+    {
+      "id": "closed",
+      "type": "neutral",
+      "label": "收束",
+      "sublabel": "增量归零",
+      "tag": "终态"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "scan-issue",
+      "from": "scan",
+      "to": "issue",
+      "label": "命中规则"
+    },
+    {
+      "id": "issue-triage",
+      "from": "issue",
+      "to": "triage",
+      "label": "分类"
+    },
+    {
+      "id": "triage-propose",
+      "from": "triage",
+      "to": "propose",
+      "label": "真缺陷",
+      "variant": "emphasis"
+    },
+    {
+      "id": "triage-rejected",
+      "from": "triage",
+      "to": "rejected",
+      "label": "假阳性",
+      "variant": "security"
+    },
+    {
+      "id": "propose-verify",
+      "from": "propose",
+      "to": "verify",
+      "label": "补丁就绪",
+      "variant": "emphasis"
+    },
+    {
+      "id": "verify-accepted",
+      "from": "verify",
+      "to": "accepted",
+      "label": "行为变好",
+      "variant": "emphasis"
+    },
+    {
+      "id": "verify-rejected",
+      "from": "verify",
+      "to": "rejected",
+      "label": "行为变坏",
+      "variant": "security"
+    },
+    {
+      "id": "accepted-baseline",
+      "from": "accepted",
+      "to": "baseline",
+      "label": "登记"
+    },
+    {
+      "id": "rejected-baseline",
+      "from": "rejected",
+      "to": "baseline",
+      "label": "记为噪声",
+      "variant": "dashed"
+    },
+    {
+      "id": "baseline-monitor",
+      "from": "baseline",
+      "to": "monitor",
+      "label": "进入趋势",
+      "variant": "dashed"
+    },
+    {
+      "id": "monitor-regressed",
+      "from": "monitor",
+      "to": "regressed",
+      "label": "超阈值",
+      "variant": "security"
+    },
+    {
+      "id": "regressed-propose",
+      "from": "regressed",
+      "to": "propose",
+      "label": "再修",
+      "variant": "dashed"
+    },
+    {
+      "id": "monitor-closed",
+      "from": "monitor",
+      "to": "closed",
+      "label": "稳定",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "每个状态都有证据",
+      "items": [
+        "告警必须带 rule_id、行号与触发片段",
+        "分诊的结论要么是可执行验证，要么是人工判定，不许猜",
+        "拒绝也要记账，否则下次还会被人重复踩"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "验证是唯一出口",
+      "items": [
+        "补丁必须能说出应用前后的差异",
+        "行为变坏一律回退，不允许自动合入",
+        "当前实现尚未把验证接进沙箱，这是已知缺口"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "基线只许减少",
+      "items": [
+        "SARIF 基线是棘轮：新增必须解释，减少不用",
+        "趋势用来发现缓慢腐烂，而不是阻断单次提交",
+        "收束的定义是增量归零，不是数量为零"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "F18 二进制与产物层：两条库链，四种产物",
+    "locale": "zh-CN",
+    "output": "f18-layer-binary.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:pony-029/malabc.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "069fe5553a8939591a0c390f047854bf43d740d4"
+    }
+  },
+  "layout": { "mode": "grid", "cols": 4, "cellW": 196, "cellH": 92, "gapX": 62, "gapY": 76 },
+  "components": [
+    { "id": "bin", "type": "database", "label": "容器解析", "sublabel": "PE / ELF / Mach-O", "row": 0, "col": 0, "sources": [{ "path": "binfmt/container.py", "line": 67 }] },
+    { "id": "attr", "type": "backend", "label": "三态归因", "sublabel": "library / gpu / missing", "row": 0, "col": 1, "sources": [{ "path": "binfmt/attribute.py", "line": 83 }] },
+    { "id": "site", "type": "cloud", "label": "分页站点", "sublabel": "binaries / dynlibs 页", "tag": "零 JS", "row": 0, "col": 2, "sources": [{ "path": "renderers/csite.py", "line": 1466 }] },
+    { "id": "sarif", "type": "backend", "label": "SARIF", "sublabel": "2.1.0 · 基线", "row": 0, "col": 3, "sources": [{ "path": "renderers/sarif.py", "line": 10 }] },
+    { "id": "dyn", "type": "backend", "label": "源码级库引用", "sublabel": "dlopen / LoadLibrary", "tag": "字面量", "row": 1, "col": 0, "sources": [{ "path": "renderers/dynlibs.py", "line": 327 }] },
+    { "id": "snap", "type": "database", "label": "快照 / 指纹", "sublabel": "回放 + diff", "row": 1, "col": 1, "sources": [{ "path": "renderers/snapshot.py", "line": 129 }] },
+    { "id": "patch", "type": "backend", "label": "确定性补丁", "sublabel": "--gen-apply-patch", "row": 1, "col": 2, "sources": [{ "path": "matlabc.py", "line": 32729 }] }
+  ],
+  "connections": [
+    { "id": "bin-attr", "from": "bin", "to": "attr", "label": "导出符号" },
+    { "id": "attr-site", "from": "attr", "to": "site", "label": "归因三态" },
+    { "id": "dyn-site", "from": "dyn", "to": "site", "label": "源码想用谁", "variant": "dashed" },
+    { "id": "snap-site", "from": "snap", "to": "site", "label": "快照回放" },
+    { "id": "patch-site", "from": "patch", "to": "site", "label": "补丁预览" },
+    { "id": "attr-sarif", "from": "attr", "to": "sarif", "label": "missing 计数" }
+  ],
+  "cards": [
+    { "dot": "violet", "title": "两条库链没有接上", "items": ["dynlibs 回答「代码想用谁」", "binfmt 回答「谁里面有什么」", "两者之间缺符号级 binhop 边"] },
+    { "dot": "amber", "title": "四类产物", "items": ["站点：人读", "SARIF：CI 读", "快照：可回放", "补丁：可应用"] }
+  ]
+}

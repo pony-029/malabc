@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "F16 前端层：三种原料，一处判定",
+    "locale": "zh-CN",
+    "output": "f16-layer-frontends.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:pony-029/malabc.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "069fe5553a8939591a0c390f047854bf43d740d4"
+    }
+  },
+  "layout": { "mode": "grid", "cols": 4, "cellW": 196, "cellH": 92, "gapX": 62, "gapY": 76 },
+  "components": [
+    { "id": "matlab", "type": "backend", "label": "MATLAB 前端", "sublabel": "函数 / 类 / 脚本", "tag": "语义级", "row": 0, "col": 0, "sources": [{ "path": "matlabc.py", "line": 3523 }] },
+    { "id": "c", "type": "backend", "label": "C / C++ 前端", "sublabel": "词法 + 括号配平", "tag": "文本级", "row": 0, "col": 1, "sources": [{ "path": "matlabc.py", "line": 9255 }] },
+    { "id": "py", "type": "backend", "label": "Python 前端", "sublabel": "ast 优先", "row": 0, "col": 2, "sources": [{ "path": "pyast_frontend.py", "line": 17 }] },
+    { "id": "js", "type": "backend", "label": "JS 前端", "sublabel": "词法扫描", "row": 0, "col": 3, "sources": [{ "path": "matlabc.py", "line": 10657 }] },
+    { "id": "model", "type": "database", "label": "统一模型", "sublabel": "functions / calls / deps", "row": 1, "col": 0, "sources": [{ "path": "matlabc.py", "line": 8873 }] },
+    { "id": "lim", "type": "backend", "label": "limitations", "sublabel": "降级必须留痕", "tag": "不静默", "row": 1, "col": 1, "sources": [{ "path": "pyast_frontend.py", "line": 22 }] },
+    { "id": "ir", "type": "backend", "label": "resolve_calls", "sublabel": "命中 → edge", "tag": "唯一判定点", "row": 1, "col": 3, "sources": [{ "path": "frontends/ir.py", "line": 64 }] }
+  ],
+  "connections": [
+    { "id": "matlab-model", "from": "matlab", "to": "model", "label": "实体 + 调用" },
+    { "id": "c-model", "from": "c", "to": "model", "label": "函数 + 调用" },
+    { "id": "py-model", "from": "py", "to": "model", "label": "ast 载荷" },
+    { "id": "js-model", "from": "js", "to": "model", "label": "词法载荷" },
+    { "id": "py-lim", "from": "py", "to": "lim", "label": "ast 被拒", "variant": "dashed" },
+    { "id": "js-lim", "from": "js", "to": "lim", "label": "语法降级", "variant": "dashed" },
+    { "id": "model-ir", "from": "model", "to": "ir", "label": "调用点" },
+    { "id": "lim-ir", "from": "lim", "to": "ir", "label": "只带词法读数", "variant": "dashed" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "能力不对等是事实", "items": ["MATLAB 有类型 / 维度 / 污点", "C 只有词法可见与文本规则", "Python 有 ast，JS 没有"] },
+    { "dot": "rose", "title": "降级必须可查", "items": ["ast 被拒时 limitations 非空", "下游据此区分「读不到」与「没有」", "同一份判据由 G 系列门禁守护"] }
+  ]
+}

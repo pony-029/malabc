@@ -1,0 +1,321 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "malabc 数据形态流转",
+    "output": "model-flow.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:pony-029/malabc.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "069fe5553a8939591a0c390f047854bf43d740d4"
+    },
+    "locale": "zh-CN"
+  },
+  "stages": [
+    {
+      "label": "源码"
+    },
+    {
+      "label": "解析"
+    },
+    {
+      "label": "模型"
+    },
+    {
+      "label": "边与归因"
+    },
+    {
+      "label": "产物"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "src",
+      "type": "frontend",
+      "label": "源码文件",
+      "sublabel": ".m / .c / .py / .js",
+      "stage": 0,
+      "row": 1,
+      "tag": "文本 + 行号"
+    },
+    {
+      "id": "lex",
+      "type": "backend",
+      "label": "词法 / AST",
+      "sublabel": "MATLAB 词法 · Python ast",
+      "stage": 1,
+      "row": 0,
+      "tag": "能力不等",
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "line": 7255
+        }
+      ]
+    },
+    {
+      "id": "bin",
+      "type": "database",
+      "label": "二进制容器",
+      "sublabel": "PE / ELF / Mach-O",
+      "stage": 1,
+      "row": 2,
+      "sources": [
+        {
+          "path": "binfmt/container.py",
+          "line": 67
+        }
+      ]
+    },
+    {
+      "id": "cmodel",
+      "type": "backend",
+      "label": "文件模型",
+      "sublabel": "函数 / 实体 / include",
+      "stage": 2,
+      "row": 0,
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "line": 8873
+        }
+      ]
+    },
+    {
+      "id": "funcidx",
+      "type": "backend",
+      "label": "函数索引",
+      "sublabel": "名字 → 定义",
+      "stage": 2,
+      "row": 1,
+      "sources": [
+        {
+          "path": "frontends/ir.py",
+          "line": 64
+        }
+      ]
+    },
+    {
+      "id": "sym",
+      "type": "database",
+      "label": "符号表",
+      "sublabel": "导出 / 导入",
+      "stage": 2,
+      "row": 2,
+      "sources": [
+        {
+          "path": "binfmt/attribute.py",
+          "line": 59
+        }
+      ]
+    },
+    {
+      "id": "edges",
+      "type": "backend",
+      "label": "调用边",
+      "sublabel": "caller → callee",
+      "stage": 3,
+      "row": 0,
+      "sources": [
+        {
+          "path": "frontends/ir.py",
+          "line": 64
+        }
+      ]
+    },
+    {
+      "id": "unresolved",
+      "type": "backend",
+      "label": "未解析名",
+      "sublabel": "callee + line + file",
+      "stage": 3,
+      "row": 1,
+      "sources": [
+        {
+          "path": "frontends/ir.py",
+          "line": 119
+        }
+      ]
+    },
+    {
+      "id": "attr",
+      "type": "backend",
+      "label": "三态归因",
+      "sublabel": "library / gpu / missing",
+      "stage": 3,
+      "row": 2,
+      "sources": [
+        {
+          "path": "binfmt/attribute.py",
+          "line": 83
+        }
+      ]
+    },
+    {
+      "id": "callrel",
+      "type": "backend",
+      "label": "有界投影",
+      "sublabel": "节点 / 边 / 截断账",
+      "stage": 4,
+      "row": 0,
+      "sources": [
+        {
+          "path": "callrel.py",
+          "line": 749
+        }
+      ]
+    },
+    {
+      "id": "json",
+      "type": "cloud",
+      "label": "JSON 报告",
+      "sublabel": "机器可读契约",
+      "stage": 4,
+      "row": 1,
+      "tag": "顶层 30+ 键"
+    },
+    {
+      "id": "html",
+      "type": "cloud",
+      "label": "分页站点",
+      "sublabel": "内联 SVG · 零 JS",
+      "stage": 4,
+      "row": 2,
+      "sources": [
+        {
+          "path": "renderers/csite.py",
+          "line": 503
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "id": "src-lex",
+      "from": "src",
+      "to": "lex",
+      "label": "文本 + 偏移",
+      "classification": "行号不变",
+      "variant": "emphasis"
+    },
+    {
+      "id": "lex-cmodel",
+      "from": "lex",
+      "to": "cmodel",
+      "label": "函数 / 实体",
+      "classification": "结构化",
+      "variant": "default"
+    },
+    {
+      "id": "cmodel-funcidx",
+      "from": "cmodel",
+      "to": "funcidx",
+      "label": "建索引",
+      "classification": "名字 → 定义",
+      "variant": "default"
+    },
+    {
+      "id": "funcidx-edges",
+      "from": "funcidx",
+      "to": "edges",
+      "label": "命中定义",
+      "classification": "边",
+      "variant": "emphasis"
+    },
+    {
+      "id": "funcidx-unresolved",
+      "from": "funcidx",
+      "to": "unresolved",
+      "label": "未命中",
+      "classification": "待归因",
+      "variant": "dashed"
+    },
+    {
+      "id": "bin-sym",
+      "from": "bin",
+      "to": "sym",
+      "label": "读符号表",
+      "classification": "导出 / 导入",
+      "variant": "default"
+    },
+    {
+      "id": "unresolved-attr",
+      "from": "unresolved",
+      "to": "attr",
+      "label": "查名字",
+      "classification": "三态",
+      "variant": "dashed"
+    },
+    {
+      "id": "sym-attr",
+      "from": "sym",
+      "to": "attr",
+      "label": "提供者",
+      "classification": "证据",
+      "variant": "default"
+    },
+    {
+      "id": "edges-callrel",
+      "from": "edges",
+      "to": "callrel",
+      "label": "调用对",
+      "classification": "有界",
+      "variant": "emphasis"
+    },
+    {
+      "id": "attr-callrel",
+      "from": "attr",
+      "to": "callrel",
+      "label": "归因结果",
+      "classification": "三态计数",
+      "variant": "dashed"
+    },
+    {
+      "id": "callrel-json",
+      "from": "callrel",
+      "to": "json",
+      "label": "关系块",
+      "classification": "有界 + 截断",
+      "variant": "emphasis"
+    },
+    {
+      "id": "json-html",
+      "from": "json",
+      "to": "html",
+      "label": "离线渲染",
+      "classification": "只读",
+      "variant": "default"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "两种原料，一次判定",
+      "items": [
+        "源码侧产出：函数、调用点、include / import",
+        "二进制侧产出：依赖、导出符号、内嵌 GPU",
+        "两侧只在归因处汇合，不互相重算"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "有界是纪律",
+      "items": [
+        "内核规模下 706 万条边不可能全量塞进 JSON",
+        "投影只给 KB 级，并同时报出 total / shown",
+        "被截断的部分不是消失，是明确记账"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "产物只读",
+      "items": [
+        "JSON 是契约，站点从它派生",
+        "--from-json 可离线重放，不再碰源码",
+        "产物不反向修改模型，避免二次真相"
+      ]
+    }
+  ]
+}

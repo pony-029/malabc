@@ -1,0 +1,309 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "一次 C 分析的模块时序",
+    "output": "analysis-sequence.html",
+    "viewBox": [
+      1060,
+      680
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:pony-029/malabc.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "069fe5553a8939591a0c390f047854bf43d740d4"
+    },
+    "locale": "zh-CN"
+  },
+  "participants": [
+    {
+      "id": "ci",
+      "type": "external",
+      "label": "用户 / CI",
+      "sublabel": "命令行"
+    },
+    {
+      "id": "cli",
+      "type": "frontend",
+      "label": "CLI",
+      "sublabel": "argparse",
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "line": 32242
+        }
+      ]
+    },
+    {
+      "id": "orch",
+      "type": "backend",
+      "label": "分析编排",
+      "sublabel": "matlabc.py",
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "line": 8990
+        }
+      ]
+    },
+    {
+      "id": "fec",
+      "type": "backend",
+      "label": "C 前端",
+      "sublabel": "词法 + 配平",
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "line": 8758
+        }
+      ]
+    },
+    {
+      "id": "ir",
+      "type": "backend",
+      "label": "前端 IR",
+      "sublabel": "resolve_calls",
+      "sources": [
+        {
+          "path": "frontends/ir.py",
+          "line": 64
+        }
+      ]
+    },
+    {
+      "id": "callrel",
+      "type": "backend",
+      "label": "调用投影",
+      "sublabel": "callrel",
+      "sources": [
+        {
+          "path": "callrel.py",
+          "line": 749
+        }
+      ]
+    },
+    {
+      "id": "site",
+      "type": "cloud",
+      "label": "站点渲染",
+      "sublabel": "csite",
+      "sources": [
+        {
+          "path": "renderers/csite.py",
+          "line": 503
+        }
+      ]
+    },
+    {
+      "id": "binattr",
+      "type": "database",
+      "label": "二进制归因",
+      "sublabel": "binfmt",
+      "sources": [
+        {
+          "path": "binfmt/attribute.py",
+          "line": 59
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 160,
+      "to": 280,
+      "label": "输入与解析"
+    },
+    {
+      "from": 288,
+      "to": 410,
+      "label": "调用判定"
+    },
+    {
+      "from": 418,
+      "to": 570,
+      "label": "产物与归因"
+    }
+  ],
+  "messages": [
+    {
+      "id": "m1",
+      "from": "ci",
+      "to": "cli",
+      "y": 170,
+      "label": "matlabc.py proj --lang c --browse",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m2",
+      "from": "cli",
+      "to": "orch",
+      "y": 202,
+      "label": "argv / 配置",
+      "variant": "default"
+    },
+    {
+      "id": "m3",
+      "from": "orch",
+      "to": "fec",
+      "y": 234,
+      "label": "parse .c / .h",
+      "variant": "default"
+    },
+    {
+      "id": "m4",
+      "from": "fec",
+      "to": "orch",
+      "y": 266,
+      "label": "functions / includes",
+      "variant": "return"
+    },
+    {
+      "id": "m5",
+      "from": "orch",
+      "to": "ir",
+      "y": 298,
+      "label": "resolve_calls",
+      "variant": "default"
+    },
+    {
+      "id": "m6",
+      "from": "ir",
+      "to": "orch",
+      "y": 330,
+      "label": "edges / unresolved",
+      "variant": "return"
+    },
+    {
+      "id": "m7",
+      "from": "orch",
+      "to": "callrel",
+      "y": 362,
+      "label": "call_relations",
+      "variant": "default"
+    },
+    {
+      "id": "m8",
+      "from": "callrel",
+      "to": "orch",
+      "y": 394,
+      "label": "有界投影 + 截断账",
+      "variant": "return"
+    },
+    {
+      "id": "m9",
+      "from": "orch",
+      "to": "site",
+      "y": 426,
+      "label": "render_c_site",
+      "variant": "default"
+    },
+    {
+      "id": "m10",
+      "from": "site",
+      "to": "ci",
+      "y": 458,
+      "label": "HTML 站点",
+      "variant": "return"
+    },
+    {
+      "id": "m11",
+      "from": "orch",
+      "to": "binattr",
+      "y": 490,
+      "label": "attribute_names",
+      "variant": "dashed"
+    },
+    {
+      "id": "m12",
+      "from": "binattr",
+      "to": "orch",
+      "y": 522,
+      "label": "library / gpu / missing",
+      "variant": "return"
+    },
+    {
+      "id": "m13",
+      "from": "orch",
+      "to": "cli",
+      "y": 554,
+      "label": "摘要 + 退出码",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "cli",
+      "from": 170,
+      "to": 560,
+      "type": "frontend"
+    },
+    {
+      "participant": "orch",
+      "from": 190,
+      "to": 558,
+      "type": "backend"
+    },
+    {
+      "participant": "fec",
+      "from": 230,
+      "to": 270,
+      "type": "backend"
+    },
+    {
+      "participant": "ir",
+      "from": 294,
+      "to": 334,
+      "type": "backend"
+    },
+    {
+      "participant": "callrel",
+      "from": 358,
+      "to": 398,
+      "type": "backend"
+    },
+    {
+      "participant": "site",
+      "from": 422,
+      "to": 462,
+      "type": "cloud"
+    },
+    {
+      "participant": "binattr",
+      "from": 486,
+      "to": 526,
+      "type": "database"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "主链只有一次判定",
+      "items": [
+        "所有语言的调用都落到 frontends/ir.resolve_calls，一处判定",
+        "C 前端只产出候选站点（函数 / 调用 / include），不自己产边",
+        "返回消息比请求更轻，避免把主链读成双向"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "二进制归因是可分支",
+      "items": [
+        "只有给了 --binary / --binary-symbols 才会走到 binfmt",
+        "归因只回答三态：library / gpu_kernel / missing",
+        "没提供二进制时一律 missing，不假设系统里应该有"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "退出码是合同",
+      "items": [
+        "分析与渲染分离：站点写盘失败与检查失败是两种退出码",
+        "摘要会同时报出截断与未解析的分母",
+        "CI 只读退出码 + SARIF，不解析 HTML"
+      ]
+    }
+  ]
+}

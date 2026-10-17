@@ -8,12 +8,14 @@
 
 | 文件 / 目录 | 是什么 | 怎么来的 |
 | --- | --- | --- |
+| [`index.html`](index.html) | **图形化总索引**：F01–F24 共 24 张图分组、可点击、零 JS、零外链 | 手写，链接由脚本校验（64 条 0 缺失） |
 | [`FLOW_REPORT.md`](FLOW_REPORT.md) | **主文档**：13 张图逐张详解 + 本轮实测到的环境事实 + 下一步建议 | 人工撰写，数字全部实测 |
 | [`INDEX.md`](INDEX.md) | 21 个 mermaid 块 ↔ 13 张图的映射表（含行范围、图型、体积、节点数） | 脚本生成，只读 |
 | [`FLOW_INDEX.json`](FLOW_INDEX.json) | 上表的机器可读版本 | 同上 |
 | [`FLOW_CENSUS.json`](FLOW_CENSUS.json) | 普查结果：每个块的文件、行号、所在小节、图型、原始正文 | `_r45/census_flow.py` |
 | [`source/`](source/) | 21 个 mermaid 块**逐字节导出**（含 CRLF 行尾，与源文档一致）+ `INDEX.md` | `_r45/scaffold_flow.py` + `_r45/normalize_flow_eol.py` |
 | [`archify/`](archify/) | 13 套 `candidate.json`（英文可编辑源）+ 13 套 `candidate.zh-CN.json`（中文可编辑源）+ **26** 个渲染产物 `.html`（13 英文 + 13 中文） | `archify render` |
+| [`figures/`](figures/) | **11 张单语交互图（F14–F24）**：五个角色层、融合总图、端到端流程、数据形态、时序、闭环。每目录含 `candidate.json` + 产物 + `delivery.json` + 浏览器证据 | 2026-10-17 新绘，`archify deliver`；门禁 `tools/check_flow_figures.py`（FF1–FF5） |
 | [`diagrams/`](diagrams/) | **26 个独立 SVG**（13 张 × 中英两套）——README 里直接看得见的那一份 | `_r47/extract_svg.py`（从产物里取出，不是截图） |
 
 ## 一眼看懂：13 张图分别回答什么

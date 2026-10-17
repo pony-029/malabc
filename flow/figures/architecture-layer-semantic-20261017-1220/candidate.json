@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "F17 语义层：一条投影链，一处守恒",
+    "locale": "zh-CN",
+    "output": "f17-layer-semantic.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:pony-029/malabc.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "069fe5553a8939591a0c390f047854bf43d740d4"
+    }
+  },
+  "layout": { "mode": "grid", "cols": 4, "cellW": 196, "cellH": 92, "gapX": 62, "gapY": 76 },
+  "components": [
+    { "id": "ir", "type": "backend", "label": "前端 IR", "sublabel": "edges / unresolved", "tag": "一处判定", "row": 0, "col": 0, "sources": [{ "path": "frontends/ir.py", "line": 64 }] },
+    { "id": "callrel", "type": "backend", "label": "调用关系投影", "sublabel": "有界 + 截断账", "row": 0, "col": 1, "sources": [{ "path": "callrel.py", "line": 749 }] },
+    { "id": "ugraph", "type": "backend", "label": "统一图 + 守恒", "sublabel": "A1a / A1b / A4", "tag": "不做识别", "row": 0, "col": 2, "sources": [{ "path": "unified_graph.py", "line": 184 }] },
+    { "id": "site", "type": "cloud", "label": "站点", "sublabel": "调用图 / 交叉引用", "row": 0, "col": 3, "sources": [{ "path": "renderers/csite.py", "line": 503 }] },
+    { "id": "entity", "type": "backend", "label": "实体契约", "sublabel": "kind / members / bases", "row": 1, "col": 1, "sources": [{ "path": "entity_model.py", "line": 186 }] },
+    { "id": "sarif", "type": "backend", "label": "SARIF", "sublabel": "2.1.0 · CI", "row": 1, "col": 2, "sources": [{ "path": "renderers/sarif.py", "line": 10 }] }
+  ],
+  "connections": [
+    { "id": "ir-callrel", "from": "ir", "to": "callrel", "label": "edges", "variant": "emphasis" },
+    { "id": "callrel-ugraph", "from": "callrel", "to": "ugraph", "label": "投影" },
+    { "id": "entity-ugraph", "from": "entity", "to": "ugraph", "label": "实体节点" },
+    { "id": "callrel-site", "from": "callrel", "to": "site", "label": "关系读数" },
+    { "id": "ugraph-site", "from": "ugraph", "to": "site", "label": "守恒结果" },
+    { "id": "callrel-sarif", "from": "callrel", "to": "sarif", "label": "截断/歧义告警", "variant": "dashed" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "不许重算", "items": ["任何一级都不得自己重算边", "否则出现第二事实源", "判据：同输入两次投影逐字段相等"] },
+    { "dot": "amber", "title": "有界的代价要记账", "items": ["截断必须报 total / shown", "身份口径必须显式声明", "未解析调用不在图里，但有计数"] }
+  ]
+}

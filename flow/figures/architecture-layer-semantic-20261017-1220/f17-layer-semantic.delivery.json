@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "77b3255a-77ce-4607-a732-c8025bd8891b",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "E:\\matlabc\\malabc\\flow\\figures\\architecture-layer-semantic-20261017-1220\\candidate.json",
+  "output": "E:\\matlabc\\malabc\\flow\\figures\\architecture-layer-semantic-20261017-1220\\f17-layer-semantic.html",
+  "specification": {
+    "sha256": "47646a0b93ad130f173da402d96666055e39bcde4ab178f5f2e8a92a427d6728",
+    "bytes": 2670
+  },
+  "artifact": {
+    "sha256": "a154db760f6b7ca953927322d079f1e5e75f09371e77d8b3edb7b7ad7acd04e5",
+    "bytes": 814887
+  }
+}

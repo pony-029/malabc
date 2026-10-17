@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "e50b8dae-4e23-48fa-834d-858527b215b6",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "E:\\matlabc\\malabc\\flow\\figures\\workflow-malabc-pipeline-20261017-121345\\candidate.json",
+  "output": "E:\\matlabc\\malabc\\flow\\figures\\workflow-malabc-pipeline-20261017-121345\\pipeline.html",
+  "specification": {
+    "sha256": "1de3e1112d5b4a41607944c140c0a533c7d4a45b094e5aaba0a52b6dbf97350c",
+    "bytes": 9079
+  },
+  "artifact": {
+    "sha256": "83caf794a5cded6e98454903c5e2a0c41df2bf7bd60963ae1e1858f76305589e",
+    "bytes": 839633
+  }
+}

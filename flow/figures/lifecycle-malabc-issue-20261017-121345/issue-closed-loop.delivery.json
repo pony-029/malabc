@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "52305b4b-b00c-4f55-b1dd-2911259f8a8b",
+  "status": "current",
+  "command": "deliver",
+  "type": "lifecycle",
+  "input": "E:\\matlabc\\malabc\\flow\\figures\\lifecycle-malabc-issue-20261017-121345\\candidate.json",
+  "output": "E:\\matlabc\\malabc\\flow\\figures\\lifecycle-malabc-issue-20261017-121345\\issue-closed-loop.html",
+  "specification": {
+    "sha256": "5c98e8cf1978f5c9cca618081530d09ea604018efbe2e84536d77b60146a4d9b",
+    "bytes": 5493
+  },
+  "artifact": {
+    "sha256": "d57e5c4fb629ec2d7661478364ad4de6f4c4d57299f8e36b01becdb7f004b78a",
+    "bytes": 828608
+  }
+}

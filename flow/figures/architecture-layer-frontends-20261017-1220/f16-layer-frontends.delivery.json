@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "b53ff2e6-2c42-4565-b2ff-11622005af63",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "E:\\matlabc\\malabc\\flow\\figures\\architecture-layer-frontends-20261017-1220\\candidate.json",
+  "output": "E:\\matlabc\\malabc\\flow\\figures\\architecture-layer-frontends-20261017-1220\\f16-layer-frontends.html",
+  "specification": {
+    "sha256": "da0841822d37d2ad06defbf1cd5a33b0a261a005c37bef1bf1d0422bfac46cd7",
+    "bytes": 3012
+  },
+  "artifact": {
+    "sha256": "3c5164a9d429a5edfc70fe477e78ef11d64f29e768778a4de7aeaf9c4980f8fc",
+    "bytes": 818919
+  }
+}

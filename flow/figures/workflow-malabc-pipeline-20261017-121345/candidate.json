@@ -1,0 +1,446 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "malabc 端到端分析流程",
+    "output": "pipeline.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:pony-029/malabc.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "069fe5553a8939591a0c390f047854bf43d740d4"
+    },
+    "locale": "zh-CN"
+  },
+  "lanes": [
+    {
+      "id": "entry",
+      "label": "入口与参数"
+    },
+    {
+      "id": "front",
+      "label": "多语言前端"
+    },
+    {
+      "id": "sem",
+      "label": "语义与图"
+    },
+    {
+      "id": "bin",
+      "label": "二进制归因"
+    },
+    {
+      "id": "out",
+      "label": "产物与门禁"
+    },
+    {
+      "id": "fail",
+      "label": "失败与降级",
+      "variant": "exception"
+    }
+  ],
+  "phases": [
+    {
+      "id": "intake",
+      "label": "输入",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "analyze",
+      "label": "分析",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "emit",
+      "label": "产物",
+      "fromCol": 4,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "mainPath": [
+    "user",
+    "cli",
+    "mode",
+    "collect",
+    "parse",
+    "ir",
+    "rel",
+    "report",
+    "emit"
+  ],
+  "nodes": [
+    {
+      "id": "user",
+      "lane": "entry",
+      "col": 0,
+      "type": "external",
+      "label": "用户 / CI",
+      "sublabel": "命令行或流水线",
+      "width": 128
+    },
+    {
+      "id": "cli",
+      "lane": "entry",
+      "col": 1,
+      "type": "frontend",
+      "label": "CLI 解析",
+      "sublabel": "argparse",
+      "tag": "唯一真入口",
+      "width": 128,
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "line": 32242
+        }
+      ]
+    },
+    {
+      "id": "mode",
+      "lane": "entry",
+      "col": 2,
+      "type": "frontend",
+      "label": "选择模式",
+      "sublabel": "--lang / --mixed",
+      "width": 128,
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "line": 32393
+        }
+      ]
+    },
+    {
+      "id": "collect",
+      "lane": "front",
+      "col": 2,
+      "type": "backend",
+      "label": "收集文件",
+      "sublabel": "扩展名 + 排除",
+      "width": 128
+    },
+    {
+      "id": "parse",
+      "lane": "front",
+      "col": 3,
+      "type": "backend",
+      "label": "语言前端",
+      "sublabel": "MATLAB / C / Py / JS",
+      "tag": "能力不等",
+      "width": 128,
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "line": 8758
+        }
+      ]
+    },
+    {
+      "id": "checks",
+      "lane": "front",
+      "col": 4,
+      "type": "backend",
+      "label": "静态检查",
+      "sublabel": "规则产出告警",
+      "width": 128,
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "line": 9469
+        }
+      ]
+    },
+    {
+      "id": "ir",
+      "lane": "sem",
+      "col": 3,
+      "type": "backend",
+      "label": "调用判定",
+      "sublabel": "resolve_calls",
+      "tag": "唯一判定点",
+      "width": 128,
+      "sources": [
+        {
+          "path": "frontends/ir.py",
+          "line": 64
+        }
+      ]
+    },
+    {
+      "id": "rel",
+      "lane": "sem",
+      "col": 4,
+      "type": "backend",
+      "label": "调用关系投影",
+      "sublabel": "有界 + 截断账",
+      "width": 128,
+      "sources": [
+        {
+          "path": "callrel.py",
+          "line": 749
+        }
+      ]
+    },
+    {
+      "id": "binparse",
+      "lane": "bin",
+      "col": 3,
+      "type": "database",
+      "label": "容器解析",
+      "sublabel": "PE / ELF / Mach-O",
+      "width": 128,
+      "sources": [
+        {
+          "path": "binfmt/container.py",
+          "line": 67
+        }
+      ]
+    },
+    {
+      "id": "attr",
+      "lane": "bin",
+      "col": 4,
+      "type": "backend",
+      "label": "未解析名归因",
+      "sublabel": "library / gpu / missing",
+      "width": 128,
+      "sources": [
+        {
+          "path": "binfmt/attribute.py",
+          "line": 59
+        }
+      ]
+    },
+    {
+      "id": "report",
+      "lane": "out",
+      "col": 4,
+      "type": "backend",
+      "label": "报告组装",
+      "sublabel": "JSON 契约",
+      "width": 128,
+      "sources": [
+        {
+          "path": "renderers/report.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "emit",
+      "lane": "out",
+      "col": 5,
+      "type": "cloud",
+      "label": "站点 / SARIF",
+      "sublabel": "HTML · 2.1.0 · 退出码",
+      "width": 132,
+      "sources": [
+        {
+          "path": "renderers/csite.py",
+          "line": 503
+        },
+        {
+          "path": "renderers/sarif.py",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "id": "degrade",
+      "lane": "fail",
+      "col": 2,
+      "type": "messagebus",
+      "label": "词法降级",
+      "sublabel": "必须记 limitations",
+      "tag": "不静默",
+      "width": 128,
+      "sources": [
+        {
+          "path": "pyast_frontend.py",
+          "line": 22
+        }
+      ]
+    },
+    {
+      "id": "unresolved",
+      "lane": "fail",
+      "col": 3,
+      "type": "messagebus",
+      "label": "未解析调用",
+      "sublabel": "名字 + 行 + 文件",
+      "width": 128,
+      "sources": [
+        {
+          "path": "frontends/ir.py",
+          "line": 119
+        }
+      ]
+    },
+    {
+      "id": "noprov",
+      "lane": "fail",
+      "col": 4,
+      "type": "messagebus",
+      "label": "未提供二进制",
+      "sublabel": "一律 missing",
+      "width": 128,
+      "sources": [
+        {
+          "path": "binfmt/attribute.py",
+          "line": 112
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "argv",
+      "from": "user",
+      "to": "cli",
+      "label": "argv",
+      "variant": "emphasis"
+    },
+    {
+      "id": "parse-args",
+      "from": "cli",
+      "to": "mode",
+      "label": "参数归一",
+      "variant": "default"
+    },
+    {
+      "id": "dispatch",
+      "from": "mode",
+      "to": "collect",
+      "label": "按语言分发",
+      "variant": "default"
+    },
+    {
+      "id": "collect-parse",
+      "from": "collect",
+      "to": "parse",
+      "label": "文件列表",
+      "variant": "default"
+    },
+    {
+      "id": "parse-checks",
+      "from": "parse",
+      "to": "checks",
+      "label": "模型",
+      "variant": "default"
+    },
+    {
+      "id": "parse-ir",
+      "from": "parse",
+      "to": "ir",
+      "label": "调用点",
+      "variant": "emphasis"
+    },
+    {
+      "id": "ir-rel",
+      "from": "ir",
+      "to": "rel",
+      "label": "edges / unresolved",
+      "variant": "emphasis"
+    },
+    {
+      "id": "rel-report",
+      "from": "rel",
+      "to": "report",
+      "label": "关系读数",
+      "variant": "default"
+    },
+    {
+      "id": "report-emit",
+      "from": "report",
+      "to": "emit",
+      "label": "渲染",
+      "variant": "emphasis"
+    },
+    {
+      "id": "checks-emit",
+      "from": "checks",
+      "to": "emit",
+      "label": "告警 → SARIF",
+      "variant": "default"
+    },
+    {
+      "id": "parse-degrade",
+      "from": "parse",
+      "to": "degrade",
+      "label": "语法被拒",
+      "variant": "dashed",
+      "role": "error"
+    },
+    {
+      "id": "ir-unresolved",
+      "from": "ir",
+      "to": "unresolved",
+      "label": "名字未命中",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "unresolved-attr",
+      "from": "unresolved",
+      "to": "attr",
+      "label": "请求归因",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "binparse-attr",
+      "from": "binparse",
+      "to": "attr",
+      "label": "导出符号",
+      "variant": "default"
+    },
+    {
+      "id": "attr-report",
+      "from": "attr",
+      "to": "report",
+      "label": "三态归因",
+      "variant": "default"
+    },
+    {
+      "id": "unresolved-noprov",
+      "from": "unresolved",
+      "to": "noprov",
+      "label": "没给 --binary",
+      "variant": "dashed",
+      "role": "error"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "主链只判一次",
+      "items": [
+        "入口只解析参数，不做语言判断",
+        "三种前端产同一种原料：函数、调用点、依赖",
+        "调用是否成立只在 resolve_calls 判一次"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "降级必须留痕",
+      "items": [
+        "ast 被拒而降级到词法时，limitations 必须非空",
+        "未解析调用是带名字与行号的清单，不是空集",
+        "没提供二进制时有独立 missing 通道，不被静默合并"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "退出码是合同",
+      "items": [
+        "报告与站点是两种产物，写盘失败与检查失败分开报",
+        "CI 只读退出码与 SARIF，不解析 HTML",
+        "趋势与基线比对在门禁侧完成，不改分析结果"
+      ]
+    }
+  ]
+}

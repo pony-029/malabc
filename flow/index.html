@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>malabc 图表总索引 · 24 张</title>
+<style>
+  :root{
+    --bg:#f6f8fa; --card:#ffffff; --ink:#1f2328; --muted:#59636e; --line:#d1d9e0;
+    --accent:#0969da; --accent2:#8250df; --ok:#1a7f37; --warn:#9a6700; --plan:#8250df;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0d1117; --card:#161b22; --ink:#e6edf3; --muted:#9198a1; --line:#30363d;
+           --accent:#4493f8; --accent2:#ab7df8; --ok:#3fb950; --warn:#d29922; --plan:#ab7df8; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif}
+  header{max-width:1180px;margin:0 auto;padding:56px 24px 8px}
+  h1{font-size:30px;margin:0 0 8px;letter-spacing:-.3px}
+  .lede{color:var(--muted);max-width:820px;margin:0 0 18px}
+  .stats{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0 0}
+  .stat{border:1px solid var(--line);background:var(--card);border-radius:10px;
+        padding:8px 12px;font-size:13px;color:var(--muted)}
+  .stat b{color:var(--ink);font-size:16px;margin-right:6px}
+  nav{max-width:1180px;margin:22px auto 0;padding:0 24px;display:flex;gap:8px;flex-wrap:wrap}
+  nav a{font-size:13px;color:var(--accent);text-decoration:none;border:1px solid var(--line);
+        border-radius:999px;padding:5px 11px;background:var(--card)}
+  nav a:hover{border-color:var(--accent)}
+  main{max-width:1180px;margin:0 auto;padding:8px 24px 64px}
+  section{margin-top:34px}
+  h2{font-size:19px;margin:0 0 6px;display:flex;align-items:center;gap:10px}
+  h2 .hint{font-weight:400;font-size:13px;color:var(--muted)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;margin-top:14px}
+  .card{border:1px solid var(--line);background:var(--card);border-radius:12px;padding:16px 16px 14px;
+        display:flex;flex-direction:column;gap:8px;transition:border-color .15s, transform .15s}
+  .card:hover{border-color:var(--accent);transform:translateY(-1px)}
+  .tag{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.04em;
+       border-radius:6px;padding:2px 7px;margin-right:6px}
+  .tag.now{color:var(--ok);border:1px solid var(--ok)}
+  .tag.plan{color:var(--plan);border:1px solid var(--plan)}
+  .tag.layer{color:var(--accent2);border:1px solid var(--accent2)}
+  .card h3{margin:0;font-size:16px;line-height:1.35}
+  .card h3 .id{color:var(--muted);font-weight:600;margin-right:8px;font-variant-numeric:tabular-nums}
+  .q{margin:0;color:var(--muted);font-size:13.5px;flex:1}
+  .links{display:flex;flex-wrap:wrap;gap:12px;font-size:13px;padding-top:4px;border-top:1px dashed var(--line)}
+  .links a{color:var(--accent);text-decoration:none}
+  .links a:hover{text-decoration:underline}
+  .links a.alt{color:var(--muted)}
+  footer{max-width:1180px;margin:0 auto;padding:0 24px 56px;color:var(--muted);font-size:13px}
+  code{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--bg);
+       border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>malabc 图表总索引</h1>
+  <p class="lede">
+    共 <b>24 张</b>图：<b>F01–F13</b> 是既有体系（中英双语 + 独立 SVG），
+    <b>F14–F19</b> 是本次新绘的五个角色层与融合总图，
+    <b>F20–F24</b> 是总架构、端到端流程、数据形态、时序与闭环。
+    每张图都可独立打开，零 JS、零外链、断网可用。
+  </p>
+  <div class="stats">
+    <span class="stat"><b>24</b>张图</span>
+    <span class="stat"><b>6</b>张角色层 / 融合</span>
+    <span class="stat"><b>26</b>英文 + 26 中文（既有）</span>
+    <span class="stat"><b>9/9</b>交付检查</span>
+    <span class="stat"><b>pass</b>浏览器证据</span>
+  </div>
+</header>
+
+<nav>
+  <a href="#overview">一图看懂</a>
+  <a href="#layers">五个角色层</a>
+  <a href="#flows">流程与数据</a>
+  <a href="#loops">闭环与治理</a>
+  <a href="INDEX.md">INDEX.md</a>
+  <a href="FLOW_REPORT.md">FLOW_REPORT.md</a>
+</nav>
+
+<main>
+
+<section id="overview">
+  <h2>一图看懂 <span class="hint">先看这五张，再看细节</span></h2>
+  <div class="grid">
+
+    <article class="card">
+      <h3><span class="id">F19</span>融合总图：现状、接口层与计划</h3>
+      <p class="q">实线是今天跑得起来的链，虚线是计划（analyzer 抽取 / 事实层 / LSP / C L1–L6 / DSO / Rust runtime）。</p>
+      <div class="links"><a href="figures/architecture-fusion-20261017-1220/f19-fusion.html">打开</a><a class="alt" href="figures/architecture-fusion-20261017-1220/candidate.json">candidate.json</a></div>
+    </article>
+
+    <article class="card">
+      <h3><span class="id">F20</span>架构总图：17 个模块</h3>
+      <p class="q">入口、编排、前端、语义、二进制、产物六组，21 条交互，每个节点带源码证据。</p>
+      <div class="links"><a href="figures/architecture-malabc-modules-20261017-113257/malabc-modules.html">打开</a><a class="alt" href="figures/architecture-malabc-modules-20261017-113257/candidate.json">candidate.json</a></div>
+    </article>
+
+    <article class="card">
+      <h3><span class="id">F01</span>能力组成</h3>
+      <p class="q">这个工具由哪几块能力组成？</p>
+      <div class="links"><a href="archify/architecture-malabc-capabilities-20261009-2215/f01-capabilities.html">英文</a><a class="alt" href="archify/architecture-malabc-capabilities-20261009-2215/f01-capabilities.zh-CN.html">中文</a><a class="alt" href="diagrams/f01-capabilities.zh-CN.svg">SVG</a></div>
+    </article>
+
+    <article class="card">
+      <h3><span class="id">F04</span>内核分层</h3>
+      <p class="q">单文件内核内部到底分了哪几层？输入输出各是什么？</p>
+      <div class="links"><a href="archify/architecture-malabc-layers-20261009-2340/f04-layers.html">英文</a><a class="alt" href="archify/architecture-malabc-layers-20261009-2340/f04-layers.zh-CN.html">中文</a><a class="alt" href="diagrams/f04-layers.zh-CN.svg">SVG</a></div>
+    </article>
+
+    <article class="card">
+      <h3><span class="id">F12</span>真实分层（含循环依赖）</h3>
+      <p class="q">仓库真实分层结构是什么？那条循环依赖在哪？</p>
+      <div class="links"><a href="archify/architecture-audit-layers-20261009-2340/f12-audit-layers.html">英文</a><a class="alt" href="archify/architecture-audit-layers-20261009-2340/f12-audit-layers.zh-CN.html">中文</a><a class="alt" href="diagrams/f12-audit-layers.zh-CN.svg">SVG</a></div>
+    </article>
+
+  </div>
+</section>
+
+<section id="layers">
+  <h2>五个角色层 <span class="hint">每层一张，节点带源码行号</span></h2>
+  <div class="grid">
+
+    <article class="card">
+      <h3><span class="id">F14</span>入口层：三条入口，一个编排</h3>
+      <p class="q">CLI 是唯一真入口；GUI 与 MCP 只是拼参数 + 起子进程，AI 只读产物。</p>
+      <div class="links"><a href="figures/architecture-layer-entry-20261017-1220/f14-layer-entry.html">打开</a><a class="alt" href="figures/architecture-layer-entry-20261017-1220/candidate.json">candidate.json</a></div>
+    </article>
+
+    <article class="card">
+      <h3><span class="id">F15</span>编排层：一个文件里的五件事</h3>
+      <p class="q">收集、分发、检查、组装、落盘都在 matlabc.py；这是插件必须先抽取分析层的原因。</p>
+      <div class="links"><a href="figures/architecture-layer-orchestrator-20261017-1220/f15-layer-orchestrator.html">打开</a><a class="alt" href="figures/architecture-layer-orchestrator-20261017-1220/candidate.json">candidate.json</a></div>
+    </article>
+
+    <article class="card">
+      <h3><span class="id">F16</span>前端层：三种原料，一处判定</h3>
+      <p class="q">MATLAB 语义级、C 文本级、Python 有 ast、JS 只有词法；降级必须留 limitations。</p>
+      <div class="links"><a href="figures/architecture-layer-frontends-20261017-1220/f16-layer-frontends.html">打开</a><a class="alt" href="figures/architecture-layer-frontends-20261017-1220/candidate.json">candidate.json</a></div>
+    </article>
+
+    <article class="card">
+      <h3><span class="id">F17</span>语义层：一条投影链，一处守恒</h3>
+      <p class="q">IR → 投影 → 统一图 → 站点；任何一级都不许自己重算边。</p>
+      <div class="links"><a href="figures/architecture-layer-semantic-20261017-1220/f17-layer-semantic.html">打开</a><a class="alt" href="figures/architecture-layer-semantic-20261017-1220/candidate.json">candidate.json</a></div>
+    </article>
+
+    <article class="card">
+      <h3><span class="id">F18</span>二进制与产物层：两条库链，四种产物</h3>
+      <p class="q">dynlibs 与 binfmt 之间缺符号级 binhop 边——跨库调用链目前是断的。</p>
+      <div class="links"><a href="figures/architecture-layer-binary-20261017-1220/f18-layer-binary.html">打开</a><a class="alt" href="figures/architecture-layer-binary-20261017-1220/candidate.json">candidate.json</a></div>
+    </article>
+
+  </div>
+</section>
+
+<section id="flows">
+  <h2>流程与数据 <span class="hint">从命令行到退出码，从源码到产物</span></h2>
+  <div class="grid">
+
+    <article class="card">
+      <h3><span class="id">F21</span>端到端流程（六泳道）</h3>
+      <p class="q">入口、前端、语义、二进制、产物、失败降级六条泳道；主链只判一次。</p>
+      <div class="links"><a href="figures/workflow-malabc-pipeline-20261017-121345/pipeline.html">打开</a><a class="alt" href="figures/workflow-malabc-pipeline-20261017-121345/candidate.json">candidate.json</a></div>
+    </article>
+
+    <article class="card">
+      <h3><span class="id">F22</span>数据形态流转</h3>
+      <p class="q">源码 → 词法 → 模型 → 边 → 投影 → 产物；两种原料只在归因处汇合。</p>
+      <div class="links"><a href="figures/dataflow-malabc-model-20261017-121345/model-flow.html">打开</a><a class="alt" href="figures/dataflow-malabc-model-20261017-121345/candidate.json">candidate.json</a></div>
+    </article>
+
+    <article class="card">
+      <h3><span class="id">F23</span>一次 C 分析的时序</h3>
+      <p class="q">13 条消息、8 个参与者；二进制归因是可选分支，退出码回流给 CI。</p>
+      <div class="links"><a href="figures/sequence-malabc-analysis-20261017-113257/analysis-sequence.html">打开</a><a class="alt" href="figures/sequence-malabc-analysis-20261017-113257/candidate.json">candidate.json</a></div>
+    </article>
+
+    <article class="card">
+      <h3><span class="id">F03</span><code>--binary-attach</code> 省了什么</h3>
+      <p class="q">一条命令怎么代替原来的两条？</p>
+      <div class="links"><a href="archify/workflow-binary-attach-20261009-2310/f03-binary-attach.html">英文</a><a class="alt" href="archify/workflow-binary-attach-20261009-2310/f03-binary-attach.zh-CN.html">中文</a><a class="alt" href="diagrams/f03-binary-attach.zh-CN.svg">SVG</a></div>
+    </article>
+
+    <article class="card">
+      <h3><span class="id">F05</span>唯一判定点</h3>
+      <p class="q">「解析不到的调用」是在哪里被判定的？</p>
+      <div class="links"><a href="archify/architecture-single-decision-point-20261009-2340/f05-decision-point.html">英文</a><a class="alt" href="archify/architecture-single-decision-point-20261009-2340/f05-decision-point.zh-CN.html">中文</a><a class="alt" href="diagrams/f05-decision-point.zh-CN.svg">SVG</a></div>
+    </article>
+
+    <article class="card">
+      <h3><span class="id">F02</span>三态归因</h3>
+      <p class="q">一个名字为什么被判成 unresolved？library / gpu / missing 各由什么证据支持？</p>
+      <div class="links"><a href="archify/architecture-binary-attribution-20261009-2340/f02-binary-attribution.html">英文</a><a class="alt" href="archify/architecture-binary-attribution-20261009-2340/f02-binary-attribution.zh-CN.html">中文</a><a class="alt" href="diagrams/f02-binary-attribution.zh-CN.svg">SVG</a></div>
+    </article>
+
+    <article class="card">
+      <h3><span class="id">F11</span>IR 归因护栏</h3>
+      <p class="q">唯一判定点收拢后，用什么判据挡住它再次扩散？</p>
+      <div class="links"><a href="archify/workflow-ir-attribution-20261009-2340/f11-ir-attribution.html">英文</a><a class="alt" href="archify/workflow-ir-attribution-20261009-2340/f11-ir-attribution.zh-CN.html">中文</a><a class="alt" href="diagrams/f11-ir-attribution.zh-CN.svg">SVG</a></div>
+    </article>
+
+  </div>
+</section>
+
+<section id="loops">
+  <h2>闭环与治理 <span class="hint">告警、补丁、CI、方法论</span></h2>
+  <div class="grid">
+
+    <article class="card">
+      <h3><span class="id">F24</span>告警到基线的闭环</h3>
+      <p class="q">11 个状态、13 条转移；验证是唯一出口，且它是目前唯一没有源码证据的状态。</p>
+      <div class="links"><a href="figures/lifecycle-malabc-issue-20261017-121345/issue-closed-loop.html">打开</a><a class="alt" href="figures/lifecycle-malabc-issue-20261017-121345/candidate.json">candidate.json</a></div>
+    </article>
+
+    <article class="card">
+      <h3><span class="id">F06</span>修复闭环五步</h3>
+      <p class="q">修复闭环的五个步骤是什么？失败回哪一步？</p>
+      <div class="links"><a href="archify/workflow-fix-loop-20261009-2310/f06-fix-loop.html">英文</a><a class="alt" href="archify/workflow-fix-loop-20261009-2310/f06-fix-loop.zh-CN.html">中文</a><a class="alt" href="diagrams/f06-fix-loop.zh-CN.svg">SVG</a></div>
+    </article>
+
+    <article class="card">
+      <h3><span class="id">F07</span>CI 退出码</h3>
+      <p class="q">退出码怎么算出来？0 和 1 分别代表什么？</p>
+      <div class="links"><a href="archify/workflow-ci-gate-20261009-2310/f07-ci-gate.html">英文</a><a class="alt" href="archify/workflow-ci-gate-20261009-2310/f07-ci-gate.zh-CN.html">中文</a><a class="alt" href="diagrams/f07-ci-gate.zh-CN.svg">SVG</a></div>
+    </article>
+
+    <article class="card">
+      <h3><span class="id">F08</span>基线门</h3>
+      <p class="q">基线门为什么比集合而不是比个数？</p>
+      <div class="links"><a href="archify/workflow-baseline-nodeids-20261009-2310/f08-baseline-nodeids.html">英文</a><a class="alt" href="archify/workflow-baseline-nodeids-20261009-2310/f08-baseline-nodeids.zh-CN.html">中文</a><a class="alt" href="diagrams/f08-baseline-nodeids.zh-CN.svg">SVG</a></div>
+    </article>
+
+    <article class="card">
+      <h3><span class="id">F09</span>方法论闭环</h3>
+      <p class="q">一轮方法论闭环怎么走？探针不通过时回哪一步？</p>
+      <div class="links"><a href="archify/lifecycle-superpower-loop-20261009-2340/f09-superpower-loop.html">英文</a><a class="alt" href="archify/lifecycle-superpower-loop-20261009-2340/f09-superpower-loop.zh-CN.html">中文</a><a class="alt" href="diagrams/f09-superpower-loop.zh-CN.svg">SVG</a></div>
+    </article>
+
+    <article class="card">
+      <h3><span class="id">F10</span>护栏登记</h3>
+      <p class="q">护栏是怎么被「登记」进测试与 CI 的？</p>
+      <div class="links"><a href="archify/workflow-guard-registry-20261009-2340/f10-guard-registry.html">英文</a><a class="alt" href="archify/workflow-guard-registry-20261009-2340/f10-guard-registry.zh-CN.html">中文</a><a class="alt" href="diagrams/f10-guard-registry.zh-CN.svg">SVG</a></div>
+    </article>
+
+    <article class="card">
+      <h3><span class="id">F13</span>Agent 循环</h3>
+      <p class="q">agent_loop.py 的状态机怎么保证「不会留下改了一半的树」？</p>
+      <div class="links"><a href="archify/lifecycle-agent-loop-20261009-2340/f13-agent-loop.html">英文</a><a class="alt" href="archify/lifecycle-agent-loop-20261009-2340/f13-agent-loop.zh-CN.html">中文</a><a class="alt" href="diagrams/f13-agent-loop.zh-CN.svg">SVG</a></div>
+    </article>
+
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <p>
+    本页是<a href="INDEX.md">INDEX.md</a> 的图形化入口：既有 13 张（F01–F13）由
+    <code>_r45</code> 脚本从 README / docs 的 mermaid 块普查导出；F14–F24 为 2026-10-17 新绘，
+    源文件在各目录的 <code>candidate.json</code>。
+    改图只改 candidate，再用 archify 重新交付；不要手改 HTML。
+  </p>
+  <p>仓库 revision <code>069fe555</code> · 生成于 2026-10-17</p>
+</footer>
+
+</body>
+</html>

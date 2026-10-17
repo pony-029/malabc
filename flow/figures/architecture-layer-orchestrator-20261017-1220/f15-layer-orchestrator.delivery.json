@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "5be25390-2bd1-4219-b05f-d7db34cde953",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "E:\\matlabc\\malabc\\flow\\figures\\architecture-layer-orchestrator-20261017-1220\\candidate.json",
+  "output": "E:\\matlabc\\malabc\\flow\\figures\\architecture-layer-orchestrator-20261017-1220\\f15-layer-orchestrator.html",
+  "specification": {
+    "sha256": "89ed7738cdaab32e9f4ee7f2996fa5133318365eada9d82b77ba051cec4a0298",
+    "bytes": 3297
+  },
+  "artifact": {
+    "sha256": "32e5cc111d3dd9a84bc1ebaa53a8a7e17f1eee100d4729962b882f110bcf893d",
+    "bytes": 820278
+  }
+}

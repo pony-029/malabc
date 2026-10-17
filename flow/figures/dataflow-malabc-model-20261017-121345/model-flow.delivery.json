@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "8970a29f-d745-40d7-bee1-1ea061c1c7f7",
+  "status": "current",
+  "command": "deliver",
+  "type": "dataflow",
+  "input": "E:\\matlabc\\malabc\\flow\\figures\\dataflow-malabc-model-20261017-121345\\candidate.json",
+  "output": "E:\\matlabc\\malabc\\flow\\figures\\dataflow-malabc-model-20261017-121345\\model-flow.html",
+  "specification": {
+    "sha256": "7a37fda916fbe221ffa26ca2e963eb8463f3aafc64bc97f72195509554bd4a79",
+    "bytes": 6787
+  },
+  "artifact": {
+    "sha256": "dbf5115f2b8ac03a337bc2e0662133aa1cd88e1e64aca66d58a9272754f40169",
+    "bytes": 823910
+  }
+}

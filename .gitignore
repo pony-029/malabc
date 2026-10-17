@@ -35,3 +35,6 @@ tests/_t_xf_out/
 # 操作系统
 .DS_Store
 Thumbs.db
+
+# archify 交付产物（大 HTML + 浏览器证据侧车，不入库）
+.archify/
