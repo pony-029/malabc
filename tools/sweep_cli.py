@@ -848,6 +848,12 @@ def main(argv=None):
         for rnd in range(rounds):
             if rounds > 1 and not args.quiet:
                 print("=== round %d/%d ===" % (rnd + 1, rounds))
+            # **每轮清空临时目录**：不清的话第二轮会撞上第一轮的残留
+            # （R178 实测：group1 的 `os.makedirs(empty)` 直接 FileExistsError）。
+            # 重复运行的价值正在于抓这类「隐藏的状态依赖」。
+            if rnd > 0:
+                shutil.rmtree(tmp, ignore_errors=True)
+                os.makedirs(tmp, exist_ok=True)
             _RESULT["bad"] = 0
             _RESULT["good"] = 0
             _RESULT["fails"] = []
