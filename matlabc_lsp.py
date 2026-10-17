@@ -25,6 +25,7 @@
 
 退出码：0 = 正常 EOF / `exit`；2 = 缺输入（找不到 matlabc.py）
 """
+import io
 import json
 import os
 import sys
@@ -36,7 +37,8 @@ MATLABC = os.path.join(HERE, "matlabc.py")
 #: `--json` 的 `level` -> LSP severity（1=Error 2=Warning 3=Information 4=Hint）
 SEVERITY = {"error": 1, "warning": 2, "note": 3, "info": 3, "hint": 4}
 
-_STATE = {"root": None, "payload": None, "lock": threading.Lock()}
+_STATE = {"root": None, "payload": None, "result": None,
+          "lock": threading.Lock()}
 
 
 def _log(msg):
@@ -135,7 +137,77 @@ def _run_json(root):
     except Exception as exc:                  # 分析失败不能让服务挂掉
         _log("analyze 失败：%r" % (exc,))
         return None
+    # 留住整个 `PipelineResult`：`definition` 要用 `files[].functions[]`
+    # 的 `(name, line)`，而 `heuristics` 只够发诊断。
+    _STATE["result"] = result
     return {"heuristics": _heuristics_from_result(result)}
+
+
+def _ident_at(lines, line0, char):
+    """取 `line0` 行 `char` 位置上的最长标识符（`[A-Za-z0-9_]`）。"""
+    if line0 < 0 or line0 >= len(lines):
+        return None
+    s = lines[line0]
+    i = min(max(0, char), len(s))
+    start, end = i, i
+    while start > 0 and (s[start - 1].isalnum() or s[start - 1] == "_"):
+        start -= 1
+    while end < len(s) and (s[end].isalnum() or s[end] == "_"):
+        end += 1
+    if start == end:
+        return None
+    word = s[start:end]
+    if not word or not (word[0].isalpha() or word[0] == "_"):
+        return None
+    return word
+
+
+def _definition(uri, pos):
+    """`textDocument/definition`：光标处标识符 -> 它的定义位置。
+
+    判据（写在 `vscode/README.md` 里）：
+
+        `a.m:3` 的 `b`  -> `a.m:6`（同文件，行号 0-based 5）
+        `a.m:13` 的 `d` -> `d.m:1`（跨文件，行号 0-based 0）
+        注释上          -> `[]`（不许假装跳转）
+
+    **查找顺序是同文件优先**：同名函数可能定义在多个文件里，
+    最近的那个是"按确定性回答"，不是"猜"。
+    """
+    result = _STATE.get("result")
+    root = _STATE.get("root")
+    if result is None or not root:
+        return []
+    path = _uri_to_path(uri)
+    try:
+        with io.open(path, "r", encoding="utf-8", errors="replace") as fh:
+            lines = fh.read().splitlines()
+    except (IOError, OSError):
+        return []
+    name = _ident_at(lines, int(pos.get("line", 0)),
+                     int(pos.get("character", 0)))
+    if name is None:
+        return []
+
+    hits = []
+    for mf in (getattr(result, "files", None) or []):
+        for f in (getattr(mf, "functions", None) or []):
+            if getattr(f, "name", None) == name:
+                hits.append((getattr(mf, "rel", "") or "",
+                             getattr(f, "line", 1)))
+    if not hits:
+        return []
+
+    want = os.path.basename(path).lower()
+    same = [h for h in hits if os.path.basename(h[0]).lower() == want]
+    rel, line1 = (same or hits)[0]
+    line0 = max(0, int(line1 or 1) - 1)       # ← 唯一的 1-based -> 0-based
+    target = os.path.join(root, rel.replace("/", os.sep))
+    return [{
+        "uri": "file:///" + target.replace("\\", "/").lstrip("/"),
+        "range": {"start": {"line": line0, "character": 0},
+                  "end": {"line": line0, "character": len(name)}},
+    }]
 
 
 def _uri_to_path(uri):
@@ -246,6 +318,17 @@ def handle(msg, out):
             _log("didOpen %s -> %d 条" % (os.path.basename(uri), len(diags)))
 
         threading.Thread(target=_later, daemon=True).start()
+        return True
+
+    if method == "textDocument/definition":
+        params = msg.get("params") or {}
+        uri = (params.get("textDocument") or {}).get("uri", "")
+        pos = params.get("position") or {}
+        locs = _definition(uri, pos)
+        _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": locs})
+        _log("definition %s:%s -> %d"
+             % (os.path.basename(_uri_to_path(uri)), pos.get("line"),
+                len(locs)))
         return True
 
     if method == "textDocument/didClose":

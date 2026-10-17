@@ -91,14 +91,14 @@ try {
   chk(false, 'activate 抛出：' + e.message);
 }
 
-// **反向断言**：现在只做诊断，所以不许再注册 definition / reference。
-// 它们曾在扩展侧注册过、LSP 侧却没实现，导致 F12 静默失败。
-chk(registered.indexOf('definition') < 0,
-  '不应注册 definitionProvider（LSP 未实现该请求）');
+// LSP 已实现 `textDocument/definition` ⇒ **应当**注册 definitionProvider。
+chk(registered.indexOf('definition') >= 0, '应注册 definitionProvider');
+// `textDocument/references` 仍未实现 ⇒ **不许**注册 referenceProvider。
+// 注册了 Shift+F12 会静默失败（服务端回 null，扩展映射成空数组）。
 chk(registered.indexOf('references') < 0,
   '不应注册 referenceProvider（LSP 未实现该请求）');
-chk(ctx.subscriptions.length >= 1,
-  'subscriptions 应至少 1 项（诊断集合 + onDidOpen），实际 '
+chk(ctx.subscriptions.length >= 2,
+  'subscriptions 应至少 2 项（definition + 诊断集合），实际 '
   + ctx.subscriptions.length);
 
 try {

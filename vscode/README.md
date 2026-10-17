@@ -8,13 +8,14 @@
 | 能力 | 来源 | 状态 |
 | --- | --- | --- |
 | 诊断 | `publishDiagnostics` | **`m_missing_doc`（函数缺头部描述）** |
-| 转到定义 | — | **未实现**：LSP 侧没有 `textDocument/definition` |
+| 转到定义 | `textDocument/definition` | **同文件 + 跨文件**（判据见下） |
 | 查找引用 | — | **未实现**：LSP 侧没有 `textDocument/references` |
 
-> **曾经注册过这两个 provider**，而 LSP 并不实现对应请求——服务端回
-> `{"result": null}`，扩展拿到空数组，**F12 与 Shift+F12 静默失败**
-> （不跳转也不报错）。现在两侧一致：扩展不注册、LSP 不支持，
-> `test_extension.js` 与 `test_client.js` 各有一条**反向断言**守着。
+> **曾经注册过 definition/reference 两个 provider**，而 LSP 当时都不实现——
+> 服务端回 `{"result": null}`，扩展拿到空数组，**F12 与 Shift+F12 静默失败**
+> （不跳转也不报错）。现在 `definition` 已实现（判据 7 条全过）并重新注册；
+> `references` 仍不注册，`test_extension.js` 与 `test_client.js` 各留一条
+> **反向断言**守着——哪天实现了，它们会变红，那是"该注册了"的信号。
 
 ## 明确不做的事
 
