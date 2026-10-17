@@ -583,9 +583,64 @@ def group6(tmp):
          "arg/deep-output-path", "rc=%d" % rc)
 
 
+def group7(tmp):
+    """并发：两/三个进程同时跑，产物必须都正常。
+
+    ⚠ **不要用 `subprocess.PIPE`**。R166 那次「并发 180 秒超时」就是它：
+    Windows 上两个子进程会继承彼此的 PIPE 写端，父进程不读则 EOF 永不到，
+    `wait()` 挂死。实测对照：文件重定向下同样两个进程 **0.41 秒**跑完，
+    两个产物都在 ⇒ 那是**测试方法**的问题，不是产品问题。
+    """
+    o = lambda n: os.path.join(tmp, n)
+
+    def spawn(args):
+        return subprocess.Popen([PY, MATLABC] + list(args), cwd=ROOT,
+                                stdin=subprocess.DEVNULL,
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL)
+
+    t0 = time.time()
+    pa = spawn([CORPUS, "--json", o("c1.json"), "--sarif-no-persist"])
+    pb = spawn([CORPUS, "--json", o("c2.json"), "--sarif-no-persist"])
+    ra = pa.wait(timeout=120)
+    rb = pb.wait(timeout=120)
+    el = time.time() - t0
+    _chk(ra == 0 and rb == 0, "conc/two-json-rc0", "rc=%d/%d" % (ra, rb))
+    _chk(el < 30, "conc/two-json-under-30s", "%.1fs" % el)
+    if ra == 0 and rb == 0:
+        a, b = load(o("c1.json")), load(o("c2.json"))
+        _chk(canon(a) == canon(b), "conc/two-json-identical")
+
+    t0 = time.time()
+    pa = spawn([CORPUS, "--browse", o("s1")])
+    pb = spawn([CORPUS, "--browse", o("s2")])
+    ra = pa.wait(timeout=120)
+    rb = pb.wait(timeout=120)
+    el = time.time() - t0
+    _chk(ra == 0 and rb == 0, "conc/two-browse-rc0", "rc=%d/%d" % (ra, rb))
+    _chk(el < 30, "conc/two-browse-under-30s", "%.1fs" % el)
+    n1 = sum(len(fs) for _, _, fs in os.walk(o("s1")))
+    n2 = sum(len(fs) for _, _, fs in os.walk(o("s2")))
+    _chk(n1 == n2 and n1 >= 190, "conc/two-browse-same-count",
+         "%d vs %d" % (n1, n2))
+
+    t0 = time.time()
+    ps = [spawn([CORPUS, "--json", o("m1.json"), "--sarif-no-persist"]),
+          spawn([CORPUS, "--xml", o("m2.xml")]),
+          spawn([CORPUS, "--mermaid", o("m3.mmd")])]
+    rcs = [p.wait(timeout=120) for p in ps]
+    el = time.time() - t0
+    _chk(all(r == 0 for r in rcs), "conc/three-mixed-rc0", "rc=%r" % (rcs,))
+    _chk(el < 40, "conc/three-mixed-under-40s", "%.1fs" % el)
+    _chk(os.path.getsize(o("m2.xml")) > 1000
+         and os.path.getsize(o("m3.mmd")) > 100,
+         "conc/three-mixed-outputs-nonempty")
+
+
 GROUPS = [("1 开关", group1), ("2 畸形/编码/规模", group2),
           ("3 联动/幂等", group3), ("4 少见入口", group4),
-          ("5 LSP 边界", group5), ("6 格式一致/极端参数", group6)]
+          ("5 LSP 边界", group5), ("6 格式一致/极端参数", group6),
+          ("7 并发", group7)]
 
 
 def _selftest():
