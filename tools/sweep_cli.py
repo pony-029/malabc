@@ -311,8 +311,42 @@ def group3(tmp):
             _chk(a.get(k) == b.get(k), "roundtrip/%s" % k)
 
 
+def group4(tmp):
+    """较少用的入口：`--version` / `--json-level` / 未知开关。"""
+    o = lambda n: os.path.join(tmp, n)
+    rc, so, _ = run(["--version"])
+    _chk(rc == 0 and so.strip() != "", "version/prints")
+
+    for lvl in ("summary", "full"):
+        p = o("lvl_%s.json" % lvl)
+        rc, _, se = run([CORPUS, "--json", p, "--json-level", lvl,
+                         "--sarif-no-persist"])
+        _chk(rc == 0, "json-level/%s" % lvl, "rc=%d %s" % (rc, se.strip()[:40]))
+        if rc == 0:
+            need(load(p), "stats", "json-level/%s" % lvl)
+
+    a, b = o("lvl_summary.json"), o("lvl_full.json")
+    if os.path.exists(a) and os.path.exists(b):
+        _chk(os.path.getsize(a) <= os.path.getsize(b),
+             "json-level/summary<=full",
+             "%d vs %d" % (os.path.getsize(a), os.path.getsize(b)))
+
+    # 未知开关必须明确报错（`--quiet` 并不存在；我曾在第五轮假设它存在）
+    rc, so, se = run([CORPUS, "--quiet"])
+    _chk(rc == 2, "unknown-flag/rejected", "rc=%d %s" % (rc, se.strip()[:50]))
+
+    # 同一个输出文件连写两次，内容大小应一致
+    p = o("same.json")
+    rc1, _, _ = run([CORPUS, "--json", p, "--sarif-no-persist"])
+    s1 = os.path.getsize(p) if os.path.exists(p) else 0
+    rc2, _, _ = run([CORPUS, "--json", p, "--sarif-no-persist"])
+    s2 = os.path.getsize(p) if os.path.exists(p) else 0
+    _chk(rc1 == 0 and rc2 == 0 and s1 == s2, "idem/same-output-file",
+         "%d vs %d" % (s1, s2))
+
+
 GROUPS = [("1 开关", group1), ("2 畸形/编码/规模", group2),
-          ("3 联动/幂等", group3)]
+          ("3 联动/幂等", group3), ("4 少见入口", group4)]
 
 
 def _selftest():

@@ -1,0 +1,35 @@
+{
+  "tool": "matlabc",
+  "feature": "P156-trend",
+  "version": "1.16.72",
+  "snapshots": [
+    {
+      "ts": "2026-10-18T01:20:29",
+      "version": "1.16.72",
+      "files": 13,
+      "functions": 19,
+      "classes": 1,
+      "total_complexity": 29,
+      "max_complexity": 8,
+      "uninit": 0,
+      "mismatch": 0,
+      "dead": 0,
+      "dup_groups": 1,
+      "debt_score": 87.5
+    },
+    {
+      "ts": "2026-10-18T01:20:38",
+      "version": "1.16.72",
+      "files": 13,
+      "functions": 19,
+      "classes": 1,
+      "total_complexity": 29,
+      "max_complexity": 8,
+      "uninit": 0,
+      "mismatch": 0,
+      "dead": 0,
+      "dup_groups": 1,
+      "debt_score": 87.5
+    }
+  ]
+}
