@@ -280,17 +280,21 @@ def group3(tmp):
         _chk(c[0] == c[1], "combo/incr-reproducible",
              "冷热两次结果不同（stats.cache_* 已剔除）")
 
-    # 幂等：三次
+    # 幂等：三次。
+    # ⚠ **不能加 `--reproducible`**：加了之后 `generated_at` 恒为空串，
+    # 这条判据就再也发现不了「`canon()` 忘记剔除 `generated_at`」——
+    # R170 的变异测试正是这样抓到它的（变异后只有 incr 那条红，idem 全绿）。
+    # 现在三次运行的 `generated_at` 各不相同，`canon()` 必须真的剔除才能通过。
     runs = []
     for i in range(3):
         p = o("idem%d.json" % i)
-        rc, _, _ = run([CORPUS, "--json", p, "--reproducible",
-                        "--sarif-no-persist"])
+        rc, _, _ = run([CORPUS, "--json", p, "--sarif-no-persist"])
         _chk(rc == 0, "idem/run%d" % i)
         if rc == 0:
             runs.append(canon(load(p)))
     _chk(len(set(runs)) == 1, "idem/three-identical",
-         "distinct=%d" % len(set(runs)))
+         "distinct=%d（若为 3，先查 canon 有没有剔除 generated_at）"
+         % len(set(runs)))
 
     # mixed
     mix = os.path.join(tmp, "mix")
