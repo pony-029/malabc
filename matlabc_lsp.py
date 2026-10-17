@@ -193,6 +193,76 @@ def _definition(uri, pos):
     }
 
 
+def _rel_of(path):
+    """绝对路径 → 相对 root 的 posix 路径；不在 root 下返回 None。"""
+    root = _STATE.get("root")
+    if not root:
+        return None
+    try:
+        rel = os.path.relpath(path, root)
+    except ValueError:
+        return None
+    if rel.startswith(".."):
+        return None
+    return rel.replace(os.sep, "/")
+
+
+def _loc_of(root, rel, name, line1):
+    target = os.path.join(root, rel.replace("/", os.sep)) if root else rel
+    return {"uri": "file:///" + target.replace("\\", "/").lstrip("/"),
+            "range": {"start": {"line": max(0, int(line1 or 1) - 1), "character": 0},
+                      "end": {"line": max(0, int(line1 or 1) - 1),
+                              "character": len(name)}}}
+
+
+def _references(uri, pos, include_decl):
+    """光标处函数 → **调用它的函数**（函数级引用，不是行级）。
+
+    ⚠ 语义如实：`analyze` 的 `edges` 是 `(caller, callee, ambiguous)` 三元组，
+    **不带行号**。所以这里给的是「哪个函数调用了它」，落点是那个调用者的定义行，
+    不是调用发生的那一行。要行级引用，得先让 edges 带 `line`（facts 层的事）。
+    """
+    cache = _STATE.get("cache")
+    root = _STATE.get("root")
+    if cache is None or not root:
+        return []
+    path = _uri_to_path(uri)
+    rel = _rel_of(path)
+    if rel is None:
+        return []
+    try:
+        with io.open(path, "r", encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except (IOError, OSError):
+        return []
+    got = _word_at(text, int(pos.get("line", 0)), int(pos.get("character", 0)))
+    if not got:
+        return []
+    name = got[0]
+    target = "%s:%s" % (rel, name)
+
+    fn_by_key = {}
+    for mf in (getattr(cache, "files", None) or []):
+        for f in (getattr(mf, "functions", None) or []):
+            fn_by_key["%s:%s" % (mf.rel, getattr(f, "name", ""))] = f
+
+    out = []
+    if include_decl and target in fn_by_key:
+        f = fn_by_key[target]
+        out.append(_loc_of(root, rel, name, getattr(f, "line", 1)))
+    for e in (getattr(cache, "edges", None) or []):
+        caller, callee = e[0], e[1]
+        if callee != target:
+            continue
+        if ":" not in caller:
+            continue
+        crel, cname = caller.rsplit(":", 1)
+        f = fn_by_key.get(caller)
+        out.append(_loc_of(root, crel, cname,
+                           getattr(f, "line", 1) if f is not None else 1))
+    return out
+
+
 def handle(msg, out):
     """处理一帧。返回 False 表示退出循环。"""
     method = msg.get("method")
@@ -247,6 +317,18 @@ def handle(msg, out):
         _log("definition %s:%s -> %s" % (os.path.basename(_uri_to_path(uri)),
                                          pos.get("line"),
                                          "found" if loc else "none"))
+        return True
+
+    if method == "textDocument/references":
+        params = msg.get("params") or {}
+        uri = (params.get("textDocument") or {}).get("uri", "")
+        pos = params.get("position") or {}
+        include_decl = bool((params.get("context") or {}).get("includeDeclaration"))
+        locs = _references(uri, pos, include_decl)
+        _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": locs})
+        _log("references %s:%s -> %d 个（includeDeclaration=%r）"
+             % (os.path.basename(_uri_to_path(uri)), pos.get("line"),
+                len(locs), include_decl))
         return True
 
     if method == "textDocument/didClose":
