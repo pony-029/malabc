@@ -25,12 +25,9 @@
 
 退出码：0 = 正常 EOF / `exit`；2 = 缺输入（找不到 matlabc.py）
 """
-import io
 import json
 import os
-import subprocess
 import sys
-import tempfile
 import threading
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -88,46 +85,57 @@ def _write_message(stream, obj):
 # --------------------------------------------------------------------------
 # 分析：**只走 CLI**，不自己算（否则就是第二事实源）
 # --------------------------------------------------------------------------
-def _run_json(root):
-    """跑 `matlabc.py <root> --json <tmp>`，返回 payload 或 None。
+def _heuristics_from_result(result):
+    """把 `PipelineResult` 的 `doc_todos` 压成与 `--json` 的 `heuristics`
+    **同一形状**的列表。
 
-    时间预算 120s：LSP 的 first-open 可以慢，**但必须有上界**。
+    `--json` 里那条（`matlabc.py` 的 `render_json`）就是：
+
+        {"file": rel, "line": line, "func": func,
+         "kind": "m_missing_doc", "msg": "...", "level": "note"}
+        for t in doc_todos["todos"] if "description" in t["missing"]
+
+    这里逐字复刻同一个过滤条件与同一组字段 —— 两个来源必须是**同一批数据**，
+    否则「诊断 == heuristics」这条判据就没意义了。
     """
-    if not os.path.isfile(MATLABC):
-        _log("找不到 matlabc.py：%s" % MATLABC)
-        return None
-    fd, tmp = tempfile.mkstemp(suffix=".json", prefix="lsp-")
-    os.close(fd)
+    model = getattr(result, "model", None)
+    todos = (getattr(model, "doc_todos", None) or {}).get("todos") or []
+    out = []
+    for t in todos:
+        if "description" not in (t.get("missing") or []):
+            continue
+        out.append({
+            "file": t.get("rel") or "",
+            "line": t.get("line") or 0,
+            "func": t.get("func") or "",
+            "kind": "m_missing_doc",
+            "msg": "函数缺少头部描述（description）",
+            "level": "note",
+        })
+    return out
+
+
+def _run_json(root):
+    """**进程内**跑分析，返回与 `--json` 同形的 `{"heuristics": [...]}`。
+
+    为什么不再起子进程：CLI 全流程实测 **5.92s**（1300 个 .m），而
+    `analyzer.api.analyze` 进程内只要 **0.73s** —— 差的 5.2 秒是
+    `collect_files` 的 `os.walk`、JSON 序列化与进程启动，LSP 一样都用不上。
+
+    仍然传 `no_checks=True`：诊断只需要 `doc_todos`，而 `_collect_checks`
+    占 63%（未关时）。
+    """
     try:
-        # `--no-checks`：诊断只需要 `heuristics`（来自 `model.doc_todos`），
-        # 而 `_collect_checks` 占全量耗时 **63%**（实测 1300 个 .m：2.56s
-        # / 4.07s）。关掉它让首次打开从 ~2.18s 降到 ~0.73s（比值 0.335），
-        # 且 `--json` 的键集合与 heuristics 逐条不变（实测 only_a/only_b 皆空）。
-        proc = subprocess.run(
-            [sys.executable, MATLABC, root, "--json", tmp,
-             "--sarif-no-persist", "--no-checks"],
-            cwd=HERE, stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-            timeout=120,
-        )
-        if proc.returncode != 0:
-            _log("matlabc.py rc=%d：%s"
-                 % (proc.returncode,
-                    (proc.stderr or b"").decode("utf-8", "replace")[:200]))
-            return None
-        with io.open(tmp, "r", encoding="utf-8") as fh:
-            return json.load(fh)
-    except subprocess.TimeoutExpired:
-        _log("matlabc.py 超时（120s）")
+        from analyzer.api import analyze
+    except ImportError as exc:
+        _log("无法 import analyzer.api：%s" % exc)
         return None
-    except (IOError, OSError, ValueError) as exc:
-        _log("分析失败：%s" % exc)
+    try:
+        result = analyze(root, no_checks=True)
+    except Exception as exc:                  # 分析失败不能让服务挂掉
+        _log("analyze 失败：%r" % (exc,))
         return None
-    finally:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
+    return {"heuristics": _heuristics_from_result(result)}
 
 
 def _uri_to_path(uri):
