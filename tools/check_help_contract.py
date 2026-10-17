@@ -206,6 +206,12 @@ GUARD_CONTRACT = {
            "文档围栏结构坏）",
         2: "找不到护栏（缺输入）",
     },
+    "tools/check_js_balance.py": {
+        0: "通过（JS1–JS3：`vscode/extension.js` 与 `vscode/lspClient.js` "
+           "括号配平、字符串与正则闭合，且两文件都非空）",
+        1: "有文件配平失败 —— 扩展会静默不激活（用户看到「点了没反应」）",
+        2: "缺输入（`vscode/` 下找不到 extension.js 或 lspClient.js）",
+    },
     "tools/check_matlab_grammar.py": {
         0: "通过（GR1–GR6：转置不开启字符串、三种转置写法、`%{` 必须独占一行、"
            "所有正则可在 Python re 下编译、无 support.function 残留、"

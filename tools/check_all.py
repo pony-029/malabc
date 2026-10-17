@@ -20,6 +20,7 @@
         ├─▶ check_py36_clean.py           本仓源码必须通过本仓自己的 3.6.5 门
         ├─▶ check_flag_coverage.py        sweep_cli 的每个开关都必须被读到（功能加了要有判据）
         ├─▶ check_tool_discoverability.py tools/ 下每个非护栏工具都要在两侧 README 出现
+        ├─▶ check_js_balance.py           vscode 下 JS 必须括号配平（这台机器没有 node）
         ├─▶ check_matlab_grammar.py       MATLAB 语法：转置不开启字符串、%{ 必须独占一行
         ├─▶ check_lsp_doc_parity.py       LSP 能力表 ⇄ 代码实现的 textDocument/* 双向一致
         ├─▶ check_readme_parity.py        中英 README 逐节结构对等
@@ -205,7 +206,7 @@ GUARD_TIMEOUT = 600.0
 # R-图1：新增 check_flow_figures.py（FF1–FF7，单语交互图 ⇄ index.html），故 21 → 22。
 # R-事实1：新增 check_facts_replay.py（FT1–FT3，事实重放 == 报表），故 22 → 23。
 # R-行尾1：新增 check_eol_convention.py（EO1–EO3，CRLF/LF 约定），故 23 → 24。
-MIN_GUARDS = 28
+MIN_GUARDS = 29
 
 
 def _write_help(text):
