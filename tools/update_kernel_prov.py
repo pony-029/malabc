@@ -50,6 +50,11 @@ def main(argv=None):
                          "给了就连 `provenance.git_head` 一起更新；"
                          "不给则只改 sha/字节数（**新跑过探针时必须给**，"
                          "否则表里 sha 与 git_head 来自两趟不同的跑）")
+    ap.add_argument("--from-log", dest="from_log", metavar="PATH", default=None,
+                    help="直接从探针日志里取 `HEAD=<sha>`，省掉手工复制。"
+                         "**并且会核对日志里的 `matlabc=<sha>` 是否等于当前"
+                         "文件** —— 不等就拒绝写入（说明这份日志是别的构建"
+                         "跑出来的，拿它的 HEAD 配当前的 sha 正好凑出混趟）")
     args = ap.parse_args(argv)
 
     for p in (MC, DOC):
@@ -81,21 +86,45 @@ def main(argv=None):
     s2 = re.sub(r"(provenance\.matlabc_bytes \| )\d+",
                 r"\g<1>" + str(cur_bytes), s2)
 
-    if args.head:
-        if not re.match(r"^[0-9a-f]{40}$", args.head):
-            print("update_kernel_prov: --head 不是 40 位 sha（%r）"
-                  % (args.head,))
+    head = args.head
+    if args.from_log:
+        if not os.path.isfile(args.from_log):
+            print("update_kernel_prov: 缺输入（探针日志 %s）" % args.from_log)
+            return 2
+        log = io.open(args.from_log, "r", encoding="utf-8",
+                      errors="replace").read()
+        mh = re.search(r"HEAD=([0-9a-f]{40})", log)
+        ms = re.search(r"matlabc=([0-9a-f]{8,64})", log)
+        if mh is None:
+            print("update_kernel_prov: 日志里找不到 `HEAD=<sha>`（%s）"
+                  % args.from_log)
+            return 1
+        if ms is not None and not cur_sha.startswith(ms.group(1)):
+            print("update_kernel_prov: **拒绝写入** —— 日志里的 "
+                  "matlabc=%s 与当前文件 %s 不是同一个构建"
+                  % (ms.group(1)[:16], cur_sha[:16]))
+            print("  ⇒ 用这份日志的 HEAD 去配当前的 sha，正好凑出"
+                  "「一张表混两趟读数」")
+            return 1
+        head = mh.group(1)
+        print("from_log  %s" % args.from_log)
+        print("          matlabc=%s（与当前文件一致）"
+              % ((ms.group(1)[:16] if ms else "?"),))
+
+    if head:
+        if not re.match(r"^[0-9a-f]{40}$", head):
+            print("update_kernel_prov: HEAD 不是 40 位 sha（%r）" % (head,))
             return 1
         if re.search(RE_HEAD, s2) is None:
             print("update_kernel_prov: docs/KERNEL_RUN.md 里找不到 "
                   "provenance.git_head 行（结构变了 → 红）")
             return 1
-        print("new_head  %s" % args.head[:16])
+        print("new_head  %s" % head[:16])
         s2 = re.sub(r"(provenance\.git_head \| )[0-9a-f]{40}",
-                    r"\g<1>" + args.head, s2)
+                    r"\g<1>" + head, s2)
     else:
-        print("head      （未给 --head：git_head 保持不动。刚跑过探针时"
-              "必须补上，否则 sha 与 HEAD 来自两趟不同的跑）")
+        print("head      （未给 --head / --from-log：git_head 保持不动。"
+              "刚跑过探针时必须补上，否则 sha 与 HEAD 来自两趟不同的跑）")
 
     if s2 == s:
         print("no-change")

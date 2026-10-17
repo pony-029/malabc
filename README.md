@@ -902,7 +902,7 @@ judgements above:
 | `analyze_structure.py` | prints a single-file structural outline; a re-runnable baseline, not a gate |
 | `lsp_selftest.py` | the 19-judgement LSP suite — see `CONTRIBUTING` for when it must be run by hand |
 | `demo_lsp.py` | one command that exercises all five LSP capabilities and prints each result **next to the source line it lands on** — so you can check the jump rather than read JSON |
-| `update_kernel_prov.py` | first step of every probe close-out: writes the analyser (`matlabc`) sha / byte count back into `docs/KERNEL_RUN.md` (`--dry-run` prints without writing). Pass `--head` with the HEAD printed in the probe log — otherwise the sha is rewritten while the old `git_head` stays, and one table ends up mixing two runs |
+| `update_kernel_prov.py` | first step of every probe close-out: writes the analyser (`matlabc`) sha / byte count back into `docs/KERNEL_RUN.md` (`--dry-run` prints without writing). Pass `--from-log <probe log>` (or `--head`) so the HEAD comes from the same run — otherwise the sha is rewritten while the old `git_head` stays, and one table ends up mixing two runs. `--from-log` also refuses a log whose `matlabc=<sha>` differs from the current file, because pairing that log's HEAD with today's sha is exactly how the mixing happens |
 
 ---
 
