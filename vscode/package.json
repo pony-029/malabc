@@ -1,0 +1,41 @@
+{
+  "name": "matlabc-lsp",
+  "displayName": "malabc MATLAB LSP",
+  "description": "MATLAB 侧的最小 LSP：诊断（m_missing_doc）、转到定义、查找引用。零 npm 依赖。",
+  "version": "0.1.0",
+  "publisher": "malabc",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
+  "activationEvents": [
+    "onLanguage:matlab"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "malabc",
+      "properties": {
+        "matlabc.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "启用 malabc 的 MATLAB 诊断与跳转"
+        },
+        "matlabc.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Python 解释器路径（需要能跑 matlabc_lsp.py）"
+        },
+        "matlabc.lspPath": {
+          "type": "string",
+          "default": "",
+          "description": "matlabc_lsp.py 的绝对路径；留空则用当前工作区的 ../matlabc_lsp.py"
+        }
+      }
+    }
+  },
+  "dependencies": {}
+}
