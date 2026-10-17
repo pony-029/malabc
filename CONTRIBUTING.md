@@ -107,6 +107,12 @@ LSP 的判据**不进 `check_all`** —— 它要起子进程、跑分析，与�
    definition（同文件 / 跨文件 / 注释空）、references（1 个引用 / 含定义 2 个 / 注释空）、
    hover（真实签名 / 来源文件 / 注释上 null）、documentSymbol（a/b/c 三个符号 /
    行号 0·5·10 / kind=12 / selectionRange 落在 range 内）。
+1.5 `python tools/lsp_selftest.py --uninit` —— **4 条**：`tests/sample_uninit/x.m`
+   的 1 条 `c_uninit_read`（0-based 行号 2、severity 2）。
+   **它证明 LSP 能发 checks 类诊断，而不只是 `m_missing_doc`** ——
+   也是「`analyze` 不能传 `no_checks=True`」这条约束的唯一证据（R161 实测：
+   传了它 `--uninit` 会一直是 0 条，因为 `c_uninit_read` 正是
+   `_collect_checks` 产的）。
 2. `node vscode/test_extension.js` —— 模拟宿主，断言**注册了哪些 provider**（5 条）。
 3. `node vscode/test_client.js` —— 以真实 `matlabc_lsp.py` 为对端（6 条）。
 
