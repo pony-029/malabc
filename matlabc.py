@@ -32335,12 +32335,24 @@ PipelineResult = namedtuple(
     "files index edges stats model c_model checks_for_sarif early_exit facts")
 
 
-def run_pipeline(args, root, paths):
+def run_pipeline(args, root, paths, prev=None, changed=None):
     """收集 → 解析 → 建模。**纯分析**：不 print、不写盘、不 sys.exit。
 
     返回 `PipelineResult`；`early_exit` 非 None 表示「单次任务已经处理完，
     把它作为进程退出码」（`--init-header` / `--used-builtins` / `--dim-coverage`）。
+
+    **`prev` / `changed`（R149）：进程内增量复用。**
+    `prev` 是上次的 `files`（`List[MatlabFile]`），`changed` 是变化文件的
+    posix `rel` 集合。给了它们时，`rel` 不在 `changed` 里的文件**直接复用
+    对象，不重新解析**；`prev=None` 时行为与原来完全一致。
+
+    与 `--incremental` 的区别：那条走 pickle（跨进程），**小项目上是负收益**
+    （R136b 实测 13 文件 0.066s → 0.653s）。LSP 是常驻进程，`MatlabFile`
+    本来就在内存里，**不需要序列化** —— 这才是这条路径存在的理由。
+    上下文仍覆盖全部文件，所以 `doc_todos` 的跨文件依赖不退化。
     """
+    if prev is not None and changed is None:
+        raise ValueError("run_pipeline: 给了 prev 就必须给 changed（空集合也可）")
     c_model = None
     c_bridge = []
     if args.mixed:
@@ -32363,8 +32375,17 @@ def run_pipeline(args, root, paths):
             inc_path = Path(args.incr_cache)
         _incr_fmt = getattr(args, "incr_format", "pickle")
         inc_cache = _load_incremental_cache(inc_path, _incr_fmt)
+    # R149：进程内复用——`rel` 未变化且 `prev` 里有，就直接取那个对象。
+    # **不深拷贝**：`build_analysis_model` 与各 `_detect_*` 都只读 `mf`
+    # （R147 实测），所以复用安全。判据是「连续 reuse 两次结果相同」。
+    _by_rel = {}
+    if prev is not None:
+        _by_rel = dict((f.rel, f) for f in prev)
     for p in paths:
         rel = p.relative_to(root).as_posix()
+        if prev is not None and rel in _by_rel and rel not in changed:
+            files.append(_by_rel[rel])
+            continue
         mf = MatlabFile(p, rel)
         if inc_cache is not None:
             sig = _file_signature(p)
