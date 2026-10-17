@@ -12,6 +12,23 @@ const { LspClient } = require('./lspClient');
 
 let client = null;
 let collection = null;
+let out = null;
+
+// **同时写文件**：`%TEMP%\matlabc-ext.log`。
+// 只看「输出」面板不够 —— 用户找不到那个频道时，日志就等于不存在。
+// 写文件让排查者可以直接读，不需要用户做任何操作。
+const _fs = require('fs');
+const _os = require('os');
+const LOGFILE = path.join(_os.tmpdir(), 'matlabc-ext.log');
+
+function log(msg) {
+  const line = '[' + new Date().toTimeString().slice(0, 8) + '] ' + msg;
+  try { _fs.appendFileSync(LOGFILE, line + '\n'); } catch (e) { /* ignore */ }
+  try {
+    if (!out) out = vscode.window.createOutputChannel('malabc');
+    out.appendLine(line);
+  } catch (e) { /* 日志本身不能把扩展带崩 */ }
+}
 
 function severityOf(n) {
   // LSP: 1=Error 2=Warning 3=Information 4=Hint
@@ -46,27 +63,49 @@ function sendOpen(doc) {
 }
 
 function activate(context) {
+  log('activate() 进入，扩展已加载');
   const cfg = vscode.workspace.getConfiguration('matlabc');
-  if (!cfg.get('enabled', true)) return;
+  if (!cfg.get('enabled', true)) {
+    log('matlabc.enabled = false，跳过');
+    return;
+  }
 
   const folders = vscode.workspace.workspaceFolders;
-  if (!folders || folders.length === 0) return;
+  if (!folders || folders.length === 0) {
+    log('没有打开任何文件夹 —— 扩展不启动。请「文件 → 打开文件夹」');
+    return;
+  }
 
   const root = folders[0].uri.fsPath;
-  // 默认路径：先看工作区根目录下有没有 `matlabc_lsp.py`（工作区就是 malabc 时），
-  // 再看它上一级（工作区是 malabc 的子目录时）。
-  // 原来只写了 `root/../matlabc_lsp.py` —— 工作区正好是 malabc 时它指向
-  // `E:\matlabc\matlabc_lsp.py`，**那个文件不存在**，扩展会静默失败。
-  const directLsp = path.join(root, 'matlabc_lsp.py');
-  const parentLsp = path.join(root, '..', 'matlabc_lsp.py');
-  const lspPath = cfg.get('lspPath')
-    || (fs.existsSync(directLsp) ? directLsp : parentLsp);
+  // 三个候选，按优先级：
+  //   ① <工作区>/matlabc_lsp.py            —— 工作区就是 malabc
+  //   ② <工作区>/malabc/matlabc_lsp.py     —— 工作区是 malabc 的**上一级**
+  //      （实测踩过：用户打开 E:\matlabc，而脚本在 E:\matlabc\malabc\）
+  //   ③ <工作区>/../matlabc_lsp.py         —— 工作区是 malabc 的子目录
+  const candidates = [
+    path.join(root, 'matlabc_lsp.py'),
+    path.join(root, 'malabc', 'matlabc_lsp.py'),
+    path.join(root, '..', 'matlabc_lsp.py'),
+  ];
+  let lspPath = cfg.get('lspPath');
+  if (!lspPath) {
+    for (const c of candidates) {
+      if (fs.existsSync(c)) { lspPath = c; break; }
+    }
+    if (!lspPath) lspPath = candidates[0];
+  }
   const python = cfg.get('pythonPath', 'python');
 
+  log('工作区   : ' + root);
+  log('python   : ' + python);
+  log('lspPath  : ' + lspPath);
+
   if (!fs.existsSync(lspPath)) {
-    vscode.window.showErrorMessage(
-      'malabc: 找不到 matlabc_lsp.py（试过 ' + directLsp + ' 与 ' + parentLsp +
-      '）。请在设置里填 matlabc.lspPath。');
+    const m = 'malabc: 找不到 matlabc_lsp.py（试过 ' +
+              candidates.join(' / ') +
+              '）。请在设置里填 matlabc.lspPath。';
+    log(m);
+    vscode.window.showErrorMessage(m);
     return;
   }
 
@@ -93,15 +132,26 @@ function activate(context) {
     collection.set(uri, items);
   });
 
-  client.initialize(root).catch((e) => {
+  client.initialize(root).then(() => {
+    log('initialize 成功');
+  }).catch((e) => {
+    log('initialize 失败：' + e.message + '   stderr尾部=' +
+        (client.stderrTail || []).join('').slice(-400));
     vscode.window.showErrorMessage('malabc LSP 启动失败：' + e.message);
   });
 
   // 打开时推一次全文；已打开的文档补推一遍
   context.subscriptions.push(
-    vscode.workspace.onDidOpenTextDocument(sendOpen)
+    vscode.workspace.onDidOpenTextDocument((d) => {
+      log('文档打开 ' + path.basename(d.uri.fsPath) +
+          '  languageId=' + d.languageId);
+      sendOpen(d);
+    })
   );
-  vscode.workspace.textDocuments.forEach(sendOpen);
+  vscode.workspace.textDocuments.forEach((d) => {
+    if (d.languageId === 'matlab') log('已打开文档补推 ' + path.basename(d.uri.fsPath));
+    sendOpen(d);
+  });
 
   // 两个 provider 都已由 LSP 实现，判据各自通过：
   //   definition：`a.m:3` 的 `b` → `a.m:6`、`a.m:13` 的 `d` → `d.m:1`、注释 → `[]`
@@ -111,11 +161,16 @@ function activate(context) {
   context.subscriptions.push(
     vscode.languages.registerDefinitionProvider({ language: 'matlab' }, {
       provideDefinition: async (doc, pos) => {
+        log('F12 请求 ' + path.basename(doc.uri.fsPath) + ' ' +
+            (pos.line + 1) + ':' + pos.character);
         const r = await client.request('textDocument/definition', {
           textDocument: { uri: doc.uri.toString() },
           position: { line: pos.line, character: pos.character },
         });
-        return (r.result || []).map(toLocation);
+        const arr = r.result || [];
+        log('F12 返回 ' + arr.length + ' 个位置 ' +
+            JSON.stringify(arr).slice(0, 240));
+        return arr.map(toLocation);
       },
     })
   );

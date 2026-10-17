@@ -196,6 +196,27 @@ def _ident_at(lines, line0, char):
     return word
 
 
+def _wait_result(timeout=90.0):
+    """等首次分析完成，再返回结果。
+
+    `didOpen` 是**异步**的（后台线程跑 `_run_json`），而 F12 可能比它先到。
+    原来每个读请求都直接读 `_STATE["result"]`，此时是 None 就直接
+    返回 `[]` —— 在大工作区上（`E:\matlabc`，首次分析 10s+）用户会看到
+    「未找到定义」，而实际上分析还在跑（R196 日志：F12 在 8 秒后返回 0 个位置）。
+
+    改成等待。阻塞的是这一个请求，换回来的是**正确结果**而不是空。
+    """
+    import time as _t
+    deadline = _t.time() + timeout
+    while _t.time() < deadline:
+        r = _STATE.get("result")
+        if r is not None:
+            return r
+        _t.sleep(0.02)
+    _log("_wait_result 超时 %.0fs，返回 None" % timeout)
+    return None
+
+
 def _definition(uri, pos):
     """`textDocument/definition`：光标处标识符 -> 它的定义位置。
 
@@ -208,7 +229,7 @@ def _definition(uri, pos):
     **查找顺序是同文件优先**：同名函数可能定义在多个文件里，
     最近的那个是"按确定性回答"，不是"猜"。
     """
-    result = _STATE.get("result")
+    result = _wait_result()
     root = _STATE.get("root")
     if result is None or not root:
         return []
@@ -302,7 +323,7 @@ def _references(uri, pos, include_decl):
 
     `includeDeclaration=True` 时把光标所在函数自己的定义也加进去。
     """
-    result = _STATE.get("result")
+    result = _wait_result()
     root = _STATE.get("root")
     if result is None or not root:
         return []
@@ -358,7 +379,7 @@ def _hover(uri, pos):
     `signature()` / `header["description"]` / `complexity`。
     找不到时返回 `None`（LSP 里 `null` 表示"这里没有可悬停的信息"）。
     """
-    result = _STATE.get("result")
+    result = _wait_result()
     if result is None:
         return None
     path = _uri_to_path(uri)
@@ -415,7 +436,7 @@ def _document_symbols(uri):
     `range` 覆盖函数体（`line..body_end`），`selectionRange` 只覆盖名字那一行——
     LSP 要求后者**必须**落在前者内部，否则 VSCode 会拒绝整批符号。
     """
-    result = _STATE.get("result")
+    result = _wait_result()
     root = _STATE.get("root")
     if result is None or not root:
         return []
