@@ -213,6 +213,11 @@ def _save_cache(root, payload, result):
                     "header": getattr(fn, "header", None) or {},
                     "sig": sig,
                     "call_sites": sites,
+                    # R235：`_hover` 用它解释「本库没有这个函数，但它被当
+                    # 调用记过」。**这是第四次因为缓存漏字段而「重启后哑」**
+                    # （signature / call_sites / field_access / 现在这个）。
+                    "external_calls": dict(getattr(fn, "external_calls", None) or {}),
+                    "indirect_calls": dict(getattr(fn, "indirect_calls", None) or {}),
                 })
             files.append({
                 "rel": getattr(mf, "rel", "") or "",
@@ -246,7 +251,7 @@ def _save_cache(root, payload, result):
         except Exception as exc:
             _log("缓存里的 field_access 构建失败：%r" % (exc,))
             field_access = {}
-        doc = {"v": 2, "complete": True, "stamp": stamp, "files": files,
+        doc = {"v": 3, "complete": True, "stamp": stamp, "files": files,
                "edges": edges, "payload": payload,
                "field_access": field_access}
         try:
@@ -276,11 +281,11 @@ def _load_cache(root):
     except Exception as exc:
         _log("缓存不可读，忽略：%r" % (exc,))
         return None
-    # **v=2**：R233 加了 `field_access`。v1 的缓存缺它，命中后结构体
+    # **v=3**：R233 加了 `field_access`。v1 的缓存缺它，命中后结构体
     # 跳转会静默失效 —— 宁可让用户多等一次分析，也不给一份"看起来能用
     # 但某些功能是哑的"缓存。
-    if not isinstance(doc, dict) or doc.get("v") != 2:
-        _log("缓存 schema 不符（v=%r，需要 2），忽略" % (doc.get("v"),))
+    if not isinstance(doc, dict) or doc.get("v") != 3:
+        _log("缓存 schema 不符（v=%r，需要 3），忽略" % (doc.get("v"),))
         return None
     if doc.get("complete") is not True:
         # 没有 `complete: true` 的是**旧缓存或半成品**（R216 之前写的全部如此）。
@@ -309,6 +314,8 @@ def _load_cache(root):
                 # 缓存里的 `call_sites` 是 `[line, "rel:name"]`（内存版是
                 # `[line, col, end, MatlabFunction]`）。`_impact` 两边都收。
                 o.call_sites = [tuple(x) for x in (fn.get("call_sites") or [])]
+                o.external_calls = dict(fn.get("external_calls") or {})
+                o.indirect_calls = dict(fn.get("indirect_calls") or {})
                 fns.append(o)
             files.append(NS(rel=f.get("rel", ""),
                             header=f.get("header") or {},
@@ -426,13 +433,18 @@ def _field_index(result):
 
     缓存挂在 `_STATE` 上：一次 `didOpen` 只付一次代价。
     """
+    # **按 result 对象身份校验**，而不是「有就返回」。
+    # R235 实测：保存之后 `_STATE["result"]` 换成了新对象，而 field_index
+    # 还是旧的 —— 于是新增/删除的字段永远看不见，`didSave` 也治不好它。
+    # 在 5 个赋值点各加一行清理的写法，漏一处就复发；这里一次解决。
     idx = _STATE.get("field_index")
-    if idx is not None:
+    if idx is not None and _STATE.get("field_index_for") is result:
         return idx
     # 缓存命中时 `_load_cache` 已经把索引挂在 `result` 上了。
     cached = getattr(result, "field_access", None)
     if isinstance(cached, dict) and cached:
         _STATE["field_index"] = cached
+        _STATE["field_index_for"] = result
         return cached
     try:
         import matlabc as _M
@@ -442,6 +454,7 @@ def _field_index(result):
         _log("_field_index 失败：%r" % (exc,))
         idx = {}
     _STATE["field_index"] = idx
+    _STATE["field_index_for"] = result
     return idx
 
 
@@ -818,6 +831,58 @@ def _hover(uri, pos):
         if doc:
             return {"contents": {"kind": "markdown",
                                  "value": _format_builtin(name, doc)}}
+
+        # ---- R235：找不到定义时**必须解释**，不许沉默 ----------------
+        #
+        # 用户报的现象：`lb(1)` 看着像调用、CodeLens 上也有数字，F12 却
+        # 什么都没发生。实测 YALMIP：
+        #   `lb` 不是函数、不是内置，而是**结构体字段**（全库 4601 次读写）
+        #   `external_calls` 共 24582 次，`ub`/`x0`/`dim`/`solver` 全是字段
+        #
+        # **跳不过去是对的**（它本来就没有定义），**沉默是错的** ——
+        # 用户会以为是扩展坏了。
+        fa = _field_index(result)
+        ent = fa.get(name)
+        if isinstance(ent, dict):
+            w = ent.get("writes") or []
+            rd = ent.get("reads") or []
+            out = ["```matlab", "%s（结构体字段）" % name, "```", "",
+                   "**这是字段，不是函数。** `%s(...)` 是字段取值，"
+                   "没有独立定义可跳。" % name, "",
+                   "全库：写入 %d 处 · 读取 %d 处" % (len(w), len(rd))]
+            if w:
+                first = sorted(w, key=lambda x: (x[0], x[2] or 0))[0]
+                out.append("")
+                out.append("首次写入：`%s:%s` —— 那是它事实上的定义点"
+                           % (first[0], first[2]))
+            return {"contents": {"kind": "markdown", "value": "\n".join(out)}}
+
+        # 第二类：出现在**当前函数**的 `external_calls` 里 —— 被当成调用
+        # 记过，但本库没有定义（toolbox 函数，或者同样是变量索引）。
+        row = int(pos.get("line", 0)) + 1
+        try:
+            rel_here = os.path.relpath(path, _STATE.get("root") or "").replace("\\", "/")
+        except ValueError:
+            rel_here = ""
+        fn_here = None
+        for mf2 in (getattr(result, "files", None) or []):
+            if (getattr(mf2, "rel", "") or "") != rel_here:
+                continue
+            for f2 in (getattr(mf2, "functions", None) or []):
+                ln2 = int(getattr(f2, "line", 0) or 0)
+                if 0 < ln2 <= row and (fn_here is None or ln2 > int(
+                        getattr(fn_here, "line", 0) or 0)):
+                    fn_here = f2
+        if fn_here is not None:
+            ext = getattr(fn_here, "external_calls", None) or {}
+            if isinstance(ext, dict) and name in ext:
+                return {"contents": {"kind": "markdown", "value": "\n".join([
+                    "```matlab", "%s(...)" % name, "```", "",
+                    "**本库内没有名为 `%s` 的函数。**" % name, "",
+                    "它出现在 `%s` 的外部调用表里（%d 次）—— 通常是 "
+                    "toolbox 函数，或者是变量/字段被当成了调用。"
+                    % (getattr(fn_here, "name", "?"), ext.get(name) or 1),
+                ])}}
         return None
     mf, f = hit
 

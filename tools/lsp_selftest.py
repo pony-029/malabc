@@ -591,6 +591,19 @@ def _struct(c):
     _chk(r3 == [] or (len(r3) == 1 and r3[0]["range"]["start"]["line"] == 2),
          "struct/dot-position-does-not-crash（%r）" % (r3,))
 
+    # ---- R235：字段上按 F12 找不到定义，但**必须解释** ----------------
+    # 这就是用户报的现象：`lb(...)` 看着像调用、CodeLens 上有数字，
+    # 可 `lb` 是字段。跳不过去是对的，沉默是错的。
+    c.send({"jsonrpc": "2.0", "id": 71, "method": "textDocument/hover",
+            "params": {"textDocument": {"uri": _uri(path)},
+                       "position": {"line": 4, "character": 6}}})
+    rh = c.recv() or {}
+    body = (((rh.get("result") or {}).get("contents") or {})
+            .get("value") or "")
+    _chk("这是字段" in body,
+         "struct/explains-field-not-function（%r）" % (body[:100],))
+    _chk("首次写入" in body, "struct/points-to-first-write")
+
     # ---- 缓存必须带 field_access（R233）--------------------------------
     # 这一条不是"锦上添花"：`_field_index` 在缓存重建的 `SimpleNamespace`
     # 上会 `AttributeError`，于是结构体跳转**静默返回 []**。
@@ -605,9 +618,16 @@ def _struct(c):
             d = json.load(io.open(cache, encoding="utf-8"))
         except Exception:
             d = {}
-        _chk(d.get("v") == 2, "struct/cache-schema-v2（实际 %r）" % (d.get("v"),))
+        _chk(d.get("v") == 3, "struct/cache-schema-v3（实际 %r）" % (d.get("v"),))
         fa = d.get("field_access") or {}
         _chk("name" in fa, "struct/cache-has-field-access（keys=%r）" % (list(fa)[:5],))
+        # 缓存的函数记录必须带 `external_calls` —— R235 的 hover 解释分支
+        # 靠它；漏了就是「冷启动有解释、重启后沉默」。
+        fns = ((d.get("files") or [{}])[0].get("functions") or [{}])
+        _chk("external_calls" in (fns[0] if fns else {}),
+             "struct/cache-has-external-calls（keys=%r）"
+             % (sorted((fns[0] if fns else {}).keys()),))
+
 
 
 def _doc(c):
@@ -652,6 +672,27 @@ def _doc(c):
     if body2:
         _chk("| 参数 |" not in body2,
              "doc/no-empty-table（%r）" % (body2[:120],))
+
+    # ---- R235：**本库没有定义时不许沉默** -------------------------------
+    # 用户报的「显示有调用、却找不到函数」：`some_toolbox_fn(...)` 看着
+    # 像调用，但本库和内置表里都没有它。以前 hover 返回 null、F12 返回
+    # 空数组，用户以为扩展坏了。
+    ext = os.path.join(root, "ext_call.m")
+    c.send({"jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": {"textDocument": {"uri": _uri(ext),
+                                        "languageId": "matlab",
+                                        "version": 1, "text": "x"}}})
+    c.recv()
+    c.recv()
+    c.send({"jsonrpc": "2.0", "id": 81, "method": "textDocument/hover",
+            "params": {"textDocument": {"uri": _uri(ext)},
+                       "position": {"line": 3, "character": 8}}})
+    r_ext = c.recv() or {}
+    body_ext = (((r_ext.get("result") or {}).get("contents") or {})
+                .get("value") or "")
+    _chk("本库内没有名为" in body_ext,
+         "doc/explains-missing-function（%r）" % (body_ext[:120],))
+    _chk("some_toolbox_fn" in body_ext, "doc/names-the-identifier")
 
 
 def main(argv=None):
