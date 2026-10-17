@@ -12830,6 +12830,19 @@ def _dup_save_token_cache(path, cache):
         return False
 
 
+#: R164：`_detect_dup_code` 的进程内缓存。
+#:
+#: 原来写的是 `files._dup_code_cache = out` —— 但 `files` 是 **list**，
+#: 给 list 赋属性会抛 `AttributeError`，而那一句被 `except Exception: pass`
+#: 吞掉，于是**缓存永远不命中**：`render_json` / `_collect_checks` / 站点
+#: 各自调一次，每次都全量重算（1300 文件实测 `_detect_dup_code` 占 35%）。
+#:
+#: 这里改成模块级 + **对象身份比较**（`is`）：`run_pipeline` 里 `files` 只
+#: 由 `collect_files` 产一次，同一次运行内是同一个 list 对象。用 `is` 而不是
+#: `id()`，避免对象释放后 id 复用造成误命中；代价是持有一份 list 引用。
+_DUP_CACHE = {"files": None, "result": None}
+
+
 def _detect_dup_code(files, min_lines=_DUP_MIN_LINES,
                      sim_threshold=_DUP_SIM_THRESHOLD,
                      frag_threshold=_DUP_FRAG_THRESHOLD,
@@ -12845,9 +12858,8 @@ def _detect_dup_code(files, min_lines=_DUP_MIN_LINES,
 
     返回 [{file, func, line, dup_with: [(file, func, line), ...], reason, similarity,
            kind(默认"function"|"fragment"), frags(片段级才有)}]，按相似度降序、去重。"""
-    cached = getattr(files, "_dup_code_cache", None)
-    if cached is not None:
-        return cached
+    if _DUP_CACHE["files"] is files and _DUP_CACHE["result"] is not None:
+        return _DUP_CACHE["result"]
     funcs = []
     # P217x：增量索引缓存——按文件内容签名（SHA-256 + size）复用已算过的函数 token 序列，
     # 只重算变更文件。大仓库日常 CI（仅少数文件改动）收益显著。
@@ -13013,10 +13025,8 @@ def _detect_dup_code(files, min_lines=_DUP_MIN_LINES,
         sys.stderr.write("[P227 idiom] 抑制 %d 条惯用法误报（ROI 折减并沉底）\n"
                          % _suppressed)
     out.sort(key=lambda r: r["similarity"], reverse=True)
-    try:
-        files._dup_code_cache = out
-    except Exception:
-        pass
+    _DUP_CACHE["files"] = files
+    _DUP_CACHE["result"] = out
     return out
 
 
