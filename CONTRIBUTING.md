@@ -98,9 +98,9 @@ python tools/check_all.py
 抓到——**只有第三次是在提交前**。前两次是靠 `check_kernel_snapshot` 报
 「字节数少了 34,228」才发现的。
 
-## 改 `main` / 分析入口后的四条冒烟（R119 起，R147 扩）
+## 改 `main` / 分析入口后的五条冒烟（R119 起，R147/R164 扩）
 
-切分 `main` 时，**判据比代码重要**。四条都要跑，因为它们各自覆盖一条不同的路径：
+切分 `main` 时，**判据比代码重要**。五条都要跑，因为它们各自覆盖一条不同的路径：
 
 1. `python matlabc.py --help` —— 与快照**逐字节**一致
    （`check_help_contract` 的 R5c；规范形与解释器、终端宽度无关，分辨率 1 字节）。
@@ -110,6 +110,8 @@ python tools/check_all.py
    （C 文件 / C 函数 / 未解析 / 启发式）与改前一致。
 4. `python tools/json_diff.py <before>.json <after>.json --ignore generated_at` ——
    忽略时间戳后**规范化字节完全一致**（rc=0）。
+5. `python tools/tree_diff.py <before_dir> <after_dir> --ignore-line "generated_at|生成时间" --ignore-file "manifest\.json"` ——
+   `--browse` 站点**逐文件一致**（`same: true`）。
 
 **为什么第三条不能省**：只测前两条，`run_lang_path` 的 `c / py / js / asm` 四个分支里
 三个等于没测 —— 而 R121 抽的正是它们。自造一个 10 行的 `.c` 文件，成本远低于漏测。
@@ -118,6 +120,11 @@ python tools/check_all.py
 **「逐字节不变」在干净改动上也必然失败**。R146 的 F1（只加 facts 字段、不改输出）就被它
 误判成「变了」：字节数 62005 完全相同、sha 不同、第一处差异在第 62 字节。
 用 `json_diff --ignore generated_at` 才是真的等价证明（实测 `canon 59521 字节`一致）。
+
+**为什么第五条不能省（R162 的实测）**：搬 6 个 `render_*` 时，`--json` 全程 `IDENTICAL`，
+但站点少了 `compliance.html` —— 因为 `matlabc.py` 把它的生成包在
+`except Exception: pass` 里，`NameError` 被静默吞掉，CLI 返回码仍是 0。
+**只有文件级对比能发现「页面消失」。**
 
 6. **整树探针运行期间，禁止在本机跑任何其它进程（含它自己的测试）。**
    实测代价（R138–R139）：同一份 `probe_kernel_r84.py --arms c asm`，独占时
