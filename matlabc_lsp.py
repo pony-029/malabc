@@ -217,6 +217,29 @@ def _wait_result(timeout=90.0):
     return None
 
 
+def _field_index(result):
+    """跨文件字段索引（惰性、只算一次）。
+
+    `field_access` **只在 `render_json` 里构建**（`matlabc.py` 的 L14133），
+    所以 `analyze()` 的 `result` 上没有它。LSP 走的是 `analyze`，
+    因此必须在这里自己调一次 `_collect_cross_file_fields`。
+
+    缓存挂在 `_STATE` 上：一次 `didOpen` 只付一次代价。
+    """
+    idx = _STATE.get("field_index")
+    if idx is not None:
+        return idx
+    try:
+        import matlabc as _M
+        idx = _M._collect_cross_file_fields(
+            getattr(result, "files", None) or [])
+    except Exception as exc:                  # 字段索引失败不许影响跳转
+        _log("_field_index 失败：%r" % (exc,))
+        idx = {}
+    _STATE["field_index"] = idx
+    return idx
+
+
 def _definition(uri, pos):
     """`textDocument/definition`：光标处标识符 -> 它的定义位置。
 
@@ -239,10 +262,38 @@ def _definition(uri, pos):
             lines = fh.read().splitlines()
     except (IOError, OSError):
         return []
-    name = _ident_at(lines, int(pos.get("line", 0)),
-                     int(pos.get("character", 0)))
+    line0 = int(pos.get("line", 0))
+    ch = int(pos.get("character", 0))
+    name = _ident_at(lines, line0, ch)
     if name is None:
         return []
+
+    # ---- R201：`s.FIELD` 的跳转 ---------------------------------------
+    # 光标前一个字符是 `.` ⇒ 这是字段访问，不是函数名。
+    # 查 `field_access` 的**第一个写入点**（按文件、行排序）作为定义。
+    #
+    # 官方 IDE 做不到：它没有跨文件的字段解析，只能文本搜索 `.FIELD`，
+    # 那会把 `S.FIELD`、`x.FIELD`、注释里的 `.FIELD` 混在一起。
+    is_field = False
+    if 0 <= line0 < len(lines):
+        _ln = lines[line0]
+        if 0 < ch <= len(_ln) and _ln[ch - 1] == ".":
+            is_field = True
+    if is_field:
+        fa = _field_index(result)
+        ent = fa.get(name) or {}
+        writes = ent.get("writes") or []
+        if not writes:
+            return []
+        first = sorted(writes, key=lambda r: (r[0], r[2] or 0))[0]
+        rel_f, ln1 = first[0], first[2] or 1
+        target = os.path.join(root, rel_f.replace("/", os.sep))
+        return [{
+            "uri": "file:///" + target.replace("\\", "/").lstrip("/"),
+            "range": {"start": {"line": max(0, int(ln1) - 1), "character": 0},
+                      "end": {"line": max(0, int(ln1) - 1),
+                              "character": len(name)}},
+        }]
 
     hits = []
     for mf in (getattr(result, "files", None) or []):

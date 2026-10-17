@@ -268,6 +268,51 @@ def _save(c):
         shutil.rmtree(work, ignore_errors=True)
 
 
+def _field(c):
+    """R201：`s.FIELD` 的跳转 —— 光标在读取处，跳到**第一个写入点**。
+
+    ⚠ 这条也要**改/写文件**，所以同样用临时目录。判据是 `6 -> 3`：
+    第 6 行 `y = s.name;` 的 `name` 跳到第 3 行 `s.name = 'x';`。
+
+    **官方 IDE 做不到**：它没有跨文件字段解析，只能文本搜 `.name`，
+    会把 `S.name`、`x.name`、注释里的 `.name` 全混在一起。
+    """
+    import shutil
+    import tempfile
+    work = tempfile.mkdtemp(prefix="lspfield_")
+    try:
+        target = os.path.join(work, "a.m")
+        src = (u"function y = build(a)\n"
+               u"% 结构体成员\n"
+               u"s.name = 'x';\n"
+               u"s.count = a;\n"
+               u"y = 0;\n"
+               u"y = s.name;\n"
+               u"end\n")
+        with io.open(target, "w", encoding="utf-8", newline="") as fh:
+            fh.write(src.replace(u"\n", u"\r\n"))
+        c.init(work)
+        u = _uri(target)
+        c.send({"jsonrpc": "2.0", "method": "textDocument/didOpen",
+                "params": {"textDocument": {"uri": u, "languageId": "matlab",
+                                            "version": 1, "text": "x=1;\n"}}})
+        c.recv()
+        c.recv()
+        # 第 6 行 `y = s.name;` 的 `name`（0-based line 5, char 6）
+        c.send({"jsonrpc": "2.0", "id": 7, "method": "textDocument/definition",
+                "params": {"textDocument": {"uri": u},
+                           "position": {"line": 5, "character": 6}}})
+        r = c.recv() or {}
+        res = r.get("result") or []
+        _chk(len(res) == 1, "field/one-target（实际 %d）" % len(res))
+        if res:
+            ln = res[0]["range"]["start"]["line"]
+            # 第 3 行 `s.name = 'x';`（0-based 2）
+            _chk(ln == 2, "field/jumps-to-first-write（实际 line=%d）" % ln)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--diag", action="store_true")
@@ -278,6 +323,7 @@ def main(argv=None):
     ap.add_argument("--symbol", action="store_true")
     ap.add_argument("--uninit", action="store_true")
     ap.add_argument("--save", action="store_true")
+    ap.add_argument("--field", action="store_true")
     ap.add_argument("--help", action="store_true")
     args = ap.parse_args(argv)
 
@@ -304,6 +350,8 @@ def main(argv=None):
         groups = [("symbol", _symbols)]
     elif args.uninit:
         groups = [("uninit", _uninit)]
+    elif args.field:
+        groups = [("field", _field)]
     elif args.save:
         groups = [("save", _save)]
     else:
