@@ -779,12 +779,12 @@ python tools/check_baseline.py --full    # 真基线：两侧各跑一次全量�
 
 ---
 
-## 全场景扫测（手工跑，111 条判据）
+## 全场景扫测（手工跑，118 条判据）
 
 上面 25 道门是静态的、快的。这一套不是——它要起子进程与 LSP 服务端，所以**不进 `check_all`**，靠手工跑：
 
 ```powershell
-python tools/sweep_cli.py              # 111 条 / 9 组 / 约 85 秒
+python tools/sweep_cli.py              # 118 条 / 9 组 / 约 85 秒
 python tools/sweep_cli.py --only 1,3   # 选组
 python tools/sweep_cli.py --json       # 机器可读，含每组耗时
 python tools/sweep_cli.py --repeat 2   # 连跑两轮；轮间耗时差 >50% 会告警

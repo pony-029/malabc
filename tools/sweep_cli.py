@@ -736,17 +736,20 @@ def group9(tmp):
     `--probe` 存在的理由是**别再靠记忆猜返回结构**，所以它自己错了会
     让 14 次判据错重演。判据要钉的是「它真的把服务端的返回原样打出来」。
     """
-    def probe(args):
+    def run_self(args):
         # **不能调 `run()`** —— 那是「跑 matlabc.py」的辅助函数，会把
         # `--probe` 当成 matlabc.py 的参数（实测 rc=2，usage 是 matlabc 的）。
-        # `--probe` 是 sweep_cli 自己的开关，所以这里要跑它自己。
-        p = subprocess.run([PY, os.path.abspath(__file__), "--probe"]
-                           + list(args), cwd=ROOT, stdin=subprocess.DEVNULL,
+        # `--probe` / `--probe-cli` 都是 sweep_cli 自己的开关。
+        p = subprocess.run([PY, os.path.abspath(__file__)] + list(args),
+                           cwd=ROOT, stdin=subprocess.DEVNULL,
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                           timeout=120)
+                           timeout=180)
         return (p.returncode,
                 (p.stdout or b"").decode("utf-8", "replace"),
                 (p.stderr or b"").decode("utf-8", "replace"))
+
+    def probe(args):
+        return run_self(["--probe"] + list(args))
 
     rc, so, se = probe(["textDocument/documentSymbol", "--probe-file", "a.m"])
     _chk(rc == 0, "probe/symbol-rc0", "rc=%d %s" % (rc, se.strip()[:60]))
@@ -771,6 +774,27 @@ def group9(tmp):
     # 文件不存在 -> 缺输入 rc=2，且不该起 LSP
     rc, so, se = probe(["textDocument/hover", "--probe-file", "nope.m"])
     _chk(rc == 2, "probe/missing-file-rc2", "rc=%d" % rc)
+
+    # ---- `--probe-cli`（R186 加的能力，这里补判据）----------------------
+    rc, so, se = run_self(["--probe-cli", CORPUS])
+    _chk(rc == 0, "probe-cli/rc0", "rc=%d %s" % (rc, se.strip()[:60]))
+    _chk('"top_keys"' in so, "probe-cli/top-keys", "输出里没有 top_keys")
+    _chk('"files0_keys"' in so, "probe-cli/files0-keys",
+         "输出里没有 files0_keys —— 而那正是「files[0] 有哪些字段」的答案")
+    _chk('"counts"' in so, "probe-cli/counts")
+
+    # 小语料：1 个文件、无 m_missing_doc ⇒ `heuristics0` 必须是 null。
+    # 这条同时钉住「小语料真的走另一条路径」与「null 是合法值」。
+    uninit = os.path.join(ROOT, "tests", "sample_uninit")
+    if os.path.isdir(uninit):
+        rc, so, se = run_self(["--probe-cli", uninit])
+        _chk(rc == 0, "probe-cli/small-rc0")
+        _chk('"heuristics0": null' in so,
+             "probe-cli/heuristics0-null",
+             "sample_uninit 的 heuristics 应为空：%r" % (so[:160],))
+
+    rc, so, se = run_self(["--probe-cli", os.path.join(tmp, "nope_dir")])
+    _chk(rc == 2, "probe-cli/missing-root-rc2", "rc=%d" % rc)
 
 
 GROUPS = [("1 开关", group1), ("2 畸形/编码/规模", group2),

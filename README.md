@@ -816,13 +816,13 @@ that only ever grows stops meaning anything.
 
 ---
 
-## Full-scenario sweep (hand-run, 111 checks)
+## Full-scenario sweep (hand-run, 118 checks)
 
 The 25 gates above are static and fast. This one is not — it starts subprocesses and LSP
 servers, so it stays out of `check_all` and is run by hand:
 
 ```powershell
-python tools/sweep_cli.py              # 111 checks in 9 groups, ~85 s
+python tools/sweep_cli.py              # 118 checks in 9 groups, ~85 s
 python tools/sweep_cli.py --only 1,3   # pick groups
 python tools/sweep_cli.py --json       # machine-readable, with per-group timings
 python tools/sweep_cli.py --repeat 2   # run twice; a >50% spread warns

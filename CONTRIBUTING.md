@@ -156,7 +156,7 @@ LSP 不实现，用户按 F12 会**静默失败**（服务端回 `null`，扩展
 ## 改任何 CLI 入口后的全场景扫测（R160 起）
 
 ```powershell
-python tools/sweep_cli.py            # 111 个检查点 / 9 组 / 约 85 秒
+python tools/sweep_cli.py            # 118 个检查点 / 9 组 / 约 85 秒
 python tools/sweep_cli.py --only 5   # 只跑 LSP 边界组
 python tools/sweep_cli.py --selftest # 7 条：防护自身的自证
 python tools/sweep_cli.py --meta     # 11 条：**变异测试**（判据自己能不能红）
