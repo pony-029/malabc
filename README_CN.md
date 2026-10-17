@@ -857,7 +857,7 @@ python tools/check_help_contract.py --list-prefixes    # 前缀 -> 主人；加�
 | `analyze_structure.py` | 打印单文件的结构大纲；是可重跑的基线，不是护栏 |
 | `lsp_selftest.py` | LSP 的 19 条判据套件——什么时候必须手工跑见 `CONTRIBUTING` |
 | `demo_lsp.py` | 一条命令跑完五个 LSP 能力，并把每个结果**打在那行源码旁边**——直接看跳转对不对，不用读 JSON |
-| `update_kernel_prov.py` | 每次探针收口的第一步：把分析器（`matlabc`）的 sha / 字节数写回 `docs/KERNEL_RUN.md`（`--dry-run` 只打印不落盘） |
+| `update_kernel_prov.py` | 每次探针收口的第一步：把分析器（`matlabc`）的 sha / 字节数写回 `docs/KERNEL_RUN.md`（`--dry-run` 只打印不落盘）。**必须用 `--head` 传探针日志里那个 HEAD** —— 否则 sha 被更新而 `git_head` 留在上一趟，一张表混了两次跑 |
 
 ---
 

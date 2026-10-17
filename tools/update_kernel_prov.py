@@ -1,9 +1,16 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""收口：把当前 `matlabc.py` 的 sha256 / 字节数写回 `docs/KERNEL_RUN.md`。
+"""收口：把 `matlabc.py` 的 sha256 / 字节数 / 探针时的 HEAD 写回 `docs/KERNEL_RUN.md`。
 
-    python tools/update_kernel_prov.py            # 写回
-    python tools/update_kernel_prov.py --dry-run  # 只打印，不落盘
+    python tools/update_kernel_prov.py                     # sha/字节 写回
+    python tools/update_kernel_prov.py --dry-run           # 只打印，不落盘
+    python tools/update_kernel_prov.py --head <探针日志里的 HEAD>
+
+**为什么需要 `--head`**（R245）：R240 实测到一个真实的「混趟」——
+这个工具原来只改 sha 和字节数，**不碰 `provenance.git_head`**。
+于是重跑一次探针后，表里 sha 属于新构建、git_head 还留在上一趟，
+正是 `check_kernel_snapshot` 文档里点名要防的「一张表混了两趟读数」。
+而这类混趟**看不出来**：两行都是合法值，只是来自不同的跑。
 
 **为什么它在 `tools/` 而不是 `C:\temp`**：它是**每次探针收口都要跑**的
 第一步（R190 之前的十几轮里，它一直躺在 `C:\temp`）。收口流程本身
@@ -31,12 +38,18 @@ DOC = os.path.join(ROOT, "docs", "KERNEL_RUN.md")
 
 RE_SHA = r"provenance\.matlabc_sha256 \| ([0-9a-f]{64})"
 RE_BYTES = r"provenance\.matlabc_bytes \| (\d+)"
+RE_HEAD = r"provenance\.git_head \| ([0-9a-f]{40})"
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--dry-run", dest="dry_run", action="store_true",
                     help="只打印将要写入的值，不改文件")
+    ap.add_argument("--head", metavar="SHA", default=None,
+                    help="探针日志里那行 `HEAD=<sha>` 的 40 位值。"
+                         "给了就连 `provenance.git_head` 一起更新；"
+                         "不给则只改 sha/字节数（**新跑过探针时必须给**，"
+                         "否则表里 sha 与 git_head 来自两趟不同的跑）")
     args = ap.parse_args(argv)
 
     for p in (MC, DOC):
@@ -67,6 +80,22 @@ def main(argv=None):
                 r"\g<1>" + cur_sha, s)
     s2 = re.sub(r"(provenance\.matlabc_bytes \| )\d+",
                 r"\g<1>" + str(cur_bytes), s2)
+
+    if args.head:
+        if not re.match(r"^[0-9a-f]{40}$", args.head):
+            print("update_kernel_prov: --head 不是 40 位 sha（%r）"
+                  % (args.head,))
+            return 1
+        if re.search(RE_HEAD, s2) is None:
+            print("update_kernel_prov: docs/KERNEL_RUN.md 里找不到 "
+                  "provenance.git_head 行（结构变了 → 红）")
+            return 1
+        print("new_head  %s" % args.head[:16])
+        s2 = re.sub(r"(provenance\.git_head \| )[0-9a-f]{40}",
+                    r"\g<1>" + args.head, s2)
+    else:
+        print("head      （未给 --head：git_head 保持不动。刚跑过探针时"
+              "必须补上，否则 sha 与 HEAD 来自两趟不同的跑）")
 
     if s2 == s:
         print("no-change")
