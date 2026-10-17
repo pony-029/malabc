@@ -1049,11 +1049,21 @@ def _impact(name, depth=3):
         layer = nxt
 
     entries = [k for k in seen if not rev.get(k)]
+    # `others`：第 2 层及以上的节点，带 `level`（1 起算）。
+    # R227：QuickPick 原来只列直接调用者，而分层早就算出来了 ——
+    # 用户点开只看到第一层，会以为"就这几个"。分层信息不该被丢掉。
+    others = []
+    for li, lv in enumerate(levels[1:], start=2):
+        for node in lv:
+            others.append({"key": node["key"], "name": node["name"],
+                           "rel": node["rel"], "line": node["line"],
+                           "level": li})
     return {
         "target": name,
         "definitions": [{"rel": r, "line": ln} for r, ln in where[name]],
         "ambiguous": max(0, len(where[name]) - 1),
         "direct": levels[0] if levels else [],
+        "others": others,
         "levels": len(levels),
         "total": len(seen) - len(start_keys),
         "entries": len(entries),

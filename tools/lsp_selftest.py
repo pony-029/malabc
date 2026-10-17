@@ -342,6 +342,15 @@ def _impact(c):
         _chk(len(direct) == 1 and direct[0].get("rel") == "a.m",
              "impact/b-direct-is-a.m")
         _chk(direct[0].get("line") == 1, "impact/b-direct-line==1")
+        # 第 2 层：`switch_case` 调 `a`，`a` 调 `b`。
+        # R227：QuickPick 原来只列第 1 层，分层算了却不返回 ——
+        # 用户会以为"上游只有 a 一个"。
+        others = info.get("others") or []
+        _chk(len(others) == 1, "impact/b-others-count==1（实际 %d）" % len(others))
+        if others:
+            o = others[0]
+            _chk(o.get("name") == "switch_case" and o.get("level") == 2,
+                 "impact/b-others-level2（%r）" % (o,))
 
     info2 = call("switch_case")
     _chk(isinstance(info2, dict) and info2.get("total") == 0,

@@ -313,17 +313,31 @@ function activate(context) {
             ' · 复杂度由 CodeLens 显示');
           return;
         }
+        // 直接调用者 + 间接（按层标注）。分隔条目不可选，
+        // 用 `$(blank)` 之类的空图标会失败，所以用一个可以渲染成空白的标签。
         const items = direct.map((d) => ({
           label: '$(symbol-function) ' + d.name,
-          description: d.rel + ':' + d.line,
-          detail: '跳到定义',
+          description: '第 1 层 · ' + d.rel + ':' + d.line,
+          detail: '直接调用者',
           rel: d.rel,
           line: d.line,
+          pickable: true,
         }));
+        (info.others || []).forEach((d) => {
+          items.push({
+            label: '$(symbol-function) ' + d.name,
+            description: '第 ' + d.level + ' 层 · ' + d.rel + ':' + d.line,
+            detail: '间接调用者',
+            rel: d.rel,
+            line: d.line,
+            pickable: true,
+          });
+        });
         const pick = await vscode.window.showQuickPick(items, {
-          placeHolder: name + ' 的 ' + direct.length + ' 个直接调用者' +
-                       (info.total > direct.length
-                         ? '（共 ' + info.total + ' 个间接）' : ''),
+          placeHolder: name + ' 的上游：' + direct.length + ' 个直接 · ' +
+                       ((info.others || []).length) + ' 个间接' +
+                       (info.entries ? ' · ' + info.entries + ' 个入口' : ''),
+          matchOnDescription: true,
         });
         if (!pick) {
           return;
