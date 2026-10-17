@@ -730,10 +730,54 @@ def group8(tmp):
     c.close()
 
 
+def group9(tmp):
+    """`--probe` 自身（R180 加的能力，一直没有判据）。
+
+    `--probe` 存在的理由是**别再靠记忆猜返回结构**，所以它自己错了会
+    让 14 次判据错重演。判据要钉的是「它真的把服务端的返回原样打出来」。
+    """
+    def probe(args):
+        # **不能调 `run()`** —— 那是「跑 matlabc.py」的辅助函数，会把
+        # `--probe` 当成 matlabc.py 的参数（实测 rc=2，usage 是 matlabc 的）。
+        # `--probe` 是 sweep_cli 自己的开关，所以这里要跑它自己。
+        p = subprocess.run([PY, os.path.abspath(__file__), "--probe"]
+                           + list(args), cwd=ROOT, stdin=subprocess.DEVNULL,
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           timeout=120)
+        return (p.returncode,
+                (p.stdout or b"").decode("utf-8", "replace"),
+                (p.stderr or b"").decode("utf-8", "replace"))
+
+    rc, so, se = probe(["textDocument/documentSymbol", "--probe-file", "a.m"])
+    _chk(rc == 0, "probe/symbol-rc0", "rc=%d %s" % (rc, se.strip()[:60]))
+    _chk('"name": "a"' in so, "probe/symbol-shows-name",
+         "输出里没有 name=a：%r" % (so[:120],))
+    _chk('"selectionRange"' in so, "probe/symbol-shows-selectionRange",
+         "少了 selectionRange 字段")
+
+    rc, so, se = probe(["textDocument/hover", "--probe-file", "a.m",
+                        "--probe-line", "2", "--probe-char", "5"])
+    _chk(rc == 0, "probe/hover-rc0")
+    _chk("function [z] = b(x)" in so.replace("\\n", "\n"),
+         "probe/hover-shows-signature",
+         "输出里没有真实签名：%r" % (so[:160],))
+
+    # 未实现的方法：必须把 -32601 **原样**打出来，而不是自己编一个
+    rc, so, se = probe(["workspace/symbol"])
+    _chk(rc == 0, "probe/unknown-rc0", "查看本身不该失败")
+    _chk("-32601" in so, "probe/unknown-shows--32601",
+         "输出里没有 -32601：%r" % (so[:160],))
+
+    # 文件不存在 -> 缺输入 rc=2，且不该起 LSP
+    rc, so, se = probe(["textDocument/hover", "--probe-file", "nope.m"])
+    _chk(rc == 2, "probe/missing-file-rc2", "rc=%d" % rc)
+
+
 GROUPS = [("1 开关", group1), ("2 畸形/编码/规模", group2),
           ("3 联动/幂等", group3), ("4 少见入口", group4),
           ("5 LSP 边界", group5), ("6 格式一致/极端参数", group6),
-          ("7 并发", group7), ("8 LSP 状态机", group8)]
+          ("7 并发", group7), ("8 LSP 状态机", group8),
+          ("9 probe", group9)]
 
 
 def _selftest():
