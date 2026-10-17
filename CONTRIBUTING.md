@@ -82,9 +82,9 @@ python tools/check_all.py
    **1233.4 秒**（C 臂，62,704 文件）+ 2.4 秒（asm 臂）。
    **不要试图把门数从 `matlabc.py` 移出来解耦** —— N2 已经证明这条路不通。
 
-## 改 `main` / 分析入口后的三条冒烟（R119 起）
+## 改 `main` / 分析入口后的四条冒烟（R119 起，R147 扩）
 
-切分 `main` 时，**判据比代码重要**。三条都要跑，因为它们各自覆盖一条不同的路径：
+切分 `main` 时，**判据比代码重要**。四条都要跑，因为它们各自覆盖一条不同的路径：
 
 1. `python matlabc.py --help` —— 与快照**逐字节**一致
    （`check_help_contract` 的 R5c；规范形与解释器、终端宽度无关，分辨率 1 字节）。
@@ -92,9 +92,16 @@ python tools/check_all.py
    `files / edges / heuristics / unresolved` 四类计数与 `stats` 不变。
 3. `python matlabc.py <含 .c 的临时目录> --lang c` —— rc=0，且四个读数
    （C 文件 / C 函数 / 未解析 / 启发式）与改前一致。
+4. `python tools/json_diff.py <before>.json <after>.json --ignore generated_at` ——
+   忽略时间戳后**规范化字节完全一致**（rc=0）。
 
 **为什么第三条不能省**：只测前两条，`run_lang_path` 的 `c / py / js / asm` 四个分支里
 三个等于没测 —— 而 R121 抽的正是它们。自造一个 10 行的 `.c` 文件，成本远低于漏测。
+
+**为什么第四条不能省**：`--json` 与 `--browse` 的 `manifest.json` 都内嵌 `generated_at`，
+**「逐字节不变」在干净改动上也必然失败**。R146 的 F1（只加 facts 字段、不改输出）就被它
+误判成「变了」：字节数 62005 完全相同、sha 不同、第一处差异在第 62 字节。
+用 `json_diff --ignore generated_at` 才是真的等价证明（实测 `canon 59521 字节`一致）。
 
 6. **整树探针运行期间，禁止在本机跑任何其它进程（含它自己的测试）。**
    实测代价（R138–R139）：同一份 `probe_kernel_r84.py --arms c asm`，独占时
