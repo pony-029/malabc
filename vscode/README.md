@@ -7,13 +7,14 @@
 
 | 能力 | 来源 | 状态 |
 | --- | --- | --- |
-| 诊断 | `publishDiagnostics` | **`m_missing_doc`（函数缺头部描述）** |
+| 诊断 | `publishDiagnostics` | **四类**：`m_missing_doc` / `c_uninit_read` / `m_dead_code`（+ `--uninit` 组的验证） |
 | 转到定义 | `textDocument/definition` | **同文件 + 跨文件**（判据 7 条） |
 | 查找引用 | `textDocument/references` | **函数级**（不是行级，见下；判据 6 条） |
 | 悬停 | `textDocument/hover` | **签名 + 描述 + 复杂度 + 定义位置**（判据 4 条） |
 | 符号大纲 | `textDocument/documentSymbol` | **函数列表**（Outliner / Ctrl+Shift+O；判据 4 条） |
+| **保存即刷新** | `textDocument/didSave` | 作废缓存 → 重算 → 重推（判据 4 条） |
 
-> 这两个 provider 曾经在扩展侧注册、LSP 侧却没实现——服务端回
+> 这些 provider 曾经在扩展侧注册、LSP 侧却没实现——服务端回
 > `{"result": null}`，扩展拿到空数组，**F12 与 Shift+F12 静默失败**
 > （不跳转也不报错）。现在的顺序反过来了：**先在 LSP 侧实现并写判据，
 > 判据变绿后再注册 provider**。`test_extension.js` 与 `test_client.js`
@@ -21,12 +22,12 @@
 
 ## 明确不做的事
 
-- **不做 hover / CodeLens / 语义高亮**：它们要的类型/复杂度还在 `model` 深处，判据比现在弱。
+- **不做 CodeLens / 语义高亮**：它们要的类型信息还在 `model` 深处，判据比现在弱。
 - **不自己解析 `.m`**：所有分析走 `matlabc_lsp.py` → `analyzer.api.analyze`。一旦自己解析，
   就是第二事实源。
-- **诊断只有一类**：`--json` 的 `heuristics` 当前只含 `m_missing_doc`
-  （`matlabc.py:14279` 的注释明说其余类别未并入）。**这不是缺陷，是口径一致**——
-  要发更多，先改 facts 层。
+- **不做 `didChange` 增量同步**：现在走 `didSave` 全量重算（带 reuse 跳过未变文件）。
+  编辑器里的未保存编辑**不会**刷新诊断——**这是有意的**：保存前的结果是草稿，
+  拿它报错会打断输入。
 
 ## 引用为什么是"函数级"
 
