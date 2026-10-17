@@ -32316,6 +32316,12 @@ def run_lang_path(args, root):
                                       exclude=args.exclude)
             if not c_paths:
                 _warn_unsupported_sources(root, args, "C/C++")
+                # R165：`asm` / `py` / `js` 与默认 MATLAB 分支在「没有目标
+                # 文件」时都 `return 1`。只有这里漏了，于是空目录跑 `--lang c`
+                # 会返回 0 —— 那会把「路径拼错」伪装成「分析成功，只是没文件」。
+                # 五轮扫测里它是唯一的产品级不一致（78 个检查点中的那 1 个）。
+                print("未找到任何 C 文件：%s" % root, file=sys.stderr)
+                return 1
             c_model = build_c_model(c_paths, root)
             return _run_c_only(c_model, root, args)
         # P93：Python / JavaScript 前端——走注册表插件收集 + 统一模型组装

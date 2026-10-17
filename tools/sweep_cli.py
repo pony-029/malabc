@@ -163,9 +163,10 @@ def group1(tmp):
         rc, _, se = run([empty, "--lang", lang, "--json", o(lang + ".json")])
         _chk(rc == EMPTY_INPUT_RC, "lang/%s-empty" % lang,
              "rc=%d（期望 %d）%s" % (rc, EMPTY_INPUT_RC, se.strip()[:40]))
-    rc, _, _ = run([empty, "--lang", "c", "--json", o("c.json")])
-    _chk(rc == 0, "lang/c-empty-is-the-odd-one",
-         "rc=%d（已知不一致：其余三个是 %d）" % (rc, EMPTY_INPUT_RC))
+    # R165 之前这里是唯一的例外（rc=0）；修好后四个分支统一为 EMPTY_INPUT_RC。
+    rc, _, se = run([empty, "--lang", "c", "--json", o("c.json")])
+    _chk(rc == EMPTY_INPUT_RC, "lang/c-empty-matches-others",
+         "rc=%d（期望 %d）%s" % (rc, EMPTY_INPUT_RC, se.strip()[:40]))
 
     rc, so, _ = run([CORPUS, "--help"])
     _chk(rc == 0 and "usage" in so.lower(), "edge/help")
