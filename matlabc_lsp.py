@@ -769,11 +769,32 @@ def _hover(uri, pos):
         sig = f.signature()
     except Exception:
         sig = "function %s" % name
-    desc = (getattr(f, "header", None) or {}).get("description") or ""
+    hdr = getattr(f, "header", None) or {}
+    desc = hdr.get("description") or ""
     parts = ["```matlab", str(sig), "```"]
     if desc:
         parts.append("")
         parts.append(str(desc))
+
+    # ---- 参数表（R231）-------------------------------------------------
+    # 老代码里大量函数在头部注释写了 `% Input:` 表格，解析器**早就
+    # 把它们结构化成了 `header["inputs"]`（`[[名, 类型, 说明], ...]`），
+    # 但悬停从来没显示过 —— 算了却不用。
+    # 只在**存在**时显示，没有就什么都不加（不能让每个函数都拖一张空表）。
+    for title, key in (("输入", "inputs"), ("输出", "outputs")):
+        rows = hdr.get(key) or []
+        if not rows:
+            continue
+        parts.append("")
+        parts.append("**%s**" % title)
+        parts.append("")
+        parts.append("| 参数 | 类型 | 说明 |")
+        parts.append("| --- | --- | --- |")
+        for row in rows:
+            cells = list(row) + ["", "", ""]
+            parts.append("| `%s` | %s | %s |"
+                         % (cells[0], cells[1] or "—", cells[2] or ""))
+
     parts.append("")
     parts.append("复杂度 %s · 定义于 `%s:%d`"
                  % (getattr(f, "complexity", "?"), getattr(mf, "rel", ""),

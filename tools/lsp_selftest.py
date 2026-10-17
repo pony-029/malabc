@@ -542,6 +542,50 @@ def _struct(c):
          "struct/dot-position-does-not-crash（%r）" % (r3,))
 
 
+def _doc(c):
+    """R231：悬停里的参数表。
+
+    老代码里大量函数在头部注释写了 `% Input:` 表格，解析器早就把它们
+    结构化成了 `header["inputs"]`，但悬停从来没显示 —— 算了却不用。
+
+    两条判据缺一不可：
+      - 有参数表时**必须**显示（否则等于没做）
+      - 没有参数表时**不许**显示空表（否则每个函数都拖一片空白）
+    """
+    root = os.path.join(ROOT, "tests", "sample_doc")
+    if not os.path.isdir(root):
+        _chk(False, "doc/缺语料 tests/sample_doc")
+        return
+    c.init(root)
+    path = os.path.join(root, "documented.m")
+    c.send({"jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": {"textDocument": {"uri": _uri(path),
+                                        "languageId": "matlab",
+                                        "version": 1, "text": "x"}}})
+    c.recv()
+    c.recv()
+
+    def hover_at(line, char):
+        c.send({"jsonrpc": "2.0", "id": 80, "method": "textDocument/hover",
+                "params": {"textDocument": {"uri": _uri(path)},
+                           "position": {"line": line, "character": char}}})
+        r = c.recv() or {}
+        res = r.get("result")
+        return ((res or {}).get("contents") or {}).get("value") or ""
+
+    body = hover_at(0, 15)          # documented
+    _chk("| 参数 |" in body, "doc/param-table-present")
+    _chk("`x`" in body and "double" in body and "底数" in body,
+         "doc/param-row-rendered（%r）" % (body[:120],))
+    _chk("`n`" in body and "指数" in body, "doc/second-param")
+    _chk("**输出**" in body and "`y`" in body, "doc/output-table")
+
+    body2 = hover_at(8, 15)         # no_doc（第 9 行 function z = no_doc）
+    if body2:
+        _chk("| 参数 |" not in body2,
+             "doc/no-empty-table（%r）" % (body2[:120],))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--diag", action="store_true")
@@ -556,6 +600,7 @@ def main(argv=None):
     ap.add_argument("--impact", action="store_true")
     ap.add_argument("--tokens", action="store_true")
     ap.add_argument("--struct", action="store_true")
+    ap.add_argument("--doc", action="store_true")
     ap.add_argument("--help", action="store_true")
     args = ap.parse_args(argv)
 
@@ -590,6 +635,8 @@ def main(argv=None):
         groups = [("tokens", _tokens)]
     elif args.struct:
         groups = [("struct", _struct)]
+    elif args.doc:
+        groups = [("doc", _doc)]
     elif args.save:
         groups = [("save", _save)]
     else:
