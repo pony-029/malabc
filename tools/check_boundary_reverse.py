@@ -392,6 +392,39 @@ def module_docstring(src):
     return ast.get_docstring(tree, clean=False)
 
 
+def help_text(root, stem="matlabc"):
+    """取帮助正文：先看 `<stem>.py` 的模块 docstring，否则看 `<stem>_help.py`。
+
+    R247：`matlabc.py` 的帮助正文搬到了 `matlabc_help.py` —— 正文留在被
+    W2 记 sha 的文件里，会让「改一句文案」作废一次 19 分钟的全库测量。
+    回退按**显式约定**走（同目录 `<stem>_help.py` 里的 `HELP_TEXT` 常量），
+    不猜、不做模糊匹配；两处都拿不到就返回原 docstring，让上层的
+    「找不到小节」照旧变红。
+    """
+    doc = module_docstring(read_text(root, stem + ".py"))
+    if doc and "诚实的边界" in doc:
+        return doc
+    rel = stem + "_help.py"
+    if not os.path.isfile(os.path.join(root, rel)):
+        return doc
+    try:
+        tree = ast.parse(read_text(root, rel))
+    except (SyntaxError, OSError):
+        return doc
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        for tgt in node.targets:
+            if isinstance(tgt, ast.Name) and tgt.id == "HELP_TEXT":
+                try:
+                    val = ast.literal_eval(node.value)
+                except (ValueError, SyntaxError):
+                    return doc
+                if isinstance(val, str):
+                    return val
+    return doc
+
+
 def _is_sep_line(line):
     body = line.strip()
     if len(body) < 3:
@@ -791,7 +824,7 @@ def scan(root):
     help_path = os.path.join(root, "matlabc.py")
     if not os.path.exists(help_path):
         return None
-    doc = module_docstring(read_text(root, "matlabc.py"))
+    doc = help_text(root)
     bullets = parse_boundary_bullets(doc)
     if bullets is None:
         return {"bullets": None, "heads": [], "texts": []}
