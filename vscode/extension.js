@@ -304,22 +304,35 @@ function activate(context) {
     const others = info.others || [];
     const down = info.down || [];
 
+    // **每层最多画 20 个**。YALMIP 这类项目里一个函数的下游三层
+    // 可能有上百个节点，全画出来是一页文字墙 —— 而前 20 个已经足够
+    // 判断"这是不是一个热点"。截断了就明说还剩多少，不假装是全部。
+    const PER_LEVEL = 20;
+    const byLevel = (arr) => {
+      const m = {};
+      arr.forEach((d) => { (m[d.level] = m[d.level] || []).push(d); });
+      return m;
+    };
+
     // ---- 上游 ----
     rows.push('<div class="section">▲ 上游（谁调用它）</div>');
     if (!direct.length && !others.length) {
       rows.push('<div class="empty">没有调用者 —— 它是入口。</div>');
     } else {
-      direct.forEach((d, i) => {
-        const last = (i === direct.length - 1) && others.length === 0;
-        rows.push(upNode(d, last ? '└─ ' : '├─ '));
-      });
-      let prevLevel = 1;
-      others.forEach((d) => {
-        if (d.level !== prevLevel) {
-          rows.push('<div class="levelbar">第 ' + d.level + ' 层</div>');
-          prevLevel = d.level;
+      const up = byLevel(direct.map((d) => Object.assign({ level: 1 }, d))
+        .concat(others));
+      Object.keys(up).map(Number).sort((a, b) => a - b).forEach((lv) => {
+        if (lv > 1) {
+          rows.push('<div class="levelbar">第 ' + lv + ' 层</div>');
         }
-        rows.push(upNode(d, '│  '.repeat(d.level - 1) + '└─ '));
+        const list = up[lv];
+        list.slice(0, PER_LEVEL).forEach((d) => {
+          rows.push(upNode(d, '│  '.repeat(lv - 1) + '└─ '));
+        });
+        if (list.length > PER_LEVEL) {
+          rows.push('<div class="empty">… 本层还有 ' +
+                    (list.length - PER_LEVEL) + ' 个</div>');
+        }
       });
     }
 
@@ -328,13 +341,19 @@ function activate(context) {
     if (!down.length) {
       rows.push('<div class="empty">不调用其他函数 —— 叶子。</div>');
     } else {
-      let prevD = 1;
-      down.forEach((d) => {
-        if (d.level !== prevD) {
-          rows.push('<div class="levelbar">第 ' + d.level + ' 层</div>');
-          prevD = d.level;
+      const dn = byLevel(down);
+      Object.keys(dn).map(Number).sort((a, b) => a - b).forEach((lv) => {
+        if (lv > 1) {
+          rows.push('<div class="levelbar">第 ' + lv + ' 层</div>');
         }
-        rows.push(downNode(d, '│  '.repeat(d.level - 1) + '└─ '));
+        const list = dn[lv];
+        list.slice(0, PER_LEVEL).forEach((d) => {
+          rows.push(downNode(d, '│  '.repeat(lv - 1) + '└─ '));
+        });
+        if (list.length > PER_LEVEL) {
+          rows.push('<div class="empty">… 本层还有 ' +
+                    (list.length - PER_LEVEL) + ' 个</div>');
+        }
       });
       if (info.down_truncated) {
         rows.push('<div class="empty">… 还有更深层，已按 3 层截断' +
