@@ -382,10 +382,114 @@ def _selftest():
     return bad, good
 
 
+def _meta():
+    """变异测试：**故意改错**每个防护，看对应判据是否变红。
+
+    51 条全绿只说明「当前实现是对的」，说明不了「判据有守门能力」——
+    一条永远绿的判据也全绿。这个函数验证的是**判据本身**。
+
+    R170 它抓到一条真的弱判据：`idem/three-identical` 原来带
+    `--reproducible`，于是 `generated_at` 恒为空串，`canon()` 剔除它的
+    职责从未被检验（把它改坏仍绿）。去掉那个开关后，同一个变异会红。
+
+    退出码：0 = 每个变异都被抓住 / 1 = 有变异没被抓住（判据是装饰）。
+    """
+    import json as _json
+    import shutil as _shutil
+    import tempfile as _tempfile
+
+    bad, good = 0, 0
+    print("[meta] 下面出现的 [FAIL] 是**故意制造的变异**，不是真失败；"
+          "以最后一行 META COUNTS 为准。")
+
+    def c(cond, msg):
+        nonlocal bad, good
+        if cond:
+            good += 1
+            print("  [ok]   " + msg)
+        else:
+            bad += 1
+            print("  [FAIL] " + msg)
+
+    def run_group(fn):
+        _RESULT["bad"] = 0
+        _RESULT["good"] = 0
+        _RESULT["fails"] = []
+        tmp = _tempfile.mkdtemp(prefix="sweep_meta_")
+        try:
+            fn(tmp)
+        finally:
+            _shutil.rmtree(tmp, ignore_errors=True)
+        return _RESULT["bad"], list(_RESULT["fails"])
+
+    def canon_keep_cache(d):
+        dd = dict(d)
+        dd.pop("generated_at", None)
+        return _json.dumps(dd, sort_keys=True, ensure_ascii=False)
+
+    def canon_keep_gen(d):
+        dd = dict(d)
+        if isinstance(dd.get("stats"), dict):
+            dd["stats"] = dict((k, v) for k, v in dd["stats"].items()
+                               if k not in VOLATILE_STATS)
+        return _json.dumps(dd, sort_keys=True, ensure_ascii=False)
+
+    # 0. 基线：不改任何东西，必须 0 红
+    n0, f0 = run_group(group1)
+    c(n0 == 0, "基线 group1 应 0 红，实际 %d %r" % (n0, f0[:2]))
+
+    # 1. EMPTY_INPUT_RC 1 -> 0：lang/* 必须变红
+    orig_rc = EMPTY_INPUT_RC
+    globals()["EMPTY_INPUT_RC"] = 0
+    n1, f1 = run_group(group1)
+    globals()["EMPTY_INPUT_RC"] = orig_rc
+    c(n1 >= 3, "EMPTY_INPUT_RC=0 后应 >=3 条红，实际 %d" % n1)
+    c(any("lang/" in x for x in f1),
+      "变红的应是 lang/*，实际 %r" % (f1[:2],))
+
+    # 2. need() 语义：缺键 / 非 dict 都必须 False。
+    #    **不调 `need()` 本身** —— 它会 `_chk` 到全局 `_RESULT`，
+    #    输出里会出现唬人的 `[FAIL] meta/has-file`（R171 实测）。
+    #    这里断的是同一段逻辑，只是不经过那个计数器。
+    c(("rel" in shape_of({"rel": 1})) is True, "shape_of 对存在的键应含它")
+    c(("file" in shape_of({"rel": 1})) is False, "shape_of 对缺的键应不含它")
+    c(shape_of(None) == "NoneType", "shape_of 对非 dict 应回类型名")
+
+    # 2b. `_chk` 本体：它对 False 必须计数，否则整个工具是装饰
+    saved = (_RESULT["bad"], _RESULT["good"])
+    _RESULT["bad"] = 0
+    _RESULT["good"] = 0
+    _chk(False, "meta/probe-must-count")
+    c(_RESULT["bad"] == 1, "_chk 对 False 必须让 bad +1")
+    _RESULT["bad"], _RESULT["good"] = saved
+
+    # 3. canon 保留 stats.cache_*：incr-reproducible 必须变红
+    orig_canon = canon
+    globals()["canon"] = canon_keep_cache
+    n3, f3 = run_group(group3)
+    globals()["canon"] = orig_canon
+    c(n3 >= 1, "保留 cache_* 后应变红，实际 %d" % n3)
+    c(any("incr-reproducible" in x for x in f3),
+      "变红的应是 incr-reproducible，实际 %r" % (f3[:2],))
+
+    # 4. canon 保留 generated_at：idem 必须变红
+    #    （R170 修强之前这条是绿的 —— 那个变异抓到的正是它）
+    globals()["canon"] = canon_keep_gen
+    n4, f4 = run_group(group3)
+    globals()["canon"] = orig_canon
+    c(n4 >= 1, "保留 generated_at 后应变红，实际 %d" % n4)
+    c(any("idem" in x for x in f4),
+      "变红的应含 idem/*，实际 %r" % (f4[:2],))
+
+    print('META COUNTS {"bad": %d, "good": %d}' % (bad, good))
+    return 0 if bad == 0 else 1
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default=None)
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--meta", action="store_true")
     ap.add_argument("--help", "-h", action="store_true")
     args, _ = ap.parse_known_args(argv or sys.argv[1:])
 
@@ -396,6 +500,11 @@ def main(argv=None):
     if args.selftest:
         bad, good = _selftest()
         return 0 if bad == 0 and good >= 7 else 1
+    if args.meta:
+        if not os.path.isdir(CORPUS):
+            print("sweep_cli: 缺输入（%s）" % CORPUS)
+            return 2
+        return _meta()
     if not os.path.isdir(CORPUS):
         print("sweep_cli: 缺输入（%s）" % CORPUS)
         return 2

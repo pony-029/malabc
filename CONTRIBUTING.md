@@ -126,7 +126,15 @@ LSP 不实现，用户按 F12 会**静默失败**（服务端回 `null`，扩展
 python tools/sweep_cli.py            # 51 个检查点 / 4 组 / 约 25 秒
 python tools/sweep_cli.py --only 1   # 只跑开关组
 python tools/sweep_cli.py --selftest # 7 条：防护自身的自证
+python tools/sweep_cli.py --meta     # 11 条：**变异测试**（判据自己能不能红）
 ```
+
+**`--meta` 是最容易跳过、也最该跑的那一个。**
+它把三条防护各故意改错一次，看对应判据是否变红：
+`EMPTY_INPUT_RC=0` → `lang/*` 必须红；`canon` 保留 `stats.cache_*` →
+`incr-reproducible` 必须红；`canon` 保留 `generated_at` → `idem/*` 必须红。
+**R170 正是靠它发现 `idem/three-identical` 当时带着 `--reproducible`、
+`generated_at` 恒为空串，判据其实永远绿。**
 
 | 组 | 覆盖 |
 | --- | --- |
