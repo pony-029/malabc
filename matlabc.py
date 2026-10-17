@@ -616,6 +616,8 @@ _LATEX_RE = re.compile(r"\\\(|\\\[|\\begin\{|\$\$?[^\$\n]+\$\$?")
 
 _CG_CACHE = {}
 
+from renderers.html_kit import (_html_esc, _page_rel, _src_href_from_rel,
+                                 _dot_label, _mermaid_label, _shp_str, _compliance_score)
 from renderers.assets import write_browse_css_tree, write_page_css_tree, BROWSE_CSS, PAGE_CSS_FILES, page_css_dir, CONTEXT_LINK_JS, CORE_JS, DEEPLINK_JS, KBD_JS, THEME_JS, GLOBAL_SEARCH_JS, LOCALCG_INIT_JS, VIEWSTATE_JS, LINE_DEEPLINK_JS, WORKBENCH_JS, SYMBOLS_JS, EDITLOOP_JS, LAZY_SEARCH_JS, GRAPH_JS, VARFLOW_JS, CG_PULSE_CSS, HTML_CG_CSS, MATHJAX_INIT_JS
 if __name__ == "__main__" and "matlabc" not in _sys.modules:
     # 脚本可导入技巧：允许 renderers 子包在 `python matlabc.py` 直接运行时，
@@ -5262,14 +5264,8 @@ def render_call_detail(outgoing, incoming, nodes, max_nodes=300,
     return lines
 
 
-def _mermaid_label(s):
-    """Mermaid 节点 label 转义（反斜杠与引号）。"""
-    return s.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def _dot_label(s):
-    """Graphviz DOT 字符串转义（反斜杠与引号）。"""
-    return s.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def render_mermaid(files, edges, file_graph, title="MATLAB 调用图", folder_graph=False):
@@ -20412,16 +20408,6 @@ def _render_func_header_html(f, linker_fn=None):
     return '<div class="func-header">' + "".join(parts) + "</div>"
 
 
-def _page_rel(rel):
-    """源码页相对 src 目录的页面路径（raw，不编码），既用于写盘也用于 href。
-
-    关键修复：此前对相对路径做 urllib.parse.quote 编码，导致含 '+' 的文件
-    以字面量 '%2B…' 落盘，而浏览器 / 文件协议会把 href 中的 '%2B' 解码回
-    '+'，于是 MATLAB 包目录（+pkg）、类文件夹（@Cls）等含 '+' 的链接指向了
-    磁盘上不存在的文件。这里统一用**原始相对路径**，写盘与 href 完全一致，
-    彻底消除该断链问题。
-    """
-    return rel + ".html"
 
 
 def _src_href(mf):
@@ -22333,9 +22319,6 @@ def render_dims_view_page(model, gid_of):
 
 
 # ============== 新功能：结构体成员变量查看 / 内置函数维度联动检测 ==============
-def _html_esc(s):
-    """极简 HTML 转义（避免引入额外依赖，保持与既有页面一致）。"""
-    return ("" if s is None else str(s)).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def _collect_struct_members(mf, gmd=None):
@@ -26955,15 +26938,6 @@ def _review_project(files, calls_of=None, callers_of=None):
     return findings, per_file, summary
 
 
-def _compliance_score(summary):
-    """合规得分（0-100）：按官方严重度加权扣分（error 最重）。
-
-    权重沿用官方「errors > warnings > suggestions」的优先级：
-    每个 error 扣 8 分、warning 扣 3 分、suggestion 扣 1 分，下限 0。
-    """
-    pen = summary.get("error", 0) * 8 + summary.get("warning", 0) * 3 \
-        + summary.get("suggestion", 0) * 1
-    return max(0, 100 - pen)
 
 
 def render_compliance_page(files, findings, per_file, summary, fan_in=None, fan_trans=None):
@@ -27513,45 +27487,6 @@ def _shp(*dims):
     return tuple(('c', d) if isinstance(d, int) else ('u',) for d in dims)
 
 
-def _shp_str(shp):
-    if shp is None:
-        return '?'
-    if not shp:
-        return '标量'
-    # 形状可能来自 _es_eval 的任意标记：正常为 [('c',n)/('u',)], 但特殊结构体
-    # 标记（如 ('struct',)）或意外标量/字符串会破坏逐维下标访问，这里统一防御，
-    # 避免 IndexError 使整个报告生成崩溃（P224-Y）。
-    if isinstance(shp, str):
-        return shp
-    try:
-        _dims = list(shp)
-    except TypeError:
-        return str(shp)
-    out = []
-    for d in _dims:
-        if isinstance(d, str):
-            out.append(d)
-            continue
-        try:
-            _tag = d[0]
-        except (TypeError, IndexError):
-            out.append(str(d))
-            continue
-        if _tag == 'c':
-            try:
-                out.append(str(d[1]))
-            except (TypeError, IndexError):
-                out.append('?')
-        elif _tag == 'u':
-            out.append('?')
-        elif _tag == 'struct':
-            out.append('结构体')
-        else:
-            try:
-                out.append('size(%s,%d)' % (d[1], d[2]))
-            except (TypeError, IndexError):
-                out.append('?')
-    return '×'.join(out)
 
 
 def _shp_transpose(shp):
@@ -30208,8 +30143,6 @@ def render_tree_browse(files, empty_dirs=None):
     return "\n".join(out)
 
 
-def _src_href_from_rel(rel):
-    return f"src/{_page_rel(rel)}"
 
 
 def _compute_folder_edges(files, calls_of):
