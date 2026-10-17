@@ -626,18 +626,19 @@ Agent 调用示例（伪代码）：
 python matlabc_lsp.py      # 在 stdin/stdout 上说 LSP
 ```
 
-> **实测延迟**（1,300 个 `.m` 文件，`--no-checks`）：
+> **实测延迟**（1,300 个 `.m` 文件）：
 >
 > | 角色 | 耗时 |
 > | --- | --- |
 > | CLI（`matlabc.py … --json`） | 5.92 秒 |
-> | **LSP（进程内常驻）** | **0.73 秒** |
+> | **LSP（进程内常驻）** | **2.18 秒** |
 >
 > 差的这部分是 `os.walk`、62 KB JSON 序列化与进程启动——编辑器一样都用不上。
-> profile 还显示 **63%** 的耗时是 `_collect_checks`，而 LSP 根本用不到它
-> （解析只占 **9%**），所以服务端会传 `--no-checks`。单文件入口已实测并
-> **被否掉**：`MyCls.m`（`classdef`）在全量模式下报出 2 条「缺 description」，
-> 单文件模式下是 **0** 条，因为 `doc_todos` 依赖跨文件的 `callers_of`。
+> **LSP 不传 `--no-checks`**：它报的事实里有 `c_uninit_read` 与 `m_dead_code`，
+> 而那两类正是 `_collect_checks` 产的。跳过它虽然能到 0.73 秒，但会丢掉
+> 四类诊断里的两类。单文件入口已实测并**被否掉**：`MyCls.m`（`classdef`）
+> 在全量模式下报出 2 条「缺 description」，单文件模式下是 **0** 条，
+> 因为 `doc_todos` 依赖跨文件的 `callers_of`。
 > （别处引用的 1,093 秒属于 **C 臂**——62,704 个 `.c` 文件 + `--checks all`，
 > 与这里无关。）详见
 > `docs/analysis/ANALYSIS_2026-10-17_LSP_PERF.md` 与

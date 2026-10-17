@@ -656,17 +656,19 @@ construction*, because the server reads the CLI output instead of recomputing.
 python matlabc_lsp.py      # speak LSP over stdin/stdout
 ```
 
-> **Measured latency**, 1,300 `.m` files, `--no-checks`:
+> **Measured latency**, 1,300 `.m` files:
 >
 > | role | time |
 > | --- | --- |
 > | CLI (`matlabc.py … --json`) | 5.92 s |
-> | **LSP (in-process, resident)** | **0.73 s** |
+> | **LSP (in-process, resident)** | **2.18 s** |
 >
-> The gap is `os.walk`, 62 KB of JSON serialisation and process startup —
-> none of which an editor needs. Profiling also showed **63 %** of the run was
-> `_collect_checks`, which the LSP never uses (parsing is only **9 %**), hence
-> `--no-checks`. A single-file entry point was measured and **ruled out**:
+> The gap was `os.walk`, 62 KB of JSON serialisation and process startup —
+> none of which an editor needs. The LSP does **not** pass `--no-checks`:
+> the facts it reports include `c_uninit_read` and `m_dead_code`, which are
+> produced by `_collect_checks`. Skipping it would cost 0.73 s instead of
+> 2.18 s but would drop two of the four diagnostic kinds. A single-file entry
+> point was measured and **ruled out**:
 > `MyCls.m` (a `classdef`) reports 2 missing-description entries in full mode
 > and **0** in single-file mode, because `doc_todos` depends on the cross-file
 > `callers_of`. (The 1,093 s quoted elsewhere belongs to the **C** arm —
