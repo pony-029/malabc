@@ -104,10 +104,30 @@ checks_for_sarif = _collect_checks(files, _parse_checks_arg(args.checks),
 | `dead_code` | ✅ | ✅ | **能** |
 | `type_mismatch` | ✅ | ❌ | — |
 | `dup_code` | ✅ | ❌ | — |
-| `shape_mismatch` | ❌ | ✅ | **不能**（`render_json` 独有） |
+| `shape_mismatch` | **✅**（实测有） | ✅ | **能**（初版误写为 ❌） |
 
 **结论：改动从 4 处降到 3 处，且完全不碰 `run_pipeline`。**
-`shape_mismatch` 仍由 `render_json` 自己算（它是唯一没有上游缓存的那个）。
+`shape_mismatch` **也能复用**——初版把它写成「`render_json` 独有」是错的，
+`_collect_checks` 实际返回键包含它（实测 `sorted(checks)` 里就有）。
+
+### 3.2 定性：这是**性能优化**，不是口径修复
+
+用**非空语料**（`C:\temp\f2probe\x.m`：一个未初始化读 + 一段 `if false`）实测：
+
+```
+key              checks   json     same
+uninitialized    1        1        YES
+dead_code        1        1        YES
+type_mismatch    0        0        YES
+dup_code         0        0        YES
+shape_mismatch   0        0        YES
+```
+
+⇒ **当前两个来源的数字已经一致**。所以 F2 不做也不会产出错数据，
+它省的是「62,704 个文件上再跑一遍 `_detect_*`」。
+
+**这降低了 F2 的优先级**，也改变了它的判据重点：
+不是「让数字变对」，而是「**改完必须一个数都不变**」。
 
 ### 3.2 `render_json` 改为优先读 `model`
 
