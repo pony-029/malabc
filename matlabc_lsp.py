@@ -117,6 +117,33 @@ def _heuristics_from_result(result):
     return out
 
 
+def _facts_from_result(result):
+    """从 `result.facts` 派生诊断 —— **F3 之后它是唯一来源**。
+
+    F1 时 facts 只含 `m_missing_doc`（`evidence="ast"`，5 条，与 `--json`
+    的 `heuristics` 逐条相等）。F3 之后它还会含 `uninitialized` /
+    `dead_code`（`evidence="check"`），所以 LSP 能发的不止一类 —— 而
+    「诊断 ⊇ heuristics」这条超集关系**由构造保证**，不需要额外对账。
+
+    形状映射：facts 的 `loc` / `payload` -> LSP 需要的
+    `{file, line, func, kind, msg, level}`。
+    """
+    out = []
+    for f in (getattr(result, "facts", None) or []):
+        loc = f.get("loc") or {}
+        pl = f.get("payload") or {}
+        subject = f.get("subject") or ""
+        out.append({
+            "file": loc.get("file") or "",
+            "line": int(loc.get("line") or 0),
+            "func": subject.rsplit(":", 1)[-1] if ":" in subject else "",
+            "kind": pl.get("rule_id") or "unknown",
+            "msg": pl.get("msg") or "",
+            "level": pl.get("level") or "note",
+        })
+    return out
+
+
 def _run_json(root):
     """**进程内**跑分析，返回与 `--json` 同形的 `{"heuristics": [...]}`。
 
@@ -140,7 +167,10 @@ def _run_json(root):
     # 留住整个 `PipelineResult`：`definition` 要用 `files[].functions[]`
     # 的 `(name, line)`，而 `heuristics` 只够发诊断。
     _STATE["result"] = result
-    return {"heuristics": _heuristics_from_result(result)}
+    # F3：改读 `facts`。它现在（F1 之后）与 `heuristics` 逐条相等，所以
+    # 「诊断 == heuristics」那条旧判据仍然成立；等 facts 扩了两类，
+    # 关系自动变成「⊇」——两者都是构造保证的，不需要两处对账。
+    return {"heuristics": _facts_from_result(result)}
 
 
 def _ident_at(lines, line0, char):
