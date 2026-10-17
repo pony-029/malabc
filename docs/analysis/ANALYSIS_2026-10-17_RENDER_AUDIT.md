@@ -135,3 +135,42 @@ ender_markdown_report 调用（后者 deps=15）。
 搬它时要改调用点——用 rom renderers.matlab_kit import render_tree 即可，
 不构成循环（matlab_kit 不 import matlabc）。
 
+---
+
+## §8 P2 分批的精确清单（实测，2026-10-17 19:51）
+
+按「依赖是否已全部落在 `renderers/html_kit.py`」分：
+
+| 批次 | 函数 | 行数 | 依赖情况 |
+| --- | --- | --- | --- |
+| 第一批 | `render_tree` / `render_call_chain` / `render_call_detail` | **94** | **0** |
+| 第二批 | 见下表 6 个 | **474** | 全在 `html_kit` |
+| 合计可搬 | **9 个** | **568**（13% of 4,327） | — |
+| 剩余 | 36 个 | 3,759 | 各缺 1–3 个 `_collect_*` / `*_JS` |
+
+### 第二批（6 个，474 行，依赖全在 kit）
+
+| 函数 | 行数 | 唯一依赖 |
+| --- | --- | --- |
+| `render_compliance_page` | 193 | `_compliance_score` |
+| `render_checks_page` | 95 | `_src_href_from_rel` |
+| `render_operator_impact_page` | 67 | `_html_esc` |
+| `render_mermaid` | 48 | `_mermaid_label` |
+| `render_ai_prompts_page` | 38 | `_html_esc` |
+| `render_dot` | 33 | `_dot_label` |
+
+### 剩余 36 个为什么被挡住
+
+按缺失符号归类：
+
+| 缺什么 | 函数数 | 代表 |
+| --- | --- | --- |
+| `_collect_*`（分析函数） | 8 | `render_members_page` / `render_complexity_heatmap` |
+| `*_JS` / `*_LABEL`（前端常量） | 6 | `render_todo_page` / `render_schedule_page` |
+| `_build_*_data`（数据准备） | 4 | `render_dims_view_page` / `render_unified_page` |
+| 其它渲染函数 | 3 | `render_used_builtins_report` / `render_matlab_lib_page` |
+| 重依赖（deps >= 10） | 6 | `render_browse_site`（87）/ `render_source_page`（35） |
+
+⇒ **第二批之后，下一个瓶颈是 `_collect_*` 与 `*_JS` 常量**，不是渲染函数本身。
+这两类都属于 P3（分析外迁）与资源外置，与 P2 天然分界。
+
