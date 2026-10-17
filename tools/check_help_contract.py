@@ -865,6 +865,21 @@ def _docstring(path):
     return src, doc
 
 
+def help_body_leaked(src):
+    """这段源码的**模块 docstring** 里是否含帮助正文（= 那个耦合回来了）。
+
+    R249 的 H3 用它。抽成纯函数是为了**能对两个方向各测一次**：
+    以前 H3 直接读仓库里的 `matlabc.py`，于是它只会「不误报」，
+    而「真该红的时候会不会红」从来没被证明过 —— 除非去改那个
+    正在被探针测 sha 的文件，那会作废一趟 19 分钟的测量。
+    """
+    try:
+        doc = ast.get_docstring(ast.parse(src), clean=False) or ""
+    except SyntaxError:
+        return False
+    return "诚实的边界" in doc
+
+
 def _is_sep_line(s):
     """是不是「分隔线」（如 ───── 或 =====），用于跨过标题与正文之间的装饰。"""
     body = s.replace(" ", "")
@@ -2107,11 +2122,10 @@ def audit_guards(root, on_problem):
     try:
         with io.open(os.path.join(root, "matlabc.py"), "r",
                      encoding="utf-8", errors="replace") as _fh:
-            _mc_doc = ast.get_docstring(ast.parse(_fh.read()),
-                                        clean=False) or ""
-    except (OSError, SyntaxError):
-        _mc_doc = ""
-    if "诚实的边界" in _mc_doc:
+            _mc_src = _fh.read()
+    except OSError:
+        _mc_src = ""
+    if help_body_leaked(_mc_src):
         on_problem("H3 matlabc.py 的模块 docstring 里又有帮助正文了 —— "
                    "`docs/KERNEL_RUN.md` 记的是本文件的 sha256，正文留在这里"
                    "会让「改一句文案」改变被测身份、作废一次 19 分钟的全库"
@@ -2705,6 +2719,14 @@ def _selftest():
            bool(doc_number_problems(
                "<!-- guard-count:historical " + _r + " -->\n旧帮助曾写 7 道护栏",
                9)), True)
+
+    # ---- R249：H3 两向（纯函数，不碰仓库里的 matlabc.py）--------------
+    expect("R249 H3 好样本：短 docstring（正文已搬走）放行",
+           help_body_leaked('"""分析器（正文在 matlabc_help.py）。"""'), False)
+    expect("R249 H3 坏样本：正文回到模块 docstring 立刻抓到",
+           help_body_leaked('"""分析器\n诚实的边界\n  * 一些 bullet\n"""'), True)
+    expect("R249 H3 坏样本：语法坏掉时不冒充「已泄漏」",
+           help_body_leaked("def broken(:\n"), False)
 
     # ---- R51：诚实的边界逐字契约（纯函数；真实正文既作正例、又作登记对象） ----
     _bd = _docstring(os.path.join(repo_root(), "matlabc.py"))[1]
