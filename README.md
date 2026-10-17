@@ -660,15 +660,17 @@ python matlabc_lsp.py      # speak LSP over stdin/stdout
 >
 > | role | time |
 > | --- | --- |
-> | CLI (`matlabc.py … --json`) | 5.92 s |
-> | **LSP (in-process, resident)** | **2.18 s** |
+> | CLI (`matlabc.py … --json`, full pipeline) | 5.92 s |
+> | **LSP first analysis (in-process)** | **3.20 s** |
+> | reuse path (measured, **not yet wired into the server**) | **1.40 s** |
 >
-> The gap was `os.walk`, 62 KB of JSON serialisation and process startup —
-> none of which an editor needs. The LSP does **not** pass `--no-checks`:
-> the facts it reports include `c_uninit_read` and `m_dead_code`, which are
-> produced by `_collect_checks`. Skipping it would cost 0.73 s instead of
-> 2.18 s but would drop two of the four diagnostic kinds. A single-file entry
-> point was measured and **ruled out**:
+> The gap is `os.walk`, JSON serialisation and process startup — none of which
+> an editor needs. `run_pipeline(prev=..., changed=...)` then skips parsing
+> entirely when nothing changed, **in process, without serialisation**
+> (`--incremental` uses pickle and is 10× *slower* on 13 files — see
+> `docs/analysis/ANALYSIS_2026-10-18_REUSE_INTERFACE.md`).
+>
+> A single-file entry point was measured and **ruled out**:
 > `MyCls.m` (a `classdef`) reports 2 missing-description entries in full mode
 > and **0** in single-file mode, because `doc_todos` depends on the cross-file
 > `callers_of`. (The 1,093 s quoted elsewhere belongs to the **C** arm —

@@ -630,13 +630,16 @@ python matlabc_lsp.py      # 在 stdin/stdout 上说 LSP
 >
 > | 角色 | 耗时 |
 > | --- | --- |
-> | CLI（`matlabc.py … --json`） | 5.92 秒 |
-> | **LSP（进程内常驻）** | **2.18 秒** |
+> | CLI（`matlabc.py … --json`，全流程） | 5.92 秒 |
+> | **LSP 首次分析（进程内）** | **3.20 秒** |
+> | 复用路径（已实测，**尚未接入服务端**） | **1.40 秒** |
 >
-> 差的这部分是 `os.walk`、62 KB JSON 序列化与进程启动——编辑器一样都用不上。
-> **LSP 不传 `--no-checks`**：它报的事实里有 `c_uninit_read` 与 `m_dead_code`，
-> 而那两类正是 `_collect_checks` 产的。跳过它虽然能到 0.73 秒，但会丢掉
-> 四类诊断里的两类。单文件入口已实测并**被否掉**：`MyCls.m`（`classdef`）
+> 差的这部分是 `os.walk`、JSON 序列化与进程启动——编辑器一样都用不上。
+> `run_pipeline(prev=..., changed=...)` 在无变化时**完全不解析**，
+> 并且是**进程内、无序列化**的（`--incremental` 走 pickle，在 13 个文件上
+> 反而慢 10 倍——见 `docs/analysis/ANALYSIS_2026-10-18_REUSE_INTERFACE.md`）。
+>
+> 单文件入口已实测并**被否掉**：`MyCls.m`（`classdef`）
 > 在全量模式下报出 2 条「缺 description」，单文件模式下是 **0** 条，
 > 因为 `doc_todos` 依赖跨文件的 `callers_of`。
 > （别处引用的 1,093 秒属于 **C 臂**——62,704 个 `.c` 文件 + `--checks all`，
