@@ -641,10 +641,99 @@ def group7(tmp):
          "conc/three-mixed-outputs-nonempty")
 
 
+def group8(tmp):
+    """LSP 状态机：连续保存 / 关闭重开 / 空文件与脚本上的各能力。"""
+    o = lambda n: os.path.join(tmp, n)
+
+    def diags(msg):
+        return ((msg or {}).get("params") or {}).get("diagnostics") or []
+
+    def open_(c, path):
+        c.send({"jsonrpc": "2.0", "method": "textDocument/didOpen",
+                "params": {"textDocument": {"uri": _uri(path),
+                                            "languageId": "matlab",
+                                            "version": 1, "text": "x"}}})
+        c.recv()
+        return c.recv()
+
+    def save_(c, path):
+        c.send({"jsonrpc": "2.0", "method": "textDocument/didSave",
+                "params": {"textDocument": {"uri": _uri(path)}}})
+        return c.recv()
+
+    def req(c, mid, method, params):
+        c.send({"jsonrpc": "2.0", "id": mid, "method": method,
+                "params": params})
+        return c.recv()
+
+    x = o("x.m")
+    write_text(x, u"function y = x(a)\n% d\ny = a + b;\nend\n")
+    c = _lsp_client()
+    c.init(tmp)
+    d = open_(c, x)
+    _chk(len(diags(d)) == 1, "state/open-1-diag", "got %d" % len(diags(d)))
+    # 连续三次保存：不改 -> 1；改掉未初始化 -> 0；改回来 -> 1
+    _chk(len(diags(save_(c, x))) == 1, "state/save-same-still-1")
+    write_text(x, u"function y = x(a)\n% d\ny = a + 1;\nend\n")
+    _chk(len(diags(save_(c, x))) == 0, "state/save-fixed-zero")
+    write_text(x, u"function y = x(a)\n% d\ny = a + b;\nend\n")
+    _chk(len(diags(save_(c, x))) == 1, "state/save-back-to-1",
+         "证明 didSave 每次都真重算，不是一次性")
+    # didClose 后重开
+    c.send({"jsonrpc": "2.0", "method": "textDocument/didClose",
+            "params": {"textDocument": {"uri": _uri(x)}}})
+    _chk(len(diags(open_(c, x))) == 1, "state/reopen-after-close-1")
+    c.close()
+
+    # 空文件：0 诊断、`hover` null、`definition` []、**1 个 `<script>` 符号**
+    empty = o("empty.m")
+    write_text(empty, u"")
+    c = _lsp_client()
+    c.init(tmp)
+    _chk(len(diags(open_(c, empty))) == 0, "empty/open-0-diags")
+    r = req(c, 2, "textDocument/hover",
+            {"textDocument": {"uri": _uri(empty)},
+             "position": {"line": 0, "character": 0}})
+    _chk((r or {}).get("result") is None, "empty/hover-null")
+    r = req(c, 3, "textDocument/definition",
+            {"textDocument": {"uri": _uri(empty)},
+             "position": {"line": 0, "character": 0}})
+    _chk((r or {}).get("result") == [], "empty/definition-empty")
+    # **实测：空文件返回 1 个 `<script>` 占位符，不是 []**。
+    # 我第一版断言 [] 是错的（第 14 次凭印象）——否则大纲面板打开脚本会全空。
+    r = req(c, 4, "textDocument/documentSymbol",
+            {"textDocument": {"uri": _uri(empty)}})
+    syms = (r or {}).get("result") or []
+    _chk(len(syms) == 1 and syms[0].get("name") == "<script>",
+         "empty/symbols-script-placeholder",
+         "got %r" % ([s.get("name") for s in syms],))
+    c.close()
+
+    # 脚本文件（无 function）：hover null、`<script>` 占位、range 覆盖正文
+    sc = o("script.m")
+    write_text(sc, u"a = 1;\nb = a + 1;\n")
+    c = _lsp_client()
+    c.init(tmp)
+    open_(c, sc)
+    r = req(c, 2, "textDocument/hover",
+            {"textDocument": {"uri": _uri(sc)},
+             "position": {"line": 0, "character": 0}})
+    _chk((r or {}).get("result") is None, "script/hover-null")
+    r = req(c, 3, "textDocument/documentSymbol",
+            {"textDocument": {"uri": _uri(sc)}})
+    syms = (r or {}).get("result") or []
+    _chk(len(syms) == 1 and syms[0].get("name") == "<script>",
+         "script/script-placeholder")
+    _chk(bool(syms) and syms[0]["range"]["end"]["line"] >= 1,
+         "script/placeholder-range-covers-body",
+         "range 只到第 0 行，没覆盖脚本正文")
+    c.close()
+
+
 GROUPS = [("1 开关", group1), ("2 畸形/编码/规模", group2),
           ("3 联动/幂等", group3), ("4 少见入口", group4),
           ("5 LSP 边界", group5), ("6 格式一致/极端参数", group6),
-          ("7 并发", group7)]
+          ("7 并发", group7), ("8 LSP 状态机", group8)]
 
 
 def _selftest():
