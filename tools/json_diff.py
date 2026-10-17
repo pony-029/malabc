@@ -18,6 +18,7 @@
 import argparse
 import json
 import os
+import re
 import sys
 
 
@@ -29,6 +30,20 @@ def canon(path, ignore):
         if isinstance(data, dict):
             data.pop(key, None)
     return json.dumps(data, sort_keys=True, ensure_ascii=False, indent=2)
+
+
+def canon_xml(path, ignore):
+    """XML 版：删掉 `<tag>...</tag>` 形式的指定标签（含其独占的行）。
+
+    实测 `--xml` 输出第 3 行就是 `<generated_at>...</generated_at>`
+    （R149b，65093 字节），所以 XML 判据同样不能「逐字节」。
+    """
+    with open(path, "r", encoding="utf-8") as fh:
+        text = fh.read()
+    for tag in ignore:
+        text = re.sub(r"[ \t]*<%s>[^<]*</%s>[ \t]*\r?\n?" % (tag, tag), "",
+                      text)
+    return text
 
 
 def first_diff(a, b):
@@ -50,7 +65,15 @@ def first_diff(a, b):
     return None
 
 
-def compare(p1, p2, ignore):
+def compare(p1, p2, ignore, xml=False):
+    if xml:
+        a, b = canon_xml(p1, ignore), canon_xml(p2, ignore)
+        if a == b:
+            print('IDENTICAL {"mode": "xml", "ignored": %r, "canon_bytes": %d}'
+                  % (list(ignore), len(a.encode("utf-8"))))
+            return 0
+        print('DIFFERENT {"mode": "xml", "ignored": %r}' % (list(ignore),))
+        return 1
     a, b = canon(p1, ignore), canon(p2, ignore)
     if a == b:
         print('IDENTICAL {"ignored": %r, "canon_bytes": %d}'
@@ -107,6 +130,34 @@ def _selftest():
         bad += 1
         print("  [selftest] 缺文件应抛异常")
 
+    # XML 模式三条
+    x1 = os.path.join(tmp, "a.xml")
+    x2 = os.path.join(tmp, "b.xml")
+    x3 = os.path.join(tmp, "c.xml")
+    head = '<?xml version="1.0" encoding="UTF-8"?>\r\n<root>\r\n'
+    with open(x1, "w", encoding="utf-8") as fh:
+        fh.write(head + "  <generated_at>T1</generated_at>\r\n  <v>1</v>\r\n</root>\r\n")
+    with open(x2, "w", encoding="utf-8") as fh:
+        fh.write(head + "  <generated_at>T2</generated_at>\r\n  <v>1</v>\r\n</root>\r\n")
+    with open(x3, "w", encoding="utf-8") as fh:
+        fh.write(head + "  <generated_at>T1</generated_at>\r\n  <v>2</v>\r\n</root>\r\n")
+
+    if compare(x1, x2, ("generated_at",), xml=True) == 0:
+        good += 1
+    else:
+        bad += 1
+        print("  [selftest] XML 只差时间戳应一致")
+    if compare(x1, x2, (), xml=True) == 1:
+        good += 1
+    else:
+        bad += 1
+        print("  [selftest] XML 未忽略时间戳应红")
+    if compare(x1, x3, ("generated_at",), xml=True) == 1:
+        good += 1
+    else:
+        bad += 1
+        print("  [selftest] XML 内容变了应红")
+
     import shutil
     shutil.rmtree(tmp, ignore_errors=True)
     return bad, good
@@ -117,6 +168,7 @@ def main(argv=None):
     ap.add_argument("a", nargs="?")
     ap.add_argument("b", nargs="?")
     ap.add_argument("--ignore", action="append", default=[])
+    ap.add_argument("--xml", action="store_true")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--help", action="store_true")
     args = ap.parse_args(argv)
@@ -136,7 +188,7 @@ def main(argv=None):
             print("json_diff: 缺输入（%s）" % p)
             return 2
     try:
-        return compare(args.a, args.b, args.ignore)
+        return compare(args.a, args.b, args.ignore, xml=args.xml)
     except ValueError as exc:
         print("json_diff: 不是合法 JSON（%s）" % exc)
         return 2
