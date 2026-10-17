@@ -84,7 +84,10 @@ def canon(d):
 
 
 def run(args, timeout=300):
+    # `stdin=DEVNULL` 是硬要求（check_subprocess_hygiene 的 S1）：
+    # 不设它会继承调用方的 stdin 句柄，本仓有过因此挂死的真实案例。
     p = subprocess.run([PY, MATLABC] + list(args), cwd=ROOT,
+                       stdin=subprocess.DEVNULL,
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                        timeout=timeout)
     return (p.returncode,
