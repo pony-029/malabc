@@ -116,6 +116,21 @@ function activate(context) {
     })
   );
 
+  context.subscriptions.push(
+    vscode.languages.registerHoverProvider({ language: 'matlab' }, {
+      provideHover: async (doc, pos) => {
+        const r = await client.request('textDocument/hover', {
+          textDocument: { uri: doc.uri.toString() },
+          position: { line: pos.line, character: pos.character },
+        });
+        const c = r.result && r.result.contents;
+        if (!c || !c.value) return undefined;
+        const md = new vscode.MarkdownString(c.value);
+        return new vscode.Hover(md);
+      },
+    })
+  );
+
   context.subscriptions.push(collection);
 }
 

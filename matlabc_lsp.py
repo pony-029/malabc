@@ -317,6 +317,55 @@ def _references(uri, pos, include_decl):
     return out
 
 
+def _hover(uri, pos):
+    """`textDocument/hover`：光标处标识符 -> 函数的签名 / 描述 / 复杂度。
+
+    数据全部来自 `MatlabFunction` 的现成字段，**不重新解析**：
+    `signature()` / `header["description"]` / `complexity`。
+    找不到时返回 `None`（LSP 里 `null` 表示"这里没有可悬停的信息"）。
+    """
+    result = _STATE.get("result")
+    if result is None:
+        return None
+    path = _uri_to_path(uri)
+    try:
+        with io.open(path, "r", encoding="utf-8", errors="replace") as fh:
+            lines = fh.read().splitlines()
+    except (IOError, OSError):
+        return None
+    name = _ident_at(lines, int(pos.get("line", 0)),
+                     int(pos.get("character", 0)))
+    if name is None:
+        return None
+
+    hit = None
+    for mf in (getattr(result, "files", None) or []):
+        for f in (getattr(mf, "functions", None) or []):
+            if getattr(f, "name", None) == name:
+                hit = (mf, f)
+                break
+        if hit:
+            break
+    if hit is None:
+        return None
+    mf, f = hit
+
+    try:
+        sig = f.signature()
+    except Exception:
+        sig = "function %s" % name
+    desc = (getattr(f, "header", None) or {}).get("description") or ""
+    parts = ["```matlab", str(sig), "```"]
+    if desc:
+        parts.append("")
+        parts.append(str(desc))
+    parts.append("")
+    parts.append("复杂度 %s · 定义于 `%s:%d`"
+                 % (getattr(f, "complexity", "?"), getattr(mf, "rel", ""),
+                    getattr(f, "line", 0)))
+    return {"contents": {"kind": "markdown", "value": "\n".join(parts)}}
+
+
 # --------------------------------------------------------------------------
 # 协议处理
 # --------------------------------------------------------------------------
@@ -399,6 +448,17 @@ def handle(msg, out):
         _log("references %s:%s -> %d"
              % (os.path.basename(_uri_to_path(uri)), pos.get("line"),
                 len(locs)))
+        return True
+
+    if method == "textDocument/hover":
+        params = msg.get("params") or {}
+        uri = (params.get("textDocument") or {}).get("uri", "")
+        pos = params.get("position") or {}
+        info = _hover(uri, pos)
+        _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": info})
+        _log("hover %s:%s -> %s"
+             % (os.path.basename(_uri_to_path(uri)), pos.get("line"),
+                "hit" if info else "none"))
         return True
 
     if method == "textDocument/didClose":

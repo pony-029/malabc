@@ -50,6 +50,10 @@ const fakeVscode = {
       registered.push('references');
       return { dispose: () => disposed.push('references') };
     },
+    registerHoverProvider: () => {
+      registered.push('hover');
+      return { dispose: () => disposed.push('hover') };
+    },
   },
   Uri: {
     parse: (s) => ({ toString: () => s, fsPath: s, scheme: 'file' }),
@@ -69,6 +73,12 @@ const fakeVscode = {
       this.message = message;
       this.severity = severity;
     }
+  },
+  MarkdownString: class {
+    constructor(v) { this.value = v; }
+  },
+  Hover: class {
+    constructor(c) { this.contents = c; }
   },
   DiagnosticSeverity: { Error: 0, Warning: 1, Information: 2, Hint: 3 },
   window: { showErrorMessage: (m) => console.log('  [window] ' + m) },
@@ -91,11 +101,12 @@ try {
   chk(false, 'activate 抛出：' + e.message);
 }
 
-// 两个请求都已由 LSP 实现 ⇒ 两个 provider 都应注册。
+// 三个请求都已由 LSP 实现 ⇒ 三个 provider 都应注册。
 chk(registered.indexOf('definition') >= 0, '应注册 definitionProvider');
 chk(registered.indexOf('references') >= 0, '应注册 referenceProvider');
-chk(ctx.subscriptions.length >= 3,
-  'subscriptions 应至少 3 项（definition + references + 诊断集合），实际 '
+chk(registered.indexOf('hover') >= 0, '应注册 hoverProvider');
+chk(ctx.subscriptions.length >= 4,
+  'subscriptions 应至少 4 项（definition + references + hover + 诊断集合），实际 '
   + ctx.subscriptions.length);
 
 try {

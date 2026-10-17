@@ -158,12 +158,32 @@ def _ref(c):
     _chk(len((c.recv() or {}).get("result") or []) == 2, "含定义应 2 个位置")
 
 
+def _hover(c):
+    c.init()
+    a_m = os.path.join(CORPUS, "a.m")
+    c.open(a_m)
+    c.send({"jsonrpc": "2.0", "id": 2, "method": "textDocument/hover",
+            "params": {"textDocument": {"uri": _uri(a_m)},
+                       "position": {"line": 2, "character": 5}}})
+    h = (c.recv() or {}).get("result")
+    val = ((h or {}).get("contents") or {}).get("value") or ""
+    _chk(h is not None, "b 上应有 hover")
+    _chk("function [z] = b(x)" in val,
+         "hover 应含真实签名 `function [z] = b(x)`，实际 %r" % (val[:60],))
+    _chk("a.m" in val, "hover 应给出来源文件 a.m")
+    c.send({"jsonrpc": "2.0", "id": 3, "method": "textDocument/hover",
+            "params": {"textDocument": {"uri": _uri(a_m)},
+                       "position": {"line": 1, "character": 5}}})
+    _chk((c.recv() or {}).get("result") is None, "注释上 hover 应为 null")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--diag", action="store_true")
     # 注意：不能用 `--def` —— argparse 会把它变成 `args.def`，而 `def` 是 Python 关键字。
     ap.add_argument("--definition", action="store_true")
     ap.add_argument("--ref", action="store_true")
+    ap.add_argument("--hover", action="store_true")
     ap.add_argument("--help", action="store_true")
     args = ap.parse_args(argv)
 
@@ -184,8 +204,11 @@ def main(argv=None):
         groups = [("definition", _def)]
     elif args.ref:
         groups = [("ref", _ref)]
+    elif args.hover:
+        groups = [("hover", _hover)]
     else:
-        groups = [("diag", _diag), ("def", _def), ("ref", _ref)]
+        groups = [("diag", _diag), ("def", _def), ("ref", _ref),
+                  ("hover", _hover)]
 
     for name, fn in groups:
         print("[%s]" % name)
