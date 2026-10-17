@@ -632,7 +632,7 @@ import sys
 import tempfile
 import time
 import urllib.parse
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, namedtuple
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -32895,6 +32895,208 @@ def run_lang_path(args, root):
         return _run_ext_only(ext_model, root, args, args.lang)
 
 
+PipelineResult = namedtuple(
+    "PipelineResult",
+    "files index edges stats model c_model checks_for_sarif early_exit")
+
+
+def run_pipeline(args, root, paths):
+    """收集 → 解析 → 建模。**纯分析**：不 print、不写盘、不 sys.exit。
+
+    返回 `PipelineResult`；`early_exit` 非 None 表示「单次任务已经处理完，
+    把它作为进程退出码」（`--init-header` / `--used-builtins` / `--dim-coverage`）。
+    """
+    c_model = None
+    c_bridge = []
+    if args.mixed:
+        c_paths = collect_c_files(root, recursive=not args.no_recursive,
+                                  exclude=args.exclude)
+        c_model = build_c_model(c_paths, root)
+
+    # 解析全部文件（P71/P133：--incremental 时复用未变文件的解析结果；
+    # P133：签名升级为内容 SHA-256，CI/git checkout 后 mtime 变化仍可命中）
+    files = []
+    inc_cache = None
+    cache_hits = 0
+    cache_misses = 0
+    inc_hit_rels = []
+    inc_miss_rels = []
+    inc_path = None
+    if args.incremental:
+        inc_path = root / ".matlabc_cache.pkl"
+        if args.incr_cache:
+            inc_path = Path(args.incr_cache)
+        _incr_fmt = getattr(args, "incr_format", "pickle")
+        inc_cache = _load_incremental_cache(inc_path, _incr_fmt)
+    for p in paths:
+        rel = p.relative_to(root).as_posix()
+        mf = MatlabFile(p, rel)
+        if inc_cache is not None:
+            sig = _file_signature(p)
+            hit = inc_cache.get(rel)
+            if hit is not None and hit[0] == sig:
+                # 复用缓存的结构信息，仅重置调用分析（调用关系全局相关，需重新分析）
+                old = hit[1]
+                mf.encoding = old.encoding
+                mf.lines = old.lines
+                mf.kind = old.kind
+                mf.source_lines = old.source_lines
+                mf.scrubbed_lines = old.scrubbed_lines
+                mf.functions = old.functions
+                mf.classes = old.classes
+                mf.globals = old.globals
+                mf.parse_errors = old.parse_errors
+                _reset_call_analysis(mf)
+                cache_hits += 1
+                inc_hit_rels.append(rel)
+                files.append(mf)
+                continue
+            parse_file(mf, forced_encoding=args.encoding)
+            inc_cache[rel] = (sig, mf)
+            cache_misses += 1
+            inc_miss_rels.append(rel)
+        else:
+            parse_file(mf, forced_encoding=args.encoding)
+        files.append(mf)
+    if inc_cache is not None:
+        _save_incremental_cache(inc_path, inc_cache, _incr_fmt)
+
+    # 构建索引（短名 + 限定名，大小写不敏感）
+    index = defaultdict(list)
+    qualified_index = defaultdict(list)
+    for mf in files:
+        for f in mf.functions:
+            if f.kind == "script":
+                continue
+            index[f.name.lower()].append(f)
+            if f.class_name:
+                qualified_index[f"{f.class_name.lower()}.{f.name.lower()}"].append(f)
+            qualified_index[f.qualified.lower()].append(f)
+
+    def lookup(name):
+        key = name.lower()
+        return key if key in index else None
+
+    # 分析调用
+    for mf in files:
+        analyze_calls(mf, index, qualified_index)
+
+    # 估算每个函数的圈复杂度（供热点分析与卡片/索引展示）
+    _compute_complexity(files)
+
+    # 建立 函数对象 -> 所属文件 的 O(1) 映射（大型项目性能关键）
+    fn_to_file = {id(f): mf for mf in files for f in mf.functions}
+
+    # 组装边（f.calls 已存放就近解析后的具体被调函数对象，链接精确无歧义）
+    edges = []
+    edges_objects = []   # (caller_fn, callee_fn) 供 browse 模式
+    seen_edges = set()
+    for mf in files:
+        for f in mf.functions:
+            # 按源码调用顺序收集被调函数：call_sites 记录每个调用点的行号与目标，
+            # 按首次出现顺序去重，使「调用图 / 调用列表」按代码中的真实调用时序展示
+            # （而非过去的字母序）。calls_of 顺序据此确定，下游全部渲染沿用此序。
+            seen_callees = set()
+            ordered_calls = []
+            for (_ln, _cs, _ce, callee_fn) in f.call_sites:
+                if callee_fn is None:
+                    continue
+                if id(callee_fn) in seen_callees:
+                    continue
+                seen_callees.add(id(callee_fn))
+                ordered_calls.append(callee_fn)
+            for callee_fn in ordered_calls:
+                caller_label = f"{mf.rel}:{f.name}"
+                callee_mf = fn_to_file.get(id(callee_fn))
+                callee_rel = callee_mf.rel if callee_mf else None
+                callee_label = f"{callee_rel}:{callee_fn.name}" if callee_rel else callee_fn.name
+                cross = (callee_rel is not None and callee_rel != mf.rel)
+                edges.append((caller_label, callee_label, cross))
+                if callee_mf is not None and (id(f), id(callee_fn)) not in seen_edges:
+                    seen_edges.add((id(f), id(callee_fn)))
+                    edges_objects.append((f, callee_fn, mf, callee_mf))
+
+    # 去重
+    edges = list(dict.fromkeys(edges))
+
+    stats = {
+        "files": len(files),
+        "scripts": sum(1 for f in files if f.kind == "script"),
+        "function_files": sum(1 for f in files if f.kind == "function"),
+        "class_files": sum(1 for f in files if f.kind == "class"),
+        "functions": sum(len(f.functions) for f in files),
+        "classes": sum(len(f.classes) for f in files),
+        "total_lines": sum(f.lines for f in files),
+        "internal_edges": len(edges),
+        "cross_file_edges": sum(1 for _, _, c in edges if c),
+    }
+    # P72：--incremental 缓存命中统计（未开启增量时不含该字段）
+    # P133：增补 cache_total / cache_hit_rate，供 --incr-report 缓存健康报告消费
+    if inc_cache is not None:
+        stats["cache_hits"] = cache_hits
+        stats["cache_misses"] = cache_misses
+        stats["cache_total"] = cache_hits + cache_misses
+        stats["cache_hit_rate"] = (
+            cache_hits / float(cache_hits + cache_misses)
+            if cache_hits + cache_misses else 0.0)
+
+    # P-新增：--init-header 非破坏式缺头注释清单（不进入后续报告生成流程）
+    if getattr(args, "init_header", False):
+        return PipelineResult(None, None, None, None, None, None, None,
+                              _report_missing_headers(files, root))
+
+    # R5：--used-builtins 列出每个具体函数调用的内置函数及其输入/输出维度（不改动源码）
+    if getattr(args, "used_builtins", False):
+        return PipelineResult(None, None, None, None, None, None, None,
+                              _report_used_builtins(files, root,
+                                                    by_builtin=(getattr(args, "used_builtins_by", "function") == "builtin")))
+
+    # R5：--dim-coverage 报告维度标注覆盖率（不改动源码）
+    if getattr(args, "dim_coverage", False):
+        return PipelineResult(None, None, None, None, None, None, None,
+                              _report_dim_coverage(
+                files, root,
+                by_file=getattr(args, "dim_coverage_by_file", False)))
+
+    # P133：--incr-report 增量缓存健康报告（text/json/md；标题含 ASCII P133 标记）
+    if args.incremental and args.incr_report:
+        incr_fmt = args.incr_report or "text"
+        incr_text = _render_incr_report(incr_fmt, stats, inc_hit_rels,
+                                        inc_miss_rels, inc_path)
+        print(incr_text)
+        if args.incr_report_out:
+            if _write_output(args.incr_report_out, incr_text, "P133 增量缓存报告"):
+                print("[OK] 增量缓存报告已写入：%s" % args.incr_report_out)
+
+    # 构建统一分析数据层（供 --browse 与 --html 渲染共用，避免重复计算）
+    # P74：收集空目录（不含 .m 文件），使全部文件夹纳入分析
+    empty_dirs = collect_empty_dirs(root, recursive=not args.no_recursive,
+                                    exclude=args.exclude)
+    model = build_analysis_model(files, index, edges, edges_objects, stats, root,
+                                 root.name, empty_dirs=empty_dirs)
+
+    # P85/P86/P87：污点流、注释待办、C 前端数据挂载到 model（供 browse/JSON/SARIF）
+    model.taint = _propagate_taint(files, model.calls_of)
+    tainted_funcs = set((fl["rel"], fl["func"]) for fl in
+                        (model.taint or {}).get("flows", []))
+    model.doc_todos = _collect_doc_todos(files, model.callers_of,
+                                         tainted_funcs=tainted_funcs)
+    model.c_model = c_model if (args.mixed or args.lang == "c") else None
+    model.c_bridge = c_bridge if args.mixed else []
+    if args.mixed:
+        # P87：MATLAB 外部调用命中 C 函数名 → 跨语言 MEX 桥接
+        model.c_bridge = _match_c_bridge(files, c_model) if c_model else []
+
+    # P220/P221-D：阈值与静态检查集合（供 browse / AI 页 / SARIF 共用，提前到产出编排前）
+    _dup_opts = _build_dup_opts(args)
+    checks_for_sarif = _collect_checks(files, _parse_checks_arg(args.checks),
+                                       dup_opts=_dup_opts)
+    return PipelineResult(
+        files=files, index=index, edges=edges, stats=stats,
+        model=model, c_model=c_model,
+        checks_for_sarif=checks_for_sarif, early_exit=None)
+
+
 def main(argv=None):
     t_start = time.time()  # P48：记录开始时间，供摘要输出各阶段耗时
     args, ap = cli_entry(argv)
@@ -33033,191 +33235,20 @@ def main(argv=None):
         return 1
 
     # P87/P93：多语言后端扩展——C/Python/JS 前端（--lang c/py/js 纯语言模式；--mixed 混合）
-    c_model = None
-    c_bridge = []
     _rc = run_lang_path(args, root)
     if _rc is not None:
         return _rc
-    if args.mixed:
-        c_paths = collect_c_files(root, recursive=not args.no_recursive,
-                                  exclude=args.exclude)
-        c_model = build_c_model(c_paths, root)
-
-    # 解析全部文件（P71/P133：--incremental 时复用未变文件的解析结果；
-    # P133：签名升级为内容 SHA-256，CI/git checkout 后 mtime 变化仍可命中）
-    files = []
-    inc_cache = None
-    cache_hits = 0
-    cache_misses = 0
-    inc_hit_rels = []
-    inc_miss_rels = []
-    inc_path = None
-    if args.incremental:
-        inc_path = root / ".matlabc_cache.pkl"
-        if args.incr_cache:
-            inc_path = Path(args.incr_cache)
-        _incr_fmt = getattr(args, "incr_format", "pickle")
-        inc_cache = _load_incremental_cache(inc_path, _incr_fmt)
-    for p in paths:
-        rel = p.relative_to(root).as_posix()
-        mf = MatlabFile(p, rel)
-        if inc_cache is not None:
-            sig = _file_signature(p)
-            hit = inc_cache.get(rel)
-            if hit is not None and hit[0] == sig:
-                # 复用缓存的结构信息，仅重置调用分析（调用关系全局相关，需重新分析）
-                old = hit[1]
-                mf.encoding = old.encoding
-                mf.lines = old.lines
-                mf.kind = old.kind
-                mf.source_lines = old.source_lines
-                mf.scrubbed_lines = old.scrubbed_lines
-                mf.functions = old.functions
-                mf.classes = old.classes
-                mf.globals = old.globals
-                mf.parse_errors = old.parse_errors
-                _reset_call_analysis(mf)
-                cache_hits += 1
-                inc_hit_rels.append(rel)
-                files.append(mf)
-                continue
-            parse_file(mf, forced_encoding=args.encoding)
-            inc_cache[rel] = (sig, mf)
-            cache_misses += 1
-            inc_miss_rels.append(rel)
-        else:
-            parse_file(mf, forced_encoding=args.encoding)
-        files.append(mf)
-    if inc_cache is not None:
-        _save_incremental_cache(inc_path, inc_cache, _incr_fmt)
-
-    # 构建索引（短名 + 限定名，大小写不敏感）
-    index = defaultdict(list)
-    qualified_index = defaultdict(list)
-    for mf in files:
-        for f in mf.functions:
-            if f.kind == "script":
-                continue
-            index[f.name.lower()].append(f)
-            if f.class_name:
-                qualified_index[f"{f.class_name.lower()}.{f.name.lower()}"].append(f)
-            qualified_index[f.qualified.lower()].append(f)
-
-    def lookup(name):
-        key = name.lower()
-        return key if key in index else None
-
-    # 分析调用
-    for mf in files:
-        analyze_calls(mf, index, qualified_index)
-
-    # 估算每个函数的圈复杂度（供热点分析与卡片/索引展示）
-    _compute_complexity(files)
-
-    # 建立 函数对象 -> 所属文件 的 O(1) 映射（大型项目性能关键）
-    fn_to_file = {id(f): mf for mf in files for f in mf.functions}
-
-    # 组装边（f.calls 已存放就近解析后的具体被调函数对象，链接精确无歧义）
-    edges = []
-    edges_objects = []   # (caller_fn, callee_fn) 供 browse 模式
-    seen_edges = set()
-    for mf in files:
-        for f in mf.functions:
-            # 按源码调用顺序收集被调函数：call_sites 记录每个调用点的行号与目标，
-            # 按首次出现顺序去重，使「调用图 / 调用列表」按代码中的真实调用时序展示
-            # （而非过去的字母序）。calls_of 顺序据此确定，下游全部渲染沿用此序。
-            seen_callees = set()
-            ordered_calls = []
-            for (_ln, _cs, _ce, callee_fn) in f.call_sites:
-                if callee_fn is None:
-                    continue
-                if id(callee_fn) in seen_callees:
-                    continue
-                seen_callees.add(id(callee_fn))
-                ordered_calls.append(callee_fn)
-            for callee_fn in ordered_calls:
-                caller_label = f"{mf.rel}:{f.name}"
-                callee_mf = fn_to_file.get(id(callee_fn))
-                callee_rel = callee_mf.rel if callee_mf else None
-                callee_label = f"{callee_rel}:{callee_fn.name}" if callee_rel else callee_fn.name
-                cross = (callee_rel is not None and callee_rel != mf.rel)
-                edges.append((caller_label, callee_label, cross))
-                if callee_mf is not None and (id(f), id(callee_fn)) not in seen_edges:
-                    seen_edges.add((id(f), id(callee_fn)))
-                    edges_objects.append((f, callee_fn, mf, callee_mf))
-
-    # 去重
-    edges = list(dict.fromkeys(edges))
-
-    stats = {
-        "files": len(files),
-        "scripts": sum(1 for f in files if f.kind == "script"),
-        "function_files": sum(1 for f in files if f.kind == "function"),
-        "class_files": sum(1 for f in files if f.kind == "class"),
-        "functions": sum(len(f.functions) for f in files),
-        "classes": sum(len(f.classes) for f in files),
-        "total_lines": sum(f.lines for f in files),
-        "internal_edges": len(edges),
-        "cross_file_edges": sum(1 for _, _, c in edges if c),
-    }
-    # P72：--incremental 缓存命中统计（未开启增量时不含该字段）
-    # P133：增补 cache_total / cache_hit_rate，供 --incr-report 缓存健康报告消费
-    if inc_cache is not None:
-        stats["cache_hits"] = cache_hits
-        stats["cache_misses"] = cache_misses
-        stats["cache_total"] = cache_hits + cache_misses
-        stats["cache_hit_rate"] = (
-            cache_hits / float(cache_hits + cache_misses)
-            if cache_hits + cache_misses else 0.0)
-
-    # P-新增：--init-header 非破坏式缺头注释清单（不进入后续报告生成流程）
-    if getattr(args, "init_header", False):
-        return _report_missing_headers(files, root)
-
-    # R5：--used-builtins 列出每个具体函数调用的内置函数及其输入/输出维度（不改动源码）
-    if getattr(args, "used_builtins", False):
-        return _report_used_builtins(files, root,
-                                     by_builtin=(getattr(args, "used_builtins_by", "function") == "builtin"))
-
-    # R5：--dim-coverage 报告维度标注覆盖率（不改动源码）
-    if getattr(args, "dim_coverage", False):
-        return _report_dim_coverage(
-            files, root,
-            by_file=getattr(args, "dim_coverage_by_file", False))
-
-    # P133：--incr-report 增量缓存健康报告（text/json/md；标题含 ASCII P133 标记）
-    if args.incremental and args.incr_report:
-        incr_fmt = args.incr_report or "text"
-        incr_text = _render_incr_report(incr_fmt, stats, inc_hit_rels,
-                                        inc_miss_rels, inc_path)
-        print(incr_text)
-        if args.incr_report_out:
-            if _write_output(args.incr_report_out, incr_text, "P133 增量缓存报告"):
-                print("[OK] 增量缓存报告已写入：%s" % args.incr_report_out)
-
-    # 构建统一分析数据层（供 --browse 与 --html 渲染共用，避免重复计算）
-    # P74：收集空目录（不含 .m 文件），使全部文件夹纳入分析
-    empty_dirs = collect_empty_dirs(root, recursive=not args.no_recursive,
-                                    exclude=args.exclude)
-    model = build_analysis_model(files, index, edges, edges_objects, stats, root,
-                                 root.name, empty_dirs=empty_dirs)
-
-    # P85/P86/P87：污点流、注释待办、C 前端数据挂载到 model（供 browse/JSON/SARIF）
-    model.taint = _propagate_taint(files, model.calls_of)
-    tainted_funcs = set((fl["rel"], fl["func"]) for fl in
-                        (model.taint or {}).get("flows", []))
-    model.doc_todos = _collect_doc_todos(files, model.callers_of,
-                                         tainted_funcs=tainted_funcs)
-    model.c_model = c_model if (args.mixed or args.lang == "c") else None
-    model.c_bridge = c_bridge if args.mixed else []
-    if args.mixed:
-        # P87：MATLAB 外部调用命中 C 函数名 → 跨语言 MEX 桥接
-        model.c_bridge = _match_c_bridge(files, c_model) if c_model else []
-
-    # P220/P221-D：阈值与静态检查集合（供 browse / AI 页 / SARIF 共用，提前到产出编排前）
+    result = run_pipeline(args, root, paths)
+    if result.early_exit is not None:
+        return result.early_exit
+    files, index, edges, stats = (result.files, result.index,
+                                   result.edges, result.stats)
+    model, c_model = result.model, result.c_model
+    checks_for_sarif = result.checks_for_sarif
+    # `_dup_opts` 在流水线内算过一次；这里重算一次供后面的 `_emit_*` 使用
+    # （`_build_dup_opts` 是纯函数，重算幂等；不放进 PipelineResult 是为了不打乱
+    #  七字段的语义边界 —— 它只是 args 的派生配置，不是分析结果）
     _dup_opts = _build_dup_opts(args)
-    checks_for_sarif = _collect_checks(files, _parse_checks_arg(args.checks),
-                                       dup_opts=_dup_opts)
 
     ok = _emit_report_outputs(args, model, files, index, edges, stats, root,
                               checks_for_sarif=checks_for_sarif)
