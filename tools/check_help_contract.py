@@ -206,6 +206,12 @@ GUARD_CONTRACT = {
            "文档围栏结构坏）",
         2: "找不到护栏（缺输入）",
     },
+    "tools/check_flag_coverage.py": {
+        0: "通过（FC1–FC3：sweep_cli 的每个开关都被 args.* 读取过，"
+           "名单非空，--help 已排除）",
+        1: "有开关声明了却没有任何读取（功能加了却没判据）",
+        2: "缺输入（tools/sweep_cli.py 不在）",
+    },
     "tools/check_tool_discoverability.py": {
         0: "通过（TD1–TD3：tools/ 下每个非护栏工具都在两侧 README 出现，"
            "且名单非空）",
