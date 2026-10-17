@@ -173,6 +173,95 @@ def _stamp(root):
     return newest
 
 
+#: 缓存里每条**函数记录**必须保存的字段 —— **唯一清单**。
+#:
+#: R237：这是第五次动这块代码。前四次都是「新功能用到了新字段，忘了
+#: 存进缓存」：`signature` → `call_sites` → `field_access` →
+#: `external_calls`，症状永远是同一个 —— **冷启动对、重启后哑**。
+#:
+#: 根因不是某一次疏忽，而是**保存与恢复是两份手写清单**。现在两边都
+#: 只读这一份；加字段就改这里一行。配套判据 `struct/cache-fn-keys`
+#: 核对产物键集合与它逐字相同，漏改会红。
+_CACHED_FN_FIELDS = ("name", "line", "complexity", "header", "sig",
+                     "call_sites", "external_calls", "indirect_calls")
+
+#: 从 JSON 恢复时必须转成整数的字段（`json` 只有 float）。
+_INT_FN_FIELDS = ("line", "complexity")
+
+
+def _fn_to_cache(fn):
+    """`MatlabFunction` -> 可 JSON 化的函数记录（键集合由清单决定）。"""
+    try:
+        sig = fn.signature()
+    except Exception:
+        sig = getattr(fn, "name", "")
+    # `call_sites` 两种形状：内存版 `[line, col, end, MatlabFunction]`，
+    # 缓存版 `[line, "rel:name"]`。已经是缓存形状就原样保留 —— 否则
+    # 命中缓存后再写一次会把行号清空。
+    sites = []
+    for st in (getattr(fn, "call_sites", None) or []):
+        try:
+            line = int(st[0])
+        except (IndexError, TypeError, ValueError):
+            continue
+        if len(st) >= 2 and isinstance(st[1], str):
+            sites.append([line, st[1]])
+            continue
+        try:
+            tgt = st[3]
+        except (IndexError, TypeError):
+            continue
+        trel = getattr(getattr(tgt, "mfile", None), "rel", "") or ""
+        tname = getattr(tgt, "name", "") or ""
+        if tname:
+            sites.append([line, "%s:%s" % (trel, tname)])
+
+    out = {}
+    for k in _CACHED_FN_FIELDS:
+        if k == "sig":
+            out[k] = sig
+        elif k == "call_sites":
+            out[k] = sites
+        elif k == "header":
+            v = getattr(fn, "header", None)
+            out[k] = v if isinstance(v, dict) else {}
+        elif k in ("external_calls", "indirect_calls"):
+            v = getattr(fn, k, None)
+            out[k] = dict(v) if isinstance(v, dict) else {}
+        else:
+            out[k] = getattr(fn, k, None)
+    return out
+
+
+def _cache_to_fn(d):
+    """缓存记录 -> `SimpleNamespace`（键集合同样由清单决定）。"""
+    from types import SimpleNamespace as NS
+    o = NS()
+    for k in _CACHED_FN_FIELDS:
+        if k == "sig":
+            # `_hover` 调 `fn.signature()`；这里补一个返回固定串的方法。
+            # 两层 lambda 是为了把当前值钉住（循环变量延迟绑定）。
+            o.signature = (lambda s: (lambda: s))(d.get("sig", "") or "")
+        elif k == "call_sites":
+            o.call_sites = [tuple(x) for x in (d.get("call_sites") or [])]
+        elif k in ("external_calls", "indirect_calls"):
+            v = d.get(k)
+            setattr(o, k, dict(v) if isinstance(v, dict) else {})
+        elif k == "header":
+            v = d.get(k)
+            setattr(o, k, v if isinstance(v, dict) else {})
+        elif k in _INT_FN_FIELDS:
+            try:
+                setattr(o, k, int(d.get(k) or 0))
+            except (TypeError, ValueError):
+                setattr(o, k, 0)
+        else:
+            setattr(o, k, d.get(k))
+    if not isinstance(getattr(o, "name", None), str):
+        o.name = ""
+    return o
+
+
 def _save_cache(root, payload, result):
     """把「结构层 + 诊断」写盘。失败不算错（缓存是可选的）。"""
     try:
@@ -181,44 +270,8 @@ def _save_cache(root, payload, result):
         for mf in files_src:
             fns = []
             for fn in (getattr(mf, "functions", None) or []):
-                try:
-                    sig = fn.signature()
-                except Exception:
-                    sig = getattr(fn, "name", "")
-                # `call_sites` 也要存：它是「被哪几行调用」的唯一来源。
-                # R232 第一版没存，于是**缓存命中后行号全变成 0** ——
-                # 判据 `impact/call-lines-are-1based` 当场抓住。
-                sites = []
-                for st in (getattr(fn, "call_sites", None) or []):
-                    try:
-                        line = int(st[0])
-                    except (IndexError, TypeError, ValueError):
-                        continue
-                    if len(st) >= 2 and isinstance(st[1], str):
-                        # 已经是缓存形状 —— 原样保留，否则二次写缓存会清空。
-                        sites.append([line, st[1]])
-                        continue
-                    try:
-                        tgt = st[3]
-                    except (IndexError, TypeError):
-                        continue
-                    trel = getattr(getattr(tgt, "mfile", None), "rel", "") or ""
-                    tname = getattr(tgt, "name", "") or ""
-                    if tname:
-                        sites.append([line, "%s:%s" % (trel, tname)])
-                fns.append({
-                    "name": getattr(fn, "name", ""),
-                    "line": getattr(fn, "line", 0),
-                    "complexity": getattr(fn, "complexity", 0),
-                    "header": getattr(fn, "header", None) or {},
-                    "sig": sig,
-                    "call_sites": sites,
-                    # R235：`_hover` 用它解释「本库没有这个函数，但它被当
-                    # 调用记过」。**这是第四次因为缓存漏字段而「重启后哑」**
-                    # （signature / call_sites / field_access / 现在这个）。
-                    "external_calls": dict(getattr(fn, "external_calls", None) or {}),
-                    "indirect_calls": dict(getattr(fn, "indirect_calls", None) or {}),
-                })
+                # **一处构造**：键集合由 `_CACHED_FN_FIELDS` 决定。
+                fns.append(_fn_to_cache(fn))
             files.append({
                 "rel": getattr(mf, "rel", "") or "",
                 "header": getattr(mf, "header", None) or {},
@@ -305,18 +358,9 @@ def _load_cache(root):
         for f in doc.get("files") or []:
             fns = []
             for fn in f.get("functions") or []:
-                o = NS(name=fn.get("name", ""), line=fn.get("line", 0),
-                       complexity=fn.get("complexity", 0),
-                       header=fn.get("header") or {})
-                # `_hover` 调 `fn.signature()`；SimpleNamespace 没有方法，
-                # 这里补一个，返回值就是缓存里存好的那串。
-                o.signature = (lambda s: (lambda: s))(fn.get("sig", ""))
-                # 缓存里的 `call_sites` 是 `[line, "rel:name"]`（内存版是
-                # `[line, col, end, MatlabFunction]`）。`_impact` 两边都收。
-                o.call_sites = [tuple(x) for x in (fn.get("call_sites") or [])]
-                o.external_calls = dict(fn.get("external_calls") or {})
-                o.indirect_calls = dict(fn.get("indirect_calls") or {})
-                fns.append(o)
+                # **一处恢复**：键集合同样由 `_CACHED_FN_FIELDS` 决定。
+                # 以前这里和 `_save_cache` 是两份手写清单，于是四次漏字段。
+                fns.append(_cache_to_fn(fn))
             files.append(NS(rel=f.get("rel", ""),
                             header=f.get("header") or {},
                             functions=fns))

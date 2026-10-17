@@ -628,6 +628,59 @@ def _struct(c):
              "struct/cache-has-external-calls（keys=%r）"
              % (sorted((fns[0] if fns else {}).keys()),))
 
+        # ---- R237：键集合必须与唯一清单**逐字**相同 -----------------
+        # 前四次漏字段（signature / call_sites / field_access /
+        # external_calls）都是因为保存与恢复是两份手写清单。
+        # 现在清单只有一份 `_CACHED_FN_FIELDS`，这条判据直接比对产物：
+        #   · 清单加了字段但保存/恢复没跟上 → 产物缺键 → 红
+        #   · 保存时多写了清单外的键 → 产物多键 → 红
+        if ROOT not in sys.path:
+            sys.path.insert(0, ROOT)
+        try:
+            import matlabc_lsp as _L
+            want = set(getattr(_L, "_CACHED_FN_FIELDS", ()))
+        except Exception:
+            want = set()
+        _chk(bool(want), "struct/cache-field-list-declared")
+        if want:
+            got = set((fns[0] if fns else {}).keys())
+            _chk(got == want,
+                 "struct/cache-keys-match-list（缺 %r / 多 %r）"
+                 % (sorted(want - got), sorted(got - want)))
+
+    # ---- R237：**在同一轮里模拟一次「重启」** --------------------------
+    # 上面的检查都发生在"刚分析完"的进程里；而所有缓存 bug 的症状都是
+    # 「冷启动对、重启后哑」。所以这里换一个**新进程**、命中同一份缓存、
+    # 再跳一次 —— 这才是用户第二天打开项目时走的那条路。
+    if os.path.isfile(cache):
+        c2 = Client()
+        try:
+            c2.init(root)
+            c2.send({"jsonrpc": "2.0", "method": "textDocument/didOpen",
+                     "params": {"textDocument": {"uri": _uri(path),
+                                                 "languageId": "matlab",
+                                                 "version": 1, "text": "x"}}})
+            c2.recv()
+            c2.recv()
+            c2.send({"jsonrpc": "2.0", "id": 72,
+                     "method": "textDocument/definition",
+                     "params": {"textDocument": {"uri": _uri(path)},
+                                "position": {"line": 4, "character": 4}}})
+            r = c2.recv() or {}
+            res = r.get("result") or []
+            _chk(len(res) == 1 and res[0]["range"]["start"]["line"] == 2,
+                 "struct/warm-cache-still-jumps（%r）" % (res,))
+            c2.send({"jsonrpc": "2.0", "id": 73, "method": "textDocument/hover",
+                     "params": {"textDocument": {"uri": _uri(path)},
+                                "position": {"line": 4, "character": 6}}})
+            rh = c2.recv() or {}
+            body = (((rh.get("result") or {}).get("contents") or {})
+                    .get("value") or "")
+            _chk("这是字段" in body,
+                 "struct/warm-cache-explains-field（%r）" % (body[:80],))
+        finally:
+            c2.close()
+
 
 
 def _doc(c):
