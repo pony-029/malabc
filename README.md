@@ -656,18 +656,22 @@ construction*, because the server reads the CLI output instead of recomputing.
 python matlabc_lsp.py      # speak LSP over stdin/stdout
 ```
 
-> **Measured latency** on the MATLAB path with `--no-checks`: **13** `.m`
-> files → **0.37 s**; **1,300** → **5.92 s**. Cost scales with the number of
-> `.m` files in the workspace. (The 1,093 s figure quoted elsewhere belongs to
-> the **C** arm — 62,704 `.c` files with `--checks all` — and does not apply
-> to the LSP.)
+> **Measured latency**, 1,300 `.m` files, `--no-checks`:
 >
-> Profiling the MATLAB path showed **63 %** of the run was `_collect_checks`,
-> which the LSP never uses (parsing is only **9 %**), hence `--no-checks`.
-> A single-file entry point was measured and **ruled out**: `MyCls.m`
-> (a `classdef`) reports 2 missing-description entries in full mode and **0**
-> in single-file mode, because `doc_todos` depends on the cross-file
-> `callers_of`. See `docs/analysis/ANALYSIS_2026-10-17_LSP_PERF.md` and
+> | role | time |
+> | --- | --- |
+> | CLI (`matlabc.py … --json`) | 5.92 s |
+> | **LSP (in-process, resident)** | **0.73 s** |
+>
+> The gap is `os.walk`, 62 KB of JSON serialisation and process startup —
+> none of which an editor needs. Profiling also showed **63 %** of the run was
+> `_collect_checks`, which the LSP never uses (parsing is only **9 %**), hence
+> `--no-checks`. A single-file entry point was measured and **ruled out**:
+> `MyCls.m` (a `classdef`) reports 2 missing-description entries in full mode
+> and **0** in single-file mode, because `doc_todos` depends on the cross-file
+> `callers_of`. (The 1,093 s quoted elsewhere belongs to the **C** arm —
+> 62,704 `.c` files with `--checks all` — and does not apply here.)
+> See `docs/analysis/ANALYSIS_2026-10-17_LSP_PERF.md` and
 > `docs/analysis/ANALYSIS_2026-10-17_SINGLE_FILE.md`.
 
 ---
