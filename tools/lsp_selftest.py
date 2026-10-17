@@ -496,6 +496,52 @@ def _tokens(c):
             c2.close()
 
 
+def _struct(c):
+    """R228：结构体**变量**与**字段**的两种跳转。
+
+    `tests/sample_struct/a.m`：
+        3: s.name = 'x';      ← 变量 s 与字段 name 都定义在这里
+        5: y = s.name;        ← 光标放这里
+
+    两者都必须跳到第 3 行，但**语义不同**：
+      - 光标在 `s` 上 → 「这个变量哪来的」
+      - 光标在 `name` 上 → 「这个字段哪定义」
+    """
+    root = os.path.join(ROOT, "tests", "sample_struct")
+    if not os.path.isdir(root):
+        _chk(False, "struct/缺语料 tests/sample_struct")
+        return
+    c.init(root)
+    path = os.path.join(root, "a.m")
+    c.send({"jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": {"textDocument": {"uri": _uri(path),
+                                        "languageId": "matlab",
+                                        "version": 1, "text": "x"}}})
+    c.recv()
+    c.recv()
+
+    def defn(line, char):
+        c.send({"jsonrpc": "2.0", "id": 70,
+                "method": "textDocument/definition",
+                "params": {"textDocument": {"uri": _uri(path)},
+                           "position": {"line": line, "character": char}}})
+        r = c.recv() or {}
+        return r.get("result") or []
+
+    # 第 5 行 `y = s.name;`：s 在第 4 列
+    r = defn(4, 4)
+    _chk(len(r) == 1 and r[0]["range"]["start"]["line"] == 2,
+         "struct/variable-s-jumps-to-first-assign（%r）" % (r,))
+    # 同一行第 6 列是 `name`
+    r2 = defn(4, 6)
+    _chk(len(r2) == 1 and r2[0]["range"]["start"]["line"] == 2,
+         "struct/field-jumps-to-write（%r）" % (r2,))
+    # 3 列是 `.` —— 不是标识符，不该崩也不该乱跳
+    r3 = defn(4, 5)
+    _chk(r3 == [] or (len(r3) == 1 and r3[0]["range"]["start"]["line"] == 2),
+         "struct/dot-position-does-not-crash（%r）" % (r3,))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--diag", action="store_true")
@@ -509,6 +555,7 @@ def main(argv=None):
     ap.add_argument("--field", action="store_true")
     ap.add_argument("--impact", action="store_true")
     ap.add_argument("--tokens", action="store_true")
+    ap.add_argument("--struct", action="store_true")
     ap.add_argument("--help", action="store_true")
     args = ap.parse_args(argv)
 
@@ -541,6 +588,8 @@ def main(argv=None):
         groups = [("impact", _impact)]
     elif args.tokens:
         groups = [("tokens", _tokens)]
+    elif args.struct:
+        groups = [("struct", _struct)]
     elif args.save:
         groups = [("save", _save)]
     else:

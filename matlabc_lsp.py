@@ -444,6 +444,33 @@ def _definition(uri, pos):
                               "character": len(name)}},
         }]
 
+    # ---- R228：结构体**变量本身**的跳转 --------------------------------
+    # 光标在 `s` 上、且紧跟一个 `.` ⇒ 用户问的是「这个 s 是哪来的」，
+    # 不是「这个字段在哪定义」。
+    #
+    # `analyze` 不记录变量定义（`field_access` 记的是**字段**，不是变量），
+    # 所以这里现场扫本文件：第一个 `s = ...` 或 `s.field = ...`。
+    # 后者也收，因为 MATLAB 里结构体可以**靠字段赋值隐式创建**，
+    # 没有显式的 `s = struct()`。
+    if 0 <= line0 < len(lines):
+        _ln = lines[line0]
+        end_ch = ch + len(name)
+        if end_ch < len(_ln) and _ln[end_ch] == ".":
+            pat = re.compile(r"^\s*%s\s*[.=]" % re.escape(name))
+            for i, ln in enumerate(lines):
+                # 注释里的不算（`%` 之后整段丢弃；字符串里的 `%` 会让
+                # 这条判断偏保守，最坏是漏一个候选，不会指错位置）
+                code = ln.split("%", 1)[0] if "%" in ln else ln
+                if pat.match(code):
+                    col = code.index(name) if name in code else 0
+                    return [{
+                        "uri": "file:///" + path.replace("\\", "/").lstrip("/"),
+                        "range": {"start": {"line": i, "character": col},
+                                  "end": {"line": i,
+                                          "character": col + len(name)}},
+                    }]
+            return []
+
     hits = []
     for mf in (getattr(result, "files", None) or []):
         for f in (getattr(mf, "functions", None) or []):
