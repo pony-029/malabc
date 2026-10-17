@@ -1237,7 +1237,10 @@ def _impact(name, depth=30, down_depth=3):
                 # 名字和行号 —— 用户从图上点进一个函数，仍会撞上那里
                 # 十几个跳不动的 `foo(...)`。
                 "unresolved": _unresolved_count(f),
-                "unresolved_names": _unresolved_names(f)}
+                "unresolved_names": _unresolved_names(f),
+                # 「一共几个不同的名字」与「这里列了几个」必须分开：
+                # 列表被 `limit` 截断过，截断不报就等于说只有 5 个。
+                "unresolved_names_total": _unresolved_name_count(f)}
     if name not in where:
         return None
 
@@ -1317,6 +1320,8 @@ def _impact(name, depth=30, down_depth=3):
                 "unresolved": (meta.get(key) or {}).get("unresolved", 0),
                 "unresolved_names": (meta.get(key) or {}).get(
                     "unresolved_names", []),
+                "unresolved_names_total": (meta.get(key) or {}).get(
+                    "unresolved_names_total", 0),
                 "call_sites": [sites[k] for k in sorted(sites)]}
         return info
 
@@ -1396,6 +1401,8 @@ def _impact(name, depth=30, down_depth=3):
         "unresolved": (meta.get(start_keys[0]) or {}).get("unresolved", 0),
         "unresolved_names": (meta.get(start_keys[0]) or {}).get(
             "unresolved_names", []),
+        "unresolved_names_total": (meta.get(start_keys[0]) or {}).get(
+            "unresolved_names_total", 0),
     }
 
 
@@ -1415,13 +1422,8 @@ def _unresolved_count(f):
     return n
 
 
-def _unresolved_names(f, limit=5):
-    """解析不到的名字，按出现次数从多到少，最多 `limit` 个。
-
-    R255：只报「另有 14 处未解析」是个**只有分子没有内容**的数字 ——
-    用户无法据此做任何事。名字我们本来就有（`external_calls` 的键），
-    把它们说出来，才知道该去查 `sedumi` 还是去查一个字段。
-    """
+def _unresolved_tally(f):
+    """解析不到的名字 -> 次数（`external_calls` 与 `indirect_calls` 合并）。"""
     tally = {}
     for key in ("external_calls", "indirect_calls"):
         d = getattr(f, key, None) or {}
@@ -1429,8 +1431,28 @@ def _unresolved_names(f, limit=5):
             continue
         for k, v in d.items():
             tally[k] = tally.get(k, 0) + (v if isinstance(v, int) else 1)
+    return tally
+
+
+def _unresolved_names(f, limit=5):
+    """解析不到的名字，按出现次数从多到少，最多 `limit` 个。
+
+    R255：只报「另有 14 处未解析」是个**只有分子没有内容**的数字 ——
+    用户无法据此做任何事。名字我们本来就有（`external_calls` 的键），
+    把它们说出来，才知道该去查 `sedumi` 还是去查一个字段。
+
+    R257：`limit` 会**截断**，而截断如果不报，就变成另一种撒谎 ——
+    用户看到 5 个名字会以为只有 5 个。所以调用方还要拿
+    `_unresolved_name_count()`，把「一共几个」和「这里列了几个」分开说。
+    """
+    tally = _unresolved_tally(f)
     return [k for k, _n in sorted(tally.items(),
                                   key=lambda kv: (-kv[1], kv[0]))][:limit]
+
+
+def _unresolved_name_count(f):
+    """**不同名字**的总数（不受 `_unresolved_names` 的 `limit` 影响）。"""
+    return len(_unresolved_tally(f))
 
 
 def _code_lens(uri):

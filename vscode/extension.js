@@ -271,6 +271,16 @@ function activate(context) {
   const renderGraph = (name, info) => {
     const esc = (s) => String(s).replace(/[&<>"]/g, (c) => (
       { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+    // 服务端只给前 5 个名字；`total` 是**不同名字**的总数。
+    // 截断必须说出来，否则「lb、ub、dim、solver、nonlins」会被读成全部。
+    const fmtUnres = (list, total) => {
+      const a = list || [];
+      if (!a.length) return '';
+      const shown = a.join('、');
+      const t = total || a.length;
+      return t > a.length ? shown + ' 等 ' + t + ' 个' : shown;
+    };
     // 一个节点 = 函数名 + 定义行 + 被哪几行调用。
     // 定义行与每个调用行都是**可点击的**（`command:` URI 不需要脚本权限）。
     const link = (rel, line, text) =>
@@ -299,7 +309,7 @@ function activate(context) {
       // 它自己也可能有跳不动的调用 —— 标出来，否则用户点进去才发现。
       // 只给数量等于给了一个没有内容的数字；名字才让人知道去查什么。
       const un = d.unresolved || 0;
-      const names = (d.unresolved_names || []).join('、');
+      const names = fmtUnres(d.unresolved_names, d.unresolved_names_total);
       const unHtml = un
         ? '<span class="calls">另 ' + un + ' 未解析' +
           (names ? '：' + esc(names) : '') + '</span>' : '';
@@ -353,7 +363,7 @@ function activate(context) {
     if (!down.length) {
       // `down` 只含**能跳到定义**的调用。目标可能还有一堆 `foo(...)`
       // 解析不到 —— 那时说「叶子」就是在撒谎（R243）。
-      const nm = (info.unresolved_names || []).join('、');
+      const nm = fmtUnres(info.unresolved_names, info.unresolved_names_total);
       rows.push('<div class="empty">' + (info.unresolved
         ? '没有可跳转的调用；另有 ' + info.unresolved + ' 处调用无法定位' +
           (nm ? '：' + esc(nm) : '') + '（字段取值 / toolbox / 函数句柄）'

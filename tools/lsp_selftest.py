@@ -847,6 +847,26 @@ def _lens(c):
             _chk(inf.get("unresolved_names") == ["some_toolbox_fn"],
                  "impact/unresolved-names（实际 %r）"
                  % (inf.get("unresolved_names"),))
+            _chk(inf.get("unresolved_names_total") == 1,
+                 "impact/names-total==1（实际 %r）"
+                 % (inf.get("unresolved_names_total"),))
+
+            # R257：**截断必须可见**。`many_ext` 有 7 个不同的未解析名字，
+            # 列表只给 5 个 —— 而 `unresolved_names_total` 必须说 7。
+            # 只报 5 个而不报总数，等于让读者以为一共就 5 个。
+            c2.send({"jsonrpc": "2.0", "id": 93, "method": "matlabc/impact",
+                     "params": {"name": "many_ext"}})
+            rm = c2.recv() or {}
+            im = rm.get("result") or {}
+            _chk(len(im.get("unresolved_names") or []) == 5,
+                 "impact/names-capped-at-5（实际 %r）"
+                 % (len(im.get("unresolved_names") or []),))
+            _chk(im.get("unresolved_names_total") == 7,
+                 "impact/names-total-reports-7（实际 %r）"
+                 % (im.get("unresolved_names_total"),))
+            _chk(im.get("unresolved") == 7,
+                 "impact/many-ext-unresolved==7（实际 %r）"
+                 % (im.get("unresolved"),))
             _chk(inf.get("down") == [],
                  "impact/no-fake-downstream（down 必须为空：它没有可跳的调用）")
         finally:
