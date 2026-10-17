@@ -803,6 +803,8 @@ def main(argv=None):
     ap.add_argument("--quiet", action="store_true", help="只输出总结")
     ap.add_argument("--fail-fast", dest="fail_fast", action="store_true",
                     help="第一个失败就停")
+    ap.add_argument("--repeat", type=int, default=1,
+                    help="同一批判据连跑 N 次，每次都必须是 0 红（抓稳定性）")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--meta", action="store_true")
     ap.add_argument("--help", "-h", action="store_true")
@@ -840,23 +842,36 @@ def main(argv=None):
     os.makedirs(tmp, exist_ok=True)
     timings = []
     aborted = False
+    rounds = max(1, int(args.repeat or 1))
+    per_round_secs = []
     try:
-        for key, fn in GROUPS:
-            if want and not any(key.startswith(w) for w in want):
-                continue
-            if not args.quiet:
-                print("[%s]" % key)
-            b0, g0 = _RESULT["bad"], _RESULT["good"]
-            t0 = time.time()
-            fn(tmp)
-            el = time.time() - t0
-            timings.append((key, el, _RESULT["bad"] - b0,
-                            _RESULT["good"] - g0))
-            if not args.quiet:
-                print("  -> %.2fs, %d ok, %d bad"
-                      % (el, _RESULT["good"] - g0, _RESULT["bad"] - b0))
-            if args.fail_fast and _RESULT["bad"] > b0:
-                aborted = True
+        for rnd in range(rounds):
+            if rounds > 1 and not args.quiet:
+                print("=== round %d/%d ===" % (rnd + 1, rounds))
+            _RESULT["bad"] = 0
+            _RESULT["good"] = 0
+            _RESULT["fails"] = []
+            rt0 = time.time()
+            for key, fn in GROUPS:
+                if want and not any(key.startswith(w) for w in want):
+                    continue
+                if not args.quiet:
+                    print("[%s]" % key)
+                b0, g0 = _RESULT["bad"], _RESULT["good"]
+                t0 = time.time()
+                fn(tmp)
+                el = time.time() - t0
+                timings.append(("r%d/%s" % (rnd + 1, key), el,
+                                _RESULT["bad"] - b0,
+                                _RESULT["good"] - g0))
+                if not args.quiet:
+                    print("  -> %.2fs, %d ok, %d bad"
+                          % (el, _RESULT["good"] - g0, _RESULT["bad"] - b0))
+                if args.fail_fast and _RESULT["bad"] > b0:
+                    aborted = True
+                    break
+            per_round_secs.append(time.time() - rt0)
+            if aborted:
                 break
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -866,14 +881,28 @@ def main(argv=None):
     if args.json_out:
         print(json.dumps({
             "bad": r["bad"], "good": r["good"],
+            "rounds": rounds,
+            "round_secs": [round(x, 2) for x in per_round_secs],
             "total_secs": round(total, 2),
             "groups": [{"name": k, "secs": round(e, 2), "ok": g, "bad": b}
                        for k, e, b, g in timings],
             "failures": r["fails"], "aborted": aborted,
         }, ensure_ascii=False))
     else:
-        print('SWEEP COUNTS {"bad": %d, "good": %d, "secs": %.1f}'
-              % (r["bad"], r["good"], total))
+        if rounds > 1:
+            print('SWEEP COUNTS {"bad": %d, "good": %d, "secs": %.1f, '
+                  '"rounds": %d, "round_secs": %r}'
+                  % (r["bad"], r["good"], total, rounds,
+                     [round(x, 1) for x in per_round_secs]))
+            if len(per_round_secs) > 1:
+                lo, hi = min(per_round_secs), max(per_round_secs)
+                # 轮间耗时差超过 50% 说明不稳定（缓存/并发/时序）
+                if hi > lo * 1.5:
+                    print("  [warn] 轮间耗时差 %.0f%%（%.1fs vs %.1fs）"
+                          % (100.0 * (hi - lo) / lo, lo, hi))
+        else:
+            print('SWEEP COUNTS {"bad": %d, "good": %d, "secs": %.1f}'
+                  % (r["bad"], r["good"], total))
         if r["fails"]:
             # 失败详情走 **stderr**：`> report.txt` 时正文保持干净。
             sys.stderr.write("FAILURES: " + " | ".join(r["fails"]) + "\n")

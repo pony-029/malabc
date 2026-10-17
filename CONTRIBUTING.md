@@ -98,6 +98,17 @@ python tools/check_all.py
 抓到——**只有第三次是在提交前**。前两次是靠 `check_kernel_snapshot` 报
 「字节数少了 34,228」才发现的。
 
+## 两条已知的「产品决定」（不是 bug）
+
+这两条**看起来像缺陷，但都是有意的**。写下来的目的是：**半年后有人问「为什么不校验」时，有答案；以及将来改它时，知道条件是什么。**
+
+| 决定 | 当前行为 | 什么条件下才改 |
+| --- | --- | --- |
+| **`--from-json` 只验解码，不验 schema** | 非法 JSON 与 BOM 都 rc≠0；但 `{}` / 缺 `files` / 版本不符**都 rc=0**，产出空快照 | 若真有下游因「空快照」拿到空报告而困惑 → 加 **`--strict`** 开关，**不要改默认**（宽松是有意的） |
+| **SARIF 不含 `m_missing_doc`** | `heuristics`（`m_missing_doc`）与 `checks_for_sarif` 是**两个类别**，SARIF 只收后者。`rules` 里有 `c_heuristics`/`py_heuristics`/`js_heuristics`，**没有 `m_heuristics`** | 若有 CI 依赖 Code Scanning 看「函数缺 description」→ 把 `m_missing_doc` 加进 SARIF 的 `rules`。**届时 `sweep_cli` 的 `fmt/sarif-still-lacks-m_heuristics` 会变红**，那是「该改了」的信号 |
+
+**为什么写在这里而不是 issue 里**：这两条都在 `sweep_cli` 与 `lsp_selftest` 里有对应判据，**判据会替我们记住**。文档只是把「为什么这样」补上。
+
 ## 改 `matlabc_lsp.py` / `vscode/` 后必跑的三条（R151 起）
 
 LSP 的判据**不进 `check_all`** —— 它要起子进程、跑分析，与其它护栏"纯静态读文件"
