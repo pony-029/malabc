@@ -8,14 +8,14 @@
 | 能力 | 来源 | 状态 |
 | --- | --- | --- |
 | 诊断 | `publishDiagnostics` | **`m_missing_doc`（函数缺头部描述）** |
-| 转到定义 | `textDocument/definition` | **同文件 + 跨文件**（判据见下） |
-| 查找引用 | — | **未实现**：LSP 侧没有 `textDocument/references` |
+| 转到定义 | `textDocument/definition` | **同文件 + 跨文件**（判据 7 条） |
+| 查找引用 | `textDocument/references` | **函数级**（不是行级，见下；判据 6 条） |
 
-> **曾经注册过 definition/reference 两个 provider**，而 LSP 当时都不实现——
-> 服务端回 `{"result": null}`，扩展拿到空数组，**F12 与 Shift+F12 静默失败**
-> （不跳转也不报错）。现在 `definition` 已实现（判据 7 条全过）并重新注册；
-> `references` 仍不注册，`test_extension.js` 与 `test_client.js` 各留一条
-> **反向断言**守着——哪天实现了，它们会变红，那是"该注册了"的信号。
+> 这两个 provider 曾经在扩展侧注册、LSP 侧却没实现——服务端回
+> `{"result": null}`，扩展拿到空数组，**F12 与 Shift+F12 静默失败**
+> （不跳转也不报错）。现在的顺序反过来了：**先在 LSP 侧实现并写判据，
+> 判据变绿后再注册 provider**。`test_extension.js` 与 `test_client.js`
+> 里的断言也跟着翻面。
 
 ## 明确不做的事
 
@@ -26,15 +26,12 @@
   （`matlabc.py:14279` 的注释明说其余类别未并入）。**这不是缺陷，是口径一致**——
   要发更多，先改 facts 层。
 
-## 将来要加 F12 时，先补什么
+## 引用为什么是"函数级"
 
-`analyze` 的 `edges` 是 `(caller, callee, ambiguous)` 三元组，**不带行号**——
-所以即使实现 `references`，也只能给「哪个函数调用了它」，落点是调用者的
-**定义行**，不是调用发生的那一行。要行级引用，得先让 `edges` 带 `line`。
-
-而 `definition` 需要「光标处标识符 → 定义位置」：`analyzer.api` 已能给出
-`files[].functions[]` 的 `(name, line)`，这条路是通的，**但必须先写判据**
-（光标放在 `a.m:3` 的 `b` 上 → 跳到 `a.m:6`），再来注册 provider。
+`analyze` 的 `edges` 是 `(caller, callee, ambiguous)` 三元组，**不带行号**。
+所以 `references` 给的是「哪个函数调用了它」，落点是调用者的**定义行**，
+不是调用发生的那一行。**要行级引用，得先让 `edges` 带 `line`**——那会改
+`--json` 里 `edges` 的结构，属于 `matlabc.py` 的改动，要付一次整树重跑。
 行级引用要等 facts 层给 `edges` 加 `line`。
 
 ## 安装与运行

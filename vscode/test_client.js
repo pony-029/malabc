@@ -71,14 +71,15 @@ function sleep(ms) {
     chk(loc !== undefined && loc.range.start.line === 5,
       'definition b -> L5，实际 ' + JSON.stringify(loc && loc.range.start.line));
 
-    // `textDocument/references` 仍未实现 ⇒ 反向断言（实现后这条会变红）。
+    // `textDocument/references` 已实现 ⇒ 正向断言（函数级引用）。
     const ref = await c.request('textDocument/references', {
       textDocument: { uri: uri(aM) },
       position: { line: 5, character: 14 },
       context: { includeDeclaration: false },
     });
-    chk((ref.result || []).length === 0,
-      'references 仍未实现 ⇒ 应回空数组，实际 ' + JSON.stringify(ref.result));
+    const refs = ref.result || [];
+    chk(refs.length === 1 && refs[0].range.start.line === 0,
+      'references b -> 调用者 a 在 L0，实际 ' + JSON.stringify(refs));
 
     const notFound = await c.request('textDocument/definition', {
       textDocument: { uri: uri(aM) },

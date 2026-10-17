@@ -259,6 +259,64 @@ def _diagnostics_for(uri):
     return out
 
 
+def _references(uri, pos, include_decl):
+    """`textDocument/references`：**函数级**引用（不是行级）。
+
+    语义边界如实：`analyze` 的 `edges` 是 `(caller, callee, ambiguous)` 三元组，
+    **不带行号**。所以这里给的是「哪个函数调用了它」，落点是那个调用者的
+    **定义行**，不是调用发生的那一行。要行级引用，得先让 `edges` 带 `line`。
+
+    `includeDeclaration=True` 时把光标所在函数自己的定义也加进去。
+    """
+    result = _STATE.get("result")
+    root = _STATE.get("root")
+    if result is None or not root:
+        return []
+    path = _uri_to_path(uri)
+    try:
+        with io.open(path, "r", encoding="utf-8", errors="replace") as fh:
+            lines = fh.read().splitlines()
+    except (IOError, OSError):
+        return []
+    name = _ident_at(lines, int(pos.get("line", 0)),
+                     int(pos.get("character", 0)))
+    if name is None:
+        return []
+    try:
+        rel = os.path.relpath(path, root).replace(os.sep, "/")
+    except ValueError:
+        rel = os.path.basename(path)
+    target = "%s:%s" % (rel, name)
+
+    keys = []
+    if include_decl:
+        keys.append(target)
+    for e in (getattr(result, "edges", None) or []):
+        if len(e) >= 2 and e[1] == target:
+            keys.append(e[0])
+
+    fn_by_key = {}
+    for mf in (getattr(result, "files", None) or []):
+        for f in (getattr(mf, "functions", None) or []):
+            fn_by_key["%s:%s" % (getattr(mf, "rel", ""),
+                                 getattr(f, "name", ""))] = f
+
+    out = []
+    for key in keys:
+        if ":" not in key:
+            continue
+        krel, kname = key.rsplit(":", 1)
+        fn = fn_by_key.get(key)
+        line0 = max(0, int(getattr(fn, "line", 1) or 1) - 1)
+        tgt = os.path.join(root, krel.replace("/", os.sep))
+        out.append({
+            "uri": "file:///" + tgt.replace("\\", "/").lstrip("/"),
+            "range": {"start": {"line": line0, "character": 0},
+                      "end": {"line": line0, "character": len(kname)}},
+        })
+    return out
+
+
 # --------------------------------------------------------------------------
 # 协议处理
 # --------------------------------------------------------------------------
@@ -327,6 +385,18 @@ def handle(msg, out):
         locs = _definition(uri, pos)
         _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": locs})
         _log("definition %s:%s -> %d"
+             % (os.path.basename(_uri_to_path(uri)), pos.get("line"),
+                len(locs)))
+        return True
+
+    if method == "textDocument/references":
+        params = msg.get("params") or {}
+        uri = (params.get("textDocument") or {}).get("uri", "")
+        pos = params.get("position") or {}
+        ctx = params.get("context") or {}
+        locs = _references(uri, pos, bool(ctx.get("includeDeclaration")))
+        _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": locs})
+        _log("references %s:%s -> %d"
              % (os.path.basename(_uri_to_path(uri)), pos.get("line"),
                 len(locs)))
         return True

@@ -91,14 +91,11 @@ try {
   chk(false, 'activate 抛出：' + e.message);
 }
 
-// LSP 已实现 `textDocument/definition` ⇒ **应当**注册 definitionProvider。
+// 两个请求都已由 LSP 实现 ⇒ 两个 provider 都应注册。
 chk(registered.indexOf('definition') >= 0, '应注册 definitionProvider');
-// `textDocument/references` 仍未实现 ⇒ **不许**注册 referenceProvider。
-// 注册了 Shift+F12 会静默失败（服务端回 null，扩展映射成空数组）。
-chk(registered.indexOf('references') < 0,
-  '不应注册 referenceProvider（LSP 未实现该请求）');
-chk(ctx.subscriptions.length >= 2,
-  'subscriptions 应至少 2 项（definition + 诊断集合），实际 '
+chk(registered.indexOf('references') >= 0, '应注册 referenceProvider');
+chk(ctx.subscriptions.length >= 3,
+  'subscriptions 应至少 3 项（definition + references + 诊断集合），实际 '
   + ctx.subscriptions.length);
 
 try {

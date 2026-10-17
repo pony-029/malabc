@@ -86,12 +86,10 @@ function activate(context) {
   );
   vscode.workspace.textDocuments.forEach(sendOpen);
 
-  // **只注册 definition**。`matlabc_lsp.py` 已实现 `textDocument/definition`，
-  // 判据是 `a.m:3` 的 `b` → `a.m:6`、`a.m:13` 的 `d` → `d.m:1`、注释上 → `[]`。
-  //
-  // **不注册 referenceProvider**：LSP 侧没有 `textDocument/references`，
-  // 注册了会让 Shift+F12 静默失败（服务端回 null，扩展映射成空数组）。
-  // 「注册一个 provider 就是承诺一个能力」——没实现就别注册。
+  // 两个 provider 都已由 LSP 实现，判据各自通过：
+  //   definition：`a.m:3` 的 `b` → `a.m:6`、`a.m:13` 的 `d` → `d.m:1`、注释 → `[]`
+  //   references：`a.m:6` 的 `b` → 调用者 `a` 在 `a.m:1`，含定义 2 个、注释 → `[]`
+  // 「注册一个 provider 就是承诺一个能力」——两条现在都兑现了。
 
   context.subscriptions.push(
     vscode.languages.registerDefinitionProvider({ language: 'matlab' }, {
@@ -99,6 +97,19 @@ function activate(context) {
         const r = await client.request('textDocument/definition', {
           textDocument: { uri: doc.uri.toString() },
           position: { line: pos.line, character: pos.character },
+        });
+        return (r.result || []).map(toLocation);
+      },
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.languages.registerReferenceProvider({ language: 'matlab' }, {
+      provideReferences: async (doc, pos, ctx) => {
+        const r = await client.request('textDocument/references', {
+          textDocument: { uri: doc.uri.toString() },
+          position: { line: pos.line, character: pos.character },
+          context: { includeDeclaration: ctx.includeDeclaration },
         });
         return (r.result || []).map(toLocation);
       },
