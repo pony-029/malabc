@@ -91,10 +91,15 @@ try {
   chk(false, 'activate 抛出：' + e.message);
 }
 
-chk(registered.indexOf('definition') >= 0, '应注册 definitionProvider');
-chk(registered.indexOf('references') >= 0, '应注册 referenceProvider');
-chk(ctx.subscriptions.length >= 3,
-  'subscriptions 应至少 3 项，实际 ' + ctx.subscriptions.length);
+// **反向断言**：现在只做诊断，所以不许再注册 definition / reference。
+// 它们曾在扩展侧注册过、LSP 侧却没实现，导致 F12 静默失败。
+chk(registered.indexOf('definition') < 0,
+  '不应注册 definitionProvider（LSP 未实现该请求）');
+chk(registered.indexOf('references') < 0,
+  '不应注册 referenceProvider（LSP 未实现该请求）');
+chk(ctx.subscriptions.length >= 1,
+  'subscriptions 应至少 1 项（诊断集合 + onDidOpen），实际 '
+  + ctx.subscriptions.length);
 
 try {
   ext.deactivate();

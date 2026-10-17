@@ -1,7 +1,7 @@
 {
   "name": "matlabc-lsp",
   "displayName": "malabc MATLAB LSP",
-  "description": "MATLAB 侧的最小 LSP：诊断（m_missing_doc）、转到定义、查找引用。零 npm 依赖。",
+  "description": "MATLAB 侧的最小 LSP：诊断（m_missing_doc）。零 npm 依赖。转到定义与查找引用尚未实现，故不注册对应 provider。",
   "version": "0.1.0",
   "publisher": "malabc",
   "engines": {

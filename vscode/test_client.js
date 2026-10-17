@@ -62,22 +62,23 @@ function sleep(ms) {
     });
     await sleep(500);
 
+    // **反向断言**：`matlabc_lsp.py` 目前只实现诊断，definition / references
+    // 一律回空。曾经扩展侧注册了这两个 provider，导致 F12 静默失败；现在两侧
+    // 都明确「没有」。哪天 LSP 实现了它们，这两条会变红 —— 那是正确的信号。
     const def = await c.request('textDocument/definition', {
       textDocument: { uri: uri(aM) },
       position: { line: 2, character: 5 },
     });
-    const loc = (def.result || [])[0];
-    chk(loc !== undefined && loc.range.start.line === 5,
-      'definition b -> L5，实际 ' + JSON.stringify(loc && loc.range.start.line));
+    chk((def.result || []).length === 0,
+      'definition 未实现 ⇒ 应回空数组，实际 ' + JSON.stringify(def.result));
 
     const ref = await c.request('textDocument/references', {
       textDocument: { uri: uri(aM) },
       position: { line: 5, character: 14 },
       context: { includeDeclaration: false },
     });
-    const refs = ref.result || [];
-    chk(refs.length === 1 && refs[0].range.start.line === 0,
-      'references b -> 调用者 a 在 L0，实际 ' + JSON.stringify(refs));
+    chk((ref.result || []).length === 0,
+      'references 未实现 ⇒ 应回空数组，实际 ' + JSON.stringify(ref.result));
 
     const notFound = await c.request('textDocument/definition', {
       textDocument: { uri: uri(aM) },

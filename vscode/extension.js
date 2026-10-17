@@ -86,30 +86,13 @@ function activate(context) {
   );
   vscode.workspace.textDocuments.forEach(sendOpen);
 
-  context.subscriptions.push(
-    vscode.languages.registerDefinitionProvider({ language: 'matlab' }, {
-      provideDefinition: async (doc, pos) => {
-        const r = await client.request('textDocument/definition', {
-          textDocument: { uri: doc.uri.toString() },
-          position: { line: pos.line, character: pos.character },
-        });
-        return (r.result || []).map(toLocation);
-      },
-    })
-  );
-
-  context.subscriptions.push(
-    vscode.languages.registerReferenceProvider({ language: 'matlab' }, {
-      provideReferences: async (doc, pos, ctx) => {
-        const r = await client.request('textDocument/references', {
-          textDocument: { uri: doc.uri.toString() },
-          position: { line: pos.line, character: pos.character },
-          context: { includeDeclaration: ctx.includeDeclaration },
-        });
-        return (r.result || []).map(toLocation);
-      },
-    })
-  );
+  // **只注册诊断**。曾经这里还注册了 definition / reference provider，
+  // 但 `matlabc_lsp.py` 并不实现那两个方法——服务端对未实现的请求回
+  // `{"result": null}`，扩展拿到空数组，于是 F12 与 Shift+F12 **静默失败**
+  // （不跳转、也不报错）。删掉它们比假装支持诚实。
+  //
+  // 要加回 F12，先在 LSP 侧实现 `textDocument/definition` 并补一条判据
+  // （光标处的标识符 → 定义位置），再来这里注册。
 
   context.subscriptions.push(collection);
 }
