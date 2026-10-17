@@ -232,6 +232,44 @@ function activate(context) {
     })
   );
 
+  // ---- CodeLens：`↑3 调用者 · ↓12 被调用 · 复杂度 11`（R215）--------
+  // 官方 CodeLens 只放 git 作者，**不显示调用关系**。这三组数字全在
+  // `edges` 里，由 LSP 侧 `_code_lens` 直接给。
+  context.subscriptions.push(
+    vscode.languages.registerCodeLensProvider({ language: 'matlab' }, {
+      provideCodeLenses: async (doc) => {
+        try {
+          const r = await client.request('textDocument/codeLens', {
+            textDocument: { uri: doc.uri.toString() },
+          });
+          return (r.result || []).map((l) => {
+            const d = l.data || {};
+            return new vscode.CodeLens(toRange(l.range), {
+              title: '↑' + (d.callers || 0) + ' 调用者 · ↓' +
+                     (d.callees || 0) + ' 被调用 · 复杂度 ' + (d.complexity || 0),
+              command: 'malabc.showImpact',
+              arguments: [d.name, doc.uri.toString()],
+            });
+          });
+        } catch (e) {
+          log('codeLens 失败：' + (e && e.message));
+          return [];
+        }
+      },
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('malabc.showImpact', async (name, uriStr) => {
+      // 点击 CodeLens 时用 `--impact` 的 LSP 版（当前先给可操作提示：
+      // 真正的影响面面板留给下一轮，避免这一轮引入未验证的协议方法）。
+      out.show();
+      log('CodeLens 点击：' + name);
+      vscode.window.showInformationMessage(
+        'malabc: ' + name + ' —— 用 Shift+F12 查看所有调用者', '好');
+    })
+  );
+
   context.subscriptions.push(
     vscode.languages.registerDocumentSymbolProvider({ language: 'matlab' }, {
       provideDocumentSymbols: async (doc) => {

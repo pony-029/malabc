@@ -499,17 +499,46 @@ def _warm():
     t0 = time.time()
     _log("预热开始 %s" % root)
     try:
+        # **缓存命中就不分层**：读盘 0.2 秒，再拆两步毫无意义。
+        hit = _load_cache(root)
+        if hit is not None:
+            result0, payload0 = hit
+            with _STATE["lock"]:
+                _STATE["result"] = result0
+                _STATE["payload"] = payload0
+            _log("预热完成（缓存）%s -> %.1fs" % (root, time.time() - t0))
+            return
+
+        # ---- ① 结构层：`no_checks=True` ------------------------------
+        # 实测（S0）：它产出的 `files` / `functions` / `edges` 与全量**逐项相同**，
+        # 只是 `facts` 为空 —— 而 F12 / 引用 / 悬停 / 大纲**只需要结构**。
+        # 所以先把它交出去，用户 12 秒就能跳转，而不是等 35 秒。
+        if _STATE.get("result") is None:
+            t_struct = time.time()
+            try:
+                from analyzer.api import analyze as _analyze
+                struct = _analyze(root, no_checks=True)
+            except Exception as exc:
+                _log("结构层失败（退回单层预热）：%r" % (exc,))
+                struct = None
+            if struct is not None:
+                with _STATE["lock"]:
+                    if _STATE.get("result") is None:
+                        _STATE["result"] = struct
+                _log("结构层就绪 %.1fs（F12/悬停/大纲 现在可用）"
+                     % (time.time() - t_struct))
+
+        # ---- ② 诊断层：全量（含 `_collect_checks`）-------------------
         payload = _run_json(root)
+        with _STATE["lock"]:
+            if _STATE["payload"] is None:
+                _STATE["payload"] = payload
+        _log("预热完成 %s -> %.1fs，%d 条诊断"
+             % (root, time.time() - t0,
+                len((payload or {}).get("heuristics") or [])))
     finally:
         with _STATE["lock"]:
             _STATE["warming"] = False
-
-    with _STATE["lock"]:
-        if _STATE["payload"] is None:
-            _STATE["payload"] = payload
-    _log("预热完成 %s -> %.1fs，%d 条诊断"
-         % (root, time.time() - t0,
-            len((payload or {}).get("heuristics") or [])))
 
 
 def _diagnostics_for(uri):
@@ -714,6 +743,67 @@ def _hover(uri, pos):
     return {"contents": {"kind": "markdown", "value": "\n".join(parts)}}
 
 
+def _edge_counts(result):
+    """`{"caller": n, "callee": n}` 两张计数表，键是 `rel:name`。
+
+    `result.edges` 在内存里是 **tuple**（`(caller, callee, cross_file)`），
+    只有 `render_json` 才转成 dict —— 两种都要收（R200 踩过一次）。
+    """
+    callers, callees = {}, {}
+    for e in (getattr(result, "edges", None) or []):
+        if isinstance(e, dict):
+            c, d = e.get("caller"), e.get("callee")
+        elif isinstance(e, (list, tuple)) and len(e) >= 2:
+            c, d = e[0], e[1]
+        else:
+            continue
+        if not c or not d:
+            continue
+        callees[c] = callees.get(c, 0) + 1
+        callers[d] = callers.get(d, 0) + 1
+    return callers, callees
+
+
+def _code_lens(uri):
+    """每个函数头顶一条：`↑3 调用者 · ↓12 被调用 · 复杂度 11`。
+
+    **官方 CodeLens 只显示 git 作者**，不显示调用关系。而这两组数字
+    全在 `edges` 里，不需要重算。
+
+    只返回**本文件**的函数 —— 打开一个文件时把所有 1665 个文件的
+    函数都发过去没有意义。
+    """
+    result = _wait_result()
+    if result is None:
+        return []
+    path = _uri_to_path(uri)
+    root = _STATE.get("root") or ""
+    try:
+        rel = os.path.relpath(path, root).replace("\\", "/")
+    except Exception:
+        return []
+    callers, callees = _edge_counts(result)
+    out = []
+    for mf in (getattr(result, "files", None) or []):
+        if (getattr(mf, "rel", "") or "") != rel:
+            continue
+        for f in (getattr(mf, "functions", None) or []):
+            name = getattr(f, "name", "") or ""
+            key = "%s:%s" % (rel, name)
+            ln = int(getattr(f, "line", 0) or 1)
+            out.append({
+                "range": {"start": {"line": max(0, ln - 1), "character": 0},
+                          "end": {"line": max(0, ln - 1), "character": 0}},
+                "data": {
+                    "name": name,
+                    "callers": callers.get(key, 0),
+                    "callees": callees.get(key, 0),
+                    "complexity": getattr(f, "complexity", 0),
+                },
+            })
+    return out
+
+
 #: LSP `SymbolKind.Function` = 12
 _SYMBOL_FUNCTION = 12
 #: LSP `SymbolKind.Class` = 5
@@ -878,6 +968,15 @@ def handle(msg, out):
         _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": syms})
         _log("documentSymbol %s -> %d"
              % (os.path.basename(_uri_to_path(uri)), len(syms)))
+        return True
+
+    if method == "textDocument/codeLens":
+        params = msg.get("params") or {}
+        uri = (params.get("textDocument") or {}).get("uri", "")
+        lenses = _code_lens(uri)
+        _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": lenses})
+        _log("codeLens %s -> %d"
+             % (os.path.basename(_uri_to_path(uri)), len(lenses)))
         return True
 
     if method == "textDocument/didSave":

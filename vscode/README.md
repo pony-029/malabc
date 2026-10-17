@@ -23,6 +23,7 @@
 | 悬停 | `textDocument/hover` | **签名 + 描述 + 复杂度 + 定义位置**（判据 4 条） |
 | 符号大纲 | `textDocument/documentSymbol` | **函数列表**（Outliner / Ctrl+Shift+O；判据 4 条） |
 | **保存即刷新** | `textDocument/didSave` | 作废缓存 → 重算 → 重推（判据 4 条） |
+| **调用计数** | `textDocument/codeLens` | 每个函数头顶 `↑N 调用者 · ↓M 被调用 · 复杂度 K` —— 官方 CodeLens 只显示 git 作者，不给调用关系 |
 
 > 这些 provider 曾经在扩展侧注册、LSP 侧却没实现——服务端回
 > `{"result": null}`，扩展拿到空数组，**F12 与 Shift+F12 静默失败**
