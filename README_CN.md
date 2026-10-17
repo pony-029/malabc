@@ -616,11 +616,18 @@ Agent 调用示例（伪代码）：
 | --- | --- |
 | `initialize` | `textDocumentSync = 1`（full） |
 | `textDocument/didOpen` | 推送诊断：**先发空数组**，再发真实结果 |
-| `publishDiagnostics` | `source = "matlabc"`，一条对应一个 `heuristics` 条目 |
+| **`textDocument/didSave`** | **作废缓存 → 重算 → 重新推送** |
+| `publishDiagnostics` | `source = "matlabc"`，一条对应 `facts` 里的一个条目 |
 
-**唯一的硬判据**：某个文件的诊断，必须等于 `matlabc.py <root> --json` 里
-属于该文件的 `heuristics`。这条**构造上成立**——服务端读 CLI 的输出，
-而不是另算一遍。
+**硬判据**：每条诊断都必须能在 `facts` 里找到出处，并且诊断是 `--json`
+`heuristics` 的**超集**——**不是相等**。R161 之后 `facts` 还含
+`c_uninit_read` 与 `m_dead_code`，所以服务端能发四类，而 `heuristics` 只有一类。
+
+**它不读 CLI 的输出**：R145 起改为进程内调用 `analyzer.api.analyze`，
+没有子进程，也没有 62 KB 序列化。
+
+**只有 `didOpen` 会把诊断冻结在打开那一刻** —— `didSave` 就是为此存在的。
+**慢是等一会儿，旧是错。**
 
 ```powershell
 python matlabc_lsp.py      # 在 stdin/stdout 上说 LSP

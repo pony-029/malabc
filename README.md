@@ -646,11 +646,19 @@ Agent call example (pseudocode):
 | --- | --- |
 | `initialize` | `textDocumentSync = 1` (full) |
 | `textDocument/didOpen` | publishes diagnostics — an **empty** list first, then the real one |
-| `publishDiagnostics` | `source = "matlabc"`, one entry per `heuristics` item |
+| **`textDocument/didSave`** | **invalidates the cache, recomputes, republishes** |
+| `publishDiagnostics` | `source = "matlabc"`, one entry per item in `facts` |
 
-**The only hard judgement**: the diagnostics for a file must equal the
-`heuristics` of `matlabc.py <root> --json` for that file. That holds *by
-construction*, because the server reads the CLI output instead of recomputing.
+**The hard judgement**: every diagnostic must be traceable to a `facts` entry,
+and the diagnostics are a **superset** of the `--json` `heuristics` — **not an
+exact match**. Since R161 `facts` also carries `c_uninit_read` and
+`m_dead_code`, so the server can report four kinds where `heuristics` holds one.
+
+**It does not read the CLI output.** Since R145 it calls
+`analyzer.api.analyze` in process — no subprocess, no 62 KB serialisation.
+
+**`didOpen` alone would freeze the diagnostics at open time** — that is what
+`didSave` exists for. *Slow is a wait; stale is wrong.*
 
 ```powershell
 python matlabc_lsp.py      # speak LSP over stdin/stdout
