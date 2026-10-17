@@ -242,6 +242,11 @@ GUARD_CONTRACT = {
         1: "发现不一致（重放≠报表 / 事实无位置 / kind 越界）",
         2: "缺输入（找不到 facts.py / matlabc.py / 语料，或 CLI 跑不起来）",
     },
+    "tools/check_eol_convention.py": {
+        0: "行尾约定：手写物 CRLF、生成物 LF、扫描面不缩水（EO1–EO3）",
+        1: "发现违规（裸 LF / CRLF / 扫描面缩水）",
+        2: "缺输入（扫不到任何文本文件）",
+    },
     "tools/check_help_contract.py": {
         0: "全部一致（B0–B5 + R1/R2/R3/R4/R5/R5c/R51 + G0/G0b/G1/G2 + N1/N3/N4 + H1/H2）",
         1: "发现不一致（R1/R1b/R2/R3/R4/R5/R5c/R51 任一红）",

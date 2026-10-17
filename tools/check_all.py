@@ -27,7 +27,8 @@
         ├─▶ check_parity_registry.py     能力对等登记表（16 能力 × 4 语言）必须与**实测**一致，两向（E1–E6）
         ├─▶ check_browse_clean_manifest.py  `--browse` 清理清单 ⇄ 代码生成点两向对账（M1–M3；起因为 R99「声明改了、diff 里没有」）
         ├─▶ check_flow_figures.py         `flow/index.html` ⇄ `flow/figures/` ⇄ 候选三向对齐 + 图不过期 + 回执同源（FF1–FF7；单语交互图的门）
-        └─▶ check_facts_replay.py         事实重放 == 报表计数 + 位置完备 + 种类封闭（FT1–FT3；facts 层的门）
+        ├─▶ check_facts_replay.py         事实重放 == 报表计数 + 位置完备 + 种类封闭（FT1–FT3；facts 层的门）
+        └─▶ check_eol_convention.py       行尾约定（EO1–EO3；手写物 CRLF / 生成物 LF / 扫描面下界）
         │
         ├─ 仓级闸门 [R106]：计划块 `action` 必须 ∈ 在册动作 ∪ `-`（在册动作由摘要文件**现算**，
         │                   `-` 必须写 `blocked_reason`，在册动作不许带理由 —— 环路的归因错与
@@ -196,10 +197,11 @@ GUARD_TIMEOUT = 600.0
 # R96 / Phase 1 / 槽 23：19 → 20。加的是**新闸门**（不是给既有门加判据族）——
 # 「能力对等」此前**一格判据都没有**（64 个格子里 16 个 `no`，缺口 > 0），
 # 正是 R85 那句「缺口为 0 时加闸 = churn」**不**适用的一类。
-# 全部 24 个 `check_*.py` = 23 道门 + 本 runner。
+# 全部 25 个 `check_*.py` = 24 道门 + 本 runner。
 # R-图1：新增 check_flow_figures.py（FF1–FF7，单语交互图 ⇄ index.html），故 21 → 22。
 # R-事实1：新增 check_facts_replay.py（FT1–FT3，事实重放 == 报表），故 22 → 23。
-MIN_GUARDS = 23
+# R-行尾1：新增 check_eol_convention.py（EO1–EO3，CRLF/LF 约定），故 23 → 24。
+MIN_GUARDS = 24
 
 
 def _write_help(text):

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""eol_probe.py —— 行尾约定探测（**待升级为护栏**，当前不进 check_all）。
+"""check_eol_convention.py —— 行尾约定护栏（EO1–EO3）。
 
 为什么需要它（R110 实测事故）
 ============================
@@ -35,9 +35,9 @@ R110 用 Python 脚本改 `matlabc.py` 一行文案，脚本写了 `newline="\\n
 * 二级制文件不读。
 
 用法：
-    python tools/eol_probe.py            # 0=全部合规 1=有违规 2=缺输入
-    python tools/eol_probe.py --selftest  # 两向自证
-    python tools/eol_probe.py --help
+    python tools/check_eol_convention.py            # 0=全部合规 1=有违规 2=缺输入
+    python tools/check_eol_convention.py --selftest  # 两向自证
+    python tools/check_eol_convention.py --help
 
 退出码：
     0 = EO1–EO3 全部通过
@@ -201,12 +201,12 @@ def main(argv=None):
     for p in probs:
         print("  - " + p)
     if probs:
-        print("eol_probe: %d 项不合规" % len(probs))
+        print("check_eol_convention: %d 项不合规" % len(probs))
         return 1
     if n == 0:
-        print("eol_probe: 缺输入（扫不到文本文件）")
+        print("check_eol_convention: 缺输入（扫不到文本文件）")
         return 2
-    print("eol_probe: OK（%d 个文本文件，%s 全绿；待升级为护栏）" % (n, ROW_SIGNATURE))
+    print("check_eol_convention: OK（%d 个文本文件，%s 全绿）" % (n, ROW_SIGNATURE))
     return 0
 
 
