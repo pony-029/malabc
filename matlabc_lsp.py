@@ -99,9 +99,13 @@ def _run_json(root):
     fd, tmp = tempfile.mkstemp(suffix=".json", prefix="lsp-")
     os.close(fd)
     try:
+        # `--no-checks`：诊断只需要 `heuristics`（来自 `model.doc_todos`），
+        # 而 `_collect_checks` 占全量耗时 **63%**（实测 1300 个 .m：2.56s
+        # / 4.07s）。关掉它让首次打开从 ~2.18s 降到 ~0.73s（比值 0.335），
+        # 且 `--json` 的键集合与 heuristics 逐条不变（实测 only_a/only_b 皆空）。
         proc = subprocess.run(
             [sys.executable, MATLABC, root, "--json", tmp,
-             "--sarif-no-persist"],
+             "--sarif-no-persist", "--no-checks"],
             cwd=HERE, stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
             timeout=120,

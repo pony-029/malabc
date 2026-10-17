@@ -31768,6 +31768,12 @@ def cli_entry(argv=None):
     ap.add_argument("--export-doxygen-xml", metavar="OUTDIR", default=None,
                     help="P112：导出 Doxygen 兼容 XML（index.xml + 每文件 compounddef，"
                          "含函数 memberdef/location，供 doxygen 工具链/CI 二次消费）")
+    ap.add_argument("--no-checks", action="store_true", default=False,
+                    help="R141：跳过静态检查集合（uninitialized / dead_code / "
+                         "type_mismatch / dup_code / shape_mismatch）。实测占全量 "
+                         "耗时 63%%（1300 个 .m：2.56s / 4.07s），只取 heuristics "
+                         "的场景（LSP / MCP 状态栏）可以关掉；关掉后 --sarif 与"
+                         "站点不会包含这几类")
     ap.add_argument("--checks", default=cfg.get("checks", "all"),
                     help="启用的静态检查（逗号分隔：uninitialized,dead_code,type_mismatch,"
                          "shape_mismatch,c_unused_static,c_missing_guard,"
@@ -32480,8 +32486,17 @@ def run_pipeline(args, root, paths):
 
     # P220/P221-D：阈值与静态检查集合（供 browse / AI 页 / SARIF 共用，提前到产出编排前）
     _dup_opts = _build_dup_opts(args)
-    checks_for_sarif = _collect_checks(files, _parse_checks_arg(args.checks),
-                                       dup_opts=_dup_opts)
+    # R141：`--no-checks` 跳过静态检查集合。LSP 只要 `heuristics`（它来自
+    # `model.doc_todos`），而 `_collect_checks` 占全量耗时的 **63%**（实测
+    # 1300 个 .m：2.56s / 4.07s，其中 `_detect_dup_code` 1.80s）。
+    # ⚠ 关掉后 `checks_for_sarif` 为空：`--sarif` 与站点会少这几类，所以它
+    # 只该用在「只要诊断」的调用方（LSP / MCP 的状态栏）。
+    # 注意类型：`_collect_checks` 返回 **dict**（键是 uninitialized 等），
+    # 不是 list；给 `[]` 会让下游的 `.get(...)` 当场 AttributeError（实测）。
+    checks_for_sarif = (
+        {} if getattr(args, "no_checks", False) else
+        _collect_checks(files, _parse_checks_arg(args.checks),
+                        dup_opts=_dup_opts))
 
     # R146 / F1：事实层**前置化**。只覆盖 `m_missing_doc`（与 `--json` 的
     # `heuristics` 同一来源、同一过滤条件），所以 `--json` **逐字节不变** ——
