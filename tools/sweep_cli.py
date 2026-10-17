@@ -797,11 +797,69 @@ def group9(tmp):
     _chk(rc == 2, "probe-cli/missing-root-rc2", "rc=%d" % rc)
 
 
+def group10(tmp):
+    """R198 四个函数级视图：影响面 / 调用树 / 路径 / AI 上下文。"""
+    o = lambda n: os.path.join(tmp, n)
+
+    # --- 影响面：b 被 a 调用，a 被 switch_case 调用 ---
+    rc, so, se = run([CORPUS, "--impact", "b"])
+    _chk(rc == 0, "impact/rc0", "rc=%d %s" % (rc, se.strip()[:60]))
+    _chk("a.m:a" in so, "impact/finds-direct-caller",
+         "输出里没有直接调用者 a.m:a")
+    _chk("switch_case" in so, "impact/reaches-entry",
+         "输出里没有可达入口 switch_case")
+
+    # --- 调用树：a -> b -> a 必须被标成递归，不许无限展开 ---
+    rc, so, se = run([CORPUS, "--tree", "a", "--tree-depth", "3"])
+    _chk(rc == 0, "tree/rc0", "rc=%d %s" % (rc, se.strip()[:60]))
+    _chk("[递归]" in so, "tree/marks-recursion",
+         "a->b->a 是循环，必须标 [递归] 而不是继续展开")
+    _chk("d.m:d" in so, "tree/follows-cross-file",
+         "a.m:c 调 d.m:d，树里应出现跨文件节点")
+
+    # --- 调用路径：b 的上游链 ---
+    rc, so, se = run([CORPUS, "--trace", "b"])
+    _chk(rc == 0, "trace/rc0", "rc=%d %s" % (rc, se.strip()[:60]))
+    _chk("switch_case" in so, "trace/starts-at-entry",
+         "路径必须从入口（无调用者）开始")
+
+    # --- AI 上下文：体积 + 内容 + 行号基准 ---
+    rc, so, se = run([CORPUS, "--ai-context", "b"])
+    _chk(rc == 0, "ai/rc0", "rc=%d %s" % (rc, se.strip()[:60]))
+    # `a.m` 的 b 在第 6 行；这里断 1-based，防「多加一」那类错
+    _chk("a.m:6" in so, "ai/line-is-1based",
+         "应显示 a.m:6（MatlabFunction.line 是 1-based）")
+    _chk("谁调用它" in so and "它调用谁" in so,
+         "ai/has-both-directions")
+    _chk(len(so.encode("utf-8")) < 8192, "ai/under-8kb",
+         "%d 字节" % len(so.encode("utf-8")))
+
+    # **A4**：输出里出现的函数名必须都能在 edges/files 里找到。
+    # 这条防的是「AI 上下文自己编造调用关系」——它只允许转述。
+    allowed = set()
+    for line in so.splitlines():
+        if line.startswith("- `") and "`" in line[3:]:
+            allowed.add(line[3:line.index("`", 3)])
+    bad = []
+    for name in allowed:
+        if ":" not in name:
+            continue
+        rc2, so2, _ = run([CORPUS, "--impact", name])
+        if rc2 != 0:
+            bad.append(name)
+    _chk(not bad, "ai/no-invented-functions",
+         "这些名字在 edges 里不存在：%r" % (bad[:3],))
+
+    # --- 找不到函数：必须 rc=2 并给候选，不能静默成功 ---
+    rc, so, se = run([CORPUS, "--impact", "no_such_function_xyz"])
+    _chk(rc == 2, "impact/missing-rc2", "rc=%d" % rc)
+
+
 GROUPS = [("1 开关", group1), ("2 畸形/编码/规模", group2),
           ("3 联动/幂等", group3), ("4 少见入口", group4),
           ("5 LSP 边界", group5), ("6 格式一致/极端参数", group6),
           ("7 并发", group7), ("8 LSP 状态机", group8),
-          ("9 probe", group9)]
+          ("9 probe", group9), ("10 函数级视图", group10)]
 
 
 def _selftest():

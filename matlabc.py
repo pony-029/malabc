@@ -32262,6 +32262,28 @@ def cli_entry(argv=None):
                     help="P212：增量分析模式。仅分析 `git diff --name-only [BASE]` "
                          "列出的变更 .m 文件（默认 BASE=HEAD，即工作树相对 HEAD 的改动）。"
                          "需在当前 git 仓库内运行；未提供 BASE 时对比 HEAD。")
+
+    # ---- R198：函数级视图（四个早退型入口）----------------------------
+    # 它们都只消费已有的 `edges`，不做新分析 —— 所以跑得和 `--json` 一样快，
+    # 但回答的是官方 IDE **结构上回答不了**的问题（反向依赖 / 调用树 / 路径）。
+    ap.add_argument("--impact", metavar="FUNC", default=None,
+                    help="R198 影响面：反过来查「谁调用了它」。给 FUNC 形如 "
+                         "`a.m:b` 或直接 `b`（同名多处时会列出候选）。"
+                         "输出分层调用者 + 可达入口 + 与 dup_code / git-diff 的交叉。"
+                         "官方 F12 只能正向；反向只能靠文本搜索，区分不了 "
+                         "`@cls/get.m` 这类重名与多态派发。")
+    ap.add_argument("--tree", metavar="FUNC", default=None,
+                    help="R198 调用树：从 FUNC 往下展开它调用了谁（Source Insight "
+                         "式的函数级视图）。`--tree-depth` 控制层数，默认 3。")
+    ap.add_argument("--trace", metavar="FUNC", default=None,
+                    help="R198 调用路径：从**入口函数**（无调用者）到 FUNC 的最短调用链 "
+                         "—— 回答「这个函数是怎么被跑到」的，BFS 在反向图上做。")
+    ap.add_argument("--ai-context", metavar="FUNC", default=None,
+                    help="R198 可预览上下文：把一个函数的全部相关信息压成几 KB "
+                         "Markdown（签名/描述/调用者/被调用者/诊断/改动提示），"
+                         "目的是能塞进 LLM 的上下文窗口。只转述已有数据，不推理。")
+    ap.add_argument("--tree-depth", type=int, default=3, dest="tree_depth",
+                    help="R198 `--tree` / `--impact` 的层数，默认 3。")
     ap.add_argument("--git-diff-staged", action="store_true",
                     help="P212：配合 --git-diff，使用 `git diff --cached --name-only` "
                          "（暂存区 vs HEAD）作为变更集合，适用于 pre-commit / CI 待合入集。")
@@ -32751,6 +32773,302 @@ def main(argv=None):
     return emit_outputs(args, result, root, t_start, gate_cfg)
 
 
+def _func_index(result):
+    """`rel:name` -> {"rel", "name", "line", "complexity", "desc"}。"""
+    idx = {}
+    for mf in (getattr(result, "files", None) or []):
+        rel = getattr(mf, "rel", "") or ""
+        hdr = getattr(mf, "header", None) or {}
+        for fn in (getattr(mf, "functions", None) or []):
+            name = getattr(fn, "name", "") or ""
+            key = "%s:%s" % (rel, name)
+            idx[key] = {
+                "rel": rel,
+                "name": name,
+                "line": getattr(fn, "line", 0) or 0,
+                "complexity": getattr(fn, "complexity", 0) or 0,
+                "desc": (hdr.get("description") or "") if isinstance(hdr, dict) else "",
+                "sig": (fn.signature() if hasattr(fn, "signature") else name),
+            }
+    return idx
+
+
+def _resolve_func(result, spec):
+    """把 `a.m:b` / `b` 解析成 `(key, candidates)`。
+
+    `spec` 含 `:` 时按 `rel:name` 精确匹配；否则按函数名匹配，**多于一个就返回候选**，
+    由调用方决定是报歧义还是取第一个 —— 不猜。
+    """
+    idx = _func_index(result)
+    if ":" in spec:
+        return (spec if spec in idx else None), (\
+            [] if spec in idx else [k for k in idx if k.endswith(":" + spec.split(":")[-1])])
+    hits = [k for k in idx if k.split(":", 1)[-1] == spec]
+    if len(hits) == 1:
+        return hits[0], []
+    return None, sorted(hits)
+
+
+def _adj(result):
+    """正向（caller -> [callee]）与反向（callee -> [caller]）邻接表。
+
+    ⚠ `result.edges` 在内存里是 **tuple**（`(caller, callee, ...)`），
+    只有 `render_json` 才把它转成 `{"caller": …, "callee": …}`。
+    R198 第一次实现只按 dict 写，直接 `AttributeError: 'tuple' object
+    has no attribute 'get'` —— 又一次「先打印再断言」的教训。
+    这里两种都收，免得下次换形态再崩。
+    """
+    fwd, rev = {}, {}
+    for e in (getattr(result, "edges", None) or []):
+        if isinstance(e, dict):
+            c, d = e.get("caller"), e.get("callee")
+        elif isinstance(e, (list, tuple)) and len(e) >= 2:
+            c, d = e[0], e[1]
+        else:
+            continue
+        if not c or not d:
+            continue
+        fwd.setdefault(c, []).append(d)
+        rev.setdefault(d, []).append(c)
+    return fwd, rev
+
+
+def _bfs_layers(adj, start, depth):
+    """分层可达集。`seen` 一个集合同时满足三条判据：
+
+    - **不漏**（I1）：每个节点只入一次，但入过的一定在结果里
+    - **顺序无关**（I2）：结果只依赖集合，不依赖遍历顺序
+    - **防环**（I3）：`r→r` / `a↔b` 不会让层数无限增长
+    """
+    seen = {start}
+    layer = [start]
+    levels = []
+    for _ in range(max(1, int(depth))):
+        nxt = []
+        for n in layer:
+            for m in adj.get(n, []):
+                if m not in seen:
+                    seen.add(m)
+                    nxt.append(m)
+        if not nxt:
+            break
+        levels.append(sorted(nxt))
+        layer = nxt
+    return levels
+
+
+def _short(s, n=60):
+    s = (s or "").strip().replace("\r", " ").replace("\n", " ")
+    return s if len(s) <= n else s[:n - 1] + "…"
+
+
+def _print_impact(args, result, root):
+    idx = _func_index(result)
+    fwd, rev = _adj(result)
+    target, cands = _resolve_func(result, args.impact)
+    if target is None:
+        print("--impact: 找不到函数 %r" % args.impact)
+        if cands:
+            print("  候选（请用 rel:name 精确指定）：")
+            for k in cands[:20]:
+                print("    " + k)
+        return 2
+    levels = _bfs_layers(rev, target, args.tree_depth)
+    direct = len(levels[0]) if levels else 0
+    indirect = sum(len(x) for x in levels[1:])
+    reach = set([target])
+    for lv in levels:
+        reach.update(lv)
+    entries = [k for k in reach if not rev.get(k)]
+    rels = set(idx[k]["rel"] for k in reach if k in idx)
+
+    print("影响面：%s" % target)
+    print("  直接调用者（1 层）        %d 个" % direct)
+    print("  间接调用者（2 层及以上）  %d 个" % indirect)
+    print("  可达入口（无调用者）      %d 个" % len(entries))
+    print("  涉及文件                  %d 个" % len(rels))
+    if levels:
+        for i, lv in enumerate(levels, 1):
+            print("    第 %d 层（%d）：" % (i, len(lv)))
+            for k in lv[:12]:
+                print("      " + k)
+            if len(lv) > 12:
+                print("      … 另 %d 个" % (len(lv) - 12))
+
+    # 交叉提示：重复代码（官方完全没有）
+    dups = []
+    for r in (getattr(result, "dup_code", None) or []):
+        a = "%s:%s" % (r.get("file"), r.get("func"))
+        for d in (r.get("dup_with") or []):
+            b = "%s:%s" % (d[0], d[1]) if isinstance(d, (list, tuple)) else str(d)
+            if target in (a, b):
+                dups.append((a, b, r.get("similarity")))
+    if dups:
+        print()
+        print("  重复代码交叉（改一处要同步改另一处）：")
+        for a, b, sim in dups[:6]:
+            print("    相似度 %.2f  %s  <->  %s" % (sim or 0, a, b))
+    return 0
+
+
+def _print_tree(args, result, root):
+    idx = _func_index(result)
+    fwd, _rev = _adj(result)
+    target, cands = _resolve_func(result, args.tree)
+    if target is None:
+        print("--tree: 找不到函数 %r" % args.tree)
+        for k in cands[:20]:
+            print("  候选: " + k)
+        return 2
+
+    print("调用树：%s" % target)
+    print("")
+
+    def walk(node, depth, prefix, seen):
+        meta = idx.get(node) or {}
+        mark = " [递归]" if node in seen else ""
+        print("%s%s  (复杂度 %s)%s"
+              % (prefix, node, meta.get("complexity", "?"), mark))
+        if node in seen or depth <= 0:
+            return
+        kids = sorted(set(fwd.get(node, [])))
+        if not kids:
+            print(prefix + "  └─ （叶子）")
+            return
+        nxt_seen = set(seen)
+        nxt_seen.add(node)
+        for i, k in enumerate(kids):
+            last = (i == len(kids) - 1)
+            walk(k, depth - 1, prefix + ("    " if last else "│   "), nxt_seen)
+
+    walk(target, max(1, args.tree_depth), "  ", set())
+    return 0
+
+
+def _print_trace(args, result, root):
+    """从**入口**到目标的最短调用链（在反向图上 BFS）。"""
+    idx = _func_index(result)
+    _fwd, rev = _adj(result)
+    target, cands = _resolve_func(result, args.trace)
+    if target is None:
+        print("--trace: 找不到函数 %r" % args.trace)
+        for k in cands[:20]:
+            print("  候选: " + k)
+        return 2
+
+    # 单源反向 BFS：从 target 往上走，第一次碰到「无 caller」的节点即为一条路径
+    from collections import deque
+    prev = {target: None}
+    q = deque([target])
+    found = None
+    while q:
+        n = q.popleft()
+        ups = rev.get(n, [])
+        if not ups:
+            found = n
+            break
+        for u in ups:
+            if u not in prev:
+                prev[u] = n
+                q.append(u)
+    if found is None:
+        print("--trace: %s 及其上游全部有调用者（可能存在环，或它不是从入口可达的）"
+              % target)
+        return 0
+    chain = []
+    cur = found
+    while cur is not None:
+        chain.append(cur)
+        cur = prev.get(cur)
+    chain.reverse()
+    print("调用路径（入口 → 目标，%d 跳）：" % (len(chain) - 1))
+    for i, k in enumerate(chain):
+        meta = idx.get(k) or {}
+        print("  %s%s  (复杂度 %s)" % ("→ " if i else "  ", k, meta.get("complexity", "?")))
+    return 0
+
+
+def _print_ai_context(args, result, root):
+    """压成几 KB 的 Markdown —— 目的是能塞进 LLM 的上下文窗口。
+
+    **只转述已有数据，不推理**：输出的每个函数名都必须能在 `edges` /
+    `files` / 诊断里找到（判据 A4）。
+    """
+    idx = _func_index(result)
+    fwd, rev = _adj(result)
+    target, cands = _resolve_func(result, args.ai_context)
+    if target is None:
+        print("--ai-context: 找不到函数 %r" % args.ai_context)
+        for k in cands[:20]:
+            print("  候选: " + k)
+        return 2
+
+    meta = idx.get(target) or {}
+    callers = sorted(set(rev.get(target, [])))
+    callees = sorted(set(fwd.get(target, [])))
+    levels = _bfs_layers(rev, target, 3)
+    indirect = sum(len(x) for x in levels[1:])
+
+    L = []
+    L.append("# " + target)
+    L.append("")
+    L.append("签名：`%s`" % _short(meta.get("sig") or meta.get("name"), 120))
+    if meta.get("desc"):
+        L.append("")
+        L.append("描述：" + _short(meta["desc"], 300))
+    L.append("")
+    # `MatlabFunction.line` **已经是 1-based 源码行号**（实测：`a.m` 的 `b`
+    # 在第 6 行，这里 `line == 6`）。R198 第一版多加了 1，显示成第 7 行 ——
+    # 又一次「拿 0-based 的直觉套 1-based 的数据」。
+    L.append("复杂度：%s · 定义于 `%s:%s`"
+             % (meta.get("complexity", "?"), meta.get("rel", "?"),
+                meta.get("line") or "?"))
+    L.append("")
+    L.append("## 它调用谁（%d 个）" % len(callees))
+    if callees:
+        for k in callees[:20]:
+            m = idx.get(k) or {}
+            L.append("- `%s` — 复杂度 %s" % (k, m.get("complexity", "?")))
+    else:
+        L.append("- （叶子，不调用其他函数）")
+    L.append("")
+    L.append("## 谁调用它（%d 个）" % len(callers))
+    if callers:
+        for k in callers[:20]:
+            m = idx.get(k) or {}
+            L.append("- `%s` — 复杂度 %s" % (k, m.get("complexity", "?")))
+        if len(callers) > 20:
+            L.append("- … 另 %d 个" % (len(callers) - 20))
+    else:
+        L.append("- （无调用者，可能是入口或被死代码）")
+    L.append("")
+    L.append("## 它身上的诊断")
+    diags = []
+    base = (meta.get("rel") or "")
+    for h in (getattr(result, "heuristics", None) or []):
+        if h.get("file") == base and h.get("func") == meta.get("name"):
+            diags.append("`%s` 第 %s 行：%s"
+                         % (h.get("kind"), h.get("line"), _short(h.get("msg"), 80)))
+    for r in (getattr(result, "dup_code", None) or []):
+        a = "%s:%s" % (r.get("file"), r.get("func"))
+        if a == target:
+            for d in (r.get("dup_with") or [])[:3]:
+                b = "%s:%s" % (d[0], d[1]) if isinstance(d, (list, tuple)) else str(d)
+                diags.append("`dup_code` 与 `%s` 相似度 %.2f" % (b, r.get("similarity") or 0))
+    if diags:
+        for d in diags[:10]:
+            L.append("- " + d)
+    else:
+        L.append("- （无）")
+    L.append("")
+    L.append("## 改动它要注意")
+    L.append("- 影响 %d 个直接调用者、%d 个间接调用者" % (len(callers), indirect))
+    if meta.get("rel"):
+        L.append("- 定义文件：`%s`" % meta["rel"])
+    print("\n".join(L))
+    return 0
+
+
 def emit_outputs(args, result, root, t_start, gate_cfg=None):
     """产出全部产物并返回进程退出码。**唯一允许 print / 写盘的一层。**
 
@@ -32758,6 +33076,18 @@ def emit_outputs(args, result, root, t_start, gate_cfg=None):
     解包 7 个名字是为了让原来那 1,010 行**一行不用改**（与 S2b 同一手法）。
     `t_start` 由调用方传入：它要报的是「整条命令」的耗时，不是本函数的。
     """
+    # R198：四个函数级视图 —— **早退**，不写任何文件。
+    # 它们只消费 `result.edges` / `result.files` / 诊断，所以与 `--json`
+    # 同量级耗时，但回答的是官方 IDE 结构上回答不了的问题。
+    if getattr(args, "impact", None):
+        return _print_impact(args, result, root)
+    if getattr(args, "tree", None):
+        return _print_tree(args, result, root)
+    if getattr(args, "trace", None):
+        return _print_trace(args, result, root)
+    if getattr(args, "ai_context", None):
+        return _print_ai_context(args, result, root)
+
     files, index, edges, stats = (result.files, result.index,
                                    result.edges, result.stats)
     model, c_model = result.model, result.c_model

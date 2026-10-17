@@ -684,7 +684,7 @@ HELP_BYTES_SNAPSHOT = {
     # 以实测的 60179 为**新起点**，而不是以 59577 为起点。
     # R169：61236 → **61510**（+274）。同一笔改动（`--json-compact`）；
     # 规范形 +239、本臂 +274，差 35 是 usage 行折行与对齐差异。
-    "matlabc.py": 61510,
+    "matlabc.py": 62844,
     "matlabc_flow.py": 2075,
     "matlabc_ask.py": 919,
     "matlabc_mcp.py": 0,
@@ -766,7 +766,7 @@ HELP_CANON_SNAPSHOT = {
     # R169：50648 → **50887**（+239）。新增 `--json-compact` 的 add_argument
     # （4 行源码，展开成帮助正文 239 字节）。有意的内容改动：紧凑格式让同一份
     # 1300 文件的 JSON 序列化快 4.1 倍、体积降到 56~61%。
-    "matlabc.py": 50887,
+    "matlabc.py": 51962,
     "matlabc_flow.py": 1701,
     "matlabc_ask.py": 756,
     "matlabc_mcp.py": 0,
