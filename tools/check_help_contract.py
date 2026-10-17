@@ -206,6 +206,12 @@ GUARD_CONTRACT = {
            "文档围栏结构坏）",
         2: "找不到护栏（缺输入）",
     },
+    "tools/check_tool_discoverability.py": {
+        0: "通过（TD1–TD3：tools/ 下每个非护栏工具都在两侧 README 出现，"
+           "且名单非空）",
+        1: "有工具在 README 里找不到，或只有一侧提到",
+        2: "缺输入（tools/ 或 README 不在）",
+    },
     "tools/check_lsp_doc_parity.py": {
         0: "通过（LSP1–LSP3：代码实现的 textDocument/* 能力方法 ⇄ "
            "vscode/README.md 能力表，双向一致且非空）",
@@ -327,7 +333,7 @@ GUARD_CONTRACT = {
     },
     "tools/check_unified_graph.py": {
         0: "统一图恒等式 + 三张登记表自洽（U1–U8：形状/前提/映射逐条/注入即破/装置登记/往返/站点先行/验证分母/匹配口径）",
-        1: "有违规（形状非法 / T1 前提缺失 / 守恒判定器抓不到注入 / 未登记装置 / 往返漂移）",
+        1: "有违规（形状非法 / TD1 前提缺失 / 守恒判定器抓不到注入 / 未登记装置 / 往返漂移）",
         2: "缺输入（导不到 unified_graph / binhops / concurrency / site_matching / translate.rules —— 缺输入 → 红）",
     },
     "tools/check_kernel_snapshot.py": {

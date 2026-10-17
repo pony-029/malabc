@@ -18,6 +18,7 @@
         ├─▶ check_operator_impl.py        算子元表里不得有「只声明不产出」的幻影
         ├─▶ check_patch_ops.py            补丁编辑算子唯一事实源（禁止覆盖式赋值）
         ├─▶ check_py36_clean.py           本仓源码必须通过本仓自己的 3.6.5 门
+        ├─▶ check_tool_discoverability.py tools/ 下每个非护栏工具都要在两侧 README 出现
         ├─▶ check_lsp_doc_parity.py       LSP 能力表 ⇄ 代码实现的 textDocument/* 双向一致
         ├─▶ check_readme_parity.py        中英 README 逐节结构对等
         ├─▶ check_known_red.py            「永久红」必须两向登记在册，红集只缩不长
@@ -202,7 +203,7 @@ GUARD_TIMEOUT = 600.0
 # R-图1：新增 check_flow_figures.py（FF1–FF7，单语交互图 ⇄ index.html），故 21 → 22。
 # R-事实1：新增 check_facts_replay.py（FT1–FT3，事实重放 == 报表），故 22 → 23。
 # R-行尾1：新增 check_eol_convention.py（EO1–EO3，CRLF/LF 约定），故 23 → 24。
-MIN_GUARDS = 25
+MIN_GUARDS = 26
 
 
 def _write_help(text):
