@@ -77,12 +77,16 @@ function activate(context) {
   }
 
   const root = folders[0].uri.fsPath;
-  // 三个候选，按优先级：
-  //   ① <工作区>/matlabc_lsp.py            —— 工作区就是 malabc
-  //   ② <工作区>/malabc/matlabc_lsp.py     —— 工作区是 malabc 的**上一级**
-  //      （实测踩过：用户打开 E:\matlabc，而脚本在 E:\matlabc\malabc\）
-  //   ③ <工作区>/../matlabc_lsp.py         —— 工作区是 malabc 的子目录
+
+  // **第一候选是扩展自带的**（R204 起 .vsix 里打包了 matlabc_lsp.py +
+  // matlabc.py + analyzer/）。用户装的扩展自带分析器，**零配置**。
+  // 之后才是工作区里的那三种位置（开发者在本仓里调代码时用得上）。
+  //
+  // 实测教训：用户打开 C:\temp\yalmip 时，前三个工作区候选都不命中，
+  // 扩展弹「找不到 matlabc_lsp.py」——而那条错误只有开发者看得懂。
+  const bundled = path.join(context.extensionPath, 'matlabc_lsp.py');
   const candidates = [
+    bundled,
     path.join(root, 'matlabc_lsp.py'),
     path.join(root, 'malabc', 'matlabc_lsp.py'),
     path.join(root, '..', 'matlabc_lsp.py'),
@@ -101,9 +105,9 @@ function activate(context) {
   log('lspPath  : ' + lspPath);
 
   if (!fs.existsSync(lspPath)) {
-    const m = 'malabc: 找不到 matlabc_lsp.py（试过 ' +
+    const m = 'malabc: 找不到 matlabc_lsp.py。已试过：' +
               candidates.join(' / ') +
-              '）。请在设置里填 matlabc.lspPath。';
+              '。若都用不了，请在设置里填 matlabc.lspPath。';
     log(m);
     vscode.window.showErrorMessage(m);
     return;
