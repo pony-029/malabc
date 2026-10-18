@@ -40,6 +40,40 @@ MCP（Model Context Protocol）正好是这一层的标准：JSON-RPC、stdio �
 
 传输是 **JSON lines**（每条消息一行，MCP 的 stdio transport 约定），
 与 LSP 的 `Content-Length` 头不同 —— 这一点容易写错。
+
+
+工具分层（设计约束，不是随手加的）
+==================================
+
+**快工具**（毫秒级，走结构层 `analyze(no_checks=True)`）：
+
+    matlabc_stats         工程规模
+    matlabc_outline       文件里有什么
+    matlabc_search        按名字找
+    matlabc_impact        谁调用它 / 它调用谁
+    matlabc_heat          先看哪几个
+    matlabc_definition    跳到定义
+    matlabc_references    被谁引用
+    matlabc_fields        字段读写溯源
+
+**慢工具**（首次数十秒，需要完整检查 `_run_json`）：
+
+    matlabc_diagnostics   工程体检
+
+分层不是性能细节，而是**给模型的预算提示**：description 里明写
+「首次约 1 分钟」，模型才会在「只是想看看结构」时不误调它。
+把慢操作混进快工具，会让每一个简单问题都变慢。
+
+三条硬约束
+----------
+
+1. **一个工具回答一个完整问题**，而不是镜像一个函数。
+   `matlabc_fields` 返回的是「6 个基名，不是同一个结构体」这样的结论，
+   不是 `{writes: [...], reads: [...]}` 这样的原始结构。
+
+2. **输出是 Markdown**。读它的是语言模型，表格比嵌套字段省 token。
+
+3. **每个工具都有判据**，且判据用临时语料自建 —— 不依赖任何本地工程。
 """
 
 import argparse
@@ -88,6 +122,17 @@ def _uri(path):
     return "file://" + p
 
 
+def _resolve(p):
+    """相对路径按工程根解析。Agent 传 `solver/a.m` 是常态，
+    要求它每次拼绝对路径既啰嗦又容易错。"""
+    if not p:
+        return ""
+    if os.path.isabs(p):
+        return p
+    root = L._STATE.get("root") or ""
+    return os.path.join(root, p) if root else os.path.abspath(p)
+
+
 def _rel(path):
     root = L._STATE.get("root") or ""
     try:
@@ -110,8 +155,8 @@ def _err(s):
 # --------------------------------------------------------------------------
 
 def t_outline(args):
-    path = args.get("path") or ""
-    if not os.path.isfile(path):
+    path = _resolve(args.get("path"))
+    if not path or not os.path.isfile(path):
         return _err("找不到文件：%s" % path)
     syms = L._document_symbols(_uri(path))
     if not syms:
@@ -201,8 +246,8 @@ def t_heat(args):
 
 
 def t_definition(args):
-    path = args.get("path") or ""
-    if not os.path.isfile(path):
+    path = _resolve(args.get("path"))
+    if not path or not os.path.isfile(path):
         return _err("找不到文件：%s" % path)
     res = L._definition(_uri(path), {"line": int(args.get("line") or 0),
                                      "character": int(args.get("character") or 0)})
@@ -217,8 +262,8 @@ def t_definition(args):
 
 
 def t_references(args):
-    path = args.get("path") or ""
-    if not os.path.isfile(path):
+    path = _resolve(args.get("path"))
+    if not path or not os.path.isfile(path):
         return _err("找不到文件：%s" % path)
     res = L._references(_uri(path), {"line": int(args.get("line") or 0),
                                      "character": int(args.get("character") or 0)},
@@ -231,6 +276,73 @@ def t_references(args):
         out.append("- `%s:%d`" % (_rel(p), r["range"]["start"]["line"] + 1))
     if len(res) > 60:
         out.append("- … 另有 %d 处" % (len(res) - 60))
+    return _text("\n".join(out))
+
+
+def _ensure_payload():
+    """拿到带**检查结果**的 payload（`heuristics`）。
+
+    与 `_ensure_loaded` 不同：结构层（`analyze(no_checks=True)`）只给
+    文件/函数/边，**不含诊断**；诊断必须跑完整一遍 `_run_json`。
+    YALMIP 实测约 70 秒，所以只在真正需要时付这个代价 —— 也就是
+    `matlabc_diagnostics` 被调用的那一刻。
+    """
+    if L._STATE.get("payload"):
+        return True, 0.0
+    root = L._STATE.get("root")
+    if not root:
+        return False, 0.0
+    import time
+    t0 = time.time()
+    try:
+        L._STATE["payload"] = L._run_json(root)
+    except Exception as exc:
+        return False, time.time() - t0
+    return True, time.time() - t0
+
+
+def t_diagnostics(args):
+    """工程体检：按类别分组列出诊断（HTML 报告里那一栏）。"""
+    path = _resolve(args.get("path"))
+    ok, secs = _ensure_payload()
+    if not ok:
+        return _text("诊断需要完整分析，当前工程还没准备好（或分析失败）。")
+    payload = L._STATE.get("payload") or {}
+    items = payload.get("heuristics") or []
+    if path:
+        base = os.path.basename(path)
+        rel = _rel(path) if os.path.isabs(path) else path
+        items = [h for h in items
+                 if h.get("file") in (rel, base)]
+    if not items:
+        return _text("没有诊断项 —— 这份代码在当前规则下是干净的。"
+                     if not path else
+                     "`%s` 没有诊断项。" % os.path.basename(path))
+
+    by_kind = {}
+    for h in items:
+        by_kind.setdefault(h.get("kind") or "?", []).append(h)
+
+    out = ["# 诊断（%d 项%s）" % (len(items),
+                                 "，全量分析 %.0fs" % secs if secs > 1 else ""),
+           ""]
+    # **按严重度再按类别**：错误比警告先看，同类聚在一起才好修。
+    order = sorted(by_kind.items(),
+                   key=lambda kv: (0 if (kv[1][0].get("level") == "error")
+                                   else 1, -len(kv[1])))
+    for kind, lst in order:
+        lvl = lst[0].get("level") or "info"
+        out.append("## %s（%d · %s）" % (kind, len(lst), lvl))
+        out.append("")
+        for h in lst[:12]:
+            out.append("- `%s:%d`　`%s`　%s"
+                       % (h.get("file", ""), int(h.get("line") or 0),
+                          h.get("func", "") or "-", h.get("msg", "")))
+        if len(lst) > 12:
+            out.append("- … 另有 %d 处同类" % (len(lst) - 12))
+        out.append("")
+    out.append("提示：`path` 参数可只看单个文件；"
+               "首次调用会跑完整检查，之后走缓存。")
     return _text("\n".join(out))
 
 
@@ -396,6 +508,16 @@ TOOLS = [
                                     "character": _INT},
                      "required": ["path", "line", "character"]},
      "handler": t_references},
+
+    {"name": "matlabc_diagnostics",
+     "description": "工程体检：按类别列出诊断（未初始化、未使用、隐式转换等），"
+                    "按严重度排序，可按 path 只看一个文件。"
+                    "**首次调用需要跑完整检查（大工程约 1 分钟）**，之后走缓存；"
+                    "只想看结构时不要调它。",
+     "inputSchema": {"type": "object",
+                     "properties": {"path": _STR},
+                     "required": []},
+     "handler": t_diagnostics},
 
     {"name": "matlabc_fields",
      "description": "查询一个结构体字段的**跨文件读写位置**，按基名分组。"

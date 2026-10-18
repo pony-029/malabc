@@ -1423,9 +1423,9 @@ def _mcp(c=None):
              "mcp/tools-description-is-actionable")
 
         r3 = rpc({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                  # 故意传**相对路径**：Agent 常这么用，必须能解析。
                   "params": {"name": "matlabc_outline",
-                             "arguments": {"path": os.path.join(CORPUS,
-                                                                "a.m")}}})
+                             "arguments": {"path": "a.m"}}})
         txt3 = (((r3 or {}).get("result") or {}).get("content")
                 or [{}])[0].get("text", "")
         _chk("`a`" in txt3 and "`b`" in txt3,
@@ -1470,6 +1470,30 @@ def _mcp(c=None):
             shutil.rmtree(_tf, ignore_errors=True)
         _chk("基名" in txt6 and "写" in txt6,
              "mcp/call-fields（%r）" % (txt6[:70],))
+
+        # R324：诊断 —— 塞一个已知 payload，验分组与按文件过滤。
+        # 不跑全量（那是分钟级），测的是「分组/过滤/排序」这段逻辑。
+        _sv2 = (_L2._STATE.get("root"), _L2._STATE.get("result"),
+                _L2._STATE.get("payload"))
+        _L2._STATE["payload"] = {"heuristics": [
+            {"file": "x.m", "line": 3, "func": "x",
+             "kind": "c_uninit_read", "level": "warning",
+             "msg": "未初始化（读前无写）"},
+            {"file": "y.m", "line": 7, "func": "y",
+             "kind": "c_unused", "level": "info", "msg": "未使用"},
+        ]}
+        try:
+            _out8 = _MCP.t_diagnostics({"path": ""})
+            _out9 = _MCP.t_diagnostics({"path": "x.m"})
+        finally:
+            (_L2._STATE["root"], _L2._STATE["result"],
+             _L2._STATE["payload"]) = _sv2
+        _t8 = ((_out8.get("content") or [{}])[0].get("text", ""))
+        _t9 = ((_out9.get("content") or [{}])[0].get("text", ""))
+        _chk("c_uninit_read" in _t8 and "c_unused" in _t8,
+             "mcp/call-diagnostics-groups")
+        _chk("c_uninit_read" in _t9 and "c_unused" not in _t9,
+             "mcp/call-diagnostics-filters-by-file（%r）" % (_t9[:60],))
 
         r7 = rpc({"jsonrpc": "2.0", "id": 7, "method": "tools/call",
                   "params": {"name": "matlabc_stats", "arguments": {}}})
