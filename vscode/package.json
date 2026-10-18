@@ -1,8 +1,8 @@
 {
   "name": "matlabc-lsp",
-  "displayName": "malabc MATLAB LSP — 冯磊",
+  "displayName": "malabc | 冯磊",
   "description": "MATLAB 的编辑器智能：诊断 · 转到定义（含结构体成员）· 查找引用 · 悬停 · 大纲 · 保存即刷新。后台预热、零配置、零 npm 依赖。",
-  "version": "0.6.24",
+  "version": "0.6.25",
   "publisher": "malabc",
   "engines": {
     "vscode": "^1.80.0"
@@ -88,5 +88,6 @@
     "name": "冯磊 (Feng Lei)"
   },
   "license": "MIT",
-  "copyright": "Copyright © 2026 冯磊 (Feng Lei)"
+  "copyright": "Copyright © 2026 冯磊 (Feng Lei)",
+  "icon": "icon.png"
 }
