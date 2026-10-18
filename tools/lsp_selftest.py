@@ -1318,14 +1318,20 @@ def _doc(c):
                       u"end\n")
         with io.open(os.path.join(_cd, "cdimpl.c"), "w", encoding="utf-8",
                      newline="") as _fh:
+            # 三级链：c_top -> c_mid -> c_inner，用来验「多层」而不只是「一层」
             _fh.write(u"static int c_inner(int x)\n"
                       u"{\n"
                       u"    return x;\n"
                       u"}\n"
                       u"\n"
-                      u"int c_top(int x)\n"
+                      u"static int c_mid(int x)\n"
                       u"{\n"
                       u"    return c_inner(x);\n"
+                      u"}\n"
+                      u"\n"
+                      u"int c_top(int x)\n"
+                      u"{\n"
+                      u"    return c_mid(x);\n"
                       u"}\n")
         _svd = (_L2._STATE.get("root"), _L2._STATE.get("result"))
         _L2._STATE["root"] = _cd
@@ -1343,6 +1349,16 @@ def _doc(c):
         _cdown = ((_cdr or {}).get("items") or [{}])[0].get("c_down") or []
         _chk(any(d["name"] == "c_inner" for d in _cdown),
              "doc/cbridge-c-internal-call（%r）" % (_cdown,))
+        # R347：必须**多层**。只展开一层等于「到 C 入口再看一眼就停」，
+        # 而真实链路常常是 A→B→C。
+        _chk(max([int(d.get("depth") or 1) for d in _cdown] or [0]) >= 2,
+             "doc/cbridge-c-multilevel（%r）"
+             % ([d.get("depth") for d in _cdown],))
+        # 防环：同一函数在链里只应出现一次（C 里互递归并不罕见，
+        # 没有去重会转圈直到撞上 30 条上限）。
+        _names = [d["name"] for d in _cdown]
+        _chk(len(_names) == len(set(_names)),
+             "doc/cbridge-c-no-cycle（%r）" % (_names,))
     finally:
         shutil.rmtree(_cd, ignore_errors=True)
 

@@ -1289,11 +1289,15 @@ function activate(context) {
               children: b.items.slice(0, 15).map((it) => {
                 // C 内部的下一跳（R346）：只到 C 入口就停，等于把「链断了」
                 // 往后挪一层。这里把 C 的 callee 也挂上，可继续往下看。
-                const kids = (it.c_down || []).map((d) =>
-                  mkItem(d.name, {
-                    desc: 'C 内部调用 · line ' + (d.line || 0),
+                // 多层用前缀箭头表示深度（树项本身只有一级缩进，
+                // 把「第几层」写进标签比靠缩进更可靠）。
+                const kids = (it.c_down || []).map((d) => {
+                  const dep = d.depth || 1;
+                  return mkItem('↳ '.repeat(dep - 1) + d.name, {
+                    desc: '第 ' + dep + ' 层 · line ' + (d.line || 0),
                     rel: it.c_rel, line: d.line || it.c_line,
-                  }));
+                  });
+                });
                 return mkItem(it.c_name, {
                   desc: String(it.c_rel || '').split('/').pop() +
                         ' · line ' + it.c_line +

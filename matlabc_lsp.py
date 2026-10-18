@@ -1380,17 +1380,29 @@ def _c_bridge(name):
                     _down = []
                     try:
                         _cm = _C_INDEX.get("model") or {}
+                        _by_caller = {}
                         for _e in (_cm.get("edges") or []):
                             try:
-                                if _e[0] != h["name"]:
-                                    continue
-                                _cal = _e[1]
-                                _ln = int(_e[2] or 0)
+                                _by_caller.setdefault(_e[0], []).append(
+                                    (_e[1], int(_e[2] or 0)))
                             except (IndexError, TypeError, ValueError):
                                 continue
-                            _down.append({"name": _cal, "line": _ln})
-                            if len(_down) >= 12:
+                        # **BFS 展开 3 层**（R347）：只展开一层等于「到 C 入口
+                        # 再往下看一眼就停」—— 真实调用链常常是 A→B→C。
+                        # `_seen` 防环：C 里互递归并不罕见，没有它就会转圈。
+                        _seen = set([h["name"]])
+                        _q = [(h["name"], 1)]
+                        while _q and len(_down) < 30:
+                            _cur, _dep = _q.pop(0)
+                            if _dep > 3:
                                 break
+                            for _cn, _cl in _by_caller.get(_cur, []):
+                                if _cn in _seen:
+                                    continue
+                                _seen.add(_cn)
+                                _down.append({"name": _cn, "line": _cl,
+                                              "depth": _dep})
+                                _q.append((_cn, _dep + 1))
                     except Exception:
                         _down = []
                     items.append({"matlab": name,

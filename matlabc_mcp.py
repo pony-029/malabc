@@ -973,9 +973,11 @@ def t_cbridge(args):
                        % (it["matlab"], it["callee"], it["c_rel"],
                           it["c_line"], it["count"]))
             # C 内部的下一跳：链路到这里还没结束，别让它又断一次
-            for _d in (it.get("c_down") or [])[:8]:
-                out.append(u"    - `%s` 内部调用 `%s`（line %d）"
-                           % (it["c_name"], _d["name"], _d["line"]))
+            for _d in (it.get("c_down") or [])[:12]:
+                out.append(u"    %s- `%s`（第 %d 层，line %d）"
+                           % (u"  " * (int(_d.get("depth") or 1) - 1),
+                              _d["name"], int(_d.get("depth") or 1),
+                              _d["line"]))
         out.append(u"")
     bins = r.get("binaries") or []
     if bins:
