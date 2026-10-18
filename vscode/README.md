@@ -75,7 +75,7 @@ MATLAB 工程的代码理解工具。
 
 ## 安装（离线包）
 
-1. 拿到 `matlabc-lsp-<版本号>.vsix` 文件
+1. 拿到 `matlabc-<版本号>.vsix` 文件
 2. 打开 VS Code → 左侧「扩展」→ 右上角 `…` → **从 VSIX 安装**
 3. 安装完成后，按 `Ctrl+Shift+P` → 输入 **Reload Window** 并回车
 4. 打开任意 `.m` 文件即可

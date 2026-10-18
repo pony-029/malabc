@@ -27,9 +27,9 @@ with io.open(os.path.join(SRC, "package.json"), "r", encoding="utf-8") as fh:
 
 OUT_DIR = os.path.join(REPO, "releases", "vsix")
 OUT = os.path.join(OUT_DIR,
-                   "matlabc-lsp-%s.vsix" % pkg.get("version", "0.0.0"))
+                   "matlabc-%s.vsix" % pkg.get("version", "0.0.0"))
 
-name = pkg.get("name", "matlabc-lsp")
+name = pkg.get("name", "matlabc")
 version = pkg.get("version", "0.1.0")
 publisher = pkg.get("publisher", "malabc")
 display = pkg.get("displayName", name)

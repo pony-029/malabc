@@ -44,7 +44,7 @@ _STATE = {"root": None, "payload": None, "result": None,
 
 
 def _log(msg):
-    sys.stderr.write("[lsp] %s\n" % msg)
+    sys.stderr.write("[matlabc] %s\n" % msg)
     sys.stderr.flush()
 
 
@@ -2170,7 +2170,7 @@ def handle(msg, out):
                         "full": True,
                     },
                 },
-                "serverInfo": {"name": "matlabc-lsp", "version": "0.1.0"},
+                "serverInfo": {"name": "matlabc", "version": "0.1.0"},
             },
         })
         _log("initialize root=%r" % (_STATE["root"],))
