@@ -785,6 +785,16 @@ function activate(context) {
             }
             log('大纲 ' + path.basename(doc.uri.fsPath) +
                 ' 服务端为空，本地扫描得到 ' + found.length + ' 个');
+            // 连本地扫描都找不到函数时，**不许留空白** —— 空大纲无法与
+            // 「工具坏了」区分。放一行说明，并写明该把什么发回来。
+            if (!found.length) {
+              const msg = '未识别到 function（本地扫描 0 个）';
+              return [new vscode.DocumentSymbol(
+                msg, '请把输出频道 matlabc 的内容发回来',
+                vscode.SymbolKind.Function,
+                new vscode.Range(0, 0, 0, msg.length),
+                new vscode.Range(0, 0, 0, msg.length))];
+            }
             return found.map((f, i) => {
               const endLine = (i + 1 < found.length)
                 ? found[i + 1].line - 1 : lines.length - 1;
