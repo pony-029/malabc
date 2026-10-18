@@ -74,6 +74,12 @@ SCAN_DIRS = (".", "tools", "binfmt", "renderers")
 # S3：`Popen` + 捕获输出、但不带 timeout 的合法点（每条必须有理由）。
 # 键 = "<相对路径>|<最内层函数名>"，值 = 为什么这里可以没有 timeout。
 POPEN_STREAMING = {
+    "tools/rsi_scenarios.py|__init__":
+        "全场景探针：它要同时驱动 LSP（Content-Length 分帧）与 MCP（行分隔）"
+        "两种协议，stdin/stdout **都必须**是 PIPE，无法 DEVNULL。挂死风险由三层"
+        "兜住：① 后台读线程把消息塞进队列，单请求 `rpc(timeout=15)` 到点就抛；"
+        "② 180s 看门狗 kill 整个子进程；③ `close()` 里 close(stdin) + wait(10)，"
+        "超时再 kill。",
     "tools/lsp_selftest.py|_mcp":
         "MCP 客户端：stdin **必须**是 PIPE（要往里发 JSON-RPC），所以不能"
         "像别的子进程那样 DEVNULL —— 这属于「协议决定了不能用 DEVNULL」的"

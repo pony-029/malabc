@@ -187,9 +187,13 @@ def _err(s):
 # --------------------------------------------------------------------------
 
 def t_outline(args):
-    path = _resolve(args.get("path"))
+    # **错误信息必须带上「用户给的那一串」**（R362）：`_resolve` 失败时
+    # 返回空串，直接拼进去就成了「找不到文件：」—— 用户看不出是路径错、
+    # 越界，还是根本没传。全场景探针当场抓到这条空文案。
+    raw = (args.get("path") or "").strip()
+    path = _resolve(raw)
     if not path or not os.path.isfile(path):
-        return _err("找不到文件：%s" % path)
+        return _err("找不到文件：%s" % (raw or "（未给 path）"))
     syms = L._document_symbols(_uri(path))
     if not syms:
         return _text("`%s` 里没有识别到 function。" % os.path.basename(path))
@@ -202,7 +206,11 @@ def t_outline(args):
 
 
 def t_impact(args):
-    name = args.get("name") or ""
+    name = (args.get("name") or "").strip()
+    # **空名字要给空名字的话**（R362）：` `` ` 不是本工程里的函数" 会让
+    # 调用方以为名字传对了 —— 探针里 param 拼错就是这么被掩盖的。
+    if not name:
+        return _err("name 不能为空：请给一个函数名")
     info = L._impact(name)
     if info is None:
         return _text("`%s` 不是本工程里的函数（或还没有分析到它）。" % name)
@@ -319,9 +327,10 @@ def t_heat(args):
 
 
 def t_definition(args):
-    path = _resolve(args.get("path"))
+    raw = (args.get("path") or "").strip()
+    path = _resolve(raw)
     if not path or not os.path.isfile(path):
-        return _err("找不到文件：%s" % path)
+        return _err("找不到文件：%s" % (raw or "（未给 path）"))
     res = L._definition(_uri(path), {"line": int(args.get("line") or 0),
                                      "character": int(args.get("character") or 0)})
     if not res:
@@ -533,7 +542,9 @@ def t_explain(args):
     而模型接下来要自己做归纳。这里把归纳做掉 —— 角色、风险等级、先看哪里。
     风险规则写死在下面，可以被判据验证，不是随口说的"高风险"。
     """
-    name = args.get("name") or ""
+    name = (args.get("name") or "").strip()
+    if not name:
+        return _err("name 不能为空：请给一个函数名")
     info = L._impact(name)
     if info is None:
         return _text("`%s` 不是本工程里的函数（或还没有分析到它）。" % name)

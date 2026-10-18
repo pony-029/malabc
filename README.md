@@ -907,6 +907,7 @@ judgements above:
 | `make_release.py` | regenerates the version table in `releases/README.md` from three facts: version from the manifest, summary from the changelog, size/date from the `.vsix` files. Lists only versions that actually have a package unless `--all` is given |
 | `bump_version.py` | moves the version on by the project's rule — **every digit runs 0–9, then carries** (`0.7.9 → 0.8.0`, `0.9.9 → 1.0.0`). `--apply` writes it into the manifest, `--check` reports whether the current number still conforms |
 | `mutate_sample.py` | mutation sampling over **14 behaviours** (LSP and MCP): breaks one at a time in a throwaway copy and requires the matching judgement to **go red**. A judgement that cannot fail is indistinguishable from no judgement at all — it has already caught one vacuous criterion (a cycle guard tested on a fixture with no cycle) and one mutation aimed at the wrong function |
+| `rsi_scenarios.py` | full-scenario probe (**58 cases**) that drives real processes over the public protocols only — LSP with `Content-Length` framing, MCP line-delimited. The set only grows: every failure a round finds becomes a new case, and the floor is pinned so deleting one turns red |
 | `json_diff.py` | compares two `--json` / `--xml` outputs after ignoring volatile keys — every "IDENTICAL" claim in this repo is made with it |
 | `tree_diff.py` | compares two directory trees (file sets and contents, with regex line-ignores) |
 | `analyze_structure.py` | prints a single-file structural outline; a re-runnable baseline, not a gate |
