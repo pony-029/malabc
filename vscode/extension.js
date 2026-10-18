@@ -964,9 +964,9 @@ function activate(context) {
         ? vscode.TreeItemCollapsibleState.Collapsed
         : vscode.TreeItemCollapsibleState.None);
       if (o.desc) it.description = o.desc;
-      // 图标用 codicon：函数/变量/箭头/链各有语义，扫一眼就知道这一行是什么
-      // （R301）。纯文字列表里，读者要靠读标签判断类型，很慢。
-      if (o.icon) it.iconPath = new vscode.ThemeIcon(o.icon);
+      // **不再用 ThemeIcon**（R302）。codicon 在部分主题/字体环境下会渲染成
+      // 乱码（用户看到的就是函数名前的 `@*`），而这里表达的信息用文字符号
+      // 就够：`←` `→` `⌗` `⇥`。可读性不该依赖字体是否齐备。
       if (o.cmd) it.command = o.cmd;
       if (o.rel) {
         it.command = { command: 'matlabc.openAt', title: '打开',
@@ -1010,46 +1010,46 @@ function activate(context) {
         // 没有链（说明它是入口）才退回到调用者列表。
         // 每条链 = 一条**从入口到我**的完整来路；展开后逐跳是函数名，
         // 而不是一条挤在一起点的长字符串（R301）。
+        // 每条链 = 一条**从入口到我**的完整来路（R302）。
+        // 结构照 Source Insight 的 Relation 窗口：
+        //   顶层符号 → 每条来路 → 逐跳（编号 + 函数名 + 位置）
+        // 函数行**不带图标**：TreeItem 的图标在某些主题/字体下会渲染成乱码，
+        // 而读者要的是名字本身（用户明确要求「干净的显示一个函数」）。
         const chs = (info.chains || []).slice(0, 8).map((ch) => {
           const arr = ch || [];
-          const nodes = arr.map((n, k) => mkItem(n.name, {
-            desc: n.rel + ':' + n.line + '　第 ' + (k + 1) + ' 跳',
-            icon: 'symbol-function',
-            rel: n.rel, line: n.line,
-          }));
+          const nodes = arr.map((n, k) => mkItem(
+            (k + 1) + '.  ' + n.name,
+            { desc: n.rel + ':' + n.line, rel: n.rel, line: n.line }));
           const entry = arr.length ? arr[0].name : '';
           const me = arr.length ? arr[arr.length - 1].name : word;
-          return mkItem(entry + '  →  …  →  ' + me, {
+          return mkItem('←  ' + entry + '  →  …  →  ' + me, {
             desc: arr.length + ' 跳',
-            icon: 'arrow-left',
             children: nodes,
           });
         });
         if (chs.length) {
-          groups.push(mkItem('调用链（入口 → 我，' + chs.length + ' 条）',
+          groups.push(mkItem('⌗  调用链（入口 → 我，' + chs.length + ' 条）',
                              { desc: '逐跳展开',
-                               icon: 'type-hierarchy',
                                children: chs }));
         } else {
-          const ups = (info.direct || []).slice(0, 30).map((d) =>
-            mkItem(d.name,
-                   { desc: d.rel + ':' + d.line, icon: 'symbol-function',
+          const ups = (info.direct || []).slice(0, 30).map((d, k) =>
+            mkItem((k + 1) + '.  ' + d.name,
+                   { desc: d.rel + ':' + d.line,
                      rel: d.rel, line: d.line }));
-          groups.push(mkItem('调用者（' + info.total + '）',
-                             { desc: '谁 → 我', icon: 'arrow-left',
+          groups.push(mkItem('←  调用者（' + info.total + '）',
+                             { desc: '谁 → 我',
                                children: ups.length ? ups : [mkItem('（无调用者）')] }));
         }
-        const dns = (info.down || []).slice(0, 30).map((d) =>
-          mkItem(d.name,
+        const dns = (info.down || []).slice(0, 30).map((d, k) =>
+          mkItem((k + 1) + '.  ' + d.name,
                  { desc: d.rel + ':' + d.line + '　L' + d.level,
-                   icon: 'symbol-function',
                    rel: d.rel, line: d.line }));
-        groups.push(mkItem('被调用（' + (info.down_total || 0) + '）',
-                           { desc: '我 → 谁', icon: 'list-tree',
+        groups.push(mkItem('→  被调用（' + (info.down_total || 0) + '）',
+                           { desc: '我 → 谁',
                              children: dns.length ? dns : [mkItem('（叶子）')] }));
-        // 横向视图：链是同一个东西的另一种排布，一个按钮切过去。
-        groups.unshift(mkItem('横向查看（箭头关系）', {
-          desc: '在右侧打开', icon: 'arrow-right',
+        // 横向视图：链是同一个东西的另一种排布，一个入口切过去。
+        groups.unshift(mkItem('⇥  横向查看（箭头关系）', {
+          desc: '在右侧打开',
           cmd: { command: 'matlabc.previewGraph', title: '横向',
                  arguments: [word, true] },
         }));
@@ -1057,7 +1057,6 @@ function activate(context) {
         relView.title = '关系：' + word;
         relState.roots = [mkItem(word, {
           desc: (info.rel || rel) + ':' + (info.line || ''),
-          icon: 'symbol-function',
           rel: info.rel || rel, line: info.line || 1,
           children: groups,
         })];
@@ -1100,7 +1099,6 @@ function activate(context) {
       relState.roots = [mkItem(word, {
         desc: (decl >= 0 ? rel + ':' + (decl + 1) : '本文内无声明')
               + '　（变量）',
-        icon: 'symbol-variable',
         rel: decl >= 0 ? rel : null,
         line: decl >= 0 ? decl + 1 : 0,
         children: groups,
