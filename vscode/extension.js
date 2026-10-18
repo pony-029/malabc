@@ -1022,12 +1022,28 @@ function activate(context) {
       }
       let word = forced || '';
       let line = -1;
+      // **请求一律用标识符的起始列**（R318）。用户的 cursor 可能落在行首
+      // （整行选中、或点行号区），那时服务端 `_ident_at` 取到的是 `global`
+      // 这种关键字，references/definition 就永远返回 0 —— 日志里
+      // 「references 不足（0 < 本文 2）」重复几十次正是这个原因。
+      let wordPos = null;
       if (!word) {
         if (!pos) return;
         const wr = doc.getWordRangeAtPosition(pos, /[A-Za-z]\w*/);
         if (!wr) return;
         word = doc.getText(wr);
         line = wr.start.line;
+        wordPos = wr.start;
+      } else {
+        // 钉住某个名字时没有光标位置：用它在本文件里的第一次出现。
+        const _r = doc.getWordRangeAtPosition(new vscode.Position(0, 0),
+                                              /[A-Za-z]\w*/);
+        wordPos = _r ? _r.start : null;
+        if (!wordPos) {
+          const _t = doc.getText();
+          const _i = _t.indexOf(word);
+          wordPos = _i >= 0 ? doc.positionAt(_i) : null;
+        }
       }
       if (!word) {
         log('关系跳过：光标处没有标识符');
@@ -1189,16 +1205,18 @@ function activate(context) {
         // **先问一次「全库出现」**（R310）：全局变量的价值就在跨文件，
         // 把它排在「本文出现」之后，等于把重点埋在下面。
         let grefs = [];
-        if (pos) {
+        if (wordPos) {
           try {
             // **超时必须长于服务端自己的等待**（R317）：`_references` 里
             // `_wait_result(timeout=2.0)` 起步就要 2 秒，而这里原来只给
             // 1.5 秒 —— 请求必然超时，`grefs` 恒为空，于是**全局变量被
             // 当成局部变量**（截图里 `line 13（变量）`）。
+            // 位置用 `wordPos`（标识符起始列），不是光标列（R318）。
             const rr = await withTimeout(client.request(
               'textDocument/references',
               { textDocument: { uri: doc.uri.toString() },
-                position: { line: pos.line, character: pos.character },
+                position: { line: wordPos.line,
+                            character: wordPos.character },
                 context: { includeDeclaration: true } }), 5000);
             grefs = (rr && rr.result) || [];
           } catch (e) { /* 拿不到就只给本文结果 */ }
@@ -1233,13 +1251,14 @@ function activate(context) {
         }
 
         let extLoc = null;
-        if (decl < 0 && pos) {
+        if (decl < 0 && wordPos) {
           try {
             // 同上：`_definition` 也有 2 秒等待，1.2 秒必然先超时。
             const dr = await withTimeout(client.request(
               'textDocument/definition',
               { textDocument: { uri: doc.uri.toString() },
-                position: { line: pos.line, character: pos.character } }), 5000);
+                position: { line: wordPos.line,
+                            character: wordPos.character } }), 5000);
             extLoc = (dr && dr.result && dr.result[0]) || null;
           } catch (e) { /* 查不到就照旧说「本文没有」 */ }
         }
