@@ -1443,12 +1443,62 @@ function activate(context) {
         }
         groups.push(mkItem(decl >= 0 ? '声明（首次赋值）' : '声明',
                            { children: [declChild] }));
-        groups.push(mkItem('本文出现（' + hits.length + '）', {
-          children: hits.slice(0, 80).map((i) =>
-            mkItem('第 ' + (i + 1) + ' 行',
-                   { desc: (lines[i] || '').trim().slice(0, 40),
-                     rel: rel, line: i + 1 })),
-        }));
+        // **按函数分组**（R340）。MATLAB 的事实：
+        //   - 没有块级作用域：`if`/`for` 里定义的变量，在整个函数内是同一个
+        //   - **函数才是作用域边界**：同一 .m 文件里的主函数与局部函数，
+        //     各自的 `x` 是**不同变量**
+        // 所以单函数内合并是对的，跨函数合并会让人以为是同一处。
+        let ownerOf = () => '';
+        try {
+          const uriStr = doc.uri.toString();
+          const symKey = uriStr + '@' + doc.version;
+          if (!relState.syms || relState.syms.key !== symKey) {
+            const sr = await withTimeout(client.request(
+              'textDocument/documentSymbol',
+              { textDocument: { uri: uriStr } }), 2000);
+            relState.syms = { key: symKey, list: (sr && sr.result) || [] };
+          }
+          const syms = relState.syms.list || [];
+          ownerOf = (ln) => {
+            let best = null;
+            syms.forEach((s) => {
+              const a = s.range.start.line;
+              const b = s.range.end.line;
+              if (ln >= a && ln <= b) {
+                if (!best || (b - a) < (best.range.end.line -
+                                        best.range.start.line)) best = s;
+              }
+            });
+            return best ? best.name : '';
+          };
+        } catch (e) { /* 拿不到函数范围就整体显示 */ }
+
+        const byFn = {};
+        hits.forEach((i) => {
+          const o = ownerOf(i);
+          (byFn[o] = byFn[o] || []).push(i);
+        });
+        const fnNames = Object.keys(byFn).filter((k) => k);
+        if (fnNames.length > 1) {
+          groups.push(mkItem(
+            '本文出现（' + hits.length + ' · 跨 ' + fnNames.length + ' 个函数）',
+            { desc: '同名但不同变量',
+              children: fnNames.map((fn) => mkItem(fn, {
+                desc: byFn[fn].map((i) => 'line ' + (i + 1)).join('、')
+                  .slice(0, 56),
+                children: byFn[fn].slice(0, 40).map((i) =>
+                  mkItem('第 ' + (i + 1) + ' 行',
+                         { desc: (lines[i] || '').trim().slice(0, 40),
+                           rel: rel, line: i + 1 })),
+              })) }));
+        } else {
+          groups.push(mkItem('本文出现（' + hits.length + '）', {
+            children: hits.slice(0, 80).map((i) =>
+              mkItem('第 ' + (i + 1) + ' 行',
+                     { desc: (lines[i] || '').trim().slice(0, 40),
+                       rel: rel, line: i + 1 })),
+          }));
+        }
 
         // 全局变量：单列一组「全库出现」，按文件分组、每项可点。
         // 服务端还没算完时，**明确写一行「待分析完成」** ——
