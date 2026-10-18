@@ -1439,6 +1439,45 @@ def _mcp(c=None):
         _chk("来路" in txt4 and "switch_case" in txt4,
              "mcp/call-impact（%r）" % (txt4[:80],))
 
+        # R323：字段溯源 —— `sample_m` 里没有结构体字段，所以在临时语料上
+        # 直接调工具函数（MCP 层已由上面几条覆盖，这里测的是工具逻辑）。
+        sys.path.insert(0, ROOT)
+        import matlabc_lsp as _L2
+        import matlabc_mcp as _MCP
+        import shutil
+        import tempfile
+        from analyzer.api import analyze as _an
+        _tf = tempfile.mkdtemp(prefix="lsp_tf_")
+        try:
+            _fp2 = os.path.join(_tf, "fm.m")
+            with io.open(_fp2, "w", encoding="utf-8", newline="") as _fh:
+                _fh.write(u"function fm()\n"
+                          u"s.lb = 1;\n"
+                          u"disp(s.lb);\n"
+                          u"end\n")
+            _sv = (_L2._STATE.get("root"), _L2._STATE.get("result"),
+                   _L2._STATE.get("field_index"))
+            _L2._STATE["root"] = _tf
+            _L2._STATE["result"] = _an(_tf, no_checks=True)
+            _L2._STATE["field_index"] = None
+            try:
+                _out6 = _MCP.t_fields({"name": "lb"})
+            finally:
+                (_L2._STATE["root"], _L2._STATE["result"],
+                 _L2._STATE["field_index"]) = _sv
+            txt6 = ((_out6.get("content") or [{}])[0].get("text", ""))
+        finally:
+            shutil.rmtree(_tf, ignore_errors=True)
+        _chk("基名" in txt6 and "写" in txt6,
+             "mcp/call-fields（%r）" % (txt6[:70],))
+
+        r7 = rpc({"jsonrpc": "2.0", "id": 7, "method": "tools/call",
+                  "params": {"name": "matlabc_stats", "arguments": {}}})
+        txt7 = (((r7 or {}).get("result") or {}).get("content")
+                or [{}])[0].get("text", "")
+        _chk("文件" in txt7 and "函数" in txt7 and "调用边" in txt7,
+             "mcp/call-stats（%r）" % (txt7[:70],))
+
         r5 = rpc({"jsonrpc": "2.0", "id": 5, "method": "tools/call",
                   "params": {"name": "no_such_tool", "arguments": {}}})
         _chk(((r5 or {}).get("error") or {}).get("code") == -32601,

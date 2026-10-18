@@ -139,7 +139,8 @@ def t_impact(args):
            % (tg.get("rel", ""), tg.get("line", 0),
               info.get("total", 0), info.get("down_total", 0)), ""]
     chains = info.get("chains") or []
-    if chains:
+    # 没有调用者时，「来路」只会列出它自己 —— 那是噪音，不是信息。
+    if chains and info.get("direct"):
         out.append("## 来路（入口 → 目标，%d 条）" % len(chains))
         out.append("")
         for ch in chains[:12]:
@@ -233,6 +234,84 @@ def t_references(args):
     return _text("\n".join(out))
 
 
+def t_fields(args):
+    """结构体字段的**跨文件读写溯源**（HTML 报告里的「跨文件变量溯源」）。
+
+    为什么 Agent 需要它：改一个结构体字段时，真正的问题是「谁在写它、
+    谁在读它、有没有同名不同结构体」。`field_access` 里本来就有
+    writes/reads 和基名，LSP 侧只在 F12 时用了一小部分。
+    """
+    name = args.get("name") or ""
+    result = L._STATE.get("result")
+    if result is None:
+        return _text("工程索引还在建立，请稍后重试。")
+    ent = (L._field_index(result) or {}).get(name) or {}
+    writes = list(ent.get("writes") or [])
+    reads = list(ent.get("reads") or [])
+    if not writes and not reads:
+        return _text("没有找到字段 `%s` 的读写记录。" % name)
+
+    def norm(row):
+        row = list(row or []) + ["", "", 0, "?"]
+        return row[0], row[1], int(row[2] or 0), (row[3] or "?")
+
+    by_base = {}
+    for row in writes:
+        rel, fn, ln, base = norm(row)
+        by_base.setdefault(base, []).append((rel, fn, ln, "写"))
+    for row in reads:
+        rel, fn, ln, base = norm(row)
+        by_base.setdefault(base, []).append((rel, fn, ln, "读"))
+
+    out = ["# 结构体字段 `%s`" % name, "",
+           "写入 %d 处、读取 %d 处，涉及 %d 个基名。"
+           % (len(writes), len(reads), len(by_base)), ""]
+    if len(by_base) > 1:
+        out.append("⚠ 同名字段挂在多个基名上 —— 它们**不是同一个结构体**，"
+                   "改名或改语义要分别处理。")
+        out.append("")
+    for base in sorted(by_base)[:10]:
+        items = by_base[base]
+        out.append("## `%s.%s`（%d 处）" % (base, name, len(items)))
+        out.append("")
+        for rel, fn, ln, kind in items[:14]:
+            out.append("- %s　`%s`　%s:%d" % (kind, fn, rel, ln))
+        if len(items) > 14:
+            out.append("- … 另有 %d 处" % (len(items) - 14))
+        out.append("")
+    return _text("\n".join(out))
+
+
+def t_stats(args):
+    """工程概览：规模、入口数、最复杂的几个 —— 让 Agent 先有全局感。"""
+    result = L._STATE.get("result")
+    if result is None:
+        return _text("工程索引还在建立，请稍后重试。")
+    files = getattr(result, "files", None) or []
+    edges = getattr(result, "edges", None) or []
+    nfn = 0
+    top = []
+    for mf in files:
+        for f in (getattr(mf, "functions", None) or []):
+            nfn += 1
+            cx = int(getattr(f, "complexity", 0) or 0)
+            top.append((cx, getattr(f, "name", ""), getattr(mf, "rel", ""),
+                        int(getattr(f, "line", 1) or 1)))
+    top.sort(key=lambda t: (-t[0], t[1]))
+    out = ["# 工程概览", "",
+           "| 项 | 值 |", "| --- | --- |",
+           "| 文件 | %d |" % len(files),
+           "| 函数 | %d |" % nfn,
+           "| 调用边 | %d |" % len(edges),
+           "| 根目录 | `%s` |" % (L._STATE.get("root") or ""), ""]
+    if top:
+        out.append("## 最复杂的函数（前 5）")
+        out.append("")
+        for cx, nm, rel, ln in top[:5]:
+            out.append("- `%s`　%s:%d　复杂度 %d" % (nm, rel, ln, cx))
+    return _text("\n".join(out))
+
+
 def t_search(args):
     pat = (args.get("pattern") or "").lower()
     if not pat:
@@ -317,6 +396,21 @@ TOOLS = [
                                     "character": _INT},
                      "required": ["path", "line", "character"]},
      "handler": t_references},
+
+    {"name": "matlabc_fields",
+     "description": "查询一个结构体字段的**跨文件读写位置**，按基名分组。"
+                    "改结构体字段之前调它：能看到谁在写、谁在读，"
+                    "以及同名字段是不是挂在多个不同结构体上。",
+     "inputSchema": {"type": "object",
+                     "properties": {"name": _STR},
+                     "required": ["name"]},
+     "handler": t_fields},
+
+    {"name": "matlabc_stats",
+     "description": "工程规模概览：文件数、函数数、调用边数、最复杂的几个函数。"
+                    "第一次接触一个工程时先用它建立全局感，再决定深入哪里。",
+     "inputSchema": {"type": "object", "properties": {}, "required": []},
+     "handler": t_stats},
 
     {"name": "matlabc_search",
      "description": "按名字子串搜索工程里的函数。"
