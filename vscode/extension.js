@@ -1356,6 +1356,53 @@ function activate(context) {
           log('关系跳过：本文没有出现 ' + word);
           return;
         }
+
+        // **函数归属**（R341）。放在这里（而不是「本文出现」之前）是因为
+        // 「声明」也要用它：同一个 .m 文件里主函数与局部函数各自独立，
+        // **全文件第一个赋值可能落在别的函数里** —— 那不是当前这个变量的
+        // 声明。之前直接把 `decl` 当成「首次赋值」，于是给了一个错误答案。
+        let ownerOf = () => '';
+        try {
+          const uriStr = doc.uri.toString();
+          const symKey = uriStr + '@' + doc.version;
+          if (!relState.syms || relState.syms.key !== symKey) {
+            const sr = await withTimeout(client.request(
+              'textDocument/documentSymbol',
+              { textDocument: { uri: uriStr } }), 2000);
+            relState.syms = { key: symKey, list: (sr && sr.result) || [] };
+          }
+          const syms = relState.syms.list || [];
+          ownerOf = (ln) => {
+            let best = null;
+            syms.forEach((s) => {
+              const a = s.range.start.line;
+              const b = s.range.end.line;
+              if (ln >= a && ln <= b) {
+                if (!best || (b - a) < (best.range.end.line -
+                                        best.range.start.line)) best = s;
+              }
+            });
+            return best ? best.name : '';
+          };
+        } catch (e) { /* 拿不到函数范围就整体显示 */ }
+
+        // 光标落在哪个函数里 —— 决定「声明」该在哪找
+        const curFn = ownerOf(wordPos ? wordPos.line : hits[0]);
+        // 当前函数内的首次赋值才是「这个变量」的声明；
+        // 拿不到函数范围时退回文件级（与旧行为一致）。
+        let declHere = -1;
+        if (!curFn) {
+          declHere = decl;
+        } else {
+          for (let k = 0; k < hits.length; k += 1) {
+            const i2 = hits[k];
+            if (ownerOf(i2) === curFn &&
+                declRe.test(lines[i2].replace(/%.*$/, ''))) {
+              declHere = i2;
+              break;
+            }
+          }
+        }
         // **本文没有声明时，问一次服务端**（R308）：结构体字段的产地常在
         // 别的文件（`cfg.lb` 在 cfg_build.m 里赋值）。definition 早就支持
         // 跨文件按基名解析，侧栏只是没去问。
@@ -1428,10 +1475,19 @@ function activate(context) {
           } catch (e) { /* 查不到就照旧说「本文没有」 */ }
         }
         let declChild;
-        if (decl >= 0) {
-          declChild = mkItem('第 ' + (decl + 1) + ' 行',
-                             { desc: (lines[decl] || '').trim().slice(0, 40),
-                               rel: rel, line: decl + 1 });
+        if (declHere >= 0) {
+          declChild = mkItem('第 ' + (declHere + 1) + ' 行',
+                             { desc: (lines[declHere] || '').trim().slice(0, 40)
+                                     + (curFn ? '　@' + curFn : ''),
+                               rel: rel, line: declHere + 1 });
+        } else if (decl >= 0) {
+          // 全文件第一个赋值在**别的函数**里：它是另一个变量，
+          // 不能当成这个变量的声明（R341）。
+          declChild = mkItem(
+            '本函数内没有赋值（另一个函数有同名变量）',
+            { desc: (ownerOf(decl) || '另一个函数') + ' 第 ' + (decl + 1) +
+                    ' 行：' + (lines[decl] || '').trim().slice(0, 30),
+              rel: rel, line: decl + 1 });
         } else if (extLoc && extLoc.uri) {
           const ep = vscode.Uri.parse(extLoc.uri).fsPath;
           const erel = path.relative(root || '', ep).replace(/\\/g, '/');
@@ -1441,37 +1497,10 @@ function activate(context) {
         } else {
           declChild = mkItem('本文没有赋值（入参 / 全局 / 只读）');
         }
-        groups.push(mkItem(decl >= 0 ? '声明（首次赋值）' : '声明',
+        groups.push(mkItem(declHere >= 0 ? '声明（首次赋值）' : '声明',
                            { children: [declChild] }));
-        // **按函数分组**（R340）。MATLAB 的事实：
-        //   - 没有块级作用域：`if`/`for` 里定义的变量，在整个函数内是同一个
-        //   - **函数才是作用域边界**：同一 .m 文件里的主函数与局部函数，
-        //     各自的 `x` 是**不同变量**
-        // 所以单函数内合并是对的，跨函数合并会让人以为是同一处。
-        let ownerOf = () => '';
-        try {
-          const uriStr = doc.uri.toString();
-          const symKey = uriStr + '@' + doc.version;
-          if (!relState.syms || relState.syms.key !== symKey) {
-            const sr = await withTimeout(client.request(
-              'textDocument/documentSymbol',
-              { textDocument: { uri: uriStr } }), 2000);
-            relState.syms = { key: symKey, list: (sr && sr.result) || [] };
-          }
-          const syms = relState.syms.list || [];
-          ownerOf = (ln) => {
-            let best = null;
-            syms.forEach((s) => {
-              const a = s.range.start.line;
-              const b = s.range.end.line;
-              if (ln >= a && ln <= b) {
-                if (!best || (b - a) < (best.range.end.line -
-                                        best.range.start.line)) best = s;
-              }
-            });
-            return best ? best.name : '';
-          };
-        } catch (e) { /* 拿不到函数范围就整体显示 */ }
+        // **按函数分组**（R340）：`ownerOf` 已在前面算好（R341），
+        // 这里直接用它把命中行归类。
 
         const byFn = {};
         hits.forEach((i) => {
@@ -1655,17 +1684,67 @@ function activate(context) {
                                     escRe + '\\s*(?:\\([^)]*\\))?\\s*=');
           let decl = -1;
           let n = 0;
+          const hitLines = [];
           for (let i = 0; i < lines.length; i += 1) {
             const code = lines[i].replace(/%.*$/, '');
             if (!hitRe.test(code)) continue;
             n += 1;
+            hitLines.push(i);
             if (decl < 0 && declRe.test(code)) decl = i;
           }
           if (!n) return null;        // 本文里没出现，就不弹
+
+          // **函数归属**（R341）：与侧栏同一套规则。否则会出现
+          // 「悬停说声明在第 3 行、侧栏说本函数内没有赋值」的自相矛盾 ——
+          // 而两者说的是同一个变量。
+          let fnOf = () => '';
+          try {
+            const symKey = doc.uri.toString() + '@' + doc.version;
+            if (!relState.syms || relState.syms.key !== symKey) {
+              const sr = await withTimeout(client.request(
+                'textDocument/documentSymbol',
+                { textDocument: { uri: doc.uri.toString() } }), 2000);
+              relState.syms = { key: symKey, list: (sr && sr.result) || [] };
+            }
+            const syms2 = relState.syms.list || [];
+            fnOf = (ln) => {
+              let best = null;
+              syms2.forEach((s) => {
+                const a = s.range.start.line;
+                const b = s.range.end.line;
+                if (ln >= a && ln <= b) {
+                  if (!best || (b - a) < (best.range.end.line -
+                                          best.range.start.line)) best = s;
+                }
+              });
+              return best ? best.name : '';
+            };
+          } catch (e) { /* 拿不到函数范围就按文件级 */ }
+
+          const curFn2 = fnOf(pos.line);
+          let declHere = decl;
+          if (curFn2) {
+            declHere = -1;
+            for (let k = 0; k < hitLines.length; k += 1) {
+              const i2 = hitLines[k];
+              if (fnOf(i2) === curFn2 &&
+                  declRe.test(lines[i2].replace(/%.*$/, ''))) {
+                declHere = i2;
+                break;
+              }
+            }
+          }
+
           md.appendMarkdown('**' + word + '** · 本文出现 ' + n + ' 处\n\n');
-          md.appendMarkdown(decl >= 0
-            ? '声明（首次赋值）：第 ' + (decl + 1) + ' 行\n'
-            : '本文没有赋值 —— 可能是入参、全局变量，或只被读取\n');
+          if (declHere >= 0) {
+            md.appendMarkdown('声明（首次赋值）：第 ' + (declHere + 1) + ' 行\n');
+          } else if (decl >= 0) {
+            md.appendMarkdown('本函数内没有赋值（同名变量在 `' +
+                              (fnOf(decl) || '另一个函数') + '` 第 ' +
+                              (decl + 1) + ' 行）\n');
+          } else {
+            md.appendMarkdown('本文没有赋值 —— 可能是入参、全局变量，或只被读取\n');
+          }
           md.appendMarkdown('\n' + linkTo(word));
           return new vscode.Hover(md, wr);
         } catch (e) {
