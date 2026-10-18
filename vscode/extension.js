@@ -742,6 +742,34 @@ function activate(context) {
             await new Promise((res) => setTimeout(res, 250 * (i + 1)));
           }
           log('大纲 ' + path.basename(doc.uri.fsPath) + ' -> ' + raw.length + ' 个符号');
+
+          // **兜底：服务端给不出符号时，就在当前文档上自己扫一遍**（R288）。
+          // 连续几轮远程排查都没能让它出符号（服务端本地验过是对的），
+          // 而大纲空着对使用者来说是硬伤 —— 与其继续猜链路，
+          // 不如让它在最坏情况下也有内容。
+          // 这是**兜底**，不是第二事实源：只在服务端返回 0 个符号时启用。
+          if (!raw.length) {
+            const lines = doc.getText().split(/\r?\n/);
+            const found = [];
+            for (let i = 0; i < lines.length; i += 1) {
+              const code = lines[i].replace(/%.*$/, '');   // 去掉行内注释
+              const m = /^\s*function\b\s*(?:\[[^\]]*\]|[A-Za-z_][\w.]*)?\s*=?\s*([A-Za-z]\w*)\s*\(/.exec(code);
+              if (m) found.push({ name: m[1], line: i });
+            }
+            log('大纲 ' + path.basename(doc.uri.fsPath) +
+                ' 服务端为空，本地扫描得到 ' + found.length + ' 个');
+            return found.map((f, i) => {
+              const endLine = (i + 1 < found.length)
+                ? found[i + 1].line - 1 : lines.length - 1;
+              const range = new vscode.Range(f.line, 0,
+                                             Math.max(f.line, endLine), 0);
+              const sel = new vscode.Range(f.line, 0, f.line, f.name.length);
+              return new vscode.DocumentSymbol(f.name, '',
+                                               vscode.SymbolKind.Function,
+                                               range, sel);
+            });
+          }
+
           return raw.map((s) => {
             const kind = s.kind === 12
               ? vscode.SymbolKind.Function
