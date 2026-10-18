@@ -585,13 +585,49 @@ def t_explain(args):
     if downs:
         out.append("- 下游前三个：" + "、".join(
             "`%s`" % d["name"] for d in downs[:3]))
+    # **跨语言落点**（R355）：impact（R352）与 changed（R354）都已接上，
+    # explain 是最后一个。不接的话，它那句「需要人工确认」会比实际更悲观 ——
+    # 明明点开就能看到落在哪个 C 文件第几行。
+    bridged = []
+    try:
+        _b = L._c_bridge(name) or {}
+        if _b.get("available"):
+            for it in (_b.get("items") or []):
+                bridged.append((it["callee"], it["c_rel"], it["c_line"],
+                                len(it.get("c_down") or [])))
+            for bb in (_b.get("binaries") or []):
+                bridged.append((bb["callee"], bb["rel"], 0, -1))
+    except Exception:
+        bridged = []
+
     if unresolved:
-        out.append("- ⚠ 有 **%d 处调用解析不到**（外部函数或动态调用），"
-                   "这部分影响面无法自动推断，需要人工确认" % unresolved)
-        names = info.get("unresolved_names") or []
+        _found = set(x[0] for x in bridged)
+        if bridged:
+            out.append("- 有 **%d 处调用解析不到**，其中 %d 个在跨语言层找到了"
+                       "落点（见下），其余无法自动推断"
+                       % (unresolved, len(bridged)))
+        else:
+            out.append("- ⚠ 有 **%d 处调用解析不到**（外部函数或动态调用），"
+                       "这部分影响面无法自动推断，需要人工确认" % unresolved)
+        names = [n for n in (info.get("unresolved_names") or [])
+                 if n not in _found]
         if names:
             out.append("  未能解析：" + "、".join(
                 "`%s`" % n for n in names[:10]))
+
+    if bridged:
+        out.append("")
+        out.append("## 跨语言")
+        out.append("")
+        for callee, c_rel, c_line, ndown in bridged[:8]:
+            if c_line:
+                out.append("- `%s` → `%s:%d`%s"
+                           % (callee, c_rel, c_line,
+                              ("（内部再往下 %d 处）" % ndown) if ndown > 0
+                              else ""))
+            else:
+                out.append("- `%s` → `%s`（二进制入口）" % (callee, c_rel))
+
     out.append("")
     out.append("要改它读写的数据结构时，再用 `matlabc_fields` 查对应字段的"
                "跨文件读写位置。")

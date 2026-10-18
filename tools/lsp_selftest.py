@@ -1388,6 +1388,47 @@ def _doc(c):
     finally:
         shutil.rmtree(_cg, ignore_errors=True)
 
+    # ---- R355：`explain` 也带跨语言落点（同一模式的最后一块）----------
+    _eg = tempfile.mkdtemp(prefix="lsp_eg_")
+    try:
+        with io.open(os.path.join(_eg, "solo.m"), "w", encoding="utf-8",
+                     newline="") as _fh:
+            _fh.write(u"function solo(x)\n"
+                      u"y = c_entry(x);\n"
+                      u"z = nowhere_fn(x);\n"
+                      u"end\n")
+        with io.open(os.path.join(_eg, "impl.c"), "w", encoding="utf-8",
+                     newline="") as _fh:
+            _fh.write(u"int c_entry(int x)\n"
+                      u"{\n"
+                      u"    return x;\n"
+                      u"}\n")
+        _sve = (_L2._STATE.get("root"), _L2._STATE.get("result"))
+        _L2._STATE["root"] = _eg
+        _L2._STATE["result"] = _an(_eg, no_checks=True)
+        _L2._C_INDEX["key"] = None
+        _L2._C_INDEX["idx"] = None
+        _L2._C_INDEX["model"] = None
+        try:
+            _etxt = (_MCP.t_explain({"name": "solo"}).get("content")
+                     or [{}])[0].get("text", "")
+        finally:
+            (_L2._STATE["root"], _L2._STATE["result"]) = _sve
+            _L2._C_INDEX["key"] = None
+            _L2._C_INDEX["idx"] = None
+            _L2._C_INDEX["model"] = None
+        _chk("## 跨语言" in _etxt and "impl.c" in _etxt,
+             "mcp/explain-includes-cbridge（%r）" % (_etxt[-70:],))
+        # 已找到落点的名字不该再出现在「未能解析」那一行 ——
+        # 否则读者会以为它既找到了又没找到。
+        _uline = [ln for ln in _etxt.splitlines() if u"未能解析" in ln]
+        _chk(bool(_uline) and "nowhere_fn" in _uline[0]
+             and "c_entry" not in _uline[0],
+             "mcp/explain-unresolved-excludes-bridged（%r）"
+             % (_uline[:1],))
+    finally:
+        shutil.rmtree(_eg, ignore_errors=True)
+
     # R345：rea 即使可运行，也必须声明**它能覆盖什么**。
     # 实测它只吃 Linux ELF（对 kernel32.dll 返回 capability_unavailable），
     # 只报 available 会让人以为 Windows DLL 也有更深结论。
