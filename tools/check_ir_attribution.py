@@ -218,6 +218,10 @@ FUNC_INDEX_PREDICATES = {
     ("matlabc.py", "_match_c_bridge"):
         "MATLAB↔C 桥接：**只取命中**（`if not hits: continue`），既不产出 unresolved "
         "也不产出边 —— 语义不同，故显式登记其存在与理由",
+    ("matlabc_lsp.py", "_c_bridge"):
+        "LSP 侧的跨语言桥接：拿函数已有的 `external_calls`（判定点早就决定过的"
+        "「解析不到」）去 C 索引里找落点，**只读不改判定** —— 既不新增 unresolved "
+        "也不新增边（C 内部的边由 build_c_model 自己算），故登记其存在与理由",
 }
 
 DECIDE_ATTRS = ("append", "extend", "insert")

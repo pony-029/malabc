@@ -74,6 +74,11 @@ SCAN_DIRS = (".", "tools", "binfmt", "renderers")
 # S3：`Popen` + 捕获输出、但不带 timeout 的合法点（每条必须有理由）。
 # 键 = "<相对路径>|<最内层函数名>"，值 = 为什么这里可以没有 timeout。
 POPEN_STREAMING = {
+    "tools/lsp_selftest.py|_mcp":
+        "MCP 客户端：stdin **必须**是 PIPE（要往里发 JSON-RPC），所以不能"
+        "像别的子进程那样 DEVNULL —— 这属于「协议决定了不能用 DEVNULL」的"
+        "唯一一类。挂死风险由**看门狗线程**兜底（120s 未收工则 kill），"
+        "`finally` 里 close(stdin) + wait(timeout=10)，超时再 kill。",
     "gui.py|_launch_gui.run":
         "长跑流式分析进程（GUI 里 `_launch_gui` 内的闭包 `run`）：stdout 由 "
         "readline 循环消费，由用户点「停止」终止；加超时会把「大工程分析得久」"
@@ -117,12 +122,8 @@ POPEN_STREAMING = {
 # S4：`**kwargs` 间接传参的调用点 —— 静态看不到 stdout/stdin 到底是什么，
 # 属于**已知盲区**，必须逐点登记，否则「看不见」会被当成「没问题」。
 UNVERIFIABLE = {
-    "matlabc_mcp.py|_run":
-        "参数由 kwargs 字典间接传入（stdout=PIPE / stderr=STDOUT / "
-        "stdin=DEVNULL 都在 dict 里）。已就近逐行核实：Popen 后紧跟 "
-        "communicate(timeout=600)，超时则 _kill_tree + communicate(timeout=30)。"
-        "**关键约束**：本进程 stdin 上跑的是 MCP JSON-RPC 协议，子进程若继承会"
-        "偷走协议字节，故必须 stdin=DEVNULL（这不是洁癖，是正确性）。",
+    # `matlabc_mcp.py|_run` 的登记已在 R358 删除：那个函数不再存在，
+    # 陈旧登记会掩盖「现在真的有新调用点」这件事（S4 的原话）。
     "gui.py|_launch_gui.run":
         "除显式 stdout/stderr=PIPE 外还展开 `**_spawn`（Windows 下有 "
         "creationflags 等）。已就近核实：stdin=DEVNULL；长跑流式、由用户停止，"

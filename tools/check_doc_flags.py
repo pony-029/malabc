@@ -233,6 +233,24 @@ def audit_doc(text, script_opts, doc_name="<doc>"):
     return probs
 
 
+#: `add_argument("--x"` / `add_argument('--x'`：源码里的选项声明。
+ARG_RE = re.compile(r"add_argument\(\s*[\"'](--[A-Za-z0-9-]+)")
+
+
+def _source_options(script_path):
+    """从源码的 `add_argument("--x")` 读选项集合。
+
+    给人读的 `--help` 与机器读的「候选选项表」本是同一个事实的两个出口；
+    当其中一个被设计成**静默**（零输出）时，另一个必须能独立取到，
+    否则文档里合法的开关会被误判成幻觉。
+    """
+    try:
+        src = open(script_path, "r", encoding="utf-8", errors="replace").read()
+    except OSError:
+        return set()
+    return set(ARG_RE.findall(src))
+
+
 def _load_script_opts(root, scripts=SCRIPTS, notes=None):
     """返回 {script: set(opts)}；拿不到且未登记的脚本**不出现在键里**（= 缺输入）。
 
@@ -250,7 +268,12 @@ def _load_script_opts(root, scripts=SCRIPTS, notes=None):
             opts[s] = got
         elif s in NO_HELP_SCRIPTS:
             if _blanks(p):
-                opts[s] = set()
+                # **零输出的脚本，选项从源码声明处读**（R358）。
+                # `matlabc_mcp.py` 的 `--help` 按设计不打印任何东西
+                # （check_help_contract R4），所以「跑 --help 再解析选项」
+                # 这条路对它无效 —— 不补这一条，它文档里合法的 `--root`
+                # 会被判成「写了不存在的开关」。
+                opts[s] = _source_options(p)
             elif notes is not None:
                 notes.append(
                     "%s 登记在 NO_HELP_SCRIPTS，但它的 --help 既不是「rc=0 且无输出」"

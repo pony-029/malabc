@@ -1752,6 +1752,15 @@ def _mcp(c=None):
                             stderr=subprocess.PIPE, universal_newlines=True,
                             encoding="utf-8")
 
+    # **看门狗**（R358）：`readline()` 没有超时 —— server 若不回包，
+    # 这里会永久挂住，而整个自证套件就会卡在这一组上（S3 要的正是这件事）。
+    # 它是 MCP 客户端，stdin 必须是 PIPE（要发 JSON-RPC），所以不能像别的
+    # 子进程那样用 DEVNULL；只能用墙钟兜底。
+    import threading
+    _wd = threading.Timer(120.0, lambda: proc.kill())
+    _wd.daemon = True
+    _wd.start()
+
     def rpc(obj):
         proc.stdin.write(json.dumps(obj, ensure_ascii=False) + "\n")
         proc.stdin.flush()
@@ -2100,6 +2109,10 @@ def _mcp(c=None):
         _chk(((r5 or {}).get("error") or {}).get("code") == -32601,
              "mcp/unknown-tool-errors（%r）" % ((r5 or {}).get("error"),))
     finally:
+        try:
+            _wd.cancel()          # 正常收工就撤掉看门狗
+        except Exception:
+            pass
         try:
             proc.stdin.close()
             proc.wait(timeout=10)
