@@ -1,9 +1,9 @@
 {
   "name": "matlabc-lsp",
-  "displayName": "malabc | 冯磊",
+  "displayName": "matlabc",
   "description": "MATLAB 的编辑器智能：诊断 · 转到定义（含结构体成员）· 查找引用 · 悬停 · 大纲 · 保存即刷新。后台预热、零配置、零 npm 依赖。",
-  "version": "0.6.25",
-  "publisher": "malabc",
+  "version": "0.6.26",
+  "publisher": "冯磊",
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -41,12 +41,12 @@
       }
     ],
     "configuration": {
-      "title": "malabc",
+      "title": "matlabc",
       "properties": {
         "matlabc.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "启用 malabc 的 MATLAB 诊断与跳转"
+          "description": "启用 matlabc 的 MATLAB 诊断与跳转"
         },
         "matlabc.pythonPath": {
           "type": "string",
@@ -77,9 +77,9 @@
     },
     "commands": [
       {
-        "command": "malabc.previewGraph",
-        "title": "malabc: 预览调用关系图",
-        "category": "malabc"
+        "command": "matlabc.previewGraph",
+        "title": "matlabc: 预览调用关系图",
+        "category": "matlabc"
       }
     ]
   },

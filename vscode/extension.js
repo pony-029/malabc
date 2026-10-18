@@ -25,7 +25,7 @@ function log(msg) {
   const line = '[' + new Date().toTimeString().slice(0, 8) + '] ' + msg;
   try { _fs.appendFileSync(LOGFILE, line + '\n'); } catch (e) { /* ignore */ }
   try {
-    if (!out) out = vscode.window.createOutputChannel('malabc');
+    if (!out) out = vscode.window.createOutputChannel('matlabc');
     out.appendLine(line);
   } catch (e) { /* 日志本身不能把扩展带崩 */ }
 }
@@ -105,7 +105,7 @@ function activate(context) {
   log('lspPath  : ' + lspPath);
 
   if (!fs.existsSync(lspPath)) {
-    const m = 'malabc: 找不到 matlabc_lsp.py。已试过：' +
+    const m = 'matlabc: 找不到 matlabc_lsp.py。已试过：' +
               candidates.join(' / ') +
               '。若都用不了，请在设置里填 matlabc.lspPath。';
     log(m);
@@ -146,7 +146,7 @@ function activate(context) {
   }).catch((e) => {
     log('initialize 失败：' + e.message + '   stderr尾部=' +
         (client.stderrTail || []).join('').slice(-400));
-    vscode.window.showErrorMessage('malabc LSP 启动失败：' + e.message);
+    vscode.window.showErrorMessage('matlabc LSP 启动失败：' + e.message);
   });
 
   // 打开时推一次全文；已打开的文档补推一遍
@@ -187,7 +187,7 @@ function activate(context) {
           // 都没有 —— 用户看到的就是「点了什么反应都没有」。
           log('F12 失败：' + (e && e.message));
           vscode.window.setStatusBarMessage(
-            'malabc: 跳转失败（' + (e && e.message) + '）', 6000);
+            'matlabc: 跳转失败（' + (e && e.message) + '）', 6000);
           return [];
         }
       },
@@ -298,7 +298,7 @@ function activate(context) {
     // 一个节点 = 函数名 + 定义行 + 被哪几行调用。
     // 定义行与每个调用行都是**可点击的**（`command:` URI 不需要脚本权限）。
     const link = (rel, line, text) =>
-      '<a href="command:malabc.openAt?' +
+      '<a href="command:matlabc.openAt?' +
       encodeURIComponent(JSON.stringify([rel, line])) + '">' + esc(text) + '</a>';
 
     // 上游节点：名字 + 定义行 + **被哪几行调用**。
@@ -441,7 +441,7 @@ function activate(context) {
 
   // 关系图里每个 `rel:line` 与每个调用行号都指向这个命令。
   context.subscriptions.push(
-    vscode.commands.registerCommand('malabc.openAt', async (rel, line) => {
+    vscode.commands.registerCommand('matlabc.openAt', async (rel, line) => {
       try {
         const target = vscode.Uri.file(path.join(root, rel));
         const doc = await vscode.workspace.openTextDocument(target);
@@ -457,20 +457,20 @@ function activate(context) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('malabc.previewGraph', async (name) => {
+    vscode.commands.registerCommand('matlabc.previewGraph', async (name) => {
       if (!name) {
-        vscode.window.showWarningMessage('malabc: 请先从 CodeLens 点一个函数');
+        vscode.window.showWarningMessage('matlabc: 请先从 CodeLens 点一个函数');
         return;
       }
       try {
         const r = await client.request('matlabc/impact', { name: name });
         const info = r.result;
         if (!info) {
-          vscode.window.showWarningMessage('malabc: 找不到 ' + name);
+          vscode.window.showWarningMessage('matlabc: 找不到 ' + name);
           return;
         }
         const panel = vscode.window.createWebviewPanel(
-          'malabcGraph', '调用关系：' + name, vscode.ViewColumn.Beside,
+          'matlabcGraph', '调用关系：' + name, vscode.ViewColumn.Beside,
           // `enableCommandUris` 是点击链接的前提；`enableScripts` 仍然关着
           // —— 命令 URI 由宿主执行，页面本身不需要脚本权限。
           { enableScripts: false, enableCommandUris: true });
@@ -506,7 +506,7 @@ function activate(context) {
         log('previewGraph ' + name + ' -> total=' + info.total);
       } catch (e) {
         log('previewGraph 失败：' + (e && e.message));
-        vscode.window.showErrorMessage('malabc: ' + (e && e.message));
+        vscode.window.showErrorMessage('matlabc: ' + (e && e.message));
       }
     })
   );
@@ -533,7 +533,7 @@ function activate(context) {
                           ' · 复杂度 ' + (d.complexity || 0);
             return new vscode.CodeLens(toRange(l.range), {
               title: title,
-              command: 'malabc.showImpact',
+              command: 'matlabc.showImpact',
               arguments: [d.name, doc.uri.toString()],
             });
           });
@@ -546,7 +546,7 @@ function activate(context) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('malabc.showImpact', async (name, uriStr) => {
+    vscode.commands.registerCommand('matlabc.showImpact', async (name, uriStr) => {
       // 点击 CodeLens：拉反向可达集，列出**直接调用者**，选中即跳过去。
       // 这就是 CLI 的 `--impact`，只是在编辑器里可点。
       try {
@@ -554,7 +554,7 @@ function activate(context) {
         const info = r.result;
         if (!info) {
           vscode.window.showWarningMessage(
-            'malabc: 找不到 ' + name + ' 的定义');
+            'matlabc: 找不到 ' + name + ' 的定义');
           return;
         }
         log('impact ' + name + ' -> total=' + info.total +
@@ -569,7 +569,7 @@ function activate(context) {
           ], { placeHolder: name + ' 没有调用者' +
                           (info.entries ? '（它是入口）' : '') });
           if (pick0 && pick0.preview) {
-            await vscode.commands.executeCommand('malabc.previewGraph', name);
+            await vscode.commands.executeCommand('matlabc.previewGraph', name);
           }
           return;
         }
@@ -605,7 +605,7 @@ function activate(context) {
           matchOnDescription: true,
         });
         if (pick && pick.preview) {
-          await vscode.commands.executeCommand('malabc.previewGraph', name);
+          await vscode.commands.executeCommand('matlabc.previewGraph', name);
           return;
         }
         if (!pick) {
@@ -620,7 +620,7 @@ function activate(context) {
                        vscode.TextEditorRevealType.InCenter);
       } catch (e) {
         log('impact 失败：' + (e && e.message));
-        vscode.window.showErrorMessage('malabc: ' + (e && e.message));
+        vscode.window.showErrorMessage('matlabc: ' + (e && e.message));
       }
     })
   );
