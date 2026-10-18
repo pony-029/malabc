@@ -1144,6 +1144,30 @@ function activate(context) {
         // **本文没有声明时，问一次服务端**（R308）：结构体字段的产地常在
         // 别的文件（`cfg.lb` 在 cfg_build.m 里赋值）。definition 早就支持
         // 跨文件按基名解析，侧栏只是没去问。
+        // **先问一次「全库出现」**（R310）：全局变量的价值就在跨文件，
+        // 把它排在「本文出现」之后，等于把重点埋在下面。
+        let grefs = [];
+        if (pos) {
+          try {
+            const rr = await withTimeout(client.request(
+              'textDocument/references',
+              { textDocument: { uri: doc.uri.toString() },
+                position: { line: pos.line, character: pos.character },
+                context: { includeDeclaration: true } }), 1500);
+            grefs = (rr && rr.result) || [];
+          } catch (e) { /* 拿不到就只给本文结果 */ }
+        }
+        const byFile = {};
+        grefs.forEach((g) => {
+          if (!g || !g.uri) return;
+          const p2 = vscode.Uri.parse(g.uri).fsPath;
+          const r2 = path.relative(root || '', p2).replace(/\\/g, '/');
+          (byFile[r2] = byFile[r2] || []).push(g.range.start.line + 1);
+        });
+        const gfiles = Object.keys(byFile).sort();
+        // 跨文件 ⇒ 它是全局变量（普通变量活不过函数边界）
+        const isGlobal = gfiles.length > 1;
+
         let extLoc = null;
         if (decl < 0 && pos) {
           try {
@@ -1177,39 +1201,16 @@ function activate(context) {
                      rel: rel, line: i + 1 })),
         }));
 
-        // **跨文件**（R309）：全局变量可能在多个文件里出现。
-        // 只拿本文的结果会让人以为"只有一个文件在用" —— 而那正是它作为
-        // 全局变量最需要说清的事（改一处、影响哪几处）。
-        let grefs = [];
-        if (pos) {
-          try {
-            const rr = await withTimeout(client.request(
-              'textDocument/references',
-              { textDocument: { uri: doc.uri.toString() },
-                position: { line: pos.line, character: pos.character },
-                context: { includeDeclaration: true } }), 1500);
-            grefs = (rr && rr.result) || [];
-          } catch (e) { /* 拿不到就只给本文结果 */ }
-        }
-        if (grefs.length) {
-          const byFile = {};
-          grefs.forEach((g) => {
-            if (!g || !g.uri) return;
-            const p2 = vscode.Uri.parse(g.uri).fsPath;
-            const r2 = path.relative(root || '', p2).replace(/\\/g, '/');
-            (byFile[r2] = byFile[r2] || []).push(g.range.start.line + 1);
-          });
-          const files = Object.keys(byFile).sort();
-          if (files.length > 1) {
-            groups.push(mkItem(
-              '全库出现（' + grefs.length + ' 处 / ' + files.length + ' 个文件）',
-              { desc: '跨文件', children: files.slice(0, 20).map((f) =>
-                mkItem(path.basename(f), {
-                  desc: byFile[f].map((n) => 'line ' + n).join('、')
-                    .slice(0, 60),
-                  rel: f, line: byFile[f][0],
-                })) }));
-          }
+        // 全局变量：单列一组「全库出现」，按文件分组、每项可点。
+        if (isGlobal) {
+          groups.push(mkItem(
+            '全库出现（' + grefs.length + ' 处 / ' + gfiles.length + ' 个文件）',
+            { desc: '跨文件', children: gfiles.slice(0, 20).map((f) =>
+              mkItem(path.basename(f), {
+                desc: byFile[f].map((n) => 'line ' + n).join('、')
+                  .slice(0, 60),
+                rel: f, line: byFile[f][0],
+              })) }));
         }
       }
       // 变量也一样：顶层是这个变量名，标题写清在看谁。
@@ -1218,8 +1219,11 @@ function activate(context) {
       // 你正在看的那一行，而不是 `x` 成立的地方 —— 行号对不上代码。
       relView.title = '关系：' + word;
       relState.roots = [mkItem(word, {
-        desc: (decl >= 0 ? 'line ' + (decl + 1) : '本文内无声明')
-              + '　（变量）',
+        // 跨文件出现的变量就是**全局变量**，标题直接写清这一点，
+        // 而不是和局部变量一样只写「（变量）」。
+        desc: isGlobal
+          ? ('全局变量 · ' + gfiles.length + ' 个文件')
+          : ((decl >= 0 ? 'line ' + (decl + 1) : '本文内无声明') + '　（变量）'),
         rel: decl >= 0 ? rel : null,
         line: decl >= 0 ? decl + 1 : 0,
         children: groups,
