@@ -900,6 +900,41 @@ def _doc(c):
          "doc/symbol-range-covers-body（%r）"
          % ([(s["name"], s["range"]) for s in _syms][:2],))
 
+    # ---- R286：`@类目录` 里的方法文件也要出大纲 -------------------------
+    # 用户报的现象就是 `@sdpvar/round.m` 大纲为空。这条在临时目录里自建
+    # 语料（不污染 tests/），路径含 `@`，并且 URI 走百分号编码，
+    # 与编辑器的真实请求一致。
+    import shutil
+    import tempfile
+    _work = tempfile.mkdtemp(prefix="lsp_cls_")
+    try:
+        _cdir = os.path.join(_work, "@sdpvar")
+        os.makedirs(_cdir)
+        _cp = os.path.join(_cdir, "round.m")
+        with io.open(_cp, "w", encoding="utf-8", newline="") as _fh:
+            _fh.write(u"function varargout=round(varargin)\n"
+                      u"%ROUND (overloaded)\n"
+                      u"switch class(varargin{1})\n"
+                      u"    case 'sdpvar'\n"
+                      u"        varargout{1} = 1;\n"
+                      u"end\n")
+        _saved_r = _L2._STATE.get("root")
+        _saved_res = _L2._STATE.get("result")
+        _L2._STATE["root"] = _work
+        _L2._STATE["result"] = None          # 分析结果里没有它
+        try:
+            _curi = ("file:///" + _cp.replace("\\", "/").lstrip("/")
+                     .replace(":", "%3A").replace("@", "%40"))
+            _csyms = _L2._document_symbols(_curi)
+        finally:
+            _L2._STATE["root"] = _saved_r
+            _L2._STATE["result"] = _saved_res
+        _chk(len(_csyms) == 1 and _csyms[0]["name"] == "round",
+             "doc/class-folder-symbols（%r）"
+             % ([(s["name"], s["range"]) for s in _csyms],))
+    finally:
+        shutil.rmtree(_work, ignore_errors=True)
+
     # ---- R235：**本库没有定义时不许沉默** -------------------------------
     # 用户报的「显示有调用、却找不到函数」：`some_toolbox_fn(...)` 看着
     # 像调用，但本库和内置表里都没有它。以前 hover 返回 null、F12 返回
