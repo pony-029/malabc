@@ -146,7 +146,7 @@ MATLAB 没有块级作用域 —— `if` / `for` 里定义的变量，是整个�
 | `matlabc_definition` | 某个位置指向哪里 |
 | `matlabc_references` | 被谁引用；全局变量分定义/声明/使用 |
 | `matlabc_fields` | 字段的跨文件读写位置，按变量名分组 |
-| `matlabc_cbridge` | 解析不到的调用落到哪：C 源定义位置、`mex` 二进制、或 `calllib` 的库导出表核对（每条都标注证据来源） |
+| `matlabc_cbridge` | 两个方向都问：MATLAB 函数调了哪些 C / mex / 库（正向），或某个 C 函数被哪些 MATLAB 函数调用（反向） |
 | `matlabc_diagnostics` | 工程体检：未初始化、未使用等（首次较慢） |
 
 ### 写工具（3 个）—— AI 改代码时走三步

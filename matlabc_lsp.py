@@ -1363,10 +1363,12 @@ def _c_bridge(name):
 
     items, matched = [], set()
     all_ext = set()
+    found_matlab = False
     for mf in (getattr(result, "files", None) or []):
         for f in (getattr(mf, "functions", None) or []):
             if getattr(f, "name", "") != name:
                 continue
+            found_matlab = True
             for cname, cnt in (getattr(f, "external_calls", None) or {}).items():
                 all_ext.add(cname)
                 for h in idx.get(cname.lower(), []):
@@ -1426,6 +1428,39 @@ def _c_bridge(name):
             continue
         seen.add(k)
         uniq.append(it)
+    # ---- 反向查询（R348）----------------------------------------------
+    # `name` 不是 MATLAB 函数，但确实是工程内的一个 C 函数 —— 这时要回答的是
+    # **「改它会影响谁」**：哪些 MATLAB 函数调用了它、C 内部又谁调它。
+    # 跨语言边界上，这是最常见也最要命的问题（改一行 C，坏一片 MATLAB）。
+    if not found_matlab and name and name.lower() in idx:
+        _matlab_callers = []
+        for mf in (getattr(result, "files", None) or []):
+            for f in (getattr(mf, "functions", None) or []):
+                _ext = getattr(f, "external_calls", None) or {}
+                if name in _ext:
+                    _matlab_callers.append({
+                        "matlab": getattr(f, "name", "") or "",
+                        "mfile": getattr(mf, "rel", "") or "",
+                        "count": int(_ext.get(name) or 0),
+                    })
+        _c_callers = []
+        _cm2 = _C_INDEX.get("model") or {}
+        for _e in (_cm2.get("edges") or []):
+            try:
+                if _e[1] == name:
+                    _c_callers.append({"name": _e[0],
+                                       "line": int(_e[2] or 0)})
+            except (IndexError, TypeError, ValueError):
+                continue
+        return {"available": True, "mode": "c-function", "c_name": name,
+                "definitions": idx.get(name.lower(), []),
+                "matlab_callers": _matlab_callers,
+                "c_callers": _c_callers,
+                "items": [], "binaries": [], "calllib": [],
+                "unresolved": [], "scanned": _C_INDEX.get("nfiles") or 0,
+                "bin_scanned": _BIN_INDEX.get("nfiles") or 0,
+                "rea": _rea_status()}
+
     # ---- 二进制层（R343）----------------------------------------------
     # mex 的入口名就是文件名：`foo.mexw64` 提供 `foo`，不需要解析机器码。
     # 这一层能把「未解析」缩小到真正的未知（工具箱 / 动态调用）。

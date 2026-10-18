@@ -1341,6 +1341,10 @@ def _doc(c):
         _L2._C_INDEX["model"] = None
         try:
             _cdr = _L2._c_bridge("cd")
+            # 反向查询必须在**同一个工程状态下**做：放到 finally 之后，
+            # C 索引已按被恢复的旧 root 重建，`c_inner` 自然查不到。
+            _rev = _L2._c_bridge("c_inner")     # 只被 C 调用的那个
+            _rev2 = _L2._c_bridge("c_top")      # 被 MATLAB 调用的那个
         finally:
             (_L2._STATE["root"], _L2._STATE["result"]) = _svd
             _L2._C_INDEX["key"] = None
@@ -1359,6 +1363,14 @@ def _doc(c):
         _names = [d["name"] for d in _cdown]
         _chk(len(_names) == len(set(_names)),
              "doc/cbridge-c-no-cycle（%r）" % (_names,))
+        # R348：**反向查询** —— 传 C 函数名时，要回答「谁在用它」。
+        # 正向（MATLAB 名）与反向（C 名）必须同时成立，否则只有一半链路。
+        _chk(((_rev or {}).get("mode") == "c-function"),
+             "doc/cbridge-reverse-mode（%r）" % ((_rev or {}).get("mode"),))
+        _chk(any(m.get("matlab") == "cd"
+                 for m in ((_rev2 or {}).get("matlab_callers") or [])),
+             "doc/cbridge-reverse-matlab-callers（%r）"
+             % ((_rev2 or {}).get("matlab_callers"),))
     finally:
         shutil.rmtree(_cd, ignore_errors=True)
 

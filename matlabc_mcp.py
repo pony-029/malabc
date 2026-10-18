@@ -959,6 +959,37 @@ def t_cbridge(args):
             return _text("工程索引还在建立，请稍后重试。")
         return _text("这个工程里没有 C 源文件（.c/.cpp），"
                      "无法做跨语言桥接。")
+    # **反向查询**（R348）：传进来的不是 MATLAB 函数，而是一个 C 函数。
+    # 这时要回答的是「改它会影响谁」—— 跨语言边界上最要命的问题。
+    if (r.get("mode") or "") == "c-function":
+        out = [u"# C 函数 `%s` 的影响面" % name, u""]
+        defs = r.get("definitions") or []
+        if defs:
+            out.append(u"## 定义")
+            out.append(u"")
+            for d in defs[:5]:
+                out.append(u"- `%s:%d`" % (d.get("rel"), d.get("line") or 0))
+            out.append(u"")
+        mc = r.get("matlab_callers") or []
+        out.append(u"## 调用它的 MATLAB 函数（%d）" % len(mc))
+        out.append(u"")
+        if mc:
+            for m in mc:
+                out.append(u"- `%s`　%s　（%d 处调用）"
+                           % (m["matlab"], m["mfile"], m["count"]))
+        else:
+            out.append(u"- 没有 MATLAB 函数调用它 —— 可能是导出给外部用的 ABI")
+        out.append(u"")
+        cc = r.get("c_callers") or []
+        if cc:
+            out.append(u"## C 内部的调用者（%d）" % len(cc))
+            out.append(u"")
+            for c in cc[:15]:
+                out.append(u"- `%s`　line %d" % (c["name"], c["line"]))
+            out.append(u"")
+        out.append(u"改这个 C 函数时，上面的 MATLAB 函数都需要回归。")
+        return _text(u"\n".join(out))
+
     items = r.get("items") or []
     unresolved = r.get("unresolved") or []
     if not items and not unresolved:
