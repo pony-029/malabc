@@ -1,78 +1,113 @@
-# malabc MATLAB LSP（VSCode 扩展）
+# malabc MATLAB LSP
 
-**零 npm 依赖**：不装 `vscode-languageclient`，手写协议客户端（`lspClient.js`，约 70 行）。
-符合本仓"离线、零依赖、内网可用"的设定。
+**作者：冯磊（Feng Lei）** · © 2026 冯磊
 
-**零配置**：分析器（`matlabc_lsp.py` + `matlabc.py` + `analyzer/` 等）**打包在扩展里**。
-装完直接可用，不需要指定 `matlabc.lspPath`；本仓开发者仍可用设置覆盖成工作区那份。
+在 VS Code 里读 MATLAB 工程，像用 Source Insight 读 C 一样顺手：
+点到哪、看到哪、跳得到，改之前先知道会牵动谁。
 
-**后台预热**：`initialize` 一到就开始分析（Source Insight 式），**不等第一次 F12**。
-打开大仓库（如 YALMIP，1665 个 `.m`）时，约 35 秒后跳转/悬停/大纲全部 0 秒返回；
-在那之前按 F12 会等它算完（而不是静默失败）。
+装完即用，不需要配置，不需要联网。
 
-**自带语法与图标**：`syntaxes/matlab.tmLanguage.json` 提供 MATLAB 高亮（注释单独绿色），
-`icons/matlab.svg` 让 `.m` 在资源管理器里一眼可辨。
+---
 
-## 现在能做什么
+## 能做什么
 
-| 能力 | 来源 | 状态 |
+| 你会得到 | 怎么用 |
+| --- | --- |
+| **波浪线提示四类问题**：缺文档、未初始化读取、死代码、以及 `--uninit` 组的检查 | 打开 `.m` 文件自动出现 |
+| **跳到定义**：同文件、跨文件、结构体成员 `s.field`、结构体变量 `s` 本身 | `F12` |
+| **查找引用**：哪个函数调用了它 | `Shift+F12` |
+| **悬停即见说明**：签名、用途、参数表（含类型）、复杂度、定义位置 | 鼠标停留 |
+| **一眼看清调用规模**：每个函数头顶 `↑N 调用者 · ↓M 被调用 · 复杂度 K` | 函数定义行上方 |
+| **调用关系图**：向上一直追到入口，向下展开三层，每个节点带行号，点一下直达 | 点 CodeLens 里的「预览调用关系图」 |
+| **语义高亮**：参数、局部变量、函数、结构体字段、全局变量、内置函数分色显示 | 自动 |
+| **函数大纲**：整个文件的函数列表 | `Ctrl+Shift+O` |
+| **保存即刷新**：只重算改动的那一个文件，大工程也是瞬间 | `Ctrl+S` |
+
+---
+
+## 当你问"这个函数在哪儿"却找不到时
+
+大多数工具在这里保持沉默，让人分不清是拼错了还是工具坏了。这里会直接告诉你**它是什么**：
+
+- 是**结构体字段**：`s.lb(1)` 里的 `lb` 不是函数，会说明它没有独立定义、并给出全库读写次数与首次写入位置
+- 是**本库外的函数**：会说明它出现在哪个函数的外部调用表里，通常是 toolbox
+- 是**当前函数的参数**：会说这是参数、类型是什么、属于哪个函数
+- 是**局部变量**：会说它在本函数里被赋值几次、首次在第几行
+- **什么都不像**：会说"本库内没有同名函数，也不是参数或字段"，并列出可能的原因
+
+---
+
+## 大工程上是什么体验
+
+- **打开项目就开始分析**，不必等第一次按 `F12`
+- 分析完成之前按 `F12` 会**等它算完**，而不是悄悄失败
+- 分析结果缓存到磁盘，**第二次打开同一项目基本是秒开**
+- 改一个文件保存，只重算那一个文件，其余复用
+
+---
+
+## 调用关系图怎么读
+
+```
+▲ 上游（谁调用它）
+├─ callpop_solver(model)   solver/callpop_solver.m:12   调用自 47 88
+│   └─ main_entry         main.m:1            [入口] 无调用者
+
+▼ 下游（它调用谁）
+├─ compileQuadratic(x)    modules/.../compileQuadratic.m:1   · 复杂度 9
+```
+
+- **[入口]** 表示没有人调用它
+- **调用自 47 88** 里的数字是**语句**：一行里写两次调用算一处
+- 每一层的节点最多列 20 个、调用点最多列 6 个，**超出会写明还有多少**，不会假装那就是全部
+
+---
+
+## 设置
+
+| 设置项 | 默认 | 作用 |
 | --- | --- | --- |
-| 诊断 | `publishDiagnostics` | **四类**：`m_missing_doc` / `c_uninit_read` / `m_dead_code`（+ `--uninit` 组的验证） |
-| 转到定义 | `textDocument/definition` | **同文件 + 跨文件**（判据 7 条） |
-| 查找引用 | `textDocument/references` | **函数级**（不是行级，见下；判据 6 条） |
-| 悬停 | `textDocument/hover` | **签名 + 描述 + 复杂度 + 定义位置**（判据 4 条） |
-| 符号大纲 | `textDocument/documentSymbol` | **函数列表**（Outliner / Ctrl+Shift+O；判据 4 条） |
-| **保存即刷新** | `textDocument/didSave` | 作废缓存 → 重算 → 重推（判据 4 条） |
-| **调用计数** | `textDocument/codeLens` | 每个函数头顶 `↑N 调用者 · ↓M 被调用 · 复杂度 K` —— 官方 CodeLens 只显示 git 作者，不给调用关系 |
-| **语义高亮** | `textDocument/semanticTokens/full` | 局部/全局/字段/内置/用户五类分开。**legend 必须与 `matlabc_lsp.py` 的 `_SEMANTIC_TYPES` 同序**（顺序错一位颜色整体错乱且不报错，由 `LSP4` 守着）。认不出的标识符一律不标，保留 TextMate 原色 |
+| `matlabc.docLang` | `both` | 内置函数说明的语言：`both` / `zh` / `en` |
+| `matlabc.pythonPath` | `python` | 使用的 Python 解释器（需要 3.8+） |
+| `matlabc.lspPath` | 空 | 一般不用改；留空即用扩展自带的服务器 |
 
-> 这些 provider 曾经在扩展侧注册、LSP 侧却没实现——服务端回
-> `{"result": null}`，扩展拿到空数组，**F12 与 Shift+F12 静默失败**
-> （不跳转也不报错）。现在的顺序反过来了：**先在 LSP 侧实现并写判据，
-> 判据变绿后再注册 provider**。`test_extension.js` 与 `test_client.js`
-> 里的断言也跟着翻面。
+---
 
-## 明确不做的事
+## 已知边界
 
-- **不做 CodeLens / 语义高亮**：它们要的类型信息还在 `model` 深处，判据比现在弱。
-- **不自己解析 `.m`**：所有分析走 `matlabc_lsp.py` → `analyzer.api.analyze`。一旦自己解析，
-  就是第二事实源。
-- **不做 `didChange` 增量同步**：现在走 `didSave` 全量重算（带 reuse 跳过未变文件）。
-  编辑器里的未保存编辑**不会**刷新诊断——**这是有意的**：保存前的结果是草稿，
-  拿它报错会打断输入。
+这些是**有意为之**，不是待修的缺陷：
 
-## 引用为什么是"函数级"
+- **查找引用是函数级**：给出"哪个函数调用了它"，不是每一处调用行
+- **未保存的编辑不刷新诊断**：保存前的内容当草稿处理，避免边打字边报错打断思路
+- **删除或新增文件后**，请重新打开一次文件夹，或等下一次保存触发刷新
 
-`analyze` 的 `edges` 是 `(caller, callee, ambiguous)` 三元组，**不带行号**。
-所以 `references` 给的是「哪个函数调用了它」，落点是调用者的**定义行**，
-不是调用发生的那一行。**要行级引用，得先让 `edges` 带 `line`**——那会改
-`--json` 里 `edges` 的结构，属于 `matlabc.py` 的改动，要付一次整树重跑。
-行级引用要等 facts 层给 `edges` 加 `line`。
+---
 
-## 安装与运行
+## 技术附录（默认折叠）
 
-1. 需要 Python 3.8+ 在 PATH（或设置 `matlabc.pythonPath`）。
-2. 把本目录**软链接/复制**到 VSCode 扩展目录：
+给需要对接或核对的人看，**普通使用不需要读**。页面刻意只讲功能，这里补上"覆盖了哪些编辑器请求"，
+以及每一项的验证情况。
 
-```powershell
-# Windows
-New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.vscode\extensions\malabc.matlabc-lsp-0.1.0" -Target "E:\matlabc\malabc\vscode"
-```
+<details>
+<summary>覆盖的请求（点开）</summary>
 
-3. 打开一个含 `.m` 的目录，VSCode 会自动激活（`activationEvents: onLanguage:matlab`）。
+| 请求 | 对应能力 |
+| --- | --- |
+| `publishDiagnostics`（服务器推送，非请求） | 四类诊断 |
+| `textDocument/definition` | 转到定义（同文件 / 跨文件 / 结构体成员 / 结构体变量） |
+| `textDocument/references` | 查找引用（函数级） |
+| `textDocument/hover` | 悬停说明（签名 / 描述 / 参数表 / 复杂度；查不到时解释原因） |
+| `textDocument/documentSymbol` | 函数大纲 |
+| `textDocument/codeLens` | 调用计数 + 打开调用关系图 |
+| `textDocument/semanticTokens/full` | 语义高亮（六类） |
+| `textDocument/didOpen` | 打开即开始分析 |
+| `textDocument/didSave` | 保存即刷新（只重算改动文件） |
+| `textDocument/didClose` | 关闭文档 |
 
-## 判据（不装 VSCode 也能跑）
+</details>
 
-```powershell
-# 用真实的 matlabc_lsp.py 验证 JS 客户端
-$env:PYTHON="C:\Program Files\Python310\python.exe"
-node vscode\test_client.js
-# 期望：LSP CLIENT {"bad": 0, "good": 6}
+---
 
-# 验证 Python 侧
-python tools\lsp_selftest.py
-# 期望：LSP SELFTEST {"bad": 0, "good": 10}
-```
+## 许可
 
-`test_client.js` 不 `require('vscode')`，所以能在纯 Node 下跑；`extension.js` 必须
-在 VSCode 宿主里跑，只做语法检查（`node --check`）。
+代码 MIT。名称与品牌不在 MIT 授权范围内，详见仓库 `LICENSE` §6。
