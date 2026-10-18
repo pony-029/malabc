@@ -38,7 +38,10 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 LSP = os.path.join(ROOT, "matlabc_lsp.py")
-VREADME = os.path.join(ROOT, "vscode", "README.md")
+# **协议表从 README 拆到 PROTOCOL.md**（R331）：README 已改为纯用户视角
+# （只讲功能与操作、不写实现），再把 LSP 方法名塞回去会自相矛盾。
+# 这道门继续有效，只是被核对的那份文档换了位置。
+VREADME = os.path.join(ROOT, "vscode", "PROTOCOL.md")
 EXTJS = os.path.join(ROOT, "vscode", "extension.js")
 
 #: P5 的对手方：本门在 README 质量门表那一行里声明的判据族。
