@@ -14,7 +14,8 @@
         ├─▶ check_import_graph.py         模块级 import 必须无环；回边只能走登记过的惰性通道
         ├─▶ check_c_frontend_shapes.py    C 前端函数定义形态（四形态/指针返回/体界/行号）+ 调用关系有界投影（**节点身份=定义落点**，R88）+ **解析阶梯**（同文件优先 → `#include` 闭包三明治，`under` 唯一性按**解析目标数**判，R89/R89k）+ 属性说明符不是定义也不是调用，各有对手方
         ├─▶ check_py_js_frontend_shapes.py Python/JS 前端形态（单行/async/注解/跨行/箭头）各有对手方
-        ├─▶ check_ir_attribution.py       「解析不到的调用」只有一个判定点，归因吃的就是它
+        ├─▶ check_incremental_parity.py   增量重算必须与全量**逐项相同**（逐文件各测一次）
+├─▶ check_ir_attribution.py       「解析不到的调用」只有一个判定点，归因吃的就是它
         ├─▶ check_operator_impl.py        算子元表里不得有「只声明不产出」的幻影
         ├─▶ check_patch_ops.py            补丁编辑算子唯一事实源（禁止覆盖式赋值）
         ├─▶ check_py36_clean.py           本仓源码必须通过本仓自己的 3.6.5 门
@@ -206,7 +207,7 @@ GUARD_TIMEOUT = 600.0
 # R-图1：新增 check_flow_figures.py（FF1–FF7，单语交互图 ⇄ index.html），故 21 → 22。
 # R-事实1：新增 check_facts_replay.py（FT1–FT3，事实重放 == 报表），故 22 → 23。
 # R-行尾1：新增 check_eol_convention.py（EO1–EO3，CRLF/LF 约定），故 23 → 24。
-MIN_GUARDS = 29
+MIN_GUARDS = 30
 
 
 def _write_help(text):

@@ -708,6 +708,7 @@ python tools/check_all.py        # 跑完 tools/check_*.py 全部护栏 + 各自
 | `check_py36_clean.py` | `--check-py36` — 本仓违背**自己**的 Python 3.6.5 承诺（已经发生过：`list[str]` 与 `from __future__ import annotations` 都曾提交进来） |
 | `check_subprocess_hygiene.py` | `S1–S5` — 任何「捕获输出却继承 stdin」或「可能永远挂住」的子进程调用 |
 | `check_help_contract.py` | `B0–B5` — 代码里有、`--help` 里没有的退出码（或反之）；帮助丢了用法示例 / 图示 / 退出码段；**示例命令其实跑不起来**；帮助**悄悄缩水或臃肿**（绝对界 **+** 对已批准快照的 **±64 B** 漂移带 **+** 对 `--help` **规范形**的**逐字节**比对 —— 规范形与解释器、终端宽度都无关，分辨率 **1 字节**）；`ci-examples/` 模板宣称的退出码；以及**散文里陈旧的「N 道护栏」数字**。**R70**：`GUARD_CONTRACT` 里每条护栏的 `rc=0` 描述**必须逐字含**它自己声明的 `ROW_SIGNATURE` —— 这段描述此前是**只写不读**的散文，已悄悄落后两轮（写着 `C1–C6` 而**当时**的事实是 `C1–C12`）。 **R72**：同一个 `ROW_SIGNATURE` 还必须等于这道门**实际发出**的判据前缀（五条腿：无隐形判据 / 无幽灵声明 / 豁免表两向 / ASCII 树 token 对账 / 树必须列全每道已登记护栏）。**R73**：每道门还要声明它**越出签名的**那些前缀（`ROW_EXTRA`），且每个判据前缀**只能有一个主人** —— 被两道门同时声明的前缀有歧义，必须连同理由登记进 `PREFIX_OWNERSHIP_SHARED`(今天 **14 个** —— 每一条都在 `PREFIX_OWNERSHIP_RENAME` 里写着**具体去向**：哪道门会搬、搬到哪个**当前空闲**且不等于自己那一族的族；改名方必须多到只剩 <= 1 个主人；另有棘轮 `PREFIX_OWNERSHIP_MAX`（`<= 17`，R73 冻结）保证这个数只减不增。**R74** 已经**真的**付清一族：`check_help_contract.py` 的 CI 退出码判据由 `C0–C3` 改名为 `CI0–CI3` —— 那本来就是它们的意思（`CI_PY_EXIT_CONTRACT` / `CI_SH_EXIT_CONTRACT`），于是 `check_binfmt_fixtures.py` 成为 `C` 的唯一主人；登记表 17 → 14)。 |
+| `check_incremental_parity.py` | `IP1–IP2` —— 增量重算必须与全量**逐项相同**。每个文件都轮流当一次"被改的文件"，因为这条判据当年要抓的缺陷**只有被调方文件重解析时才出现**。它曾为此**故意红着出厂**，R264 起转绿 |
 | `check_ir_attribution.py` | `I0–I7` — 「这个调用解析不到」被**第二处**独立判定。R44 之前这条规则被**抄了五遍**（`build_c_model` / `_build_ext_model` 内联，三个 `build_edges` 逐字复制），于是调用图与二进制归因讨论的**可能不是同一批名字**，而两边都不报错。此门钉住全仓写点的**集合**、每个写点的**写入形状**，以及每一次「再抄一遍」都绕不过的 `func_index.get(x.lower())` 查表 —— 任何未登记的「按小写名查函数索引」谓词即红；**C7'** 钉住 **C 扩展名的事实源**—— `CFrontend.exts` 必须**引用** `matlabc.py::_C_SOURCE_EXTS` 而不是复制它（R50 实测：前端声明 2 类，而 `collect_c_files` 真认 8 类）|
 | `check_import_graph.py` | `G1–G7` — **import 期成环**。`renderers/*` 原先在各文件**底部** `from matlabc import ...` 借用符号，而 `matlabc.py` 也在自己底部再导出 `renderers.*` —— 这是**真的** import 期环，只靠一份「被借用的名字必须已经定义在再导出点之前」的**隐式时序契约**才跑得起来，而那份契约没有任何对手方，测试、`git status`、`git diff` 都看不见它。R52 把借用搬到惰性代理（`renderers/_late.py`），import 期图于是无环；这道门不让它长回来，并要求剩余的惰性环与每一条「指向本仓模块的动态 import」都**登记 + 两向核对**（未登记 → 红；陈旧登记 → 也红）。**G7** 把同一条纪律推到这条通道的**内容侧**：`renderers/_late.py::BORROWED` 是借用清单的静态单一事实源 —— 用了 `_mL.X` 却没登记 → 红；登记了却再没有使用点、或登记了 `matlabc.py` 模块层里没有的名字 → 也红 |
 | `check_flow_diagrams.py` | `D1–D12` — README 里嵌的图、`flow/diagrams/` 里的文件、`candidate*.json` 里的声明、交互产物与 `flow/FLOW_INDEX.json` 索引 —— **六条来源两两对齐**（D1–D12，每一对都双向）：裂图、没人引用的旧图、只补了英文没补中文、以及 SVG 自身形态不成立（尺寸/字体/双主题/含外链）都必须红 |
@@ -819,7 +820,7 @@ python matlabc.py <root> --ai-context "modules/global/compileQuadratic.m:compile
 
 ## 全场景扫测（手工跑，118 条判据）
 
-上面 29 道门是静态的、快的。这一套不是——它要起子进程与 LSP 服务端，所以**不进 `check_all`**，靠手工跑：
+上面 30 道门是静态的、快的。这一套不是——它要起子进程与 LSP 服务端，所以**不进 `check_all`**，靠手工跑：
 
 ```powershell
 python tools/sweep_cli.py              # 118 条 / 9 组 / 约 85 秒
@@ -873,7 +874,7 @@ python matlabc_flow.py --help     # 修复闭环：五站点流水线图 + 五�
 python matlabc_ask.py --help      # 问答式理解：事实底座如何装配成答案
 python matlabc_mcp.py --help      # MCP 服务：五个工具 + 「为什么 stdin 必须切断」
 python gui.py --help              # 图形界面：表单每一格等价于哪个命令行开关
-python tools/check_all.py --help  # 护栏总纲：29 道门各自拦什么
+python tools/check_all.py --help  # 护栏总纲：30 道门各自拦什么
 ```
 
 这不是口头承诺，而是被 `check_help_contract.py` 与 `check_doc_flags.py` 同时盯着的 ——
