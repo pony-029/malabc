@@ -778,6 +778,10 @@ function activate(context) {
   // Source Insight 的读法：点一个名字，立刻看见它在**本文**里还出现在哪。
   // 纯客户端正则，**不依赖分析结果** —— 服务端没就绪、或这个文件不在分析
   // 范围里，它照样工作。上限 500 处，避免超长文件卡住渲染。
+  // **每一步注册都各自兜底**（R293）。激活是自上而下执行的：中间任何一句
+  // 抛错，**后面所有注册都不会发生**，而前面的（CodeLens）照常工作 ——
+  // 症状看起来就像「只有大纲坏了」。这里不让高亮这一步连累后面。
+  try {
   context.subscriptions.push(
     vscode.languages.registerDocumentHighlightProvider({ language: 'matlab' }, {
       provideDocumentHighlights: (doc, pos) => {
@@ -800,7 +804,11 @@ function activate(context) {
       },
     })
   );
+  } catch (e) {
+    log('注册「出现位置高亮」失败（不影响其它功能）：' + (e && e.message));
+  }
 
+  try {
   context.subscriptions.push(
     vscode.languages.registerDocumentSymbolProvider({ language: 'matlab' }, {
       provideDocumentSymbols: async (doc) => {
@@ -878,8 +886,13 @@ function activate(context) {
       },
     })
   );
+  } catch (e) {
+    log('注册「大纲」provider 失败：' + (e && e.message));
+  }
 
   context.subscriptions.push(collection);
+  log('activate 完成：diagnostics / definition / references / hover / ' +
+      'codeLens / 语义高亮 / 大纲 / 出现位置 均已注册');
 }
 
 function deactivate() {
