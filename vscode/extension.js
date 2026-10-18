@@ -719,6 +719,33 @@ function activate(context) {
     })
   );
 
+  // ---- 同一文件内的所有出现位置（R289）--------------------------------
+  // Source Insight 的读法：点一个名字，立刻看见它在**本文**里还出现在哪。
+  // 纯客户端正则，**不依赖分析结果** —— 服务端没就绪、或这个文件不在分析
+  // 范围里，它照样工作。上限 500 处，避免超长文件卡住渲染。
+  context.subscriptions.push(
+    vscode.languages.registerDocumentHighlightProvider({ language: 'matlab' }, {
+      provideDocumentHighlights: (doc, pos) => {
+        const range = doc.getWordRangeAtPosition(pos, /[A-Za-z_]\w*/);
+        if (!range) return [];
+        const word = doc.getText(range);
+        if (!word) return [];
+        const text = doc.getText();
+        const esc = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp('\\b' + esc + '\\b', 'g');
+        const out = [];
+        let m;
+        while ((m = re.exec(text)) !== null && out.length < 500) {
+          const s = doc.positionAt(m.index);
+          const e = doc.positionAt(m.index + word.length);
+          out.push(new vscode.DocumentHighlight(
+            new vscode.Range(s, e), vscode.DocumentHighlightKind.Text));
+        }
+        return out;
+      },
+    })
+  );
+
   context.subscriptions.push(
     vscode.languages.registerDocumentSymbolProvider({ language: 'matlab' }, {
       provideDocumentSymbols: async (doc) => {
