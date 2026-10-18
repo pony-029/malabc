@@ -11,6 +11,11 @@ const vscode = require('vscode');
 const { LspClient } = require('./lspClient');
 
 let client = null;
+
+// 侧栏「关系」视图的“钉住某个名字”入口（R298）。
+// 定义在 activate 内部（那里才有 TreeDataProvider），这里先留一个引用，
+// 让前面注册的 CodeLens 命令能调用它 —— **不再打开任何标签页**。
+let pinRelationsTo = null;
 let collection = null;
 let out = null;
 
@@ -608,6 +613,13 @@ function activate(context) {
         vscode.window.showWarningMessage('matlabc: 请先从 CodeLens 点一个函数');
         return;
       }
+      // 点函数 → **只更新侧栏**，不打开标签页（R298）。
+      // 标签页会抢走编辑器焦点，大纲随即转到那个 webview 上 —— 用户看到的
+      // 就是「大纲不见了」。横向视图是显式命令，仍然保留标签页。
+      if (!horizontal && pinRelationsTo) {
+        pinRelationsTo(name);
+        return;
+      }
       try {
         const r = await client.request('matlabc/impact', { name: name });
         const info = r.result;
@@ -684,6 +696,12 @@ function activate(context) {
       }
       const rel = path.relative(root || '', ed.document.uri.fsPath)
         .replace(/\\/g, '/');
+      // 右键与命令面板也走侧栏：**全程不再打开标签页**（R298）。
+      // 标签页会抢焦点 → 大纲跟着跑 → 用户看到「大纲不见了」。
+      if (pinRelationsTo) {
+        pinRelationsTo(word);
+        return;
+      }
       const esc = (s) => String(s).replace(/[&<>"]/g, (c) => (
         { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
       const mkLink = (r, ln, txt) => '<a href="command:matlabc.openAt?' +
@@ -949,13 +967,19 @@ function activate(context) {
       return it;
     };
 
-    const refreshRel = async (doc, pos) => {
+    const refreshRel = async (doc, pos, forced) => {
       if (!doc || doc.languageId !== 'matlab') return;
-      const wr = doc.getWordRangeAtPosition(pos, /[A-Za-z]\w*/);
-      if (!wr) return;
-      const word = doc.getText(wr);
-      const line = wr.start.line;
-      if (!word || (relState.key === word + '@' + line)) return;
+      let word = forced || '';
+      let line = -1;
+      if (!word) {
+        if (!pos) return;
+        const wr = doc.getWordRangeAtPosition(pos, /[A-Za-z]\w*/);
+        if (!wr) return;
+        word = doc.getText(wr);
+        line = wr.start.line;
+      }
+      if (!word) return;
+      if (!forced && relState.key === word + '@' + line) return;
       relState.key = word + '@' + line;
       const rel = path.relative(root || '', doc.uri.fsPath).replace(/\\/g, '/');
 
@@ -1012,9 +1036,22 @@ function activate(context) {
       relEmitter.fire();
     };
 
+    // 点 CodeLens / 右键命中的名字：**钉住**它并显示侧栏，不打开标签页。
+    pinRelationsTo = async (name) => {
+      try {
+        const ed = vscode.window.activeTextEditor;
+        await refreshRel(ed && ed.document, null, name);
+        await vscode.commands.executeCommand('matlabcRelations.focus');
+      } catch (e) {
+        log('pinRelationsTo 失败：' + (e && e.message));
+      }
+    };
+
     let relTimer = null;
     context.subscriptions.push(
       vscode.window.onDidChangeTextEditorSelection((e) => {
+        // 光标一动就解除「钉住」，恢复跟随。
+        relState.pinned = null;
         if (relTimer) clearTimeout(relTimer);
         const doc = e.textEditor.document;
         const pos = e.selections[0] && e.selections[0].active;
