@@ -1599,6 +1599,63 @@ def _mcp(c=None):
         _chk("matlabc_propose_edit" not in _hc and "精简档" in _hc,
              "mcp/help-matches-core-mode（%r）" % (_hc[-80:],))
 
+        # R334：批量写操作的**事务性**。真实重构要同时改几个文件，
+        # 逐个 apply 的问题是「改到一半停下」—— 前几个已落盘、后面失败，
+        # 仓库处于谁也没设计过的状态。四条判据分别钉住四个环节。
+        _bd = tempfile.mkdtemp(prefix="lsp_bd_")
+        try:
+            _ba = os.path.join(_bd, "ba.m")
+            _bb = os.path.join(_bd, "bb.m")
+            for _p, _t in ((_ba, u"function ba()\nv = 1;\nend\n"),
+                           (_bb, u"function bb()\nw = 2;\nend\n")):
+                with io.open(_p, "w", encoding="utf-8", newline="") as _fh:
+                    _fh.write(_t)
+            _sv6 = (_L2._STATE.get("root"), _L2._STATE.get("result"),
+                    _L2._STATE.get("payload"))
+            _L2._STATE["root"] = _bd
+            _L2._STATE["result"] = _an(_bd, no_checks=True)
+            _L2._STATE["payload"] = None
+            try:
+                _bp = _MCP.t_propose_edits({"edits": [
+                    {"path": "ba.m", "oldText": "v = 1;", "newText": "v = 9;"},
+                    {"path": "bb.m", "oldText": "w = 2;", "newText": "w = 8;"},
+                ]})
+                _bt = (_bp.get("content") or [{}])[0].get("text", "")
+                _bm = _re.search(r"batchId=`([0-9a-f]+)`", _bt)
+                _bid = _bm.group(1) if _bm else ""
+                _pre_a = io.open(_ba, encoding="utf-8").read()
+                _pre_b = io.open(_bb, encoding="utf-8").read()
+
+                _MCP.t_apply_edits({"batchId": _bid})
+                _post_a = io.open(_ba, encoding="utf-8").read()
+                _post_b = io.open(_bb, encoding="utf-8").read()
+
+                _MCP.t_undo_edits({"batchId": _bid})
+                _und_a = io.open(_ba, encoding="utf-8").read()
+                _und_b = io.open(_bb, encoding="utf-8").read()
+
+                _bad = _MCP.t_propose_edits({"edits": [
+                    {"path": "ba.m", "oldText": "v = 1;",
+                     "newText": "v = 7;"},
+                    {"path": "bb.m", "oldText": "zzz", "newText": "q"},
+                ]})
+                _after_bad = io.open(_ba, encoding="utf-8").read()
+            finally:
+                (_L2._STATE["root"], _L2._STATE["result"],
+                 _L2._STATE["payload"]) = _sv6
+            _chk("v = 1;" in _pre_a and "w = 2;" in _pre_b and _bid,
+                 "edit/batch-propose-does-not-write（%r）" % (_bid,))
+            _chk("v = 9;" in _post_a and "w = 8;" in _post_b,
+                 "edit/batch-apply-writes-all")
+            _chk("v = 1;" in _und_a and "w = 2;" in _und_b,
+                 "edit/batch-undo-restores-all")
+            # 关键：一条不合法时**整批都不写**，而不是写一半。
+            _chk(bool(_bad.get("isError")) and "v = 1;" in _after_bad,
+                 "edit/batch-rejects-partial（%r）"
+                 % (_after_bad.replace("\n", " | ")[:40],))
+        finally:
+            shutil.rmtree(_bd, ignore_errors=True)
+
         r7 = rpc({"jsonrpc": "2.0", "id": 7, "method": "tools/call",
                   "params": {"name": "matlabc_stats", "arguments": {}}})
         txt7 = (((r7 or {}).get("result") or {}).get("content")

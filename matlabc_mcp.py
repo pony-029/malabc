@@ -693,6 +693,210 @@ def t_undo_edit(args):
     return _text("已从备份 `%s` 恢复 `%s`。" % (eid, meta.get("rel") or target))
 
 
+# --------------------------------------------------------------------------
+# 批量写操作（R334）：一次改多个文件，**要么全成、要么全不成**。
+#
+# 为什么需要：真实的重构从来不是改一个文件 —— 改一个函数签名要同时动
+# 调用方、文档、测试。一个个 apply 的问题不是慢，而是**改到一半停下**：
+# 前 3 个已落盘、第 4 个校验失败，此时仓库处于一个谁也没设计过的状态。
+#
+# 所以这里的关键不是「批量」，是「事务」：
+#   1. 先校验**全部**（任一 oldText 不唯一 → 整体拒绝，一个字节都不写）
+#   2. 再备份**全部**
+#   3. 最后逐个写入；任何一个写失败，把已写的按备份回滚
+# --------------------------------------------------------------------------
+
+_BATCH_LIMIT = 20
+
+
+def _batch_dir(kind):
+    return _edit_dir(kind)
+
+
+def t_propose_edits(args):
+    """一次算多个文件的改动，**不落盘**，返回 batchId 与逐文件 diff。"""
+    import difflib
+    import hashlib
+    edits = args.get("edits") or []
+    if not isinstance(edits, list) or not edits:
+        return _err("edits 不能为空：给一个数组，每项含 path / oldText / newText")
+    if len(edits) > _BATCH_LIMIT:
+        return _err("一次最多 %d 个文件" % _BATCH_LIMIT)
+
+    items, problems, rows = [], [], []
+    for i, e in enumerate(edits):
+        path = _resolve((e or {}).get("path"))
+        old = (e or {}).get("oldText") or ""
+        new = (e or {}).get("newText") or ""
+        label = (e or {}).get("path") or ("#%d" % (i + 1))
+        if not path or not os.path.isfile(path):
+            problems.append(u"%s：找不到文件" % label)
+            continue
+        if not _in_root(path):
+            problems.append(u"%s：不在工程目录内" % label)
+            continue
+        if old == "":
+            problems.append(u"%s：oldText 不能为空" % label)
+            continue
+        try:
+            src = io.open(path, "r", encoding="utf-8",
+                          errors="replace").read()
+        except (IOError, OSError) as exc:
+            problems.append(u"%s：读取失败 %r" % (label, exc))
+            continue
+        cnt = src.count(old)
+        if cnt == 0:
+            problems.append(u"%s：找不到 oldText（不会凭空写入）" % label)
+            continue
+        if cnt > 1:
+            problems.append(u"%s：oldText 出现 %d 次，请给更长上下文"
+                            % (label, cnt))
+            continue
+        items.append({"path": path, "old": old, "new": new,
+                      "rel": _rel(path), "src": src})
+
+    if problems:
+        # **一条不合格就整体拒绝** —— 半批改动比不改更糟。
+        return _err(u"这批改动有 %d 处不合法，整批未生成：\n\n%s"
+                    % (len(problems), u"\n".join(u"- " + p for p in problems)))
+
+    batch = hashlib.sha1(
+        (u"|".join(it["rel"] + it["old"] for it in items))
+        .encode("utf-8")).hexdigest()[:12]
+    rec = {"batch": batch, "at": time.time(),
+           "items": [{"path": it["path"], "rel": it["rel"],
+                      "old": it["old"], "new": it["new"]} for it in items]}
+    with io.open(os.path.join(_batch_dir("pending"), "batch-" + batch + ".json"),
+                 "w", encoding="utf-8", newline="") as fh:
+        fh.write(json.dumps(rec, ensure_ascii=False, indent=2))
+
+    rows = [u"# 待确认的批量改动 `%s`（%d 个文件）" % (batch, len(items)), u""]
+    for it in items:
+        out = it["src"].replace(it["old"], it["new"], 1)
+        diff = list(difflib.unified_diff(
+            it["src"].splitlines(), out.splitlines(),
+            fromfile=it["rel"] + u"（当前）", tofile=it["rel"] + u"（改后）",
+            lineterm="", n=1))
+        rows.append(u"## `%s`" % it["rel"])
+        rows.append(u"")
+        rows.append(u"```diff")
+        rows.extend(diff[:24])
+        rows.append(u"```")
+        rows.append(u"")
+    rows.append(u"**这一步没有写盘。** 确认后调用 `matlabc_apply_edits`"
+                u"（batchId=`%s`）；它要么全部写入，要么一个都不写。" % batch)
+    return _text(u"\n".join(rows))
+
+
+def t_apply_edits(args):
+    """事务性写入：全部校验 → 全部备份 → 逐个写，失败回滚。"""
+    import shutil
+    batch = (args.get("batchId") or "").strip()
+    if not batch:
+        return _err("batchId 不能为空")
+    rec_path = os.path.join(_batch_dir("pending"), "batch-" + batch + ".json")
+    if not os.path.isfile(rec_path):
+        return _err("找不到 batchId=`%s` 的批量改动" % batch)
+    rec = json.loads(io.open(rec_path, "r", encoding="utf-8").read())
+    items = rec.get("items") or []
+
+    # ---- 第一步：重新校验全部（propose 与 apply 之间文件可能被改过）----
+    fresh = []
+    for it in items:
+        path = it.get("path") or ""
+        if not os.path.isfile(path) or not _in_root(path):
+            return _err("目标文件不可用：%s —— 整批未写入" % (it.get("rel"),))
+        try:
+            src = io.open(path, "r", encoding="utf-8",
+                          errors="replace").read()
+        except (IOError, OSError) as exc:
+            return _err("读取 %s 失败：%r —— 整批未写入"
+                        % (it.get("rel"), exc))
+        if src.count(it.get("old") or "") != 1:
+            return _err("`%s` 在确认期间已被改动，oldText 不再唯一匹配 —— "
+                        "整批未写入" % (it.get("rel"),))
+        fresh.append((it, src))
+
+    # ---- 第二步：全部备份 ----
+    bak_dir = os.path.join(_batch_dir("backup"), "batch-" + batch)
+    try:
+        os.makedirs(bak_dir)
+    except OSError:
+        pass
+    metas = []
+    for idx, (it, src) in enumerate(fresh):
+        bak = os.path.join(bak_dir, "%d.bak" % idx)
+        try:
+            shutil.copy2(it["path"], bak)
+        except (IOError, OSError) as exc:
+            return _err("备份 `%s` 失败：%r —— 整批未写入"
+                        % (it.get("rel"), exc))
+        metas.append({"target": it["path"], "rel": it.get("rel"),
+                      "bak": os.path.basename(bak)})
+    with io.open(os.path.join(bak_dir, "meta.json"), "w",
+                 encoding="utf-8", newline="") as fh:
+        fh.write(json.dumps({"batch": batch, "at": time.time(),
+                             "items": metas}, ensure_ascii=False, indent=2))
+
+    # ---- 第三步：逐个写入；失败就回滚已写的 ----
+    done = []
+    try:
+        for (it, src) in fresh:
+            out = src.replace(it.get("old") or "", it.get("new") or "", 1)
+            with io.open(it["path"], "w", encoding="utf-8", newline="") as fh:
+                fh.write(out)
+            done.append(it["path"])
+    except (IOError, OSError) as exc:
+        for m in metas[:len(done)]:
+            try:
+                shutil.copy2(os.path.join(bak_dir, m["bak"]), m["target"])
+            except Exception:
+                pass
+        return _err("写入第 %d 个文件时失败：%r —— 已回滚之前的 %d 个"
+                    % (len(done) + 1, exc, len(done)))
+
+    try:
+        os.remove(rec_path)
+    except OSError:
+        pass
+    rows = [u"已写入 %d 个文件：" % len(done), u""]
+    for m in metas:
+        rows.append(u"- `%s`" % m["rel"])
+    rows.append(u"")
+    rows.append(u"备份 id：`%s`；要整体撤销请调用 `matlabc_undo_edits`。"
+                % batch)
+    return _text(u"\n".join(rows))
+
+
+def t_undo_edits(args):
+    """把一批改动整体恢复。"""
+    import shutil
+    batch = (args.get("batchId") or "").strip()
+    if not batch:
+        return _err("batchId 不能为空")
+    bak_dir = os.path.join(_batch_dir("backup"), "batch-" + batch)
+    meta_p = os.path.join(bak_dir, "meta.json")
+    if not os.path.isfile(meta_p):
+        return _err("找不到批次 `%s` 的备份" % batch)
+    meta = json.loads(io.open(meta_p, "r", encoding="utf-8").read())
+    rows, failed = [], []
+    for it in (meta.get("items") or []):
+        target = it.get("target") or ""
+        bak = os.path.join(bak_dir, it.get("bak") or "")
+        if not _in_root(target) or not os.path.isfile(bak):
+            failed.append(it.get("rel") or target)
+            continue
+        try:
+            shutil.copy2(bak, target)
+            rows.append(u"- 已恢复 `%s`" % (it.get("rel") or target))
+        except (IOError, OSError):
+            failed.append(it.get("rel") or target)
+    if failed:
+        return _err(u"以下文件恢复失败：%s" % u"、".join(failed))
+    return _text(u"已整体恢复（%d 个文件）：\n\n%s"
+                 % (len(rows), u"\n".join(rows)))
+
+
 def t_changed(args):
     """「我改了这几个文件，谁需要先回归」——比结构 diff 更贴近 Agent 的任务。
 
@@ -950,6 +1154,37 @@ TOOLS = [
                                     "character": _INT},
                      "required": ["path", "line", "character"]},
      "handler": t_references},
+
+    {"name": "matlabc_propose_edits",
+     "description": "**批量**：一次算多个文件的改动，不落盘，返回 batchId 与"
+                    "逐文件 diff。只要有一个文件的 oldText 不唯一，整批拒绝生成。"
+                    "真实重构通常要同时改几个文件时用它，而不是逐个 propose。",
+     "inputSchema": {"type": "object",
+                     "properties": {"edits": {
+                         "type": "array",
+                         "items": {"type": "object",
+                                   "properties": {"path": _STR,
+                                                  "oldText": _STR,
+                                                  "newText": _STR},
+                                   "required": ["path", "oldText",
+                                                "newText"]}}},
+                     "required": ["edits"]},
+     "handler": t_propose_edits},
+
+    {"name": "matlabc_apply_edits",
+     "description": "把一批改动**事务性**写入：全部校验 → 全部备份 → 逐个写，"
+                    "任何一个失败就回滚已写的。要么全成，要么一个都不改。",
+     "inputSchema": {"type": "object",
+                     "properties": {"batchId": _STR},
+                     "required": ["batchId"]},
+     "handler": t_apply_edits},
+
+    {"name": "matlabc_undo_edits",
+     "description": "把一批改动**整体**恢复（batchId 来自 apply_edits 的返回）。",
+     "inputSchema": {"type": "object",
+                     "properties": {"batchId": _STR},
+                     "required": ["batchId"]},
+     "handler": t_undo_edits},
 
     {"name": "matlabc_propose_edit",
      "description": "**不落盘**地算一次改动：返回 diff 与影响面，并给出 editId。"
