@@ -1298,7 +1298,7 @@ function activate(context) {
               children: b.binaries.slice(0, 10).map((it) =>
                 mkItem(it.callee, {
                   desc: String(it.rel || '').split('/').pop() + ' · ' +
-                        it.kind + ' 入口',
+                        it.kind + ' 入口 · 文件名匹配',
                   rel: it.rel, line: 1,
                 })),
             }));

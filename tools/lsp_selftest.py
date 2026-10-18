@@ -1271,6 +1271,18 @@ def _doc(c):
     finally:
         shutil.rmtree(_bb, ignore_errors=True)
 
+    # ---- R344：每条二进制证据都要带 `source`，且 rea 状态必须诚实 ------
+    # 没有来源标注的结论，事后无从复核；把「没接 rea」说成「已接」，
+    # 则会让人以为分析深度比实际更深。
+    _rs = _L2._rea_status()
+    _chk(("available" in _rs) and (bool(_rs.get("available"))
+                                   or bool(_rs.get("reason"))),
+         "doc/rea-status-is-honest（%r）" % (_rs,))
+    # 本机没有 node 时必须给出原因，而不是含糊的 False
+    if not _rs.get("node"):
+        _chk(u"node" in (_rs.get("reason") or u""),
+             "doc/rea-status-names-blocker（%r）" % (_rs.get("reason"),))
+
     # ---- R286：`@类目录` 里的方法文件也要出大纲 -------------------------
     # 用户报的现象就是 `@sdpvar/round.m` 大纲为空。这条在临时目录里自建
     # 语料（不污染 tests/），路径含 `@`，并且 URI 走百分号编码，

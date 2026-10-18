@@ -1006,7 +1006,20 @@ def t_cbridge(args):
         out.append(u"")
         out.append(u"、".join(u"`%s`" % n for n in unresolved[:15]))
         out.append(u"")
-    out.append(u"（本次扫描 %d 个 C 源文件。）" % (r.get("scanned") or 0))
+    out.append(u"（本次扫描 %d 个 C 源文件、%d 个二进制。）"
+               % (r.get("scanned") or 0, r.get("bin_scanned") or 0))
+
+    # **证据来源必须写出来**（R344）：读者要能分清哪条来自内置解析、
+    # 哪条来自外部工具，否则事后无法复核。
+    rea = r.get("rea") or {}
+    out.append(u"")
+    if rea.get("available"):
+        out.append(u"外部二进制工具（rea）：可用。更深的二进制结论应来自它，"
+                   u"而不是这里的文件名/导出表推断。")
+    else:
+        out.append(u"外部二进制工具（rea）：不可用 —— %s。"
+                   u"上面的二进制结论仅来自内置解析（文件名匹配 + PE 导出表）。"
+                   % (rea.get("reason") or u"未知原因"))
     return _text(u"\n".join(out))
 
 

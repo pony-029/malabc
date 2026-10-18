@@ -1173,6 +1173,33 @@ def _pe_exports(path):
     return names
 
 
+def _rea_status():
+    """报告 rea（`morluto/rea`）是否可用 —— **只探测，不调用**。
+
+    为什么只探测：rea 是 Node 22+ 的 MCP 服务，走的是「matlabc 作 MCP 客户端
+    去调它」的协议级联邦（见 docs/analysis/ANALYSIS_2026-10-08 §10.1 通道①）。
+    在它真的握手成功之前，**任何「已接入 rea」的说法都是假的**。
+
+    所以这里只回答两件事：能不能跑起来；不能的话卡在哪。
+    """
+    out = {"available": False, "node": None, "rea": None, "reason": ""}
+    try:
+        import shutil as _sh
+        node = _sh.which("node")
+        rea = _sh.which("rea")
+    except Exception:
+        node, rea = None, None
+    out["node"] = node
+    out["rea"] = rea
+    if not node:
+        out["reason"] = u"node 不在 PATH（rea 需要 Node 22+）"
+    elif not rea:
+        out["reason"] = u"rea 未安装（npm i -g rea-agents）"
+    else:
+        out["available"] = True
+    return out
+
+
 def _bin_index(root):
     """工程内的 mex / dll / so：名字 -> [{rel, kind}]。
 
@@ -1278,7 +1305,8 @@ def _c_bridge(name):
     """
     result = _STATE.get("result")
     if result is None:
-        return {"available": False, "reason": "pending", "items": []}
+        return {"available": False, "reason": "pending", "items": [],
+                "rea": _rea_status()}
     root = _STATE.get("root") or ""
     idx = _c_index(root)
     # **二进制也算一层**（R343）：只有 .mexw64 / .dll、没有 .c 的工程很常见
@@ -1287,7 +1315,7 @@ def _c_bridge(name):
     bidx = _bin_index(root)
     if not idx and not bidx:
         return {"available": False, "reason": "no_sources", "items": [],
-                "scanned": 0}
+                "scanned": 0, "rea": _rea_status()}
 
     items, matched = [], set()
     all_ext = set()
@@ -1304,7 +1332,11 @@ def _c_bridge(name):
                                   "count": int(cnt),
                                   "c_name": h["name"],
                                   "c_rel": h["rel"],
-                                  "c_line": h["line"]})
+                                  "c_line": h["line"],
+                                  # **证据来源**（R344）：读者必须能分清
+                                  # 「内置 PE/C 解析得到的」与「外部工具给的」。
+                                  # 没有来源标注的结论，事后无从复核。
+                                  "source": "c-source"})
                     matched.add(cname)
     # 同一 (C 位置) 去重：一个 MATLAB 函数可能多处调用同一个 C 函数
     seen, uniq = set(), []
@@ -1323,7 +1355,7 @@ def _c_bridge(name):
         for h in bidx.get(nm.lower(), []):
             bins.append({"matlab": name, "callee": nm,
                          "rel": h["rel"], "kind": h["kind"].lstrip("."),
-                         "entry": nm})
+                         "entry": nm, "source": "mex-filename"})
             still.discard(nm)
             break
 
@@ -1345,7 +1377,7 @@ def _c_bridge(name):
             libhits = bidx.get(lib.lower(), [])
             if not libhits:
                 calllib.append({"lib": lib, "fn": fn, "rel": None,
-                                "exported": None})
+                                "exported": None, "source": "library-missing"})
                 continue
             librel = libhits[0]["rel"]
             exports = set()
@@ -1353,7 +1385,8 @@ def _c_bridge(name):
                 exports = _pe_exports(os.path.join(root,
                                                    librel.replace("/", os.sep)))
             calllib.append({"lib": lib, "fn": fn, "rel": librel,
-                            "exported": (fn.lower() in exports) if exports else None})
+                            "exported": (fn.lower() in exports) if exports else None,
+                            "source": "pe-export" if exports else "filename-only"})
 
     # **仍连不上的**要单独列出来（R342）：它们可能是 mex 二进制、
     # 工具箱函数、或动态调用 —— 与「已经桥接到 C 源」是两回事。
@@ -1364,7 +1397,10 @@ def _c_bridge(name):
             "calllib": calllib,
             "bin_scanned": _BIN_INDEX.get("nfiles") or 0,
             "unresolved": sorted(still),
-            "external_total": len(all_ext)}
+            "external_total": len(all_ext),
+            # 外部二进制工具是否可用。**true 才代表真的能调**；
+            # false 时附原因，读者不必猜「为什么没有更深的证据」。
+            "rea": _rea_status()}
 
 
 def _field_refs(name):
