@@ -188,6 +188,15 @@ _CACHED_FN_FIELDS = ("name", "line", "complexity", "header", "sig",
 #: 从 JSON 恢复时必须转成整数的字段（`json` 只有 float）。
 _INT_FN_FIELDS = ("line", "complexity")
 
+#: 文件级字段清单（**一处构造**）。
+#: 加字段只改这里一行 —— `_save_cache` 与 `_load_cache` 都从它推导。
+#: R319 之前这里是两份手写清单，于是同一个洞漏了三次：
+#:   R233 漏 `field_access` → 结构体跳转静默失效
+#:   R294 漏 `lines`        → 大纲范围退化成一点
+#:   R319 漏 `globals`      → 全局变量被当成局部变量
+#: 每次都是「缓存重建的对象比真解析少几个字段」，且只有走到特定功能才暴露。
+_CACHED_MF_FIELDS = ("rel", "header", "globals", "lines", "kind")
+
 
 def _fn_to_cache(fn):
     """`MatlabFunction` -> 可 JSON 化的函数记录（键集合由清单决定）。"""
@@ -272,20 +281,18 @@ def _save_cache(root, payload, result):
             for fn in (getattr(mf, "functions", None) or []):
                 # **一处构造**：键集合由 `_CACHED_FN_FIELDS` 决定。
                 fns.append(_fn_to_cache(fn))
-            files.append({
-                "rel": getattr(mf, "rel", "") or "",
-                "header": getattr(mf, "header", None) or {},
-                "functions": fns,
-                # **这三个字段必须存**（R319）。它们此前不在缓存里，
-                # 于是缓存命中后：
-                #   `globals` 缺失 → 全局变量查不到跨文件引用（被当局部变量）
-                #   `lines`   缺失 → 大纲 range 退化成一行（又靠 end_char 兜）
-                #   `kind`    缺失 → `@类目录` 的方法无法标成类成员
-                # 这已经是同一个坑的第三次（R233 的 field_access、R294 的 lines）。
-                "globals": list(getattr(mf, "globals", None) or []),
-                "lines": int(getattr(mf, "lines", 0) or 0),
-                "kind": getattr(mf, "kind", "") or "",
-            })
+            # **键集合由 `_CACHED_MF_FIELDS` 决定**（一处构造）。
+            rec = {}
+            for _k in _CACHED_MF_FIELDS:
+                rec[_k] = getattr(mf, _k, None)
+            # 归一化：JSON 没有元组/None 的语义，也不该把 None 写进去。
+            rec["rel"] = rec["rel"] or ""
+            rec["header"] = rec["header"] or {}
+            rec["globals"] = list(rec["globals"] or [])
+            rec["lines"] = int(rec["lines"] or 0)
+            rec["kind"] = rec["kind"] or ""
+            rec["functions"] = fns
+            files.append(rec)
         edges = []
         for e in (getattr(result, "edges", None) or []):
             if isinstance(e, dict):
@@ -370,12 +377,16 @@ def _load_cache(root):
                 # **一处恢复**：键集合同样由 `_CACHED_FN_FIELDS` 决定。
                 # 以前这里和 `_save_cache` 是两份手写清单，于是四次漏字段。
                 fns.append(_cache_to_fn(fn))
-            files.append(NS(rel=f.get("rel", ""),
-                            header=f.get("header") or {},
-                            functions=fns,
-                            globals=list(f.get("globals") or []),
-                            lines=int(f.get("lines") or 0),
-                            kind=f.get("kind", "") or ""))
+            # **键集合同样由 `_CACHED_MF_FIELDS` 决定**（一处构造）。
+            kw = {}
+            for _k in _CACHED_MF_FIELDS:
+                kw[_k] = f.get(_k)
+            kw["rel"] = kw["rel"] or ""
+            kw["header"] = kw["header"] or {}
+            kw["globals"] = list(kw["globals"] or [])
+            kw["lines"] = int(kw["lines"] or 0)
+            kw["kind"] = kw["kind"] or ""
+            files.append(NS(functions=fns, **kw))
         edges = [tuple(e) for e in (doc.get("edges") or [])]
         result = NS(files=files, edges=edges,
                     field_access=doc.get("field_access") or {})

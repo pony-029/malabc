@@ -761,6 +761,21 @@ def _struct(c):
         # v4（R319）：补了 `globals` / `lines` / `kind`。这条判据会在改
         # schema 时立刻拦下来 —— 上一版断言的 3 就是这么被发现的。
         _chk(d.get("v") == 4, "struct/cache-schema-v4（实际 %r）" % (d.get("v"),))
+
+        # R321：**键集合必须与清单逐字相同**。
+        # 以前 save/load 各有一份手写清单，于是同一个洞漏了三次
+        # （field_access / lines / globals）。现在只认 `_CACHED_MF_FIELDS`，
+        # 这条判据守着「产物 = 清单」，漏写就红。
+        sys.path.insert(0, ROOT)
+        import matlabc_lsp as _L3
+        _files = d.get("files") or []
+        _got = sorted(set(_files[0].keys())) if _files else []
+        _want = sorted(set(_L3._CACHED_MF_FIELDS) | {"functions"})
+        _chk(_got == _want, "struct/cache-mf-keys（%r）" % (_got,))
+        # 三个曾经漏掉、并且各自造成过静默失效的字段，必须在清单里。
+        for _must in ("globals", "lines", "kind"):
+            _chk(_must in _L3._CACHED_MF_FIELDS,
+                 "struct/cache-mf-keys-has-%s" % _must)
         fa = d.get("field_access") or {}
         _chk("name" in fa, "struct/cache-has-field-access（keys=%r）" % (list(fa)[:5],))
         # 缓存的函数记录必须带 `external_calls` —— R235 的 hover 解释分支
