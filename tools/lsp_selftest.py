@@ -1532,6 +1532,57 @@ def _mcp(c=None):
         # 空输入必须报错，不能返回一份"没有影响"的假结论。
         _chk(bool(_c2.get("isError")), "mcp/changed-rejects-empty")
 
+        # R328/R329：写操作的三道护栏。这组判据的存在理由很直接 ——
+        # 只读工具错了最坏是一次误导，写工具错了最坏是丢工作。
+        import re as _re
+        _ed = tempfile.mkdtemp(prefix="lsp_ed_")
+        try:
+            _ep = os.path.join(_ed, "e.m")
+            with io.open(_ep, "w", encoding="utf-8", newline="") as _fh:
+                _fh.write(u"function e()\nv = 1;\nend\n")
+            _sv5 = (_L2._STATE.get("root"), _L2._STATE.get("result"),
+                    _L2._STATE.get("payload"))
+            _L2._STATE["root"] = _ed
+            _L2._STATE["result"] = _an(_ed, no_checks=True)
+            _L2._STATE["payload"] = None
+            try:
+                _p1 = _MCP.t_propose_edit({"path": "e.m", "oldText": "v = 1;",
+                                           "newText": "v = 2;"})
+                _t_p1 = (_p1.get("content") or [{}])[0].get("text", "")
+                _after_propose = io.open(_ep, encoding="utf-8").read()
+                _m = _re.search(r"editId=`([0-9a-f]+)`", _t_p1)
+                _eid = _m.group(1) if _m else ""
+                _a1 = _MCP.t_apply_edit({"editId": _eid})
+                _t_a1 = (_a1.get("content") or [{}])[0].get("text", "")
+                _after_apply = io.open(_ep, encoding="utf-8").read()
+                _u1 = (_MCP.t_undo_edit({"backup": _eid}).get("content")
+                       or [{}])[0].get("text", "")
+                _after_undo = io.open(_ep, encoding="utf-8").read()
+                _p2 = _MCP.t_propose_edit({"path": "e.m", "oldText": "zzz",
+                                           "newText": "y"})
+                # `e` 在 `function e()` 与 `end` 里各出现一次 —— 真正的
+                # 多处匹配。（第一版用 `v`，它只出现一次，判据假红。）
+                _p3 = _MCP.t_propose_edit({"path": "e.m", "oldText": "e",
+                                           "newText": "q"})
+            finally:
+                (_L2._STATE["root"], _L2._STATE["result"],
+                 _L2._STATE["payload"]) = _sv5
+            # 1) propose 绝不落盘
+            _chk("v = 1;" in _after_propose and _eid,
+                 "edit/propose-does-not-write（id=%r）" % (_eid,))
+            # 2) apply 真的写了，且给出备份 id
+            _chk("v = 2;" in _after_apply and _eid in _t_a1,
+                 "edit/apply-writes（%r）" % (_t_a1[:50],))
+            # 3) undo 用**记录的目标路径**恢复 —— 第一版靠文件名反推，
+            #    结果恢复到了 `e`（另一个文件），原文件没动，还回了「已恢复」。
+            _chk("v = 1;" in _after_undo and "e.m" in _u1,
+                 "edit/undo-restores-right-file（%r）" % (_u1[:60],))
+            # 4) 找不到 / 多处匹配都必须报错，不能猜
+            _chk(bool(_p2.get("isError")) and bool(_p3.get("isError")),
+                 "edit/propose-rejects-ambiguous")
+        finally:
+            shutil.rmtree(_ed, ignore_errors=True)
+
         r7 = rpc({"jsonrpc": "2.0", "id": 7, "method": "tools/call",
                   "params": {"name": "matlabc_stats", "arguments": {}}})
         txt7 = (((r7 or {}).get("result") or {}).get("content")

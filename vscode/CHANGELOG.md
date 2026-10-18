@@ -2,6 +2,14 @@
 
 ---
 
+## 0.6.77
+
+- MCP 首次具备**写能力**，但拆成三步、每步都有护栏：
+  `matlabc_propose_edit`（只算 diff，不落盘）→ `matlabc_apply_edit`
+  （显式带 editId 才写，写前自动备份）→ `matlabc_undo_edit`（从备份恢复）
+- 三条硬约束：只改工程目录内的文件；`oldText` 必须**恰好出现一次**；
+  写入前再校验一次（防止确认期间文件被改）
+
 ## 0.6.76
 
 - 新增 **「生成 HTML 分析报告」**：一键在工作区 `.matlabc/report.html` 生成

@@ -81,6 +81,7 @@ import io
 import json
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -449,6 +450,190 @@ def t_explain(args):
     return _text("\n".join(out))
 
 
+# --------------------------------------------------------------------------
+# 写操作的三道护栏（R328）
+#
+# 只读工具错了，最坏是一次误导；写工具错了，最坏是丢掉别人一上午的工作。
+# 所以「改文件」不是一个工具，而是**三步**：
+#
+#     propose  只算 diff，**不落盘**            —— 可以被审查
+#     apply    显式带上 editId 才真正写          —— 不可能一步改坏
+#     undo     从备份恢复                       —— 改错了能收拾
+#
+# 另外两条硬约束：
+#   - 目标必须在工程根之内（防路径穿越）
+#   - `oldText` 必须在文件里**恰好出现一次**（0 次是找错文件，多次是改错地方）
+# --------------------------------------------------------------------------
+
+def _edit_dir(kind):
+    root = L._STATE.get("root") or "."
+    d = os.path.join(root, ".matlabc", kind)
+    try:
+        os.makedirs(d)
+    except OSError:
+        pass
+    return d
+
+
+def _in_root(path):
+    root = os.path.abspath(L._STATE.get("root") or "")
+    p = os.path.abspath(path or "")
+    if not root:
+        return False
+    return p == root or p.startswith(root + os.sep)
+
+
+def t_propose_edit(args):
+    """算一次改动：返回 diff 与影响面，**不写盘**。"""
+    import difflib
+    import hashlib
+    path = _resolve(args.get("path"))
+    old = args.get("oldText") or ""
+    new = args.get("newText") or ""
+    if not path or not os.path.isfile(path):
+        return _err("找不到文件：%s" % (args.get("path") or "",))
+    if not _in_root(path):
+        return _err("只允许修改工程目录内的文件：%s" % path)
+    if old == "":
+        return _err("oldText 不能为空 —— 这里不做整文件覆写")
+    try:
+        src = io.open(path, "r", encoding="utf-8",
+                      errors="replace").read()
+    except (IOError, OSError) as exc:
+        return _err("读取失败：%r" % (exc,))
+
+    cnt = src.count(old)
+    if cnt == 0:
+        return _err("文件里找不到 oldText —— 可能是文件已变，或上下文抄错。"
+                    "这里不会凭空写入。")
+    if cnt > 1:
+        return _err("oldText 在文件里出现 %d 次，请给更长的上下文"
+                    "（只改一处，不能猜）。" % cnt)
+
+    out = src.replace(old, new, 1)
+    rel = _rel(path)
+    diff = list(difflib.unified_diff(
+        src.splitlines(), out.splitlines(),
+        fromfile=rel + "（当前）", tofile=rel + "（改后）", lineterm="", n=2))
+    eid = hashlib.sha1((rel + "\x00" + old + "\x00" + new)
+                       .encode("utf-8")).hexdigest()[:12]
+    rec = {"id": eid, "path": path, "rel": rel,
+           "old": old, "new": new, "at": time.time()}
+    with io.open(os.path.join(_edit_dir("pending"), eid + ".json"), "w",
+                 encoding="utf-8", newline="") as fh:
+        fh.write(json.dumps(rec, ensure_ascii=False, indent=2))
+
+    rows = ["# 待确认的改动 `%s`" % eid, "",
+            "```diff"] + diff[:80] + ["```", ""]
+    if len(diff) > 80:
+        rows.append("（diff 过长，仅显示前 80 行）")
+        rows.append("")
+    # 影响面：改这个文件会波及谁 —— 让 apply 之前就能判断值不值得。
+    try:
+        ch = L._STATE.get("result")
+        if ch is not None:
+            _t = []
+            for mf in (getattr(ch, "files", None) or []):
+                if (getattr(mf, "rel", "") or "") == rel:
+                    _t = [getattr(f, "name", "") for f in
+                          (getattr(mf, "functions", None) or [])]
+                    break
+            if _t:
+                _info = L._impact(_t[0])
+                if _info and not _info.get("pending"):
+                    rows.append("## 影响面")
+                    rows.append("")
+                    rows.append("这个文件里的 `%s` 有 %d 个直接调用者。"
+                                % (_t[0], int(_info.get("total") or 0)))
+                    rows.append("")
+    except Exception:
+        pass
+
+    rows.append("**这一步没有写盘。** 确认无误后调用 "
+                "`matlabc_apply_edit`（editId=`%s`）才会真正落盘；"
+                "落盘前会自动备份，之后可用 `matlabc_undo_edit` 恢复。" % eid)
+    return _text("\n".join(rows))
+
+
+def t_apply_edit(args):
+    """真正写入。写前再校验一次，并保留备份。"""
+    eid = (args.get("editId") or "").strip()
+    if not eid:
+        return _err("editId 不能为空")
+    rec_path = os.path.join(_edit_dir("pending"), eid + ".json")
+    if not os.path.isfile(rec_path):
+        return _err("找不到 editId=`%s` 的待确认改动（可能已应用或进程重启）"
+                    % eid)
+    rec = json.loads(io.open(rec_path, "r", encoding="utf-8").read())
+    path = rec.get("path") or ""
+    if not _in_root(path):
+        return _err("目标文件不在工程目录内")
+    if not os.path.isfile(path):
+        return _err("目标文件已不存在：%s" % path)
+    src = io.open(path, "r", encoding="utf-8", errors="replace").read()
+    # **再校验一次**：propose 与 apply 之间文件可能被编辑器改过。
+    if src.count(rec.get("old") or "") != 1:
+        return _err("文件在确认期间发生了变化，oldText 不再唯一匹配。"
+                    "请重新 propose。")
+
+    import shutil
+    # **备份按 editId 建目录，并写 meta.json 记下目标路径**（R329）。
+    # 第一版把文件名编码成 `t.m.<时间>.bak`，undo 时靠 split('.') 反推目标
+    # —— 名字里本来就有点，于是反推成 `t`，恢复写到了另一个文件上，
+    # 原文件纹丝不动，还回了句「已恢复」。这种错必须靠记录，不能靠猜。
+    bak_dir = os.path.join(_edit_dir("backup"), eid)
+    try:
+        os.makedirs(bak_dir)
+    except OSError:
+        pass
+    bak = os.path.join(bak_dir, "orig.bak")
+    try:
+        shutil.copy2(path, bak)
+        with io.open(os.path.join(bak_dir, "meta.json"), "w",
+                     encoding="utf-8", newline="") as fh:
+            fh.write(json.dumps({"target": path,
+                                 "rel": rec.get("rel") or "",
+                                 "at": time.time()},
+                                ensure_ascii=False, indent=2))
+        out = src.replace(rec.get("old") or "", rec.get("new") or "", 1)
+        with io.open(path, "w", encoding="utf-8", newline="") as fh:
+            fh.write(out)
+    except (IOError, OSError) as exc:
+        return _err("写入失败：%r" % (exc,))
+    try:
+        os.remove(rec_path)
+    except OSError:
+        pass
+    return _text("已写入 `%s`。\n\n备份 id：`%s`\n\n"
+                 "要撤销请调用 `matlabc_undo_edit`，backup=`%s`。"
+                 % (rec.get("rel") or path, eid, eid))
+
+
+def t_undo_edit(args):
+    """从备份恢复。目标路径从 `meta.json` 读，**不靠文件名反推**。"""
+    import shutil
+    eid = (args.get("backup") or "").strip()
+    if not eid:
+        return _err("backup 不能为空（apply 的返回里有这个值）")
+    bak_dir = os.path.join(_edit_dir("backup"), os.path.basename(eid))
+    meta_p = os.path.join(bak_dir, "meta.json")
+    bak = os.path.join(bak_dir, "orig.bak")
+    if not os.path.isfile(meta_p) or not os.path.isfile(bak):
+        return _err("找不到备份 `%s`（apply 的返回里给的备份 id）" % eid)
+    try:
+        meta = json.loads(io.open(meta_p, "r", encoding="utf-8").read())
+    except Exception as exc:
+        return _err("备份元数据损坏：%r" % (exc,))
+    target = meta.get("target") or ""
+    if not target or not _in_root(target):
+        return _err("备份记录的目标文件不在工程目录内")
+    try:
+        shutil.copy2(bak, target)
+    except (IOError, OSError) as exc:
+        return _err("恢复失败：%r" % (exc,))
+    return _text("已从备份 `%s` 恢复 `%s`。" % (eid, meta.get("rel") or target))
+
+
 def t_changed(args):
     """「我改了这几个文件，谁需要先回归」——比结构 diff 更贴近 Agent 的任务。
 
@@ -697,6 +882,34 @@ TOOLS = [
                                     "character": _INT},
                      "required": ["path", "line", "character"]},
      "handler": t_references},
+
+    {"name": "matlabc_propose_edit",
+     "description": "**不落盘**地算一次改动：返回 diff 与影响面，并给出 editId。"
+                    "oldText 必须在文件里恰好出现一次（0 次说明找错了，多次"
+                    "说明会改错地方，都会直接报错）。确认无误后再调用 "
+                    "matlabc_apply_edit。改代码前应当先 propose 并读一遍 diff。",
+     "inputSchema": {"type": "object",
+                     "properties": {"path": _STR, "oldText": _STR,
+                                    "newText": _STR},
+                     "required": ["path", "oldText", "newText"]},
+     "handler": t_propose_edit},
+
+    {"name": "matlabc_apply_edit",
+     "description": "把 propose 过的改动真正写入磁盘。会再校验一次 oldText "
+                    "是否仍唯一匹配（防止期间文件被改），并自动备份。"
+                    "落盘后可用 matlabc_undo_edit 恢复。",
+     "inputSchema": {"type": "object",
+                     "properties": {"editId": _STR},
+                     "required": ["editId"]},
+     "handler": t_apply_edit},
+
+    {"name": "matlabc_undo_edit",
+     "description": "从备份恢复某个文件（backup 值来自 apply 的返回）。"
+                    "改动出问题时用它，而不是靠记忆手改回去。",
+     "inputSchema": {"type": "object",
+                     "properties": {"backup": _STR},
+                     "required": ["backup"]},
+     "handler": t_undo_edit},
 
     {"name": "matlabc_changed",
      "description": "「我刚改了这几个文件，谁需要先回归」—— 给出受影响的入口"
