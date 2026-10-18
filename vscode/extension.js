@@ -916,6 +916,115 @@ function activate(context) {
     log('注册「出现位置高亮」失败（不影响其它功能）：' + (e && e.message));
   }
 
+  // ---- 侧栏「关系」视图（R297）---------------------------------------
+  // Source Insight 的关系窗口是**停靠在侧边**的，不是文档标签页 —— 这一点
+  // 决定了三件事：
+  //   1. 它不抢编辑器焦点，所以**大纲不会消失**（webview 标签页会抢）；
+  //   2. 它**跟着光标自动更新**，不需要先点“查看完整关系”；
+  //   3. 它常驻，看一眼就知道，不打断当前编辑。
+  try {
+    const relState = { roots: [], key: '' };
+    const relEmitter = new vscode.EventEmitter();
+    const relProvider = {
+      onDidChangeTreeData: relEmitter.event,
+      getTreeItem: (el) => el,
+      getChildren: (el) => (el && el.children ? el.children : relState.roots),
+    };
+    context.subscriptions.push(
+      vscode.window.registerTreeDataProvider('matlabcRelations', relProvider)
+    );
+
+    const mkItem = (label, o) => {
+      o = o || {};
+      const it = new vscode.TreeItem(label, o.children
+        ? vscode.TreeItemCollapsibleState.Collapsed
+        : vscode.TreeItemCollapsibleState.None);
+      if (o.desc) it.description = o.desc;
+      if (o.rel) {
+        it.command = { command: 'matlabc.openAt', title: '打开',
+                       arguments: [o.rel, o.line] };
+        it.tooltip = o.rel + ':' + o.line;
+      }
+      if (o.children) it.children = o.children;
+      return it;
+    };
+
+    const refreshRel = async (doc, pos) => {
+      if (!doc || doc.languageId !== 'matlab') return;
+      const wr = doc.getWordRangeAtPosition(pos, /[A-Za-z]\w*/);
+      if (!wr) return;
+      const word = doc.getText(wr);
+      const line = wr.start.line;
+      if (!word || (relState.key === word + '@' + line)) return;
+      relState.key = word + '@' + line;
+      const rel = path.relative(root || '', doc.uri.fsPath).replace(/\\/g, '/');
+
+      let info = null;
+      try {
+        const r = await client.request('matlabc/impact', { name: word });
+        info = (r && r.result) || null;
+      } catch (e) { /* 服务端没答上来就走变量分支 */ }
+
+      const roots = [];
+      if (info && typeof info.total === 'number') {
+        const ups = (info.direct || []).slice(0, 30).map((d) =>
+          mkItem(d.name, { desc: d.rel + ':' + d.line, rel: d.rel, line: d.line }));
+        roots.push(mkItem('↑ 调用者（' + info.total + '）',
+                          { children: ups.length ? ups : [mkItem('（无）')] }));
+        const dns = (info.down || []).slice(0, 30).map((d) =>
+          mkItem(d.name, { desc: d.rel + ':' + d.line + '  L' + d.level,
+                           rel: d.rel, line: d.line }));
+        roots.push(mkItem('↓ 被调用（' + (info.down_total || 0) + '）',
+                          { children: dns.length ? dns : [mkItem('（无）')] }));
+        const chs = (info.chains || []).slice(0, 8).map((ch) =>
+          mkItem((ch || []).map((n) => n.name).join(' → '), { desc: '链' }));
+        if (chs.length) roots.push(mkItem('链（入口 → 目标）', { children: chs }));
+      } else {
+        // 变量 / 字段：本文里的声明与出现
+        const lines = doc.getText().split(/\r?\n/);
+        const escRe = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const hitRe = new RegExp('\\b' + escRe + '\\b');
+        const declRe = new RegExp('^\\s*(?:\\[[^\\]]*\\]\\s*=\\s*)?' + escRe +
+                                  '\\s*(?:\\([^)]*\\))?\\s*=');
+        let decl = -1;
+        const hits = [];
+        for (let i = 0; i < lines.length; i += 1) {
+          const code = lines[i].replace(/%.*$/, '');
+          if (!hitRe.test(code)) continue;
+          if (decl < 0 && declRe.test(code)) decl = i;
+          hits.push(i);
+        }
+        if (!hits.length) { return; }
+        roots.push(mkItem(decl >= 0 ? '声明（首次赋值）' : '声明', {
+          children: [decl >= 0
+            ? mkItem('第 ' + (decl + 1) + ' 行',
+                     { desc: (lines[decl] || '').trim().slice(0, 40),
+                       rel: rel, line: decl + 1 })
+            : mkItem('本文没有赋值（入参 / 全局 / 只读）')],
+        }));
+        roots.push(mkItem('本文出现（' + hits.length + '）', {
+          children: hits.slice(0, 80).map((i) =>
+            mkItem(':' + (i + 1), { desc: (lines[i] || '').trim().slice(0, 40),
+                                    rel: rel, line: i + 1 })),
+        }));
+      }
+      relState.roots = roots;
+      relEmitter.fire();
+    };
+
+    let relTimer = null;
+    context.subscriptions.push(
+      vscode.window.onDidChangeTextEditorSelection((e) => {
+        if (relTimer) clearTimeout(relTimer);
+        const doc = e.textEditor.document;
+        const pos = e.selections[0] && e.selections[0].active;
+        relTimer = setTimeout(() => { refreshRel(doc, pos); }, 180);
+      })
+    );
+  } catch (e) {
+    log('注册「关系」侧栏失败：' + (e && e.message));
+  }
+
   // ---- 悬停即见关系（R296）-------------------------------------------
   // Source Insight 的读法：**鼠标停在哪，关系就在哪**，不用先右键。
   // 这里是「摘要」：函数给调用者数量与前三个调用点；变量给声明行与出现次数。
