@@ -1015,40 +1015,59 @@ function activate(context) {
         //   顶层符号 → 每条来路 → 逐跳（编号 + 函数名 + 位置）
         // 函数行**不带图标**：TreeItem 的图标在某些主题/字体下会渲染成乱码，
         // 而读者要的是名字本身（用户明确要求「干净的显示一个函数」）。
-        const chs = (info.chains || []).slice(0, 8).map((ch) => {
-          const arr = ch || [];
-          const nodes = arr.map((n, k) => mkItem(
-            (k + 1) + '.  ' + n.name,
-            { desc: n.rel + ':' + n.line, rel: n.rel, line: n.line }));
-          const entry = arr.length ? arr[0].name : '';
-          const me = arr.length ? arr[arr.length - 1].name : word;
-          return mkItem('←  ' + entry + '  →  …  →  ' + me, {
-            desc: arr.length + ' 跳',
-            children: nodes,
+        // ---- 照 Source Insight 的 Relation 窗口（R303）------------------
+        // 三条约束，都来自实际使用：
+        //   ① 只写「函数名 + 行号」，**不铺绝对路径**（一屏全是目录没法读）；
+        //   ② **近的在上**：紧邻的调用者排最前，逐层向上到入口；
+        //   ③ 层数尽量少，别为了"完整"把一屏塞满。
+        const curBase = String(rel || '').split('/').pop();
+        const shortDesc = (n) => {
+          const base = String(n.rel || '').split('/').pop();
+          // 同文件只写行号；跨文件才带文件名（仍然只到文件名这一级）。
+          return (base && base !== curBase ? base + ' · ' : '') +
+                 'line ' + (n.line || 1);
+        };
+        const toItem = (nd) => {
+          const kids = [];
+          nd.children.forEach((v) => kids.push(toItem(v)));
+          return mkItem(nd.node.name, {
+            desc: shortDesc(nd.node),
+            rel: nd.node.rel, line: nd.node.line,
+            children: kids.length ? kids : undefined,
+          });
+        };
+        // 用 chains 建一棵**共享前缀**的树：把每条链逆序（直接调用者 → 入口），
+        // 同一入口的不同路径自然合流，不会重复列出。
+        const rootNode = { node: null, children: new Map() };
+        (info.chains || []).forEach((ch) => {
+          const ups = (ch || []).slice(0, -1).reverse();
+          let cur = rootNode;
+          ups.forEach((n) => {
+            const key = n.rel + ':' + n.name;
+            if (!cur.children.has(key)) {
+              cur.children.set(key, { node: n, children: new Map() });
+            }
+            cur = cur.children.get(key);
           });
         });
-        if (chs.length) {
-          groups.push(mkItem('⌗  调用链（入口 → 我，' + chs.length + ' 条）',
-                             { desc: '逐跳展开',
-                               children: chs }));
-        } else {
-          const ups = (info.direct || []).slice(0, 30).map((d, k) =>
-            mkItem((k + 1) + '.  ' + d.name,
-                   { desc: d.rel + ':' + d.line,
-                     rel: d.rel, line: d.line }));
-          groups.push(mkItem('←  调用者（' + info.total + '）',
-                             { desc: '谁 → 我',
-                               children: ups.length ? ups : [mkItem('（无调用者）')] }));
-        }
-        const dns = (info.down || []).slice(0, 30).map((d, k) =>
-          mkItem((k + 1) + '.  ' + d.name,
-                 { desc: d.rel + ':' + d.line + '　L' + d.level,
-                   rel: d.rel, line: d.line }));
+        const upItems = [];
+        rootNode.children.forEach((v) => upItems.push(toItem(v)));
+        groups.push(upItems.length
+          ? mkItem('←  调用者（' + info.total + '）', {
+              desc: '近 → 远', children: upItems,
+            })
+          : mkItem('←  无调用者（它是入口）'));
+
+        // 被调用：只展开一层，够判断"它还依赖谁"即可。
+        const dns = (info.down || []).slice(0, 20).map((d) =>
+          mkItem(d.name, {
+            desc: shortDesc(d), rel: d.rel, line: d.line,
+          }));
         groups.push(mkItem('→  被调用（' + (info.down_total || 0) + '）',
                            { desc: '我 → 谁',
                              children: dns.length ? dns : [mkItem('（叶子）')] }));
-        // 横向视图：链是同一个东西的另一种排布，一个入口切过去。
-        groups.unshift(mkItem('⇥  横向查看（箭头关系）', {
+        // 横向视图放最后：它是补充，不该占第一行。
+        groups.push(mkItem('⇥  横向查看（箭头关系）', {
           desc: '在右侧打开',
           cmd: { command: 'matlabc.previewGraph', title: '横向',
                  arguments: [word, true] },
@@ -1056,7 +1075,8 @@ function activate(context) {
         // **顶层就是这个名字本身** —— 树的第一行必须回答「这是谁的关系」。
         relView.title = '关系：' + word;
         relState.roots = [mkItem(word, {
-          desc: (info.rel || rel) + ':' + (info.line || ''),
+          // 顶层也**只写行号**：同一屏里出现两遍完整路径就是噪音。
+          desc: 'line ' + (info.line || 1),
           rel: info.rel || rel, line: info.line || 1,
           children: groups,
         })];
@@ -1097,7 +1117,7 @@ function activate(context) {
       // 你正在看的那一行，而不是 `x` 成立的地方 —— 行号对不上代码。
       relView.title = '关系：' + word;
       relState.roots = [mkItem(word, {
-        desc: (decl >= 0 ? rel + ':' + (decl + 1) : '本文内无声明')
+        desc: (decl >= 0 ? 'line ' + (decl + 1) : '本文内无声明')
               + '　（变量）',
         rel: decl >= 0 ? rel : null,
         line: decl >= 0 ? decl + 1 : 0,
