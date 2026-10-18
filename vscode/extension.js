@@ -1009,6 +1009,17 @@ function activate(context) {
       // 记住最后一次有效的 matlab 文档（R313）：点 CodeLens 时焦点可能
       // 已经在侧栏上，`activeTextEditor` 会是 null —— 那时不能算不出东西。
       relState.lastDoc = doc;
+      // **注释里的词不算**（R315）：`getWordRangeAtPosition` 不区分代码与注释，
+      // 光标停在注释里某个词上（日志里出现过 declare / function）就会拿它
+      // 去查关系，白跑一趟还可能显示一堆无关内容。
+      if (pos) {
+        const _ln = doc.lineAt(pos.line).text;
+        const _pct = _ln.indexOf('%');
+        if (_pct >= 0 && pos.character >= _pct) {
+          log('关系跳过：光标在注释里');
+          return;
+        }
+      }
       let word = forced || '';
       let line = -1;
       if (!word) {
@@ -1038,15 +1049,13 @@ function activate(context) {
         info = (r && r.result) || null;
       } catch (e) { /* 超时或失败：走变量分支，不空着 */ }
 
+      let pendingFlag = false;
       if (info && info.pending) {
-        // **明确说「在算」，并自己重试** —— 空着会让人以为工具坏了。
-        relView.title = '关系：' + word;
-        relState.roots = [mkItem(word, {
-          desc: '分析进行中…',
-          children: [mkItem('正在建全库索引，几秒后自动刷新'),
-                     mkItem('（首次打开大工程约需 1 分钟）')],
-        })];
-        relEmitter.fire();
+        // **不要在这里 return**（R315）：`pending` 只说明「全库索引还没建好」，
+        // 而变量/字段的「本文声明 + 本文出现」完全由客户端算得出来。
+        // 之前直接 return，侧栏只剩一句「分析进行中」，什么都不给。
+        log('关系 ' + word + ' -> 服务端仍在分析（本地信息先给，3 秒后重试）');
+        pendingFlag = true;
         if (!relState.retryTimer) {
           relState.retryTimer = setTimeout(() => {
             relState.retryTimer = null;
@@ -1054,7 +1063,6 @@ function activate(context) {
             refreshRel(doc, null, word);
           }, 3000);
         }
-        return;
       }
 
       const groups = [];
@@ -1264,9 +1272,9 @@ function activate(context) {
       relState.roots = [mkItem(word, {
         // 跨文件出现的变量就是**全局变量**，标题直接写清这一点，
         // 而不是和局部变量一样只写「（变量）」。
-        desc: isGlobal
+        desc: (pendingFlag ? '分析中…　' : '') + (isGlobal
           ? ('全局变量 · ' + gfiles.length + ' 个文件')
-          : ((decl >= 0 ? 'line ' + (decl + 1) : '本文内无声明') + '　（变量）'),
+          : ((decl >= 0 ? 'line ' + (decl + 1) : '本文内无声明') + '　（变量）')),
         rel: decl >= 0 ? rel : null,
         line: decl >= 0 ? decl + 1 : 0,
         children: groups,
