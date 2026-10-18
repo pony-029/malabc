@@ -1583,6 +1583,22 @@ def _mcp(c=None):
         finally:
             shutil.rmtree(_ed, ignore_errors=True)
 
+        # R332：help 必须列出真实存在的工具，且**不推荐当前档位没有的**。
+        # core 档里没有写工具，若 help 还教人用 propose_edit，
+        # 模型会去找一个不存在的方法名 —— 自述与实际不一致比没有自述更糟。
+        _h = _MCP.t_help({})
+        _th = ((_h.get("content") or [{}])[0].get("text", ""))
+        _chk("matlabc_outline" in _th and "matlabc_impact" in _th,
+             "mcp/help-lists-visible-tools（%r）" % (_th[:60],))
+        _MCP._TOOL_MODE[0] = "core"
+        try:
+            _hc = ((_MCP.t_help({}).get("content") or [{}])[0]
+                   .get("text", ""))
+        finally:
+            _MCP._TOOL_MODE[0] = "all"
+        _chk("matlabc_propose_edit" not in _hc and "精简档" in _hc,
+             "mcp/help-matches-core-mode（%r）" % (_hc[-80:],))
+
         r7 = rpc({"jsonrpc": "2.0", "id": 7, "method": "tools/call",
                   "params": {"name": "matlabc_stats", "arguments": {}}})
         txt7 = (((r7 or {}).get("result") or {}).get("content")

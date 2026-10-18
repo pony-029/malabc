@@ -280,6 +280,65 @@ def t_references(args):
     return _text("\n".join(out))
 
 
+def _short_desc(text):
+    """取描述的第一句。小模型看清单时，一句就够，整段反而占 token。"""
+    t = (text or "").strip()
+    for sep in (u"。", u"；", u"\n"):
+        i = t.find(sep)
+        if 0 < i < 60:
+            return t[:i + 1]
+    return t[:60]
+
+
+def t_help(args):
+    """列出当前可用的工具 —— 让模型自己发现能力，而不是靠提示词猜。
+
+    为什么这是一个**工具**而不是一段文档：小模型不会去翻 README，
+    但它会调一个叫 help 的工具。给它一条低成本的自述路径，
+    比在系统提示里塞一长串能力说明更省 token，也更不容易过时。
+    """
+    full = (args.get("detail") or "") == "full"
+    vis = _visible_tools()
+    out = [u"# matlabc 工具清单（当前 %d 个）" % len(vis), u""]
+
+    for t in vis:
+        if t["name"] == "matlabc_help":
+            continue
+        out.append(u"- **%s** — %s" % (t["name"], _short_desc(t["description"])))
+        if full:
+            props = (t["inputSchema"] or {}).get("properties") or {}
+            req = set((t["inputSchema"] or {}).get("required") or [])
+            if props:
+                bits = []
+                for k in sorted(props):
+                    bits.append(u"%s%s" % (k, u"*" if k in req else u""))
+                out.append(u"  - 参数：%s（* 为必填）" % u"、".join(bits))
+            else:
+                out.append(u"  - 参数：无")
+
+    out.append(u"")
+    out.append(u"## 这样问最有效")
+    out.append(u"")
+    out.append(u"- 用 `matlabc_stats` 看看这个工程有多少函数")
+    out.append(u"- 用 `matlabc_impact`，name 传 `sqrtm`")
+    out.append(u"- 用 `matlabc_outline`，path 传 `@sdpvar/sqrtm.m`")
+    # **只推荐当前真的有的工具**（R332）。core 档里没有写工具，
+    # 若还提示「用 propose_edit」，模型会去找一个不存在的名字 ——
+    # 自述文件和实际清单不一致，比没有自述更糟。
+    names = set(t["name"] for t in vis)
+    if "matlabc_propose_edit" in names:
+        out.append(u"")
+        out.append(u"要改代码时：先 `matlabc_propose_edit` 看 diff，"
+                   u"确认后 `matlabc_apply_edit`，出问题 `matlabc_undo_edit`。")
+    else:
+        out.append(u"")
+        out.append(u"当前是精简档（`--tools core`），只含只读工具；"
+                   u"需要改代码、体检、批量影响面时，请用 `--tools all` 启动。")
+    out.append(u"")
+    out.append(u"加 `detail=full` 可以看到每个工具的参数表。")
+    return _text(u"\n".join(out))
+
+
 def _ensure_payload():
     """拿到带**检查结果**的 payload（`heuristics`）。
 
@@ -837,6 +896,15 @@ _STR = {"type": "string"}
 _INT = {"type": "integer"}
 
 TOOLS = [
+    {"name": "matlabc_help",
+     "description": "列出当前可用的工具与推荐问法。不确定能做什么、"
+                    "或不确定该调哪个工具时，先调它 —— 比让模型凭印象猜便宜。"
+                    "传 detail=full 可看每个工具的参数表。",
+     "inputSchema": {"type": "object",
+                     "properties": {"detail": _STR},
+                     "required": []},
+     "handler": t_help},
+
     {"name": "matlabc_outline",
      "description": "列出一个 .m 文件里定义的函数及其行号。"
                     "用于快速了解一个文件的结构，不要用它去猜"
@@ -974,8 +1042,9 @@ _BY_NAME = dict((t["name"], t) for t in TOOLS)
 #: description 本身就要 2000~3000 token，加上客户端系统提示，**还没发问就先超了**。
 #: 所以给一个「核心 6 个」的档位：覆盖「了解工程 / 看结构 / 查影响 / 查字段」。
 #: 完整档位（all）留给上下文充足的情况，不要为了省钱删能力，只是分档。
-CORE_TOOLS = ("matlabc_stats", "matlabc_outline", "matlabc_impact",
-              "matlabc_explain", "matlabc_fields", "matlabc_search")
+CORE_TOOLS = ("matlabc_help", "matlabc_stats", "matlabc_outline",
+              "matlabc_impact", "matlabc_explain", "matlabc_fields",
+              "matlabc_search")
 
 #: 由 `--tools` 决定，main() 里设置。
 _TOOL_MODE = ["all"]
