@@ -1778,9 +1778,11 @@ def _document_symbols(uri):
     `range` 覆盖函数体（`line..body_end`），`selectionRange` 只覆盖名字那一行——
     LSP 要求后者**必须**落在前者内部，否则 VSCode 会拒绝整批符号。
     """
-    result = _wait_result()
+    # **不等待分析完成**（R284）：大纲有单文件兜底，等 90 秒只会让编辑器
+    # 那边先超时，最后仍然是空 —— 而且用户要等过一次才知道是空的。
+    result = _STATE.get("result")
     root = _STATE.get("root")
-    if result is None or not root:
+    if not root:
         return []
     path = _uri_to_path(uri)
     try:
@@ -1789,21 +1791,39 @@ def _document_symbols(uri):
         rel = os.path.basename(path)
     want = os.path.basename(rel).lower()
 
-    out = []
-    for mf in (getattr(result, "files", None) or []):
-        if os.path.basename(getattr(mf, "rel", "") or "").lower() != want:
-            continue
-        for f in (getattr(mf, "functions", None) or []):
+    def _build(fns, file_lines):
+        """把函数列表转成 LSP 符号数组。
+
+        `range` 覆盖函数体，`selectionRange` 只覆盖名字那一行 —— 后者必须
+        落在前者内部，否则 VSCode 会**整批拒绝**，大纲一片空白。
+
+        `body_end` 缺失时（缓存重建的对象没有这个字段）不能退化成单行：
+        退化的后果是「点了大纲里的函数却只选中一行」。改用下一个函数的
+        起始行往前一行，最后一个函数用文件行数兜底。
+        """
+        starts = sorted(int(getattr(x, "line", 1) or 1) for x in fns)
+        out2 = []
+        for f in fns:
             name = getattr(f, "name", "") or ""
             if not name:
                 continue
             start = max(0, int(getattr(f, "line", 1) or 1) - 1)
             end = getattr(f, "body_end", None)
-            end0 = max(start, int(end) - 1) if end else start
+            if end:
+                end0 = max(start, int(end) - 1)
+            else:
+                nxt = None
+                for s0 in starts:
+                    if s0 - 1 > start:
+                        nxt = s0 - 1
+                        break
+                end0 = (nxt - 1) if nxt is not None else max(
+                    start, (file_lines or start + 1) - 1)
+            end0 = max(start, end0)
             kind = (_SYMBOL_CLASS
                     if (getattr(f, "kind", "") or "") == "classdef"
                     else _SYMBOL_FUNCTION)
-            out.append({
+            out2.append({
                 "name": name,
                 "kind": kind,
                 "range": {"start": {"line": start, "character": 0},
@@ -1812,7 +1832,30 @@ def _document_symbols(uri):
                                    "end": {"line": start,
                                            "character": len(name)}},
             })
-    return out
+        return out2
+
+    for mf in (getattr(result, "files", None) or []):
+        if os.path.basename(getattr(mf, "rel", "") or "").lower() != want:
+            continue
+        out = _build((getattr(mf, "functions", None) or []),
+                     getattr(mf, "lines", 0))
+        if out:
+            return out
+
+    # ---- R284：分析里没有这个文件时，**就地解析这一个文件** ------------
+    # 大纲请求只在打开文件时发一次；若此刻分析尚未覆盖该文件（首次打开大工程、
+    # 或文件在分析范围之外），返回空之后**不会自动重来** —— 用户看到的就是
+    # 「在文档 xxx.m 中找不到符号」，而且会一直空着。
+    # 单文件解析是毫秒级的，比「解释为什么没有」有用得多。
+    try:
+        import matlabc as _M
+        _mf = _M.MatlabFile(path, rel)
+        _M.parse_file(_mf)
+        return _build(getattr(_mf, "functions", None) or [],
+                      getattr(_mf, "lines", 0))
+    except Exception as exc:
+        _log("documentSymbol 兜底解析失败：%r" % (exc,))
+        return []
 
 
 # --------------------------------------------------------------------------

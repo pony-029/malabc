@@ -877,6 +877,29 @@ def _doc(c):
     _chk(_L2._ident_at([u"% 反例语料：下面提到 zzz_ghost"], 0, 6) is None,
          "doc/cjk-is-not-an-identifier")
 
+    # ---- R284：分析尚未完成时，大纲不能是空的 --------------------------
+    # 现象：首次打开大工程，大纲显示「在文档 xxx.m 中找不到符号」，之后
+    # 一直空着 —— 因为大纲只请求一次，而那时分析还没覆盖到这个文件。
+    # 判据直接构造这个状态（result=None），要求**就地解析**出结果。
+    _saved_result = _L2._STATE.get("result")
+    _saved_root = _L2._STATE.get("root")
+    _L2._STATE["root"] = os.path.join(ROOT, "tests", "sample_m")
+    _L2._STATE["result"] = None
+    try:
+        _syms = _L2._document_symbols(
+            _uri(os.path.join(ROOT, "tests", "sample_m", "a.m")))
+    finally:
+        _L2._STATE["result"] = _saved_result
+        _L2._STATE["root"] = _saved_root
+    _chk(len(_syms) == 3,
+         "doc/symbols-without-analysis（实际 %d 个）" % len(_syms))
+    # 每个符号的范围必须覆盖函数体，不能退化成一行 —— 否则点大纲里的函数
+    # 只会选中一行，看起来像「跳错了」。
+    _chk(bool(_syms) and all(s["range"]["end"]["line"] >
+                             s["range"]["start"]["line"] for s in _syms),
+         "doc/symbol-range-covers-body（%r）"
+         % ([(s["name"], s["range"]) for s in _syms][:2],))
+
     # ---- R235：**本库没有定义时不许沉默** -------------------------------
     # 用户报的「显示有调用、却找不到函数」：`some_toolbox_fn(...)` 看着
     # 像调用，但本库和内置表里都没有它。以前 hover 返回 null、F12 返回
