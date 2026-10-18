@@ -854,6 +854,7 @@ python tools/check_help_contract.py --list-prefixes    # 前缀 -> 主人；加�
 | 工具 | 作用 |
 | --- | --- |
 | `build_vsix.py` | 直接产出离线 `.vsix` 到 `releases/vsix/`——版本号读自扩展清单，文件名与实际安装的版本永远一致 |
+| `make_tour_gif.py` | 逐帧重绘 `releases/demo/matlabc-tour.gif`（四个场景：大纲、转到定义、关系面板、热点排行）——不是录屏，改文案改配色都只改脚本 |
 | `json_diff.py` | 忽略指定键后比两份 `--json` / `--xml` 是否完全一致——本仓每一句「IDENTICAL」都是用它得出的 |
 | `tree_diff.py` | 比两个目录的文件集合与内容（可按正则忽略行） |
 | `analyze_structure.py` | 打印单文件的结构大纲；是可重跑的基线，不是护栏 |

@@ -81,7 +81,7 @@ JS_FILES = ("package.json", "extension.js", "lspClient.js",
 #: 扩展侧的静态资源目录（TextMate 语法等）。R206 之前漏了它，
 #: 于是「注册了 matlab 语言却没有语法」——VSCode 用空语法覆盖掉
 #: 原来别处提供的高亮，整个文件变成白字。
-ASSET_DIRS = ("syntaxes", "icons", "data", "media")
+ASSET_DIRS = ("syntaxes", "icons", "data")
 
 #: 分析器侧：LSP 入口 + CLI + 包目录（`analyzer/` 只有 3 个源文件）
 #: `matlabc.py` 的依赖链是**逐步暴露**的：先缺 `frontends`，补上后缺
