@@ -276,6 +276,15 @@ def _save_cache(root, payload, result):
                 "rel": getattr(mf, "rel", "") or "",
                 "header": getattr(mf, "header", None) or {},
                 "functions": fns,
+                # **这三个字段必须存**（R319）。它们此前不在缓存里，
+                # 于是缓存命中后：
+                #   `globals` 缺失 → 全局变量查不到跨文件引用（被当局部变量）
+                #   `lines`   缺失 → 大纲 range 退化成一行（又靠 end_char 兜）
+                #   `kind`    缺失 → `@类目录` 的方法无法标成类成员
+                # 这已经是同一个坑的第三次（R233 的 field_access、R294 的 lines）。
+                "globals": list(getattr(mf, "globals", None) or []),
+                "lines": int(getattr(mf, "lines", 0) or 0),
+                "kind": getattr(mf, "kind", "") or "",
             })
         edges = []
         for e in (getattr(result, "edges", None) or []):
@@ -304,7 +313,7 @@ def _save_cache(root, payload, result):
         except Exception as exc:
             _log("缓存里的 field_access 构建失败：%r" % (exc,))
             field_access = {}
-        doc = {"v": 3, "complete": True, "stamp": stamp, "files": files,
+        doc = {"v": 4, "complete": True, "stamp": stamp, "files": files,
                "edges": edges, "payload": payload,
                "field_access": field_access}
         try:
@@ -334,11 +343,11 @@ def _load_cache(root):
     except Exception as exc:
         _log("缓存不可读，忽略：%r" % (exc,))
         return None
-    # **v=3**：R233 加了 `field_access`。v1 的缓存缺它，命中后结构体
-    # 跳转会静默失效 —— 宁可让用户多等一次分析，也不给一份"看起来能用
-    # 但某些功能是哑的"缓存。
-    if not isinstance(doc, dict) or doc.get("v") != 3:
-        _log("缓存 schema 不符（v=%r，需要 3），忽略" % (doc.get("v"),))
+    # **v=4**：R319 补了 `globals` / `lines` / `kind`。v3 的缓存缺它们，
+    # 命中后全局变量会被当成局部变量、大纲 range 退化。
+    # 宁可让用户多等一次分析，也不给一份"看起来能用但某些功能是哑的"缓存。
+    if not isinstance(doc, dict) or doc.get("v") != 4:
+        _log("缓存 schema 不符（v=%r，需要 4），忽略" % (doc.get("v"),))
         return None
     if doc.get("complete") is not True:
         # 没有 `complete: true` 的是**旧缓存或半成品**（R216 之前写的全部如此）。
@@ -363,7 +372,10 @@ def _load_cache(root):
                 fns.append(_cache_to_fn(fn))
             files.append(NS(rel=f.get("rel", ""),
                             header=f.get("header") or {},
-                            functions=fns))
+                            functions=fns,
+                            globals=list(f.get("globals") or []),
+                            lines=int(f.get("lines") or 0),
+                            kind=f.get("kind", "") or ""))
         edges = [tuple(e) for e in (doc.get("edges") or [])]
         result = NS(files=files, edges=edges,
                     field_access=doc.get("field_access") or {})

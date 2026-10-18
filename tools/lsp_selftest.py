@@ -758,7 +758,9 @@ def _struct(c):
             d = json.load(io.open(cache, encoding="utf-8"))
         except Exception:
             d = {}
-        _chk(d.get("v") == 3, "struct/cache-schema-v3（实际 %r）" % (d.get("v"),))
+        # v4（R319）：补了 `globals` / `lines` / `kind`。这条判据会在改
+        # schema 时立刻拦下来 —— 上一版断言的 3 就是这么被发现的。
+        _chk(d.get("v") == 4, "struct/cache-schema-v4（实际 %r）" % (d.get("v"),))
         fa = d.get("field_access") or {}
         _chk("name" in fa, "struct/cache-has-field-access（keys=%r）" % (list(fa)[:5],))
         # 缓存的函数记录必须带 `external_calls` —— R235 的 hover 解释分支
@@ -1110,6 +1112,34 @@ def _doc(c):
              "doc/global-refs-cross-file（%r）" % (_wfiles,))
     finally:
         shutil.rmtree(_nw, ignore_errors=True)
+
+    # ---- R319：缓存往返必须保住 globals / lines / kind -----------------
+    # 缓存里只存了 rel/header/functions 时，命中之后 `mf.globals` 不存在，
+    # 于是全局变量查不到跨文件引用 —— 界面上表现为「被当成局部变量」。
+    # 这是同一个坑的第三次（R233 field_access、R294 lines），所以入判据。
+    _cw = tempfile.mkdtemp(prefix="lsp_cw_")
+    try:
+        _cf = os.path.join(_cw, "cwm.m")
+        with io.open(_cf, "w", encoding="utf-8", newline="") as _fh:
+            _fh.write(u"function cwm()\n"
+                      u"global CACHE_G\n"
+                      u"CACHE_G = 1;\n"
+                      u"end\n")
+        _cres = _an(_cw, no_checks=True)
+        _L2._save_cache(_cw, {"heuristics": []}, _cres)
+        _chit = _L2._load_cache(_cw)
+        _cg = []
+        if _chit:
+            for _m in _chit[0].files:
+                if _m.rel.endswith("cwm.m"):
+                    _cg = list(getattr(_m, "globals", []) or [])
+                    _clines = int(getattr(_m, "lines", 0) or 0)
+                    break
+        _chk(_cg == ["CACHE_G"],
+             "doc/cache-keeps-globals（%r）" % (_cg,))
+        _chk(_clines > 0, "doc/cache-keeps-lines（%r）" % (_clines,))
+    finally:
+        shutil.rmtree(_cw, ignore_errors=True)
 
     # ---- R286：`@类目录` 里的方法文件也要出大纲 -------------------------
     # 用户报的现象就是 `@sdpvar/round.m` 大纲为空。这条在临时目录里自建
