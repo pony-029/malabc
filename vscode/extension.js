@@ -948,9 +948,12 @@ function activate(context) {
       getTreeItem: (el) => el,
       getChildren: (el) => (el && el.children ? el.children : relState.roots),
     };
-    context.subscriptions.push(
-      vscode.window.registerTreeDataProvider('matlabcRelations', relProvider)
-    );
+    // 用 createTreeView 而不是 registerTreeDataProvider：**要拿到视图句柄**，
+    // 才能把标题改成「关系：xos1」—— 标题写死的话，读者不知道在看谁（R299）。
+    const relView = vscode.window.createTreeView('matlabcRelations', {
+      treeDataProvider: relProvider,
+    });
+    context.subscriptions.push(relView);
 
     const mkItem = (label, o) => {
       o = o || {};
@@ -989,20 +992,36 @@ function activate(context) {
         info = (r && r.result) || null;
       } catch (e) { /* 服务端没答上来就走变量分支 */ }
 
-      const roots = [];
+      const groups = [];
       if (info && typeof info.total === 'number') {
+        // 箭头就是调用方向：`←` 谁调我，`→` 我调谁。
         const ups = (info.direct || []).slice(0, 30).map((d) =>
-          mkItem(d.name, { desc: d.rel + ':' + d.line, rel: d.rel, line: d.line }));
-        roots.push(mkItem('↑ 调用者（' + info.total + '）',
-                          { children: ups.length ? ups : [mkItem('（无）')] }));
+          mkItem('← ' + d.name,
+                 { desc: d.rel + ':' + d.line, rel: d.rel, line: d.line }));
+        groups.push(mkItem('调用者（' + info.total + '）',
+                           { desc: '谁 → 我',
+                             children: ups.length ? ups : [mkItem('（无）')] }));
         const dns = (info.down || []).slice(0, 30).map((d) =>
-          mkItem(d.name, { desc: d.rel + ':' + d.line + '  L' + d.level,
-                           rel: d.rel, line: d.line }));
-        roots.push(mkItem('↓ 被调用（' + (info.down_total || 0) + '）',
-                          { children: dns.length ? dns : [mkItem('（无）')] }));
+          mkItem('→ ' + d.name,
+                 { desc: d.rel + ':' + d.line + '  L' + d.level,
+                   rel: d.rel, line: d.line }));
+        groups.push(mkItem('被调用（' + (info.down_total || 0) + '）',
+                           { desc: '我 → 谁',
+                             children: dns.length ? dns : [mkItem('（无）')] }));
         const chs = (info.chains || []).slice(0, 8).map((ch) =>
           mkItem((ch || []).map((n) => n.name).join(' → '), { desc: '链' }));
-        if (chs.length) roots.push(mkItem('链（入口 → 目标）', { children: chs }));
+        if (chs.length) {
+          groups.push(mkItem('链（入口 → 目标）', { children: chs }));
+        }
+        // **顶层就是这个名字本身** —— 树的第一行必须回答「这是谁的关系」。
+        relView.title = '关系：' + word;
+        relState.roots = [mkItem(word, {
+          desc: (info.rel || rel) + ':' + (info.line || ''),
+          rel: info.rel || rel, line: info.line || 1,
+          children: groups,
+        })];
+        relEmitter.fire();
+        return;
       } else {
         // 变量 / 字段：本文里的声明与出现
         const lines = doc.getText().split(/\r?\n/);
@@ -1019,20 +1038,27 @@ function activate(context) {
           hits.push(i);
         }
         if (!hits.length) { return; }
-        roots.push(mkItem(decl >= 0 ? '声明（首次赋值）' : '声明', {
+        groups.push(mkItem(decl >= 0 ? '声明（首次赋值）' : '声明', {
           children: [decl >= 0
             ? mkItem('第 ' + (decl + 1) + ' 行',
                      { desc: (lines[decl] || '').trim().slice(0, 40),
                        rel: rel, line: decl + 1 })
             : mkItem('本文没有赋值（入参 / 全局 / 只读）')],
         }));
-        roots.push(mkItem('本文出现（' + hits.length + '）', {
+        groups.push(mkItem('本文出现（' + hits.length + '）', {
           children: hits.slice(0, 80).map((i) =>
-            mkItem(':' + (i + 1), { desc: (lines[i] || '').trim().slice(0, 40),
-                                    rel: rel, line: i + 1 })),
+            mkItem('第 ' + (i + 1) + ' 行',
+                   { desc: (lines[i] || '').trim().slice(0, 40),
+                     rel: rel, line: i + 1 })),
         }));
       }
-      relState.roots = roots;
+      // 变量也一样：顶层是这个变量名，标题写清在看谁。
+      relView.title = '关系：' + word;
+      relState.roots = [mkItem(word, {
+        desc: rel + ':' + (line >= 0 ? line + 1 : '') + '　（变量）',
+        rel: rel, line: line >= 0 ? line + 1 : 1,
+        children: groups,
+      })];
       relEmitter.fire();
     };
 
