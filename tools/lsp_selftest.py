@@ -807,6 +807,37 @@ def _doc(c):
     _chk("**参数**" in body4 and "没有类型说明" in body4,
          "doc/param-hover-without-type（%r）" % (body4[:80],))
 
+    # ---- R272：兜底不许沉默 -------------------------------------------
+    # 既不是函数、不是字段、不是参数、也不在外部调用表里时，以前 `return None`
+    # —— 界面一片安静，用户分不清「我拼错了」还是「扩展坏了」。
+    body5 = hover_at(7, 0)          # documented 的 body：`y = x .^ n;` 的 y
+    _chk("局部变量" in body5,
+         "doc/local-variable-hover（%r）" % (body5[:80],))
+
+    # 另一份语料：注释里提到的、从不赋值也不被调用的名字
+    c.send({"jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": {"textDocument": {"uri": _uri(
+                os.path.join(root, "unknown_ref.m")),
+                "languageId": "matlab", "version": 1, "text": "x"}}})
+    c.recv()
+    c.recv()
+    c.send({"jsonrpc": "2.0", "id": 86, "method": "textDocument/hover",
+            "params": {"textDocument": {"uri": _uri(
+                os.path.join(root, "unknown_ref.m"))},
+                "position": {"line": 1, "character": 20}}})
+    r6 = c.recv() or {}
+    body6 = (((r6.get("result") or {}).get("contents") or {})
+             .get("value") or "")
+    _chk("不是函数" in body6 and "没有被赋值" in body6,
+         "doc/unknown-identifier-explained（%r）" % (body6[:80],))
+
+    # 中文不该被当成标识符：否则悬停注释里的词会输出
+    # 「`反例语料` 不是函数」—— 一句正确但毫无意义的话。
+    sys.path.insert(0, ROOT)
+    import matlabc_lsp as _L2
+    _chk(_L2._ident_at([u"% 反例语料：下面提到 zzz_ghost"], 0, 6) is None,
+         "doc/cjk-is-not-an-identifier")
+
     # ---- R235：**本库没有定义时不许沉默** -------------------------------
     # 用户报的「显示有调用、却找不到函数」：`some_toolbox_fn(...)` 看着
     # 像调用，但本库和内置表里都没有它。以前 hover 返回 null、F12 返回

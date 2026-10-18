@@ -447,14 +447,25 @@ def _ident_at(lines, line0, char):
     s = lines[line0]
     i = min(max(0, char), len(s))
     start, end = i, i
-    while start > 0 and (s[start - 1].isalnum() or s[start - 1] == "_"):
+    # **只认 ASCII 标识符**（R272）。`str.isalnum()` 对中文返回 True，
+    # 于是悬停中文注释里的词会被当成名字，再去查函数必然查不到，
+    # 最后输出「`反例语料` 不是函数」—— 一句正确但毫无意义的话。
+    # MATLAB 的标识符是 `[A-Za-z0-9_]`，范围本来就该这么窄。
+    def _ok(c):
+        return (("a" <= c <= "z") or ("A" <= c <= "Z")
+                or ("0" <= c <= "9") or c == "_")
+    while start > 0 and _ok(s[start - 1]):
         start -= 1
-    while end < len(s) and (s[end].isalnum() or s[end] == "_"):
+    while end < len(s) and _ok(s[end]):
         end += 1
     if start == end:
         return None
     word = s[start:end]
-    if not word or not (word[0].isalpha() or word[0] == "_"):
+    if not word:
+        return None
+    # 首字符不能是数字（`2x` 不是标识符）
+    if not (("a" <= word[0] <= "z") or ("A" <= word[0] <= "Z")
+            or word[0] == "_"):
         return None
     return word
 
@@ -991,6 +1002,58 @@ def _hover(uri, pos):
                     "toolbox 函数，或者是变量/字段被当成了调用。"
                     % (getattr(fn_here, "name", "?"), ext.get(name) or 1),
                 ])}}
+
+        # ---- R272：到这里还什么都不说，是最差的选择 --------------------
+        # 它既不是函数、不是内置、不是字段、不是参数，也不在外部调用表里。
+        # 以前这里 `return None` —— 界面一片安静，用户分不清是
+        # **自己拼错了**、**还是扩展坏了**。
+        #
+        # 现在至少把「它可能是什么」说清楚：在本函数体里被赋值 ⇒ 局部变量
+        # （或循环变量）；连赋值都没有 ⇒ 老实说「不认识这个名字」。
+        # **不猜它是函数，也不假装知道它的类型。**
+        if fn_here is not None:
+            _start = int(getattr(fn_here, "line", 0) or 1)
+            _starts = sorted(int(getattr(f3, "line", 0) or 0)
+                             for f3 in (getattr(mf2, "functions", None) or []))
+            _next = None
+            for _ln3 in _starts:
+                if _ln3 > _start:
+                    _next = _ln3
+                    break
+            _end = (_next - 1) if _next else len(lines)
+            _pat_set = re.compile(r"^\s*%s\s*(?:\([^)]*\))?\s*="
+                                  % re.escape(name))
+            _pat_for = re.compile(r"^\s*for\s+%s\s*=" % re.escape(name))
+            _hits = []
+            _is_for = False
+            for _i in range(max(0, _start - 1), min(_end, len(lines))):
+                _code = lines[_i].split("%", 1)[0]
+                if _pat_for.match(_code):
+                    _is_for = True
+                    _hits.append(_i + 1)
+                elif _pat_set.match(_code):
+                    _hits.append(_i + 1)
+            _who = getattr(fn_here, "name", "?")
+            if _hits:
+                _kind = "循环变量" if _is_for else "局部变量"
+                return {"contents": {"kind": "markdown", "value": "\n".join([
+                    "```matlab", name, "```", "",
+                    "**`%s` 不是函数**，它是 `%s` 里的**%s**。"
+                    % (name, _who, _kind), "",
+                    "在 `%s`（`%s:%d`）里被赋值 %d 次，首次在第 %d 行 —— "
+                    "作用范围只在这个函数里，没有可跳转的独立定义。"
+                    % (_who, rel_here or "本文件", _start, len(_hits),
+                       _hits[0]),
+                ])}}
+            return {"contents": {"kind": "markdown", "value": "\n".join([
+                "```matlab", name, "```", "",
+                "**`%s` 不是函数。**" % name, "",
+                "本库内没有同名函数，它也不是参数或结构体字段，"
+                "在 `%s` 里也没有被赋值过。"
+                % _who, "",
+                "可能是拼写错误，或者它来自别的作用域（eval / 嵌套函数 / "
+                "未入库的文件）。",
+            ])}}
         return None
     mf, f = hit
 
