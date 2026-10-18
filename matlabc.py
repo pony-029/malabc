@@ -32380,8 +32380,20 @@ def run_pipeline(args, root, paths, prev=None, changed=None):
                 ordered_calls.append(callee_fn)
             for callee_fn in ordered_calls:
                 caller_label = f"{mf.rel}:{f.name}"
+                # `fn_to_file` 是**按对象身份**建的；而 `call_sites` 里的目标
+                # 未必是本轮这个对象 —— 进程内增量复用（R149）时，被复用的
+                # 文件里存着上一次分析解析出的函数对象，`a.m` 一旦重解析，
+                # 那些**旧对象**就查不到了。
+                # 症状：`callee_rel` 为空 → 标签退化成裸名字 `a`，
+                # 于是同一条边出现两个版本（`a.m:a` 与 `a`），边数多 1。
+                # 判据 `incremental_parity` 抓到的就是这个（多出
+                # `('switch_case.m:switch_case', 'a', False)`）。
+                # 兜底：对象自己记着它来自哪个文件（`.mfile.rel`），
+                # 用它取 rel 即可 —— 身份对不上，但归属是确定的。
                 callee_mf = fn_to_file.get(id(callee_fn))
-                callee_rel = callee_mf.rel if callee_mf else None
+                callee_rel = (callee_mf.rel if callee_mf is not None
+                              else getattr(getattr(callee_fn, "mfile", None),
+                                           "rel", None))
                 callee_label = f"{callee_rel}:{callee_fn.name}" if callee_rel else callee_fn.name
                 cross = (callee_rel is not None and callee_rel != mf.rel)
                 edges.append((caller_label, callee_label, cross))
