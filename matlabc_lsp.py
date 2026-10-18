@@ -1847,6 +1847,14 @@ def _document_symbols(uri):
                 end0 = (nxt - 1) if nxt is not None else max(
                     start, (file_lines or start + 1) - 1)
             end0 = max(start, end0)
+            # **range 必须真的包住函数名**（R294）。缓存重建的对象没有
+            # `lines`、函数没有 `body_end`，于是 end0 会退化成 start，
+            # range 变成 (0,0)-(0,0) 而 selectionRange 是 (0,0)-(0,9) ——
+            # VS Code 直接抛 `selectionRange must be contained in fullRange`，
+            # **整批符号被拒绝**，大纲一片空白。
+            # 这个 bug 只在缓存命中时出现，实时解析一切正常 ——
+            # 所以干净的测试环境永远复现不了（实测 C:\Temp\yalmip 缓存）。
+            end_char = len(name) if end0 <= start else 0
             kind = (_SYMBOL_CLASS
                     if (getattr(f, "kind", "") or "") == "classdef"
                     else _SYMBOL_FUNCTION)
@@ -1854,7 +1862,7 @@ def _document_symbols(uri):
                 "name": name,
                 "kind": kind,
                 "range": {"start": {"line": start, "character": 0},
-                          "end": {"line": end0, "character": 0}},
+                          "end": {"line": end0, "character": end_char}},
                 "selectionRange": {"start": {"line": start, "character": 0},
                                    "end": {"line": start,
                                            "character": len(name)}},

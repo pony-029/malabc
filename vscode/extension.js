@@ -875,8 +875,16 @@ function activate(context) {
             const kind = s.kind === 12
               ? vscode.SymbolKind.Function
               : vscode.SymbolKind.Class;
-            const range = toRange(s.range);
+            let range = toRange(s.range);
             const sel = toRange(s.selectionRange);
+            // **`selectionRange` 必须落在 `range` 内**，否则 VSCode 抛
+            // `selectionRange must be contained in fullRange`，**整批符号被拒**，
+            // 大纲一片空白（R294 就是这么空了好几轮）。
+            // 服务端已修根因；这里再兜一层：包不住就扩，绝不让一个符号
+            // 不合法而丢掉全部。
+            if (range.start.isAfter(sel.start) || range.end.isBefore(sel.end)) {
+              range = range.union(sel);
+            }
             return new vscode.DocumentSymbol(s.name, '', kind, range, sel);
           });
         } catch (e) {

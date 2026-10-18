@@ -916,6 +916,35 @@ def _doc(c):
          "doc/symbol-range-covers-body（%r）"
          % ([(s["name"], s["range"]) for s in _syms][:2],))
 
+    # ---- R294：**缓存对象**也必须给出包得住名字的 range ----------------
+    # 缓存重建的 mf 没有 `lines`、fn 没有 `body_end`（实测 C:\Temp\yalmip），
+    # 于是 range 退化成 (0,0)-(0,0)，而 selectionRange 是 (0,0)-(0,9) ——
+    # VSCode 抛 `selectionRange must be contained in fullRange`，
+    # **整批符号被拒**，大纲永远空。只在缓存命中时出现，实时解析测不到。
+    class _MF(object):
+        rel = "cached_x.m"
+        functions = [type("F", (), {"name": "cached_fn", "line": 1})()]
+
+    class _R(object):
+        files = [_MF()]
+
+    _saved = (_L2._STATE.get("root"), _L2._STATE.get("result"))
+    _L2._STATE["root"] = os.path.join(ROOT, "tests", "sample_m")
+    _L2._STATE["result"] = _R()
+    try:
+        _cs = _L2._document_symbols(
+            _uri(os.path.join(ROOT, "tests", "sample_m", "cached_x.m")))
+    finally:
+        _L2._STATE["root"], _L2._STATE["result"] = _saved
+    _cov = bool(_cs) and (
+        _cs[0]["range"]["end"]["line"] > _cs[0]["selectionRange"]["end"]["line"]
+        or (_cs[0]["range"]["end"]["line"]
+            == _cs[0]["selectionRange"]["end"]["line"]
+            and _cs[0]["range"]["end"]["character"]
+            >= _cs[0]["selectionRange"]["end"]["character"]))
+    _chk(_cov, "doc/cached-symbol-range-contains-name（%r）"
+         % ([(_cs[0]["range"], _cs[0]["selectionRange"])] if _cs else [],))
+
     # ---- R286：`@类目录` 里的方法文件也要出大纲 -------------------------
     # 用户报的现象就是 `@sdpvar/round.m` 大纲为空。这条在临时目录里自建
     # 语料（不污染 tests/），路径含 `@`，并且 URI 走百分号编码，
