@@ -1019,7 +1019,8 @@ def _doc(c):
             _fh.write(u"function fld()\n"
                       u"a.lb = 1;\n"
                       u"b.lb = 2;\n"
-                      u"disp(b.lb)\n"
+                      u"a.ub = a.lb + 1;\n"
+                      u"disp(b.lb); % b.lb 只是注释里的名字\n"
                       u"end\n")
         _save3 = (_L2._STATE.get("root"), _L2._STATE.get("result"),
                   _L2._STATE.get("field_index"))
@@ -1038,6 +1039,42 @@ def _doc(c):
         # `b.lb = 2;` 在第 3 行（0-based 2）；旧实现会取 `a.lb` 那行。
         _chk(bool(_fres) and _fres[0]["range"]["start"]["line"] == 2,
              "doc/field-prefers-same-base（%r）" % (_fres[:1],))
+
+        # R306：写入点里混着读取行（`a.ub = a.lb + 1;` 的 `a.lb` 也被记进去），
+        # 只按行号取第一条会落在读取处。要求优先落在 `=` 左边那行。
+        _save4 = (_L2._STATE.get("root"), _L2._STATE.get("result"),
+                  _L2._STATE.get("field_index"))
+        _L2._STATE["root"] = _fw
+        _L2._STATE["result"] = _an(_fw, no_checks=True)
+        _L2._STATE["field_index"] = None
+        try:
+            _r2 = [i for i, _s in enumerate(_fls) if "a.ub = a.lb" in _s][0]
+            _c2 = _fls[_r2].index("a.lb", _fls[_r2].index("= a.lb") + 2)
+            _read_res = _L2._definition(_uri(_fp),
+                                        {"line": _r2, "character": _c2 + 2})
+        finally:
+            (_L2._STATE["root"], _L2._STATE["result"],
+             _L2._STATE["field_index"]) = _save4
+        _chk(bool(_read_res) and _read_res[0]["range"]["start"]["line"] == 1,
+             "doc/field-prefers-write-over-read（%r）" % (_read_res[:1],))
+
+        # R306：注释里的名字不该跳 —— 否则文档里写个 `b.lb` 按 F12 会
+        # 跳到别处，是一个「看起来成功了」的错误跳转。
+        _save5 = (_L2._STATE.get("root"), _L2._STATE.get("result"),
+                  _L2._STATE.get("field_index"))
+        _L2._STATE["root"] = _fw
+        _L2._STATE["result"] = _an(_fw, no_checks=True)
+        _L2._STATE["field_index"] = None
+        try:
+            _r3 = [i for i, _s in enumerate(_fls) if "%" in _s][0]
+            _c3 = _fls[_r3].index("%") + 3
+            _cmt = _L2._definition(_uri(_fp), {"line": _r3, "character": _c3})
+        finally:
+            (_L2._STATE["root"], _L2._STATE["result"],
+             _L2._STATE["field_index"]) = _save5
+        # 注释里的名字（哪怕是同一行）不跳转 —— 否则文档里写个 `b.lb`
+        # 按 F12 会跳到别处，是个「看起来成功了」的错误跳转。
+        _chk(not _cmt, "doc/comment-jumps-nowhere（%r）" % (_cmt,))
     finally:
         shutil.rmtree(_fw, ignore_errors=True)
 

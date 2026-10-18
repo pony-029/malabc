@@ -440,6 +440,31 @@ def _run_json(root, prev=None, changed=None):
     return payload
 
 
+def _field_written_on_left(root, cand, base, field):
+    """`base.field` 是否出现在该行的 `=` **左侧**（即真的在这里被赋值）。
+
+    R306：`field_index` 的写入点里混着读取行 —— `a.ub = a.lb + 1;` 的
+    `a.lb` 也被记进去了。判据只看行号就分不出"写"和"读"，于是跳转会
+    落在读取处。这里读一次该行，做最朴素的判断。
+
+    读不到文件就返回 False（让调用方退回按行号取第一条，不因此报错）。
+    """
+    try:
+        rel, _fn, ln = cand[0], cand[1], cand[2]
+        if not rel or not ln:
+            return False
+        path = os.path.join(root, rel.replace("/", os.sep))
+        line = io.open(path, "r", encoding="utf-8",
+                       errors="replace").read().splitlines()[int(ln) - 1]
+    except (IOError, OSError, IndexError, TypeError, ValueError):
+        return False
+    code = line.split("%", 1)[0] if "%" in line else line
+    if "=" not in code:
+        return False
+    left = code.split("=", 1)[0]
+    return ("%s.%s" % (base, field)) in left
+
+
 def _base_ident(lines, line0, ch):
     """`model.lb` 里光标在 `lb` 上 -> 返回 `model`（基名）。
 
@@ -595,6 +620,17 @@ def _definition(uri, pos):
     if name is None:
         return []
 
+    # ---- R306：**注释里的名字不跳转** ----------------------------------
+    # `_ident_at` 只看字符，分不清这是代码还是注释；于是文档注释里写到
+    # `b.lb` 或 `foo(...)` 时按 F12 会跳到别处 —— 一个「看起来成功了」的
+    # 错误跳转。函数名早就有这条判据（注释上 -> []），字段与变量没有。
+    # 取舍：`'100%'` 这类字符串里的 `%` 会被当注释起点而漏跳一次，
+    # 这比「跳到错的地方」好。
+    if 0 <= line0 < len(lines):
+        _pct = lines[line0].find("%")
+        if _pct >= 0 and ch >= _pct:
+            return []
+
     # ---- R201：`s.FIELD` 的跳转 ---------------------------------------
     # 光标前一个字符是 `.` ⇒ 这是字段访问，不是函数名。
     # 查 `field_access` 的**第一个写入点**（按文件、行排序）作为定义。
@@ -619,8 +655,18 @@ def _definition(uri, pos):
         # 同一基名的写入点才是「这个对象上的这个字段」。
         base = _base_ident(lines, line0, ch)
         same = [w for w in writes if base and len(w) > 3 and w[3] == base]
-        pool = same or writes
-        first = sorted(pool, key=lambda r: (r[0], r[2] or 0))[0]
+        pool = sorted((same or writes), key=lambda r: (r[0], r[2] or 0))
+        # **优先取「写在等号左边」的那一处**（R306）。
+        # `field_index` 的 writes 里混着读取行（实测：`a.ub = a.lb + 1;`
+        # 里的 `a.lb` 也被记成写入点），只按行号取第一条会落在读取处。
+        # 只在同基名的前若干个候选里找，不做全池 IO。
+        first = None
+        for _cand in pool[:40]:
+            if _field_written_on_left(root, _cand, base, name):
+                first = _cand
+                break
+        if first is None:
+            first = pool[0]
         rel_f, ln1 = first[0], first[2] or 1
         target = os.path.join(root, rel_f.replace("/", os.sep))
         return [{
