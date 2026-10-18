@@ -968,6 +968,24 @@ TOOLS = [
 
 _BY_NAME = dict((t["name"], t) for t in TOOLS)
 
+#: 精简模式只暴露这几个（R330）。
+#:
+#: 起因：本地 27B 模型跑在 16GB 显卡上，上下文只能开 4096 —— 而 14 个工具的
+#: description 本身就要 2000~3000 token，加上客户端系统提示，**还没发问就先超了**。
+#: 所以给一个「核心 6 个」的档位：覆盖「了解工程 / 看结构 / 查影响 / 查字段」。
+#: 完整档位（all）留给上下文充足的情况，不要为了省钱删能力，只是分档。
+CORE_TOOLS = ("matlabc_stats", "matlabc_outline", "matlabc_impact",
+              "matlabc_explain", "matlabc_fields", "matlabc_search")
+
+#: 由 `--tools` 决定，main() 里设置。
+_TOOL_MODE = ["all"]
+
+
+def _visible_tools():
+    if _TOOL_MODE[0] == "core":
+        return [t for t in TOOLS if t["name"] in CORE_TOOLS]
+    return TOOLS
+
 
 # --------------------------------------------------------------------------
 # 协议层
@@ -989,7 +1007,7 @@ def _handle(msg):
 
     if method == "tools/list":
         items = []
-        for t in TOOLS:
+        for t in _visible_tools():
             items.append({"name": t["name"],
                           "description": t["description"],
                           "inputSchema": t["inputSchema"]})
@@ -1026,7 +1044,11 @@ def main(argv=None):
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument("--root", default=os.getcwd(),
                     help="MATLAB 工程根目录（默认当前目录）")
+    ap.add_argument("--tools", default="all", choices=("all", "core"),
+                    help="暴露的工具集：all=全部，core=核心 6 个"
+                         "（本地小上下文模型的显存档位，省 token）")
     ns = ap.parse_args(argv)
+    _TOOL_MODE[0] = ns.tools
     root = os.path.abspath(ns.root)
     if not os.path.isdir(root):
         sys.stderr.write("matlabc-mcp: 目录不存在：%s\n" % root)
