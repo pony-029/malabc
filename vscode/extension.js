@@ -660,6 +660,107 @@ function activate(context) {
     })
   );
 
+  // ---- 光标处名字的关系（R295）---------------------------------------
+  // Source Insight 的 Relation 窗口：**同一个入口，两种身份**。
+  //   是函数 → 上下游 + 调用链（与 CodeLens 点开的是同一张图）
+  //   是变量/字段 → 声明（首次赋值）在哪、本文里还出现在哪些行
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.showRelations', async () => {
+      const ed = vscode.window.activeTextEditor;
+      if (!ed) {
+        vscode.window.showInformationMessage('matlabc: 请先打开一个 .m 文件');
+        return;
+      }
+      const wr = ed.document.getWordRangeAtPosition(
+        ed.selection.active, /[A-Za-z]\w*/);
+      if (!wr) {
+        vscode.window.showInformationMessage('matlabc: 光标处没有标识符');
+        return;
+      }
+      const word = ed.document.getText(wr);
+      const rel = path.relative(root || '', ed.document.uri.fsPath)
+        .replace(/\\/g, '/');
+      const esc = (s) => String(s).replace(/[&<>"]/g, (c) => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const mkLink = (r, ln, txt) => '<a href="command:matlabc.openAt?' +
+        encodeURIComponent(JSON.stringify([r, ln])) + '">' + esc(txt) + '</a>';
+
+      let info = null;
+      try {
+        const r = await client.request('matlabc/impact', { name: word });
+        info = (r && r.result) || null;
+      } catch (e) {
+        log('showRelations：impact 失败 ' + (e && e.message));
+      }
+
+      const panel = vscode.window.createWebviewPanel(
+        'matlabcRel', '关系：' + word, vscode.ViewColumn.Beside,
+        { enableScripts: false, enableCommandUris: true });
+      const css = [
+        'body{font-family:var(--vscode-editor-font-family,monospace);',
+        'padding:14px;color:var(--vscode-editor-foreground);',
+        'background:var(--vscode-editor-background);}',
+        'h2{margin:0 0 4px;font-size:15px;}',
+        '.sum{margin:0 0 12px;opacity:.65;font-size:12px;}',
+        '.section{margin:14px 0 6px;opacity:.75;font-size:12px;',
+        'border-bottom:1px solid var(--vscode-editorWidget-border);',
+        'padding-bottom:4px;}',
+        '.node{line-height:1.7;font-size:13px;}',
+        'a{color:var(--vscode-textLink-foreground);text-decoration:none;}',
+        '.code{opacity:.5;font-size:11px;margin-left:8px;}',
+        '.note{opacity:.4;font-size:11px;margin-top:16px;}',
+      ].join('');
+
+      // ① 是函数：直接给上下游（与 CodeLens 那张图同源）
+      if (info && typeof info.total === 'number') {
+        panel.webview.html = renderGraph(word, info, false)
+          .replace('</body>', '<style>' + css + '</style></body>');
+        log('showRelations ' + word + ' -> 函数');
+        return;
+      }
+
+      // ② 不是函数：本文的声明与出现
+      const lines = ed.document.getText().split(/\r?\n/);
+      const escRe = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const wordRe = new RegExp('\\b' + escRe + '\\b');
+      const declRe = new RegExp('^\\s*(?:\\[[^\\]]*\\]\\s*=\\s*)?' + escRe +
+                                '\\s*(?:\\([^)]*\\))?\\s*=');
+      const hits = [];
+      let decl = -1;
+      for (let i = 0; i < lines.length; i += 1) {
+        const code = lines[i].replace(/%.*$/, '');
+        if (!wordRe.test(code)) continue;
+        if (decl < 0 && declRe.test(code)) decl = i;
+        hits.push(i);
+      }
+      const rows = ['<h2>' + esc(word) + '</h2>',
+        '<p class="sum">变量 / 标识符　｜　本文出现 ' + hits.length + ' 处</p>',
+        '<div class="section">声明（首次赋值）</div>'];
+      rows.push(decl >= 0
+        ? '<div class="node">' + mkLink(rel, decl + 1, rel + ':' + (decl + 1)) +
+          '<span class="code">' +
+          esc((lines[decl] || '').trim().slice(0, 80)) + '</span></div>'
+        : '<div class="node" style="opacity:.5">本文里没有赋值语句 —— ' +
+          '它可能是入参、全局变量，或只被读取</div>');
+      rows.push('<div class="section">本文出现</div>');
+      hits.slice(0, 200).forEach((i) => {
+        rows.push('<div class="node">' +
+          mkLink(rel, i + 1, ':' + (i + 1)) + '<span class="code">' +
+          esc((lines[i] || '').trim().slice(0, 90)) + '</span></div>');
+      });
+      if (hits.length > 200) {
+        rows.push('<div class="node" style="opacity:.5">… 还有 ' +
+                  (hits.length - 200) + ' 处</div>');
+      }
+      panel.webview.html = '<!DOCTYPE html><html><body>' + rows.join('') +
+        '<p class="note">光标停在任意标识符上，执行「matlabc: 查看名字的关系」' +
+        '即可；函数会给上下游，变量给声明与出现位置。</p>' +
+        '<style>' + css + '</style></body></html>';
+      log('showRelations ' + word + ' -> 变量，' + hits.length +
+          ' 处，声明行=' + (decl + 1));
+    })
+  );
+
   // ---- CodeLens：`↑3 调用者 · ↓12 被调用 · 复杂度 11`（R215）--------
   // 官方 CodeLens 只放 git 作者，**不显示调用关系**。这三组数字全在
   // `edges` 里，由 LSP 侧 `_code_lens` 直接给。

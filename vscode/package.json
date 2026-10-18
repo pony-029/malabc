@@ -2,7 +2,7 @@
   "name": "matlabc",
   "displayName": "matlabc",
   "description": "MATLAB 工程的代码理解工具：结构感知的诊断、跨文件导航、调用链分析与影响面评估。",
-  "version": "0.6.42",
+  "version": "0.6.43",
   "publisher": "冯磊",
   "engines": {
     "vscode": "^1.80.0"
@@ -95,8 +95,22 @@
         "command": "matlabc.previewGraphH",
         "title": "matlabc: 预览调用关系图（横向）",
         "category": "matlabc"
+      },
+      {
+        "command": "matlabc.showRelations",
+        "title": "matlabc: 查看名字的关系（函数/变量）",
+        "category": "matlabc"
       }
-    ]
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "matlabc.showRelations",
+          "when": "editorLangId == matlab",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "dependencies": {},
   "author": {
