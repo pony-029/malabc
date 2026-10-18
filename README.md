@@ -898,6 +898,7 @@ judgements above:
 
 | tool | does |
 | --- | --- |
+| `build_vsix.py` | builds the offline `.vsix` straight into `releases/vsix/` — the version is read from the extension manifest, so the filename always matches what gets installed |
 | `json_diff.py` | compares two `--json` / `--xml` outputs after ignoring volatile keys — every "IDENTICAL" claim in this repo is made with it |
 | `tree_diff.py` | compares two directory trees (file sets and contents, with regex line-ignores) |
 | `analyze_structure.py` | prints a single-file structural outline; a re-runnable baseline, not a gate |

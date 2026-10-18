@@ -1,0 +1,3 @@
+# 离线安装包是构建产物，每个约 1MB。
+# 需要时用 `python tools/build_vsix.py` 重新生成，不把二进制塞进 Git。
+*.vsix
