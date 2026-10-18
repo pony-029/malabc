@@ -906,6 +906,7 @@ judgements above:
 | `check_tour.py` | gate for that page: every frame must reference modules that exist, every edge endpoint must sit outside its box (otherwise arrows run over the labels), and the file must stay LF with no template leftovers |
 | `make_release.py` | regenerates the version table in `releases/README.md` from three facts: version from the manifest, summary from the changelog, size/date from the `.vsix` files. Lists only versions that actually have a package unless `--all` is given |
 | `bump_version.py` | moves the version on by the project's rule — **every digit runs 0–9, then carries** (`0.7.9 → 0.8.0`, `0.9.9 → 1.0.0`). `--apply` writes it into the manifest, `--check` reports whether the current number still conforms |
+| `mutate_sample.py` | mutation sampling: breaks one behaviour at a time in a throwaway copy of `matlabc_lsp.py` and requires the matching judgement to **go red**. A judgement that cannot fail is indistinguishable from no judgement at all — and it also catches the failure mode where the mutated copy never loaded and every check stayed green |
 | `json_diff.py` | compares two `--json` / `--xml` outputs after ignoring volatile keys — every "IDENTICAL" claim in this repo is made with it |
 | `tree_diff.py` | compares two directory trees (file sets and contents, with regex line-ignores) |
 | `analyze_structure.py` | prints a single-file structural outline; a re-runnable baseline, not a gate |

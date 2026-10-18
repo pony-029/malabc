@@ -25,11 +25,27 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-LSP = os.path.join(ROOT, "matlabc_lsp.py")
+#: 被检对象。**可用环境变量指到别处**（R360）：变异抽样要拿一份"改坏了"
+#: 的副本去跑同一套判据，看它会不会红 —— 不能真去改仓库里的文件。
+LSP = os.environ.get("MALABC_LSP") or os.path.join(ROOT, "matlabc_lsp.py")
 CORPUS = os.path.join(ROOT, "tests", "sample_m")
 #: F3 的反例语料：`b` 未定义就被读（`--json` 的 uninitialized 有 1 条、
 #: heuristics 是 0 条 —— 所以它的诊断只可能来自 facts）。
 CORPUS_UNINIT = os.path.join(ROOT, "tests", "sample_uninit")
+
+# 指到别处时，**先把那个模块注册进 sys.modules**：各分组里的
+# `import matlabc_lsp as _L2` 会直接拿到它，而不是仓库里那份。
+# 不这么做的话，变异副本只对「新起的服务端进程」生效，进程内调用仍走原文件
+# —— 判据会看起来"抓不到"，其实是根本没换成。
+if os.environ.get("MALABC_LSP"):
+    try:
+        import importlib.util as _ilu
+        _spec = _ilu.spec_from_file_location("matlabc_lsp", LSP)
+        _mod = _ilu.module_from_spec(_spec)
+        sys.modules["matlabc_lsp"] = _mod
+        _spec.loader.exec_module(_mod)
+    except Exception as _exc:      # 加载失败就当没设置，让判据按正常流程报错
+        sys.stderr.write("[lsp_selftest] 载入 %s 失败：%r\n" % (LSP, _exc))
 
 _bad = 0
 _good = 0
