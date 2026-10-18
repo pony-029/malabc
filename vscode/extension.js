@@ -1009,6 +1009,11 @@ function activate(context) {
       // 记住最后一次有效的 matlab 文档（R313）：点 CodeLens 时焦点可能
       // 已经在侧栏上，`activeTextEditor` 会是 null —— 那时不能算不出东西。
       relState.lastDoc = doc;
+      // **请求序号**（R320）：两次 refreshRel 可能并发（快速移动光标），
+      // 先发的那个若后返回，就会把新结果覆盖成旧内容 —— 用户看到的是
+      // 「点了全局变量，界面还停在刚才的局部变量上」。
+      const epoch = (relState.epoch = (relState.epoch || 0) + 1);
+      const stale = () => epoch !== relState.epoch;
       // **注释里的词不算**（R315）：`getWordRangeAtPosition` 不区分代码与注释，
       // 光标停在注释里某个词上（日志里出现过 declare / function）就会拿它
       // 去查关系，白跑一趟还可能显示一堆无关内容。
@@ -1171,6 +1176,11 @@ function activate(context) {
           cmd: { command: 'matlabc.previewGraph', title: '横向',
                  arguments: [word, true] },
         }));
+        // 已经被更新的请求取代了，就别覆盖界面。
+        if (stale()) {
+          log('关系 ' + word + ' -> 结果已过期，丢弃');
+          return;
+        }
         // **顶层就是这个名字本身** —— 树的第一行必须回答「这是谁的关系」。
         relView.title = '关系：' + word;
         relState.roots = [mkItem(word, {
@@ -1235,7 +1245,15 @@ function activate(context) {
         // 会返回空数组（实测 2.07s -> 0 个位置），而空数组也意味着「确实
         // 没有引用」。两者无法区分时，**至少它必须覆盖本文的出现**：
         // 同一个名字在同一文件里至少出现 hits 次，返回少于这个数就是没拿到。
-        const refsTrusted = grefs.length >= hits.length;
+        // **只有全局变量才期待全库引用**（R320）。局部变量本来就不会有
+        // 跨文件引用，references 只会返回「当前函数的声明」一条 ——
+        // 以前一律按「不足」判成「分析中」，于是局部变量也挂着一个
+        // 「全库关系 · 待分析完成」，永远等不到。
+        const hasGlobalDecl = new RegExp('^\\s*global\\b[^\\n]*\\b' +
+                                        escRe + '\\b', 'm')
+          .test(doc.getText());
+        const refsTrusted = hasGlobalDecl ? (grefs.length >= hits.length)
+                                          : true;
         if (!refsTrusted) {
           pendingFlag = true;      // 借同一个标记：界面会写「分析中…」
           log('关系 ' + word + ' -> references 不足（' + grefs.length +
@@ -1326,6 +1344,10 @@ function activate(context) {
       // **顶层的行号必须是“声明行”，不是光标行**（R300）。
       // 之前这里用的是光标所在行，于是 `x @sdpvar/xos1.m:14` 指向的是
       // 你正在看的那一行，而不是 `x` 成立的地方 —— 行号对不上代码。
+      if (stale()) {
+        log('关系 ' + word + ' -> 结果已过期，丢弃');
+        return;
+      }
       relView.title = '关系：' + word;
       relState.roots = [mkItem(word, {
         // 跨文件出现的变量就是**全局变量**，标题直接写清这一点，
