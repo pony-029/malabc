@@ -28,6 +28,8 @@ ROOT = os.path.dirname(HERE)
 #: 被检对象。**可用环境变量指到别处**（R360）：变异抽样要拿一份"改坏了"
 #: 的副本去跑同一套判据，看它会不会红 —— 不能真去改仓库里的文件。
 LSP = os.environ.get("MALABC_LSP") or os.path.join(ROOT, "matlabc_lsp.py")
+#: 同上的 MCP 侧：变异抽样要能把「工具层」也改坏（R361）。
+MCP = os.environ.get("MALABC_MCP") or os.path.join(ROOT, "matlabc_mcp.py")
 CORPUS = os.path.join(ROOT, "tests", "sample_m")
 #: F3 的反例语料：`b` 未定义就被读（`--json` 的 uninitialized 有 1 条、
 #: heuristics 是 0 条 —— 所以它的诊断只可能来自 facts）。
@@ -46,6 +48,16 @@ if os.environ.get("MALABC_LSP"):
         _spec.loader.exec_module(_mod)
     except Exception as _exc:      # 加载失败就当没设置，让判据按正常流程报错
         sys.stderr.write("[lsp_selftest] 载入 %s 失败：%r\n" % (LSP, _exc))
+
+if os.environ.get("MALABC_MCP"):
+    try:
+        import importlib.util as _ilu2
+        _spec2 = _ilu2.spec_from_file_location("matlabc_mcp", MCP)
+        _mod2 = _ilu2.module_from_spec(_spec2)
+        sys.modules["matlabc_mcp"] = _mod2
+        _spec2.loader.exec_module(_mod2)
+    except Exception as _exc2:
+        sys.stderr.write("[lsp_selftest] 载入 %s 失败：%r\n" % (MCP, _exc2))
 
 _bad = 0
 _good = 0
@@ -1472,7 +1484,11 @@ def _doc(c):
                       u"end\n")
         with io.open(os.path.join(_cd, "cdimpl.c"), "w", encoding="utf-8",
                      newline="") as _fh:
-            # 三级链：c_top -> c_mid -> c_inner，用来验「多层」而不只是「一层」
+            # 三级链 + **一对互递归**：
+            #   c_top -> c_mid -> c_inner   （验「多层」）
+            #   c_top -> c_ping ⇄ c_pong    （验「防环」）
+            # ⚠ 只有三级链时，`doc/cbridge-c-no-cycle` 是**空判据** ——
+            # 链里本来就没有环，把防环关掉它照样绿。变异抽样当场抓到了这一点。
             _fh.write(u"static int c_inner(int x)\n"
                       u"{\n"
                       u"    return x;\n"
@@ -1483,9 +1499,21 @@ def _doc(c):
                       u"    return c_inner(x);\n"
                       u"}\n"
                       u"\n"
+                      u"static int c_ping(int x);\n"
+                      u"\n"
+                      u"static int c_pong(int x)\n"
+                      u"{\n"
+                      u"    return c_ping(x);\n"
+                      u"}\n"
+                      u"\n"
+                      u"static int c_ping(int x)\n"
+                      u"{\n"
+                      u"    return c_pong(x);\n"
+                      u"}\n"
+                      u"\n"
                       u"int c_top(int x)\n"
                       u"{\n"
-                      u"    return c_mid(x);\n"
+                      u"    return c_mid(x) + c_ping(x);\n"
                       u"}\n")
         _svd = (_L2._STATE.get("root"), _L2._STATE.get("result"))
         _L2._STATE["root"] = _cd
@@ -1759,7 +1787,7 @@ def _mcp(c=None):
     """
     import json
     import subprocess
-    srv = os.path.join(ROOT, "matlabc_mcp.py")
+    srv = MCP
     _chk(os.path.isfile(srv), "mcp/server-exists")
     if not os.path.isfile(srv):
         return

@@ -46,7 +46,8 @@
 | 3 | 给 `check_tour.py` 补 `--selftest`：5 条两向自证（好样本过 / 坏样本红） | `SELFTEST COUNTS {"bad": 0, "good": 5}` |
 | 4 | 给 `check_version_scheme.py` 补 `--selftest`：6 条（含「带（当前）标注仍相等」与「满 9 仍合规」两个边界） | `{"bad": 0, "good": 6}` |
 | 5 | 门数棘轮 30 → 32；两道新门补进 `GUARD_CONTRACT` 与 ASCII 树；5 份文档的「30 道门」改正 | `check_help_contract: OK` |
-| 6 | **变异抽样**（原 #7）：复制一份 `matlabc_lsp.py`，一次改坏一处，要求对应判据变红 | `mutate_sample: 3 个变异，抓到 3 个` |
+| 6 | **变异抽样**（原 #7）：复制一份被测文件，一次改坏一处，要求对应判据变红 | `mutate_sample: 14 个变异，抓到 14 个` |
+| 7 | 扩到 **14 处**（LSP 9 + MCP 5），并据此发现一条**空判据** | 防环判据原本用无环语料 → 关掉防环仍绿；补入互递归后才会红 |
 
 ---
 
