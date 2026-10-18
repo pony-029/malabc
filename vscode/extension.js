@@ -1055,6 +1055,14 @@ function activate(context) {
         // 而变量/字段的「本文声明 + 本文出现」完全由客户端算得出来。
         // 之前直接 return，侧栏只剩一句「分析进行中」，什么都不给。
         log('关系 ' + word + ' -> 服务端仍在分析（本地信息先给，3 秒后重试）');
+        // 把服务端 stderr 的尾巴带出来（它写着「预热开始 / 结构层就绪 /
+        // 预热完成」）——否则只知道「还在算」，不知道算到哪一步（R316）。
+        try {
+          const tail = (client && client.stderrTail) || [];
+          if (tail.length) {
+            log('  服务端: ' + tail.slice(-3).join(' | ').slice(0, 300));
+          }
+        } catch (e) { /* 日志不能带崩 */ }
         pendingFlag = true;
         if (!relState.retryTimer) {
           relState.retryTimer = setTimeout(() => {
@@ -1236,6 +1244,14 @@ function activate(context) {
         }));
 
         // 全局变量：单列一组「全库出现」，按文件分组、每项可点。
+        // 服务端还没算完时，**明确写一行「待分析完成」** ——
+        // 静默缺失会让人以为「它就是没有全库引用」（R316）。
+        if (pendingFlag && !isGlobal) {
+          groups.push(mkItem('全库关系', {
+            desc: '待分析完成',
+            children: [mkItem('服务端仍在建索引，完成后自动补上')],
+          }));
+        }
         if (isGlobal) {
           // **分成定义 / 声明 / 使用**（R311）：全局变量只有一个真正的
           // 定义（赋值），多个文件里的 `global X` 只是声明，其余是读取。
