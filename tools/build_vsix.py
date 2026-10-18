@@ -69,6 +69,7 @@ CONTENT_TYPES = u"""<?xml version="1.0" encoding="utf-8"?>
   <Default Extension=".md" ContentType="text/markdown"/>
  <Default Extension=".png" ContentType="image/png"/>
 <Default Extension=".gif" ContentType="image/gif"/>
+<Default Extension=".html" ContentType="text/html"/>
   <Default Extension=".py" ContentType="text/x-python"/>
   <Default Extension=".vsixmanifest" ContentType="text/xml"/>
 </Types>
@@ -82,6 +83,15 @@ JS_FILES = ("package.json", "extension.js", "lspClient.js",
 #: 于是「注册了 matlab 语言却没有语法」——VSCode 用空语法覆盖掉
 #: 原来别处提供的高亮，整个文件变成白字。
 ASSET_DIRS = ("syntaxes", "icons", "data")
+
+#: 额外映射进包的文件：**来源在仓库里只有一份**，打包时改个落点。
+#: 使用导览的源文件在 `releases/demo/`（和 GIF、JSON 放在一起，方便单独分发），
+#: 但扩展要能打开它，所以包内路径是 `extension/media/tour.html`。
+#: 不在 `vscode/media` 里放副本 —— 两份同样的 HTML 迟早会分叉。
+EXTRA_FILES = (
+    (os.path.join(REPO, "releases", "demo", "matlabc-tour.html"),
+     "extension/media/tour.html"),
+)
 
 #: 分析器侧：LSP 入口 + CLI + 包目录（`analyzer/` 只有 3 个源文件）
 #: `matlabc.py` 的依赖链是**逐步暴露**的：先缺 `frontends`，补上后缺
@@ -145,6 +155,14 @@ with zipfile.ZipFile(OUT, "w", zipfile.ZIP_DEFLATED) as z:
                 full = os.path.join(dirpath, n)
                 rel = os.path.relpath(full, REPO).replace("\\", "/")
                 z.write(full, "extension/" + rel)
+
+    for src_path, arc in EXTRA_FILES:
+        if not os.path.isfile(src_path):
+            # **缺了就吵**：导览进不了包，命令点开会是空白页，
+            # 而那种失败在打包日志里完全看不见。
+            print("MISSING extra file:", src_path)
+            continue
+        z.write(src_path, arc)
 
 print("built %s %d bytes" % (OUT, os.path.getsize(OUT)))
 with zipfile.ZipFile(OUT) as z:

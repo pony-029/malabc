@@ -696,6 +696,35 @@ function activate(context) {
     })
   );
 
+  // ---- 打开使用导览（R350）--------------------------------------------
+  // 导览的**源文件只有一份**，在 `releases/demo/matlabc-tour.html`；
+  // 打包时映射进包内 `media/tour.html`。两个位置都试：
+  //   装好的扩展 → 包内 media/tour.html
+  //   直接跑仓库 → releases/demo/matlabc-tour.html
+  // 只认一个位置的话，会出现「装了能打开、改源码时反而打不开」。
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.openTour', async () => {
+      const cands = [
+        path.join(context.extensionPath, 'media', 'tour.html'),
+        path.join(path.dirname(lspPath), '..', 'releases', 'demo',
+                  'matlabc-tour.html'),
+      ];
+      let hit = '';
+      for (const p of cands) {
+        try {
+          if (fs.existsSync(p)) { hit = p; break; }
+        } catch (e) { /* 权限问题就跳过这个候选 */ }
+      }
+      if (!hit) {
+        vscode.window.showErrorMessage(
+          'matlabc: 找不到使用导览（生成它：python tools/make_tour_html.py）');
+        return;
+      }
+      log('打开导览 ' + hit);
+      vscode.env.openExternal(vscode.Uri.file(hit));
+    })
+  );
+
   // ---- 生成 HTML 分析报告（R327）-------------------------------------
   // 分析器本来就能出这份报告（`--html`），只是编辑器里拿不到。
   // 报告落在工作区的 `.matlabc/` 下，不污染源码目录，也不用用户记命令。
