@@ -1043,6 +1043,11 @@ function activate(context) {
       // `decl` 在变量分支里赋值、在顶层节点里使用 —— 必须声明在外层，
       // 否则 `let` 的块级作用域会让顶层读到 undefined（R300 的坑）。
       let decl = -1;
+      // 这两个也必须在外层：变量分支里赋值，顶层节点（`relState.roots`）
+      // 还要读。上一版写成分支内的 `const`，整个侧栏抛 ReferenceError
+      // 变成空白 —— 和 R300 的 `decl` 是同一个坑，我又踩了一次（R311）。
+      let gfiles = [];
+      let isGlobal = false;
       if (info && typeof info.total === 'number') {
         // 箭头就是调用方向：`←` 谁调我，`→` 我调谁。
         // **链与调用者合并**（R300）：一条链本身就是“谁调我”的完整路径，
@@ -1164,9 +1169,9 @@ function activate(context) {
           const r2 = path.relative(root || '', p2).replace(/\\/g, '/');
           (byFile[r2] = byFile[r2] || []).push(g.range.start.line + 1);
         });
-        const gfiles = Object.keys(byFile).sort();
+        gfiles = Object.keys(byFile).sort();
         // 跨文件 ⇒ 它是全局变量（普通变量活不过函数边界）
-        const isGlobal = gfiles.length > 1;
+        isGlobal = gfiles.length > 1;
 
         let extLoc = null;
         if (decl < 0 && pos) {
@@ -1203,14 +1208,31 @@ function activate(context) {
 
         // 全局变量：单列一组「全库出现」，按文件分组、每项可点。
         if (isGlobal) {
-          groups.push(mkItem(
-            '全库出现（' + grefs.length + ' 处 / ' + gfiles.length + ' 个文件）',
-            { desc: '跨文件', children: gfiles.slice(0, 20).map((f) =>
-              mkItem(path.basename(f), {
-                desc: byFile[f].map((n) => 'line ' + n).join('、')
-                  .slice(0, 60),
-                rel: f, line: byFile[f][0],
-              })) }));
+          // **分成定义 / 声明 / 使用**（R311）：全局变量只有一个真正的
+          // 定义（赋值），多个文件里的 `global X` 只是声明，其余是读取。
+          // 混成一片会让人以为它被定义了好几次。
+          const toItem = (g) => {
+            const p2 = vscode.Uri.parse(g.uri).fsPath;
+            const r2 = path.relative(root || '', p2).replace(/\\/g, '/');
+            return mkItem(path.basename(p2) + ' 第 ' +
+                          (g.range.start.line + 1) + ' 行',
+                          { desc: r2, rel: r2, line: g.range.start.line + 1 });
+          };
+          const defs = grefs.filter((g) => g.kind === 'define');
+          const decls = grefs.filter((g) => g.kind === 'declare');
+          const uses = grefs.filter((g) => !g.kind || g.kind === 'use');
+          if (defs.length) {
+            groups.push(mkItem('定义（' + defs.length + ' 处）',
+                               { desc: '赋值处', children: defs.slice(0, 10).map(toItem) }));
+          }
+          if (decls.length) {
+            groups.push(mkItem('声明（' + decls.length + ' 个文件）',
+                               { desc: 'global 声明', children: decls.slice(0, 20).map(toItem) }));
+          }
+          if (uses.length) {
+            groups.push(mkItem('使用（' + uses.length + ' 处）',
+                               { desc: '读取', children: uses.slice(0, 30).map(toItem) }));
+          }
         }
       }
       // 变量也一样：顶层是这个变量名，标题写清在看谁。

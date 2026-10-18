@@ -951,7 +951,17 @@ def _references(uri, pos, include_decl):
                 if not _hit.search(_code):
                     continue
                 _col = _code.find(name)
+                # **分三类**（R311）：全局变量只有一个「定义」（赋值），
+                # 其余文件里的 `global X` 只是**声明**（多个），还有纯读取的
+                # 使用点。混在一起会让人以为它被定义了好几次。
+                if re.match(r"^\s*global\b", _code):
+                    _kind = "declare"
+                elif "=" in _code and _code.index("=") > _col:
+                    _kind = "define"
+                else:
+                    _kind = "use"
                 _gout.append({
+                    "kind": _kind,
                     "uri": "file:///" + _p.replace("\\", "/").lstrip("/"),
                     "range": {"start": {"line": _i,
                                         "character": max(0, _col)},
