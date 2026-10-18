@@ -877,10 +877,51 @@ def _hover(uri, pos):
             lines = fh.read().splitlines()
     except (IOError, OSError):
         return None
-    name = _ident_at(lines, int(pos.get("line", 0)),
-                     int(pos.get("character", 0)))
+    _cur_line = int(pos.get("line", 0))
+    name = _ident_at(lines, _cur_line, int(pos.get("character", 0)))
     if name is None:
         return None
+
+    # ---- R271：先问「它是不是**当前函数的参数**」----------------------
+    # 参数名不是函数，以前会一路落到「本库内没有名为 x 的函数」那条分支 ——
+    # 而它明明就写在眼前这个函数的签名里。**那不是“查不到”，是“问错了”。**
+    # 位置保证：只有光标所在文件的、光标之上最近的那个 function 才算数，
+    # 所以不会把别处的同名参数认成这里的。
+    _root = _STATE.get("root")
+    _rel = None
+    if _root:
+        try:
+            _rel = os.path.relpath(path, _root).replace("\\", "/")
+        except (ValueError, OSError):
+            _rel = None
+    if _rel:
+        _owner = None
+        for _mf in (getattr(result, "files", None) or []):
+            if (getattr(_mf, "rel", "") or "") != _rel:
+                continue
+            for _f in (getattr(_mf, "functions", None) or []):
+                if int(getattr(_f, "line", 0) or 0) - 1 <= _cur_line:
+                    if _owner is None or int(_f.line) > int(_owner.line):
+                        _owner = _f
+            break
+        if _owner is not None and getattr(_owner, "name", "") != name:
+            _pn, _pt, _pc = _param_names(_owner, limit=99)
+            if name in _pn:
+                _i = _pn.index(name)
+                _ty = _pt[_i] if _i < len(_pt) else ""
+                _body = ["**参数** `%s`" % name]
+                if _ty:
+                    _body.append("")
+                    _body.append("类型 `%s`" % _ty)
+                _body.append("")
+                _body.append("属于 `%s`（`%s:%d`）"
+                             % (getattr(_owner, "name", ""), _rel,
+                                int(getattr(_owner, "line", 0) or 1)))
+                _body.append("")
+                _body.append("参数 %d 个%s"
+                             % (_pc, "" if _ty else "（头部注释里没有类型说明）"))
+                return {"contents": {"kind": "markdown",
+                                     "value": "\n".join(_body)}}
 
     hit = None
     for mf in (getattr(result, "files", None) or []):

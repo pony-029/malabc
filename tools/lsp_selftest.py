@@ -796,6 +796,17 @@ def _doc(c):
         _chk("| 参数 |" not in body2,
              "doc/no-empty-table（%r）" % (body2[:120],))
 
+    # ---- R271：悬停到**参数名**上，要被认成参数，不是「查不到的函数」 ----
+    # 以前 `x` 会一路落到「本库内没有名为 x 的函数」—— 而它明明就写在
+    # 眼前这个函数的签名里。**那不是查不到，是问错了问题。**
+    body3 = hover_at(7, 4)          # documented 的 body：`y = x .^ n;` 的 x
+    _chk("**参数**" in body3 and "`double`" in body3,
+         "doc/param-hover-typed（%r）" % (body3[:80],))
+    # 没有头部参数表的函数：照样认得出是参数，但**如实说没有类型说明**。
+    body4 = hover_at(12, 4)         # no_doc 的 body：`z = a + b;` 的 a
+    _chk("**参数**" in body4 and "没有类型说明" in body4,
+         "doc/param-hover-without-type（%r）" % (body4[:80],))
+
     # ---- R235：**本库没有定义时不许沉默** -------------------------------
     # 用户报的「显示有调用、却找不到函数」：`some_toolbox_fn(...)` 看着
     # 像调用，但本库和内置表里都没有它。以前 hover 返回 null、F12 返回
