@@ -1078,6 +1078,39 @@ def _doc(c):
     finally:
         shutil.rmtree(_fw, ignore_errors=True)
 
+    # ---- R309：全局变量的引用要**跨文件** ------------------------------
+    # 函数级 references 走的是 edges，而全局变量不在 edges 里 —— 于是
+    # `G_CFG` 只能看到当前文件一处。用户的原话是「很多文件都出现了，
+    # 但是显示了一个文件的」。
+    _nw = tempfile.mkdtemp(prefix="lsp_n_")
+    try:
+        _wa = os.path.join(_nw, "gwa.m")
+        _wb = os.path.join(_nw, "gwb.m")
+        with io.open(_wa, "w", encoding="utf-8", newline="") as _fh:
+            _fh.write(u"function gwa()\n"
+                      u"global SHARED_V\n"
+                      u"SHARED_V = 1;\n"
+                      u"end\n")
+        with io.open(_wb, "w", encoding="utf-8", newline="") as _fh:
+            _fh.write(u"function gwb()\n"
+                      u"global SHARED_V\n"
+                      u"disp(SHARED_V);\n"
+                      u"end\n")
+        _save6 = (_L2._STATE.get("root"), _L2._STATE.get("result"))
+        _L2._STATE["root"] = _nw
+        _L2._STATE["result"] = _an(_nw, no_checks=True)
+        try:
+            # 列必须落在变量上 —— 第 1 行第 0 列是 `global` 关键字，
+            # 取到的名字会是 "global"（第一版就是这么假红的）。
+            _wres = _L2._references(_uri(_wa), {"line": 1, "character": 9}, True)
+        finally:
+            _L2._STATE["root"], _L2._STATE["result"] = _save6
+        _wfiles = set(str(r.get("uri", "")).split("/")[-1] for r in _wres)
+        _chk(len(_wfiles) >= 2,
+             "doc/global-refs-cross-file（%r）" % (_wfiles,))
+    finally:
+        shutil.rmtree(_nw, ignore_errors=True)
+
     # ---- R286：`@类目录` 里的方法文件也要出大纲 -------------------------
     # 用户报的现象就是 `@sdpvar/round.m` 大纲为空。这条在临时目录里自建
     # 语料（不污染 tests/），路径含 `@`，并且 URI 走百分号编码，

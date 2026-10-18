@@ -1176,6 +1176,41 @@ function activate(context) {
                    { desc: (lines[i] || '').trim().slice(0, 40),
                      rel: rel, line: i + 1 })),
         }));
+
+        // **跨文件**（R309）：全局变量可能在多个文件里出现。
+        // 只拿本文的结果会让人以为"只有一个文件在用" —— 而那正是它作为
+        // 全局变量最需要说清的事（改一处、影响哪几处）。
+        let grefs = [];
+        if (pos) {
+          try {
+            const rr = await withTimeout(client.request(
+              'textDocument/references',
+              { textDocument: { uri: doc.uri.toString() },
+                position: { line: pos.line, character: pos.character },
+                context: { includeDeclaration: true } }), 1500);
+            grefs = (rr && rr.result) || [];
+          } catch (e) { /* 拿不到就只给本文结果 */ }
+        }
+        if (grefs.length) {
+          const byFile = {};
+          grefs.forEach((g) => {
+            if (!g || !g.uri) return;
+            const p2 = vscode.Uri.parse(g.uri).fsPath;
+            const r2 = path.relative(root || '', p2).replace(/\\/g, '/');
+            (byFile[r2] = byFile[r2] || []).push(g.range.start.line + 1);
+          });
+          const files = Object.keys(byFile).sort();
+          if (files.length > 1) {
+            groups.push(mkItem(
+              '全库出现（' + grefs.length + ' 处 / ' + files.length + ' 个文件）',
+              { desc: '跨文件', children: files.slice(0, 20).map((f) =>
+                mkItem(path.basename(f), {
+                  desc: byFile[f].map((n) => 'line ' + n).join('、')
+                    .slice(0, 60),
+                  rel: f, line: byFile[f][0],
+                })) }));
+          }
+        }
       }
       // 变量也一样：顶层是这个变量名，标题写清在看谁。
       // **顶层的行号必须是“声明行”，不是光标行**（R300）。

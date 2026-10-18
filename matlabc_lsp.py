@@ -927,6 +927,39 @@ def _references(uri, pos, include_decl):
         rel = os.path.relpath(path, root).replace(os.sep, "/")
     except ValueError:
         rel = os.path.basename(path)
+    # ---- R309：全局变量的跨文件引用 ------------------------------------
+    # 函数级的 `edges` 里没有全局变量，所以走到这里会返回空 —— 而用户要的
+    # 恰恰是「这个 G_CFG 在哪些文件里出现」。
+    # 只扫**声明过它的文件**：MATLAB 里不 `global` 声明就用不了它，
+    # 所以这个范围既正确又便宜（YALMIP 1676 文件里只有 45 个带 global）。
+    if any(name in (getattr(_mf, "globals", None) or [])
+           for _mf in (getattr(result, "files", None) or [])):
+        _hit = re.compile(r"\b%s\b" % re.escape(name))
+        _gout = []
+        for _mf in (getattr(result, "files", None) or []):
+            if name not in (getattr(_mf, "globals", None) or []):
+                continue
+            _mrel = getattr(_mf, "rel", "") or ""
+            _p = os.path.join(root, _mrel.replace("/", os.sep))
+            try:
+                _ls = io.open(_p, "r", encoding="utf-8",
+                              errors="replace").read().splitlines()
+            except (IOError, OSError):
+                continue
+            for _i, _ln in enumerate(_ls):
+                _code = _ln.split("%", 1)[0] if "%" in _ln else _ln
+                if not _hit.search(_code):
+                    continue
+                _col = _code.find(name)
+                _gout.append({
+                    "uri": "file:///" + _p.replace("\\", "/").lstrip("/"),
+                    "range": {"start": {"line": _i,
+                                        "character": max(0, _col)},
+                              "end": {"line": _i,
+                                      "character": max(0, _col) + len(name)}},
+                })
+        return _gout
+
     target = "%s:%s" % (rel, name)
 
     keys = []
