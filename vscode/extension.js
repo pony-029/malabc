@@ -1295,6 +1295,22 @@ function activate(context) {
     };
 
     let relTimer = null;
+    // **切换文件也要刷新**（R314）。只监听「选择变化」是不够的：
+    // 打开一个文件时光标本来就停在某处（VS Code 还会恢复上次位置），
+    // 没有 selection 事件 —— 于是侧栏一直空着，而用户以为它坏了。
+    context.subscriptions.push(
+      vscode.window.onDidChangeActiveTextEditor((ed) => {
+        if (!ed || ed.document.languageId !== 'matlab') return;
+        relState.key = '';
+        refreshRel(ed.document, ed.selection.active);
+      })
+    );
+    // 激活时若已有打开的文件，立刻算一次（否则要等用户动一下光标）。
+    if (vscode.window.activeTextEditor
+        && vscode.window.activeTextEditor.document.languageId === 'matlab') {
+      refreshRel(vscode.window.activeTextEditor.document,
+                 vscode.window.activeTextEditor.selection.active);
+    }
     context.subscriptions.push(
       vscode.window.onDidChangeTextEditorSelection((e) => {
         // 光标一动就解除「钉住」，恢复跟随。
