@@ -77,6 +77,33 @@ MATLAB 工程的代码理解工具。
 
 ---
 
+### 在 Linux / macOS 上部署
+
+同一个 `.vsix` 两边通用，不需要分开打包：
+
+```bash
+# Linux / macOS
+code --install-extension matlabc-<版本号>.vsix
+
+# Windows（PowerShell / cmd）
+code.cmd --install-extension matlabc-<版本号>.vsix
+```
+
+`python tools/build_vsix.py` 打包完会直接打印当前平台该用的那条命令。
+
+**跨平台差异（都已处理，列出来是为了让你知道边界在哪）**：
+
+| 事项 | Windows | Linux / macOS |
+| --- | --- | --- |
+| 二进制导出表 | 读 PE（`.dll` / `.mexw64`） | 读 ELF（`.so`） |
+| 判定依据 | **文件头**（`MZ` / `\x7fELF`），不看扩展名 —— `libfoo.so.1.2` 这种也认 | 同左 |
+| 读不出导出表时 | 显示「?」（未知），不会说成「✗ 该库没有导出」 | 同左 |
+| Node / rea 查找 | PATH → `C:\Program Files\nodejs`、`%APPDATA%\npm` | PATH → `/usr/bin`、`/usr/local/bin`、`~/.npm-global/bin` |
+
+> 已知局限：**完全 stripped 且没有节头表**的 `.so` 读不到符号名（返回空集，不猜）。
+
+---
+
 ## 安装（离线包）
 
 1. 拿到 `matlabc-<版本号>.vsix` 文件

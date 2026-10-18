@@ -168,3 +168,11 @@ print("built %s %d bytes" % (OUT, os.path.getsize(OUT)))
 with zipfile.ZipFile(OUT) as z:
     for n in z.namelist():
         print("  ", n)
+
+# 安装命令**按平台给**（R365）：这个脚本本身两边都能跑，但 `code.cmd`
+# 只在 Windows 上存在；Linux/macOS 上写 `code`。照抄错的命令会得到
+# "command not found"，而人第一反应是"包做坏了"。
+if os.name == "nt":
+    print("install: code.cmd --install-extension \"%s\"" % OUT)
+else:
+    print("install: code --install-extension \"%s\"" % OUT.replace("\\", "/"))

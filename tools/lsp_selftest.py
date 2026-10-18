@@ -1470,6 +1470,54 @@ def _doc(c):
     _chk(bool(_rs.get("binary_scope")),
          "doc/rea-scope-declared（%r）" % (_rs.get("binary_scope"),))
 
+    # ---- R365：Linux 上的二进制导出表（ELF）---------------------------
+    # 只解析 PE 时，Linux 上 `calllib('libm','cos')` 永远「读不出导出表」——
+    # 那是平台相关的假阴性。这里用**按 ELF 规范手工构造**的最小 .so 验证
+    # 偏移解析（本机没有真实 .so；局限已写在 `_elf_exports` 的 docstring 里）。
+    try:
+        import struct as _struct
+        _syms = ["cos", "sin", "helper"]
+        _strtab = b"\0" + b"\0".join(s.encode() for s in _syms) + b"\0"
+        _offs, _cur = [], 1
+        for _s in _syms:
+            _offs.append(_cur)
+            _cur += len(_s) + 1
+        _str_off, _sym_off = 64, 64 + len(_strtab)
+        _dynsym = b"\0" * 24
+        for _s, _o in zip(_syms, _offs):
+            _dynsym += _struct.pack("<IBBHQQ", _o, 0x12, 0, 1, 0x1000, 0)
+        _sh_off = _sym_off + len(_dynsym)
+        _shdrs = b"\0" * 64
+        _shdrs += _struct.pack("<IIQQQQIIQQ", 0, 11, 0, 0, _sym_off,
+                               len(_dynsym), 2, 1, 8, 24)
+        _shdrs += _struct.pack("<IIQQQQIIQQ", 0, 3, 0, 0, _str_off,
+                               len(_strtab), 0, 0, 1, 0)
+        _ehdr = (b"\x7fELF" + bytes([2, 1, 1]) + b"\0" * 9
+                 + _struct.pack("<HHI", 3, 62, 1)
+                 + _struct.pack("<QQQ", 0, 0, _sh_off)
+                 + _struct.pack("<IHHHHHH", 0, 64, 56, 3, 64, 3, 2))
+        _ed = tempfile.mkdtemp(prefix="lsp_elf_")
+        try:
+            _ep = os.path.join(_ed, "libdemo.so")
+            with io.open(_ep, "wb") as _fh:
+                _fh.write(_ehdr + _strtab + _dynsym + _shdrs)
+            _got = _L2._elf_exports(_ep)
+            _chk(set(_syms) <= _got,
+                 "doc/elf-exports-parsed（%r）" % (sorted(_got)[:6],))
+            # 反向：magic 不对就不是 ELF，不能"顺便"解析出东西
+            _bp = os.path.join(_ed, "notelf.so")
+            with io.open(_bp, "wb") as _fh:
+                _fh.write(b"MZ" + (_ehdr + _strtab)[2:])
+            _chk(not _L2._elf_exports(_bp),
+                 "doc/elf-rejects-wrong-magic")
+            # 分派器：非 PE/ELF 一律空集（坏文件不拖垮请求）
+            _chk(not _L2._binary_exports(_bp),
+                 "doc/binary-dispatch-by-magic")
+        finally:
+            shutil.rmtree(_ed, ignore_errors=True)
+    except Exception as _exc:
+        _chk(False, "doc/elf-exports-parsed（构造失败 %r）" % (_exc,))
+
     # ---- R363：错误信息必须指向原因 ------------------------------------
     # R362 把两处空文案修好了，但**没有任何判据守着** —— 改回去也不会有人
     # 发现。全场景探针那条断言是 `A or B` 的宽松形式，更挡不住。

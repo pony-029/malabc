@@ -1206,14 +1206,27 @@ def _rea_status():
                 return p
         return None
 
+    # 兜底路径**必须两边都有**（R365）：只有 Windows 那几条时，Linux 上
+    # 刚装完 Node 但 PATH 未刷新的进程会永远报「不可用」，而原因看起来像
+    # 「没装」。这不是小事 —— 它把「环境没刷新」误报成「能力缺失」。
     if not node:
-        node = _fallback([r"C:\Program Files\nodejs\node.exe",
-                          os.path.expanduser(
-                              r"~\AppData\Local\Programs\nodejs\node.exe")])
+        node = _fallback([
+            # Windows
+            r"C:\Program Files\nodejs\node.exe",
+            os.path.expanduser(r"~\AppData\Local\Programs\nodejs\node.exe"),
+            # Linux / macOS
+            "/usr/bin/node", "/usr/local/bin/node", "/opt/homebrew/bin/node",
+            os.path.expanduser("~/.nvm/versions/node/current/bin/node"),
+        ])
     if not rea:
         rea = _fallback([
+            # Windows
             os.path.expanduser(r"~\AppData\Roaming\npm\rea.cmd"),
             os.path.expanduser(r"~\AppData\Roaming\npm\rea"),
+            # Linux / macOS
+            "/usr/local/bin/rea", "/usr/bin/rea",
+            os.path.expanduser("~/.npm-global/bin/rea"),
+            os.path.expanduser("~/.local/bin/rea"),
         ])
 
     out["node"] = node
@@ -1225,6 +1238,135 @@ def _rea_status():
     else:
         out["available"] = True
     return out
+
+
+#: ELF 导出名缓存：绝对路径 -> (mtime, 名字集合)
+_ELF_CACHE = {}
+
+
+def _elf_exports(path):
+    """读 ELF（`.so` / `.dylib`）的动态符号名。**只读名字，不碰机器码。**
+
+    为什么必须补这一块：`_pe_exports` 只认 Windows 的 PE。同一份 MATLAB 代码
+    在 Linux 上 `calllib('libm','cos')`，如果只解析 PE，结论永远是
+    「导出表读不了」—— 那是**平台相关的假阴性**，而用户会以为库里没有这个函数。
+
+    实现范围（写清楚，避免过度承诺）：
+      * ELF32 / ELF64、小端 / 大端基本头
+      * 走**节头表**找 `SHT_DYNSYM`（退而求其次用 `SHT_SYMTAB`）
+      * 只收 `STT_FUNC` / `STT_OBJECT` / `STT_NOTYPE`，跳过 `SHN_UNDEF`
+      * **完全 stripped 且没有节头表**的 .so 读不到 —— 返回空集，不猜
+
+    返回小写名字集合；任何解析失败都返回空集（坏文件不该拖垮请求）。
+    """
+    try:
+        st = os.stat(path)
+    except OSError:
+        return set()
+    hit = _ELF_CACHE.get(path)
+    if hit and hit[0] == st.st_mtime:
+        return hit[1]
+    names = set()
+    try:
+        data = io.open(path, "rb").read()
+    except Exception:
+        _ELF_CACHE[path] = (st.st_mtime, names)
+        return names
+    try:
+        import struct
+        if len(data) < 0x40 or data[:4] != b"\x7fELF":
+            raise ValueError("not elf")
+        cls = data[4]                    # 1 = 32 位, 2 = 64 位
+        endian = "<" if data[5] == 1 else ">"
+        if cls == 2:
+            e_shoff = struct.unpack_from(endian + "Q", data, 0x28)[0]
+            e_shentsize = struct.unpack_from(endian + "H", data, 0x3A)[0]
+            e_shnum = struct.unpack_from(endian + "H", data, 0x3C)[0]
+        elif cls == 1:
+            e_shoff = struct.unpack_from(endian + "I", data, 0x20)[0]
+            e_shentsize = struct.unpack_from(endian + "H", data, 0x2E)[0]
+            e_shnum = struct.unpack_from(endian + "H", data, 0x30)[0]
+        else:
+            raise ValueError("bad elf class")
+        if not e_shoff or not e_shnum or e_shnum > 5000:
+            raise ValueError("no section headers")
+
+        shdrs = []
+        for i in range(e_shnum):
+            base = e_shoff + i * e_shentsize
+            if cls == 2:
+                sh_type = struct.unpack_from(endian + "I", data, base + 4)[0]
+                sh_off = struct.unpack_from(endian + "Q", data, base + 24)[0]
+                sh_size = struct.unpack_from(endian + "Q", data, base + 32)[0]
+                sh_link = struct.unpack_from(endian + "I", data, base + 40)[0]
+                sh_entsize = struct.unpack_from(endian + "Q", data, base + 56)[0]
+            else:
+                sh_type = struct.unpack_from(endian + "I", data, base + 4)[0]
+                sh_off = struct.unpack_from(endian + "I", data, base + 16)[0]
+                sh_size = struct.unpack_from(endian + "I", data, base + 20)[0]
+                sh_link = struct.unpack_from(endian + "I", data, base + 24)[0]
+                sh_entsize = struct.unpack_from(endian + "I", data, base + 36)[0]
+            shdrs.append((sh_type, sh_off, sh_size, sh_link, sh_entsize))
+
+        def _read_symtab(sym_type):
+            got = set()
+            for (stype, soff, ssize, link, entsize) in shdrs:
+                if stype != sym_type or link >= len(shdrs):
+                    continue
+                stroff = shdrs[link][1]
+                end = min(soff + ssize, len(data))
+                step = entsize or (24 if cls == 2 else 16)
+                if step <= 0:
+                    continue
+                pos = soff
+                while pos + step <= end:
+                    if cls == 2:
+                        name_off = struct.unpack_from(endian + "I", data, pos)[0]
+                        info = data[pos + 4] if pos + 4 < len(data) else 0
+                        shndx = struct.unpack_from(endian + "H", data, pos + 6)[0]
+                    else:
+                        name_off = struct.unpack_from(endian + "I", data, pos)[0]
+                        info = data[pos + 12] if pos + 12 < len(data) else 0
+                        shndx = struct.unpack_from(endian + "H", data, pos + 14)[0]
+                    pos += step
+                    if not name_off or shndx == 0:
+                        continue
+                    kind = info & 0xF
+                    if kind not in (0, 1, 2, 10):    # NOTYPE/OBJECT/FUNC/GNU_IFUNC
+                        continue
+                    sstart = stroff + name_off
+                    if sstart >= len(data):
+                        continue
+                    send = data.find(b"\0", sstart, min(len(data), sstart + 512))
+                    if send < 0:
+                        continue
+                    nm = data[sstart:send].decode("utf-8", "replace").strip()
+                    if nm:
+                        got.add(nm.lower())
+            return got
+
+        names = _read_symtab(11) or _read_symtab(2)   # SHT_DYNSYM → SHT_SYMTAB
+    except Exception:
+        names = set()
+    _ELF_CACHE[path] = (st.st_mtime, names)
+    return names
+
+
+def _binary_exports(path):
+    """**按文件头**分派：PE 走 `_pe_exports`，ELF 走 `_elf_exports`。
+
+    为什么按 magic 而不是扩展名：Linux 上的 `.so.1.2` 后缀五花八门，
+    Windows 上也有不带 `.dll` 的库；扩展名是命名习惯，magic 才是事实。
+    """
+    try:
+        head = io.open(path, "rb").read(4)
+    except Exception:
+        return set()
+    if head[:2] == b"MZ":
+        return _pe_exports(path)
+    if head[:4] == b"\x7fELF":
+        return _elf_exports(path)
+    return set()
 
 
 def _bin_index(root):
@@ -1495,9 +1637,11 @@ def _c_bridge(name):
                                 "exported": None, "source": "library-missing"})
                 continue
             librel = libhits[0]["rel"]
-            exports = set()
-            if librel.lower().endswith((".dll", ".so", ".dylib")):
-                exports = _pe_exports(os.path.join(root,
+            # **按 magic 分派**（R365）：Linux 上库是 ELF，Windows 上是 PE。
+            # 只认扩展名会漏掉 `libfoo.so.1.2` 这类命名，也会在 Linux 上
+            # 拿 PE 解析器去读 ELF —— 结论永远是「读不出」，而用户会以为
+            # 库里确实没有这个函数。
+            exports = _binary_exports(os.path.join(root,
                                                    librel.replace("/", os.sep)))
             calllib.append({"lib": lib, "fn": fn, "rel": librel,
                             "exported": (fn.lower() in exports) if exports else None,
