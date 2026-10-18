@@ -1156,6 +1156,42 @@ def _doc(c):
     finally:
         shutil.rmtree(_cw, ignore_errors=True)
 
+    # ---- R339：字段的读写位置要能单独查到 ----------------------------
+    # 现象：`options.coneprog` 在侧栏被写成「本文无声明（变量）」。
+    # 因为 `_references` 只认函数与 global，字段完全没入口。
+    # 这里要求 `_field_refs` 把「写」和「读」分开，并按基名归类。
+    _fq = tempfile.mkdtemp(prefix="lsp_fq_")
+    try:
+        _fqp = os.path.join(_fq, "fq.m")
+        with io.open(_fqp, "w", encoding="utf-8", newline="") as _fh:
+            _fh.write(u"function fq()\n"
+                      u"s.lb = 1;\n"
+                      u"disp(s.lb);\n"
+                      u"t.lb = 2;\n"
+                      u"end\n")
+        _svf = (_L2._STATE.get("root"), _L2._STATE.get("result"),
+                _L2._STATE.get("field_index"))
+        _L2._STATE["root"] = _fq
+        _L2._STATE["result"] = _an(_fq, no_checks=True)
+        _L2._STATE["field_index"] = None
+        try:
+            _fr1 = _L2._field_refs("lb")
+            _fr2 = _L2._field_refs("nope_zzz")
+        finally:
+            (_L2._STATE["root"], _L2._STATE["result"],
+             _L2._STATE["field_index"]) = _svf
+        _chk(bool(_fr1) and len(_fr1["writes"]) == 2
+             and len(_fr1["reads"]) == 1,
+             "doc/field-refs-split（%r）"
+             % ((_fr1 or {}).get("writes"),))
+        _chk(bool(_fr1) and _fr1["bases"] == ["s", "t"],
+             "doc/field-refs-bases（%r）" % ((_fr1 or {}).get("bases"),))
+        # 不是字段时必须返回 None —— 客户端据此回落到变量分支，
+        # 不能返回空结构（那会让「不是字段」和「字段没有引用」混为一谈）。
+        _chk(_fr2 is None, "doc/field-refs-none-for-non-field（%r）" % (_fr2,))
+    finally:
+        shutil.rmtree(_fq, ignore_errors=True)
+
     # ---- R286：`@类目录` 里的方法文件也要出大纲 -------------------------
     # 用户报的现象就是 `@sdpvar/round.m` 大纲为空。这条在临时目录里自建
     # 语料（不污染 tests/），路径含 `@`，并且 URI 走百分号编码，

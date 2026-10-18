@@ -1077,6 +1077,45 @@ def _format_builtin(name, doc):
     return "\n".join(parts)
 
 
+def _field_refs(name):
+    """结构体字段的**跨文件读写位置**（`matlabc/field`）。
+
+    为什么单独一个方法：`_references` 返回的是 `Location[]`，语义是「谁引用了
+    这个名字」，而字段真正要回答的是「谁在**写**它、谁在**读**它、挂在哪些
+    基名上」。塞进 `references` 会把这两种问题混成一个列表 —— 截图里
+    `options.coneprog` 被当成局部变量显示，就是这么来的。
+
+    返回 `None` 表示这个名字不是字段（调用方据此回落到变量分支）。
+    """
+    result = _STATE.get("result")
+    if result is None:
+        return None
+    try:
+        idx = _field_index(result)
+    except Exception:
+        return None
+    ent = (idx or {}).get(name)
+    if not ent:
+        return None
+
+    def norm(rows):
+        out = []
+        for r in (rows or []):
+            r = list(r or []) + ["", "", 0, "?"]
+            line = int(r[2] or 0)
+            out.append({"rel": r[0] or "", "func": r[1] or "",
+                        "line": line, "base": r[3] or "?"})
+        out.sort(key=lambda x: (x["rel"], x["line"]))
+        return out
+
+    writes = norm(ent.get("writes"))
+    reads = norm(ent.get("reads"))
+    if not writes and not reads:
+        return None
+    bases = sorted(set(x["base"] for x in (writes + reads)))
+    return {"writes": writes, "reads": reads, "bases": bases}
+
+
 def _hover(uri, pos):
     """`textDocument/hover`：光标处标识符 -> 函数的签名 / 描述 / 复杂度。
 
@@ -2273,6 +2312,17 @@ def handle(msg, out):
         _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": info})
         _log("impact %s -> %s" % (name, "none" if info is None
                                   else "%d 个调用者" % info["total"]))
+        return True
+
+    if method == "matlabc/field":
+        # 结构体字段的读写位置。返回 None 表示「不是字段」——
+        # 客户端据此回落到变量分支，两种语义不混。
+        params = msg.get("params") or {}
+        rows = _field_refs(params.get("name") or "")
+        _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": rows})
+        _log("field -> %s" % (("none" if rows is None
+                               else "%d 写 / %d 读" % (len(rows["writes"]),
+                                                       len(rows["reads"]))),))
         return True
 
     if method == "matlabc/heat":

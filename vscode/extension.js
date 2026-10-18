@@ -1299,7 +1299,47 @@ function activate(context) {
         relEmitter.fire();
         return;
       } else {
-        // 变量 / 字段：本文里的声明与出现
+        // **先问一句：这个名字是结构体字段吗**（R339）。
+        // 字段和变量是两种问题：字段要回答「谁在写、谁在读、挂在哪些基名上」，
+        // 变量要回答「本文哪里出现过」。混在一起就会出现截图里的情形 ——
+        // `options.coneprog` 被写成「本文无声明（变量）」，而它明明是个字段。
+        if (wordPos && client) {
+          try {
+            const fr = await withTimeout(
+              client.request('matlabc/field', { name: word }), 3000);
+            const f = fr && fr.result;
+            if (f && (f.writes.length || f.reads.length)) {
+              const mk = (row, kind) => {
+                const r = row && row.rel ? row.rel : '';
+                return mkItem(kind + '　' + path.basename(r) + ':' + row.line, {
+                  desc: row.base + '.' + word + '　' + (row.func || ''),
+                  rel: r, line: row.line,
+                });
+              };
+              if (f.writes.length) {
+                groups.push(mkItem('写入（' + f.writes.length + '）', {
+                  children: f.writes.slice(0, 20).map((x) => mk(x, '写')),
+                }));
+              }
+              if (f.reads.length) {
+                groups.push(mkItem('读取（' + f.reads.length + '）', {
+                  children: f.reads.slice(0, 20).map((x) => mk(x, '读')),
+                }));
+              }
+              log('关系 ' + word + ' -> 字段：' + f.writes.length + ' 写 / ' +
+                  f.reads.length + ' 读 / ' + f.bases.length + ' 个基名');
+              relView.title = '关系：' + word;
+              relState.roots = [mkItem(word, {
+                desc: '字段 · ' + f.bases.length + ' 个基名',
+                children: groups,
+              })];
+              relEmitter.fire();
+              return;
+            }
+          } catch (e) { /* 查不到就按变量处理 */ }
+        }
+
+        // 变量：本文里的声明与出现
         const lines = doc.getText().split(/\r?\n/);
         const escRe = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const hitRe = new RegExp('\\b' + escRe + '\\b');
