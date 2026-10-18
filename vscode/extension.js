@@ -999,7 +999,16 @@ function activate(context) {
       // **整段兜底 + 打点**（R312）。侧栏空白的几种可能（未触发 / 抛异常 /
       // 组为空）在界面上完全一样，只能靠日志区分。
       try {
-      if (!doc || doc.languageId !== 'matlab') return;
+      log('关系触发 forced=' + (forced || '') +
+          ' doc=' + (doc ? doc.languageId : 'null') +
+          ' pos=' + (pos ? pos.line : 'null'));
+      if (!doc || doc.languageId !== 'matlab') {
+        log('关系跳过：doc 无效');
+        return;
+      }
+      // 记住最后一次有效的 matlab 文档（R313）：点 CodeLens 时焦点可能
+      // 已经在侧栏上，`activeTextEditor` 会是 null —— 那时不能算不出东西。
+      relState.lastDoc = doc;
       let word = forced || '';
       let line = -1;
       if (!word) {
@@ -1009,8 +1018,14 @@ function activate(context) {
         word = doc.getText(wr);
         line = wr.start.line;
       }
-      if (!word) return;
-      if (!forced && relState.key === word + '@' + line) return;
+      if (!word) {
+        log('关系跳过：光标处没有标识符');
+        return;
+      }
+      if (!forced && relState.key === word + '@' + line) {
+        log('关系跳过：同一位置去重 ' + word);
+        return;
+      }
       relState.key = word + '@' + line;
       const rel = path.relative(root || '', doc.uri.fsPath).replace(/\\/g, '/');
 
@@ -1148,7 +1163,10 @@ function activate(context) {
           if (decl < 0 && declRe.test(code)) decl = i;
           hits.push(i);
         }
-        if (!hits.length) { return; }
+        if (!hits.length) {
+          log('关系跳过：本文没有出现 ' + word);
+          return;
+        }
         // **本文没有声明时，问一次服务端**（R308）：结构体字段的产地常在
         // 别的文件（`cfg.lb` 在 cfg_build.m 里赋值）。definition 早就支持
         // 跨文件按基名解析，侧栏只是没去问。
@@ -1266,7 +1284,10 @@ function activate(context) {
     pinRelationsTo = async (name) => {
       try {
         const ed = vscode.window.activeTextEditor;
-        await refreshRel(ed && ed.document, null, name);
+        // 焦点在侧栏时 `activeTextEditor` 为空 —— 回退到最后一次有效文档。
+        const doc2 = (ed && ed.document) || relState.lastDoc;
+        log('pin ' + name + ' doc=' + (doc2 ? doc2.languageId : 'null'));
+        await refreshRel(doc2, null, name);
         await vscode.commands.executeCommand('matlabcRelations.focus');
       } catch (e) {
         log('pinRelationsTo 失败：' + (e && e.message));
