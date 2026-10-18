@@ -1080,6 +1080,136 @@ def _format_builtin(name, doc):
 #: C 源文件函数索引的缓存。键是工程根，`result` 一变就作废。
 _C_INDEX = {"key": None, "idx": None, "nfiles": 0}
 
+#: 二进制（mex / dll / so）索引缓存：名字 -> [{rel, kind}]
+_BIN_INDEX = {"key": None, "idx": None, "nfiles": 0}
+
+#: PE 导出表缓存：绝对路径 -> (mtime, [导出名小写])
+_PE_CACHE = {}
+
+#: 视为「可调用二进制」的扩展名。mex 的入口名 = 文件名（去掉 mex* 后缀）。
+_BIN_EXTS = (".mexw64", ".mexa64", ".mexmaci64", ".mexw32",
+             ".dll", ".so", ".dylib")
+
+
+def _pe_exports(path):
+    """读 PE 的导出符号名（只读名字，不碰机器码）。
+
+    为什么值得做：`calllib('mylib','foo')` 的 `foo` 在 MATLAB 侧永远是
+    「未解析」，于是调用链在这里断掉。而「`foo` 确实是 mylib.dll 导出的」
+    这个事实，足以让断点变成一个**有名字的出口**，而不是一处空白。
+
+    返回小写名字集合；解析失败返回空集（不抛异常 —— 坏文件不该拖垮请求）。
+    """
+    try:
+        st = os.stat(path)
+    except OSError:
+        return set()
+    hit = _PE_CACHE.get(path)
+    if hit and hit[0] == st.st_mtime:
+        return hit[1]
+    names = set()
+    try:
+        data = io.open(path, "rb").read()
+    except Exception:
+        _PE_CACHE[path] = (st.st_mtime, names)
+        return names
+    try:
+        if len(data) < 0x40 or data[:2] != b"MZ":
+            raise ValueError("not pe")
+        import struct
+        e_lfanew = struct.unpack_from("<I", data, 0x3C)[0]
+        if data[e_lfanew:e_lfanew + 4] != b"PE\0\0":
+            raise ValueError("no pe sig")
+        coff = e_lfanew + 4
+        nsec = struct.unpack_from("<H", data, coff + 2)[0]
+        opt_size = struct.unpack_from("<H", data, coff + 16)[0]
+        opt = coff + 20
+        magic = struct.unpack_from("<H", data, opt)[0]
+        # 数据目录在可选头里的偏移：PE32 = 96，PE32+ = 112
+        dd = opt + (96 if magic == 0x10B else 112)
+        exp_rva, exp_size = struct.unpack_from("<II", data, dd)
+        if not exp_rva or not exp_size:
+            raise ValueError("no export dir")
+
+        # 节表：把 RVA 换成文件偏移
+        sec = opt + opt_size
+        sections = []
+        for k in range(nsec):
+            base = sec + k * 40
+            vsize = struct.unpack_from("<I", data, base + 8)[0]
+            vaddr = struct.unpack_from("<I", data, base + 12)[0]
+            raw_size = struct.unpack_from("<I", data, base + 16)[0]
+            raw_ptr = struct.unpack_from("<I", data, base + 20)[0]
+            sections.append((vaddr, max(vsize, raw_size), raw_ptr))
+
+        def off_of(rva):
+            for vaddr, size, raw in sections:
+                if vaddr <= rva < vaddr + size:
+                    return raw + (rva - vaddr)
+            return None
+
+        ed = off_of(exp_rva)
+        if ed is None:
+            raise ValueError("export dir unmapped")
+        n_names = struct.unpack_from("<I", data, ed + 24)[0]
+        arr = struct.unpack_from("<I", data, ed + 32)[0]
+        arr_off = off_of(arr)
+        if arr_off is None or n_names > 20000:
+            raise ValueError("bad name table")
+        for i in range(n_names):
+            nrva = struct.unpack_from("<I", data, arr_off + i * 4)[0]
+            noff = off_of(nrva)
+            if noff is None:
+                continue
+            end = data.find(b"\0", noff)
+            if end < 0 or end - noff > 512:
+                continue
+            nm = data[noff:end].decode("ascii", "replace").strip()
+            if nm:
+                names.add(nm.lower())
+    except Exception:
+        names = set()
+    _PE_CACHE[path] = (st.st_mtime, names)
+    return names
+
+
+def _bin_index(root):
+    """工程内的 mex / dll / so：名字 -> [{rel, kind}]。
+
+    **名字就是入口**：MATLAB 调用 `foo` 时，同目录的 `foo.mexw64` 提供它 ——
+    不需要解析任何机器码就能把这一环接上。dll 则是给 `calllib` 用的。
+    """
+    key = os.path.abspath(root or "")
+    if _BIN_INDEX["key"] == key and _BIN_INDEX["idx"] is not None:
+        return _BIN_INDEX["idx"]
+    idx, n = {}, 0
+    try:
+        for dirpath, dirnames, filenames in os.walk(key):
+            dirnames[:] = [d for d in dirnames if d not in _C_SKIP_DIRS]
+            for fn in filenames:
+                low = fn.lower()
+                if not low.endswith(_BIN_EXTS):
+                    continue
+                for ext in _BIN_EXTS:
+                    if low.endswith(ext):
+                        base = fn[:-len(ext)]
+                        break
+                else:
+                    continue
+                rel = os.path.relpath(os.path.join(dirpath, fn),
+                                      key).replace(os.sep, "/")
+                idx.setdefault(base.lower(), []).append({"rel": rel, "kind": ext})
+                n += 1
+            if n >= 300:
+                break
+    except (IOError, OSError):
+        pass
+    _BIN_INDEX["key"] = key
+    _BIN_INDEX["idx"] = idx
+    _BIN_INDEX["nfiles"] = n
+    _log("二进制索引：%d 个文件" % n)
+    return idx
+
 #: 扫描 C 源时跳过的目录：这些地方的 .c 不是工程代码，扫进来只会拖慢。
 _C_SKIP_DIRS = (".git", ".matlabc", "node_modules", "build", "cmake-build-debug")
 
@@ -1151,9 +1281,13 @@ def _c_bridge(name):
         return {"available": False, "reason": "pending", "items": []}
     root = _STATE.get("root") or ""
     idx = _c_index(root)
-    if not idx:
-        return {"available": False, "reason": "no_c_files", "items": [],
-                "scanned": _C_INDEX.get("nfiles") or 0}
+    # **二进制也算一层**（R343）：只有 .mexw64 / .dll、没有 .c 的工程很常见
+    # （正是「预编译工具箱」那种）。第一版在这里只看 C 索引，于是这类工程
+    # 直接被判成「没有可桥接的东西」—— 而 mex 的名字本来就写在文件名上。
+    bidx = _bin_index(root)
+    if not idx and not bidx:
+        return {"available": False, "reason": "no_sources", "items": [],
+                "scanned": 0}
 
     items, matched = [], set()
     all_ext = set()
@@ -1180,12 +1314,56 @@ def _c_bridge(name):
             continue
         seen.add(k)
         uniq.append(it)
+    # ---- 二进制层（R343）----------------------------------------------
+    # mex 的入口名就是文件名：`foo.mexw64` 提供 `foo`，不需要解析机器码。
+    # 这一层能把「未解析」缩小到真正的未知（工具箱 / 动态调用）。
+    bins = []
+    still = set(all_ext) - matched
+    for nm in sorted(still):
+        for h in bidx.get(nm.lower(), []):
+            bins.append({"matlab": name, "callee": nm,
+                         "rel": h["rel"], "kind": h["kind"].lstrip("."),
+                         "entry": nm})
+            still.discard(nm)
+            break
+
+    # `calllib('lib','fn')`：库名与函数名都在字面量里，可以直接核对
+    # 「这个函数确实是这个库导出的」——这是二进制能给的最强保证。
+    calllib = []
+    for mf in (getattr(result, "files", None) or []):
+        if getattr(mf, "rel", "") and not any(
+                getattr(f, "name", "") == name
+                for f in (getattr(mf, "functions", None) or [])):
+            continue
+        p = os.path.join(root, (getattr(mf, "rel", "") or "").replace("/", os.sep))
+        try:
+            text = io.open(p, "r", encoding="utf-8", errors="replace").read()
+        except (IOError, OSError):
+            continue
+        for m in re.finditer(r"calllib\s*\(\s*'([^']+)'\s*,\s*'([^']+)'", text):
+            lib, fn = m.group(1), m.group(2)
+            libhits = bidx.get(lib.lower(), [])
+            if not libhits:
+                calllib.append({"lib": lib, "fn": fn, "rel": None,
+                                "exported": None})
+                continue
+            librel = libhits[0]["rel"]
+            exports = set()
+            if librel.lower().endswith((".dll", ".so", ".dylib")):
+                exports = _pe_exports(os.path.join(root,
+                                                   librel.replace("/", os.sep)))
+            calllib.append({"lib": lib, "fn": fn, "rel": librel,
+                            "exported": (fn.lower() in exports) if exports else None})
+
     # **仍连不上的**要单独列出来（R342）：它们可能是 mex 二进制、
     # 工具箱函数、或动态调用 —— 与「已经桥接到 C 源」是两回事。
     # 第一版把 `matched` 当成了全体，于是这一栏永远是空的（当场验证发现）。
     return {"available": True, "items": uniq,
             "scanned": _C_INDEX.get("nfiles") or 0,
-            "unresolved": sorted(all_ext - matched),
+            "binaries": bins,
+            "calllib": calllib,
+            "bin_scanned": _BIN_INDEX.get("nfiles") or 0,
+            "unresolved": sorted(still),
             "external_total": len(all_ext)}
 
 

@@ -1281,7 +1281,7 @@ function activate(context) {
             client.request('matlabc/cbridge', { name: word }), 4000);
           const b = br && br.result;
           if (b && b.available && (b.items || []).length) {
-            groups.push(mkItem('⇢  跨语言（C/MEX）(' + b.items.length + ')', {
+            groups.push(mkItem('⇢  跨语言（C 源）(' + b.items.length + ')', {
               desc: 'MATLAB 侧解析不到，但 C 源里有定义',
               children: b.items.slice(0, 15).map((it) =>
                 mkItem(it.c_name, {
@@ -1290,13 +1290,40 @@ function activate(context) {
                   rel: it.c_rel, line: it.c_line,
                 })),
             }));
-          } else if (b && b.available && (b.unresolved || []).length) {
+          }
+          if (b && b.available && (b.binaries || []).length) {
+            groups.push(mkItem('⇢  二进制（mex / 库）(' +
+                               b.binaries.length + ')', {
+              desc: '入口名写在文件名上',
+              children: b.binaries.slice(0, 10).map((it) =>
+                mkItem(it.callee, {
+                  desc: String(it.rel || '').split('/').pop() + ' · ' +
+                        it.kind + ' 入口',
+                  rel: it.rel, line: 1,
+                })),
+            }));
+          }
+          if (b && b.available && (b.calllib || []).length) {
+            const cl = b.calllib;
+            groups.push(mkItem('⇢  calllib 调用（' + cl.length + '）', {
+              desc: '已核对库的导出表',
+              children: cl.slice(0, 10).map((c) => mkItem(c.fn, {
+                desc: c.exported === true
+                  ? '✓ 在 ' + String(c.rel || '').split('/').pop() + ' 中导出'
+                  : (c.exported === false
+                    ? '✗ 该库没有导出 ' + c.fn
+                    : '库未找到：' + c.lib),
+                rel: c.rel || null, line: 1,
+              })),
+            }));
+          }
+          if (b && b.available && (b.unresolved || []).length) {
             // C 里也没有 —— 如实说「这些进了二进制/工具箱」，
             // 不要用一个空组让人以为链路是完整的。
-            groups.push(mkItem('⇢  跨语言（C/MEX）', {
-              desc: b.unresolved.length + ' 个名字在 C 源里也没有',
+            groups.push(mkItem('⇢  仍连不上（' + b.unresolved.length + '）', {
+              desc: 'C 源与工程内二进制都没有',
               children: b.unresolved.slice(0, 10).map((n) =>
-                mkItem(n, { desc: '外部（mex 二进制 / 工具箱 / 动态调用）' })),
+                mkItem(n, { desc: '外部（工具箱 / 动态调用 / 系统库）' })),
             }));
           }
         } catch (e) { /* 桥接失败不影响主视图 */ }

@@ -1232,6 +1232,45 @@ def _doc(c):
     finally:
         shutil.rmtree(_cb, ignore_errors=True)
 
+    # ---- R343：二进制层（mex 入口名 / calllib 导出核对）----------------
+    # 只有 .mexw64、没有 .c 的工程很常见（预编译工具箱）。第一版在这里
+    # 只看 C 索引，于是直接判「没有可桥接的东西」—— 而 mex 的名字
+    # 本来就写在文件名上，根本不需要解析机器码。
+    _bb = tempfile.mkdtemp(prefix="lsp_bb_")
+    try:
+        with io.open(os.path.join(_bb, "usemex.m"), "w", encoding="utf-8",
+                     newline="") as _fh:
+            _fh.write(u"function usemex(x)\n"
+                      u"y = fast_kernel(x);\n"
+                      u"end\n")
+        # 空文件即可：这条路径只看文件名，不读内容
+        with io.open(os.path.join(_bb, "fast_kernel.mexw64"), "wb") as _fh:
+            _fh.write(b"")
+        _svb = (_L2._STATE.get("root"), _L2._STATE.get("result"))
+        _L2._STATE["root"] = _bb
+        _L2._STATE["result"] = _an(_bb, no_checks=True)
+        _L2._C_INDEX["key"] = None
+        _L2._C_INDEX["idx"] = None
+        _L2._BIN_INDEX["key"] = None
+        _L2._BIN_INDEX["idx"] = None
+        try:
+            _bres = _L2._c_bridge("usemex")
+        finally:
+            (_L2._STATE["root"], _L2._STATE["result"]) = _svb
+            _L2._C_INDEX["key"] = None
+            _L2._C_INDEX["idx"] = None
+            _L2._BIN_INDEX["key"] = None
+            _L2._BIN_INDEX["idx"] = None
+        _bins = (_bres or {}).get("binaries") or []
+        _chk(bool(_bres.get("available")),
+             "doc/cbridge-binaries-without-c-source（%r）"
+             % ((_bres or {}).get("reason"),))
+        _chk(bool(_bins) and _bins[0]["rel"].endswith("fast_kernel.mexw64")
+             and _bins[0]["callee"] == "fast_kernel",
+             "doc/cbridge-mex-by-filename（%r）" % (_bins[:1],))
+    finally:
+        shutil.rmtree(_bb, ignore_errors=True)
+
     # ---- R286：`@类目录` 里的方法文件也要出大纲 -------------------------
     # 用户报的现象就是 `@sdpvar/round.m` 大纲为空。这条在临时目录里自建
     # 语料（不污染 tests/），路径含 `@`，并且 URI 走百分号编码，

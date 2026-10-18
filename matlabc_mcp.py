@@ -973,6 +973,31 @@ def t_cbridge(args):
                        % (it["matlab"], it["callee"], it["c_rel"],
                           it["c_line"], it["count"]))
         out.append(u"")
+    bins = r.get("binaries") or []
+    if bins:
+        out.append(u"## 二进制提供（%d 处）" % len(bins))
+        out.append(u"")
+        out.append(u"入口名写在文件名上，不需要解析机器码：")
+        out.append(u"")
+        for it in bins[:15]:
+            out.append(u"- `%s` → `%s`（%s）"
+                       % (it["callee"], it["rel"], it["kind"]))
+        out.append(u"")
+
+    calls = r.get("calllib") or []
+    if calls:
+        out.append(u"## calllib 调用（%d 处）" % len(calls))
+        out.append(u"")
+        out.append(u"已核对库的导出表：")
+        out.append(u"")
+        for c in calls[:15]:
+            mark = (u"✓ 已导出" if c.get("exported") is True
+                    else (u"✗ 该库没有这个导出" if c.get("exported") is False
+                          else u"? 库未找到"))
+            out.append(u"- `%s('%s', '%s')`　%s"
+                       % ("calllib", c.get("lib"), c.get("fn"), mark))
+        out.append(u"")
+
     if unresolved:
         out.append(u"## 仍然连不上（%d 个）" % len(unresolved))
         out.append(u"")
