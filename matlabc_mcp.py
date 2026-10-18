@@ -945,6 +945,46 @@ def t_undo_edits(args):
                  % (len(rows), u"\n".join(rows)))
 
 
+def t_cbridge(args):
+    """跨语言桥接：MATLAB 里解析不到的调用，在 C 源里找到了定义。
+
+    为什么 Agent 需要它：`mex`/`calllib` 造成的「未解析」会让影响面分析
+    在边界处停住，而 Agent 往往就此给出「没有更多调用者」的结论 ——
+    实际上下面还有一整层 C 代码。
+    """
+    name = args.get("name") or ""
+    r = L._c_bridge(name)
+    if not r.get("available"):
+        if (r.get("reason") or "") == "pending":
+            return _text("工程索引还在建立，请稍后重试。")
+        return _text("这个工程里没有 C 源文件（.c/.cpp），"
+                     "无法做跨语言桥接。")
+    items = r.get("items") or []
+    unresolved = r.get("unresolved") or []
+    if not items and not unresolved:
+        return _text(u"`%s` 没有解析不到的调用，也没有 C 桥接。" % name)
+
+    out = [u"# `%s` 的跨语言调用" % name, u""]
+    if items:
+        out.append(u"## 在 C 源里找到定义（%d 处）" % len(items))
+        out.append(u"")
+        for it in items[:20]:
+            out.append(u"- `%s` ← `%s`　%s:%d　（调用 %d 次）"
+                       % (it["matlab"], it["callee"], it["c_rel"],
+                          it["c_line"], it["count"]))
+        out.append(u"")
+    if unresolved:
+        out.append(u"## 仍然连不上（%d 个）" % len(unresolved))
+        out.append(u"")
+        out.append(u"这些名字在工程内的 C 源里也没有定义，"
+                   u"大概率来自 mex 二进制或工具箱：")
+        out.append(u"")
+        out.append(u"、".join(u"`%s`" % n for n in unresolved[:15]))
+        out.append(u"")
+    out.append(u"（本次扫描 %d 个 C 源文件。）" % (r.get("scanned") or 0))
+    return _text(u"\n".join(out))
+
+
 def t_changed(args):
     """「我改了这几个文件，谁需要先回归」——比结构 diff 更贴近 Agent 的任务。
 
@@ -1261,6 +1301,15 @@ TOOLS = [
                      "properties": {"backup": _STR},
                      "required": ["backup"]},
      "handler": t_undo_edit},
+
+    {"name": "matlabc_cbridge",
+     "description": "跨语言桥接：某个 MATLAB 函数里解析不到的调用，"
+                    "在工程内的 C 源（.c/.cpp）里是否有同名定义，并给出行号。"
+                    "分析 mex / calllib 场景时用它，否则调用链会在边界处断掉。",
+     "inputSchema": {"type": "object",
+                     "properties": {"name": _STR},
+                     "required": ["name"]},
+     "handler": t_cbridge},
 
     {"name": "matlabc_changed",
      "description": "「我刚改了这几个文件，谁需要先回归」—— 给出受影响的入口"

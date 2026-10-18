@@ -1077,6 +1077,118 @@ def _format_builtin(name, doc):
     return "\n".join(parts)
 
 
+#: C 源文件函数索引的缓存。键是工程根，`result` 一变就作废。
+_C_INDEX = {"key": None, "idx": None, "nfiles": 0}
+
+#: 扫描 C 源时跳过的目录：这些地方的 .c 不是工程代码，扫进来只会拖慢。
+_C_SKIP_DIRS = (".git", ".matlabc", "node_modules", "build", "cmake-build-debug")
+
+
+def _c_index(root):
+    """C 源文件的「函数名 → (相对路径, 行号)」索引。
+
+    为什么只做这一层：`mex`/`calllib` 导致的「链条断了」，缺的不是 C 的
+    表达式语义，而是**一个能连上去的落点** —— 名字对上、行号可跳，
+    链路就从「未解析」变成「进入 C 层，从这里进去」。
+
+    复用 `matlabc.build_c_model`（项目已有的 C 前端），不另写一套解析：
+    同一个 .c 文件被两套正则解析，迟早给出两个答案。
+    """
+    key = os.path.abspath(root or "")
+    if _C_INDEX["key"] == key and _C_INDEX["idx"] is not None:
+        return _C_INDEX["idx"]
+
+    idx = {}
+    files = []
+    try:
+        for dirpath, dirnames, filenames in os.walk(key):
+            dirnames[:] = [d for d in dirnames if d not in _C_SKIP_DIRS]
+            for fn in filenames:
+                low = fn.lower()
+                if low.endswith(".c") or low.endswith(".cpp") or low.endswith(".cc"):
+                    files.append(os.path.join(dirpath, fn))
+            if len(files) >= 200:       # 上限：宁可少桥接几个，也别卡住整个请求
+                break
+    except (IOError, OSError):
+        files = []
+
+    if files:
+        try:
+            import matlabc as _M
+            model = _M.build_c_model(sorted(files)[:200], key)
+        except Exception as exc:
+            _log("C 索引失败：%r" % (exc,))
+            model = None
+        for low, hits in ((model or {}).get("func_index") or {}).items():
+            for h in hits:
+                try:
+                    rel = (h.get("file") or {}).get("rel") or ""
+                    fn = h.get("func") or {}
+                    idx.setdefault(low, []).append({
+                        "name": fn.get("name") or low,
+                        "rel": rel,
+                        "line": int(fn.get("line") or 0),
+                    })
+                except Exception:
+                    continue
+
+    _C_INDEX["key"] = key
+    _C_INDEX["idx"] = idx
+    _C_INDEX["nfiles"] = len(files)
+    _log("C 索引：%d 个文件 / %d 个函数" % (len(files), len(idx)))
+    return idx
+
+
+def _c_bridge(name):
+    """MATLAB 函数 → C 函数的桥接（按**未解析调用名**匹配）。
+
+    返回 `{"available": bool, "reason": str, "items": [...]}`。
+    `available=False` 的两种原因必须分开：没有 C 文件 vs 索引还没建好 ——
+    否则界面只能猜，而猜出来的「没有桥接」和「还没算」长得一样。
+    """
+    result = _STATE.get("result")
+    if result is None:
+        return {"available": False, "reason": "pending", "items": []}
+    root = _STATE.get("root") or ""
+    idx = _c_index(root)
+    if not idx:
+        return {"available": False, "reason": "no_c_files", "items": [],
+                "scanned": _C_INDEX.get("nfiles") or 0}
+
+    items, matched = [], set()
+    all_ext = set()
+    for mf in (getattr(result, "files", None) or []):
+        for f in (getattr(mf, "functions", None) or []):
+            if getattr(f, "name", "") != name:
+                continue
+            for cname, cnt in (getattr(f, "external_calls", None) or {}).items():
+                all_ext.add(cname)
+                for h in idx.get(cname.lower(), []):
+                    items.append({"matlab": name,
+                                  "mfile": getattr(mf, "rel", "") or "",
+                                  "callee": cname,
+                                  "count": int(cnt),
+                                  "c_name": h["name"],
+                                  "c_rel": h["rel"],
+                                  "c_line": h["line"]})
+                    matched.add(cname)
+    # 同一 (C 位置) 去重：一个 MATLAB 函数可能多处调用同一个 C 函数
+    seen, uniq = set(), []
+    for it in sorted(items, key=lambda x: (x["c_rel"], x["c_line"])):
+        k = (it["c_rel"], it["c_line"], it["c_name"])
+        if k in seen:
+            continue
+        seen.add(k)
+        uniq.append(it)
+    # **仍连不上的**要单独列出来（R342）：它们可能是 mex 二进制、
+    # 工具箱函数、或动态调用 —— 与「已经桥接到 C 源」是两回事。
+    # 第一版把 `matched` 当成了全体，于是这一栏永远是空的（当场验证发现）。
+    return {"available": True, "items": uniq,
+            "scanned": _C_INDEX.get("nfiles") or 0,
+            "unresolved": sorted(all_ext - matched),
+            "external_total": len(all_ext)}
+
+
 def _field_refs(name):
     """结构体字段的**跨文件读写位置**（`matlabc/field`）。
 
@@ -2312,6 +2424,18 @@ def handle(msg, out):
         _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": info})
         _log("impact %s -> %s" % (name, "none" if info is None
                                   else "%d 个调用者" % info["total"]))
+        return True
+
+    if method == "matlabc/cbridge":
+        # 跨语言桥接：MATLAB 里调不到的名字，若在工程内的 C 源里定义了，
+        # 就把链路接过去（否则调用链在 mex 边界断掉）。
+        params = msg.get("params") or {}
+        rows = _c_bridge(params.get("name") or "")
+        _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": rows})
+        _log("cbridge %s -> %s" % (params.get("name"),
+                                   ("%d 处" % len(rows.get("items") or []))
+                                   if rows.get("available")
+                                   else rows.get("reason")))
         return True
 
     if method == "matlabc/field":

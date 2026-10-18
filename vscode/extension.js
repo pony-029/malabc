@@ -1273,6 +1273,33 @@ function activate(context) {
         groups.push(mkItem('→  被调用（' + (info.down_total || 0) + '）',
                            { desc: '我 → 谁',
                              children: dns.length ? dns : [mkItem('（叶子）')] }));
+        // **跨语言（C/MEX）**（R342）：MATLAB 里解析不到的调用，若工程内的
+        // C 源里有同名定义，就把链路接过去 —— 否则链在 mex 边界断掉，
+        // 下游全部丢失，而界面上只表现为「未解析 N 处」。
+        try {
+          const br = await withTimeout(
+            client.request('matlabc/cbridge', { name: word }), 4000);
+          const b = br && br.result;
+          if (b && b.available && (b.items || []).length) {
+            groups.push(mkItem('⇢  跨语言（C/MEX）(' + b.items.length + ')', {
+              desc: 'MATLAB 侧解析不到，但 C 源里有定义',
+              children: b.items.slice(0, 15).map((it) =>
+                mkItem(it.c_name, {
+                  desc: String(it.c_rel || '').split('/').pop() +
+                        ' · line ' + it.c_line,
+                  rel: it.c_rel, line: it.c_line,
+                })),
+            }));
+          } else if (b && b.available && (b.unresolved || []).length) {
+            // C 里也没有 —— 如实说「这些进了二进制/工具箱」，
+            // 不要用一个空组让人以为链路是完整的。
+            groups.push(mkItem('⇢  跨语言（C/MEX）', {
+              desc: b.unresolved.length + ' 个名字在 C 源里也没有',
+              children: b.unresolved.slice(0, 10).map((n) =>
+                mkItem(n, { desc: '外部（mex 二进制 / 工具箱 / 动态调用）' })),
+            }));
+          }
+        } catch (e) { /* 桥接失败不影响主视图 */ }
         // 横向视图放最后：它是补充，不该占第一行。
         groups.push(mkItem('⇥  横向查看（箭头关系）', {
           desc: '在右侧打开',

@@ -1192,6 +1192,46 @@ def _doc(c):
     finally:
         shutil.rmtree(_fq, ignore_errors=True)
 
+    # ---- R342：跨语言桥接（MATLAB 调不到的 C 函数）---------------------
+    # mex / calllib 会让调用链在边界断掉，界面上只表现为「未解析 N 处」。
+    # 这里要求：C 源里有同名定义 -> 给出文件与行号；没有 -> 计入 unresolved。
+    _cb = tempfile.mkdtemp(prefix="lsp_cb_")
+    try:
+        with io.open(os.path.join(_cb, "cb.m"), "w", encoding="utf-8",
+                     newline="") as _fh:
+            _fh.write(u"function cb(x)\n"
+                      u"y = c_entry(x);\n"
+                      u"z = nowhere_fn(x);\n"
+                      u"end\n")
+        with io.open(os.path.join(_cb, "cbimpl.c"), "w", encoding="utf-8",
+                     newline="") as _fh:
+            _fh.write(u"int c_entry(int x)\n"
+                      u"{\n"
+                      u"    return x;\n"
+                      u"}\n")
+        _svc = (_L2._STATE.get("root"), _L2._STATE.get("result"))
+        _L2._STATE["root"] = _cb
+        _L2._STATE["result"] = _an(_cb, no_checks=True)
+        _L2._C_INDEX["key"] = None      # 强制按新工程重建索引
+        _L2._C_INDEX["idx"] = None
+        try:
+            _cres = _L2._c_bridge("cb")
+        finally:
+            (_L2._STATE["root"], _L2._STATE["result"]) = _svc
+            _L2._C_INDEX["key"] = None
+            _L2._C_INDEX["idx"] = None
+        _items = (_cres or {}).get("items") or []
+        _chk(bool(_items) and _items[0]["c_rel"].endswith("cbimpl.c")
+             and _items[0]["c_line"] == 1,
+             "doc/cbridge-to-c-source（%r）" % (_items[:1],))
+        # 连 C 源也没有的名字必须单列，不能悄悄消失 ——
+        # 否则「桥接成功」与「部分成功」在界面上长得一样。
+        _chk("nowhere_fn" in ((_cres or {}).get("unresolved") or []),
+             "doc/cbridge-lists-unresolved（%r）"
+             % ((_cres or {}).get("unresolved"),))
+    finally:
+        shutil.rmtree(_cb, ignore_errors=True)
+
     # ---- R286：`@类目录` 里的方法文件也要出大纲 -------------------------
     # 用户报的现象就是 `@sdpvar/round.m` 大纲为空。这条在临时目录里自建
     # 语料（不污染 tests/），路径含 `@`，并且 URI 走百分号编码，
