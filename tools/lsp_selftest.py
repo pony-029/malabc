@@ -35,8 +35,15 @@ _bad = 0
 _good = 0
 
 
+#: 本次运行里出现过的判据 id（`--list` 用）。
+#: 为什么不靠正则扫源码：判据 id 大量是 f-string 拼出来的，
+#: 扫源码只能看到字面量那一小部分（实测 31 / 实际 200 条）。
+_SEEN = []
+
+
 def _chk(cond, msg):
     global _bad, _good
+    _SEEN.append(str(msg).split(u"（")[0].strip())
     if cond:
         _good += 1
     else:
@@ -1601,7 +1608,10 @@ def _lens(c):
         by[d.get("name")] = d
         # L1b：锚点必须在函数定义行（0-based）
         if d.get("name") in ("a", "b", "c"):
-            _chk(l["range"]["start"]["line"] >= 0, "lens/range-nonneg")
+            # 带函数名：这条在 3 个符号上各跑一次，光写 `lens/range-nonneg`
+            # 出红时分不清是哪一个（`--list` 的重名检测就是这么发现的）。
+            _chk(l["range"]["start"]["line"] >= 0,
+                 "lens/range-nonneg · %s" % d.get("name"))
     _chk(set(by) == {"a", "b", "c"}, "lens/all-functions（实际 %r）"
          % (sorted(by),))
     # `a` 有两个调用者：`switch_case` 和 `b`（b 回调 a，这是语料里
@@ -2117,6 +2127,11 @@ def main(argv=None):
     ap.add_argument("--doc", action="store_true")
     ap.add_argument("--lens", action="store_true")
     ap.add_argument("--mcp", action="store_true")
+    # `--list`：跑完之后把本次出现过的判据 id 列出来（不改变跑哪些组）。
+    # `--all`：跑全部组 —— 配合 `--list` 才看得到「一共多少条判据」，
+    # 否则默认只跑基础 5 组（19 条），那个数字会被误当成总数。
+    ap.add_argument("--list", action="store_true")
+    ap.add_argument("--all", dest="all_groups", action="store_true")
     ap.add_argument("--help", action="store_true")
     args = ap.parse_args(argv)
 
@@ -2131,7 +2146,13 @@ def main(argv=None):
         return 2
 
     groups = []
-    if args.diag:
+    if args.all_groups:
+        groups = [("diag", _diag), ("definition", _def), ("ref", _ref),
+                  ("hover", _hover), ("symbol", _symbols),
+                  ("uninit", _uninit), ("field", _field), ("impact", _impact),
+                  ("tokens", _tokens), ("struct", _struct), ("doc", _doc),
+                  ("mcp", _mcp), ("lens", _lens), ("save", _save)]
+    elif args.diag:
         groups = [("diag", _diag)]
     elif args.definition:
         groups = [("definition", _def)]
@@ -2173,6 +2194,19 @@ def main(argv=None):
 
 
     print('LSP SELFTEST {"bad": %d, "good": %d}' % (_bad, _good))
+
+    # `--list`：把这次真跑过的判据 id 全列出来。
+    # 有了它，"一共多少条判据" 是可数的；也能顺带看出重名
+    # （同一个 id 挂在不同地方 = 两条判据共用一个名字，出红时分不清是哪条）。
+    if "--list" in sys.argv:
+        uniq = sorted(set(_SEEN))
+        dup = sorted(set(i for i in _SEEN if _SEEN.count(i) > 1))
+        print()
+        print("判据 %d 条（去重 %d 条）" % (len(_SEEN), len(uniq)))
+        for i in uniq:
+            print("  " + i)
+        if dup:
+            print("重名判据：%s" % "、".join(dup[:12]))
     return 0 if _bad == 0 else 1
 
 

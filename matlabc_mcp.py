@@ -25,6 +25,22 @@ MCP（Model Context Protocol）正好是这一层的标准：JSON-RPC、stdio �
 ====
 
     python matlabc_mcp.py --root C:\\path\\to\\project
+    python matlabc_mcp.py --help          # 零输出：帮助就是本文档
+
+一图看懂
+========
+
+    Agent ──▶ matlabc_mcp.py ──▶ matlabc_lsp
+      │            │                  │
+      │            ├─ tools/call      └─ 复用查询函数
+      └─ Markdown ◀┘
+
+退出码
+======
+
+    0  = 正常结束（stdin 关闭），或 `--help`
+    1  = 未捕获异常（由解释器给出）
+    2  = 工程目录不存在（`--root` 指到了非目录）
 
 在 Agent 侧配置（Claude Desktop / Cursor / CodeBuddy 等）：
 
@@ -1640,7 +1656,11 @@ def _handle(msg):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(add_help=True)
+    # **`--help` 按设计零输出**（R358）：帮助正文在模块文档里，编辑器与
+    # README 读的是它。`add_help=True` 会让 argparse 再往 stdout 打一段用法 ——
+    # 等于把「帮助在哪」说两遍，而 `check_help_contract` 的 R4 只认零输出。
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("--help", "-h", action="store_true")
     ap.add_argument("--root", default=os.getcwd(),
                     help="MATLAB 工程根目录（默认当前目录）")
     ap.add_argument("--tools", default="all", choices=("all", "core"),
@@ -1651,6 +1671,8 @@ def main(argv=None):
                     help="跨语言分析（C 源 / mex / DLL 导出表）："
                          "off 时不扫描这些文件，桥接直接回 disabled")
     ns = ap.parse_args(argv)
+    if ns.help:
+        return 0                 # 零输出：帮助在模块文档里
     _TOOL_MODE[0] = ns.tools
     L._STATE["cross_lang"] = (ns.cross_lang == "on")
     root = os.path.abspath(ns.root)

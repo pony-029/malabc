@@ -860,7 +860,7 @@ invented call relationships, or the model will repeat them as fact.
 
 ## Full-scenario sweep (hand-run, 118 checks)
 
-The 30 gates above are static and fast. This one is not — it starts subprocesses and LSP
+The 32 gates above are static and fast. This one is not — it starts subprocesses and LSP
 servers, so it stays out of `check_all` and is run by hand:
 
 ```powershell
@@ -928,7 +928,7 @@ python matlabc_flow.py --help     # repair loop: five-station pipeline + five re
 python matlabc_ask.py --help      # grounded Q&A: how facts become an answer
 python matlabc_mcp.py --help      # MCP server: the five tools + why stdin must be cut
 python gui.py --help              # GUI: which CLI flag each form field maps to
-python tools/check_all.py --help  # gates: what each of the 30 gates stops
+python tools/check_all.py --help  # gates: what each of the 32 gates stops
 ```
 
 This is not a verbal promise — `check_help_contract.py` and `check_doc_flags.py` watch it, and

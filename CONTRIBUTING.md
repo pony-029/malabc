@@ -20,7 +20,7 @@ python tests/test_matlabc.py
 # 3) 对示例做静态分析，确认主流程无回归
 python matlabc.py tests/sample_m -o demo.md --html demo.html --browse --offline
 
-# 4) 登记制护栏（30 道，各自还会跑 --selftest；门数少于下限也会红）
+# 4) 登记制护栏（32 道，各自还会跑 --selftest；门数少于下限也会红）
 python tools/check_all.py
 ```
 
@@ -154,7 +154,7 @@ python tools/sweep_cli.py --probe workspace/symbol     # 未实现的方法显�
 ## 改 `matlabc_lsp.py` / `vscode/` 后必跑的三条（R151 起）
 
 LSP 的判据**不进 `check_all`** —— 它要起子进程、跑分析，与其它护栏"纯静态读文件"
-的性质不同，放进 runner 会把 30 道门从 2 分钟拖到 3 分钟。所以必须手工跑：
+的性质不同，放进 runner 会把 32 道门从 2 分钟拖到 3 分钟。所以必须手工跑：
 
 1. `python tools/lsp_selftest.py` —— 五组 **19 条**：诊断（含**第一条必须是空**）、
    definition（同文件 / 跨文件 / 注释空）、references（1 个引用 / 含定义 2 个 / 注释空）、
@@ -208,7 +208,7 @@ python tools/sweep_cli.py --meta     # 11 条：**变异测试**（判据自己�
 | 3 | 联动（四开关同开）、**增量冷热**、**幂等三次**、`--mixed`、往返 |
 | 4 | 少见入口（`--version` / `--json-level`、**未知开关必须 rc=2**） |
 
-**它不进 `check_all`**：51 次子进程约 25 秒，会让 30 道门从 2 分钟变 3 分钟。
+**它不进 `check_all`**：51 次子进程约 25 秒，会让 32 道门从 2 分钟变 3 分钟。
 **但它比任何静态门都更能发现「入口之间不一致」** —— R155–R162 五轮实测：
 **78 个检查点里 10 个是我自己的判据错，1 个是真实产品不一致**（`--lang c` 空目录 rc=0）。
 
