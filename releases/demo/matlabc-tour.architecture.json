@@ -42,7 +42,7 @@
       "label": "大纲",
       "sublabel": "Ctrl+Shift+O · 函数列表",
       "pos": [
-        210,
+        200,
         140
       ],
       "size": [
@@ -53,16 +53,17 @@
     {
       "id": "codelens",
       "type": "frontend",
-      "label": "CodeLens",
+      "label": "matlabc CodeLens",
       "sublabel": "函数上方 · N 个调用者",
       "pos": [
-        380,
+        370,
         140
       ],
       "size": [
-        140,
+        170,
         56
-      ]
+      ],
+      "tag": "本扩展提供"
     },
     {
       "id": "sidebar",
@@ -70,7 +71,7 @@
       "label": "关系面板",
       "sublabel": "上游 · 下游 · 字段读写",
       "pos": [
-        550,
+        570,
         140
       ],
       "size": [

@@ -59,13 +59,14 @@ STEPS = [
     {
         "title": "③ 跳到定义",
         "desc": "函数、结构体字段、global 声明都能跳，跨文件也一样。"
-                "字段会落到**首次赋值**那一行。",
+                "字段会落到**首次赋值**那一行。"
+                "函数上方那行「N 个调用者」也是这个扩展加的（CodeLens）。",
         "nodes": ["lsp", "codelens"],
         "edges": [["lsp", "codelens"]],
         "features": [
             "F12 —— 跳到定义（函数 / 字段 / global）",
             "Alt+F12 —— 就地预览，不离开当前文件",
-            "函数名上方显示「N 个调用者」，点开就是关系图",
+            "函数上方显示「N 个调用者」（matlabc 提供的 CodeLens）",
         ],
     },
     {
@@ -180,16 +181,33 @@ def build_html(data):
         x, y = c["pos"]
         w, h = c["size"]
         col = TYPE_COLOR.get(c.get("type"), "#8b93a7")
+        # `tag` 之前只在数据里、从不显示 —— 而它恰恰写着「谁提供的 / 给谁用」。
+        # 画成右上角的小标签，不用占正文空间。
+        tag_svg = ""
+        tag = c.get("tag") or ""
+        if tag:
+            tw = len(tag) * 9.0 + 10.0
+            tx = x + w - tw - 6.0
+            tag_svg = ('<rect x="%.1f" y="%d" width="%.1f" height="14" rx="7" '
+                       'fill="%s33" stroke="%s66"/>'
+                       '<text x="%.1f" y="%d" class="tag">%s</text>'
+                       % (tx, y + 5, tw, col, col, tx + tw / 2.0, y + 15.5,
+                          esc(tag)))
         node_svg.append(
             '<g class="node" data-id="%s">'
             '<rect x="%d" y="%d" width="%d" height="%d" rx="10" '
             'fill="%s22" stroke="%s" stroke-width="1.6"/>'
+            '%s'
             '<text x="%d" y="%d" class="lbl">%s</text>'
             '<text x="%d" y="%d" class="sub">%s</text>'
             '</g>' % (
-                c["id"], x, y, w, h, col, col,
-                x + w / 2.0, y + h / 2.0 - 4.0, esc(c.get("label")),
-                x + w / 2.0, y + h / 2.0 + 13.0, esc(c.get("sublabel"))))
+                c["id"], x, y, w, h, col, col, tag_svg,
+                x + w / 2.0,
+                (y + h / 2.0 + 4.0) if tag else (y + h / 2.0 - 4.0),
+                esc(c.get("label")),
+                x + w / 2.0,
+                (y + h / 2.0 + 20.0) if tag else (y + h / 2.0 + 13.0),
+                esc(c.get("sublabel"))))
 
     for e in conns:
         a, b = by_id.get(e["from"]), by_id.get(e["to"])
@@ -232,6 +250,7 @@ svg{width:100%%;height:100%%}
 .node{cursor:pointer;transition:opacity .35s, filter .35s}
 .node .lbl{font-size:13px;font-weight:600;fill:var(--fg);text-anchor:middle}
 .node .sub{font-size:10.5px;fill:var(--dim);text-anchor:middle}
+.node .tag{font-size:9px;fill:#c8cdd8;text-anchor:middle}
 .node.dim{opacity:.16}
 .node.on{filter:drop-shadow(0 0 10px rgba(79,140,255,.85))}
 .edge{stroke:#3a4050;stroke-width:1.4;transition:stroke .35s, stroke-width .35s}
