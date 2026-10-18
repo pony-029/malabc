@@ -374,7 +374,21 @@ def _load_cache(root):
         return None
 
 
-def _run_json(root):
+def _is_live_result(res):
+    """这个结果里的函数对象是不是**活的**（真解析产物，而非缓存重建的替身）。
+
+    R268：`analyze(prev=, changed=)` 会原样复用 `prev` 里的对象。而缓存
+    重建出来的 `SimpleNamespace` 只带少数几个字段（R233 就因此让结构体
+    跳转静默失效）。**拿替身当 `prev` 会产出降级结果**，所以必须先问一句：
+    这些对象身上有 `body_start` 吗？有才是活的。
+    """
+    for mf in (getattr(res, "files", None) or []):
+        for f in (getattr(mf, "functions", None) or []):
+            return hasattr(f, "body_start")
+    return False
+
+
+def _run_json(root, prev=None, changed=None):
     """**进程内**跑分析，返回与 `--json` 同形的 `{"heuristics": [...]}`。
 
     为什么不再起子进程：CLI 全流程实测 **5.92s**（1300 个 .m），而
@@ -385,12 +399,15 @@ def _run_json(root):
     占 63%（未关时）。
     """
     # **先试磁盘缓存**：命中就跳过全部解析（第二次开同一项目从 35 秒到 0.2 秒）。
+    # 但**给了 `prev` 就不读缓存** —— 那是增量路径，复用的是内存里的活对象，
+    # 混进磁盘替身会把两条路径的语义搅在一起（`_is_live_result` 守的就是这件事）。
     # `stamp` 校验保证「改过任何一个 .m 就作废」，所以命中时结果与重算一致。
-    hit = _load_cache(root)
-    if hit is not None:
-        result0, payload0 = hit
-        _STATE["result"] = result0
-        return payload0
+    if prev is None:
+        hit = _load_cache(root)
+        if hit is not None:
+            result0, payload0 = hit
+            _STATE["result"] = result0
+            return payload0
 
     try:
         from analyzer.api import analyze
@@ -402,7 +419,13 @@ def _run_json(root):
         # （`c_uninit_read` / `m_dead_code`）正是由 `_collect_checks` 产的，
         # 关掉它等于把 F3 刚扩的东西全部丢掉 —— 实测 `--uninit` 会一直红。
         # 代价是首次分析慢一些（1300 个 .m：0.73s -> 2.18s），仍在可用区间。
-        result = analyze(root)
+        if prev is not None and changed:
+            # 增量：只重解析 `changed` 里的文件，其余沿用活对象。
+            # 一致性由第 30 道门守着（`check_incremental_parity`：
+            # 逐文件各测一次，files 与 edges 必须与全量逐项相同）。
+            result = analyze(root, prev=prev, changed=changed)
+        else:
+            result = analyze(root)
     except Exception as exc:                  # 分析失败不能让服务挂掉
         _log("analyze 失败：%r" % (exc,))
         return None
@@ -1787,15 +1810,40 @@ def handle(msg, out):
         params = msg.get("params") or {}
         uri = (params.get("textDocument") or {}).get("uri", "")
         root = _STATE.get("root")
+        # 保存的是哪个文件 —— 增量重算需要它。取不到就退回全量。
+        rel = None
+        if root:
+            try:
+                rel = os.path.relpath(_uri_to_path(uri), root)
+                rel = rel.replace("\\", "/")
+            except Exception:
+                rel = None
         if root:
             # **作废缓存要在锁内，重算必须在锁外**。
             # R202 实测：把 `_run_json` 留在锁里，YALMIP（1665 文件、约 30s）
             # 一次保存就会把协议循环堵住半分钟，期间 `definition` 全部排队。
+            # **保存时只重算变化的文件**（R268）。
+            # 前提是当前结果里的对象是「活的」（真解析产物）—— 缓存重建的
+            # 替身不能当 `prev`。任何一步不合适就退回全量，**兜底优先于快**。
+            prev_files = None
+            changed = None
+            old = _STATE.get("result")
+            if old is not None and rel and _is_live_result(old):
+                prev_files = getattr(old, "files", None)
+                changed = {rel}
             with _STATE["lock"]:
                 _STATE["payload"] = None
                 _STATE["result"] = None
                 _STATE["warming"] = False
-            _STATE["payload"] = _run_json(root)
+            try:
+                if prev_files is not None:
+                    _STATE["payload"] = _run_json(root, prev=prev_files,
+                                                  changed=changed)
+                else:
+                    _STATE["payload"] = _run_json(root)
+            except Exception as exc:
+                _log("增量重算失败，退回全量：%r" % (exc,))
+                _STATE["payload"] = _run_json(root)
         diags = _diagnostics_for(uri)
         _write_message(out, {
             "jsonrpc": "2.0",

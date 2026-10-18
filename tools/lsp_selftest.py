@@ -246,6 +246,20 @@ def _save(c):
         target = os.path.join(work, "x.m")
         with io.open(target, "w", encoding="utf-8", newline="") as fh:
             fh.write(u"function y = x(a)\n% 反例语料\ny = a + b;\nend\n")
+
+        # R268：保存走的是增量（`prev` + `changed`）。第 30 道门只保证
+        # files/edges 相同，**诊断是另一条产物** —— 这里单独验一次：
+        # 增量算出的 facts 必须与全量逐条相同。
+        sys.path.insert(0, ROOT)
+        import matlabc_lsp as _L
+        from analyzer.api import analyze as _an
+        _full = _an(work)
+        _inc = _an(work, prev=_full.files, changed={"x.m"})
+        _chk(_L._facts_from_result(_full) == _L._facts_from_result(_inc),
+             "save/incremental-facts-equal（增量诊断 %r != 全量 %r）"
+             % (_L._facts_from_result(_inc), _L._facts_from_result(_full)))
+        # 而「活对象」判据必须能区分增量可用与不可用 —— 缓存替身不许当 prev。
+        _chk(_L._is_live_result(_full) is True, "save/is-live-for-analyzed")
         c.init(work)
         u = _uri(target)
         c.send({"jsonrpc": "2.0", "method": "textDocument/didOpen",
