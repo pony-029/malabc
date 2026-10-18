@@ -625,6 +625,24 @@ def _definition(uri, pos):
                 hits.append((getattr(mf, "rel", "") or "",
                              getattr(f, "line", 1)))
     if not hits:
+        # ---- R300：变量 / 局部名的「声明」 ------------------------------
+        # MATLAB 没有声明语句，`x = ...` 就是它成立的地方（HTML 报告里
+        # 也是这么找的）。函数查不到时再退一步找本文的首次赋值 ——
+        # 比「按 F12 什么都不发生」有用得多。
+        # 只在本文件里找：跨文件的变量没有意义（MATLAB 的变量是函数级的）。
+        _pat = re.compile(r"^\s*(?:\[[^\]]*\]\s*=\s*)?"
+                          r"%s\s*(?:\([^)]*\))?\s*=" % re.escape(name))
+        for _i, _ln in enumerate(lines):
+            _code = _ln.split("%", 1)[0] if "%" in _ln else _ln
+            if _pat.match(_code):
+                _col = _code.find(name)
+                return [{
+                    "uri": "file:///" + path.replace("\\", "/").lstrip("/"),
+                    "range": {"start": {"line": _i,
+                                        "character": max(0, _col)},
+                              "end": {"line": _i,
+                                      "character": max(0, _col) + len(name)}},
+                }]
         return []
 
     want = os.path.basename(path).lower()

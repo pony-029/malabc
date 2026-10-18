@@ -993,14 +993,32 @@ function activate(context) {
       } catch (e) { /* 服务端没答上来就走变量分支 */ }
 
       const groups = [];
+      // `decl` 在变量分支里赋值、在顶层节点里使用 —— 必须声明在外层，
+      // 否则 `let` 的块级作用域会让顶层读到 undefined（R300 的坑）。
+      let decl = -1;
       if (info && typeof info.total === 'number') {
         // 箭头就是调用方向：`←` 谁调我，`→` 我调谁。
-        const ups = (info.direct || []).slice(0, 30).map((d) =>
-          mkItem('← ' + d.name,
-                 { desc: d.rel + ':' + d.line, rel: d.rel, line: d.line }));
-        groups.push(mkItem('调用者（' + info.total + '）',
-                           { desc: '谁 → 我',
-                             children: ups.length ? ups : [mkItem('（无）')] }));
+        // **链与调用者合并**（R300）：一条链本身就是“谁调我”的完整路径，
+        // 再单列一份扁平的调用者只是同一信息的碎片版。有链就只给链；
+        // 没有链（说明它是入口）才退回到调用者列表。
+        const chs = (info.chains || []).slice(0, 8).map((ch) => {
+          const nodes = (ch || []).map((n) => mkItem('← ' + n.name,
+            { desc: n.rel + ':' + n.line, rel: n.rel, line: n.line }));
+          return mkItem((ch || []).map((n) => n.name).join(' ← '),
+                        { desc: '展开看每一跳', children: nodes });
+        });
+        if (chs.length) {
+          groups.push(mkItem('调用链（入口 ← … ← 我）',
+                             { desc: chs.length + ' 条',
+                               children: chs }));
+        } else {
+          const ups = (info.direct || []).slice(0, 30).map((d) =>
+            mkItem('← ' + d.name,
+                   { desc: d.rel + ':' + d.line, rel: d.rel, line: d.line }));
+          groups.push(mkItem('调用者（' + info.total + '）',
+                             { desc: '谁 → 我',
+                               children: ups.length ? ups : [mkItem('（无）')] }));
+        }
         const dns = (info.down || []).slice(0, 30).map((d) =>
           mkItem('→ ' + d.name,
                  { desc: d.rel + ':' + d.line + '  L' + d.level,
@@ -1008,11 +1026,6 @@ function activate(context) {
         groups.push(mkItem('被调用（' + (info.down_total || 0) + '）',
                            { desc: '我 → 谁',
                              children: dns.length ? dns : [mkItem('（无）')] }));
-        const chs = (info.chains || []).slice(0, 8).map((ch) =>
-          mkItem((ch || []).map((n) => n.name).join(' → '), { desc: '链' }));
-        if (chs.length) {
-          groups.push(mkItem('链（入口 → 目标）', { children: chs }));
-        }
         // **顶层就是这个名字本身** —— 树的第一行必须回答「这是谁的关系」。
         relView.title = '关系：' + word;
         relState.roots = [mkItem(word, {
@@ -1029,7 +1042,6 @@ function activate(context) {
         const hitRe = new RegExp('\\b' + escRe + '\\b');
         const declRe = new RegExp('^\\s*(?:\\[[^\\]]*\\]\\s*=\\s*)?' + escRe +
                                   '\\s*(?:\\([^)]*\\))?\\s*=');
-        let decl = -1;
         const hits = [];
         for (let i = 0; i < lines.length; i += 1) {
           const code = lines[i].replace(/%.*$/, '');
@@ -1053,10 +1065,15 @@ function activate(context) {
         }));
       }
       // 变量也一样：顶层是这个变量名，标题写清在看谁。
+      // **顶层的行号必须是“声明行”，不是光标行**（R300）。
+      // 之前这里用的是光标所在行，于是 `x @sdpvar/xos1.m:14` 指向的是
+      // 你正在看的那一行，而不是 `x` 成立的地方 —— 行号对不上代码。
       relView.title = '关系：' + word;
       relState.roots = [mkItem(word, {
-        desc: rel + ':' + (line >= 0 ? line + 1 : '') + '　（变量）',
-        rel: rel, line: line >= 0 ? line + 1 : 1,
+        desc: (decl >= 0 ? rel + ':' + (decl + 1) : '本文内无声明')
+              + '　（变量）',
+        rel: decl >= 0 ? rel : null,
+        line: decl >= 0 ? decl + 1 : 0,
         children: groups,
       })];
       relEmitter.fire();

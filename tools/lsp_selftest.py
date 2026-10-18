@@ -945,6 +945,27 @@ def _doc(c):
     _chk(_cov, "doc/cached-symbol-range-contains-name（%r）"
          % ([(_cs[0]["range"], _cs[0]["selectionRange"])] if _cs else [],))
 
+    # ---- R300：变量也能“转到定义”（跳到首次赋值）---------------------
+    # MATLAB 没有声明语句，`x = ...` 就是它成立的地方。函数查不到时
+    # 退一步找本文首次赋值 —— 否则按 F12 什么都不发生。
+    _vdoc = os.path.join(ROOT, "tests", "sample_doc", "documented.m")
+    _vlines = io.open(_vdoc, encoding="utf-8").read().splitlines()
+    _vpos = None
+    for _i, _ln in enumerate(_vlines):
+        if _ln.strip().startswith("y = ") and _i > 6:
+            _vpos = {"line": _i, "character": 0}
+            break
+    if _vpos is not None:
+        _saved2 = (_L2._STATE.get("root"), _L2._STATE.get("result"))
+        _L2._STATE["root"] = os.path.join(ROOT, "tests", "sample_doc")
+        _L2._STATE["result"] = type("R", (), {"files": []})()
+        try:
+            _dres = _L2._definition(_uri(_vdoc), _vpos)
+        finally:
+            _L2._STATE["root"], _L2._STATE["result"] = _saved2
+        _chk(bool(_dres) and _dres[0]["range"]["start"]["line"] <= _vpos["line"],
+             "doc/variable-definition-fallback（%r）" % (_dres[:1],))
+
     # ---- R286：`@类目录` 里的方法文件也要出大纲 -------------------------
     # 用户报的现象就是 `@sdpvar/round.m` 大纲为空。这条在临时目录里自建
     # 语料（不污染 tests/），路径含 `@`，并且 URI 走百分号编码，
