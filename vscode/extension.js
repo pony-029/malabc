@@ -308,13 +308,22 @@ function activate(context) {
       const sites = (d.call_sites || []).filter((s) => s && s.line > 0);
       const shown = sites.slice(0, MAX_CALLS);
       const rest = sites.length - shown.length;
-      const callHtml = sites.length
-        ? '<span class="calls">调用自 ' +
-          shown.map((s) => link(s.rel, s.line, s.rel + ':' + s.line))
-            .join(' ') +
-          (rest > 0 ? ' … 另 ' + rest + ' 处' : '') + '</span>'
-        : '<span class="calls entry">入口（无调用者）</span>';
-      return '<div class="node">' + prefix + esc(d.name) + sigText(d) +
+      // **入口以服务端为准**（R261）。以前这里靠 `sites.length === 0` 推断，
+      // 而 `sites` 滤掉了行号 0 的条目 —— 由 `edges` 补进来、没有行号的
+      // 调用者会被当成“不存在”，**一个有调用者的函数就被标成入口**。
+      const isEntry = (typeof d.is_entry === 'boolean') ? d.is_entry
+                                                        : !sites.length;
+      const callHtml = isEntry
+        ? '<span class="badge">入口</span>' +
+          '<span class="calls entry">无调用者</span>'
+        : (sites.length
+          ? '<span class="calls">调用自 ' +
+            shown.map((s) => link(s.rel, s.line, s.rel + ':' + s.line))
+              .join(' ') +
+            (rest > 0 ? ' … 另 ' + rest + ' 处' : '') + '</span>'
+          : '<span class="calls">有调用者（行号未记录）</span>');
+      return '<div class="node' + (isEntry ? ' entry' : '') + '">' +
+        prefix + esc(d.name) + sigText(d) +
         '<span class="where">' + link(d.rel, d.line, d.rel + ':' + d.line) +
         '</span>' + callHtml + '</div>';
     };
@@ -341,6 +350,7 @@ function activate(context) {
     // 只有在子节点显示签名、根节点不显示，会让人以为根是另一类东西。
     rows.push('<div class="node root">' + esc(name) +
               sigText({ params: info.params, params_total: info.params_total }) +
+              (info.is_entry ? '<span class="badge">源头</span>' : '') +
               '</div>');
 
     const direct = info.direct || [];
@@ -471,6 +481,10 @@ function activate(context) {
           '.calls a{color:var(--vscode-textLink-foreground);text-decoration:none;}',
           '.calls.entry{opacity:.35;font-style:italic;}',
           '.params{opacity:.6;font-size:12px;}',
+          '.badge{margin-left:8px;font-size:10px;padding:1px 6px;',
+          'border-radius:9px;background:var(--vscode-badge-background);',
+          'color:var(--vscode-badge-foreground);vertical-align:1px;}',
+          '.node.entry{font-weight:600;}',
           '.section{margin:16px 0 6px;opacity:.75;font-size:12px;',
           'border-bottom:1px solid var(--vscode-editorWidget-border);',
           'padding-bottom:4px;}',

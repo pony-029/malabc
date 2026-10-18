@@ -1327,6 +1327,12 @@ def _impact(name, depth=30, down_depth=3):
                     "unresolved_names_total", 0),
                 "params": (meta.get(key) or {}).get("params", []),
                 "params_total": (meta.get(key) or {}).get("params_total", 0),
+                # **入口是服务端的事实，不是客户端的猜测**（R261）。
+                # 客户端原来靠「`call_sites` 为空」推断入口，而
+                # `call_sites` 会过滤掉行号 0 的条目 —— 那些由 `edges`
+                # 补进来、没有行号的调用者会被当成“不存在”，
+                # 于是一个**有调用者**的函数会被标成入口。
+                "is_entry": not rev.get(key),
                 "call_sites": [sites[k] for k in sorted(sites)]}
         return info
 
@@ -1410,6 +1416,8 @@ def _impact(name, depth=30, down_depth=3):
             "unresolved_names_total", 0),
         "params": (meta.get(start_keys[0]) or {}).get("params", []),
         "params_total": (meta.get(start_keys[0]) or {}).get("params_total", 0),
+        # 目标自己是不是入口（没人调它）—— 关系图用来把根节点标成“源头”。
+        "is_entry": not rev.get(start_keys[0]),
     }
 
 

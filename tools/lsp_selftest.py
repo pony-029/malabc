@@ -367,6 +367,16 @@ def _impact(c):
             o = others[0]
             _chk(o.get("name") == "switch_case" and o.get("level") == 2,
                  "impact/b-others-level2（%r）" % (o,))
+            # R261：入口是**服务端的事实**，不是客户端从「调用点列表为空」猜的。
+            # 客户端那条推断会漏：`call_sites` 滤掉行号 0 的条目，而由 `edges`
+            # 补进来、没有行号的调用者会被当成“不存在” → **有调用者的函数
+            # 被标成入口**。
+            _chk(o.get("is_entry") is True,
+                 "impact/entry-flag-true-for-real-entry（%r）"
+                 % (o.get("is_entry"),))
+            _chk(direct[0].get("is_entry") is False,
+                 "impact/entry-flag-false-for-called（%r）"
+                 % (direct[0].get("is_entry"),))
 
     info2 = call("switch_case")
     _chk(isinstance(info2, dict) and info2.get("total") == 0,
