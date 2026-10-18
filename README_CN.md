@@ -720,6 +720,7 @@ python tools/check_all.py        # 跑完 tools/check_*.py 全部护栏 + 各自
 | `check_py_js_frontend_shapes.py` | `G1–G7 (py/js)` — Python / JS 前端丢掉一个已经处理过一次的定义形态。独立装置（`_r66/probe_r66a_forms.py`）实测：Python 的 **8** 个真实形态里**漏 4 个**（`def one(): return 1`、`async def`、`-> bool` 返回注解、参数表跨行），JS 的 **10** 个里**漏 8 个**（`async function`、`export function`、`export default function`、`function*`、三种箭头）—— 同一台装置量 **C** 前端是 **0 漏**。第二台装置（`_r66/probe_r66b_domain.py`）量出形参是用 `\(([^)]*)\)` 取的，而它**不能含 `)`** —— 默认值里的嵌套括号（`x=(1, 2)` / `b = g(1, 2)`）会把参数截断、严重时整个定义都认不出来。R66 已把两处修掉（同装置复量：Python 0/8、JS 1/10、值域 0/8、假阳 0/7；剩的那 1 个是**有意披露**的对象方法简写）。本门用**公开 CLI** 跑四个合成夹具，钉住七条互不重叠的判据：Python 四形态（G1）、JS 七形态（G2）、形参值域含注解剥离与嵌套括号（G3）、不假阳（G4）、已披露的「不识别对象方法简写 / 匿名 default」边界**及其正向半边**（G5）、声明起点行号（G6）、不**过度**识别（三引号字符串 / 块注释 / 模板串里独占一行的定义必须不被认出，G7）。夹具完备性（`R2`）与棘轮（`R1`）挡住「判据悄悄缩水」 |
 | `check_flag_coverage.py` | `FC1–FC3` — `tools/sweep_cli.py` 的每个开关都必须在某处被 `args.*` 读到。今晚同一个错犯了两次：`--probe` 是 R180 加的、R184 才补判据；`--probe-cli` 是 R186 加的、R187 才补。**「功能加了但没验证」在代码里不留任何痕迹**——唯一的发现办法是数引用。 |
 | `check_tool_discoverability.py` | `TD1–TD3` — `tools/` 下每个非护栏脚本都必须在**两侧** README 里被提到。护栏有两个对手方（树 + 这张表），而普通工具**一个都没有**——`sweep_cli.py` 因此长到 118 条判据却从未进 README，`lsp_selftest.py` 因此红了六轮没人知道。 |
+| `check_tour.py` | `TR1–TR3` —— 导览页**静静变差**的三种方式：某一帧引用了图上已不存在的模块（那一步什么都不高亮，页面照样打开）；连线端点留在自己框内（线压在标题上，看起来就是「箭头指过了头」）；页面残留模板转义 `%%` 或 CRLF。三者都不报错，而且破掉的那一帧和正常的一帧，截图上看不出区别 |
 | `check_js_balance.py` | `JS1–JS4` —— `vscode/` 下两个 JS 文件必须括号配平、字符串与正则字面量闭合，且不能是空文件；`package.json` 必须可解析、`main` 指向的文件真实存在、声明了 `engines.vscode` 与 `matlab` language（**清单坏了比 JS 坏了更常见**，而 VSCode 连报错都不给）。**这台机器没有任何 JS 引擎**（`node` 不存在，`Code.exe` 是 Electron 外壳，不能当 `node --check`），所以 `extension.js` 写错了没有任何东西会报 —— 而它的失败方式是最糟的：**扩展静默不激活**，用户看到「点了没反应」，日志里连 `activate()` 都不会出现。这是启发式不是解析器：抓得到漏一个 `}` 或引号，抓不到 `const x = ;`。它自己的第一版因为不认正则字面量（`/[&<>"]/g`）报了 300 条假错误，那个用例现在就在自证里 |
 | `check_matlab_grammar.py` | `GR1–GR6` —— TextMate 语法**不许把转置当字符串**：`X'` / `(A*B)'` / `s.f'` / `3'` 都不开字符串，而 `a = 'x'`、`{'a'}` 仍要开。`%{` 只有独占一行才是块注释。所有正则必须能在 `re` 下编译、`support.function` 不许回来、真实语料里**不许出现跨行单引号字符串**（MATLAB 字符串不跨行，跨行必是误判）。YALMIP 实测：旧规则 5 行误判（含 `norm.m:128`），新规则 0 行。 |
 | `check_lsp_doc_parity.py` | `LSP1–LSP5` — `vscode/README.md` 的能力表与 `matlabc_lsp.py` 真正实现的 `textDocument/*` 方法必须**双向一致**：实现了没写、写了没实现，两个方向都红。`check_readme_parity` 只比两份 README 彼此，**两边一起错它照样绿**。 |
@@ -856,6 +857,7 @@ python tools/check_help_contract.py --list-prefixes    # 前缀 -> 主人；加�
 | `build_vsix.py` | 直接产出离线 `.vsix` 到 `releases/vsix/`——版本号读自扩展清单，文件名与实际安装的版本永远一致 |
 | `make_tour_gif.py` | 逐帧重绘 `releases/demo/matlabc-tour.gif`（四个场景：大纲、转到定义、关系面板、热点排行）——不是录屏，改文案改配色都只改脚本 |
 | `make_tour_html.py` | 从 archify 格式的 `matlabc-tour.architecture.json` 渲染出 `releases/demo/matlabc-tour.html`（8 步可播放导览）——模块图与讲解词各自只有一处，不会说两套话 |
+| `check_tour.py` | 守这页：每一帧引用的模块必须存在、连线端点必须在框外（否则箭头压在文字上）、文件必须是 LF 且无模板残留 |
 | `make_release.py` | 从三处事实重建 `releases/README.md` 的版本表：版本号读自扩展清单、摘要读自更新日志、大小与日期读自 `.vsix` 文件。默认只列真的有包的版本，`--all` 才全列 |
 | `json_diff.py` | 忽略指定键后比两份 `--json` / `--xml` 是否完全一致——本仓每一句「IDENTICAL」都是用它得出的 |
 | `tree_diff.py` | 比两个目录的文件集合与内容（可按正则忽略行） |

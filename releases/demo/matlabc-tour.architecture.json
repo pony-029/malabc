@@ -12,57 +12,99 @@
       "type": "external",
       "label": "VS Code",
       "sublabel": "打开工程即可",
-      "pos": [40, 300],
-      "size": [130, 60]
+      "pos": [
+        40,
+        300
+      ],
+      "size": [
+        130,
+        60
+      ]
     },
     {
       "id": "ext",
       "type": "frontend",
       "label": "扩展界面",
-      "sublabel": "侧栏 · CodeLens · 命令",
-      "pos": [210, 300],
-      "size": [160, 66],
+      "sublabel": "侧栏 · CodeLens · 8 个命令",
+      "pos": [
+        210,
+        300
+      ],
+      "size": [
+        160,
+        66
+      ],
       "tag": "人在这里操作"
     },
     {
       "id": "outline",
       "type": "frontend",
       "label": "大纲",
-      "sublabel": "Ctrl+Shift+O",
-      "pos": [210, 140],
-      "size": [140, 56]
+      "sublabel": "Ctrl+Shift+O · 函数列表",
+      "pos": [
+        210,
+        140
+      ],
+      "size": [
+        140,
+        56
+      ]
     },
     {
       "id": "codelens",
       "type": "frontend",
       "label": "CodeLens",
-      "sublabel": "函数上方显示调用数",
-      "pos": [380, 140],
-      "size": [140, 56]
+      "sublabel": "函数上方 · N 个调用者",
+      "pos": [
+        380,
+        140
+      ],
+      "size": [
+        140,
+        56
+      ]
     },
     {
       "id": "sidebar",
       "type": "frontend",
       "label": "关系面板",
-      "sublabel": "上游 / 下游 / 字段读写",
-      "pos": [550, 140],
-      "size": [160, 56]
+      "sublabel": "上游 · 下游 · 字段读写",
+      "pos": [
+        550,
+        140
+      ],
+      "size": [
+        160,
+        56
+      ]
     },
     {
       "id": "lsp",
       "type": "backend",
       "label": "分析服务",
-      "sublabel": "按需查询，不预跑全部",
-      "pos": [420, 300],
-      "size": [150, 66]
+      "sublabel": "大纲 / F12 / 引用 / 影响面",
+      "pos": [
+        420,
+        300
+      ],
+      "size": [
+        150,
+        66
+      ]
     },
     {
       "id": "analyzer",
       "type": "backend",
       "label": "解析内核",
-      "sublabel": "零依赖 · 纯标准库",
-      "pos": [640, 300],
-      "size": [150, 66],
+      "sublabel": "零依赖 · 解析内核",
+      "pos": [
+        640,
+        300
+      ],
+      "size": [
+        150,
+        66
+      ],
       "tag": "离线"
     },
     {
@@ -70,32 +112,56 @@
       "type": "messagebus",
       "label": "磁盘缓存",
       "sublabel": "工程没变就秒开",
-      "pos": [850, 140],
-      "size": [150, 56]
+      "pos": [
+        850,
+        140
+      ],
+      "size": [
+        150,
+        56
+      ]
     },
     {
       "id": "cimpl",
       "type": "cloud",
       "label": "C 源 / mex / DLL",
-      "sublabel": "解析不到的调用落到这",
-      "pos": [860, 300],
-      "size": [160, 66]
+      "sublabel": "C 源 · mex · 导出表",
+      "pos": [
+        860,
+        300
+      ],
+      "size": [
+        160,
+        66
+      ]
     },
     {
       "id": "html",
       "type": "cloud",
       "label": "HTML 报告",
-      "sublabel": "命令面板一键生成",
-      "pos": [210, 460],
-      "size": [160, 56]
+      "sublabel": ".matlabc/report.html",
+      "pos": [
+        210,
+        460
+      ],
+      "size": [
+        160,
+        56
+      ]
     },
     {
       "id": "mcp",
       "type": "security",
       "label": "MCP 接口",
-      "sublabel": "15 个工具（含 3 个写操作）",
-      "pos": [470, 460],
-      "size": [160, 56],
+      "sublabel": "19 个工具 · 含写操作",
+      "pos": [
+        470,
+        460
+      ],
+      "size": [
+        160,
+        56
+      ],
       "tag": "给 AI 用"
     },
     {
@@ -103,25 +169,42 @@
       "type": "external",
       "label": "AI 客户端",
       "sublabel": "Claude / Cursor / Continue",
-      "pos": [700, 460],
-      "size": [160, 56]
+      "pos": [
+        700,
+        460
+      ],
+      "size": [
+        160,
+        56
+      ]
     }
   ],
   "boundaries": [
     {
       "kind": "region",
       "label": "编辑器内（给人看）",
-      "wraps": ["outline", "codelens", "sidebar"]
+      "wraps": [
+        "outline",
+        "codelens",
+        "sidebar"
+      ]
     },
     {
       "kind": "region",
       "label": "分析与缓存（零依赖、可离线）",
-      "wraps": ["lsp", "analyzer", "cache"]
+      "wraps": [
+        "lsp",
+        "analyzer",
+        "cache"
+      ]
     },
     {
       "kind": "region",
       "label": "给 AI 的入口",
-      "wraps": ["mcp", "agent"]
+      "wraps": [
+        "mcp",
+        "agent"
+      ]
     }
   ],
   "connections": [

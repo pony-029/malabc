@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""把 archify 的 architecture JSON 渲染成一个**可逐帧播放**的单文件 HTML。
+"""把 archify 的 architecture JSON 渲染成**可逐帧播放**的单文件 HTML。
 
 为什么不用 archify 的 render
 ===========================
@@ -13,8 +13,7 @@
 能看到链接被移进 `$RECYCLE.BIN`），**计数永远是 2**，校验永远不过。
 
 这是环境差异，不是 JSON 写错 —— 所以 JSON 保留为唯一事实来源，
-本脚本只负责把它渲染成能直接看的页面。换一台不回收删除的机器，
-`node archify/bin/archify.mjs render architecture <json> <html>` 能直接出图。
+本脚本只负责把它渲染成能直接看的页面。
 
 用法：
     python tools/make_tour_html.py
@@ -29,58 +28,95 @@ REPO = os.path.dirname(HERE)
 SRC = os.path.join(REPO, "releases", "demo", "matlabc-tour.architecture.json")
 OUT = os.path.join(REPO, "releases", "demo", "matlabc-tour.html")
 
-#: 分帧脚本：每一帧高亮一组模块，讲一件事。
-#: 这里写「人真正会做的动作」，不写实现细节。
+#: 分帧脚本：每帧高亮一组模块，讲一件事。
+#: `features` 写**具体到能照着做**的东西（快捷键、命令名、参数），
+#: 否则读者只知道「有关系面板」，不知道要按什么。
 STEPS = [
     {
         "title": "① 打开工程",
         "desc": "装好扩展、打开任意 MATLAB 工程。分析在后台进行，"
-                "期间大纲已经能用（它只读当前文件）。",
+                "这段时间大纲已经能用 —— 它只读当前文件，不排队。",
         "nodes": ["vscode", "ext", "lsp", "analyzer"],
         "edges": [["vscode", "ext"], ["ext", "lsp"], ["lsp", "analyzer"]],
+        "features": [
+            "左侧资源管理器下方出现「关系」面板",
+            "状态栏显示分析进度，期间不会卡住编辑器",
+            "首次打开大工程约 1 分钟，之后走缓存",
+        ],
     },
     {
         "title": "② 看一个文件里有什么",
-        "desc": "Ctrl+Shift+O 列出本文件所有函数，选中即跳转。"
-                "不需要等全库分析完成。",
+        "desc": "不用等全库分析完成。列的是**本文件**定义的函数，"
+                "点一下跳到它所在的行。",
         "nodes": ["lsp", "outline"],
         "edges": [["lsp", "outline"]],
+        "features": [
+            "Ctrl+Shift+O —— 列出本文件所有函数",
+            "↑↓ 选择，回车跳转",
+            "名字前面不带任何符号，就是函数名本身",
+        ],
     },
     {
         "title": "③ 跳到定义",
-        "desc": "光标停在函数名上按 F12：函数、结构体字段、global 声明都能跳，"
-                "跨文件也一样。字段会落到**首次赋值**那一行。",
+        "desc": "函数、结构体字段、global 声明都能跳，跨文件也一样。"
+                "字段会落到**首次赋值**那一行。",
         "nodes": ["lsp", "codelens"],
         "edges": [["lsp", "codelens"]],
+        "features": [
+            "F12 —— 跳到定义（函数 / 字段 / global）",
+            "Alt+F12 —— 就地预览，不离开当前文件",
+            "函数名上方显示「N 个调用者」，点开就是关系图",
+        ],
     },
     {
-        "title": "④ 关系面板：谁调用它 / 它调用谁",
-        "desc": "光标停住，左侧「关系」面板自动刷新：上游按层展开到入口，"
-                "下游展开三层；点任意一行就跳到**调用发生的那一行**。"
-                "变量显示声明与出现位置，字段显示读写位置。",
+        "title": "④ 关系面板：谁调用它、它调用谁",
+        "desc": "光标停住就自动刷新，不用按任何键。上游按层展开到入口，"
+                "下游展开三层；点任意一行跳到**调用发生的那一行**。",
         "nodes": ["ext", "sidebar"],
         "edges": [["ext", "sidebar"]],
+        "features": [
+            "函数：← 调用者（按层） / → 被调用",
+            "变量：声明（首次赋值） + 本文出现位置",
+            "字段：写入 / 读取分开列，并标注挂在几个基名上",
+            "跨函数同名变量会分组，标注「同名但不同变量」",
+        ],
     },
     {
         "title": "⑤ 生成 HTML 报告",
-        "desc": "命令面板 →「生成 HTML 分析报告」，写到 .matlabc/report.html "
-                "并自动打开。热点、耦合、数据流、结构体冲突都在这份报告里。",
+        "desc": "要通读整个工程、或者转发给别人时用它。生成完自动打开。",
         "nodes": ["ext", "html"],
         "edges": [["ext", "html"]],
+        "features": [
+            "命令面板 → matlabc: 生成 HTML 分析报告",
+            "输出到 .matlabc/report.html（不污染源码目录）",
+            "含热点排行、跨文件耦合、结构体字段冲突",
+        ],
     },
     {
         "title": "⑥ 让 AI 来问（MCP）",
-        "desc": "命令面板 →「生成 MCP 配置」写入客户端配置。之后 AI 能直接问"
-                "「改这个函数会影响谁」「这个字段谁在写」，甚至按三步安全地改代码。",
+        "desc": "把同一套分析结果以标准协议交给 AI 客户端。"
+                "它问一句、你答一句，不用你手动翻代码。",
         "nodes": ["agent", "mcp", "lsp"],
         "edges": [["agent", "mcp"], ["mcp", "lsp"]],
+        "features": [
+            "命令面板 → matlabc: 生成 MCP 配置（写入 .vscode/mcp.json）",
+            "19 个工具：影响面、字段溯源、热点、体检、搜索…",
+            "改代码分三步：propose 看 diff → apply 落盘 → undo 撤销",
+            "不确定有什么能力时，它会先调用 matlabc_help",
+        ],
     },
     {
         "title": "⑦ 链条断在 C 层时",
-        "desc": "MATLAB 里解析不到的调用，如果工程内有 C 源、mex 或 DLL，"
-                "关系面板会显示它落到哪一行；改 C 也能反查影响哪些 MATLAB 函数。",
+        "desc": "mex / calllib 让调用链在 MATLAB 边界断掉。"
+                "工程内有 C 源、mex 或 DLL 时，关系面板会指出它落到哪。",
         "nodes": ["analyzer", "cimpl"],
         "edges": [["analyzer", "cimpl"]],
+        "features": [
+            "C 源：给出定义所在文件与行号，并能展开三层内部调用",
+            "mex：入口名就在文件名上（foo.mexw64 → foo）",
+            "DLL：核对 calllib('lib','fn') 的 fn 是否真的被导出",
+            "设置 matlabc.crossLanguage 可整体关掉（省 IO）",
+        ],
     },
     {
         "title": "⑧ 第二次打开为什么很快",
@@ -88,6 +124,11 @@ STEPS = [
                 "编辑器与 AI 共用同一份结果，不各算一遍。",
         "nodes": ["lsp", "cache"],
         "edges": [["lsp", "cache"]],
+        "features": [
+            "缓存文件在工程根下，工程一改就自动失效重算",
+            "不会拿旧结果冒充新结果（有判据守着）",
+            "AI 侧复用编辑器算过的结果，不再重跑一遍",
+        ],
     },
 ]
 
@@ -104,6 +145,24 @@ TYPE_COLOR = {
 def esc(s):
     return (str(s or "").replace("&", "&amp;").replace("<", "&lt;")
             .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def clip(cx, cy, w, h, tx, ty, gap=3.0):
+    """把中心连线上的一点裁到矩形边框（外扩 gap），返回 border 上的点。
+
+    不裁的话线会**穿过方框、压住文字** —— 屏幕上看起来就是「箭头指过了头」。
+    """
+    dx, dy = tx - cx, ty - cy
+    if dx == 0 and dy == 0:
+        return cx, cy
+    hw, hh = w / 2.0 + gap, h / 2.0 + gap
+    scales = []
+    if dx:
+        scales.append(hw / abs(dx))
+    if dy:
+        scales.append(hh / abs(dy))
+    k = min(scales) if scales else 1.0
+    return cx + dx * k, cy + dy * k
 
 
 def build_html(data):
@@ -136,14 +195,17 @@ def build_html(data):
         a, b = by_id.get(e["from"]), by_id.get(e["to"])
         if not a or not b:
             continue
-        ax = a["pos"][0] + a["size"][0] / 2.0
-        ay = a["pos"][1] + a["size"][1] / 2.0
-        bx = b["pos"][0] + b["size"][0] / 2.0
-        by = b["pos"][1] + b["size"][1] / 2.0
+        acx = a["pos"][0] + a["size"][0] / 2.0
+        acy = a["pos"][1] + a["size"][1] / 2.0
+        bcx = b["pos"][0] + b["size"][0] / 2.0
+        bcy = b["pos"][1] + b["size"][1] / 2.0
+        # 两端都裁到边框：线不再穿过方框
+        ax, ay = clip(acx, acy, a["size"][0], a["size"][1], bcx, bcy)
+        bx, by = clip(bcx, bcy, b["size"][0], b["size"][1], acx, acy)
         dash = ' stroke-dasharray="6 5"' if e.get("variant") == "dashed" else ""
         edge_svg.append(
-            '<line class="edge" data-from="%s" data-to="%s" x1="%.0f" y1="%.0f" '
-            'x2="%.0f" y2="%.0f"%s marker-end="url(#ar)"/>'
+            '<line class="edge" data-from="%s" data-to="%s" x1="%.1f" y1="%.1f" '
+            'x2="%.1f" y2="%.1f"%s marker-end="url(#ar)"/>'
             % (e["from"], e["to"], ax, ay, bx, by, dash))
 
     cards_html = []
@@ -175,13 +237,16 @@ svg{width:100%%;height:100%%}
 .edge{stroke:#3a4050;stroke-width:1.4;transition:stroke .35s, stroke-width .35s}
 .edge.dim{stroke:#242833}
 .edge.on{stroke:var(--acc);stroke-width:2.4}
-#side{width:400px;background:var(--panel);border-left:1px solid #262b35;
- padding:20px 22px;display:flex;flex-direction:column;gap:14px;overflow:auto}
+#side{width:430px;background:var(--panel);border-left:1px solid #262b35;
+ padding:20px 22px;display:flex;flex-direction:column;gap:13px;overflow:auto}
 h1{font-size:16px;margin:0}
 h1 span{display:block;font-size:11.5px;color:var(--dim);font-weight:400;margin-top:6px}
-#step{background:#22262e;border-radius:10px;padding:14px 16px;min-height:150px}
+#step{background:#22262e;border-radius:10px;padding:14px 16px;min-height:120px}
 #step h3{margin:0 0 8px;font-size:14px;color:#9fc0ff}
 #step p{margin:0;font-size:12.5px;line-height:1.75;color:#c8cdd8}
+#feat{margin:10px 0 0;padding-left:16px;color:#a9b6cc;font-size:12px;
+ line-height:1.85;border-top:1px dashed #333a47;padding-top:9px}
+#feat li::marker{color:var(--acc)}
 #bar{display:flex;gap:8px;align-items:center}
 button{background:#2a2f3a;color:var(--fg);border:1px solid #353b47;
  border-radius:8px;padding:7px 12px;font-size:12.5px;cursor:pointer}
@@ -205,7 +270,7 @@ button:hover{background:#333a47}
 </div>
 <div id="side">
 <h1>%(title)s<span>%(subtitle)s</span></h1>
-<div id="step"><h3></h3><p></p></div>
+<div id="step"><h3></h3><p></p><ul id="feat"></ul></div>
 <div id="bar">
   <button id="prev">← 上一步</button>
   <button id="next">下一步 →</button>
@@ -223,7 +288,10 @@ const dots = [...document.querySelectorAll('#dots i')];
 function render(){
   const s = STEPS[i];
   document.querySelector('#step h3').textContent = s.title;
-  document.querySelector('#step p').innerHTML = s.desc;
+  document.querySelector('#step p').textContent = s.desc;
+  const ul = document.querySelector('#feat');
+  ul.innerHTML = (s.features || []).map(f => '<li>' + f + '</li>').join('');
+  ul.style.display = (s.features || []).length ? '' : 'none';
   nodes.forEach(n => {
     const on = s.nodes.includes(n.dataset.id);
     n.classList.toggle('on', on);
@@ -238,7 +306,7 @@ function render(){
 }
 function go(n){ i = (n + STEPS.length) %% STEPS.length; render(); }
 function tick(){ if (playing) go(i + 1); }
-function restart(){ clearInterval(timer); timer = setInterval(tick, 4200); }
+function restart(){ clearInterval(timer); timer = setInterval(tick, 6000); }
 document.getElementById('next').onclick = () => { go(i + 1); restart(); };
 document.getElementById('prev').onclick = () => { go(i - 1); restart(); };
 document.getElementById('play').onclick = (ev) => {
