@@ -1695,6 +1695,40 @@ def _mcp(c=None):
         finally:
             shutil.rmtree(_pc, ignore_errors=True)
 
+        # R337：MCP 首次加载复用 LSP 已写好的磁盘缓存。
+        # 编辑器分析过一次之后，同一份结果就在缓存里；再跑一遍结构层
+        # （YALMIP 约 12 秒）纯属重复劳动。
+        _mc = tempfile.mkdtemp(prefix="lsp_mc_")
+        try:
+            for _n in ("mca.m", "mcb.m"):
+                with io.open(os.path.join(_mc, _n), "w",
+                             encoding="utf-8", newline="") as _fh:
+                    _fh.write(u"function %s()\nend\n" % _n[:-2])
+            _mres = _an(_mc, no_checks=True)
+            _L2._save_cache(_mc, {"heuristics": []}, _mres)
+            _sv8 = (_L2._STATE.get("root"), _L2._STATE.get("result"),
+                    _L2._STATE.get("payload"))
+            _L2._STATE["root"] = _mc
+            _L2._STATE["result"] = None
+            _L2._STATE["payload"] = None
+            _t0 = time.time()
+            try:
+                _mok, _mwhy = _MCP._ensure_loaded()
+                _mdt = time.time() - _t0
+                _mfiles = len(getattr(_L2._STATE.get("result"), "files", []))
+                _mpayload = _L2._STATE.get("payload")
+            finally:
+                (_L2._STATE["root"], _L2._STATE["result"],
+                 _L2._STATE["payload"]) = _sv8
+            _chk(_mok and _mfiles == 2, "mcp/loads-from-disk-cache（%r）"
+                 % (_mwhy,))
+            # 关键：不能拿结构层的空 payload 冒充「没有诊断」。
+            _chk(_mpayload is None,
+                 "mcp/cache-does-not-fake-payload（%r）" % (_mpayload,))
+            _chk(_mdt < 1.0, "mcp/cache-load-is-fast（%.3fs）" % _mdt)
+        finally:
+            shutil.rmtree(_mc, ignore_errors=True)
+
         r7 = rpc({"jsonrpc": "2.0", "id": 7, "method": "tools/call",
                   "params": {"name": "matlabc_stats", "arguments": {}}})
         txt7 = (((r7 or {}).get("result") or {}).get("content")

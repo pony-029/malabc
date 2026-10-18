@@ -104,6 +104,21 @@ def _ensure_loaded():
         return False, "未指定工程目录（启动时用 --root）"
     if L._STATE.get("result") is not None:
         return True, ""
+
+    # **先复用 LSP 已经写好的磁盘缓存**（R337）。编辑器里分析过一次之后，
+    # 同一份结果就在 `.matlabc_lsp_cache.json` 里；MCP 再跑一遍 12 秒的
+    # 结构层纯属重复劳动。缓存自带 stamp 校验，过期会自动落回重算。
+    # 只取 `result`，不取 payload —— 诊断有它自己的 stamp 缓存（R336），
+    # 拿结构层的空 payload 当"没有诊断"是错的。
+    try:
+        hit = L._load_cache(root)
+    except Exception:
+        hit = None
+    if hit is not None:
+        L._STATE["result"] = hit[0]
+        L._STATE["field_index"] = None
+        return True, ""
+
     try:
         from analyzer.api import analyze
     except Exception as exc:                 # pragma: no cover
