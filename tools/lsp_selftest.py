@@ -386,6 +386,45 @@ def _impact(c):
     _chk(call("no_such_function_xyz") is None,
          "impact/missing-returns-null（不是空对象）")
 
+    # ---- R262：把「edges 的每条边都能被 call_sites 覆盖」变成判据 ------
+    # R261 修的是「有边但没有行号 ⇒ 被误标入口」。改完去查它到底可不可达：
+    # 三个语料共 19 条边，**未覆盖 0 条** —— 也就是那个状态目前**不可达**，
+    # 我上一轮写的「按构造可能」其实还高估了它。
+    #
+    # 与其留一句“防御性修正”，不如把这个不变量**测出来**：
+    # 哪天这条红了，就说明 `_impact` 里那条补 `line=0` 的兜底真被用上了，
+    # 那时才需要造一个能复现的语料 —— 而不是继续靠推断。
+    try:
+        sys.path.insert(0, ROOT)
+        from analyzer.api import analyze as _analyze
+        _res = _analyze(CORPUS, no_checks=True)
+        _covered = set()
+        for _mf in (_res.files or []):
+            for _f in (getattr(_mf, "functions", None) or []):
+                _ck = "%s:%s" % (getattr(_mf, "rel", ""),
+                                 getattr(_f, "name", ""))
+                for _s in (getattr(_f, "call_sites", None) or []):
+                    _t = _s[3]
+                    _covered.add((_ck, "%s:%s" % (
+                        getattr(getattr(_t, "mfile", None), "rel", ""),
+                        getattr(_t, "name", ""))))
+        _edges = []
+        for _e in (getattr(_res, "edges", None) or []):
+            if isinstance(_e, dict):
+                _c, _d = _e.get("caller"), _e.get("callee")
+            else:
+                _c, _d = _e[0], _e[1]
+            _edges.append((_c, _d))
+        # **防空集**：`edges` 为空时「未覆盖」必然为空，判据会永远绿。
+        # 这类“空集合让断言失去意义”的坑，本仓已经踩过（R95 的产物核对）。
+        _chk(len(_edges) > 0,
+             "impact/edge-coverage-has-edges（实际 %d）" % (len(_edges),))
+        _unc = [e for e in _edges if e not in _covered]
+        _chk(not _unc,
+             "impact/all-edges-carry-a-line（未覆盖 %r）" % (_unc[:3],))
+    except Exception as _exc:            # 拿不到分析结果 → 缺输入，红
+        _chk(False, "impact/edge-coverage-probe-failed（%r）" % (_exc,))
+
     # ---- 下游（R233）--------------------------------------------------
     # 关系图原来只画上游，而 CodeLens 上写着 `↓N 被调用` —— 那个数字
     # 点开什么都没有。这里钉住「下游也要给，且与 `--tree` 同集合」。
