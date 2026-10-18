@@ -805,23 +805,24 @@ function activate(context) {
     vscode.languages.registerDocumentSymbolProvider({ language: 'matlab' }, {
       provideDocumentSymbols: async (doc) => {
         try {
-          // **有界重试**（R287）。大纲只请求一次，空过一次就再也不刷新；
-          // 而它很可能在 `initialize` 之前就发出 —— 那时服务端还没有 root，
-          // 只能回空。空结果不算数，等一会儿再问。
+          // **只问一次，立刻回来**（R292）。
+          //
+          // R287 曾经在这里做 6 次带 sleep 的重试（累计最长 5.25 秒）。
+          // 编辑器对 provider 是有超时的：**provider 迟迟不 resolve，
+          // 它就把这次结果当成空**，之后再也不会重新请求 ——
+          // 也就是说「重试」本身把它拖成了永久空白。
+          // 实测（C:\Temp\yalmip\@sdpvar\toeplitz.m，真实子进程）：
+          // 服务端毫秒级返回 1 个符号，根本不需要等。
           let raw = [];
-          for (let i = 0; i < 6; i += 1) {
+          try {
             if (client) {
-              try {
-                const rr = await client.request('textDocument/documentSymbol', {
-                  textDocument: { uri: doc.uri.toString() },
-                });
-                raw = (rr && rr.result) || [];
-              } catch (e) {
-                log('大纲请求失败（第 ' + (i + 1) + ' 次）：' + (e && e.message));
-              }
+              const rr = await client.request('textDocument/documentSymbol', {
+                textDocument: { uri: doc.uri.toString() },
+              });
+              raw = (rr && rr.result) || [];
             }
-            if (raw.length) break;
-            await new Promise((res) => setTimeout(res, 250 * (i + 1)));
+          } catch (e) {
+            log('大纲请求失败：' + (e && e.message));
           }
           log('大纲 ' + path.basename(doc.uri.fsPath) + ' -> ' + raw.length + ' 个符号');
 
