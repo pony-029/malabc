@@ -981,6 +981,66 @@ def _doc(c):
         _chk(bool(_dres) and _dres[0]["range"]["start"]["line"] <= _vpos["line"],
              "doc/variable-definition-fallback（%r）" % (_dres[:1],))
 
+    # ---- R305：全局变量认 `global` 声明 --------------------------------
+    # MATLAB 里 global 名字的出处是 `global X` 那行，不是某次赋值。
+    # 实测 YALMIP：expandmodel.m 里 LUbounds 的声明在第 9 行，而按 F12
+    # 原来跳到第 45 行的赋值。
+    import shutil
+    import tempfile
+    _gw = tempfile.mkdtemp(prefix="lsp_g_")
+    try:
+        _gp = os.path.join(_gw, "gvar.m")
+        with io.open(_gp, "w", encoding="utf-8", newline="") as _fh:
+            _fh.write(u"function gvar()\n"
+                      u"global GVAR\n"
+                      u"GVAR = 1;\n"
+                      u"disp(GVAR)\n"
+                      u"end\n")
+        _save2 = (_L2._STATE.get("root"), _L2._STATE.get("result"))
+        _L2._STATE["root"] = _gw
+        _L2._STATE["result"] = type("R", (), {"files": []})()
+        try:
+            _gres = _L2._definition(_uri(_gp), {"line": 2, "character": 0})
+        finally:
+            _L2._STATE["root"], _L2._STATE["result"] = _save2
+        _chk(bool(_gres) and _gres[0]["range"]["start"]["line"] == 1,
+             "doc/global-jumps-to-declaration（%r）" % (_gres[:1],))
+    finally:
+        shutil.rmtree(_gw, ignore_errors=True)
+
+    # ---- R305：结构体成员先认基名 --------------------------------------
+    # 写入点带基名，但之前没用：`lb` 在 YALMIP 有 1301 个写入点，
+    # `a.lb` / `b.lb` 混成一池，取排序第一等于随便挑一个。
+    from analyzer.api import analyze as _an
+    _fw = tempfile.mkdtemp(prefix="lsp_f_")
+    try:
+        _fp = os.path.join(_fw, "fld.m")
+        with io.open(_fp, "w", encoding="utf-8", newline="") as _fh:
+            _fh.write(u"function fld()\n"
+                      u"a.lb = 1;\n"
+                      u"b.lb = 2;\n"
+                      u"disp(b.lb)\n"
+                      u"end\n")
+        _save3 = (_L2._STATE.get("root"), _L2._STATE.get("result"),
+                  _L2._STATE.get("field_index"))
+        _L2._STATE["root"] = _fw
+        _L2._STATE["result"] = _an(_fw, no_checks=True)
+        _L2._STATE["field_index"] = None
+        try:
+            _fls = io.open(_fp, encoding="utf-8").read().splitlines()
+            _frow = [i for i, _s in enumerate(_fls) if "disp(b.lb)" in _s][0]
+            _fcol = _fls[_frow].index("lb", _fls[_frow].index(".lb"))
+            _fres = _L2._definition(_uri(_fp),
+                                    {"line": _frow, "character": _fcol})
+        finally:
+            (_L2._STATE["root"], _L2._STATE["result"],
+             _L2._STATE["field_index"]) = _save3
+        # `b.lb = 2;` 在第 3 行（0-based 2）；旧实现会取 `a.lb` 那行。
+        _chk(bool(_fres) and _fres[0]["range"]["start"]["line"] == 2,
+             "doc/field-prefers-same-base（%r）" % (_fres[:1],))
+    finally:
+        shutil.rmtree(_fw, ignore_errors=True)
+
     # ---- R286：`@类目录` 里的方法文件也要出大纲 -------------------------
     # 用户报的现象就是 `@sdpvar/round.m` 大纲为空。这条在临时目录里自建
     # 语料（不污染 tests/），路径含 `@`，并且 URI 走百分号编码，

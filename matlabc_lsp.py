@@ -440,6 +440,37 @@ def _run_json(root, prev=None, changed=None):
     return payload
 
 
+def _base_ident(lines, line0, ch):
+    """`model.lb` 里光标在 `lb` 上 -> 返回 `model`（基名）。
+
+    R305：字段写入点带基名，判断时必须用上 —— 否则同名不同对象的字段
+    会混成一个池子（实测 `lb` 有 1301 个写入点）。
+
+    只取**紧邻的那个点**前面一段；`a.b.c` 取 `b`（`c` 是 b 的字段），
+    与 MATLAB 的 `a.b.c` 语义一致。找不到返回 None。
+
+    字符判定**只认 ASCII**：`isalnum()` 会把中文也当地名（R272 的教训）。
+    """
+    if not (0 <= line0 < len(lines)):
+        return None
+    ln = lines[line0]
+    i = ch - 1
+    if i < 0 or i >= len(ln) or ln[i] != ".":
+        return None
+    j = i - 1
+    while j >= 0:
+        c = ln[j]
+        if c == "_" or ("0" <= c <= "9") or ("a" <= c <= "z") \
+                or ("A" <= c <= "Z"):
+            j -= 1
+        else:
+            break
+    base = ln[j + 1:i]
+    if not base or "0" <= base[0] <= "9":
+        return None
+    return base
+
+
 def _ident_at(lines, line0, char):
     """取 `line0` 行 `char` 位置上的最长标识符（`[A-Za-z0-9_]`）。"""
     if line0 < 0 or line0 >= len(lines):
@@ -581,7 +612,15 @@ def _definition(uri, pos):
         writes = ent.get("writes") or []
         if not writes:
             return []
-        first = sorted(writes, key=lambda r: (r[0], r[2] or 0))[0]
+        # ---- R305：**先认基名** ----------------------------------------
+        # 写入点里带基名（`model.lb` 的 `model`），但之前完全没用：
+        # 实测 `lb` 在 YALMIP 里有 1301 个写入点，`model.lb` / `pRed.lb` /
+        # `s.lb` 全混在一起，取排序第一 = 随便挑一个，等于没回答。
+        # 同一基名的写入点才是「这个对象上的这个字段」。
+        base = _base_ident(lines, line0, ch)
+        same = [w for w in writes if base and len(w) > 3 and w[3] == base]
+        pool = same or writes
+        first = sorted(pool, key=lambda r: (r[0], r[2] or 0))[0]
         rel_f, ln1 = first[0], first[2] or 1
         target = os.path.join(root, rel_f.replace("/", os.sep))
         return [{
@@ -624,6 +663,42 @@ def _definition(uri, pos):
             if getattr(f, "name", None) == name:
                 hits.append((getattr(mf, "rel", "") or "",
                              getattr(f, "line", 1)))
+    # ---- R305：全局变量先认 `global` 声明 ------------------------------
+    # MATLAB 里 global 名字的出处是 `global X` 那一行，而不是它某次赋值。
+    # 之前在 expandmodel.m 里按 F12 会跳到第 45 行的赋值，而声明在第 9 行。
+    # 先本文件、再全库（其他文件也可能声明同名 global）。
+    _gpat = re.compile(r"^\s*global\b[^\n]*\b%s\b" % re.escape(name))
+    for _i, _ln in enumerate(lines):
+        _code = _ln.split("%", 1)[0] if "%" in _ln else _ln
+        if _gpat.match(_code):
+            _col = _code.find(name)
+            return [{
+                "uri": "file:///" + path.replace("\\", "/").lstrip("/"),
+                "range": {"start": {"line": _i, "character": max(0, _col)},
+                          "end": {"line": _i,
+                                  "character": max(0, _col) + len(name)}},
+            }]
+    for _mf in (getattr(result, "files", None) or []):
+        if name not in (getattr(_mf, "globals", None) or []):
+            continue
+        _rel = getattr(_mf, "rel", "") or ""
+        if _rel == rel:                      # 本文件已查过
+            continue
+        _p = os.path.join(root, _rel.replace("/", os.sep))
+        try:
+            _other = io.open(_p, "r", encoding="utf-8",
+                             errors="replace").read().splitlines()
+        except (IOError, OSError):
+            continue
+        for _i, _ln in enumerate(_other):
+            _code = _ln.split("%", 1)[0] if "%" in _ln else _ln
+            if _gpat.match(_code):
+                return [{
+                    "uri": "file:///" + _p.replace("\\", "/").lstrip("/"),
+                    "range": {"start": {"line": _i, "character": 0},
+                              "end": {"line": _i, "character": len(name)}},
+                }]
+
     if not hits:
         # ---- R300：变量 / 局部名的「声明」 ------------------------------
         # MATLAB 没有声明语句，`x = ...` 就是它成立的地方（HTML 报告里
