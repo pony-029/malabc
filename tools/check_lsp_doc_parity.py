@@ -30,6 +30,7 @@
 """
 import argparse
 import io
+import json
 import os
 import re
 import sys
@@ -41,7 +42,7 @@ VREADME = os.path.join(ROOT, "vscode", "README.md")
 EXTJS = os.path.join(ROOT, "vscode", "extension.js")
 
 #: P5 的对手方：本门在 README 质量门表那一行里声明的判据族。
-ROW_SIGNATURE = "LSP1–LSP4"
+ROW_SIGNATURE = "LSP1–LSP5"
 
 #: 不是「能力」的协议方法：生命周期与同步通知。
 NOT_CAPABILITY = {
@@ -151,6 +152,27 @@ def main(argv=None):
     # D3：空集必红（两边都是空说明解析坏了）
     if not _chk(bool(code) and bool(doc), "LSP3 非空",
                 "方法集合为空：code=%d doc=%d" % (len(code), len(doc))):
+        bad += 1
+
+    # D5（R275）：更新日志必须存在，且**含当前版本**那一节。
+    # 版本号是唯一一个每轮都变的数字，而「忘了写更新日志」是最常见的
+    # 文档腐烂方式：它不报错、不崩，只是让页面上的「更新日志」页
+    # 永远停在上一个版本 —— 用户看到的最新一条就是旧的。
+    _vsdir = os.path.dirname(VREADME)
+    try:
+        _pkg = json.load(io.open(os.path.join(_vsdir, "package.json"),
+                                 encoding="utf-8"))
+        _ver = str(_pkg.get("version") or "").strip()
+    except (IOError, OSError, ValueError):
+        _ver = ""
+    _chal = os.path.join(_vsdir, "CHANGELOG.md")
+    if not _chk(os.path.isfile(_chal), "LSP5 更新日志存在",
+                "缺 %s" % _chal):
+        bad += 1
+    elif not _chk(("## %s" % _ver) in io.open(_chal, encoding="utf-8").read(),
+                  "LSP5a 更新日志含当前版本",
+                  "CHANGELOG 里没有 `## %s`（package.json 的 version 是 %r）"
+                  % (_ver, _ver)):
         bad += 1
 
     # D4：语义高亮的 legend 必须在两侧**同序**。

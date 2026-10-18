@@ -1,6 +1,4 @@
-# malabc MATLAB LSP
-
-**作者：冯磊（Feng Lei）** · © 2026 冯磊
+**冯磊（Feng Lei）** · © 2026
 
 在 VS Code 里读 MATLAB 工程，像用 Source Insight 读 C 一样顺手：
 点到哪、看到哪、跳得到，改之前先知道会牵动谁。
