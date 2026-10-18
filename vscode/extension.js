@@ -1141,13 +1141,35 @@ function activate(context) {
           hits.push(i);
         }
         if (!hits.length) { return; }
-        groups.push(mkItem(decl >= 0 ? '声明（首次赋值）' : '声明', {
-          children: [decl >= 0
-            ? mkItem('第 ' + (decl + 1) + ' 行',
-                     { desc: (lines[decl] || '').trim().slice(0, 40),
-                       rel: rel, line: decl + 1 })
-            : mkItem('本文没有赋值（入参 / 全局 / 只读）')],
-        }));
+        // **本文没有声明时，问一次服务端**（R308）：结构体字段的产地常在
+        // 别的文件（`cfg.lb` 在 cfg_build.m 里赋值）。definition 早就支持
+        // 跨文件按基名解析，侧栏只是没去问。
+        let extLoc = null;
+        if (decl < 0 && pos) {
+          try {
+            const dr = await withTimeout(client.request(
+              'textDocument/definition',
+              { textDocument: { uri: doc.uri.toString() },
+                position: { line: pos.line, character: pos.character } }), 1200);
+            extLoc = (dr && dr.result && dr.result[0]) || null;
+          } catch (e) { /* 查不到就照旧说「本文没有」 */ }
+        }
+        let declChild;
+        if (decl >= 0) {
+          declChild = mkItem('第 ' + (decl + 1) + ' 行',
+                             { desc: (lines[decl] || '').trim().slice(0, 40),
+                               rel: rel, line: decl + 1 });
+        } else if (extLoc && extLoc.uri) {
+          const ep = vscode.Uri.parse(extLoc.uri).fsPath;
+          const erel = path.relative(root || '', ep).replace(/\\/g, '/');
+          const eline = extLoc.range.start.line + 1;
+          declChild = mkItem('在其他文件：' + path.basename(ep) + ' 第 ' + eline + ' 行',
+                             { desc: erel, rel: erel, line: eline });
+        } else {
+          declChild = mkItem('本文没有赋值（入参 / 全局 / 只读）');
+        }
+        groups.push(mkItem(decl >= 0 ? '声明（首次赋值）' : '声明',
+                           { children: [declChild] }));
         groups.push(mkItem('本文出现（' + hits.length + '）', {
           children: hits.slice(0, 80).map((i) =>
             mkItem('第 ' + (i + 1) + ' 行',
