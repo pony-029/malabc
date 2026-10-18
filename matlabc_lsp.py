@@ -1230,6 +1230,7 @@ def _impact(name, depth=30, down_depth=3):
             nm = getattr(f, "name", "") or ""
             where.setdefault(nm, []).append(
                 (rel, int(getattr(f, "line", 0) or 1)))
+            _pn, _pty, _pc = _param_names(f)
             meta["%s:%s" % (rel, nm)] = {
                 "complexity": int(getattr(f, "complexity", 0) or 0),
                 # R243：每层节点也带上「它自己还有多少调用解析不到」。
@@ -1241,9 +1242,10 @@ def _impact(name, depth=30, down_depth=3):
                 # 「一共几个不同的名字」与「这里列了几个」必须分开：
                 # 列表被 `limit` 截断过，截断不报就等于说只有 5 个。
                 "unresolved_names_total": _unresolved_name_count(f),
-                # 参数摘要（R260）：同一个形状 —— 给前 4 个名字 + 总数。
-                "params": _param_names(f)[0],
-                "params_total": _param_names(f)[1]}
+                # 参数摘要（R260/R263）：名字 + **等长对齐的类型** + 总数。
+                "params": _pn,
+                "param_types": _pty,
+                "params_total": _pc}
     if name not in where:
         return None
 
@@ -1326,6 +1328,7 @@ def _impact(name, depth=30, down_depth=3):
                 "unresolved_names_total": (meta.get(key) or {}).get(
                     "unresolved_names_total", 0),
                 "params": (meta.get(key) or {}).get("params", []),
+                "param_types": (meta.get(key) or {}).get("param_types", []),
                 "params_total": (meta.get(key) or {}).get("params_total", 0),
                 # **入口是服务端的事实，不是客户端的猜测**（R261）。
                 # 客户端原来靠「`call_sites` 为空」推断入口，而
@@ -1415,6 +1418,7 @@ def _impact(name, depth=30, down_depth=3):
         "unresolved_names_total": (meta.get(start_keys[0]) or {}).get(
             "unresolved_names_total", 0),
         "params": (meta.get(start_keys[0]) or {}).get("params", []),
+        "param_types": (meta.get(start_keys[0]) or {}).get("param_types", []),
         "params_total": (meta.get(start_keys[0]) or {}).get("params_total", 0),
         # 目标自己是不是入口（没人调它）—— 关系图用来把根节点标成“源头”。
         "is_entry": not rev.get(start_keys[0]),
@@ -1444,17 +1448,29 @@ def _param_names(f, limit=4):
     用它渲染参数表 —— **而关系图只显示“复杂度 11”，看不出这个函数要几个
     参数、叫什么**。同一份数据，两个出口只用了其中一个。
 
-    返回 `(前 limit 个名字, 总数)`：总数单独给，展示层才能说「还有几个」。
+    返回 `(前 limit 个名字, 对应类型, 总数)`。总数单独给，展示层才能说
+    「还有几个」；类型与名字**等长对齐**，取不到就是空串。
+
+    R263：类型来自 `header["inputs"]` 的第二列；**签名回退时没有类型**，
+    所以那条路径上类型是空串 —— 不是「类型未知就瞎猜」，而是如实留空，
+    展示层只在有类型时渲染 `x:double`。
     """
     rows = ((getattr(f, "header", None) or {}).get("inputs") or [])
-    names = []
+    names, types = [], []
     for row in rows:
         try:
             nm = str(row[0]).strip()
         except (IndexError, TypeError):
             continue
-        if nm:
-            names.append(nm)
+        if not nm:
+            continue
+        ty = ""
+        try:
+            ty = str(row[1]).strip()
+        except (IndexError, TypeError):
+            pass
+        names.append(nm)
+        types.append(ty)
     if not names:
         # **回退到签名**。`header["inputs"]` 只在头部写了 `% Input:` 表格时
         # 才有内容，而老代码里绝大多数函数**没写** —— 只靠它，这个功能对
@@ -1470,7 +1486,8 @@ def _param_names(f, limit=4):
                 nm = part.strip().split("=")[0].strip()
                 if nm and nm != "~":       # `~` 是“忽略这个参数”
                     names.append(nm)
-    return names[:limit], len(names)
+                    types.append("")       # 签名里没有类型，如实留空
+    return names[:limit], types[:limit], len(names)
 
 
 def _unresolved_tally(f):

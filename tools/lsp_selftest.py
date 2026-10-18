@@ -952,6 +952,14 @@ def _lens(c):
                  and idd.get("params_total") == 2,
                  "impact/target-params-from-header（%r/%r）"
                  % (idd.get("params"), idd.get("params_total")))
+            # R263：类型只在**有**的地方给。注释表有类型列，签名没有 ——
+            # 两条来源各验一次，否则「签名路径返回空类型」这件事没人守。
+            _chk(idd.get("param_types") == ["double", "int"],
+                 "impact/target-param-types-from-header（%r）"
+                 % (idd.get("param_types"),))
+            _chk(il.get("param_types") == [""],
+                 "impact/signature-params-have-no-type（%r）"
+                 % (il.get("param_types"),))
             _chk(inf.get("down") == [],
                  "impact/no-fake-downstream（down 必须为空：它没有可跳的调用）")
         finally:

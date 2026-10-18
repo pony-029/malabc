@@ -277,8 +277,12 @@ function activate(context) {
     const sigText = (d) => {
       const p = d.params || [];
       if (!p.length) return '';
+      const t = d.param_types || [];
+      // 类型只在**有时**才渲染：签名回退那条路径没有类型，
+      // 显示成 `a:` 或者 `a:?` 都是在编。
+      const shown = p.map((n, i) => (t[i] ? n + ':' + t[i] : n));
       const more = (d.params_total || p.length) > p.length;
-      return '<span class="params">(' + esc(p.join(', ')) +
+      return '<span class="params">(' + esc(shown.join(', ')) +
              (more ? ', …' : '') + ')</span>';
     };
 
@@ -349,7 +353,9 @@ function activate(context) {
     // 根节点也带参数摘要 —— 它和目标函数是同一个东西，
     // 只有在子节点显示签名、根节点不显示，会让人以为根是另一类东西。
     rows.push('<div class="node root">' + esc(name) +
-              sigText({ params: info.params, params_total: info.params_total }) +
+              sigText({ params: info.params,
+                        param_types: info.param_types,
+                        params_total: info.params_total }) +
               (info.is_entry ? '<span class="badge">源头</span>' : '') +
               '</div>');
 
