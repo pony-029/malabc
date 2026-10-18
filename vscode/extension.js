@@ -665,19 +665,23 @@ function activate(context) {
   //   是函数 → 上下游 + 调用链（与 CodeLens 点开的是同一张图）
   //   是变量/字段 → 声明（首次赋值）在哪、本文里还出现在哪些行
   context.subscriptions.push(
-    vscode.commands.registerCommand('matlabc.showRelations', async () => {
+    vscode.commands.registerCommand('matlabc.showRelations', async (wordArg) => {
       const ed = vscode.window.activeTextEditor;
       if (!ed) {
         vscode.window.showInformationMessage('matlabc: 请先打开一个 .m 文件');
         return;
       }
-      const wr = ed.document.getWordRangeAtPosition(
-        ed.selection.active, /[A-Za-z]\w*/);
-      if (!wr) {
-        vscode.window.showInformationMessage('matlabc: 光标处没有标识符');
-        return;
+      // 悬停里的链接会带上名字；命令面板/右键则用光标处的名字。
+      let word = (typeof wordArg === 'string' && wordArg) ? wordArg : '';
+      if (!word) {
+        const wr = ed.document.getWordRangeAtPosition(
+          ed.selection.active, /[A-Za-z]\w*/);
+        if (!wr) {
+          vscode.window.showInformationMessage('matlabc: 光标处没有标识符');
+          return;
+        }
+        word = ed.document.getText(wr);
       }
-      const word = ed.document.getText(wr);
       const rel = path.relative(root || '', ed.document.uri.fsPath)
         .replace(/\\/g, '/');
       const esc = (s) => String(s).replace(/[&<>"]/g, (c) => (
@@ -693,8 +697,11 @@ function activate(context) {
         log('showRelations：impact 失败 ' + (e && e.message));
       }
 
+      // **preserveFocus**：面板打开但不抢焦点。否则编辑器失去激活，
+      // 大纲会转去显示这个 webview —— 而它没有符号，于是「大纲不见了」。
       const panel = vscode.window.createWebviewPanel(
-        'matlabcRel', '关系：' + word, vscode.ViewColumn.Beside,
+        'matlabcRel', '关系：' + word,
+        { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
         { enableScripts: false, enableCommandUris: true });
       const css = [
         'body{font-family:var(--vscode-editor-font-family,monospace);',
@@ -907,6 +914,73 @@ function activate(context) {
   );
   } catch (e) {
     log('注册「出现位置高亮」失败（不影响其它功能）：' + (e && e.message));
+  }
+
+  // ---- 悬停即见关系（R296）-------------------------------------------
+  // Source Insight 的读法：**鼠标停在哪，关系就在哪**，不用先右键。
+  // 这里是「摘要」：函数给调用者数量与前三个调用点；变量给声明行与出现次数。
+  // 想看全的，点悬停里的链接打开右侧面板。
+  try {
+  context.subscriptions.push(
+    vscode.languages.registerHoverProvider({ language: 'matlab' }, {
+      provideHover: async (doc, pos) => {
+        try {
+          const wr = doc.getWordRangeAtPosition(pos, /[A-Za-z]\w*/);
+          if (!wr) return null;
+          const word = doc.getText(wr);
+          if (!word || word.length < 2) return null;
+
+          const md = new vscode.MarkdownString();
+          md.isTrusted = true;        // `command:` 链接需要它
+          const linkTo = (w) => '[查看完整关系](command:matlabc.showRelations?' +
+            encodeURIComponent(w) + ')';
+
+          let info = null;
+          try {
+            const r = await client.request('matlabc/impact', { name: word });
+            info = (r && r.result) || null;
+          } catch (e) { /* 服务端没答上来就只给变量视图 */ }
+
+          if (info && typeof info.total === 'number') {
+            md.appendMarkdown('**' + word + '** · ↑' + info.total +
+              ' 调用者 · ↓' + (info.down_total || 0) + ' 被调用\n\n');
+            (info.direct || []).slice(0, 3).forEach((d) => {
+              md.appendMarkdown('· `' + d.name + '`　' +
+                                d.rel + ':' + d.line + '  \n');
+            });
+            md.appendMarkdown('\n' + linkTo(word));
+            return new vscode.Hover(md, wr);
+          }
+
+          // 变量 / 字段：本文里的声明与出现次数
+          const lines = doc.getText().split(/\r?\n/);
+          const escRe = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const hitRe = new RegExp('\\b' + escRe + '\\b');
+          const declRe = new RegExp('^\\s*(?:\\[[^\\]]*\\]\\s*=\\s*)?' +
+                                    escRe + '\\s*(?:\\([^)]*\\))?\\s*=');
+          let decl = -1;
+          let n = 0;
+          for (let i = 0; i < lines.length; i += 1) {
+            const code = lines[i].replace(/%.*$/, '');
+            if (!hitRe.test(code)) continue;
+            n += 1;
+            if (decl < 0 && declRe.test(code)) decl = i;
+          }
+          if (!n) return null;        // 本文里没出现，就不弹
+          md.appendMarkdown('**' + word + '** · 本文出现 ' + n + ' 处\n\n');
+          md.appendMarkdown(decl >= 0
+            ? '声明（首次赋值）：第 ' + (decl + 1) + ' 行\n'
+            : '本文没有赋值 —— 可能是入参、全局变量，或只被读取\n');
+          md.appendMarkdown('\n' + linkTo(word));
+          return new vscode.Hover(md, wr);
+        } catch (e) {
+          return null;
+        }
+      },
+    })
+  );
+  } catch (e) {
+    log('注册「悬停关系」失败：' + (e && e.message));
   }
 
   try {
