@@ -354,10 +354,43 @@ def _ensure_payload():
         return False, 0.0
     import time
     t0 = time.time()
+
+    # **先看磁盘缓存**（R336）：诊断结果原来只在内存，进程一重启就要
+    # 重跑一遍完整检查（YALMIP 约 70 秒）。而它其实是可复现的产物，
+    # 只要工程没改就能复用 —— 判据用 LSP 那套 `_stamp`（全部文件 mtime 汇总），
+    # 与缓存同一套过期规则，不另立标准。
+    stamp = None
     try:
-        L._STATE["payload"] = L._run_json(root)
-    except Exception as exc:
+        stamp = L._stamp(root)
+    except Exception:
+        stamp = None
+    cache = os.path.join(root, ".matlabc", "payload.json")
+    if stamp is not None and os.path.isfile(cache):
+        try:
+            doc = json.loads(io.open(cache, "r", encoding="utf-8").read())
+            if (abs(float(doc.get("stamp") or 0) - float(stamp)) < 1e-6
+                    and doc.get("payload")):
+                L._STATE["payload"] = doc["payload"]
+                return True, 0.0
+        except Exception:
+            pass                       # 缓存坏了就当没有，不阻塞
+
+    try:
+        payload = L._run_json(root)
+    except Exception:
         return False, time.time() - t0
+    L._STATE["payload"] = payload
+
+    # 写盘失败不算错：这次慢，下次再试。
+    try:
+        d = os.path.dirname(cache)
+        if d and not os.path.isdir(d):
+            os.makedirs(d)
+        io.open(cache, "w", encoding="utf-8", newline="").write(
+            json.dumps({"stamp": stamp, "payload": payload},
+                       ensure_ascii=False))
+    except Exception:
+        pass
     return True, time.time() - t0
 
 

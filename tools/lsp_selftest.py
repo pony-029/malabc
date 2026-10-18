@@ -1656,6 +1656,45 @@ def _mcp(c=None):
         finally:
             shutil.rmtree(_bd, ignore_errors=True)
 
+        # R336：诊断结果的**磁盘**缓存。诊断很贵（大工程约 70 秒），
+        # 而它原来只活在内存里 —— 进程一重启就要重跑。
+        # 两条判据：命中时直接用；工程变了必须失效（不能拿旧结论冒充新的）。
+        _pc = tempfile.mkdtemp(prefix="lsp_pc_")
+        try:
+            _pf = os.path.join(_pc, "pc.m")
+            with io.open(_pf, "w", encoding="utf-8", newline="") as _fh:
+                _fh.write(u"function pc()\nend\n")
+            _stamp = _L2._stamp(_pc)
+            _cdir = os.path.join(_pc, ".matlabc")
+            os.makedirs(_cdir)
+            with io.open(os.path.join(_cdir, "payload.json"), "w",
+                         encoding="utf-8", newline="") as _fh:
+                _fh.write(json.dumps({"stamp": _stamp,
+                                      "payload": {"heuristics": [
+                                          {"file": "pc.m", "line": 1,
+                                           "func": "pc", "kind": "FAKE",
+                                           "level": "info", "msg": "命中"}]}},
+                                     ensure_ascii=False))
+            _sv7 = (_L2._STATE.get("root"), _L2._STATE.get("payload"))
+            _L2._STATE["root"] = _pc
+            _L2._STATE["payload"] = None
+            try:
+                _ok1, _sec1 = _MCP._ensure_payload()
+                _hit = (_L2._STATE.get("payload") or {}).get("heuristics") or []
+                # 改一下文件，stamp 变 -> 必须失效重算
+                os.utime(_pf, (time.time() + 10, time.time() + 10))
+                _L2._STATE["payload"] = None
+                _ok2, _sec2 = _MCP._ensure_payload()
+                _miss = (_L2._STATE.get("payload") or {}).get("heuristics") or []
+            finally:
+                (_L2._STATE["root"], _L2._STATE["payload"]) = _sv7
+            _chk(_ok1 and _sec1 == 0.0 and _hit and _hit[0].get("kind") == "FAKE",
+                 "mcp/payload-cache-hit（%r）" % (_hit[:1],))
+            _chk(_ok2 and not any(h.get("kind") == "FAKE" for h in _miss),
+                 "mcp/payload-cache-invalidated（%r）" % (_miss[:1],))
+        finally:
+            shutil.rmtree(_pc, ignore_errors=True)
+
         r7 = rpc({"jsonrpc": "2.0", "id": 7, "method": "tools/call",
                   "params": {"name": "matlabc_stats", "arguments": {}}})
         txt7 = (((r7 or {}).get("result") or {}).get("content")
