@@ -627,8 +627,11 @@ function activate(context) {
           vscode.window.showWarningMessage('matlabc: 找不到 ' + name);
           return;
         }
+        // 同样**不抢焦点**：横向面板是「另开一眼」，不该把编辑器的
+        // 大纲赶走（R301，与 showRelations 的修法一致）。
         const panel = vscode.window.createWebviewPanel(
-          'matlabcGraph', '调用关系：' + name, vscode.ViewColumn.Beside,
+          'matlabcGraph', '调用关系：' + name,
+          { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
           // `enableCommandUris` 是点击链接的前提；`enableScripts` 仍然关着
           // —— 命令 URI 由宿主执行，页面本身不需要脚本权限。
           { enableScripts: false, enableCommandUris: true });
@@ -961,6 +964,10 @@ function activate(context) {
         ? vscode.TreeItemCollapsibleState.Collapsed
         : vscode.TreeItemCollapsibleState.None);
       if (o.desc) it.description = o.desc;
+      // 图标用 codicon：函数/变量/箭头/链各有语义，扫一眼就知道这一行是什么
+      // （R301）。纯文字列表里，读者要靠读标签判断类型，很慢。
+      if (o.icon) it.iconPath = new vscode.ThemeIcon(o.icon);
+      if (o.cmd) it.command = o.cmd;
       if (o.rel) {
         it.command = { command: 'matlabc.openAt', title: '打开',
                        arguments: [o.rel, o.line] };
@@ -1001,35 +1008,56 @@ function activate(context) {
         // **链与调用者合并**（R300）：一条链本身就是“谁调我”的完整路径，
         // 再单列一份扁平的调用者只是同一信息的碎片版。有链就只给链；
         // 没有链（说明它是入口）才退回到调用者列表。
+        // 每条链 = 一条**从入口到我**的完整来路；展开后逐跳是函数名，
+        // 而不是一条挤在一起点的长字符串（R301）。
         const chs = (info.chains || []).slice(0, 8).map((ch) => {
-          const nodes = (ch || []).map((n) => mkItem('← ' + n.name,
-            { desc: n.rel + ':' + n.line, rel: n.rel, line: n.line }));
-          return mkItem((ch || []).map((n) => n.name).join(' ← '),
-                        { desc: '展开看每一跳', children: nodes });
+          const arr = ch || [];
+          const nodes = arr.map((n, k) => mkItem(n.name, {
+            desc: n.rel + ':' + n.line + '　第 ' + (k + 1) + ' 跳',
+            icon: 'symbol-function',
+            rel: n.rel, line: n.line,
+          }));
+          const entry = arr.length ? arr[0].name : '';
+          const me = arr.length ? arr[arr.length - 1].name : word;
+          return mkItem(entry + '  →  …  →  ' + me, {
+            desc: arr.length + ' 跳',
+            icon: 'arrow-left',
+            children: nodes,
+          });
         });
         if (chs.length) {
-          groups.push(mkItem('调用链（入口 ← … ← 我）',
-                             { desc: chs.length + ' 条',
+          groups.push(mkItem('调用链（入口 → 我，' + chs.length + ' 条）',
+                             { desc: '逐跳展开',
+                               icon: 'type-hierarchy',
                                children: chs }));
         } else {
           const ups = (info.direct || []).slice(0, 30).map((d) =>
-            mkItem('← ' + d.name,
-                   { desc: d.rel + ':' + d.line, rel: d.rel, line: d.line }));
+            mkItem(d.name,
+                   { desc: d.rel + ':' + d.line, icon: 'symbol-function',
+                     rel: d.rel, line: d.line }));
           groups.push(mkItem('调用者（' + info.total + '）',
-                             { desc: '谁 → 我',
-                               children: ups.length ? ups : [mkItem('（无）')] }));
+                             { desc: '谁 → 我', icon: 'arrow-left',
+                               children: ups.length ? ups : [mkItem('（无调用者）')] }));
         }
         const dns = (info.down || []).slice(0, 30).map((d) =>
-          mkItem('→ ' + d.name,
-                 { desc: d.rel + ':' + d.line + '  L' + d.level,
+          mkItem(d.name,
+                 { desc: d.rel + ':' + d.line + '　L' + d.level,
+                   icon: 'symbol-function',
                    rel: d.rel, line: d.line }));
         groups.push(mkItem('被调用（' + (info.down_total || 0) + '）',
-                           { desc: '我 → 谁',
-                             children: dns.length ? dns : [mkItem('（无）')] }));
+                           { desc: '我 → 谁', icon: 'list-tree',
+                             children: dns.length ? dns : [mkItem('（叶子）')] }));
+        // 横向视图：链是同一个东西的另一种排布，一个按钮切过去。
+        groups.unshift(mkItem('横向查看（箭头关系）', {
+          desc: '在右侧打开', icon: 'arrow-right',
+          cmd: { command: 'matlabc.previewGraph', title: '横向',
+                 arguments: [word, true] },
+        }));
         // **顶层就是这个名字本身** —— 树的第一行必须回答「这是谁的关系」。
         relView.title = '关系：' + word;
         relState.roots = [mkItem(word, {
           desc: (info.rel || rel) + ':' + (info.line || ''),
+          icon: 'symbol-function',
           rel: info.rel || rel, line: info.line || 1,
           children: groups,
         })];
@@ -1072,6 +1100,7 @@ function activate(context) {
       relState.roots = [mkItem(word, {
         desc: (decl >= 0 ? rel + ':' + (decl + 1) : '本文内无声明')
               + '　（变量）',
+        icon: 'symbol-variable',
         rel: decl >= 0 ? rel : null,
         line: decl >= 0 ? decl + 1 : 0,
         children: groups,
