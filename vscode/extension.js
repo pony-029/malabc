@@ -456,6 +456,42 @@ function activate(context) {
     })
   );
 
+  // 热点排行（R282）：从「先看哪几个函数」这个问题出发。
+  // 复杂度高说明难读，调用者多说明波及面大，两者相乘才是值得先看的地方。
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.showHeat', async () => {
+      try {
+        const r = await client.request('matlabc/heat', { limit: 20 });
+        const rows = r.result || [];
+        if (!rows.length) {
+          vscode.window.showInformationMessage(
+            'matlabc: 当前工作区没有可排行的函数（分析可能尚未完成）');
+          return;
+        }
+        const items = rows.map((h, i) => ({
+          label: (i + 1) + '.\t' + h.name,
+          description: '复杂度 ' + h.complexity + ' · 调用者 ' + h.callers +
+                       ' · 得分 ' + h.score,
+          detail: h.rel + ':' + h.line,
+          rel: h.rel,
+          line: h.line,
+        }));
+        const pick = await vscode.window.showQuickPick(items, {
+          placeHolder: '热点排行：复杂度 × (1 + 调用者数)',
+          matchOnDescription: true,
+          matchOnDetail: true,
+        });
+        if (pick) {
+          await vscode.commands.executeCommand('matlabc.openAt', pick.rel,
+                                               pick.line);
+        }
+      } catch (e) {
+        log('showHeat 失败：' + (e && e.message));
+        vscode.window.showErrorMessage('matlabc: ' + (e && e.message));
+      }
+    })
+  );
+
   context.subscriptions.push(
     vscode.commands.registerCommand('matlabc.previewGraph', async (name) => {
       if (!name) {

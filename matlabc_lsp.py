@@ -1650,6 +1650,67 @@ def _unresolved_name_count(f):
     return len(_unresolved_tally(f))
 
 
+def _heat(limit=15):
+    """热点排行：`复杂度 × (1 + 直接调用者数)`，从高到低。
+
+    为什么是这两项的乘积：
+
+      - **复杂度高** ＝ 读起来难、改起来容易出错
+      - **调用者多** ＝ 改它波及面大
+
+    两项都高才算真热点。只复杂但没人调用（死代码或工具函数），
+    或者被到处调用但只有一行（比如一个封装），都不该排在最前面。
+
+    数据全部来自已经算好的 `result`，**不重解析、不改分析器**：
+    `complexity` 是现成字段，调用者从 `call_sites` 反向累加。
+    """
+    result = _wait_result()
+    if result is None:
+        return None
+    fn_meta = {}                 # key -> (rel, line, complexity)
+    rev = {}                     # key -> set(caller_key)
+    fwd = {}                     # key -> set(callee_key)
+    for mf in (getattr(result, "files", None) or []):
+        rel = getattr(mf, "rel", "") or ""
+        for f in (getattr(mf, "functions", None) or []):
+            nm = getattr(f, "name", "") or ""
+            key = "%s:%s" % (rel, nm)
+            fn_meta[key] = (rel, int(getattr(f, "line", 0) or 1),
+                            int(getattr(f, "complexity", 0) or 0))
+            for site in (getattr(f, "call_sites", None) or []):
+                # 两种形状：内存版 [line, col, end, obj]，缓存版 [line, "rel:name"]
+                if len(site) >= 2 and isinstance(site[1], str):
+                    tkey = site[1]
+                else:
+                    try:
+                        tgt = site[3]
+                    except (IndexError, TypeError):
+                        continue
+                    tkey = "%s:%s" % (
+                        getattr(getattr(tgt, "mfile", None), "rel", "") or "",
+                        getattr(tgt, "name", "") or "")
+                if not tkey or tkey.endswith(":"):
+                    continue
+                rev.setdefault(tkey, set()).add(key)
+                fwd.setdefault(key, set()).add(tkey)
+
+    rows = []
+    for key, (rel, line, cx) in fn_meta.items():
+        callers = len(rev.get(key) or ())
+        callees = len(fwd.get(key) or ())
+        rows.append({
+            "rel": rel,
+            "name": key.rpartition(":")[2],
+            "line": line,
+            "complexity": cx,
+            "callers": callers,
+            "callees": callees,
+            "score": cx * (1 + callers),
+        })
+    rows.sort(key=lambda r: (-r["score"], -r["complexity"], r["rel"], r["name"]))
+    return rows[:max(1, int(limit))]
+
+
 def _code_lens(uri):
     """每个函数头顶一条：`↑3 调用者 · ↓12 被调用 · 复杂度 11`。
 
@@ -1886,6 +1947,19 @@ def handle(msg, out):
         _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": info})
         _log("impact %s -> %s" % (name, "none" if info is None
                                   else "%d 个调用者" % info["total"]))
+        return True
+
+    if method == "matlabc/heat":
+        # 热点排行：给「先看哪几个函数」一个可执行答案。
+        params = msg.get("params") or {}
+        try:
+            _lim = int(params.get("limit") or 15)
+        except (TypeError, ValueError):
+            _lim = 15
+        rows = _heat(max(1, min(_lim, 200)))
+        _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": rows})
+        _log("heat -> %s" % (("none" if rows is None
+                              else "%d 行" % len(rows)),))
         return True
 
     if method == "textDocument/semanticTokens/full":

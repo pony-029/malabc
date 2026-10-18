@@ -400,6 +400,27 @@ def _impact(c):
     _chk(call("no_such_function_xyz") is None,
          "impact/missing-returns-null（不是空对象）")
 
+    # ---- R282：热点排行 ------------------------------------------------
+    # 分数 = 复杂度 × (1 + 直接调用者数)。两项都要真的进去：
+    # 只看复杂度会漏掉「到处被调用的小函数」，只看调用者会漏掉「没人调用
+    # 但极其复杂」的死角。
+    c.send({"jsonrpc": "2.0", "id": 96, "method": "matlabc/heat",
+            "params": {"limit": 3}})
+    _rh = c.recv() or {}
+    _rows = _rh.get("result") or []
+    _chk(len(_rows) == 3, "heat/limit-respected（实际 %d）" % len(_rows))
+    _chk(all(("score" in r) and ("callers" in r) and ("complexity" in r)
+             for r in _rows), "heat/rows-carry-fields")
+    _chk(all(_rows[i]["score"] >= _rows[i + 1]["score"]
+             for i in range(len(_rows) - 1)), "heat/sorted-desc")
+    # sample_m：switch_case 复杂度 8、无人调用 → 8；a 复杂度 1、两个调用者 → 3。
+    _chk(bool(_rows) and _rows[0]["name"] == "switch_case",
+         "heat/top-is-most-complex（实际 %r）" % (_rows[:1],))
+    # 反向图确实建起来了：a 被 b 与 switch_case 两处调用。
+    _chk(any(r["name"] == "a" and r["callers"] == 2 for r in _rows),
+         "heat/callers-counted（%r）" % ([(r["name"], r["callers"])
+                                         for r in _rows],))
+
     # ---- R262：把「edges 的每条边都能被 call_sites 覆盖」变成判据 ------
     # R261 修的是「有边但没有行号 ⇒ 被误标入口」。改完去查它到底可不可达：
     # 三个语料共 19 条边，**未覆盖 0 条** —— 也就是那个状态目前**不可达**，
