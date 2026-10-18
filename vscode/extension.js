@@ -1191,11 +1191,15 @@ function activate(context) {
         let grefs = [];
         if (pos) {
           try {
+            // **超时必须长于服务端自己的等待**（R317）：`_references` 里
+            // `_wait_result(timeout=2.0)` 起步就要 2 秒，而这里原来只给
+            // 1.5 秒 —— 请求必然超时，`grefs` 恒为空，于是**全局变量被
+            // 当成局部变量**（截图里 `line 13（变量）`）。
             const rr = await withTimeout(client.request(
               'textDocument/references',
               { textDocument: { uri: doc.uri.toString() },
                 position: { line: pos.line, character: pos.character },
-                context: { includeDeclaration: true } }), 1500);
+                context: { includeDeclaration: true } }), 5000);
             grefs = (rr && rr.result) || [];
           } catch (e) { /* 拿不到就只给本文结果 */ }
         }
@@ -1209,14 +1213,33 @@ function activate(context) {
         gfiles = Object.keys(byFile).sort();
         // 跨文件 ⇒ 它是全局变量（普通变量活不过函数边界）
         isGlobal = gfiles.length > 1;
+        // **references 不可信时不许下结论**（R317）：服务端在分析未完成时
+        // 会返回空数组（实测 2.07s -> 0 个位置），而空数组也意味着「确实
+        // 没有引用」。两者无法区分时，**至少它必须覆盖本文的出现**：
+        // 同一个名字在同一文件里至少出现 hits 次，返回少于这个数就是没拿到。
+        const refsTrusted = grefs.length >= hits.length;
+        if (!refsTrusted) {
+          pendingFlag = true;      // 借同一个标记：界面会写「分析中…」
+          log('关系 ' + word + ' -> references 不足（' + grefs.length +
+              ' < 本文 ' + hits.length + '），不判定为局部变量');
+          // 同样要**自动重试**，否则它会一直停在「分析中…」上。
+          if (!relState.retryTimer) {
+            relState.retryTimer = setTimeout(() => {
+              relState.retryTimer = null;
+              relState.key = '';
+              refreshRel(doc, null, word);
+            }, 3000);
+          }
+        }
 
         let extLoc = null;
         if (decl < 0 && pos) {
           try {
+            // 同上：`_definition` 也有 2 秒等待，1.2 秒必然先超时。
             const dr = await withTimeout(client.request(
               'textDocument/definition',
               { textDocument: { uri: doc.uri.toString() },
-                position: { line: pos.line, character: pos.character } }), 1200);
+                position: { line: pos.line, character: pos.character } }), 5000);
             extLoc = (dr && dr.result && dr.result[0]) || null;
           } catch (e) { /* 查不到就照旧说「本文没有」 */ }
         }
@@ -1371,7 +1394,7 @@ function activate(context) {
           let info = null;
           try {
             const r = await withTimeout(
-              client.request('matlabc/impact', { name: word }), 1200);
+              client.request('matlabc/impact', { name: word }), 3000);
             info = (r && r.result) || null;
           } catch (e) { /* 超时就只给变量视图，不卡住悬停 */ }
 
