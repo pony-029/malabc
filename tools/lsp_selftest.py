@@ -1298,6 +1298,57 @@ def _doc(c):
          and (_off or {}).get("reason") == "disabled",
          "doc/cross-lang-switch-off（%r）" % ((_off or {}).get("reason"),))
 
+    # ---- R352：`impact` 必须自带跨语言落点 ------------------------------
+    # 这一组测的是 LSP 侧能力，但 impact 是给 Agent 的对外契约，
+    # 所以就地导入工具模块验证（放在跨语言检查旁边，按**特性**归类而不是按传输层）。
+    import matlabc_mcp as _MCP
+    # Agent 拿到 impact 就以为「下游就这些」，而它不一定想得到再调 cbridge。
+    # 一份报告该回答的问题，不该要求读者分两步去拿。
+    _ic = tempfile.mkdtemp(prefix="lsp_ic_")
+    try:
+        with io.open(os.path.join(_ic, "entry.m"), "w", encoding="utf-8",
+                     newline="") as _fh:
+            _fh.write(u"function entry(x)\n"
+                      u"y = c_entry(x);\n"
+                      u"z = mystery_fn(x);\n"
+                      u"end\n")
+        with io.open(os.path.join(_ic, "impl.c"), "w", encoding="utf-8",
+                     newline="") as _fh:
+            _fh.write(u"static int inner(int x)\n"
+                      u"{\n"
+                      u"    return x;\n"
+                      u"}\n"
+                      u"\n"
+                      u"int c_entry(int x)\n"
+                      u"{\n"
+                      u"    return inner(x);\n"
+                      u"}\n")
+        _svi = (_L2._STATE.get("root"), _L2._STATE.get("result"))
+        _L2._STATE["root"] = _ic
+        _L2._STATE["result"] = _an(_ic, no_checks=True)
+        _L2._C_INDEX["key"] = None
+        _L2._C_INDEX["idx"] = None
+        _L2._C_INDEX["model"] = None
+        _L2._BIN_INDEX["key"] = None
+        _L2._BIN_INDEX["idx"] = None
+        try:
+            _itxt = (_MCP.t_impact({"name": "entry"}).get("content")
+                     or [{}])[0].get("text", "")
+        finally:
+            (_L2._STATE["root"], _L2._STATE["result"]) = _svi
+            _L2._C_INDEX["key"] = None
+            _L2._C_INDEX["idx"] = None
+            _L2._C_INDEX["model"] = None
+        _chk("跨语言落点" in _itxt and "impl.c" in _itxt,
+             "mcp/impact-includes-cbridge（%r）" % (_itxt[-90:],))
+        # **已找到落点的不该再出现在「仍未定位」里** —— 否则同一份报告
+        # 一句话说找到了、下一句说没找到。
+        _tail = _itxt.split("仍未定位")[-1] if "仍未定位" in _itxt else ""
+        _chk("mystery_fn" in _tail and "c_entry" not in _tail,
+             "mcp/impact-unresolved-excludes-bridged（%r）" % (_tail[:60],))
+    finally:
+        shutil.rmtree(_ic, ignore_errors=True)
+
     # R345：rea 即使可运行，也必须声明**它能覆盖什么**。
     # 实测它只吃 Linux ELF（对 kernel32.dll 返回 capability_unavailable），
     # 只报 available 会让人以为 Windows DLL 也有更深结论。

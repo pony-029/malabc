@@ -226,13 +226,54 @@ def t_impact(args):
                    % (d["name"], d["rel"], d["line"], d.get("level", 1)))
     if not down:
         out.append("- （无 —— 它是叶子）")
+    # **跨语言落点**（R352）：MATLAB 侧解析不到，不等于链条到此为止。
+    # 工程内有 C 源 / mex / DLL 时，把落点直接写在这里。
+    # 不写的话，Agent 拿到 impact 会以为「下游就这些」，而它不一定想得到
+    # 再调一次 cbridge —— 一份报告该回答的问题，不该要求读者分两步拿。
+    bitems, bbins, bridged = [], [], set()
+    try:
+        bridge = L._c_bridge(name) or {}
+        if bridge.get("available"):
+            bitems = bridge.get("items") or []
+            bbins = bridge.get("binaries") or []
+            for it in bitems:
+                bridged.add(it.get("callee"))
+            for b in bbins:
+                bridged.add(b.get("callee"))
+    except Exception as exc:
+        out.append("")
+        out.append("（跨语言查询失败：%r）" % (exc,))
+    if bitems or bbins:
+        out.append("")
+        out.append("## 跨语言落点（%d）" % (len(bitems) + len(bbins)))
+        out.append("")
+        for it in bitems[:10]:
+            out.append("- `%s`　→ `%s`　%s:%d"
+                       % (it["callee"], it["c_name"], it["c_rel"],
+                          it["c_line"]))
+            for dn in (it.get("c_down") or [])[:3]:
+                out.append("  - 再往下：`%s`（第 %d 层，line %d）"
+                           % (dn["name"], dn.get("depth", 1), dn["line"]))
+        for b in bbins[:6]:
+            out.append("- `%s`　→ `%s`（%s 入口）"
+                       % (b["callee"], b["rel"], b["kind"]))
+        if len(bitems) + len(bbins) > 16:
+            out.append("- … 另有 %d 处"
+                       % (len(bitems) + len(bbins) - 16))
+
     if info.get("unresolved"):
         out.append("")
-        out.append("另有 %d 处调用**解析不到**（外部函数或动态调用），"
-                   "这部分影响面无法自动推断。" % info["unresolved"])
-        names = info.get("unresolved_names") or []
+        if bridged:
+            out.append("另有 %d 处调用在 MATLAB 侧解析不到，其中 **%d 个已在上面"
+                       "找到落点**；剩下的才是真的无法自动推断。"
+                       % (info["unresolved"], len(bridged)))
+        else:
+            out.append("另有 %d 处调用**解析不到**（外部函数或动态调用），"
+                       "这部分影响面无法自动推断。" % info["unresolved"])
+        names = [n for n in (info.get("unresolved_names") or [])
+                 if n not in bridged]
         if names:
-            out.append("未能解析的名字：" + "、".join(
+            out.append("仍未定位：" + "、".join(
                 "`%s`" % n for n in names[:15]))
     return _text("\n".join(out))
 
@@ -1288,7 +1329,8 @@ TOOLS = [
 
     {"name": "matlabc_impact",
      "description": "查询一个函数的**影响面**：谁调用它（含从入口到它的完整"
-                    "来路）、它调用谁、以及有多少处调用无法解析。"
+                    "来路）、它调用谁、多少处调用无法解析，以及这些调用在 "
+                    "C 源 / mex / DLL 里落到了哪。"
                     "改代码之前应该先调它，用来回答「动这里会波及什么」。",
      "inputSchema": {"type": "object",
                      "properties": {"name": _STR},
