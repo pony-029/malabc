@@ -268,7 +268,7 @@ function activate(context) {
   // CodeLens 的 QuickPick 适合"选一个就跳"，但看**整体形状**时它不够：
   // 一个 QuickPick 列表看不出「这条链有三层」。
   // 这里用一个旁开的 webview 画缩进树 —— 只读、静态，不需要脚本权限。
-  const renderGraph = (name, info) => {
+  const renderGraph = (name, info, horizontal) => {
     const esc = (s) => String(s).replace(/[&<>"]/g, (c) => (
       { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -390,6 +390,43 @@ function activate(context) {
       }
     }
 
+    // ---- 横向视图（R291）：目标在左，调用方向右展开 ----
+    // 纵向看「有几层」，横向看「一条路怎么走」。两种读法对应两类问题：
+    // 「谁还会受影响」用纵向， 「它是怎么被调到的」用横向。
+    if (horizontal) {
+      rows.push('<div class="section">◀ 上游（目标 ← 谁，逐层向左）</div>');
+      if (!chains.length) {
+        rows.push('<div class="empty">没有调用者 —— 它是入口。</div>');
+      } else {
+        const seen = {};
+        chains.slice(0, 12).forEach((ch) => {
+          const rev = (ch || []).slice().reverse()
+            .map((n) => link(n.rel, n.line, n.name)).join(' ← ');
+          if (!seen[rev]) {
+            seen[rev] = 1;
+            rows.push('<div class="node chain">' + esc(name) + ' ← ' +
+                      rev + '</div>');
+          }
+        });
+      }
+      rows.push('<div class="section">▶ 下游（它 → 谁，逐层向右）</div>');
+      if (!down.length) {
+        rows.push('<div class="empty">' + (info.unresolved
+          ? '没有可跳转的调用；另有 ' + info.unresolved + ' 处无法定位'
+          : '不调用其他函数 —— 叶子。') + '</div>');
+      } else {
+        const dn = byLevel(down);
+        Object.keys(dn).map(Number).sort((a, b) => a - b).forEach((lv) => {
+          const list = dn[lv];
+          rows.push('<div class="node chain"><span class="levelbar">第 ' + lv +
+            ' 层</span>　' + list.slice(0, 12)
+              .map((d) => link(d.rel, d.line, d.name)).join('　→　') +
+            (list.length > 12 ? ' … 另 ' + (list.length - 12) + ' 个' : '') +
+            '</div>');
+        });
+      }
+    } else {
+
     // ---- 上游 ----
     rows.push('<div class="section">▲ 上游（谁调用它）</div>');
     if (!direct.length && !others.length) {
@@ -443,6 +480,8 @@ function activate(context) {
       }
     }
 
+    }
+
     return '<!DOCTYPE html><html><body>' +
       '<h2>' + esc(name) + '</h2>' +
       '<p class="sum">↑ ' + direct.length + ' 直接 · ' +
@@ -451,7 +490,12 @@ function activate(context) {
       (info.unresolved ? '　｜　' + info.unresolved + ' 处调用无法定位' : '') +
       (info.ambiguous ? '　｜　' + info.ambiguous + ' 处同名定义' : '') + '</p>' +
       rows.join('') +
-      '<p class="note">静态快照（打开时分析结果）。点击任意文件名或行号可跳转。' +
+      '<p class="note">' + (horizontal
+        ? '<a href="command:matlabc.previewGraph?' + encodeURIComponent(name) +
+          '">切换为纵向（按层）</a>'
+        : '<a href="command:matlabc.previewGraphH?' + encodeURIComponent(name) +
+          '">切换为横向（按链）</a>') + '　｜　' +
+      '静态快照（打开时分析结果）。点击任意文件名或行号可跳转。' +
       '「调用自 5 8 9」里的数字是**语句**：一行里写两次调用只算一处。</p>' +
       '</body></html>';
   };
@@ -476,6 +520,17 @@ function activate(context) {
   // 热点排行（R282/R283）：从「先看哪几个函数」这个问题出发。
   // 复杂度高说明难读，调用者多说明波及面大，两者相乘才是值得先看的地方。
   // R283：可按目录过滤，并可把结果复制成 Markdown，便于贴进评审文档。
+  // 横向视图单独一个命令：图里有 `command:` 链接可以来回切。
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.previewGraphH', async (name) => {
+      if (!name) {
+        vscode.window.showWarningMessage('matlabc: 请先从 CodeLens 点一个函数');
+        return;
+      }
+      await vscode.commands.executeCommand('matlabc.previewGraph', name, true);
+    })
+  );
+
   const mkHeatMd = (rows) => {
     const head = ['| # | 函数 | 位置 | 复杂度 | 调用者 | 得分 |',
                   '| --- | --- | --- | --- | --- | --- |'];
@@ -548,7 +603,7 @@ function activate(context) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('matlabc.previewGraph', async (name) => {
+    vscode.commands.registerCommand('matlabc.previewGraph', async (name, horizontal) => {
       if (!name) {
         vscode.window.showWarningMessage('matlabc: 请先从 CodeLens 点一个函数');
         return;
@@ -594,7 +649,7 @@ function activate(context) {
           'border-top:1px solid var(--vscode-editorWidget-border);padding-top:6px;}',
           '.note{opacity:.4;font-size:11px;margin-top:18px;}',
         ].join('');
-        const html = renderGraph(name, info).replace(
+        const html = renderGraph(name, info, !!horizontal).replace(
           '</body>', '<style>' + css + '</style></body>');
         panel.webview.html = html;
         log('previewGraph ' + name + ' -> total=' + info.total);
