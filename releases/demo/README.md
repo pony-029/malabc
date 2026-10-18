@@ -31,6 +31,52 @@
 
 ---
 
+## 可逐帧播放的交互导览
+
+`matlabc-tour.html` —— **双击打开**，8 步自动播放，也可以点任意模块跳到讲它的那一步。
+
+| 文件 | 作用 |
+| --- | --- |
+| `matlabc-tour.architecture.json` | **唯一事实来源**：12 个模块、11 条连线、3 张说明卡 |
+| `matlabc-tour.html` | 由上面那份 JSON 渲染出的可播放页面（11.9 KB，单文件、离线） |
+
+**为什么不是 `archify render` 直接产出的**
+
+JSON 用的是 archify 的 architecture 格式，`archify validate` 可以通过：
+
+```
+ok architecture ... (9 artifact checks; composition standard: 0 errors, 0 warnings)
+```
+
+但 `archify render` 在本机必定失败：
+
+```
+[output/target-hardlinked] Temporary output candidate has multiple hard-link names.
+evidence: { "code": "candidate-hardlinked", "links": "2" }
+```
+
+原因是它的发布协议：写候选 → 建硬链接作为正式名（链接数 2）→ 回收暂存名
+→ **校验链接数必须回到 1**。而本机的删除会进回收站（`fsutil hardlink list`
+能看到链接被移进 `$RECYCLE.BIN`），**计数永远是 2**，校验永远不过。
+
+这是环境差异，不是 JSON 写错。换一台删除不进回收站的机器，可以直接：
+
+```
+node D:/project/archify/archify/bin/archify.mjs render architecture \
+     releases/demo/matlabc-tour.architecture.json releases/demo/matlabc-tour.html
+```
+
+**怎么重新生成页面**
+
+```
+python tools/make_tour_html.py
+```
+
+它读上面那份 JSON，输出的仍是同一个 HTML —— 改模块、改连线只改 JSON，
+改讲解词改脚本里的 `STEPS`。
+
+---
+
 ## 想重新生成
 
 演示图是脚本逐帧绘制的，不是录屏：

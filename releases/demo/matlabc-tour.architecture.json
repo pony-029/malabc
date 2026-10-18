@@ -1,0 +1,230 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "matlabc · 一眼看懂每个模块",
+    "subtitle": "一份分析结果，三个出口：编辑器里看、报告里看、AI 来问",
+    "output": "releases/demo/matlabc-tour.html"
+  },
+  "components": [
+    {
+      "id": "vscode",
+      "type": "external",
+      "label": "VS Code",
+      "sublabel": "打开工程即可",
+      "pos": [40, 300],
+      "size": [130, 60]
+    },
+    {
+      "id": "ext",
+      "type": "frontend",
+      "label": "扩展界面",
+      "sublabel": "侧栏 · CodeLens · 命令",
+      "pos": [210, 300],
+      "size": [160, 66],
+      "tag": "人在这里操作"
+    },
+    {
+      "id": "outline",
+      "type": "frontend",
+      "label": "大纲",
+      "sublabel": "Ctrl+Shift+O",
+      "pos": [210, 140],
+      "size": [140, 56]
+    },
+    {
+      "id": "codelens",
+      "type": "frontend",
+      "label": "CodeLens",
+      "sublabel": "函数上方显示调用数",
+      "pos": [380, 140],
+      "size": [140, 56]
+    },
+    {
+      "id": "sidebar",
+      "type": "frontend",
+      "label": "关系面板",
+      "sublabel": "上游 / 下游 / 字段读写",
+      "pos": [550, 140],
+      "size": [160, 56]
+    },
+    {
+      "id": "lsp",
+      "type": "backend",
+      "label": "分析服务",
+      "sublabel": "按需查询，不预跑全部",
+      "pos": [420, 300],
+      "size": [150, 66]
+    },
+    {
+      "id": "analyzer",
+      "type": "backend",
+      "label": "解析内核",
+      "sublabel": "零依赖 · 纯标准库",
+      "pos": [640, 300],
+      "size": [150, 66],
+      "tag": "离线"
+    },
+    {
+      "id": "cache",
+      "type": "messagebus",
+      "label": "磁盘缓存",
+      "sublabel": "工程没变就秒开",
+      "pos": [850, 140],
+      "size": [150, 56]
+    },
+    {
+      "id": "cimpl",
+      "type": "cloud",
+      "label": "C 源 / mex / DLL",
+      "sublabel": "解析不到的调用落到这",
+      "pos": [860, 300],
+      "size": [160, 66]
+    },
+    {
+      "id": "html",
+      "type": "cloud",
+      "label": "HTML 报告",
+      "sublabel": "命令面板一键生成",
+      "pos": [210, 460],
+      "size": [160, 56]
+    },
+    {
+      "id": "mcp",
+      "type": "security",
+      "label": "MCP 接口",
+      "sublabel": "15 个工具（含 3 个写操作）",
+      "pos": [470, 460],
+      "size": [160, 56],
+      "tag": "给 AI 用"
+    },
+    {
+      "id": "agent",
+      "type": "external",
+      "label": "AI 客户端",
+      "sublabel": "Claude / Cursor / Continue",
+      "pos": [700, 460],
+      "size": [160, 56]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "编辑器内（给人看）",
+      "wraps": ["outline", "codelens", "sidebar"]
+    },
+    {
+      "kind": "region",
+      "label": "分析与缓存（零依赖、可离线）",
+      "wraps": ["lsp", "analyzer", "cache"]
+    },
+    {
+      "kind": "region",
+      "label": "给 AI 的入口",
+      "wraps": ["mcp", "agent"]
+    }
+  ],
+  "connections": [
+    {
+      "from": "vscode",
+      "to": "ext",
+      "variant": "emphasis"
+    },
+    {
+      "from": "ext",
+      "to": "lsp",
+      "label": "问一句答一句",
+      "variant": "emphasis"
+    },
+    {
+      "from": "lsp",
+      "to": "outline",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "from": "lsp",
+      "to": "codelens",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "from": "ext",
+      "to": "sidebar",
+      "label": "光标停住就刷新",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "from": "lsp",
+      "to": "analyzer",
+      "variant": "emphasis"
+    },
+    {
+      "from": "lsp",
+      "to": "cache",
+      "label": "命中即秒开",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "bottom"
+    },
+    {
+      "from": "analyzer",
+      "to": "cimpl",
+      "label": "未解析的调用",
+      "variant": "dashed"
+    },
+    {
+      "from": "ext",
+      "to": "html",
+      "label": "命令面板",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "left"
+    },
+    {
+      "from": "agent",
+      "to": "mcp",
+      "label": "tools/call",
+      "variant": "emphasis"
+    },
+    {
+      "from": "mcp",
+      "to": "lsp",
+      "label": "复用同一套分析",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "人在这里做什么",
+      "items": [
+        "大纲：一个文件里有哪些函数",
+        "F12：跳到定义、首次赋值、global 声明",
+        "关系面板：光标停住就显示上游 / 下游",
+        "CodeLens：函数上方直接看到调用数"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "AI 在这里做什么",
+      "items": [
+        "15 个工具：影响面、字段溯源、热点、体检…",
+        "写操作分三步：先看 diff，确认才落盘，可撤销",
+        "不确定有什么能力时，它会先问 help"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "共同的底座",
+      "items": [
+        "三个出口共用同一份分析结果，不各算一遍",
+        "工程没变就走磁盘缓存，第二次秒开",
+        "不运行 MATLAB、不联网、不装第三方库"
+      ]
+    }
+  ]
+}

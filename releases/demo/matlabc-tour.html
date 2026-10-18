@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<title>matlabc · 一眼看懂每个模块</title>
+<style>
+:root{--bg:#14161a;--panel:#1b1e24;--fg:#e6e9ef;--dim:#8b93a7;--acc:#4f8cff;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+ font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;display:flex;
+ height:100vh;overflow:hidden}
+#map{flex:1;display:flex;align-items:center;justify-content:center;padding:12px}
+svg{width:100%;height:100%}
+.node{cursor:pointer;transition:opacity .35s, filter .35s}
+.node .lbl{font-size:13px;font-weight:600;fill:var(--fg);text-anchor:middle}
+.node .sub{font-size:10.5px;fill:var(--dim);text-anchor:middle}
+.node.dim{opacity:.16}
+.node.on{filter:drop-shadow(0 0 10px rgba(79,140,255,.85))}
+.edge{stroke:#3a4050;stroke-width:1.4;transition:stroke .35s, stroke-width .35s}
+.edge.dim{stroke:#242833}
+.edge.on{stroke:var(--acc);stroke-width:2.4}
+#side{width:400px;background:var(--panel);border-left:1px solid #262b35;
+ padding:20px 22px;display:flex;flex-direction:column;gap:14px;overflow:auto}
+h1{font-size:16px;margin:0}
+h1 span{display:block;font-size:11.5px;color:var(--dim);font-weight:400;margin-top:6px}
+#step{background:#22262e;border-radius:10px;padding:14px 16px;min-height:150px}
+#step h3{margin:0 0 8px;font-size:14px;color:#9fc0ff}
+#step p{margin:0;font-size:12.5px;line-height:1.75;color:#c8cdd8}
+#bar{display:flex;gap:8px;align-items:center}
+button{background:#2a2f3a;color:var(--fg);border:1px solid #353b47;
+ border-radius:8px;padding:7px 12px;font-size:12.5px;cursor:pointer}
+button:hover{background:#333a47}
+#dots{display:flex;gap:6px;margin-left:auto}
+#dots i{width:7px;height:7px;border-radius:50%;background:#3a4050;display:block}
+#dots i.on{background:var(--acc)}
+.card{background:#22262e;border-radius:10px;padding:12px 14px}
+.card h4{margin:0 0 8px;font-size:12.5px;display:flex;align-items:center;gap:7px}
+.card .dot{width:7px;height:7px;border-radius:50%}
+.card ul{margin:0;padding-left:16px;color:#b9bfcb;font-size:12px;line-height:1.8}
+</style></head><body>
+<div id="map">
+<svg viewBox="0 0 1080 600" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6"
+ markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#5a6274"/>
+</marker></defs>
+<line class="edge" data-from="vscode" data-to="ext" x1="105" y1="330" x2="290" y2="333" marker-end="url(#ar)"/>
+<line class="edge" data-from="ext" data-to="lsp" x1="290" y1="333" x2="495" y2="333" marker-end="url(#ar)"/>
+<line class="edge" data-from="lsp" data-to="outline" x1="495" y1="333" x2="280" y2="168" marker-end="url(#ar)"/>
+<line class="edge" data-from="lsp" data-to="codelens" x1="495" y1="333" x2="450" y2="168" marker-end="url(#ar)"/>
+<line class="edge" data-from="ext" data-to="sidebar" x1="290" y1="333" x2="630" y2="168" marker-end="url(#ar)"/>
+<line class="edge" data-from="lsp" data-to="analyzer" x1="495" y1="333" x2="715" y2="333" marker-end="url(#ar)"/>
+<line class="edge" data-from="lsp" data-to="cache" x1="495" y1="333" x2="925" y2="168" stroke-dasharray="6 5" marker-end="url(#ar)"/>
+<line class="edge" data-from="analyzer" data-to="cimpl" x1="715" y1="333" x2="940" y2="333" stroke-dasharray="6 5" marker-end="url(#ar)"/>
+<line class="edge" data-from="ext" data-to="html" x1="290" y1="333" x2="290" y2="488" stroke-dasharray="6 5" marker-end="url(#ar)"/>
+<line class="edge" data-from="agent" data-to="mcp" x1="780" y1="488" x2="550" y2="488" marker-end="url(#ar)"/>
+<line class="edge" data-from="mcp" data-to="lsp" x1="550" y1="488" x2="495" y2="333" stroke-dasharray="6 5" marker-end="url(#ar)"/>
+<g class="node" data-id="vscode"><rect x="40" y="300" width="130" height="60" rx="10" fill="#8b93a722" stroke="#8b93a7" stroke-width="1.6"/><text x="105" y="326" class="lbl">VS Code</text><text x="105" y="343" class="sub">打开工程即可</text></g>
+<g class="node" data-id="ext"><rect x="210" y="300" width="160" height="66" rx="10" fill="#4f8cff22" stroke="#4f8cff" stroke-width="1.6"/><text x="290" y="329" class="lbl">扩展界面</text><text x="290" y="346" class="sub">侧栏 · CodeLens · 命令</text></g>
+<g class="node" data-id="outline"><rect x="210" y="140" width="140" height="56" rx="10" fill="#4f8cff22" stroke="#4f8cff" stroke-width="1.6"/><text x="280" y="164" class="lbl">大纲</text><text x="280" y="181" class="sub">Ctrl+Shift+O</text></g>
+<g class="node" data-id="codelens"><rect x="380" y="140" width="140" height="56" rx="10" fill="#4f8cff22" stroke="#4f8cff" stroke-width="1.6"/><text x="450" y="164" class="lbl">CodeLens</text><text x="450" y="181" class="sub">函数上方显示调用数</text></g>
+<g class="node" data-id="sidebar"><rect x="550" y="140" width="160" height="56" rx="10" fill="#4f8cff22" stroke="#4f8cff" stroke-width="1.6"/><text x="630" y="164" class="lbl">关系面板</text><text x="630" y="181" class="sub">上游 / 下游 / 字段读写</text></g>
+<g class="node" data-id="lsp"><rect x="420" y="300" width="150" height="66" rx="10" fill="#a06bff22" stroke="#a06bff" stroke-width="1.6"/><text x="495" y="329" class="lbl">分析服务</text><text x="495" y="346" class="sub">按需查询，不预跑全部</text></g>
+<g class="node" data-id="analyzer"><rect x="640" y="300" width="150" height="66" rx="10" fill="#a06bff22" stroke="#a06bff" stroke-width="1.6"/><text x="715" y="329" class="lbl">解析内核</text><text x="715" y="346" class="sub">零依赖 · 纯标准库</text></g>
+<g class="node" data-id="cache"><rect x="850" y="140" width="150" height="56" rx="10" fill="#22b8cf22" stroke="#22b8cf" stroke-width="1.6"/><text x="925" y="164" class="lbl">磁盘缓存</text><text x="925" y="181" class="sub">工程没变就秒开</text></g>
+<g class="node" data-id="cimpl"><rect x="860" y="300" width="160" height="66" rx="10" fill="#3ec98b22" stroke="#3ec98b" stroke-width="1.6"/><text x="940" y="329" class="lbl">C 源 / mex / DLL</text><text x="940" y="346" class="sub">解析不到的调用落到这</text></g>
+<g class="node" data-id="html"><rect x="210" y="460" width="160" height="56" rx="10" fill="#3ec98b22" stroke="#3ec98b" stroke-width="1.6"/><text x="290" y="484" class="lbl">HTML 报告</text><text x="290" y="501" class="sub">命令面板一键生成</text></g>
+<g class="node" data-id="mcp"><rect x="470" y="460" width="160" height="56" rx="10" fill="#e8a33d22" stroke="#e8a33d" stroke-width="1.6"/><text x="550" y="484" class="lbl">MCP 接口</text><text x="550" y="501" class="sub">15 个工具（含 3 个写操作）</text></g>
+<g class="node" data-id="agent"><rect x="700" y="460" width="160" height="56" rx="10" fill="#8b93a722" stroke="#8b93a7" stroke-width="1.6"/><text x="780" y="484" class="lbl">AI 客户端</text><text x="780" y="501" class="sub">Claude / Cursor / Continue</text></g>
+</svg>
+</div>
+<div id="side">
+<h1>matlabc · 一眼看懂每个模块<span>一份分析结果，三个出口：编辑器里看、报告里看、AI 来问</span></h1>
+<div id="step"><h3></h3><p></p></div>
+<div id="bar">
+  <button id="prev">← 上一步</button>
+  <button id="next">下一步 →</button>
+  <button id="play">⏸ 暂停</button>
+  <div id="dots"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+</div>
+<div class="card"><h4><span class="dot" style="background:#22b8cf"></span>人在这里做什么</h4><ul><li>大纲：一个文件里有哪些函数</li><li>F12：跳到定义、首次赋值、global 声明</li><li>关系面板：光标停住就显示上游 / 下游</li><li>CodeLens：函数上方直接看到调用数</li></ul></div>
+<div class="card"><h4><span class="dot" style="background:#3ec98b"></span>AI 在这里做什么</h4><ul><li>15 个工具：影响面、字段溯源、热点、体检…</li><li>写操作分三步：先看 diff，确认才落盘，可撤销</li><li>不确定有什么能力时，它会先问 help</li></ul></div>
+<div class="card"><h4><span class="dot" style="background:#f2637e"></span>共同的底座</h4><ul><li>三个出口共用同一份分析结果，不各算一遍</li><li>工程没变就走磁盘缓存，第二次秒开</li><li>不运行 MATLAB、不联网、不装第三方库</li></ul></div>
+</div>
+<script>
+const STEPS = [{"title": "① 打开工程", "desc": "装好扩展、打开任意 MATLAB 工程。分析在后台进行，期间大纲已经能用（它只读当前文件）。", "nodes": ["vscode", "ext", "lsp", "analyzer"], "edges": [["vscode", "ext"], ["ext", "lsp"], ["lsp", "analyzer"]]}, {"title": "② 看一个文件里有什么", "desc": "Ctrl+Shift+O 列出本文件所有函数，选中即跳转。不需要等全库分析完成。", "nodes": ["lsp", "outline"], "edges": [["lsp", "outline"]]}, {"title": "③ 跳到定义", "desc": "光标停在函数名上按 F12：函数、结构体字段、global 声明都能跳，跨文件也一样。字段会落到**首次赋值**那一行。", "nodes": ["lsp", "codelens"], "edges": [["lsp", "codelens"]]}, {"title": "④ 关系面板：谁调用它 / 它调用谁", "desc": "光标停住，左侧「关系」面板自动刷新：上游按层展开到入口，下游展开三层；点任意一行就跳到**调用发生的那一行**。变量显示声明与出现位置，字段显示读写位置。", "nodes": ["ext", "sidebar"], "edges": [["ext", "sidebar"]]}, {"title": "⑤ 生成 HTML 报告", "desc": "命令面板 →「生成 HTML 分析报告」，写到 .matlabc/report.html 并自动打开。热点、耦合、数据流、结构体冲突都在这份报告里。", "nodes": ["ext", "html"], "edges": [["ext", "html"]]}, {"title": "⑥ 让 AI 来问（MCP）", "desc": "命令面板 →「生成 MCP 配置」写入客户端配置。之后 AI 能直接问「改这个函数会影响谁」「这个字段谁在写」，甚至按三步安全地改代码。", "nodes": ["agent", "mcp", "lsp"], "edges": [["agent", "mcp"], ["mcp", "lsp"]]}, {"title": "⑦ 链条断在 C 层时", "desc": "MATLAB 里解析不到的调用，如果工程内有 C 源、mex 或 DLL，关系面板会显示它落到哪一行；改 C 也能反查影响哪些 MATLAB 函数。", "nodes": ["analyzer", "cimpl"], "edges": [["analyzer", "cimpl"]]}, {"title": "⑧ 第二次打开为什么很快", "desc": "分析结果按工程状态存盘。工程没变就直接读缓存，编辑器与 AI 共用同一份结果，不各算一遍。", "nodes": ["lsp", "cache"], "edges": [["lsp", "cache"]]}];
+let i = 0, timer = null, playing = true;
+const nodes = [...document.querySelectorAll('.node')];
+const edges = [...document.querySelectorAll('.edge')];
+const dots = [...document.querySelectorAll('#dots i')];
+function render(){
+  const s = STEPS[i];
+  document.querySelector('#step h3').textContent = s.title;
+  document.querySelector('#step p').innerHTML = s.desc;
+  nodes.forEach(n => {
+    const on = s.nodes.includes(n.dataset.id);
+    n.classList.toggle('on', on);
+    n.classList.toggle('dim', !on);
+  });
+  edges.forEach(e => {
+    const on = (s.edges || []).some(p => p[0] === e.dataset.from && p[1] === e.dataset.to);
+    e.classList.toggle('on', on);
+    e.classList.toggle('dim', !on);
+  });
+  dots.forEach((d, k) => d.classList.toggle('on', k === i));
+}
+function go(n){ i = (n + STEPS.length) % STEPS.length; render(); }
+function tick(){ if (playing) go(i + 1); }
+function restart(){ clearInterval(timer); timer = setInterval(tick, 4200); }
+document.getElementById('next').onclick = () => { go(i + 1); restart(); };
+document.getElementById('prev').onclick = () => { go(i - 1); restart(); };
+document.getElementById('play').onclick = (ev) => {
+  playing = !playing;
+  ev.target.textContent = playing ? '⏸ 暂停' : '▶ 播放';
+};
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight') { go(i + 1); restart(); }
+  if (e.key === 'ArrowLeft') { go(i - 1); restart(); }
+  if (e.key === ' ') { e.preventDefault();
+    document.getElementById('play').click(); }
+});
+// 点模块直接跳到讲它的那一帧
+nodes.forEach(n => n.onclick = () => {
+  const k = STEPS.findIndex(s => s.nodes.includes(n.dataset.id));
+  if (k >= 0) { go(k); restart(); }
+});
+render(); restart();
+</script></body></html>

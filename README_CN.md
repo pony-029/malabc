@@ -855,6 +855,7 @@ python tools/check_help_contract.py --list-prefixes    # 前缀 -> 主人；加�
 | --- | --- |
 | `build_vsix.py` | 直接产出离线 `.vsix` 到 `releases/vsix/`——版本号读自扩展清单，文件名与实际安装的版本永远一致 |
 | `make_tour_gif.py` | 逐帧重绘 `releases/demo/matlabc-tour.gif`（四个场景：大纲、转到定义、关系面板、热点排行）——不是录屏，改文案改配色都只改脚本 |
+| `make_tour_html.py` | 从 archify 格式的 `matlabc-tour.architecture.json` 渲染出 `releases/demo/matlabc-tour.html`（8 步可播放导览）——模块图与讲解词各自只有一处，不会说两套话 |
 | `make_release.py` | 从三处事实重建 `releases/README.md` 的版本表：版本号读自扩展清单、摘要读自更新日志、大小与日期读自 `.vsix` 文件。默认只列真的有包的版本，`--all` 才全列 |
 | `json_diff.py` | 忽略指定键后比两份 `--json` / `--xml` 是否完全一致——本仓每一句「IDENTICAL」都是用它得出的 |
 | `tree_diff.py` | 比两个目录的文件集合与内容（可按正则忽略行） |
