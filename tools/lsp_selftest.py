@@ -1470,6 +1470,26 @@ def _doc(c):
     _chk(bool(_rs.get("binary_scope")),
          "doc/rea-scope-declared（%r）" % (_rs.get("binary_scope"),))
 
+    # ---- R363：错误信息必须指向原因 ------------------------------------
+    # R362 把两处空文案修好了，但**没有任何判据守着** —— 改回去也不会有人
+    # 发现。全场景探针那条断言是 `A or B` 的宽松形式，更挡不住。
+    # 判据三条，各锁一处「用户能不能看懂」。
+    _eo = _MCP.t_outline({"path": "no/such/file.m"})
+    _eot = (_eo.get("content") or [{}])[0].get("text", "")
+    _chk("no/such/file.m" in _eot,
+         "mcp/outline-echoes-path（%r）" % (_eot[:50],))
+    _ei = _MCP.t_impact({"name": "   "})
+    _eit = (_ei.get("content") or [{}])[0].get("text", "")
+    _chk(bool(_ei.get("isError")) and u"不能为空" in _eit,
+         "mcp/impact-empty-name（isError=%r,%r）"
+         % (_ei.get("isError"), _eit[:40]))
+    # 越界路径：必须**明确说找不到**，且不能把请求的字符串丢掉
+    _et = _MCP.t_outline({"path": "../../etc/passwd"})
+    _ett = (_et.get("content") or [{}])[0].get("text", "")
+    _chk(bool(_et.get("isError")) and "passwd" in _ett,
+         "mcp/path-traversal-rejected（isError=%r,%r）"
+         % (_et.get("isError"), _ett[:50]))
+
     # ---- R346：C 内部的下一跳 ----------------------------------------
     # 只接住 C 入口而不往下走，等于把「链断了」往后挪一层。
     # 边的形状是 4 元组 (caller, callee, line, rel)，而 build_c_model 的

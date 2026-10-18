@@ -120,6 +120,25 @@ MUTATIONS = [
      'if bridged:\n        out.append("")\n        out.append("## 跨语言")',
      'if False:\n        out.append("")\n        out.append("## 跨语言")',
      "--doc", "mcp/explain-includes-cbridge"),
+    # 第 2 版：锁住「错误信息指向原因」这两处（R363）。
+    ("找不到文件不回显路径", "mcp",
+     'return _err("找不到文件：%s" % (raw or "（未给 path）"))\n'
+     '    syms = L._document_symbols(_uri(path))',
+     'return _err("找不到文件：%s" % path)\n'
+     '    syms = L._document_symbols(_uri(path))',
+     "--doc", "mcp/outline-echoes-path"),
+    ("空名字不再报错", "mcp",
+     '    if not name:\n'
+     '        return _err("name 不能为空：请给一个函数名")\n'
+     '    info = L._impact(name)\n'
+     '    if info is None:\n'
+     '        return _text("`%s` 不是本工程里的函数（或还没有分析到它）。" % name)',
+     '    if False:\n'
+     '        return _err("name 不能为空：请给一个函数名")\n'
+     '    info = L._impact(name)\n'
+     '    if info is None:\n'
+     '        return _text("`%s` 不是本工程里的函数（或还没有分析到它）。" % name)',
+     "--doc", "mcp/impact-empty-name"),
     ("诊断缓存永不失效", "mcp",
      'if (abs(float(doc.get("stamp") or 0) - float(stamp)) < 1e-6',
      "if (True",

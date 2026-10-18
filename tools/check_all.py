@@ -1064,6 +1064,25 @@ def main(argv):
     print("       python tools/lsp_selftest.py   （11 条：诊断 / 定义 / 引用）")
     print("       node vscode/test_extension.js  （5 条：注册了哪些 provider）")
     print("       node vscode/test_client.js     （6 条：以真实 LSP 为对端）")
+    # R363：全场景与变异抽样同样"重"（各起 20+ 个子进程），不进门列表；
+    # 但**必须出现在提示里** —— 一次都没被提到过的检查，等于不存在。
+    print("       python tools/rsi_scenarios.py  （58 个全场景，只走公开协议）")
+    print("       python tools/mutate_sample.py  （16 个变异：验证判据会红）")
+    print("       加 --with-scenarios 可让本 runner 顺手跑一遍全场景（约 1 分钟）")
+
+    # `--with-scenarios`：显式要求才跑。**失败要能影响退出码**，
+    # 否则「跑了但红了照样 rc=0」比不跑更糟。
+    if "--with-scenarios" in argv:
+        _here = os.path.dirname(os.path.abspath(__file__))
+        _scrc, _scout = _run(sys.executable,
+                             [os.path.join(_here, "rsi_scenarios.py")],
+                             timeout=900)
+        _sc_last = [x.strip() for x in (_scout or "").splitlines() if x.strip()]
+        print("check_all: 全场景 %s（%s）"
+              % ("通过" if _scrc == 0 else "失败",
+                 (_sc_last[-1] if _sc_last else "")[:80]))
+        if _scrc != 0:
+            return 1
     return 0
 
 
