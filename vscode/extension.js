@@ -456,39 +456,77 @@ function activate(context) {
     })
   );
 
-  // 热点排行（R282）：从「先看哪几个函数」这个问题出发。
+  // 热点排行（R282/R283）：从「先看哪几个函数」这个问题出发。
   // 复杂度高说明难读，调用者多说明波及面大，两者相乘才是值得先看的地方。
-  context.subscriptions.push(
-    vscode.commands.registerCommand('matlabc.showHeat', async () => {
-      try {
-        const r = await client.request('matlabc/heat', { limit: 20 });
-        const rows = r.result || [];
-        if (!rows.length) {
-          vscode.window.showInformationMessage(
-            'matlabc: 当前工作区没有可排行的函数（分析可能尚未完成）');
-          return;
-        }
-        const items = rows.map((h, i) => ({
-          label: (i + 1) + '.\t' + h.name,
-          description: '复杂度 ' + h.complexity + ' · 调用者 ' + h.callers +
-                       ' · 得分 ' + h.score,
-          detail: h.rel + ':' + h.line,
-          rel: h.rel,
-          line: h.line,
-        }));
-        const pick = await vscode.window.showQuickPick(items, {
-          placeHolder: '热点排行：复杂度 × (1 + 调用者数)',
-          matchOnDescription: true,
-          matchOnDetail: true,
-        });
-        if (pick) {
-          await vscode.commands.executeCommand('matlabc.openAt', pick.rel,
-                                               pick.line);
-        }
-      } catch (e) {
-        log('showHeat 失败：' + (e && e.message));
-        vscode.window.showErrorMessage('matlabc: ' + (e && e.message));
+  // R283：可按目录过滤，并可把结果复制成 Markdown，便于贴进评审文档。
+  const mkHeatMd = (rows) => {
+    const head = ['| # | 函数 | 位置 | 复杂度 | 调用者 | 得分 |',
+                  '| --- | --- | --- | --- | --- | --- |'];
+    const body = rows.map((h, i) => '| ' + (i + 1) + ' | `' + h.name +
+      '` | `' + h.rel + ':' + h.line + '` | ' + h.complexity + ' | ' +
+      h.callers + ' | ' + h.score + ' |');
+    return head.concat(body).join('\n');
+  };
+
+  const showHeat = async (dir) => {
+    try {
+      const params = { limit: 20 };
+      if (dir) params.dir = dir;
+      const r = await client.request('matlabc/heat', params);
+      const rows = r.result || [];
+      if (!rows.length) {
+        vscode.window.showInformationMessage(dir
+          ? ('matlabc: ' + dir + ' 下没有可排行的函数')
+          : 'matlabc: 当前工作区没有可排行的函数（分析可能尚未完成）');
+        return;
       }
+      const items = rows.map((h, i) => ({
+        label: (i + 1) + '.\t' + h.name,
+        description: '复杂度 ' + h.complexity + ' · 调用者 ' + h.callers +
+                     ' · 得分 ' + h.score,
+        detail: h.rel + ':' + h.line,
+        rel: h.rel,
+        line: h.line,
+      }));
+      items.push({
+        label: '$(clippy) 复制为 Markdown',
+        description: rows.length + ' 行 · 可直接贴进评审文档',
+        copy: true,
+      });
+      const pick = await vscode.window.showQuickPick(items, {
+        placeHolder: (dir ? dir + ' · ' : '') +
+                     '热点排行：复杂度 × (1 + 调用者数)',
+        matchOnDescription: true,
+        matchOnDetail: true,
+      });
+      if (!pick) return;
+      if (pick.copy) {
+        await vscode.env.clipboard.writeText(mkHeatMd(rows));
+        vscode.window.showInformationMessage(
+          'matlabc: 已复制 ' + rows.length + ' 行到剪贴板');
+        return;
+      }
+      await vscode.commands.executeCommand('matlabc.openAt', pick.rel,
+                                           pick.line);
+    } catch (e) {
+      log('showHeat 失败：' + (e && e.message));
+      vscode.window.showErrorMessage('matlabc: ' + (e && e.message));
+    }
+  };
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.showHeat', () => showHeat(null))
+  );
+
+  // 当前文件所在目录的热点：跨模块的分数没有可比性，同一目录内才有意义。
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.showHeatHere', async () => {
+      const ed = vscode.window.activeTextEditor;
+      if (!ed || !root) return showHeat(null);
+      const relp = path.relative(root, ed.document.uri.fsPath)
+        .replace(/\\/g, '/');
+      const cut = relp.lastIndexOf('/');
+      return showHeat(cut >= 0 ? relp.slice(0, cut + 1) : null);
     })
   );
 

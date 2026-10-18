@@ -421,6 +421,24 @@ def _impact(c):
          "heat/callers-counted（%r）" % ([(r["name"], r["callers"])
                                          for r in _rows],))
 
+    # R283：按目录过滤。跨模块的分数没有可比性，所以这个参数必须真的生效 ——
+    # 只加参数不生效的话，界面会「看起来支持过滤」而结果没变。
+    c.send({"jsonrpc": "2.0", "id": 97, "method": "matlabc/heat",
+            "params": {"limit": 20, "dir": "a.m"}})
+    _rf = c.recv() or {}
+    _rows_f = _rf.get("result") or []
+    _chk(bool(_rows_f) and all(r["rel"] == "a.m" for r in _rows_f),
+         "heat/dir-filter-applied（%r）" % ([r["rel"] for r in _rows_f],))
+    _chk(len(_rows_f) == 3,
+         "heat/dir-filter-keeps-all-in-file（实际 %d）" % len(_rows_f))
+    # 过滤不到东西时给空列表，而不是 None —— 界面据此说「该目录下没有」，
+    # 而不是「分析还没完成」。
+    c.send({"jsonrpc": "2.0", "id": 98, "method": "matlabc/heat",
+            "params": {"limit": 20, "dir": "zzz_none/"}})
+    _rz = c.recv() or {}
+    _chk(_rz.get("result") == [], "heat/dir-filter-empty-list（%r）"
+         % (_rz.get("result"),))
+
     # ---- R262：把「edges 的每条边都能被 call_sites 覆盖」变成判据 ------
     # R261 修的是「有边但没有行号 ⇒ 被误标入口」。改完去查它到底可不可达：
     # 三个语料共 19 条边，**未覆盖 0 条** —— 也就是那个状态目前**不可达**，

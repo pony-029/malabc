@@ -1650,8 +1650,12 @@ def _unresolved_name_count(f):
     return len(_unresolved_tally(f))
 
 
-def _heat(limit=15):
+def _heat(limit=15, prefix=None):
     """热点排行：`复杂度 × (1 + 直接调用者数)`，从高到低。
+
+    `prefix` 按**相对路径前缀**过滤（例如 `solver/` 或 `a.m`）。
+    只看某个目录时，跨模块的分数没有可比性 —— 一个 20 行的求解器函数
+    和一个 5 行的接口函数放在一张榜上，读者只会被大文件吸走注意力。
 
     为什么是这两项的乘积：
 
@@ -1696,6 +1700,8 @@ def _heat(limit=15):
 
     rows = []
     for key, (rel, line, cx) in fn_meta.items():
+        if prefix and not rel.startswith(prefix):
+            continue
         callers = len(rev.get(key) or ())
         callees = len(fwd.get(key) or ())
         rows.append({
@@ -1956,7 +1962,8 @@ def handle(msg, out):
             _lim = int(params.get("limit") or 15)
         except (TypeError, ValueError):
             _lim = 15
-        rows = _heat(max(1, min(_lim, 200)))
+        _prefix = params.get("dir") or None
+        rows = _heat(max(1, min(_lim, 200)), prefix=_prefix)
         _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": rows})
         _log("heat -> %s" % (("none" if rows is None
                               else "%d 行" % len(rows)),))
