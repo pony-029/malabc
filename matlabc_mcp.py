@@ -972,6 +972,10 @@ def t_cbridge(args):
             out.append(u"- `%s` ← `%s`　%s:%d　（调用 %d 次）"
                        % (it["matlab"], it["callee"], it["c_rel"],
                           it["c_line"], it["count"]))
+            # C 内部的下一跳：链路到这里还没结束，别让它又断一次
+            for _d in (it.get("c_down") or [])[:8]:
+                out.append(u"    - `%s` 内部调用 `%s`（line %d）"
+                           % (it["c_name"], _d["name"], _d["line"]))
         out.append(u"")
     bins = r.get("binaries") or []
     if bins:

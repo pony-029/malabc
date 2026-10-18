@@ -1304,6 +1304,48 @@ def _doc(c):
     _chk(bool(_rs.get("binary_scope")),
          "doc/rea-scope-declared（%r）" % (_rs.get("binary_scope"),))
 
+    # ---- R346：C 内部的下一跳 ----------------------------------------
+    # 只接住 C 入口而不往下走，等于把「链断了」往后挪一层。
+    # 边的形状是 4 元组 (caller, callee, line, rel)，而 build_c_model 的
+    # docstring 写的是 3 元组 —— 按 docstring 解包会当场 ValueError，
+    # 并且把整个关系面板打挂。所以这里既验功能，也验「不崩」。
+    _cd = tempfile.mkdtemp(prefix="lsp_cd_")
+    try:
+        with io.open(os.path.join(_cd, "cd.m"), "w", encoding="utf-8",
+                     newline="") as _fh:
+            _fh.write(u"function cd(x)\n"
+                      u"y = c_top(x);\n"
+                      u"end\n")
+        with io.open(os.path.join(_cd, "cdimpl.c"), "w", encoding="utf-8",
+                     newline="") as _fh:
+            _fh.write(u"static int c_inner(int x)\n"
+                      u"{\n"
+                      u"    return x;\n"
+                      u"}\n"
+                      u"\n"
+                      u"int c_top(int x)\n"
+                      u"{\n"
+                      u"    return c_inner(x);\n"
+                      u"}\n")
+        _svd = (_L2._STATE.get("root"), _L2._STATE.get("result"))
+        _L2._STATE["root"] = _cd
+        _L2._STATE["result"] = _an(_cd, no_checks=True)
+        _L2._C_INDEX["key"] = None
+        _L2._C_INDEX["idx"] = None
+        _L2._C_INDEX["model"] = None
+        try:
+            _cdr = _L2._c_bridge("cd")
+        finally:
+            (_L2._STATE["root"], _L2._STATE["result"]) = _svd
+            _L2._C_INDEX["key"] = None
+            _L2._C_INDEX["idx"] = None
+            _L2._C_INDEX["model"] = None
+        _cdown = ((_cdr or {}).get("items") or [{}])[0].get("c_down") or []
+        _chk(any(d["name"] == "c_inner" for d in _cdown),
+             "doc/cbridge-c-internal-call（%r）" % (_cdown,))
+    finally:
+        shutil.rmtree(_cd, ignore_errors=True)
+
     # ---- R286：`@类目录` 里的方法文件也要出大纲 -------------------------
     # 用户报的现象就是 `@sdpvar/round.m` 大纲为空。这条在临时目录里自建
     # 语料（不污染 tests/），路径含 `@`，并且 URI 走百分号编码，

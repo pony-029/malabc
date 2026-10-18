@@ -1078,7 +1078,8 @@ def _format_builtin(name, doc):
 
 
 #: C 源文件函数索引的缓存。键是工程根，`result` 一变就作废。
-_C_INDEX = {"key": None, "idx": None, "nfiles": 0}
+#: `model` 保留完整 C 模型（含 edges），用于回答「这个 C 函数又调了谁」。
+_C_INDEX = {"key": None, "idx": None, "nfiles": 0, "model": None}
 
 #: 二进制（mex / dll / so）索引缓存：名字 -> [{rel, kind}]
 _BIN_INDEX = {"key": None, "idx": None, "nfiles": 0}
@@ -1295,6 +1296,9 @@ def _c_index(root):
     except (IOError, OSError):
         files = []
 
+    # **必须先初始化**：没有 C 文件的工程会跳过下面的 if，
+    # 而缓存写入要读 `model` —— 否则 UnboundLocalError（R346 当场踩到）。
+    model = None
     if files:
         try:
             import matlabc as _M
@@ -1318,7 +1322,11 @@ def _c_index(root):
     _C_INDEX["key"] = key
     _C_INDEX["idx"] = idx
     _C_INDEX["nfiles"] = len(files)
-    _log("C 索引：%d 个文件 / %d 个函数" % (len(files), len(idx)))
+    # 保留完整模型：`edges` 用来回答「这个 C 函数又调了谁」——
+    # 只留名字和行号的话，链路到了 C 入口就又断一次，等于只接了一半。
+    _C_INDEX["model"] = model
+    _log("C 索引：%d 个文件 / %d 个函数 / %d 条边"
+         % (len(files), len(idx), len((model or {}).get("edges") or [])))
     return idx
 
 
@@ -1362,6 +1370,29 @@ def _c_bridge(name):
             for cname, cnt in (getattr(f, "external_calls", None) or {}).items():
                 all_ext.add(cname)
                 for h in idx.get(cname.lower(), []):
+                    # C 内部的下一跳（R346）：只接住 C 入口而不往下走，
+                    # 等于把「链断了」的问题往后挪了一层。
+                    # ⚠ 边的形状是 **4 元组** `(caller, callee, line, rel)`，
+                    # 而 `build_c_model` 的 docstring 写的是 3 元组 ——
+                    # 我按 docstring 写了解包，当场 ValueError，还把整个
+                    # 关系面板打挂。这里改为按位取 + 整体兜底：
+                    # **新增一个字段，绝不能成为打挂主视图的理由。**
+                    _down = []
+                    try:
+                        _cm = _C_INDEX.get("model") or {}
+                        for _e in (_cm.get("edges") or []):
+                            try:
+                                if _e[0] != h["name"]:
+                                    continue
+                                _cal = _e[1]
+                                _ln = int(_e[2] or 0)
+                            except (IndexError, TypeError, ValueError):
+                                continue
+                            _down.append({"name": _cal, "line": _ln})
+                            if len(_down) >= 12:
+                                break
+                    except Exception:
+                        _down = []
                     items.append({"matlab": name,
                                   "mfile": getattr(mf, "rel", "") or "",
                                   "callee": cname,
@@ -1369,6 +1400,7 @@ def _c_bridge(name):
                                   "c_name": h["name"],
                                   "c_rel": h["rel"],
                                   "c_line": h["line"],
+                                  "c_down": _down,
                                   # **证据来源**（R344）：读者必须能分清
                                   # 「内置 PE/C 解析得到的」与「外部工具给的」。
                                   # 没有来源标注的结论，事后无从复核。

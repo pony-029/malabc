@@ -1286,12 +1286,22 @@ function activate(context) {
           if (b && b.available && (b.items || []).length) {
             groups.push(mkItem('⇢  跨语言（C 源）(' + b.items.length + ')', {
               desc: 'MATLAB 侧解析不到，但 C 源里有定义',
-              children: b.items.slice(0, 15).map((it) =>
-                mkItem(it.c_name, {
+              children: b.items.slice(0, 15).map((it) => {
+                // C 内部的下一跳（R346）：只到 C 入口就停，等于把「链断了」
+                // 往后挪一层。这里把 C 的 callee 也挂上，可继续往下看。
+                const kids = (it.c_down || []).map((d) =>
+                  mkItem(d.name, {
+                    desc: 'C 内部调用 · line ' + (d.line || 0),
+                    rel: it.c_rel, line: d.line || it.c_line,
+                  }));
+                return mkItem(it.c_name, {
                   desc: String(it.c_rel || '').split('/').pop() +
-                        ' · line ' + it.c_line,
+                        ' · line ' + it.c_line +
+                        (kids.length ? ' · 内部 ' + kids.length + ' 处' : ''),
                   rel: it.c_rel, line: it.c_line,
-                })),
+                  children: kids.length ? kids : undefined,
+                });
+              }),
             }));
           }
           if (b && b.available && (b.binaries || []).length) {
