@@ -346,6 +346,109 @@ def t_diagnostics(args):
     return _text("\n".join(out))
 
 
+def _fn_meta(name):
+    """找到函数对象本身（复杂度、行数）。`_impact` 的返回里没有这些。"""
+    result = L._STATE.get("result")
+    for mf in (getattr(result, "files", None) or []):
+        for f in (getattr(mf, "functions", None) or []):
+            if getattr(f, "name", "") == name:
+                end = getattr(f, "body_end", None)
+                return {"rel": getattr(mf, "rel", "") or "",
+                        "line": int(getattr(f, "line", 1) or 1),
+                        "complexity": int(getattr(f, "complexity", 0) or 0),
+                        "span": (int(end) - int(getattr(f, "line", 1) or 1) + 1)
+                        if end else 0}
+    return {}
+
+
+def t_explain(args):
+    """一次说清「这个函数是什么、改它有多大风险、从哪看起」。
+
+    为什么不复用 `matlabc_impact`：impact 给的是**数据**（谁调它、它调谁），
+    而模型接下来要自己做归纳。这里把归纳做掉 —— 角色、风险等级、先看哪里。
+    风险规则写死在下面，可以被判据验证，不是随口说的"高风险"。
+    """
+    name = args.get("name") or ""
+    info = L._impact(name)
+    if info is None:
+        return _text("`%s` 不是本工程里的函数（或还没有分析到它）。" % name)
+    if info.get("pending"):
+        return _text("工程索引还在建立，请稍后重试。")
+
+    meta = _fn_meta(name)
+    callers = int(info.get("total") or 0)
+    chains = info.get("chains") or []
+    downs = info.get("down") or []
+    unresolved = int(info.get("unresolved") or 0)
+    cx = meta.get("complexity", 0)
+
+    out = ["# `%s` 速览" % name, "",
+           "`%s:%d`　复杂度 %d%s"
+           % (meta.get("rel", ""), meta.get("line", 0), cx,
+              ("　约 %d 行" % meta["span"]) if meta.get("span") else ""), ""]
+
+    # ---- 角色：入口 / 中间层 / 叶子，三者可组合 ----
+    role = []
+    if callers == 0:
+        role.append("**入口**（没有任何调用者）")
+    else:
+        role.append("中间层（%d 个直接调用者、%d 条来路）"
+                    % (callers, len(chains)))
+    if not downs:
+        role.append("**叶子**（不调用工程内的其他函数）")
+    else:
+        role.append("调用下游 %d 个" % int(info.get("down_total") or 0))
+    out.append("## 角色")
+    out.append("")
+    out.append(" · ".join(role))
+    out.append("")
+
+    # ---- 风险：规则显式，可被验证 ----
+    # **复杂度单独也能触发风险**：一个没人调用的入口，若本身很复杂，
+    # 改动时同样容易出错 —— 这条是看了 switch_case（cx=8、无调用者）
+    # 被判成「低」之后补上的。
+    if callers >= 5 and cx >= 5:
+        level, why = "高", "调用者 ≥5 且复杂度 ≥5 —— 改它要回归的入口多"
+    elif cx >= 8:
+        level, why = "中", "复杂度 %d —— 读和改都容易出错，与调用者多少无关" % cx
+    elif unresolved >= 3:
+        level, why = "中", "有 %d 处调用解析不到，影响面有一部分不可见" % unresolved
+    elif callers >= 5:
+        level, why = "中", "调用者 ≥5 —— 波及面广，但函数本身不复杂"
+    else:
+        level, why = "低", "调用者与复杂度都不高"
+    out.append("## 风险")
+    out.append("")
+    out.append("**%s** —— %s" % (level, why))
+    out.append("")
+
+    # ---- 从哪看起：给一条具体路径，而不是一句"自己看" ----
+    out.append("## 从哪看起")
+    out.append("")
+    if chains and callers:
+        shortest = min(chains, key=len)
+        out.append("- 来路最短的一条：" + " → ".join(
+            "`%s`(%s:%d)" % (n["name"], n["rel"], n["line"])
+            for n in shortest))
+    elif callers == 0:
+        out.append("- 它是入口，改它影响的是一条完整的执行路径，"
+                   "没有上游需要回归")
+    if downs:
+        out.append("- 下游前三个：" + "、".join(
+            "`%s`" % d["name"] for d in downs[:3]))
+    if unresolved:
+        out.append("- ⚠ 有 **%d 处调用解析不到**（外部函数或动态调用），"
+                   "这部分影响面无法自动推断，需要人工确认" % unresolved)
+        names = info.get("unresolved_names") or []
+        if names:
+            out.append("  未能解析：" + "、".join(
+                "`%s`" % n for n in names[:10]))
+    out.append("")
+    out.append("要改它读写的数据结构时，再用 `matlabc_fields` 查对应字段的"
+               "跨文件读写位置。")
+    return _text("\n".join(out))
+
+
 def t_fields(args):
     """结构体字段的**跨文件读写溯源**（HTML 报告里的「跨文件变量溯源」）。
 
@@ -508,6 +611,16 @@ TOOLS = [
                                     "character": _INT},
                      "required": ["path", "line", "character"]},
      "handler": t_references},
+
+    {"name": "matlabc_explain",
+     "description": "一个函数的**速览**：它是什么角色（入口/中间层/叶子）、"
+                    "改动风险等级与理由、以及从哪看起。"
+                    "比 impact 更适合「我要改这个函数，先了解一下」这种开场，"
+                    "因为它给的是结论而不是原始列表。",
+     "inputSchema": {"type": "object",
+                     "properties": {"name": _STR},
+                     "required": ["name"]},
+     "handler": t_explain},
 
     {"name": "matlabc_diagnostics",
      "description": "工程体检：按类别列出诊断（未初始化、未使用、隐式转换等），"

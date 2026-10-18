@@ -1495,6 +1495,27 @@ def _mcp(c=None):
         _chk("c_uninit_read" in _t9 and "c_unused" not in _t9,
              "mcp/call-diagnostics-filters-by-file（%r）" % (_t9[:60],))
 
+        # R325：explain —— 角色、风险、从哪看起，一次给全。
+        # 三条分别验：中间层识别、复杂度单独触发风险、不存在的名字。
+        _sv3 = (_L2._STATE.get("root"), _L2._STATE.get("result"),
+                _L2._STATE.get("payload"))
+        _L2._STATE["root"] = CORPUS
+        _L2._STATE["result"] = _an(CORPUS, no_checks=True)
+        _L2._STATE["field_index"] = None
+        try:
+            _e1 = _MCP.t_explain({"name": "a"})["content"][0]["text"]
+            _e2 = _MCP.t_explain({"name": "switch_case"})["content"][0]["text"]
+            _e3 = _MCP.t_explain({"name": "zzz_nope"})["content"][0]["text"]
+        finally:
+            (_L2._STATE["root"], _L2._STATE["result"]) = _sv3[0], _sv3[1]
+        _chk("中间层" in _e1 and "风险" in _e1,
+             "mcp/explain-role（%r）" % (_e1[:60],))
+        # switch_case：cx=8、无调用者。**复杂度单独就能触发「中」**。
+        _chk("**中**" in _e2, "mcp/explain-complexity-raises-risk（%r）"
+             % (_e2[:80],))
+        _chk("不是本工程里的函数" in _e3,
+             "mcp/explain-missing（%r）" % (_e3[:60],))
+
         r7 = rpc({"jsonrpc": "2.0", "id": 7, "method": "tools/call",
                   "params": {"name": "matlabc_stats", "arguments": {}}})
         txt7 = (((r7 or {}).get("result") or {}).get("content")
