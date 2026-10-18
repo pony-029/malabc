@@ -449,6 +449,92 @@ def t_explain(args):
     return _text("\n".join(out))
 
 
+def t_changed(args):
+    """「我改了这几个文件，谁需要先回归」——比结构 diff 更贴近 Agent 的任务。
+
+    为什么不做 `--diff-html` 那种快照对比
+    ------------------------------------
+    快照对比要求调用方**手上已经有两个 JSON 产物**。人做评审时会有，
+    Agent 在「我刚改完，帮我看看影响」这个场景下不会有 —— 它只有
+    **改完之后的当前工程**。
+
+    而这个问题不需要历史快照：**文件里的每个函数，它的上游就是受影响面**。
+    上游一直存在，只是没人问过。
+
+    代价：每个函数一次 `_impact`（内部要遍历全库建索引）。所以对文件数
+    和函数数都设了上限，并在返回里写明实际算了多少个。
+    """
+    files = args.get("files") or []
+    if isinstance(files, str):
+        files = [files]
+    if not files:
+        return _err("files 不能为空：给一个相对或绝对路径的数组")
+    if len(files) > 10:
+        return _err("一次最多分析 10 个文件（每个文件里的函数都要单独求上游）")
+
+    result = L._STATE.get("result")
+    if result is None:
+        return _text("工程索引还在建立，请稍后重试。")
+
+    # 文件 -> 它定义的函数（按相对路径匹配，也认 basename）
+    wanted = {}
+    for f in files:
+        p = _resolve(f)
+        wanted[_rel(p)] = True
+        wanted[os.path.basename(p)] = True
+
+    targets = []            # (rel, 函数名)
+    for mf in (getattr(result, "files", None) or []):
+        rel = getattr(mf, "rel", "") or ""
+        if rel not in wanted and os.path.basename(rel) not in wanted:
+            continue
+        for fn in (getattr(mf, "functions", None) or []):
+            targets.append((rel, getattr(fn, "name", "") or ""))
+    if not targets:
+        return _text("这些文件里没有解析到函数：%s" % "、".join(files))
+
+    capped = targets[:30]
+    entries = {}            # 入口函数 -> 受影响的 (rel:fn)
+    affected = []           # (源函数, 入口, 链)
+    for rel, nm in capped:
+        info = L._impact(nm)
+        if not info or info.get("pending"):
+            continue
+        for ch in (info.get("chains") or []):
+            if not ch:
+                continue
+            entry = ch[0]["name"]
+            entries.setdefault(entry, []).append("%s:%s" % (rel, nm))
+            affected.append((nm, entry, ch))
+
+    out = ["# 变更影响面（%d 个文件 / %d 个函数）" % (len(files), len(capped)),
+           ""]
+    if not affected:
+        out.append("这些函数**没有上游调用者** —— 改它们不会波及本工程内的"
+                   "其他函数（它们本身就是入口）。")
+        out.append("")
+        out.append("仍建议确认：它们是否被工程之外的脚本调用。")
+        return _text("\n".join(out))
+
+    out.append("## 需要回归的入口（按波及函数数排序）")
+    out.append("")
+    for entry in sorted(entries, key=lambda k: -len(entries[k]))[:10]:
+        names = sorted(set(entries[entry]))
+        out.append("- `%s` —— 波及 %d 个函数" % (entry, len(names)))
+        out.append("  " + "、".join("`%s`" % n for n in names[:6])
+                   + ("…" if len(names) > 6 else ""))
+    out.append("")
+    out.append("## 一条完整来路（示例）")
+    out.append("")
+    shortest = min(affected, key=lambda a: len(a[2]))
+    out.append("- " + " → ".join(
+        "`%s`(%s:%d)" % (n["name"], n["rel"], n["line"]) for n in shortest[2]))
+    if len(capped) > 30:
+        out.append("")
+        out.append("⚠ 函数数超过 30，只分析了前 30 个。")
+    return _text("\n".join(out))
+
+
 def t_fields(args):
     """结构体字段的**跨文件读写溯源**（HTML 报告里的「跨文件变量溯源」）。
 
@@ -611,6 +697,17 @@ TOOLS = [
                                     "character": _INT},
                      "required": ["path", "line", "character"]},
      "handler": t_references},
+
+    {"name": "matlabc_changed",
+     "description": "「我刚改了这几个文件，谁需要先回归」—— 给出受影响的入口"
+                    "与波及的函数清单，按波及面排序。"
+                    "比拿两个快照做结构 diff 更贴近改完代码当下的问题。"
+                    "一次最多 10 个文件。",
+     "inputSchema": {"type": "object",
+                     "properties": {"files": {"type": "array",
+                                              "items": _STR}},
+                     "required": ["files"]},
+     "handler": t_changed},
 
     {"name": "matlabc_explain",
      "description": "一个函数的**速览**：它是什么角色（入口/中间层/叶子）、"

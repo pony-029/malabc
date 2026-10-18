@@ -1516,6 +1516,22 @@ def _mcp(c=None):
         _chk("不是本工程里的函数" in _e3,
              "mcp/explain-missing（%r）" % (_e3[:60],))
 
+        # R326：变更影响面 —— 「改了 a.m，谁要回归」。
+        # sample_m 里 a.m 的三个函数都被 switch_case 调过。
+        _sv4 = (_L2._STATE.get("root"), _L2._STATE.get("result"))
+        _L2._STATE["root"] = CORPUS
+        _L2._STATE["result"] = _an(CORPUS, no_checks=True)
+        _L2._STATE["field_index"] = None
+        try:
+            _c1 = _MCP.t_changed({"files": ["a.m"]})["content"][0]["text"]
+            _c2 = _MCP.t_changed({"files": []})
+        finally:
+            (_L2._STATE["root"], _L2._STATE["result"]) = _sv4
+        _chk("switch_case" in _c1 and "波及" in _c1,
+             "mcp/call-changed（%r）" % (_c1[:80],))
+        # 空输入必须报错，不能返回一份"没有影响"的假结论。
+        _chk(bool(_c2.get("isError")), "mcp/changed-rejects-empty")
+
         r7 = rpc({"jsonrpc": "2.0", "id": 7, "method": "tools/call",
                   "params": {"name": "matlabc_stats", "arguments": {}}})
         txt7 = (((r7 or {}).get("result") or {}).get("content")
