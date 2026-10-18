@@ -1,449 +1,415 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""matlabc MCP server（纯标准库实现，零第三方依赖）。
+"""matlabc MCP server —— 把 MATLAB 工程理解能力交给任意 AI Agent。
 
-一句话：让任何支持 Model Context Protocol 的 AI Agent（CodeBuddy / Codex /
-Cursor / Claude 等）把 matlabc 当成「代码理解 + 静态检查 + 确定性补丁」工具，
-即插即用，不用教它怎么敲命令行。
+为什么是 MCP 而不是再加几个命令
+================================
 
-装上之后，Agent 拿到五个工具：
+编辑器里的 LSP **只服务于"人正在看的那一行"**：F12、悬停、大纲 —— 都是以
+光标为圆心的一次查询。而 Agent 的工作方式是**从一个任务出发**：
 
-    matlabc_analyze     扫一个工程，产出结构化报告（函数 / 调用图 / 告警）
-    matlabc_check       只跑静态检查，返回告警清单（可指定 checks）
-    matlabc_ask         拿报告当事实底座做问答（谁调用 X / 哪里风险最高）
-    matlabc_gen_patch   产出**确定性**修复补丁（未初始化 / 死代码 / 形状不匹配）
-    matlabc_version     报版本，用于 Agent 自检握手是否成功
+    「把 callpop 改成支持整数变量，告诉我谁会受影响」
 
-它是怎么接进 Agent 的：
+这句话需要的是：它调用了谁、谁调用了它、来路有几条、哪些地方解析不到。
+这些能力**项目里全都有**（`_impact` / `_heat` / `_references`），**只是没有
+一个 Agent 能调用的入口** —— LSP 的 stdio 协议是给编辑器的，Agent 说不上话。
 
-    ┌──────────────┐   MCP over stdio（LSP 风格分包帧）   ┌──────────────────┐
-    │  AI Agent    │  Content-Length: 123\\r\\n\\r\\n{json}   │ matlabc_mcp.py   │
-    │ (MCP client) │◀────────────────────────────────────▶│  (本文件)        │
-    └──────────────┘                                      └────────┬─────────┘
-                                                                   │ 每次调用起一个
-                                                                   │ 独立子进程
-                                                                   ▼
-                                                          ┌──────────────────┐
-                                                          │ matlabc.py CLI   │
-                                                          └──────────────────┘
+MCP（Model Context Protocol）正好是这一层的标准：JSON-RPC、stdio 传输、
+工具带 schema。所以这里**不重写分析**，只做一层"翻译"：
 
-设计取舍（为什么这么写）：
-  * **传输层复用 CLI，不 import**：Agent 的调用因此与命令行行为逐字节一致，
-    且进程隔离 —— Agent 中途崩溃、超时、被 kill，都不会污染 matlabc 自身状态。
-  * **stdin 必须切断**：本进程的 stdin 上跑的是 JSON-RPC 协议流。拉起的子进程
-    若继承 stdin，会**偷走协议字节**导致静默协议损坏。这不是洁癖，是正确性。
-  * **子进程全部登记收尸**：`_CHILDREN` + `atexit` 兜底；退出或超时按进程树
-    杀掉（Windows 用 taskkill /T，POSIX 用 killpg），不留孤儿。
+    MCP 工具调用  ->  复用 matlabc_lsp 里的查询函数  ->  Markdown 文本
 
-怎么启动：交给 Agent 的 MCP client 自动拉起，通常你不需要手敲。若要手测：
+文本而不是 JSON：读它的是语言模型，表格和缩进比嵌套字段好读得多。
 
-    python matlabc_mcp.py
+用法
+====
 
-  它是长驻的 stdio 服务：**正确行为是一直等输入**（不是卡死）。按 Ctrl-C 退出；
-  或从 stdin 送 EOF，它收到即退出 —— 所以 `python matlabc_mcp.py --help`
-  既没有 usage 也不打印任何东西（这不是坏了，是它的设计）。
+    python matlabc_mcp.py --root C:\\path\\to\\project
 
-诚实边界：
-  * 只实现 JSON-RPC 的 initialize / tools/list / tools/call 与若干通知；
-    不是 MCP 全量实现（没有 resources / prompts / sampling）。
-  * 依赖子进程跑 CLI，所以「单次调用 = 一次进程启动」。大工程请用
-    matlabc_analyze 一次拿全量报告，而不是反复调用。
+在 Agent 侧配置（Claude Desktop / Cursor / CodeBuddy 等）：
 
-退出码：
-    0  = 从 stdin 收到 EOF，正常收工退出（宿主关闭连接时的标准路径）
-    1  = 未捕获异常（由解释器给出；本文件不捕获顶层异常）
+    {
+      "mcpServers": {
+        "matlabc": {
+          "command": "python",
+          "args": ["E:/matlabc/malabc/matlabc_mcp.py",
+                   "--root", "C:/Temp/yalmip"]
+        }
+      }
+    }
 
-  （工具调用本身的失败**不**体现在退出码上 —— 它按 JSON-RPC 协议以
-    isError 的响应回给宿主，进程继续存活。这是 MCP 的约定。）
+传输是 **JSON lines**（每条消息一行，MCP 的 stdio transport 约定），
+与 LSP 的 `Content-Length` 头不同 —— 这一点容易写错。
 """
-from __future__ import absolute_import, division, print_function
 
-import atexit
+import argparse
 import io
 import json
 import os
-import re
-import subprocess
 import sys
 
-__version__ = "1.0.0"
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# 所有拉起的子进程（matlabc CLI），用于退出/超时兜底，防止孤儿进程跑飞
-_CHILDREN = []
+import matlabc_lsp as L                      # noqa: E402
 
-
-def _kill_tree(proc):
-    """杀掉子进程及其整棵进程树（Windows 用 taskkill /T，POSIX 用 killpg）。"""
-    if proc.poll() is not None:
-        return
-    if os.name == "nt":
-        try:
-            subprocess.run(
-                ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
-                stdin=subprocess.DEVNULL,      # R62-R31e：不许继承 MCP 宿主的 stdin
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                timeout=30,
-            )
-        except (OSError, subprocess.SubprocessError):
-            pass                               # 收尸路径不许再抛异常
-    else:
-        try:
-            os.killpg(os.getpgid(proc.pid), 9)
-        except Exception:
-            proc.kill()
+PROTOCOL_VERSION = "2024-11-05"
+SERVER_NAME = "matlabc"
+SERVER_VERSION = "1.0.0"
 
 
-def _cleanup_children():
-    for proc in _CHILDREN:
-        if proc.poll() is None:
-            _kill_tree(proc)
+# --------------------------------------------------------------------------
+# 工程加载：**懒加载**。MCP 客户端启动时会立刻 initialize，如果那时就分析
+# 整个工程（YALMIP 约 70 秒），客户端多半会先超时。改为首次工具调用再做。
+# --------------------------------------------------------------------------
 
-
-atexit.register(_cleanup_children)
-
-# ---------------------------------------------------------------------------
-# 版本探测：从 matlabc.py 精确提取 VERSION 字符串，避免把行内注释带进来
-# ---------------------------------------------------------------------------
-_VERSION_RE = re.compile(r'VERSION\s*=\s*["\']([^"\']+)["\']')
-
-
-def _detect_matlabc_version():
+def _ensure_loaded():
+    """确保 root/result 就绪；返回 (ok, message)。"""
+    root = L._STATE.get("root")
+    if not root:
+        return False, "未指定工程目录（启动时用 --root）"
+    if L._STATE.get("result") is not None:
+        return True, ""
     try:
-        here = os.path.dirname(os.path.abspath(__file__))
-        with open(os.path.join(here, "matlabc.py"), "r", encoding="utf-8") as fh:
-            for line in fh:
-                if line.startswith("VERSION"):
-                    match = _VERSION_RE.search(line)
-                    if match:
-                        return match.group(1)
-    except Exception:
-        pass
-    return "unknown"
+        from analyzer.api import analyze
+    except Exception as exc:                 # pragma: no cover
+        return False, "无法加载分析器：%r" % (exc,)
+    try:
+        L._STATE["result"] = analyze(root, no_checks=True)
+    except Exception as exc:
+        return False, "分析失败：%r" % (exc,)
+    L._STATE["field_index"] = None
+    return True, ""
 
 
-MATLABC_VERSION = _detect_matlabc_version()
+def _uri(path):
+    p = os.path.abspath(path).replace("\\", "/")
+    if not p.startswith("/"):
+        p = "/" + p
+    return "file://" + p
 
-# 脚本解析：MCP 宿主（Cursor / Claude / CodeBuddy…）以它自己的 CWD 拉起本
-# 服务器，所以裸相对名 "matlabc.py" 只有在「巧好以仓库根为 CWD」时才找得到。
-# 实测：把 cwd 设成任意目录后 `_run(["matlabc.py", ...])` 直接 rc=2。
-_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+def _rel(path):
+    root = L._STATE.get("root") or ""
+    try:
+        return os.path.relpath(os.path.abspath(path),
+                               root).replace(os.sep, "/")
+    except ValueError:
+        return os.path.basename(path)
 
 
-def _script(name):
-    """把 CLI 脚本解析为绝对路径（找不到时退回原名，行为不变）。"""
-    p = os.path.join(_SCRIPT_DIR, name)
-    return p if os.path.exists(p) else name
+def _text(s):
+    return {"content": [{"type": "text", "text": s}]}
 
-# ---------------------------------------------------------------------------
-# 工具清单（inputSchema 自描述，供 Agent 发现与调用）
-# ---------------------------------------------------------------------------
+
+def _err(s):
+    return {"content": [{"type": "text", "text": s}], "isError": True}
+
+
+# --------------------------------------------------------------------------
+# 工具实现：每个函数返回 Markdown 文本
+# --------------------------------------------------------------------------
+
+def t_outline(args):
+    path = args.get("path") or ""
+    if not os.path.isfile(path):
+        return _err("找不到文件：%s" % path)
+    syms = L._document_symbols(_uri(path))
+    if not syms:
+        return _text("`%s` 里没有识别到 function。" % os.path.basename(path))
+    rows = ["# %s" % _rel(path), "",
+            "| 函数 | 行 |", "| --- | --- |"]
+    for s in syms:
+        rows.append("| `%s` | %d |" % (s["name"],
+                                       s["range"]["start"]["line"] + 1))
+    return _text("\n".join(rows))
+
+
+def t_impact(args):
+    name = args.get("name") or ""
+    info = L._impact(name)
+    if info is None:
+        return _text("`%s` 不是本工程里的函数（或还没有分析到它）。" % name)
+    if info.get("pending"):
+        return _text("工程索引还在建立，请稍后重试。")
+    # `target` 是**名字字符串**，位置在 `definitions` 里
+    # —— 顶层既没有 `rel` 也没有 `line`，直接取会得到空串。
+    tg = (info.get("definitions") or [{}])[0]
+    out = ["# `%s` 的影响面" % name, "",
+           "`%s:%d` · 调用者 %d · 下游 %d"
+           % (tg.get("rel", ""), tg.get("line", 0),
+              info.get("total", 0), info.get("down_total", 0)), ""]
+    chains = info.get("chains") or []
+    if chains:
+        out.append("## 来路（入口 → 目标，%d 条）" % len(chains))
+        out.append("")
+        for ch in chains[:12]:
+            out.append("- " + " → ".join(
+                "`%s`(%s:%d)" % (n["name"], n["rel"], n["line"]) for n in ch))
+        if len(chains) > 12:
+            out.append("- … 另有 %d 条" % (len(chains) - 12))
+        out.append("")
+    direct = info.get("direct") or []
+    out.append("## 直接调用者（%d）" % len(direct))
+    out.append("")
+    for d in direct[:20]:
+        out.append("- `%s`　%s:%d" % (d["name"], d["rel"], d["line"]))
+    if not direct:
+        out.append("- （无 —— 它是入口）")
+    out.append("")
+    down = info.get("down") or []
+    out.append("## 它调用（%d）" % (info.get("down_total") or 0))
+    out.append("")
+    for d in down[:20]:
+        out.append("- `%s`　%s:%d　第 %d 层"
+                   % (d["name"], d["rel"], d["line"], d.get("level", 1)))
+    if not down:
+        out.append("- （无 —— 它是叶子）")
+    if info.get("unresolved"):
+        out.append("")
+        out.append("另有 %d 处调用**解析不到**（外部函数或动态调用），"
+                   "这部分影响面无法自动推断。" % info["unresolved"])
+        names = info.get("unresolved_names") or []
+        if names:
+            out.append("未能解析的名字：" + "、".join(
+                "`%s`" % n for n in names[:15]))
+    return _text("\n".join(out))
+
+
+def t_heat(args):
+    try:
+        limit = int(args.get("limit") or 15)
+    except (TypeError, ValueError):
+        limit = 15
+    dirs = args.get("dir") or None
+    rows = L._heat(max(1, min(limit, 200)), prefix=dirs)
+    if rows is None:
+        return _text("工程索引还在建立，请稍后重试。")
+    if not rows:
+        return _text("该范围内没有可排行的函数。")
+    out = ["# 热点函数（复杂度 × (1 + 调用者数)）", "",
+           "| # | 函数 | 位置 | 复杂度 | 调用者 | 得分 |",
+           "| --- | --- | --- | --- | --- | --- |"]
+    for i, r in enumerate(rows):
+        out.append("| %d | `%s` | `%s:%d` | %d | %d | %d |"
+                   % (i + 1, r["name"], r["rel"], r["line"],
+                      r["complexity"], r["callers"], r["score"]))
+    out.append("")
+    out.append("两项都高才算热点：只复杂但没人调用是死角，"
+               "被到处调用但只有一行是封装。")
+    return _text("\n".join(out))
+
+
+def t_definition(args):
+    path = args.get("path") or ""
+    if not os.path.isfile(path):
+        return _err("找不到文件：%s" % path)
+    res = L._definition(_uri(path), {"line": int(args.get("line") or 0),
+                                     "character": int(args.get("character") or 0)})
+    if not res:
+        return _text("该位置没有可跳转的定义（可能是注释、关键字，"
+                     "或解析不到的调用）。")
+    out = []
+    for r in res:
+        p = L._uri_to_path(r["uri"])
+        out.append("- `%s:%d`" % (_rel(p), r["range"]["start"]["line"] + 1))
+    return _text("\n".join(out))
+
+
+def t_references(args):
+    path = args.get("path") or ""
+    if not os.path.isfile(path):
+        return _err("找不到文件：%s" % path)
+    res = L._references(_uri(path), {"line": int(args.get("line") or 0),
+                                     "character": int(args.get("character") or 0)},
+                        True)
+    if not res:
+        return _text("没有找到引用（函数级引用需要它被其他函数调用过）。")
+    out = ["# 引用（%d 处）" % len(res), ""]
+    for r in res[:60]:
+        p = L._uri_to_path(r["uri"])
+        out.append("- `%s:%d`" % (_rel(p), r["range"]["start"]["line"] + 1))
+    if len(res) > 60:
+        out.append("- … 另有 %d 处" % (len(res) - 60))
+    return _text("\n".join(out))
+
+
+def t_search(args):
+    pat = (args.get("pattern") or "").lower()
+    if not pat:
+        return _err("pattern 不能为空")
+    try:
+        limit = int(args.get("limit") or 30)
+    except (TypeError, ValueError):
+        limit = 30
+    result = L._STATE.get("result")
+    if result is None:
+        return _text("工程索引还在建立，请稍后重试。")
+    hits = []
+    for mf in (getattr(result, "files", None) or []):
+        rel = getattr(mf, "rel", "") or ""
+        for f in (getattr(mf, "functions", None) or []):
+            nm = getattr(f, "name", "") or ""
+            if pat in nm.lower():
+                hits.append((nm, rel, int(getattr(f, "line", 0) or 1)))
+                if len(hits) >= limit:
+                    break
+        if len(hits) >= limit:
+            break
+    if not hits:
+        return _text("没有名字匹配 `%s` 的函数。" % pat)
+    out = ["# 名字含 `%s` 的函数（%d）" % (pat, len(hits)), "",
+           "| 函数 | 位置 |", "| --- | --- |"]
+    for nm, rel, ln in hits:
+        out.append("| `%s` | `%s:%d` |" % (nm, rel, ln))
+    return _text("\n".join(out))
+
+
+# --------------------------------------------------------------------------
+# 工具清单（schema 里写清"什么时候该用它"，Agent 靠这句话决定调不调）
+# --------------------------------------------------------------------------
+
+_STR = {"type": "string"}
+_INT = {"type": "integer"}
+
 TOOLS = [
-    {
-        "name": "matlabc_analyze",
-        "description": (
-            "对 MATLAB/C/Python/JavaScript 工程做静态分析与结构梳理，"
-            "生成调用关系、风险热点、技术债等报告。返回报告摘要与落盘路径。"
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "target": {"type": "string", "description": "待分析目录或文件"},
-                "checks": {"type": "string", "description": "检查项，逗号分隔或 all，默认 all"},
-                "output": {"type": "string", "description": "报告输出路径，默认 mcp_analysis.md"},
-            },
-            "required": ["target"],
-        },
-    },
-    {
-        "name": "matlabc_check",
-        "description": (
-            "针对具体静态检查项（uninitialized/type_mismatch/dead_code/"
-            "shape_mismatch/tainted_sink）做门禁式扫描，返回 JSON 结果或告警计数。"
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "target": {"type": "string", "description": "待检查目录或文件"},
-                "check": {"type": "string", "description": "检查项名称，默认 all"},
-                "max_warnings": {"type": "integer", "description": "超过则门禁失败，默认 0"},
-            },
-            "required": ["target"],
-        },
-    },
-    {
-        "name": "matlabc_ask",
-        "description": (
-            "用自然语言问答式理解代码：谁调用 X / X 调用谁 / 风险热点 / 解释 X。"
-            "内部用 BM25 检索 + 意图识别组装上下文后交大模型。"
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "question": {"type": "string", "description": "自然语言问题"},
-                "dir": {"type": "string", "description": "代码根目录，默认 ."},
-            },
-            "required": ["question"],
-        },
-    },
-    {
-        "name": "matlabc_version",
-        "description": "返回 matlabc 引擎版本与支持的默认能力清单，供 Agent 做能力协商。",
-        "inputSchema": {
-            "type": "object",
-            "properties": {},
-        },
-    },
-    {
-        "name": "matlabc_gen_patch",
-        "description": (
-            "运行 AI 修复闭环（review->fix->apply->verify->report），"
-            "生成确定性修复补丁；auto_apply=true 时应用并自证验证。"
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "target": {"type": "string", "description": "待修复目录或文件"},
-                "auto_apply": {"type": "boolean", "description": "是否应用补丁并自证，默认 false"},
-                "output": {"type": "string", "description": "非应用模式下补丁文件名（锁定 CWD），默认 mcp_fix.patch"},
-            },
-            "required": ["target"],
-        },
-    },
+    {"name": "matlabc_outline",
+     "description": "列出一个 .m 文件里定义的函数及其行号。"
+                    "用于快速了解一个文件的结构，不要用它去猜"
+                    "别的文件里有什么。",
+     "inputSchema": {"type": "object",
+                     "properties": {"path": _STR},
+                     "required": ["path"]},
+     "handler": t_outline},
+
+    {"name": "matlabc_impact",
+     "description": "查询一个函数的**影响面**：谁调用它（含从入口到它的完整"
+                    "来路）、它调用谁、以及有多少处调用无法解析。"
+                    "改代码之前应该先调它，用来回答「动这里会波及什么」。",
+     "inputSchema": {"type": "object",
+                     "properties": {"name": _STR},
+                     "required": ["name"]},
+     "handler": t_impact},
+
+    {"name": "matlabc_heat",
+     "description": "按「复杂度 × 调用者数」排出热点函数，"
+                    "回答「接手这个工程先看哪几个」。"
+                    "可选 dir 只看某个目录（跨模块的分数没有可比性）。",
+     "inputSchema": {"type": "object",
+                     "properties": {"dir": _STR, "limit": _INT},
+                     "required": []},
+     "handler": t_heat},
+
+    {"name": "matlabc_definition",
+     "description": "给定文件和 0-based 行列位置，返回跳转目标"
+                    "（函数定义、变量/字段首次赋值、global 声明）。",
+     "inputSchema": {"type": "object",
+                     "properties": {"path": _STR, "line": _INT,
+                                    "character": _INT},
+                     "required": ["path", "line", "character"]},
+     "handler": t_definition},
+
+    {"name": "matlabc_references",
+     "description": "查询某个位置上的函数被谁调用，"
+                    "以及全局变量在哪些文件的哪些行出现"
+                    "（分成定义 / 声明 / 使用三类）。",
+     "inputSchema": {"type": "object",
+                     "properties": {"path": _STR, "line": _INT,
+                                    "character": _INT},
+                     "required": ["path", "line", "character"]},
+     "handler": t_references},
+
+    {"name": "matlabc_search",
+     "description": "按名字子串搜索工程里的函数。"
+                    "当你知道大致名字但不确定在哪个文件时用它。",
+     "inputSchema": {"type": "object",
+                     "properties": {"pattern": _STR, "limit": _INT},
+                     "required": ["pattern"]},
+     "handler": t_search},
 ]
 
-
-# ---------------------------------------------------------------------------
-# 传输层：LSP 风格分包帧
-# ---------------------------------------------------------------------------
-def _read_message():
-    """从 stdin 读取一条 MCP 消息（Content-Length framing）。返回 dict 或 None。"""
-    headers = {}
-    while True:
-        line = sys.stdin.buffer.readline()
-        if not line:
-            return None
-        if line in (b"\r\n", b"\n"):
-            break
-        if b":" in line:
-            key, _, val = line.partition(b":")
-            headers[key.strip().lower()] = val.strip()
-    try:
-        length = int(headers.get(b"content-length", b"0"))
-    except ValueError:
-        length = 0
-    if length <= 0:
-        return None
-    body = sys.stdin.buffer.read(length)
-    try:
-        return json.loads(body.decode("utf-8"))
-    except ValueError:
-        return None
+_BY_NAME = dict((t["name"], t) for t in TOOLS)
 
 
-def _write_message(obj):
-    body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
-    sys.stdout.buffer.write(b"Content-Length: %d\r\n\r\n" % len(body))
-    sys.stdout.buffer.write(body)
-    sys.stdout.buffer.flush()
+# --------------------------------------------------------------------------
+# 协议层
+# --------------------------------------------------------------------------
 
+def _handle(msg):
+    method = msg.get("method")
+    mid = msg.get("id")
 
-# ---------------------------------------------------------------------------
-# 命令分发：subprocess 复用 matlabc CLI
-# ---------------------------------------------------------------------------
-def _run(argv, timeout=600):
-    kwargs = {
-        "stdout": subprocess.PIPE,
-        "stderr": subprocess.STDOUT,
-        # R62-R31e（真缺陷）：本进程是 stdio JSON-RPC server，stdin 上跑的是
-        # MCP 协议。旧实现不设 stdin ⇒ 子进程 matlabc.py 直接继承这条管道：
-        # ① 子进程若读一次 stdin，就会**偷走**本该给 server 的协议字节
-        #    （静默的协议损坏，比崩溃更难查）；
-        # ② 该管道永不 EOF，任何读到它的子进程都会永久阻塞。
-        # 实测同源证据：`matlabc_mcp.py --help` 在 stdin 继承时 >30s 不返回，
-        # 切断后 0.5s 返回（探针 probe_r26b_pipe，含重跑对照）。
-        "stdin": subprocess.DEVNULL,
-    }
-    if os.name != "nt":
-        kwargs["start_new_session"] = True  # POSIX：便于 killpg 整树清理
-    proc = subprocess.Popen([sys.executable] + argv, **kwargs)
-    _CHILDREN.append(proc)
-    try:
-        out, _ = proc.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        _kill_tree(proc)
-        # 收尸 drain 也必须带超时：Windows 上子进程若留下继承管道的孙进程，
-        # 无超时的 communicate() 会永久阻塞，把这里变成新的挂死点。
+    if method == "initialize":
+        return {"jsonrpc": "2.0", "id": mid, "result": {
+            "protocolVersion": PROTOCOL_VERSION,
+            "capabilities": {"tools": {}},
+            "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
+        }}
+
+    if method in ("notifications/initialized", "initialized"):
+        return None                      # 通知不需要回应
+
+    if method == "tools/list":
+        items = []
+        for t in TOOLS:
+            items.append({"name": t["name"],
+                          "description": t["description"],
+                          "inputSchema": t["inputSchema"]})
+        return {"jsonrpc": "2.0", "id": mid, "result": {"tools": items}}
+
+    if method == "tools/call":
+        params = msg.get("params") or {}
+        name = params.get("name") or ""
+        args = params.get("arguments") or {}
+        tool = _BY_NAME.get(name)
+        if tool is None:
+            return {"jsonrpc": "2.0", "id": mid,
+                    "error": {"code": -32601, "message": "未知工具：%s" % name}}
+        ok, why = _ensure_loaded()
+        if not ok:
+            return {"jsonrpc": "2.0", "id": mid, "result": _err(why)}
         try:
-            out, _ = proc.communicate(timeout=30)
-        except subprocess.TimeoutExpired:
-            out = b""
-    # D-P0-3：**同时**回传退出码。旧实现只回传 stdout，于是 CLI 的 argparse
-    # 报错（rc=2）被当作成功结果返回给 Agent（isError=false）——「没有门」被
-    # 伪装成「有门」。缺输入 / 失败必须能红。
-    return (proc.returncode or 0), out.decode("utf-8", "replace")
+            return {"jsonrpc": "2.0", "id": mid,
+                    "result": tool["handler"](args)}
+        except Exception as exc:
+            return {"jsonrpc": "2.0", "id": mid,
+                    "result": _err("工具执行失败：%r" % (exc,))}
+
+    if method == "ping":
+        return {"jsonrpc": "2.0", "id": mid, "result": {}}
+
+    if mid is None:
+        return None
+    return {"jsonrpc": "2.0", "id": mid,
+            "error": {"code": -32601, "message": "未知方法：%s" % method}}
 
 
-def _is_cli_usage_error(text):
-    """argparse 的失败签名（子进程 stderr 已并入 stdout）。"""
-    t = text or ""
-    return ("usage:" in t) and ("error:" in t)
+def main(argv=None):
+    ap = argparse.ArgumentParser(add_help=True)
+    ap.add_argument("--root", default=os.getcwd(),
+                    help="MATLAB 工程根目录（默认当前目录）")
+    ns = ap.parse_args(argv)
+    root = os.path.abspath(ns.root)
+    if not os.path.isdir(root):
+        sys.stderr.write("matlabc-mcp: 目录不存在：%s\n" % root)
+        return 2
+    L._STATE["root"] = root
+    L._STATE["result"] = None           # 懒加载
 
-
-def _run_ok(argv, what, timeout=600):
-    """跑子进程；非零退出码 → RuntimeError（由 _handle_call 转成 isError=true）。"""
-    rc, text = _run(argv, timeout=timeout)
-    if rc != 0:
-        raise RuntimeError("%s 失败（rc=%d）：%s" % (what, rc, _tail(text, 800)))
-    return text
-
-
-def _tail(text, limit):
-    if len(text) <= limit:
-        return text
-    return "...(truncated)...\n" + text[-limit:]
-
-
-def _cmd_analyze(args):
-    target = args.get("target")
-    if not target:
-        return "error: 'target' is required"
-    checks = args.get("checks") or "all"
-    out = args.get("output") or "mcp_analysis.md"
-    out = os.path.basename(out)  # 安全护栏：输出锁定在当前目录，防止路径穿越
-    cli = [_script("matlabc.py"), target, "--checks", checks,
-           "-o", out, "--reproducible"]
-    text = _run_ok(cli, "matlabc_analyze")
-    return "report written to %s\n\n%s" % (out, _tail(text, 4000))
-
-
-def _cmd_check(args):
-    target = args.get("target")
-    if not target:
-        return "error: 'target' is required"
-    check = args.get("check") or "all"
-    try:
-        maxw = int(args.get("max_warnings", 0))
-    except (TypeError, ValueError):
-        maxw = 0
-    cli = [_script("matlabc.py"), target, "--checks", check,
-           "--max-warnings", str(maxw), "--json"]
-    rc, text = _run(cli)
-    if rc != 0 and _is_cli_usage_error(text):
-        # 参数被 CLI 拒绝 → 真错误（不是门禁失败），必须响亮
-        raise RuntimeError("matlabc_check 参数被 CLI 拒绝（rc=%d）：%s"
-                           % (rc, _tail(text, 600)))
-    # 非零退出码在这里是**门禁结果**（告警超阈值），显式上报给 Agent 而非吞掉
-    return "exit_code=%d\n%s" % (rc, _tail(text, 6000))
-
-
-def _cmd_ask(args):
-    question = args.get("question")
-    if not question:
-        return "error: 'question' is required"
-    d = args.get("dir") or "."
-    cli = [_script("matlabc_ask.py"), question, "--dir", d]
-    return _tail(_run_ok(cli, "matlabc_ask"), 6000)
-
-
-def _cmd_gen_patch(args):
-    target = args.get("target")
-    if not target:
-        return "error: 'target' is required"
-    auto = bool(args.get("auto_apply", False))
-    if auto:
-        return _tail(_run_ok([_script("matlabc_flow.py"), target,
-                              "--auto-apply"], "matlabc_gen_patch"), 6000)
-    # D-P0-3：旧实现在**非应用**分支给 matlabc_flow.py 传 `--gen-apply-patch`，
-    # 而该脚本根本没有这个开关（只有 directory 位置参数 + --auto-apply 等），
-    # argparse 报 rc=2 并打印 usage，而 _run 丢弃退出码 ⇒ 被当成成功回给 Agent。
-    # 正确做法：非应用模式直接调确定性补丁引擎，并把**补丁内容**回传给 Agent。
-    out = os.path.basename(args.get("output") or "mcp_fix.patch")  # 防路径穿越
-    text = _run_ok([_script("matlabc.py"), target, "--gen-apply-patch",
-                    out, "--ai-mode", "off"], "matlabc_gen_patch")
-    patch_path = out + ".git.patch"
-    if os.path.exists(patch_path):
-        body = io.open(patch_path, "r", encoding="utf-8", errors="replace").read()
-        return ("patch written to %s (%d bytes)\n\n%s"
-                % (patch_path, len(body.encode("utf-8")), _tail(body, 6000)))
-    return "no deterministic fix applicable\n\n" + _tail(text, 2000)
-
-
-def _cmd_version(args):
-    return json.dumps({
-        "matlabc_version": MATLABC_VERSION,
-        "mcp_server_version": __version__,
-        "tools": [t["name"] for t in TOOLS],
-    }, ensure_ascii=False)
-
-
-DISPATCH = {
-    "matlabc_version": _cmd_version,
-    "matlabc_analyze": _cmd_analyze,
-    "matlabc_check": _cmd_check,
-    "matlabc_ask": _cmd_ask,
-    "matlabc_gen_patch": _cmd_gen_patch,
-}
-
-
-def _handle_call(msg, msg_id):
-    params = msg.get("params", {}) or {}
-    name = params.get("name")
-    arguments = params.get("arguments", {}) or {}
-    try:
-        handler = DISPATCH.get(name)
-        if handler is None:
-            raise ValueError("unknown tool: %s" % name)
-        text = handler(arguments)
-        is_error = False
-    except Exception as exc:  # noqa: BLE001 - 把任何异常转成工具错误返回给 Agent
-        text = "error: %s" % exc
-        is_error = True
-    _write_message({
-        "jsonrpc": "2.0",
-        "id": msg_id,
-        "result": {"content": [{"type": "text", "text": text}], "isError": is_error},
-    })
-
-
-def main():
-    while True:
-        msg = _read_message()
-        if msg is None:
-            break
-        if not isinstance(msg, dict):
+    out = io.open(1, "w", encoding="utf-8", newline="\n")
+    for line in io.open(0, "r", encoding="utf-8", errors="replace"):
+        line = line.strip()
+        if not line:
             continue
-        method = msg.get("method")
-        msg_id = msg.get("id")
-        if method == "initialize":
-            _write_message({
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "result": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "matlabc", "version": MATLABC_VERSION},
-                },
-            })
-        elif method == "notifications/initialized":
+        try:
+            msg = json.loads(line)
+        except Exception:
             continue
-        elif method == "ping":
-            _write_message({"jsonrpc": "2.0", "id": msg_id, "result": {}})
-        elif method == "tools/list":
-            _write_message({
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "result": {"tools": TOOLS},
-            })
-        elif method == "tools/call":
-            _handle_call(msg, msg_id)
-        else:
-            if msg_id is not None:
-                _write_message({
-                    "jsonrpc": "2.0",
-                    "id": msg_id,
-                    "error": {"code": -32601, "message": "method not found: %s" % method},
-                })
+        resp = _handle(msg)
+        if resp is not None:
+            out.write(json.dumps(resp, ensure_ascii=False) + "\n")
+            out.flush()
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

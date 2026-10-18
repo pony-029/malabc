@@ -1375,6 +1375,85 @@ def _lens(c):
             c2.close()
 
 
+def _mcp(c=None):
+    """MCP server 契约（R322）。
+
+    为什么单独一组：MCP 是**另一个协议的入口**，它出问题时编辑器一切正常，
+    只有 Agent 用不了 —— 没有判据就只能靠人去试。
+    这里起真实子进程、走 JSON-lines，验握手、清单、三个真实调用、未知工具。
+    """
+    import json
+    import subprocess
+    srv = os.path.join(ROOT, "matlabc_mcp.py")
+    _chk(os.path.isfile(srv), "mcp/server-exists")
+    if not os.path.isfile(srv):
+        return
+    proc = subprocess.Popen([sys.executable, srv, "--root", CORPUS],
+                            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, universal_newlines=True,
+                            encoding="utf-8")
+
+    def rpc(obj):
+        proc.stdin.write(json.dumps(obj, ensure_ascii=False) + "\n")
+        proc.stdin.flush()
+        ln = proc.stdout.readline()
+        return json.loads(ln) if ln.strip() else None
+
+    try:
+        r1 = rpc({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                  "params": {"protocolVersion": "2024-11-05",
+                             "capabilities": {},
+                             "clientInfo": {"name": "selftest",
+                                            "version": "0"}}})
+        info = ((r1 or {}).get("result") or {}).get("serverInfo") or {}
+        _chk(info.get("name") == "matlabc",
+             "mcp/initialize（%r）" % (info,))
+        proc.stdin.write(json.dumps(
+            {"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
+        proc.stdin.flush()
+
+        r2 = rpc({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+        tools = ((r2 or {}).get("result") or {}).get("tools") or []
+        names = [t.get("name") for t in tools]
+        _chk(len(names) >= 6, "mcp/tools-count（%r）" % (names,))
+        _chk(all(t.get("inputSchema") for t in tools), "mcp/tools-have-schema")
+        # 面向 Agent 的描述必须说明「什么时候该用它」—— 只写「查询影响面」
+        # 不够，模型靠这句话决定调不调。
+        _chk(all(len(t.get("description") or "") > 20 for t in tools),
+             "mcp/tools-description-is-actionable")
+
+        r3 = rpc({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                  "params": {"name": "matlabc_outline",
+                             "arguments": {"path": os.path.join(CORPUS,
+                                                                "a.m")}}})
+        txt3 = (((r3 or {}).get("result") or {}).get("content")
+                or [{}])[0].get("text", "")
+        _chk("`a`" in txt3 and "`b`" in txt3,
+             "mcp/call-outline（%r）" % (txt3[:60],))
+
+        r4 = rpc({"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+                  "params": {"name": "matlabc_impact",
+                             "arguments": {"name": "b"}}})
+        txt4 = (((r4 or {}).get("result") or {}).get("content")
+                or [{}])[0].get("text", "")
+        _chk("来路" in txt4 and "switch_case" in txt4,
+             "mcp/call-impact（%r）" % (txt4[:80],))
+
+        r5 = rpc({"jsonrpc": "2.0", "id": 5, "method": "tools/call",
+                  "params": {"name": "no_such_tool", "arguments": {}}})
+        _chk(((r5 or {}).get("error") or {}).get("code") == -32601,
+             "mcp/unknown-tool-errors（%r）" % ((r5 or {}).get("error"),))
+    finally:
+        try:
+            proc.stdin.close()
+            proc.wait(timeout=10)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--diag", action="store_true")
@@ -1391,6 +1470,7 @@ def main(argv=None):
     ap.add_argument("--struct", action="store_true")
     ap.add_argument("--doc", action="store_true")
     ap.add_argument("--lens", action="store_true")
+    ap.add_argument("--mcp", action="store_true")
     ap.add_argument("--help", action="store_true")
     args = ap.parse_args(argv)
 
@@ -1427,6 +1507,8 @@ def main(argv=None):
         groups = [("struct", _struct)]
     elif args.doc:
         groups = [("doc", _doc)]
+    elif args.mcp:
+        groups = [("mcp", _mcp)]
     elif args.lens:
         groups = [("lens", _lens)]
     elif args.save:

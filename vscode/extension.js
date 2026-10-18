@@ -1183,10 +1183,14 @@ function activate(context) {
         }
         // **顶层就是这个名字本身** —— 树的第一行必须回答「这是谁的关系」。
         relView.title = '关系：' + word;
+        // `info.target` 是**名字字符串**，位置在 `info.definitions` 里
+        // （R322）。顶层直接取 `info.line` 永远是 undefined，
+        // 所以这里一直显示 `line 1`。
+        const _tg = (info.definitions || [{}])[0] || {};
         relState.roots = [mkItem(word, {
           // 顶层也**只写行号**：同一屏里出现两遍完整路径就是噪音。
-          desc: 'line ' + (info.line || 1),
-          rel: info.rel || rel, line: info.line || 1,
+          desc: 'line ' + (_tg.line || 1),
+          rel: _tg.rel || rel, line: _tg.line || 1,
           children: groups,
         })];
         relEmitter.fire();
