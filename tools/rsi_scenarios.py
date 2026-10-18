@@ -44,7 +44,7 @@ CORPUS = os.path.join(ROOT, "tests", "sample_m")
 
 #: 场景数下界。加场景是允许的，删场景必须同时改这个数（与 check_all 的
 #: MIN_GUARDS 同一套纪律：删掉一条也会红）。
-MIN_SCENARIOS = 58
+MIN_SCENARIOS = 60
 
 
 def _uri(path):
@@ -736,6 +736,26 @@ def sc_mcp_cbridge_reverse(ctx):
     return _mcp_with(_clang_files(), run)
 
 
+def sc_mcp_definition(s, ctx):
+    """`matlabc_definition`：位置 -> 定义。此前**完全没有测试**。
+
+    `audit_coverage.py` 数真实调用点才发现 —— 之前用子串搜"工具名在不在
+    测试文件里"，19/19 全绿，那是假数。
+    """
+    res, err = _call(s, "matlabc_definition",
+                     {"path": "caller.m", "line": 1, "character": 5})
+    t = _text(res)
+    return (not err) and ("good" in t), t[:60].replace("\n", " ")
+
+
+def sc_mcp_references(s, ctx):
+    """`matlabc_references`：谁引用了它。同样此前没有测试。"""
+    res, err = _call(s, "matlabc_references",
+                     {"path": "good.m", "line": 0, "character": 10})
+    t = _text(res)
+    return (not err) and len(t) > 5, t[:60].replace("\n", " ")
+
+
 def sc_mcp_changed(s, ctx):
     res, err = _call(s, "matlabc_changed", {"files": ["good.m"]})
     t = _text(res)
@@ -1108,7 +1128,9 @@ def main(argv=None):
                   ("MCP diagnostics", sc_mcp_diagnostics),
                   ("MCP 诊断缓存命中", sc_mcp_diag_cache),
                   ("MCP changed", sc_mcp_changed),
-                  ("MCP explain", sc_mcp_explain)]
+                  ("MCP explain", sc_mcp_explain),
+                  ("MCP definition", sc_mcp_definition),
+                  ("MCP references", sc_mcp_references)]
         ms = _mcp(root)
         try:
             for name, fn in mcp_sc:
