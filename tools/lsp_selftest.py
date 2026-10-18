@@ -1349,6 +1349,45 @@ def _doc(c):
     finally:
         shutil.rmtree(_ic, ignore_errors=True)
 
+    # ---- R354：`changed` 也要带跨语言落点 ------------------------------
+    # `impact` 上一轮补了，`changed` 没有 —— 而「改了这几个文件、谁要回归」
+    # 正是最需要它的时候：调 C 的那批函数往往没有 MATLAB 上游。
+    _cg = tempfile.mkdtemp(prefix="lsp_cg_")
+    try:
+        with io.open(os.path.join(_cg, "solo.m"), "w", encoding="utf-8",
+                     newline="") as _fh:
+            _fh.write(u"function solo(x)\n"
+                      u"y = c_entry(x);\n"
+                      u"end\n")
+        with io.open(os.path.join(_cg, "impl.c"), "w", encoding="utf-8",
+                     newline="") as _fh:
+            _fh.write(u"int c_entry(int x)\n"
+                      u"{\n"
+                      u"    return x;\n"
+                      u"}\n")
+        _svg = (_L2._STATE.get("root"), _L2._STATE.get("result"))
+        _L2._STATE["root"] = _cg
+        _L2._STATE["result"] = _an(_cg, no_checks=True)
+        _L2._C_INDEX["key"] = None
+        _L2._C_INDEX["idx"] = None
+        _L2._C_INDEX["model"] = None
+        try:
+            _ctxt = (_MCP.t_changed({"files": ["solo.m"]}).get("content")
+                     or [{}])[0].get("text", "")
+        finally:
+            (_L2._STATE["root"], _L2._STATE["result"]) = _svg
+            _L2._C_INDEX["key"] = None
+            _L2._C_INDEX["idx"] = None
+            _L2._C_INDEX["model"] = None
+        _chk("跨语言落点" in _ctxt and "impl.c" in _ctxt,
+             "mcp/changed-includes-cbridge（%r）" % (_ctxt[-80:],))
+        # **回音不是来路**：没有 MATLAB 调用者时，`_impact` 会返回一条
+        # 「它 → 它」，照单全收就会把「没人受影响」报成「波及 1 个函数」。
+        _chk("没有 MATLAB 上游" in _ctxt and "波及 1 个函数" not in _ctxt,
+             "mcp/changed-no-self-echo（%r）" % (_ctxt[:80],))
+    finally:
+        shutil.rmtree(_cg, ignore_errors=True)
+
     # R345：rea 即使可运行，也必须声明**它能覆盖什么**。
     # 实测它只吃 Linux ELF（对 kernel32.dll 返回 capability_unavailable），
     # 只报 available 会让人以为 Windows DLL 也有更深结论。

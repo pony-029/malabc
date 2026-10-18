@@ -1160,32 +1160,72 @@ def t_changed(args):
         for ch in (info.get("chains") or []):
             if not ch:
                 continue
+            # **只有它自己的链不是来路，是回音**（R354）：没有调用者时
+            # `_impact` 会返回一条「它 → 它」，若照单全收，就会出现
+            # 「改了没人受影响」被报成「波及 1 个函数」——而那个 1 是它自己。
+            if len(ch) == 1 and ch[0].get("name") == nm:
+                continue
             entry = ch[0]["name"]
             entries.setdefault(entry, []).append("%s:%s" % (rel, nm))
             affected.append((nm, entry, ch))
 
+    # **跨语言落点**（R354）：`impact` 上一轮已经有了，`changed` 还没有。
+    # 这些文件里的函数如果调的是 C 源里的东西，MATLAB 侧的调用者确实不用改，
+    # 但 C 函数的签名/语义一变，**调用它的这些 MATLAB 函数全都要重新验** ——
+    # 而它们往往正是「没有上游」的那一批，最容易被漏掉。
+    bridged = []
+    for rel, nm in capped:
+        try:
+            b = L._c_bridge(nm) or {}
+        except Exception:
+            continue
+        if not b.get("available"):
+            continue
+        for it in (b.get("items") or []):
+            bridged.append((rel, nm, it["callee"], it["c_rel"], it["c_line"]))
+        for bb in (b.get("binaries") or []):
+            bridged.append((rel, nm, bb["callee"], bb["rel"], 0))
+
     out = ["# 变更影响面（%d 个文件 / %d 个函数）" % (len(files), len(capped)),
            ""]
     if not affected:
-        out.append("这些函数**没有上游调用者** —— 改它们不会波及本工程内的"
+        out.append("这些函数**没有 MATLAB 上游** —— 改它们不会波及本工程内的"
                    "其他函数（它们本身就是入口）。")
         out.append("")
         out.append("仍建议确认：它们是否被工程之外的脚本调用。")
-        return _text("\n".join(out))
+    else:
+        out.append("## 需要回归的入口（按波及函数数排序）")
+        out.append("")
+        for entry in sorted(entries, key=lambda k: -len(entries[k]))[:10]:
+            names = sorted(set(entries[entry]))
+            out.append("- `%s` —— 波及 %d 个函数" % (entry, len(names)))
+            out.append("  " + "、".join("`%s`" % n for n in names[:6])
+                       + ("…" if len(names) > 6 else ""))
+        out.append("")
+        out.append("## 一条完整来路（示例）")
+        out.append("")
+        shortest = min(affected, key=lambda a: len(a[2]))
+        out.append("- " + " → ".join(
+            "`%s`(%s:%d)" % (n["name"], n["rel"], n["line"])
+            for n in shortest[2]))
 
-    out.append("## 需要回归的入口（按波及函数数排序）")
-    out.append("")
-    for entry in sorted(entries, key=lambda k: -len(entries[k]))[:10]:
-        names = sorted(set(entries[entry]))
-        out.append("- `%s` —— 波及 %d 个函数" % (entry, len(names)))
-        out.append("  " + "、".join("`%s`" % n for n in names[:6])
-                   + ("…" if len(names) > 6 else ""))
-    out.append("")
-    out.append("## 一条完整来路（示例）")
-    out.append("")
-    shortest = min(affected, key=lambda a: len(a[2]))
-    out.append("- " + " → ".join(
-        "`%s`(%s:%d)" % (n["name"], n["rel"], n["line"]) for n in shortest[2]))
+    if bridged:
+        out.append("")
+        out.append("## 跨语言落点（%d）" % len(bridged))
+        out.append("")
+        out.append("这些函数调的东西在 C 源 / 二进制里。**C 侧一改，它们都要"
+                   "重新验** —— 即使它们没有 MATLAB 上游。")
+        out.append("")
+        for rel, nm, callee, c_rel, c_line in bridged[:15]:
+            if c_line:
+                out.append("- `%s`（%s）→ `%s`　%s:%d"
+                           % (nm, rel, callee, c_rel, c_line))
+            else:
+                out.append("- `%s`（%s）→ `%s`　%s（二进制）"
+                           % (nm, rel, callee, c_rel))
+        if len(bridged) > 15:
+            out.append("- … 另有 %d 处" % (len(bridged) - 15))
+
     if len(capped) > 30:
         out.append("")
         out.append("⚠ 函数数超过 30，只分析了前 30 个。")
