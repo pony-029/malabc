@@ -437,6 +437,21 @@ def _impact(c):
     _chk(len(_cnames) == len(set(_cnames)),
          "impact/chains-deduped（%r）" % (_cnames,))
 
+    # R304：每一跳带「**调用发生的那一行**」—— SI 的 `1. line 286` 就是这个。
+    # sample_m：switch_case 在第 5 行调 a，a 在第 3 行调 b。
+    if _chains:
+        _first = _chains[0]
+        _chk(_first[0].get("call_line") == 5,
+             "impact/chain-call-line-of-entry（%r）"
+             % (_first[0].get("call_line"),))
+        _chk(_first[1].get("call_line") == 3,
+             "impact/chain-call-line-of-mid（%r）"
+             % (_first[1].get("call_line"),))
+        # 最后一跳是目标自己，它没有出边 → 必须是 None，不能编一个数字。
+        _chk(_first[-1].get("call_line") is None,
+             "impact/chain-last-has-no-call-line（%r）"
+             % (_first[-1].get("call_line"),))
+
     # R283：按目录过滤。跨模块的分数没有可比性，所以这个参数必须真的生效 ——
     # 只加参数不生效的话，界面会「看起来支持过滤」而结果没变。
     c.send({"jsonrpc": "2.0", "id": 97, "method": "matlabc/heat",

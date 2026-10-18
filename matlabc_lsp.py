@@ -1492,24 +1492,39 @@ def _impact(name, depth=30, down_depth=3):
     # 深度与条数都要封顶，否则一个热点函数的路径数会爆炸。
     _chains = []
 
-    def _walk(key, path):
+    def _walk(key, path, edges):
         if len(_chains) >= 30 or len(path) > 10:
             return
         # **按调用者去重**：`rev` 里同一个调用者有几个调用点就有几条，
         # 不去重的话同一条链会被重复输出多次（实测 3 次）。
-        callers = sorted({ck for ck, _ln in (rev.get(key) or ())})
+        # 去重时保留**最小行号** —— 它就是 SI 那种「引用发生在第几行」。
+        callers = {}
+        for ck, ln in (rev.get(key) or ()):
+            try:
+                ln = int(ln)
+            except (TypeError, ValueError):
+                ln = 0
+            if ck not in callers or (ln and ln < callers[ck]):
+                callers[ck] = ln
         if not callers:
             chain = list(reversed(path))            # 入口 -> ... -> 目标
-            if chain not in _chains:
-                _chains.append(chain)
+            line_of = {}
+            for _a, _b, _ln in edges:
+                line_of[(_a, _b)] = _ln
+            # `call_line[i]` = chain[i] 调用 chain[i+1] 的那一行；
+            # 最后一跳（目标自己）没有出边，记 None。
+            clines = [line_of.get((chain[i], chain[i + 1]))
+                      for i in range(len(chain) - 1)] + [None]
+            if chain not in [c for c, _l in _chains]:
+                _chains.append((chain, clines))
             return
-        for ck in callers:
+        for ck in sorted(callers):
             if ck in path:                          # 防环
                 continue
-            _walk(ck, path + [ck])
+            _walk(ck, path + [ck], edges + [(ck, key, callers[ck])])
 
     for _sk in start_keys:
-        _walk(_sk, [_sk])
+        _walk(_sk, [_sk], [])
     seen = set(start_keys)
     layer = list(start_keys)
     levels = []
@@ -1574,7 +1589,12 @@ def _impact(name, depth=30, down_depth=3):
         "total": len(seen) - len(start_keys),
         "entries": len(entries),
         # 链式视图（R287）：每条 = 一条从入口到目标的完整路径
-        "chains": [[node_info(k) for k in ch] for ch in _chains],
+        # 每个节点带 `call_line`：**它调用下一跳发生在第几行**（R304）。
+        # 这正是 Source Insight 里 `1. line 286` 的那个行号 —— 引用处，
+        # 不是定义处。最后一跳（目标自己）没有出边，为 None。
+        "chains": [[dict(node_info(k), call_line=ln)
+                    for k, ln in zip(ch, clines)]
+                   for ch, clines in _chains],
         # 下游（R233）
         "down": [dict(node, level=i + 1)
                  for i, lv in enumerate(down_levels) for node in lv],

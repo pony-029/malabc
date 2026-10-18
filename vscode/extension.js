@@ -1023,9 +1023,13 @@ function activate(context) {
         const curBase = String(rel || '').split('/').pop();
         const shortDesc = (n) => {
           const base = String(n.rel || '').split('/').pop();
+          // **优先调用点**（R304）：SI 的 `1. line 286` 指的是「引用发生在
+          // 第几行」，不是「函数定义在第几行」。服务端给了 `call_line` 就用它；
+          // 最后一跳（就是我）没有出边，退回定义行。
+          const ln = n.call_line || n.line;
           // 同文件只写行号；跨文件才带文件名（仍然只到文件名这一级）。
           return (base && base !== curBase ? base + ' · ' : '') +
-                 'line ' + (n.line || 1);
+                 'line ' + (ln || 1);
         };
         const toItem = (nd) => {
           const kids = [];
