@@ -2,7 +2,7 @@
   "name": "matlabc-lsp",
   "displayName": "malabc MATLAB LSP",
   "description": "MATLAB 的编辑器智能：诊断 · 转到定义（含结构体成员）· 查找引用 · 悬停 · 大纲 · 保存即刷新。后台预热、零配置、零 npm 依赖。",
-  "version": "0.6.16",
+  "version": "0.6.17",
   "publisher": "malabc",
   "engines": {
     "vscode": "^1.80.0"

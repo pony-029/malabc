@@ -434,7 +434,8 @@ function activate(context) {
       (info.unresolved ? '　｜　' + info.unresolved + ' 处调用无法定位' : '') +
       (info.ambiguous ? '　｜　' + info.ambiguous + ' 处同名定义' : '') + '</p>' +
       rows.join('') +
-      '<p class="note">静态快照（打开时分析结果）。点击任意文件名或行号可跳转。</p>' +
+      '<p class="note">静态快照（打开时分析结果）。点击任意文件名或行号可跳转。' +
+      '「调用自 5 8 9」里的数字是**语句**：一行里写两次调用只算一处。</p>' +
       '</body></html>';
   };
 
