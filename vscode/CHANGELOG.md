@@ -2,6 +2,14 @@
 
 ---
 
+## 0.6.76
+
+- 新增 **「生成 HTML 分析报告」**：一键在工作区 `.matlabc/report.html` 生成
+  完整报告并在浏览器打开（此前只能在命令行里加 `--html`）
+- 新增 **「生成 MCP 配置」**：自动填好 python 路径、脚本路径与工程根，
+  可直接写入 `.vscode/mcp.json`（VS Code 内置 MCP），或复制成
+  `mcpServers` 格式给 Claude / Cursor 等其他客户端
+
 ## 0.6.75
 
 - MCP 新增 **`matlabc_changed`**：给几个改动过的文件，回答「谁需要先回归」，

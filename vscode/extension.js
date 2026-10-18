@@ -693,6 +693,109 @@ function activate(context) {
     })
   );
 
+  // ---- 生成 HTML 分析报告（R327）-------------------------------------
+  // 分析器本来就能出这份报告（`--html`），只是编辑器里拿不到。
+  // 报告落在工作区的 `.matlabc/` 下，不污染源码目录，也不用用户记命令。
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.generateReport', async () => {
+      if (!root) {
+        vscode.window.showWarningMessage('matlabc: 请先打开一个工作区');
+        return;
+      }
+      const _cp = require('child_process');
+      const py = cfg.get('python') || 'python';
+      const mpy = path.join(path.dirname(lspPath), 'matlabc.py');
+      if (!fs.existsSync(mpy)) {
+        vscode.window.showErrorMessage('matlabc: 找不到 matlabc.py');
+        return;
+      }
+      const outDir = path.join(root, '.matlabc');
+      const outFile = path.join(outDir, 'report.html');
+      try {
+        fs.mkdirSync(outDir, { recursive: true });
+      } catch (e) { /* 已存在 */ }
+
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification,
+          title: 'matlabc: 正在生成分析报告' },
+        () => new Promise((resolve, reject) => {
+          _cp.execFile(py, [mpy, root, '--html', outFile],
+                       { cwd: root, maxBuffer: 32 * 1024 * 1024 },
+                       (err, stdout, stderr) => {
+                         if (err) {
+                           log('报告失败：' + (stderr || err.message));
+                           reject(new Error(stderr || err.message));
+                           return;
+                         }
+                         log('报告已生成 ' + outFile);
+                         resolve(stdout);
+                       });
+        })
+      ).then(() => {
+        vscode.window.showInformationMessage(
+          'matlabc: 报告已生成（.matlabc/report.html）');
+        vscode.env.openExternal(vscode.Uri.file(outFile));
+      }).catch((e) => {
+        vscode.window.showErrorMessage(
+          'matlabc: 生成报告失败 —— ' + (e && e.message));
+      });
+    })
+  );
+
+  // ---- 生成 MCP 配置（R327）-------------------------------------------
+  // 用户要在别的 AI 客户端里用这套能力，就得手写一段 JSON；
+  // 而 python 路径、脚本路径、工程根三个值都容易填错。
+  // 这里直接生成好，两个格式都给：VS Code 内置 MCP 与通用 mcpServers。
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.generateMcpConfig', async () => {
+      const py = cfg.get('python') || 'python';
+      const mcp = path.join(path.dirname(lspPath), 'matlabc_mcp.py')
+        .replace(/\\/g, '/');
+      const ws = (root || '${workspaceFolder}').replace(/\\/g, '/');
+      // VS Code 的 mcp.json 用 `servers`，每项带 `type: stdio` 最稳
+      // （缺省也是 stdio，但显式写出来省得读者去查）。
+      const vs = {
+        servers: {
+          matlabc: { type: 'stdio', command: py, args: [mcp, '--root', ws] },
+        },
+      };
+      const generic = {
+        mcpServers: { matlabc: { command: py, args: [mcp, '--root', ws] } },
+      };
+      const pick = await vscode.window.showQuickPick([
+        { label: '$(file-code) 写入 .vscode/mcp.json',
+          description: 'VS Code 内置 MCP（1.102+）',
+          fmt: 'vs', data: vs },
+        { label: '$(clippy) 复制通用配置',
+          description: 'Claude Desktop / Cursor 等使用的 mcpServers 格式',
+          fmt: 'generic', data: generic },
+        { label: '$(output) 只复制 VS Code 格式',
+          description: '自己贴到别处',
+          fmt: 'vs', data: vs },
+      ], { placeHolder: 'MCP 配置：选择目标' });
+      if (!pick) return;
+
+      const text = JSON.stringify(pick.data, null, 2);
+      if (pick.fmt === 'generic') {
+        await vscode.env.clipboard.writeText(text);
+        vscode.window.showInformationMessage(
+          'matlabc: 已复制 mcpServers 配置到剪贴板');
+        return;
+      }
+      if (pick.label.indexOf('写入') >= 0 && root) {
+        const dir = path.join(root, '.vscode');
+        try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { /* */ }
+        fs.writeFileSync(path.join(dir, 'mcp.json'), text + '\n', 'utf8');
+        log('已写入 .vscode/mcp.json');
+        vscode.window.showInformationMessage(
+          'matlabc: 已写入 .vscode/mcp.json，重载窗口后生效');
+      } else {
+        await vscode.env.clipboard.writeText(text);
+        vscode.window.showInformationMessage('matlabc: 已复制到剪贴板');
+      }
+    })
+  );
+
   // ---- 光标处名字的关系（R295）---------------------------------------
   // Source Insight 的 Relation 窗口：**同一个入口，两种身份**。
   //   是函数 → 上下游 + 调用链（与 CodeLens 点开的是同一张图）
