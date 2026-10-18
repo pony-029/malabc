@@ -16,6 +16,18 @@ let client = null;
 // 定义在 activate 内部（那里才有 TreeDataProvider），这里先留一个引用，
 // 让前面注册的 CodeLens 命令能调用它 —— **不再打开任何标签页**。
 let pinRelationsTo = null;
+
+// 给任何请求加一个上限（R307）。服务端在首次全库分析期间不处理请求，
+// 没有上限的话 provider / 侧栏会无限挂着 —— 界面上就是「正在加载…」。
+const withTimeout = (p, ms) => {
+  let tid = null;
+  const t = new Promise((_res, rej) => {
+    tid = setTimeout(() => rej(new Error(ms + 'ms 超时')), ms);
+  });
+  return Promise.race([p, t]).then(
+    (v) => { if (tid) clearTimeout(tid); return v; },
+    (e) => { if (tid) clearTimeout(tid); throw e; });
+};
 let collection = null;
 let out = null;
 
@@ -621,8 +633,14 @@ function activate(context) {
         return;
       }
       try {
-        const r = await client.request('matlabc/impact', { name: name });
+        const r = await withTimeout(
+          client.request('matlabc/impact', { name: name }), 2500);
         const info = r.result;
+        if (info && info.pending) {
+          vscode.window.showInformationMessage(
+            'matlabc: 正在建全库索引，请稍后再点（首次打开大工程约需 1 分钟）');
+          return;
+        }
         if (!info) {
           vscode.window.showWarningMessage('matlabc: 找不到 ' + name);
           return;
@@ -995,9 +1013,31 @@ function activate(context) {
 
       let info = null;
       try {
-        const r = await client.request('matlabc/impact', { name: word });
+        // 服务端在分析未完成时 **2 秒内**返回 `{pending:true}`，这里等 2.5 秒
+        // 就能拿到它，而不是干等 70 秒（R307）。
+        const r = await withTimeout(
+          client.request('matlabc/impact', { name: word }), 2500);
         info = (r && r.result) || null;
-      } catch (e) { /* 服务端没答上来就走变量分支 */ }
+      } catch (e) { /* 超时或失败：走变量分支，不空着 */ }
+
+      if (info && info.pending) {
+        // **明确说「在算」，并自己重试** —— 空着会让人以为工具坏了。
+        relView.title = '关系：' + word;
+        relState.roots = [mkItem(word, {
+          desc: '分析进行中…',
+          children: [mkItem('正在建全库索引，几秒后自动刷新'),
+                     mkItem('（首次打开大工程约需 1 分钟）')],
+        })];
+        relEmitter.fire();
+        if (!relState.retryTimer) {
+          relState.retryTimer = setTimeout(() => {
+            relState.retryTimer = null;
+            relState.key = '';           // 清掉去重键，强制重算
+            refreshRel(doc, null, word);
+          }, 3000);
+        }
+        return;
+      }
 
       const groups = [];
       // `decl` 在变量分支里赋值、在顶层节点里使用 —— 必须声明在外层，
@@ -1177,9 +1217,10 @@ function activate(context) {
 
           let info = null;
           try {
-            const r = await client.request('matlabc/impact', { name: word });
+            const r = await withTimeout(
+              client.request('matlabc/impact', { name: word }), 1200);
             info = (r && r.result) || null;
-          } catch (e) { /* 服务端没答上来就只给变量视图 */ }
+          } catch (e) { /* 超时就只给变量视图，不卡住悬停 */ }
 
           if (info && typeof info.total === 'number') {
             md.appendMarkdown('**' + word + '** · ↑' + info.total +
@@ -1239,13 +1280,19 @@ function activate(context) {
           let raw = [];
           try {
             if (client) {
-              const rr = await client.request('textDocument/documentSymbol', {
-                textDocument: { uri: doc.uri.toString() },
-              });
+              // **800ms 超时**（R307）：首次打开工作区时，服务端正在做全库
+              // 分析，所有请求都在排队 —— provider 会一直挂着，编辑器就
+              // 显示「正在加载…」永远不动，而我的本地兜底在 await 之后，
+              // 根本走不到。
+              // 服务端就绪时这是毫秒级操作；没就绪就立刻自己扫，不干等。
+              const rr = await withTimeout(
+                client.request('textDocument/documentSymbol', {
+                  textDocument: { uri: doc.uri.toString() },
+                }), 800);
               raw = (rr && rr.result) || [];
             }
           } catch (e) {
-            log('大纲请求失败：' + (e && e.message));
+            log('大纲请求失败/超时：' + (e && e.message));
           }
           log('大纲 ' + path.basename(doc.uri.fsPath) + ' -> ' + raw.length + ' 个符号');
 

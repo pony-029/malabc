@@ -604,7 +604,7 @@ def _definition(uri, pos):
     **查找顺序是同文件优先**：同名函数可能定义在多个文件里，
     最近的那个是"按确定性回答"，不是"猜"。
     """
-    result = _wait_result()
+    result = _wait_result(timeout=2.0)
     root = _STATE.get("root")
     if result is None or not root:
         return []
@@ -909,7 +909,7 @@ def _references(uri, pos, include_decl):
 
     `includeDeclaration=True` 时把光标所在函数自己的定义也加进去。
     """
-    result = _wait_result()
+    result = _wait_result(timeout=2.0)
     root = _STATE.get("root")
     if result is None or not root:
         return []
@@ -1018,7 +1018,7 @@ def _hover(uri, pos):
     `signature()` / `header["description"]` / `complexity`。
     找不到时返回 `None`（LSP 里 `null` 表示"这里没有可悬停的信息"）。
     """
-    result = _wait_result()
+    result = _wait_result(timeout=2.0)
     if result is None:
         return None
     path = _uri_to_path(uri)
@@ -1294,7 +1294,7 @@ def _semantic_tokens(uri):
       - 只标 `globals` 里声明过的名字
     认不出来的标识符**一律不标**（留着 TextMate 的默认色）。
     """
-    result = _wait_result()
+    result = _wait_result(timeout=2.0)
     if result is None:
         return {"data": []}
     path = _uri_to_path(uri)
@@ -1483,9 +1483,14 @@ def _impact(name, depth=30, down_depth=3):
 
     返回 `None` 表示找不到这个名字（不是"没有调用者"）。
     """
-    result = _wait_result()
+    result = _wait_result(timeout=2.0)
     if result is None:
-        return None
+        # **分析还没完成**（R307）。这里不能返回 None —— 那是「查无此名」，
+        # 界面会显示成「没有这个函数」。用一个显式的 pending 让客户端知道
+        # 「稍后还有」，它几秒后自己重试。
+        # 首次全库分析实测 70 秒（C:\Temp\yalmip，1676 文件），期间若让请求
+        # 排队，界面就是一片空白且没有解释。
+        return {"pending": True}
 
     # 名字 -> (rel, line)。同名函数多处定义时取第一个，并如实带上 `ambiguous` 数。
     where = {}
@@ -1496,22 +1501,14 @@ def _impact(name, depth=30, down_depth=3):
             nm = getattr(f, "name", "") or ""
             where.setdefault(nm, []).append(
                 (rel, int(getattr(f, "line", 0) or 1)))
-            _pn, _pty, _pc = _param_names(f)
+            # **只存便宜字段**（R307）。这里原来对**全库每个函数**算
+            # `_param_names`（含 `signature()` 解析）与 `_unresolved_*`
+            # （三次字典遍历）——YALMIP 约 2 万函数，实测 **67.9 秒**，
+            # 关系视图因而不可能及时返回。真正输出到界面上的节点只有几十个，
+            # 所以改成用到时才算（`node_info` 里有 `_node_extra` 缓存）。
             meta["%s:%s" % (rel, nm)] = {
                 "complexity": int(getattr(f, "complexity", 0) or 0),
-                # R243：每层节点也带上「它自己还有多少调用解析不到」。
-                # CodeLens 已经诚实了（0.6.4），但关系图里每个节点只显示
-                # 名字和行号 —— 用户从图上点进一个函数，仍会撞上那里
-                # 十几个跳不动的 `foo(...)`。
-                "unresolved": _unresolved_count(f),
-                "unresolved_names": _unresolved_names(f),
-                # 「一共几个不同的名字」与「这里列了几个」必须分开：
-                # 列表被 `limit` 截断过，截断不报就等于说只有 5 个。
-                "unresolved_names_total": _unresolved_name_count(f),
-                # 参数摘要（R260/R263）：名字 + **等长对齐的类型** + 总数。
-                "params": _pn,
-                "param_types": _pty,
-                "params_total": _pc}
+                "fn": f}
     if name not in where:
         return None
 
@@ -1564,6 +1561,8 @@ def _impact(name, depth=30, down_depth=3):
         if not any(x[0] == d for x in lst2):
             lst2.append((d, 0))
 
+    _node_extra = {}          # key -> 昂贵的附加字段（只对真正输出的节点算）
+
     def node_info(key, calls=None):
         rel, _, nm = key.rpartition(":")
         lines = where.get(nm) or []
@@ -1586,16 +1585,33 @@ def _impact(name, depth=30, down_depth=3):
                 continue
             crel, _, _cname = ck.rpartition(":")
             sites[(crel, ln)] = {"rel": crel, "line": ln}
+        _m = meta.get(key) or {}
+        _xf = _node_extra.get(key)
+        if _xf is None:
+            _fn = _m.get("fn")
+            if _fn is None:
+                _xf = {"unresolved": 0, "unresolved_names": [],
+                       "unresolved_names_total": 0,
+                       "params": [], "param_types": [], "params_total": 0}
+            else:
+                _pn, _pty, _pc = _param_names(_fn)
+                _xf = {
+                    "unresolved": _unresolved_count(_fn),
+                    "unresolved_names": _unresolved_names(_fn),
+                    "unresolved_names_total": _unresolved_name_count(_fn),
+                    "params": _pn,
+                    "param_types": _pty,
+                    "params_total": _pc,
+                }
+            _node_extra[key] = _xf
         info = {"key": key, "name": nm, "rel": rel, "line": line,
-                "complexity": (meta.get(key) or {}).get("complexity", 0),
-                "unresolved": (meta.get(key) or {}).get("unresolved", 0),
-                "unresolved_names": (meta.get(key) or {}).get(
-                    "unresolved_names", []),
-                "unresolved_names_total": (meta.get(key) or {}).get(
-                    "unresolved_names_total", 0),
-                "params": (meta.get(key) or {}).get("params", []),
-                "param_types": (meta.get(key) or {}).get("param_types", []),
-                "params_total": (meta.get(key) or {}).get("params_total", 0),
+                "complexity": _m.get("complexity", 0),
+                "unresolved": _xf["unresolved"],
+                "unresolved_names": _xf["unresolved_names"],
+                "unresolved_names_total": _xf["unresolved_names_total"],
+                "params": _xf["params"],
+                "param_types": _xf["param_types"],
+                "params_total": _xf["params_total"],
                 # **入口是服务端的事实，不是客户端的猜测**（R261）。
                 # 客户端原来靠「`call_sites` 为空」推断入口，而
                 # `call_sites` 会过滤掉行号 0 的条目 —— 那些由 `edges`
@@ -1725,14 +1741,15 @@ def _impact(name, depth=30, down_depth=3):
         # 目标自身有多少次调用解析不到（R243）。它在 `edges` 里没有边，
         # 所以既不会出现在上游也不会出现在下游 —— **不报就等于说它
         # 什么都不调用**，而事实相反。
-        "unresolved": (meta.get(start_keys[0]) or {}).get("unresolved", 0),
-        "unresolved_names": (meta.get(start_keys[0]) or {}).get(
-            "unresolved_names", []),
-        "unresolved_names_total": (meta.get(start_keys[0]) or {}).get(
-            "unresolved_names_total", 0),
-        "params": (meta.get(start_keys[0]) or {}).get("params", []),
-        "param_types": (meta.get(start_keys[0]) or {}).get("param_types", []),
-        "params_total": (meta.get(start_keys[0]) or {}).get("params_total", 0),
+        # **目标节点的附加字段也必须走懒计算**（R307）：`meta` 现在只存
+        # complexity 与函数对象，直接 `.get("unresolved")` 会全变成 0/[]。
+        "unresolved": node_info(start_keys[0])["unresolved"],
+        "unresolved_names": node_info(start_keys[0])["unresolved_names"],
+        "unresolved_names_total":
+            node_info(start_keys[0])["unresolved_names_total"],
+        "params": node_info(start_keys[0])["params"],
+        "param_types": node_info(start_keys[0])["param_types"],
+        "params_total": node_info(start_keys[0])["params_total"],
         # 目标自己是不是入口（没人调它）—— 关系图用来把根节点标成“源头”。
         "is_entry": not rev.get(start_keys[0]),
     }
@@ -1854,7 +1871,7 @@ def _heat(limit=15, prefix=None):
     数据全部来自已经算好的 `result`，**不重解析、不改分析器**：
     `complexity` 是现成字段，调用者从 `call_sites` 反向累加。
     """
-    result = _wait_result()
+    result = _wait_result(timeout=2.0)
     if result is None:
         return None
     fn_meta = {}                 # key -> (rel, line, complexity)
@@ -1912,7 +1929,7 @@ def _code_lens(uri):
     只返回**本文件**的函数 —— 打开一个文件时把所有 1665 个文件的
     函数都发过去没有意义。
     """
-    result = _wait_result()
+    result = _wait_result(timeout=2.0)
     if result is None:
         return []
     path = _uri_to_path(uri)
