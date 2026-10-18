@@ -996,6 +996,9 @@ function activate(context) {
     };
 
     const refreshRel = async (doc, pos, forced) => {
+      // **整段兜底 + 打点**（R312）。侧栏空白的几种可能（未触发 / 抛异常 /
+      // 组为空）在界面上完全一样，只能靠日志区分。
+      try {
       if (!doc || doc.languageId !== 'matlab') return;
       let word = forced || '';
       let line = -1;
@@ -1251,6 +1254,12 @@ function activate(context) {
         children: groups,
       })];
       relEmitter.fire();
+      log('关系 ' + word + ' -> 组=' + groups.length + ' 全局=' + isGlobal +
+          ' refs=' + grefs.length + ' files=' + gfiles.length);
+      } catch (e) {
+        log('关系 ' + word + ' 失败：' + (e && e.message) + ' @ ' +
+            String((e && e.stack) || '').split('\n')[1]);
+      }
     };
 
     // 点 CodeLens / 右键命中的名字：**钉住**它并显示侧栏，不打开标签页。
