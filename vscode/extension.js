@@ -1111,10 +1111,37 @@ function activate(context) {
     });
     context.subscriptions.push(relView);
 
+    // **记住展开状态**（R357）。面板每次光标一动就整体重建，而重建出来的
+    // 分组默认是收起的 —— 读者刚点开的「上游」，下一次移动光标就没了。
+    // 这不会报错，只是让人反复做同一件事。
+    //
+    // 键用 label：调用点有几十处，要求每处都传 id 既啰嗦又容易漏；
+    // 代价是 label 里带计数（`上游（3）`），计数一变这一项的展开态就丢 ——
+    // 可接受（那种情况下内容本来就变了）。
+    const relExpanded = new Set(
+      context.workspaceState.get('matlabc.relExpanded') || []);
+    const relKey = (el) => String((el && el.label) || '');
+    const saveExpanded = () => {
+      try {
+        context.workspaceState.update('matlabc.relExpanded',
+                                      Array.from(relExpanded).slice(-80));
+      } catch (e) { /* 存不下不影响本次会话 */ }
+    };
+    relView.onDidExpandElement((e) => {
+      relExpanded.add(relKey(e.element));
+      saveExpanded();
+    });
+    relView.onDidCollapseElement((e) => {
+      relExpanded.delete(relKey(e.element));
+      saveExpanded();
+    });
+
     const mkItem = (label, o) => {
       o = o || {};
       const it = new vscode.TreeItem(label, o.children
-        ? vscode.TreeItemCollapsibleState.Collapsed
+        ? (relExpanded.has(String(label))
+          ? vscode.TreeItemCollapsibleState.Expanded
+          : vscode.TreeItemCollapsibleState.Collapsed)
         : vscode.TreeItemCollapsibleState.None);
       if (o.desc) it.description = o.desc;
       // **不再用 ThemeIcon**（R302）。codicon 在部分主题/字体环境下会渲染成
