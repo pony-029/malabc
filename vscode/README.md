@@ -174,6 +174,7 @@ MATLAB 没有块级作用域 —— `if` / `for` 里定义的变量，是整个�
 | 设置项 | 默认 | 什么时候需要改 |
 | --- | --- | --- |
 | `matlabc.pythonPath` | `python` | 系统里装了多个 Python、或 `python` 命令不可用时，填绝对路径 |
+| `matlabc.crossLanguage` | `true` | 是否扫描工程内的 C/C++ 源与 mex/DLL，把解析不到的调用接到实现上；关掉可省 IO |
 | `matlabc.docLang` | `both` | 想让内置函数说明只显示中文或只显示英文时 |
 
 其余设置一般不需要改动。

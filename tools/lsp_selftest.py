@@ -1283,6 +1283,27 @@ def _doc(c):
         _chk(u"node" in (_rs.get("reason") or u""),
              "doc/rea-status-names-blocker（%r）" % (_rs.get("reason"),))
 
+    # R345：跨语言开关。关掉时必须明确回 `disabled` ——
+    # 返回空结果会让人以为「这个工程没有桥接」，而实际是「用户关了」。
+    _svk = _L2._STATE.get("cross_lang")
+    try:
+        _L2._STATE["cross_lang"] = False
+        _off = _L2._c_bridge("anything")
+    finally:
+        if _svk is None:
+            _L2._STATE.pop("cross_lang", None)
+        else:
+            _L2._STATE["cross_lang"] = _svk
+    _chk((_off or {}).get("available") is False
+         and (_off or {}).get("reason") == "disabled",
+         "doc/cross-lang-switch-off（%r）" % ((_off or {}).get("reason"),))
+
+    # R345：rea 即使可运行，也必须声明**它能覆盖什么**。
+    # 实测它只吃 Linux ELF（对 kernel32.dll 返回 capability_unavailable），
+    # 只报 available 会让人以为 Windows DLL 也有更深结论。
+    _chk(bool(_rs.get("binary_scope")),
+         "doc/rea-scope-declared（%r）" % (_rs.get("binary_scope"),))
+
     # ---- R286：`@类目录` 里的方法文件也要出大纲 -------------------------
     # 用户报的现象就是 `@sdpvar/round.m` 大纲为空。这条在临时目录里自建
     # 语料（不污染 tests/），路径含 `@`，并且 URI 走百分号编码，

@@ -1182,13 +1182,39 @@ def _rea_status():
 
     所以这里只回答两件事：能不能跑起来；不能的话卡在哪。
     """
-    out = {"available": False, "node": None, "rea": None, "reason": ""}
+    out = {"available": False, "node": None, "rea": None, "reason": "",
+           # **能跑 ≠ 能干活**（R345）。rea 的 `inspect-binary-layout` 实测只吃
+           # Linux x64 ELF：对 `kernel32.dll` 直接返回 capability_unavailable。
+           # 不写这一条，`available: true` 会让人以为 Windows DLL 也有更深结论。
+           "binary_scope": "linux-elf",
+           "binary_scope_note":
+               u"rea 的二进制布局分析仅支持 Linux x64（实测对 kernel32.dll "
+               u"返回 capability_unavailable）"}
     try:
         import shutil as _sh
         node = _sh.which("node")
         rea = _sh.which("rea")
     except Exception:
         node, rea = None, None
+
+    # PATH 可能还没刷新（刚装完 Node 的进程仍看不到它）。补两个常见位置，
+    # 否则「刚装好却报不可用」会被当成装失败。
+    def _fallback(paths):
+        for p in paths:
+            if os.path.isfile(p):
+                return p
+        return None
+
+    if not node:
+        node = _fallback([r"C:\Program Files\nodejs\node.exe",
+                          os.path.expanduser(
+                              r"~\AppData\Local\Programs\nodejs\node.exe")])
+    if not rea:
+        rea = _fallback([
+            os.path.expanduser(r"~\AppData\Roaming\npm\rea.cmd"),
+            os.path.expanduser(r"~\AppData\Roaming\npm\rea"),
+        ])
+
     out["node"] = node
     out["rea"] = rea
     if not node:
@@ -1303,10 +1329,20 @@ def _c_bridge(name):
     `available=False` 的两种原因必须分开：没有 C 文件 vs 索引还没建好 ——
     否则界面只能猜，而猜出来的「没有桥接」和「还没算」长得一样。
     """
+    # **开关先判**（R345）：跨语言分析要扫 C 源、读 PE 导出表，在几万个文件
+    # 的工程上是实打实的 IO。默认开着（没有 C/二进制时它自己会立刻返回空，
+    # 成本接近零），但必须能关。
+    # ⚠ 顺序：**必须在 `pending` 之前**。否则用户关掉开关后，界面会先看到
+    # 「分析中…」，等分析完了才说「已关闭」—— 那个等待毫无意义。
+    if not _STATE.get("cross_lang", True):
+        return {"available": False, "reason": "disabled", "items": [],
+                "rea": _rea_status()}
+
     result = _STATE.get("result")
     if result is None:
         return {"available": False, "reason": "pending", "items": [],
                 "rea": _rea_status()}
+
     root = _STATE.get("root") or ""
     idx = _c_index(root)
     # **二进制也算一层**（R343）：只有 .mexw64 / .dll、没有 .c 的工程很常见
@@ -2516,6 +2552,12 @@ def handle(msg, out):
                 root_uri = folders[0].get("uri") or ""
         root = _uri_to_path(root_uri) if root_uri else ""
         _STATE["root"] = root if root and os.path.isdir(root) else None
+        # **跨语言开关**（R345）：客户端通过 `initializationOptions.crossLanguage`
+        # 传进来。扫 C 源、读 PE 导出表在超大工程上是实打实的 IO，
+        # 用户应当能关掉它 —— 关掉后桥接会明确回 `disabled`，而不是空结果。
+        _init = params.get("initializationOptions") or {}
+        if "crossLanguage" in _init:
+            _STATE["cross_lang"] = bool(_init.get("crossLanguage"))
         _write_message(out, {
             "jsonrpc": "2.0", "id": mid,
             "result": {

@@ -158,7 +158,10 @@ function activate(context) {
     collection.set(uri, items);
   });
 
-  client.initialize(root).then(() => {
+  client.initialize(root, {
+    // 跨语言（C 源 / mex / DLL 导出表）分析开关，见设置 `matlabc.crossLanguage`
+    crossLanguage: cfg.get('crossLanguage') !== false,
+  }).then(() => {
     log('initialize 成功');
   }).catch((e) => {
     log('initialize 失败：' + e.message + '   stderr尾部=' +

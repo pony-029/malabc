@@ -101,10 +101,13 @@ class LspClient {
 
   onNotification(fn) { this.notificationHandler = fn; }
 
-  initialize(rootPath) {
+  initialize(rootPath, options) {
     return this.request('initialize', {
       rootUri: 'file:///' + rootPath.replace(/\\/g, '/').replace(/^\//, ''),
       capabilities: {},
+      // **跨语言开关**（R345）：默认开；用户在设置里关掉后，
+      // 服务端不会去扫 C 源 / 读 PE 导出表（大工程上是实打实的 IO）。
+      initializationOptions: options || {},
     });
   }
 

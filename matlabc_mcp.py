@@ -1014,8 +1014,13 @@ def t_cbridge(args):
     rea = r.get("rea") or {}
     out.append(u"")
     if rea.get("available"):
-        out.append(u"外部二进制工具（rea）：可用。更深的二进制结论应来自它，"
-                   u"而不是这里的文件名/导出表推断。")
+        out.append(u"外部二进制工具（rea）：已安装可运行。")
+        # **能跑 ≠ 能干活**：rea 的二进制布局分析实测只吃 Linux x64 ELF。
+        # 说「可用」而不说「能覆盖什么」，就等于暗示它比实际更强。
+        if rea.get("binary_scope_note"):
+            out.append(u"注意：%s。所以上面的 PE 导出结论来自内置解析，"
+                       u"将来接 rea 时也补不上这一块。"
+                       % rea["binary_scope_note"])
     else:
         out.append(u"外部二进制工具（rea）：不可用 —— %s。"
                    u"上面的二进制结论仅来自内置解析（文件名匹配 + PE 导出表）。"
@@ -1486,8 +1491,13 @@ def main(argv=None):
     ap.add_argument("--tools", default="all", choices=("all", "core"),
                     help="暴露的工具集：all=全部，core=核心 6 个"
                          "（本地小上下文模型的显存档位，省 token）")
+    ap.add_argument("--cross-lang", dest="cross_lang", default="on",
+                    choices=("on", "off"),
+                    help="跨语言分析（C 源 / mex / DLL 导出表）："
+                         "off 时不扫描这些文件，桥接直接回 disabled")
     ns = ap.parse_args(argv)
     _TOOL_MODE[0] = ns.tools
+    L._STATE["cross_lang"] = (ns.cross_lang == "on")
     root = os.path.abspath(ns.root)
     if not os.path.isdir(root):
         sys.stderr.write("matlabc-mcp: 目录不存在：%s\n" % root)
