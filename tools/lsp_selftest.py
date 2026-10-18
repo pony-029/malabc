@@ -421,6 +421,22 @@ def _impact(c):
          "heat/callers-counted（%r）" % ([(r["name"], r["callers"])
                                          for r in _rows],))
 
+    # ---- R287：链式视图 ------------------------------------------------
+    # 一条链一行：入口在前、目标在后。分层的树看层级，链看「怎么被调到」。
+    _cb = call("b") or {}
+    _chains = _cb.get("chains") or []
+    _chk(len(_chains) == 1,
+         "impact/b-single-chain（实际 %d 条）" % len(_chains))
+    if _chains:
+        _chk([n["name"] for n in _chains[0]] == ["switch_case", "a", "b"],
+             "impact/chain-is-entry-to-target（%r）"
+             % ([n["name"] for n in _chains[0]],))
+    # 同一个调用者有多个调用点时，同一条链曾被输出 3 次 —— 必须去重。
+    _ca2 = call("a") or {}
+    _cnames = [tuple(n["name"] for n in c) for c in (_ca2.get("chains") or [])]
+    _chk(len(_cnames) == len(set(_cnames)),
+         "impact/chains-deduped（%r）" % (_cnames,))
+
     # R283：按目录过滤。跨模块的分数没有可比性，所以这个参数必须真的生效 ——
     # 只加参数不生效的话，界面会「看起来支持过滤」而结果没变。
     c.send({"jsonrpc": "2.0", "id": 97, "method": "matlabc/heat",

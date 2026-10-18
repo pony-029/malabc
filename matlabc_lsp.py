@@ -1467,6 +1467,31 @@ def _impact(name, depth=30, down_depth=3):
         return info
 
     start_keys = ["%s:%s" % (rel, name) for rel, _ln in where[name]]
+
+    # ---- 链式视图（R287）：从入口一路到目标，**每条路径一行** --------
+    # 分层的树适合「看层级」，但不适合「看一条完整的来路」：Source Insight
+    # 那种读法是「这个函数是被谁、经由谁调到的」，一句话读完。
+    # 深度与条数都要封顶，否则一个热点函数的路径数会爆炸。
+    _chains = []
+
+    def _walk(key, path):
+        if len(_chains) >= 30 or len(path) > 10:
+            return
+        # **按调用者去重**：`rev` 里同一个调用者有几个调用点就有几条，
+        # 不去重的话同一条链会被重复输出多次（实测 3 次）。
+        callers = sorted({ck for ck, _ln in (rev.get(key) or ())})
+        if not callers:
+            chain = list(reversed(path))            # 入口 -> ... -> 目标
+            if chain not in _chains:
+                _chains.append(chain)
+            return
+        for ck in callers:
+            if ck in path:                          # 防环
+                continue
+            _walk(ck, path + [ck])
+
+    for _sk in start_keys:
+        _walk(_sk, [_sk])
     seen = set(start_keys)
     layer = list(start_keys)
     levels = []
@@ -1530,6 +1555,8 @@ def _impact(name, depth=30, down_depth=3):
         "levels": len(levels),
         "total": len(seen) - len(start_keys),
         "entries": len(entries),
+        # 链式视图（R287）：每条 = 一条从入口到目标的完整路径
+        "chains": [[node_info(k) for k in ch] for ch in _chains],
         # 下游（R233）
         "down": [dict(node, level=i + 1)
                  for i, lv in enumerate(down_levels) for node in lv],

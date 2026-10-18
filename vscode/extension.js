@@ -373,6 +373,23 @@ function activate(context) {
       return m;
     };
 
+    // ---- 调用链（R287）----
+    // Source Insight 那种读法：**一条链一行**，从入口一路读到目标。
+    // 分层的树适合看层级，但「这个函数是怎么被调到的」用一句话更省事。
+    const chains = info.chains || [];
+    if (chains.length) {
+      rows.push('<div class="section">链（入口 → 目标）</div>');
+      chains.slice(0, 12).forEach((ch) => {
+        rows.push('<div class="node chain">' +
+          (ch || []).map((n) => link(n.rel, n.line, n.name)).join(' → ') +
+          '</div>');
+      });
+      if (chains.length > 12) {
+        rows.push('<div class="empty">… 共 ' + chains.length +
+                  ' 条路径，仅显示前 12 条</div>');
+      }
+    }
+
     // ---- 上游 ----
     rows.push('<div class="section">▲ 上游（谁调用它）</div>');
     if (!direct.length && !others.length) {
@@ -566,6 +583,9 @@ function activate(context) {
           'border-radius:9px;background:var(--vscode-badge-background);',
           'color:var(--vscode-badge-foreground);vertical-align:1px;}',
           '.node.entry{font-weight:600;}',
+          '.node.chain{font-size:12.5px;line-height:1.9;}',
+          '.node.chain a{color:var(--vscode-textLink-foreground);',
+          'text-decoration:none;}',
           '.section{margin:16px 0 6px;opacity:.75;font-size:12px;',
           'border-bottom:1px solid var(--vscode-editorWidget-border);',
           'padding-bottom:4px;}',
@@ -703,10 +723,26 @@ function activate(context) {
     vscode.languages.registerDocumentSymbolProvider({ language: 'matlab' }, {
       provideDocumentSymbols: async (doc) => {
         try {
-          const r = await client.request('textDocument/documentSymbol', {
-            textDocument: { uri: doc.uri.toString() },
-          });
-          return (r.result || []).map((s) => {
+          // **有界重试**（R287）。大纲只请求一次，空过一次就再也不刷新；
+          // 而它很可能在 `initialize` 之前就发出 —— 那时服务端还没有 root，
+          // 只能回空。空结果不算数，等一会儿再问。
+          let raw = [];
+          for (let i = 0; i < 6; i += 1) {
+            if (client) {
+              try {
+                const rr = await client.request('textDocument/documentSymbol', {
+                  textDocument: { uri: doc.uri.toString() },
+                });
+                raw = (rr && rr.result) || [];
+              } catch (e) {
+                log('大纲请求失败（第 ' + (i + 1) + ' 次）：' + (e && e.message));
+              }
+            }
+            if (raw.length) break;
+            await new Promise((res) => setTimeout(res, 250 * (i + 1)));
+          }
+          log('大纲 ' + path.basename(doc.uri.fsPath) + ' -> ' + raw.length + ' 个符号');
+          return raw.map((s) => {
             const kind = s.kind === 12
               ? vscode.SymbolKind.Function
               : vscode.SymbolKind.Class;
