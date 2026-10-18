@@ -23,6 +23,7 @@ R225 背景：`analyzer.api.analyze(root, prev=..., changed=...)` 早就支持
     2  = 缺输入
 """
 import argparse
+import io
 import os
 import sys
 
@@ -89,6 +90,66 @@ def _selftest():
     return 0 if stat["bad"] == 0 else 1
 
 
+def _edge_cases(root):
+    """单文件改动**之外**的三件事：新增文件、删除文件、多文件同时改。
+
+    R269：原来的扫描只把「某一个已存在的文件」标记为 changed。
+    而删除文件时增量会留下一条指向幽灵的边：
+
+        ('a.m:c', 'd.m:d', True)      ← d.m 已经不存在了
+
+    因为 `a.m` 没有重解析，它 `call_sites` 里仍存着已删文件的函数对象，
+    而全量会重解析 `a.m`、在那里解析不到 `d`。
+
+    这条判据就是那次发现变来的：**每个场景都与一次全新的全量分析逐项比**。
+    返回 `(场景名, 是否一致)` 列表。
+    """
+    import shutil
+    import tempfile
+
+    def add_file(work):
+        with io.open(os.path.join(work, "zz_new.m"), "w",
+                     encoding="utf-8", newline="") as fh:
+            fh.write(u"function r = zz_new(a)\nr = a + 1;\nend\n")
+
+    def del_file(work):
+        p = os.path.join(work, "d.m")
+        if os.path.exists(p):
+            os.remove(p)
+
+    def two_files(work):
+        for name, fn in (("a.m", "added"), ("b.m", "b_extra")):
+            with io.open(os.path.join(work, name), "a",
+                         encoding="utf-8", newline="") as fh:
+                fh.write(u"\nfunction w = %s(a)\nw = a;\nend\n" % fn)
+
+    cases = [("新增文件", add_file, {"zz_new.m"}),
+             ("删除文件", del_file, set()),
+             ("两文件同时改", two_files, {"a.m", "b.m"})]
+
+    out = []
+    for label, mutate, changed in cases:
+        work = tempfile.mkdtemp(prefix="incr_edge_")
+        try:
+            copy_root = os.path.join(work, "corpus")
+            shutil.copytree(root, copy_root)
+            junk = os.path.join(copy_root, ".matlabc_lsp_cache.json")
+            if os.path.exists(junk):
+                os.remove(junk)
+            base = analyze(copy_root)          # 变更前（prev 的来源）
+            mutate(copy_root)
+            inc = analyze(copy_root, prev=base.files, changed=changed)
+            full = analyze(copy_root)          # 变更后（真值）
+            f1, e1 = sig(full)
+            f2, e2 = sig(inc)
+            out.append((label, f1 == f2 and e1 == e2,
+                        sorted(set(e2) - set(e1))[:3],
+                        sorted(set(e1) - set(e2))[:3]))
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("root", nargs="?", default=os.path.join(ROOTDIR, "tests", "sample_m"))
@@ -142,11 +203,27 @@ def main(argv=None):
                 print("           缺少：%r" % (e,))
 
     print("scenarios   : %d（每个文件各一次）" % len(targets))
-    if bad:
-        print("check_incremental_parity: %d 个场景不一致（增量暂不可用）" % bad)
+
+    # 再加三件「单文件之外」的事：新增 / 删除 / 多文件同时改。
+    # 删除那条曾经红过 —— 见 `_edge_cases` 的说明。
+    edge_bad = 0
+    for label, ok, extra, missing in _edge_cases(args.root):
+        if ok:
+            print("  [OK  ] 边缘：%s" % label)
+            continue
+        edge_bad += 1
+        print("  [FAIL] 边缘：%s 与全量不一致" % label)
+        for e in extra:
+            print("         多出：%r" % (e,))
+        for e in missing:
+            print("         缺少：%r" % (e,))
+
+    if bad or edge_bad:
+        print("check_incremental_parity: %d 个场景不一致（增量暂不可用）"
+              % (bad + edge_bad))
         return 1
-    print("check_incremental_parity: OK（%s：%d 个场景，增量与全量逐项相同）"
-          % (ROW_SIGNATURE, len(targets)))
+    print("check_incremental_parity: OK（%s：%d 个文件场景 + 3 个边缘场景，"
+          "增量与全量逐项相同）" % (ROW_SIGNATURE, len(targets)))
     return 0
 
 

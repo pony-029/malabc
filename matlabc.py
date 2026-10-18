@@ -32359,6 +32359,8 @@ def run_pipeline(args, root, paths, prev=None, changed=None):
 
     # 建立 函数对象 -> 所属文件 的 O(1) 映射（大型项目性能关键）
     fn_to_file = {id(f): mf for mf in files for f in mf.functions}
+    # 本次分析实际覆盖的文件集合 —— 用来识别「目标文件已经不存在」的边。
+    _rel_set = set(mf.rel for mf in files)
 
     # 组装边（f.calls 已存放就近解析后的具体被调函数对象，链接精确无歧义）
     edges = []
@@ -32394,6 +32396,13 @@ def run_pipeline(args, root, paths, prev=None, changed=None):
                 callee_rel = (callee_mf.rel if callee_mf is not None
                               else getattr(getattr(callee_fn, "mfile", None),
                                            "rel", None))
+                # 目标文件**已不在本次分析范围**（多半是被删了）⇒ 这条调用
+                # 不再成立。增量复用时，未重解析的文件里仍存着已删文件的
+                # 函数对象，于是会留下一条指向幽灵的边：
+                #   删除 d.m 后，a.m 未重解析，仍报 ('a.m:c', 'd.m:d', True)
+                # 全量不会这样（它重解析 a.m，那里解析不到 d）。R269 实测。
+                if callee_rel is not None and callee_rel not in _rel_set:
+                    continue
                 callee_label = f"{callee_rel}:{callee_fn.name}" if callee_rel else callee_fn.name
                 cross = (callee_rel is not None and callee_rel != mf.rel)
                 edges.append((caller_label, callee_label, cross))
