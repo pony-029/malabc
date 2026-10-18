@@ -272,6 +272,16 @@ function activate(context) {
     const esc = (s) => String(s).replace(/[&<>"]/g, (c) => (
       { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+    // 参数摘要：`step(a)` 里的 `(a)`。服务端给前 4 个名字 + 总数，
+    // 多了就写 `, …` —— 截断必须可见（和前两个列表同一个原则）。
+    const sigText = (d) => {
+      const p = d.params || [];
+      if (!p.length) return '';
+      const more = (d.params_total || p.length) > p.length;
+      return '<span class="params">(' + esc(p.join(', ')) +
+             (more ? ', …' : '') + ')</span>';
+    };
+
     // 服务端只给前 5 个名字；`total` 是**不同名字**的总数。
     // 截断必须说出来，否则「lb、ub、dim、solver、nonlins」会被读成全部。
     const fmtUnres = (list, total) => {
@@ -304,7 +314,7 @@ function activate(context) {
             .join(' ') +
           (rest > 0 ? ' … 另 ' + rest + ' 处' : '') + '</span>'
         : '<span class="calls entry">入口（无调用者）</span>';
-      return '<div class="node">' + prefix + esc(d.name) +
+      return '<div class="node">' + prefix + esc(d.name) + sigText(d) +
         '<span class="where">' + link(d.rel, d.line, d.rel + ':' + d.line) +
         '</span>' + callHtml + '</div>';
     };
@@ -320,14 +330,18 @@ function activate(context) {
       const unHtml = un
         ? '<span class="calls">另 ' + un + ' 未解析' +
           (names ? '：' + esc(names) : '') + '</span>' : '';
-      return '<div class="node">' + prefix + esc(d.name) +
+      return '<div class="node">' + prefix + esc(d.name) + sigText(d) +
         '<span class="where">' + link(d.rel, d.line, d.rel + ':' + d.line) +
         '</span><span class="calls">复杂度 ' + (d.complexity || 0) + '</span>' +
         unHtml + '</div>';
     };
 
     const rows = [];
-    rows.push('<div class="node root">' + esc(name) + '</div>');
+    // 根节点也带参数摘要 —— 它和目标函数是同一个东西，
+    // 只有在子节点显示签名、根节点不显示，会让人以为根是另一类东西。
+    rows.push('<div class="node root">' + esc(name) +
+              sigText({ params: info.params, params_total: info.params_total }) +
+              '</div>');
 
     const direct = info.direct || [];
     const others = info.others || [];
@@ -456,6 +470,7 @@ function activate(context) {
           '.calls{opacity:.45;margin-left:12px;font-size:11px;}',
           '.calls a{color:var(--vscode-textLink-foreground);text-decoration:none;}',
           '.calls.entry{opacity:.35;font-style:italic;}',
+          '.params{opacity:.6;font-size:12px;}',
           '.section{margin:16px 0 6px;opacity:.75;font-size:12px;',
           'border-bottom:1px solid var(--vscode-editorWidget-border);',
           'padding-bottom:4px;}',

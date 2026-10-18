@@ -886,6 +886,23 @@ def _lens(c):
             _chk(all(s.get("rel") == "many_calls.m"
                      for s in (il.get("call_sites") or [])),
                  "impact/call-sites-per-statement（语句数，非调用次数）")
+
+            # R260：节点带参数摘要。**两条来源都要验**，因为它们覆盖
+            # 不同的代码风格：
+            #   ① 函数头写了 `% Input:` 表格 → 用表格（documented.m）
+            #   ② 没有注释块的老代码 → 回退到签名（many_calls.m）
+            # 只验 ① 的话，绝大多数函数其实是空的，而判据照样绿。
+            _chk(il.get("params") == ["a"] and il.get("params_total") == 1,
+                 "impact/upstream-params-from-signature（%r/%r）"
+                 % (il.get("params"), il.get("params_total")))
+            c2.send({"jsonrpc": "2.0", "id": 95, "method": "matlabc/impact",
+                     "params": {"name": "documented"}})
+            rd = c2.recv() or {}
+            idd = rd.get("result") or {}
+            _chk(idd.get("params") == ["x", "n"]
+                 and idd.get("params_total") == 2,
+                 "impact/target-params-from-header（%r/%r）"
+                 % (idd.get("params"), idd.get("params_total")))
             _chk(inf.get("down") == [],
                  "impact/no-fake-downstream（down 必须为空：它没有可跳的调用）")
         finally:
