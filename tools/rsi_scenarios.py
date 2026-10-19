@@ -44,7 +44,7 @@ CORPUS = os.path.join(ROOT, "tests", "sample_m")
 
 #: 场景数下界。加场景是允许的，删场景必须同时改这个数（与 check_all 的
 #: MIN_GUARDS 同一套纪律：删掉一条也会红）。
-MIN_SCENARIOS = 84
+MIN_SCENARIOS = 86
 
 
 def _uri(path):
@@ -1614,6 +1614,48 @@ def sc_task_undo_verify(ctx):
         shutil.rmtree(d, ignore_errors=True)
 
 
+
+def _batch_proj():
+    return {
+        "w1.m": (u"function y = aa(x)\n  y = x + 1;\nend\n", "utf-8", ""),
+        "w2.m": (u"function r = bb(v)\n  r = aa(v);\nend\n", "utf-8", ""),
+    }
+
+
+def sc_mcp_task_undo_list(ctx):
+    """MCP：list=true 只列历史，不动文件。"""
+    def run(s, root):
+        _call(s, "matlabc_task_apply",
+              {"dir": ".", "task": "rename", "old": "aa", "new": "cc"})
+        before = io.open(os.path.join(root, "w1.m"), encoding="utf-8").read()
+        res, err = _call(s, "matlabc_task_undo", {"dir": ".", "list": True})
+        t = _text(res)
+        after = io.open(os.path.join(root, "w1.m"), encoding="utf-8").read()
+        rows = [x for x in t.splitlines() if x.strip()]
+        ok = (not err) and len(rows) >= 1 and u"rename" in t and before == after
+        return ok, "行数=%d 未改动=%s" % (len(rows), before == after)
+    return _mcp_with(_batch_proj(), run)
+
+
+def sc_mcp_task_undo_batch(ctx):
+    """MCP：batch=true 一次撤掉整批。"""
+    def run(s, root):
+        o1 = io.open(os.path.join(root, "w1.m"), encoding="utf-8").read()
+        o2 = io.open(os.path.join(root, "w2.m"), encoding="utf-8").read()
+        _call(s, "matlabc_task_apply",
+              {"dir": ".", "steps": [
+                  {"task": "rename", "old": "aa", "new": "cc"},
+                  {"task": "rename", "old": "bb", "new": "dd"}]})
+        res, err = _call(s, "matlabc_task_undo",
+                         {"dir": ".", "batch": True, "apply": True})
+        t = _text(res)
+        b1 = io.open(os.path.join(root, "w1.m"), encoding="utf-8").read()
+        b2 = io.open(os.path.join(root, "w2.m"), encoding="utf-8").read()
+        ok = (not err) and u"undone" in t and b1 == o1 and b2 == o2
+        return ok, "撤净=%s/%s" % (b1 == o1, b2 == o2)
+    return _mcp_with(_batch_proj(), run)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default="")
@@ -1702,7 +1744,9 @@ def main(argv=None):
                 ("MCP task_undo", sc_mcp_task_undo),
                 ("任务 undo 列表", sc_task_undo_list),
                 ("任务 undo 整批", sc_task_undo_batch),
-                ("任务 undo 验收", sc_task_undo_verify)]
+                ("任务 undo 验收", sc_task_undo_verify),
+                ("MCP task_undo list", sc_mcp_task_undo_list),
+                ("MCP task_undo batch", sc_mcp_task_undo_batch)]
         for name, fn in solo:
             try:
                 ok, detail = fn({"root": root})

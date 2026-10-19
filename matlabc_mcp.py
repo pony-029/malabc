@@ -707,7 +707,18 @@ def t_task_undo(args):
     if not _in_root(root):
         return _err("只允许在工程目录内执行任务：%s" % root)
 
-    rc, log, info = T.task_undo(root, apply_it=bool(args.get("apply")))
+    if args.get("list"):
+        rows = T.list_tasks(root)
+        if not rows:
+            return _text(u"没有任务记录（%s）" % T.HISTORY_DIR)
+        lines = [u"%-18s %-13s %s  %s  文件%d/新建%d"
+                 % (r["id"], r["kind"], r["when"],
+                    u"已撤销" if r["undone"] else u"可撤销",
+                    r["files"], r["created"]) for r in rows]
+        return _text(u"\n".join(lines))
+
+    rc, log, info = T.task_undo(root, apply_it=bool(args.get("apply")),
+                                whole_batch=bool(args.get("batch")))
     body = u"\n".join(u"[%-9s] %s" % (r["step"], r["msg"]) for r in log)
     verdict = (info or {}).get("verdict")
     if verdict:
@@ -1663,10 +1674,20 @@ TOOLS = [
                     "失败的任务本来就会自动回滚，这条管的是「成功了但不满意」。"
                     "默认只算不写（apply 缺省 false）；撤销前会校验每个被改文件"
                     "在任务之后没被编辑过，有改动就**拒绝**并列出是哪个文件，"
-                    "而不是静默覆盖。返回带 verdict：plan / undone / conflict / nothing。",
+                    "而不是静默覆盖。返回带 verdict：plan / undone / conflict / "
+                    "verify_failed / nothing。"
+                    "`list=true` 只列历史（id / 类型 / 时间 / 是否已撤销）；"
+                    "`batch=true` 撤最近一整批（配合多步任务用）。",
      "inputSchema": {"type": "object",
-                     "properties": {"dir": _STR,
-                                    "apply": {"type": "boolean"}},
+                     "properties": {
+                         "dir": _STR,
+                         "apply": {"type": "boolean",
+                                   "description": "true 才真撤；缺省只算不写"},
+                         "list": {"type": "boolean",
+                                  "description": "只列历史记录，不撤销"},
+                         "batch": {"type": "boolean",
+                                   "description":
+                                   "撤销最近一整批（batch 是一个事务）"}},
                      "required": []},
      "handler": t_task_undo},
 
