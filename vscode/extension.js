@@ -1291,6 +1291,7 @@ function activate(context) {
 
   const taskProvider = {
     _groups: [],
+    _count: 0,
     onDidChangeTreeData: null,
     getChildren(el) {
       if (!el) return this._groups;
@@ -1300,24 +1301,36 @@ function activate(context) {
     refresh() {
       const recs = readRecords();
       const mine = [];
-      const older = [];
+      const olderByDay = {};
+
       for (const rec of recs) {
         const rid = rec.id || rec._file;
-        const item = new vscode.TreeItem(
-          (rec.kind || '?') + '  ' + (rec.when || ''),
+        // 一行得能看出"动了哪个文件"：只写类型与时间，多文件工程里根本分不清。
+        const paths = (rec.files || []).map((f) => f.path);
+        const head = paths.slice(0, 2).join('、');
+        const more = paths.length > 2 ? (' 等 ' + paths.length + ' 个') : '';
+        const label = (rec.kind || '?') + '  ' + (head || '（无文件）') + more;
+
+        const item = new vscode.TreeItem(label,
           vscode.TreeItemCollapsibleState.None);
-        item.description = (rec.undone ? '已撤销  ' : '') +
-                           (rec.files ? rec.files.length + ' 文件' : '');
+        item.description = (rec.undone ? '已撤销  ' : '') + (rec.when || '');
         item.tooltip = 'id: ' + rid +
-                       (rec.params ? ('\n' + JSON.stringify(rec.params)) : '');
+                       '\n文件: ' + (paths.join('\n      ') || '无') +
+                       (rec.params ? ('\n参数: ' + JSON.stringify(rec.params)) : '');
         item.iconPath = new vscode.ThemeIcon(rec.undone ? 'check' : 'history');
-        // 右键菜单靠 recordId 认人；contextValue 决定菜单项显不显示
         item.recordId = rid;
         item.contextValue = rec.undone ? 'taskDone' : 'taskPending';
         if (!rec.undone) {
           item.command = { command: 'matlabc.undoLastTask', title: '撤销' };
         }
-        (sessionKnown.has(rid) ? older : mine).push(item);
+
+        if (sessionKnown.has(rid)) {
+          // 更早的按天折叠：攒到 50 条时，"上周那些"需要先按日期缩一层
+          const day = (rec.when || '').slice(0, 10) || '未知日期';
+          (olderByDay[day] = olderByDay[day] || []).push(item);
+        } else {
+          mine.push(item);
+        }
       }
 
       const groups = [];
@@ -1328,11 +1341,19 @@ function activate(context) {
         g.children = mine;
         groups.push(g);
       }
-      if (older.length) {
+      const days = Object.keys(olderByDay).sort().reverse();
+      if (days.length) {
         const g = new vscode.TreeItem('更早',
           vscode.TreeItemCollapsibleState.Collapsed);
         g.iconPath = new vscode.ThemeIcon('archive');
-        g.children = older;
+        g.children = days.map((day) => {
+          const d = new vscode.TreeItem(day,
+            vscode.TreeItemCollapsibleState.Collapsed);
+          d.description = olderByDay[day].length + ' 次';
+          d.iconPath = new vscode.ThemeIcon('calendar');
+          d.children = olderByDay[day];
+          return d;
+        });
         groups.push(g);
       }
       this._groups = groups;
@@ -1406,6 +1427,29 @@ function activate(context) {
       }
     })
   );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.undoById', async () => {
+      // 复制过 id 之后，得有个地方能把它贴进去 —— 否则 id 只能在右键菜单里用。
+      let pre = '';
+      try { pre = await vscode.env.clipboard.readText(); } catch (e) { pre = ''; }
+      const looksId = /^\d{8}-\d{6}-\d{3}$/.test((pre || '').trim());
+      const id = await vscode.window.showInputBox({
+        prompt: '要撤销哪一次（记录 id）',
+        value: looksId ? pre.trim() : '',
+        placeHolder: '例如 20261020-001555-413',
+        validateInput: (v) => {
+          const t = (v || '').trim();
+          if (!t) return '请填写 id';
+          if (!/^\d{8}-\d{6}-\d{3}$/.test(t)) return 'id 形如 20261020-001555-413';
+          return '';
+        },
+      });
+      if (!id) return;
+      vscode.commands.executeCommand('matlabc.undoTaskById',
+                                     { recordId: id.trim() });
+    })
+  );
+
   context.subscriptions.push(
     vscode.commands.registerCommand('matlabc.copyTaskId', async (item) => {
       if (item && item.recordId) {

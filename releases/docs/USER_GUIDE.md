@@ -187,7 +187,7 @@ code --install-extension matlabc-<版本>.vsix
 
 ## 3. 命令清单
 
-按 `Ctrl+Shift+P`，输入 `matlabc`，共 19 条：
+按 `Ctrl+Shift+P`，输入 `matlabc`，共 20 条：
 
 ![命令面板](figures/commands.png)
 
@@ -210,6 +210,7 @@ code --install-extension matlabc-<版本>.vsix
 | `matlabc: 撤销这一次改动` | 记录视图里对某一行用（右键菜单） |
 | `matlabc: 查看这一次改了什么` | 同上，只看 diff 不动文件 |
 | `matlabc: 复制记录 id` | 排查问题时把 id 发给别人 |
+| `matlabc: 按 id 撤销改动` | 手上有 id 时直接撤（会读剪贴板并校验格式） |
 | `matlabc: 查看最近的提交` | 列出仓库最近的提交，选中即查看它改了什么 |
 | `matlabc: 查看日志` | 打开扩展日志 |
 | `matlabc: 打开使用导览` | 10 步动画，一屏讲清每个功能在哪 —— **第一次用建议先看它** |

@@ -824,6 +824,7 @@ python tools/check_all.py        # runs every tools/check_*.py AND its --selftes
 | `check_flag_coverage.py` | `FC1–FC3` — every flag in `tools/sweep_cli.py` must be read through `args.*` somewhere. Tonight the same mistake happened twice: `--probe` shipped in R180 and got judgements in R184, `--probe-cli` shipped in R186 and got them in R187. "Feature added, never verified" leaves no trace in code — the only way to see it is to count references. |
 | `check_tool_discoverability.py` | `TD1–TD4` — every non-gate script in `tools/` must be named in **both** READMEs. Gates have two counterparties (the tree and this table); plain tools had none, which is how `sweep_cli.py` reached 118 checks without ever appearing in the README, and how `lsp_selftest.py` stayed red for six rounds. **TD4**: the user guide must be reachable from the extension page — the manual and its four figures shipped inside the package while `README.md` referenced neither, so the file existed and nobody could find it. |
 | `check_tour.py` | `TR1–TR3` — the walkthrough page degrading **silently**: a frame naming a module the diagram no longer has (that step then highlights *nothing*, while the page still opens fine), an edge endpoint left inside its own box (the line runs over the title — it reads as "the arrow overshoots"), or a file keeping a template `%%` / CRLF. None of the three raises anything; a screenshot of a broken frame looks exactly like a working one |
+| `check_figure_glyphs.py` | gate for the figures (FG1–FG2): every character drawn into them must exist in the font — a missing glyph becomes a hollow box, and a box looks like redaction. Non-ASCII on a mono-font line is refused too |
 | `check_portability.py` | `PF1–PF3` — the runtime must not assume Windows is the only platform. A Windows absolute path is only allowed when that very line is registered **and** has a POSIX sibling; Windows-only APIs (`os.startfile` / `winreg` / `msvcrt` / `ctypes.windll`) have no exemption at all. Comments and docstrings are skipped — a measurement written down as `C:\Temp\yalmip` is evidence, not a platform assumption. PF3 catches the stale direction: a registration whose anchor text has disappeared |
 | `check_version_scheme.py` | `VS1–VS2` — the version number drifting out of its own rule. Every digit must stay in `0–9` (`0.7.9 → 0.8.0`, `0.9.9 → 1.0.0`); before this gate nothing could tell `0.6.105` from `0.7.0`, so the patch digit simply kept growing to `0.6.104` — a number that reads like a date and says nothing about how much changed. **VS2** ties the manifest to the release table: bump the version and forget to regenerate the table, and the two disagree silently |
 | `check_js_balance.py` | `JS1–JS4` — the two JS files under `vscode/` must have balanced brackets, closed strings and closed regex literals, and must not be empty; `package.json` must parse, its `main` must point at a file that exists, and it must declare `engines.vscode` plus the `matlab` language. **There is no JS engine on this machine** (`node` is absent and `Code.exe` is an Electron shell, not `node --check`), so a broken `extension.js` has nothing that would report it — and its failure mode is the worst one: the extension *silently fails to activate*, so the user sees "clicking does nothing" and the log has no `activate()` line at all. This is a heuristic, not a parser: it catches a missing `}` or quote, not `const x = ;`. Its own first version reported 300 false errors because it did not recognise regex literals (`/[&<>"]/g`), and that exact case is now in the selftest |
@@ -932,7 +933,7 @@ invented call relationships, or the model will repeat them as fact.
 
 ## Full-scenario sweep (hand-run, 118 checks)
 
-The 33 gates above are static and fast. This one is not — it starts subprocesses and LSP
+The 34 gates above are static and fast. This one is not — it starts subprocesses and LSP
 servers, so it stays out of `check_all` and is run by hand:
 
 ```powershell
@@ -1007,7 +1008,7 @@ python matlabc_flow.py --help     # repair loop: five-station pipeline + five re
 python matlabc_ask.py --help      # grounded Q&A: how facts become an answer
 python matlabc_mcp.py --help      # MCP server: the five tools + why stdin must be cut
 python gui.py --help              # GUI: which CLI flag each form field maps to
-python tools/check_all.py --help  # gates: what each of the 33 gates stops
+python tools/check_all.py --help  # gates: what each of the 34 gates stops
 ```
 
 This is not a verbal promise — `check_help_contract.py` and `check_doc_flags.py` watch it, and

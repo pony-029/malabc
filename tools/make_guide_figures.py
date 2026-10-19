@@ -75,9 +75,9 @@ def round_rect(d, box, radius, fill=None, outline=None, width=1):
                         width=width)
 
 
-def chrome(d, title):
+def chrome(d, title, h=None):
     """窗口外框 + 标题栏。"""
-    d.rectangle([0, 0, W, H], fill=BG)
+    d.rectangle([0, 0, W, h or H], fill=BG)
     d.rectangle([0, 0, W, 34], fill=(50, 50, 50))
     f = _font("ui", 14)
     d.text((16, 9), title, font=f, fill=(200, 200, 200))
@@ -139,10 +139,11 @@ def editor_panel(d, x0, y0, x1, y1, fname, lines, tab_w=170):
         y += 20
 
 
-def caption(d, text):
+def caption(d, text, h=None):
+    h = h or H
     f = _font("ui", 13)
-    d.rectangle([0, H - 30, W, H], fill=(24, 24, 24))
-    d.text((16, H - 24), text, font=f, fill=(160, 166, 176))
+    d.rectangle([0, h - 30, W, h], fill=(24, 24, 24))
+    d.text((16, h - 24), text, font=f, fill=(160, 166, 176))
 
 
 # ---------------------------------------------------------------------------
@@ -284,13 +285,13 @@ def fig_heat(path):
 
 def fig_commands(path):
     # 19 条命令需要比默认画布更高的区域（多出来的那几行曾落在框外）
-    HH = 540
+    HH = 566
     im = Image.new("RGB", (W, HH), BG)
     d = ImageDraw.Draw(im)
-    chrome(d, "matlabc — 命令面板")
-    d.rectangle([0, 34, W, H - 30], fill=(37, 37, 38))
+    chrome(d, "matlabc — 命令面板", HH)
+    d.rectangle([0, 34, W, HH - 30], fill=(37, 37, 38))
 
-    box = [60, 56, W - 60, 492]
+    box = [60, 54, W - 60, 516]
     round_rect(d, box, 6, fill=(45, 45, 48), outline=BORDER)
     d.text((80, 76), u"matlabc", font=_font("mono", 15), fill=WHITE)
     d.line([74, 106, W - 74, 106], fill=BORDER)
@@ -307,6 +308,7 @@ def fig_commands(path):
         (u"matlabc: 撤销这一次改动", u"记录视图里用"),
         (u"matlabc: 查看这一次改了什么", u""),
         (u"matlabc: 复制记录 id", u""),
+        (u"matlabc: 按 id 撤销改动", u"粘贴 id"),
         (u"matlabc: 查看日志", u""),
         (u"matlabc: 打开使用导览", u"10 步动画"),
         (u"matlabc: 热点函数排行", u"复杂度 × 调用者数"),
@@ -325,7 +327,7 @@ def fig_commands(path):
         if hint:
             d.text((600, y + 1), hint, font=_font("ui", 11), fill=DIM)
         y += 21
-    caption(d, u"示意图 · Ctrl+Shift+P 输入 matlabc，共 19 条命令")
+    caption(d, u"示意图 · Ctrl+Shift+P 输入 matlabc，共 20 条命令", HH)
     im.save(path)
 
 

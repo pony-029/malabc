@@ -534,7 +534,7 @@ flowchart TD
 `ci-examples/` 提供开箱即用的 GitHub Actions / GitLab CI 模板，复制即可用。
 
 **本仓库在 Windows 上跑自己的门禁**（`ci.yml`，`windows-latest`）：3.6 语法门、
-回归套件、33 道静态门、LSP/MCP 行为判据、60 个端到端场景、变异抽样。
+回归套件、34 道静态门、LSP/MCP 行为判据、60 个端到端场景、变异抽样。
 
 ```bash
 python tools/ci_local.py        # 同一条流水线，在 E:\ci\matlabc 的干净克隆里跑
@@ -782,6 +782,7 @@ python tools/check_all.py        # 跑完 tools/check_*.py 全部护栏 + 各自
 | `check_flag_coverage.py` | `FC1–FC3` — `tools/sweep_cli.py` 的每个开关都必须在某处被 `args.*` 读到。今晚同一个错犯了两次：`--probe` 是 R180 加的、R184 才补判据；`--probe-cli` 是 R186 加的、R187 才补。**「功能加了但没验证」在代码里不留任何痕迹**——唯一的发现办法是数引用。 |
 | `check_tool_discoverability.py` | `TD1–TD4` — `tools/` 下每个非护栏脚本都必须在**两侧** README 里被提到。护栏有两个对手方（树 + 这张表），而普通工具**一个都没有**——`sweep_cli.py` 因此长到 118 条判据却从未进 README，`lsp_selftest.py` 因此红了六轮没人知道。 **TD4**：用户手册必须能从扩展页点开 —— 手册与 4 张示意图原先都在包里，而 `README.md` 一处都没引用，文件存在却没人找得到。 |
 | `check_tour.py` | `TR1–TR3` —— 导览页**静静变差**的三种方式：某一帧引用了图上已不存在的模块（那一步什么都不高亮，页面照样打开）；连线端点留在自己框内（线压在标题上，看起来就是「箭头指过了头」）；页面残留模板转义 `%%` 或 CRLF。三者都不报错，而且破掉的那一帧和正常的一帧，截图上看不出区别 |
+| `check_figure_glyphs.py` | 守示意图（FG1–FG2）：图上要画的字必须在字体里有字形—— 缺了就是空心方块，而方块看起来像打码；等宽字体那几行也不许出现非 ASCII |
 | `check_portability.py` | `PF1–PF3` —— 运行时不得假设只有 Windows。Windows 绝对路径只有在该行**登记过且有 POSIX 对照**时才允许；Windows 专属 API（`os.startfile` / `winreg` / `msvcrt` / `ctypes.windll`）一律不豁免。注释与文档串被跳过——写成 `C:\Temp\yalmip` 的实测记录是证据，不是平台假设。PF3 抓反方向：登记的锚点文字消失即陈旧 |
 | `check_version_scheme.py` | `VS1–VS2` —— 版本号脱离自己定的规则。每一位都必须留在 `0–9`（`0.7.9` → `0.8.0`，`0.9.9` → `1.0.0`）；这道门之前，`0.6.105` 和 `0.7.0` 在任何地方都看不出区别，于是补丁位一路涨到 `0.6.104`——读起来像日期，也说明不了改了多少。**VS2** 把扩展清单和版本表绑在一起：升了版本却忘了重新生成表，两边就会静静地对不上 |
 | `check_js_balance.py` | `JS1–JS4` —— `vscode/` 下两个文件必须括号配平、字符串与正则字面量闭合，且不能是空文件；`package.json` 必须可解析、`main` 指向的文件真实存在、声明了 `engines.vscode` 与 `matlab` language（**清单坏了比 JS 坏了更常见**，而 VSCode 连报错都不给）。**这台机器没有任何 JS 引擎**（`node` 不存在，`Code.exe` 是 Electron 外壳，不能当 `node --check`），所以 `extension.js` 写错了没有任何东西会报 —— 而它的失败方式是最糟的：**扩展静默不激活**，用户看到「点了没反应」，日志里连 `activate()` 都不会出现。这是启发式不是解析器：抓得到漏一个 `}` 或引号，抓不到 `const x = ;`。它自己的第一版因为不认正则字面量（`/[&<>"]/g`）报了 300 条假错误，那个用例现在就在自证里 |
@@ -884,7 +885,7 @@ python matlabc.py <root> --ai-context "modules/global/compileQuadratic.m:compile
 
 ## 全场景扫测（手工跑，118 条判据）
 
-上面 33 道门是静态的、快的。这一套不是——它要起子进程与 LSP 服务端，所以**不进 `check_all`**，靠手工跑：
+上面 34 道门是静态的、快的。这一套不是——它要起子进程与 LSP 服务端，所以**不进 `check_all`**，靠手工跑：
 
 ```powershell
 python tools/sweep_cli.py              # 118 条 / 9 组 / 约 85 秒
@@ -951,7 +952,7 @@ python matlabc_flow.py --help     # 修复闭环：五站点流水线图 + 五�
 python matlabc_ask.py --help      # 问答式理解：事实底座如何装配成答案
 python matlabc_mcp.py --help      # MCP 服务：五个工具 + 「为什么 stdin 必须切断」
 python gui.py --help              # 图形界面：表单每一格等价于哪个命令行开关
-python tools/check_all.py --help  # 护栏总纲：33 道门各自拦什么
+python tools/check_all.py --help  # 护栏总纲：34 道门各自拦什么
 ```
 
 这不是口头承诺，而是被 `check_help_contract.py` 与 `check_doc_flags.py` 同时盯着的 ——
