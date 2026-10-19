@@ -161,6 +161,15 @@ with zipfile.ZipFile(OUT, "w", zipfile.ZIP_DEFLATED) as z:
                 rel = os.path.relpath(full, REPO).replace("\\", "/")
                 z.write(full, "extension/" + rel)
 
+    # 手册里的示意图：**整目录**映射，与 USER_GUIDE.md 的相对路径
+    # （`media/guide/x.png`）保持一致 —— 手册解开后图能直接显示。
+    _figdir = os.path.join(REPO, "vscode", "media", "guide")
+    if os.path.isdir(_figdir):
+        for _n in sorted(os.listdir(_figdir)):
+            if _n.lower().endswith(".png"):
+                z.write(os.path.join(_figdir, _n),
+                        "extension/media/guide/" + _n)
+
     for src_path, arc in EXTRA_FILES:
         if not os.path.isfile(src_path):
             # **缺了就吵**：导览进不了包，命令点开会是空白页，
