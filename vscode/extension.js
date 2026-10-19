@@ -863,7 +863,11 @@ function activate(context) {
         return;
       }
       const _cp = require('child_process');
-      const py = cfg.get('python') || 'python';
+      // **必须读 pythonPath**：原来写的是 `cfg.get('python')` —— 那个键
+      // 根本不存在，所以用户在设置里填了绝对路径，生成出来的配置里仍是
+      // `python`。而这份配置是在**别的客户端**里跑的，PATH 与编辑器不同，
+      // 报错只会说「启动失败」，没人会想到是配置生成器读错了键。
+      const py = cfg.get('pythonPath', 'python');
       const mpy = path.join(path.dirname(lspPath), 'matlabc.py');
       if (!fs.existsSync(mpy)) {
         vscode.window.showErrorMessage('matlabc: 找不到 matlabc.py');

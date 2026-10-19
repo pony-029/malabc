@@ -215,27 +215,96 @@ code --install-extension matlabc-<版本>.vsix
 
 ## 6. 让 AI 助手读你的工程（可选）
 
-命令面板 → `matlabc: 生成 MCP 配置（给 AI 客户端）`，按提示把生成的 JSON 贴进
-你的 AI 客户端配置（Claude Desktop / Cursor / CodeBuddy 等），重启客户端即可。
+接上之后，你说的每一句"谁在调这个函数""这个工程多大"，AI 都会去问本扩展，
+而不是瞎猜。
 
-### 6.1 AI 能查什么
+### 6.1 三步接上
 
-接入后它一共能调用 **21 个工具**，常用的几类：
+**第一步：生成配置**
 
-| 想问什么 | AI 会调用 | 你会拿到 |
-| --- | --- | --- |
-| 这工程多大 | `matlabc_stats` | 文件数、函数数、调用边、最复杂的几个 |
-| 这个文件里有什么 | `matlabc_outline` | 函数清单与行号 |
-| 谁调用了它／它调用了谁 | `matlabc_impact` | 完整来路、上游下游、解析不到的调用 |
-| 改这几个文件谁要回归 | `matlabc_changed` | 需要先验证的入口 |
-| 这个名字在哪 | `matlabc_search` / `matlabc_definition` / `matlabc_references` | 位置与引用 |
-| 字段在哪读、在哪写 | `matlabc_fields` | 按变量名分组的读写位置 |
-| 工程有什么毛病 | `matlabc_diagnostics` | 未初始化、未使用等 |
-| 这个 MATLAB 函数调的 C 在哪 | `matlabc_cbridge` | C 文件与行号；反向也能查 |
+命令面板 → **`matlabc: 生成 MCP 配置（给 AI 客户端）`**，弹窗里三选一：
 
-### 6.2 AI 改代码：**带验收、可回滚**
+| 选项 | 用在哪 |
+| --- | --- |
+| 写入 `.vscode/mcp.json` | VS Code 1.102 及以上的内置 AI（写完就能用） |
+| 复制通用配置 | Claude Desktop / Cursor / CodeBuddy 等支持 `mcpServers` 的客户端 |
+| 只复制 VS Code 格式 | 想自己贴到别处 |
 
-这一点和别的助手不一样，值得单独说。
+**第二步：贴进客户端**
+
+生成的 JSON 长这样（`command` 会自动用你配好的 Python，`--root` 是当前工程）：
+
+```json
+{
+  "mcpServers": {
+    "matlabc": {
+      "command": "C:/Python310/python.exe",
+      "args": ["D:/ext/matlabc_mcp.py", "--root", "D:/work/myproj"]
+    }
+  }
+}
+```
+
+各客户端放哪：
+
+| 客户端 | 配置文件 |
+| --- | --- |
+| VS Code（内置 AI） | 工程里的 `.vscode/mcp.json` —— 上面那个命令会直接写 |
+| Claude Desktop | Windows `%APPDATA%\Claude\claude_desktop_config.json`；macOS `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Cursor | `~/.cursor/mcp.json` |
+| CodeBuddy / 其它 | 各自 MCP 设置页，认 `mcpServers` 格式 |
+
+**第三步：重启客户端**
+
+重启后问一句"这个 MATLAB 工程多大" —— 如果它在回答里引用了文件数与函数数，
+说明接上了。也可以在客户端的工具列表里找以 `matlabc_` 开头的工具（共 21 个）。
+
+> 接不上时先看两处：`command` 指向的 Python 能不能启动（用
+> `matlabc: 选择 Python 解释器` 验证一次）、`args` 里的 `matlabc_mcp.py`
+> 路径是否就是扩展目录里那份。
+
+### 6.2 常见用法
+
+**① 先摸清工程**
+
+> "这个 MATLAB 工程有多大？最复杂的几个函数是什么？"
+
+AI 调 `matlabc_stats`，你拿到文件数、函数数、调用边、复杂度前几名。
+
+**② 改之前先看影响面**
+
+> "`solver.m` 里的 `iterate` 是谁在调？我改它会不会连累别人？"
+
+AI 调 `matlabc_impact`，你拿到上游列表（含文件名与行号）以及从入口到它的来路。
+
+**③ 问"为什么跳不过去"**
+
+> "这里的 `c_entry` 跳不过去，是我们写错了还是它本来是 C 函数？"
+
+AI 调 `matlabc_cbridge`：工程内有 `.c` 的给出文件名与行号；`mex` 给出入口名；
+`calllib('lib','fn')` 会去核对库的导出表，明确说 ✓ 还是 ✗。
+
+**④ 改代码前先要一份"计划"**
+
+> "把 `helper` 改名成 `assist`，先别动，告诉我你会改哪些地方。"
+
+AI 调 `matlabc_task_plan`（**不写盘**），你拿到：将改的位置数、涉及文件、
+以及这次改动的**验收条件**。看完觉得可以，再让它执行。
+
+**⑤ 改完要一份"回归清单"**
+
+> "我改了 `model.m` 和 `sim.m`，哪些入口应该先跑一遍？"
+
+AI 调 `matlabc_changed`，按受影响程度列出入口。
+
+**⑥ 让它真的去改（带验收）**
+
+> "执行吧。"
+
+AI 调 `matlabc_task_apply`：写入 → 重新分析 → 逐条核对 → 不过就**自己回滚**，
+返回里带 `verdict`（`pass` / `rollback`）。
+
+### 6.3 AI 改代码：**带验收、可回滚**
 
 普通的"让 AI 改代码"是：它改完，你自己看对不对。
 这里改代码走的是**任务**，每次都自带验收条件：
@@ -247,13 +316,11 @@ code --install-extension matlabc-<版本>.vsix
 | `extract` | 把一段代码提成函数 | 函数数 +1 · 诊断不增加 · 结构配平 |
 | `move` | 把整个函数搬到独立文件 | 函数总数不变 · 诊断不增加 · 定义真的迁移了 |
 
-流程固定是两步：
+固定两步：
 
 ```
-1. 先"算一遍"（不写盘）—— 工具名 matlabc_task_plan
-   改哪些位置、验收条件是什么；你可以先看再决定
-2. 再"执行" —— 工具名 matlabc_task_apply
-   写入 → 重新分析 → 逐条核对 → 任何一条不过就**逐字节回滚**
+1. matlabc_task_plan   只算不写：改哪些位置、验收条件是什么
+2. matlabc_task_apply  写入 → 重新分析 → 逐条核对 → 不过就逐字节回滚
 ```
 
 **所以它能做到：改坏了会自己退回去，而不是留一个半成品给你发现。**
@@ -261,13 +328,26 @@ code --install-extension matlabc-<版本>.vsix
 > 两个边界要说清楚：
 > - 验收条件管的是**结构**（函数数、调用边、诊断、名字残留），
 >   不是"业务逻辑正确"——语义对不对仍然要你判断；
-> - `extract` 的接口如果你让工具自己推断，那是启发式，**先看它的推断结果再执行**。
+> - `extract` 的接口如果让工具自己推断，那是启发式，**先看推断结果再执行**。
 
-### 6.3 它不会做什么
+### 6.4 它不会做什么
 
 - 不在你不知情时改文件：所有写操作都是「先算 → 你确认 → 再落盘」
-- 不覆盖已有文件：`extract --to` / `move` 遇到同名目标会直接拒绝
+- 不覆盖已有文件：`extract` / `move` 遇到同名目标会直接拒绝
 - 不改工程外的东西：所有路径都必须在工程目录内
+
+### 6.5 工具速查（21 个里的常用几类）
+
+| 想问什么 | AI 会调用 | 你会拿到 |
+| --- | --- | --- |
+| 这工程多大 | `matlabc_stats` | 文件数、函数数、调用边、最复杂的几个 |
+| 这个文件里有什么 | `matlabc_outline` | 函数清单与行号 |
+| 谁调用了它／它调用了谁 | `matlabc_impact` | 完整来路、上游下游、解析不到的调用 |
+| 改这几个文件谁要回归 | `matlabc_changed` | 需要先验证的入口 |
+| 这个名字在哪 | `matlabc_search` / `matlabc_definition` / `matlabc_references` | 位置与引用 |
+| 字段在哪读、在哪写 | `matlabc_fields` | 按变量名分组的读写位置 |
+| 工程有什么毛病 | `matlabc_diagnostics` | 未初始化、未使用等 |
+| 这个 MATLAB 函数调的 C 在哪 | `matlabc_cbridge` | C 文件与行号；反向也能查 |
 
 ---
 
