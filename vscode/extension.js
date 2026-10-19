@@ -37,10 +37,23 @@ let out = null;
 const _fs = require('fs');
 const _os = require('os');
 const LOGFILE = path.join(_os.tmpdir(), 'matlabc-ext.log');
+//: 日志超过这个大小就滚动一份（.1），避免长期使用后无限增长。
+const LOG_MAX = 1024 * 1024;
+let _logWrites = 0;
 
 function log(msg) {
   const line = '[' + new Date().toTimeString().slice(0, 8) + '] ' + msg;
-  try { _fs.appendFileSync(LOGFILE, line + '\n'); } catch (e) { /* ignore */ }
+  try {
+    // 每 200 行查一次大小：每行都 stat 太浪费；超过 1MB 滚一份 .1。
+    if ((_logWrites++ % 200) === 0) {
+      let sz = 0;
+      try { sz = _fs.statSync(LOGFILE).size; } catch (e) { sz = 0; }
+      if (sz > LOG_MAX) {
+        try { _fs.renameSync(LOGFILE, LOGFILE + '.1'); } catch (e) { /* ignore */ }
+      }
+    }
+    _fs.appendFileSync(LOGFILE, line + '\n');
+  } catch (e) { /* ignore */ }
   try {
     if (!out) out = vscode.window.createOutputChannel('matlabc');
     out.appendLine(line);
@@ -518,6 +531,16 @@ function activate(context) {
     showStatus(context, '$(check) matlabc',
                'Python ' + (pyVer || '?') + '\n' + python +
                '\n点击可更换解释器');
+
+    // **把已经打开的文档补推一遍**（R398）。
+    // 服务端是新建的进程，它不知道哪些文档开着；不补推的话，重启之后
+    // 诊断与关系要等用户手动重新打开那个文件才会回来 —— 看起来像"重启把功能弄丢了"。
+    vscode.workspace.textDocuments.forEach((d) => {
+      if (d.languageId === 'matlab') {
+        log('重启后补推 ' + path.basename(d.uri.fsPath));
+      }
+      sendOpen(d);
+    });
     // **装好之后说一句**：只在这个版本第一次成功启动时出现一次。
     // 否则用户装完只看到侧边栏多了一个图标，不知道下一步做什么。
     const ver = (context.extension && context.extension.packageJSON &&
@@ -574,7 +597,10 @@ function activate(context) {
   );
   context.subscriptions.push(
     vscode.commands.registerCommand('matlabc.showLog', async () => {
-      const p = path.join(context.extensionPath, 'matlabc.log');
+      // 真实日志在 %TEMP%\matlabc-ext.log。上一版这里写的是扩展目录下的
+      // `matlabc.log` —— 那个文件根本不存在，于是这条命令永远只会说
+      // "还没有日志"，而用户以为扩展不写日志。
+      const p = LOGFILE;
       if (fs.existsSync(p)) {
         const doc = await vscode.workspace.openTextDocument(p);
         vscode.window.showTextDocument(doc);
@@ -593,10 +619,8 @@ function activate(context) {
       sendOpen(d);
     })
   );
-  vscode.workspace.textDocuments.forEach((d) => {
-    if (d.languageId === 'matlab') log('已打开文档补推 ' + path.basename(d.uri.fsPath));
-    sendOpen(d);
-  });
+  // 「已打开文档补推」已经放进 initialize 成功的回调里（R398）——
+  // 这样首启与重启走同一条路径，不会一边有、一边漏。
 
   // 两个 provider 都已由 LSP 实现，判据各自通过：
   //   definition：`a.m:3` 的 `b` → `a.m:6`、`a.m:13` 的 `d` → `d.m:1`、注释 → `[]`
