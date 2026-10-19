@@ -145,7 +145,7 @@ def main(argv=None):
         print("ci_local: --no-sync 但 %s 不是 git 仓库" % work)
         return 2
 
-    rc0, head, _ = _git(["log", "-1", "--oneline"], work)
+    rc0, head = _git(["log", "-1", "--oneline"], work)
     print("ci_local: 沙箱 HEAD = %s" % (head.strip() if rc0 == 0 else "?"))
     print("")
 
