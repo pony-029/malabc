@@ -136,7 +136,7 @@ def editor_panel(d, x0, y0, x1, y1, fname, lines, tab_w=170):
     y = y0 + 44
     for i, ln in enumerate(lines):
         code_line(d, x0 + 6, y, ln, f, lineno=i + 1, fnum=fnum)
-        y += 21
+        y += 22
 
 
 def caption(d, text):
@@ -288,7 +288,7 @@ def fig_commands(path):
     chrome(d, "matlabc — 命令面板")
     d.rectangle([0, 34, W, H - 30], fill=(37, 37, 38))
 
-    box = [60, 60, W - 60, 420]
+    box = [60, 58, W - 60, 444]
     round_rect(d, box, 6, fill=(45, 45, 48), outline=BORDER)
     d.text((80, 76), u"matlabc", font=_font("mono", 15), fill=WHITE)
     d.line([74, 106, W - 74, 106], fill=BORDER)
@@ -300,6 +300,8 @@ def fig_commands(path):
         (u"matlabc: 选择 Python 解释器", u"启动失败先试它"),
         (u"matlabc: 重新启动服务", u"索引卡住时用"),
         (u"matlabc: 撤销上一次改动", u"改完能反悔"),
+        (u"matlabc: 查看最近的提交", u""),
+        (u"matlabc: 确认撤销", u"diff 里的按钮"),
         (u"matlabc: 查看日志", u""),
         (u"matlabc: 打开使用导览", u"10 步动画"),
         (u"matlabc: 热点函数排行", u"复杂度 × 调用者数"),
@@ -310,15 +312,15 @@ def fig_commands(path):
         (u"matlabc: 生成 HTML 分析报告", u"单文件报告"),
         (u"matlabc: 生成 MCP 配置（给 AI 客户端）", u""),
     ]
-    y = 90
+    y = 78
     for i, (name, hint) in enumerate(cmds):
         if i == 0:
             d.rectangle([68, y - 7, W - 68, y + 25], fill=(9, 71, 113))
         d.text((84, y), name, font=_font("ui", 13), fill=WHITE)
         if hint:
             d.text((600, y + 1), hint, font=_font("ui", 11), fill=DIM)
-        y += 23
-    caption(d, u"示意图 · Ctrl+Shift+P 输入 matlabc，共 14 条命令")
+        y += 21
+    caption(d, u"示意图 · Ctrl+Shift+P 输入 matlabc，共 16 条命令")
     im.save(path)
 
 

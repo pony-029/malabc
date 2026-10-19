@@ -12,6 +12,8 @@ const os = require('os');
 const { LspClient } = require('./lspClient');
 
 let client = null;
+//: 撤销计划（等用户在 diff 上点确认）
+let pendingUndo = null;
 
 // 侧栏「关系」视图的“钉住某个名字”入口（R298）。
 // 定义在 activate 内部（那里才有 TreeDataProvider），这里先留一个引用，
@@ -1239,16 +1241,68 @@ function activate(context) {
     });
   }
 
+  // ---- 侧栏「改动记录」（R410）--------------------------------------
+  // 记录一直是 JSON 文件，只能去 `.matlabc/tasks/` 里翻 —— 而它恰恰是
+  // "我刚才改了什么、还能不能撤"最直接的答案。
+  const historyDir = path.join(root, '.matlabc', 'tasks');
+  const taskProvider = {
+    _items: [],
+    onDidChangeTreeData: null,
+    getChildren() { return this._items; },
+    getTreeItem(it) { return it; },
+    refresh() {
+      const items = [];
+      let names = [];
+      try { names = fs.readdirSync(historyDir).filter((n) => n.endsWith('.json')); }
+      catch (e) { names = []; }
+      names.sort().reverse();
+      for (const n of names.slice(0, 50)) {
+        let rec = {};
+        try {
+          rec = JSON.parse(fs.readFileSync(path.join(historyDir, n), 'utf8'));
+        } catch (e) { continue; }
+        const item = new vscode.TreeItem(
+          (rec.kind || '?') + '  ' + (rec.when || ''),
+          vscode.TreeItemCollapsibleState.None);
+        item.description = (rec.undone ? '已撤销  ' : '') +
+                           (rec.files ? rec.files.length + ' 文件' : '');
+        item.tooltip = 'id: ' + (rec.id || n) +
+                       (rec.params ? ('\n' + JSON.stringify(rec.params)) : '');
+        item.iconPath = new vscode.ThemeIcon(
+          rec.undone ? 'check' : 'history');
+        if (!rec.undone) {
+          item.command = {
+            command: 'matlabc.undoLastTask',
+            title: '撤销',
+          };
+        }
+        items.push(item);
+      }
+      this._items = items;
+      if (this.onDidChangeTreeData) this.onDidChangeTreeData();
+    },
+  };
+  const treeView = vscode.window.createTreeView('matlabcTasks', {
+    treeDataProvider: taskProvider,
+  });
+  context.subscriptions.push(treeView);
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabcTasks.refresh', () => {
+      taskProvider.refresh();
+      treeView.title = '改动记录（' + taskProvider._items.length + '）';
+    })
+  );
+  taskProvider.refresh();
+  treeView.title = '改动记录（' + taskProvider._items.length + '）';
+
   context.subscriptions.push(
     vscode.commands.registerCommand('matlabc.undoLastTask', async () => {
       // 先跑"计划 + diff"（不写盘）。带 --json 是为了拿到**撤销后的内容**，
       // 只有内容才能开 VS Code 的原生并排 diff；纯 diff 文本只能自己脑补。
       const plan = await runTask(['undo', '--dir', root, '--diff', '--json']);
       let info = {};
-      let raw = '';
       try {
-        raw = plan.out.slice(plan.out.indexOf('{'));
-        info = (JSON.parse(raw) || {}).info || {};
+        info = (JSON.parse(plan.out.slice(plan.out.indexOf('{'))) || {}).info || {};
       } catch (e) { /* 解析失败就只按 rc 判断 */ }
 
       if (plan.rc !== 0) {
@@ -1258,15 +1312,18 @@ function activate(context) {
         return;
       }
 
-      // 把"撤销后的内容"落到临时文件，再用 vscode.diff 打开：
-      // 左 = 当前文件，右 = 撤销后。
+      // 撤销后的内容落到临时文件，再用 vscode.diff 打开（左＝当前，右＝撤销后）。
+      // 文件名保留 `.m` 后缀 —— 否则右侧按纯文本高亮，看不出代码结构。
       const previews = info.previews || [];
       const tmpDir = path.join(context.globalStoragePath || os.tmpdir(),
                                'undo-preview');
       try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (e) { /* */ }
+      pendingUndo = info;
+
       let opened = 0;
       for (const pv of previews.slice(0, 8)) {
-        const right = path.join(tmpDir, pv.path.replace(/[\\/]/g, '__'));
+        const safe = pv.path.replace(/[\\/]/g, '__');
+        const right = path.join(tmpDir, safe);
         try {
           fs.writeFileSync(right, pv.before, 'utf8');
           await vscode.commands.executeCommand(
@@ -1278,35 +1335,91 @@ function activate(context) {
         } catch (e) { /* 单个失败不影响其它 */ }
       }
 
-      // 记录时的 HEAD 与现在不同 -> 给一个"看这段时间提交"的入口
-      const ACT_SEE = '查看这段提交';
       const ACT_UNDO = '撤销';
+      const ACT_SEE = '查看这段提交';
       const picks = await vscode.window.showWarningMessage(
-        'matlabc: ' + (opened ? ('已打开 ' + opened + ' 个 diff（左＝当前，右＝撤销后）。')
-                              : (info.files + ' 个文件将恢复。')) +
-        '确认撤销？', { modal: true }, ACT_UNDO, ACT_SEE);
+        'matlabc: ' + (opened
+          ? ('已打开 ' + opened + ' 个 diff（左＝当前，右＝撤销后），' +
+             'diff 里也可以点「确认撤销」。')
+          : (info.files + ' 个文件将恢复。')) + '现在撤销？',
+        { modal: true }, ACT_UNDO, ACT_SEE);
       if (picks === ACT_SEE) {
-        const out = vscode.window.createOutputChannel('matlabc: 提交对照');
-        out.show(true);
-        out.appendLine('以下是任务之后仓库里新增的提交（供对照，不影响撤销）：');
-        const { execFile } = require('child_process');
-        execFile('git', ['--no-pager', 'log', '--oneline', '-20'],
-                 { cwd: root, windowsHide: true },
-                 (err, stdout) => {
-                   out.append(stdout || (err ? String(err) : '（没有输出）'));
-                 });
+        vscode.commands.executeCommand('matlabc.showRecentCommits');
         return;
       }
       if (picks !== ACT_UNDO) return;
+      vscode.commands.executeCommand('matlabc.confirmUndo');
+    })
+  );
 
+  // ---- 确认撤销（diff 里的 CodeLens 与确认框都走这里）------------------
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.confirmUndo', async () => {
+      if (!pendingUndo) {
+        vscode.window.showInformationMessage(
+          'matlabc: 没有待确认的撤销。先执行「撤销上一次改动」。');
+        return;
+      }
+      pendingUndo = null;
       const done = await runTask(['undo', '--dir', root, '--apply']);
       const tail = done.out.split('\n').filter((x) => x.trim())
         .slice(-2).join('\n');
       if (done.rc === 0) {
         vscode.window.showInformationMessage('matlabc: 已撤销。\n' + tail);
+        vscode.commands.executeCommand('matlabcTasks.refresh');
       } else {
         vscode.window.showWarningMessage('matlabc: 撤销未完成。\n' + tail);
       }
+    })
+  );
+
+  // diff 预览文件上的 CodeLens：看完直接点，不用切回弹窗。
+  context.subscriptions.push(
+    vscode.languages.registerCodeLensProvider(
+      { scheme: 'file', pattern: '**/undo-preview/**' },
+      {
+        provideCodeLenses() {
+          const top = new vscode.Range(0, 0, 0, 0);
+          return [new vscode.CodeLens(top, {
+            title: '$(check) 确认撤销这次改动',
+            command: 'matlabc.confirmUndo',
+          })];
+        },
+      })
+  );
+
+  // ---- 查看最近的提交（QuickPick，选中打开该提交的改动）------------------
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.showRecentCommits', async () => {
+      const { execFile } = require('child_process');
+      const list = await new Promise((resolve) => {
+        execFile('git', ['--no-pager', 'log', '--oneline', '-30'],
+                 { cwd: root, windowsHide: true },
+                 (err, stdout) => resolve(err ? '' : String(stdout || '')));
+      });
+      const rows = list.split('\n').filter((x) => x.trim()).map((ln) => {
+        const i = ln.indexOf(' ');
+        return { label: ln.slice(0, i), description: ln.slice(i + 1).trim(),
+                 sha: ln.slice(0, i) };
+      });
+      if (!rows.length) {
+        vscode.window.showInformationMessage(
+          'matlabc: 这个目录不是 git 仓库，或没有任何提交。');
+        return;
+      }
+      const pick = await vscode.window.showQuickPick(rows, {
+        placeHolder: '选择一次提交，查看它改了什么',
+      });
+      if (!pick) return;
+      const patch = await new Promise((resolve) => {
+        execFile('git', ['--no-pager', 'show', '--stat', '--patch', pick.sha],
+                 { cwd: root, maxBuffer: 8 * 1024 * 1024, windowsHide: true },
+                 (err, stdout) => resolve(err ? String(err) : String(stdout || '')));
+      });
+      const doc = await vscode.workspace.openTextDocument({
+        content: patch, language: 'diff',
+      });
+      await vscode.window.showTextDocument(doc, { preview: true });
     })
   );
 
