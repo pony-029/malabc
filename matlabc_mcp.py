@@ -1411,6 +1411,69 @@ def t_search(args):
 _STR = {"type": "string"}
 _INT = {"type": "integer"}
 
+
+# ---------------------------------------------------------------------------
+# 任务层（R376）：把 rename / rename-field / extract 暴露给 Agent。
+#
+# 为什么要单独一层，而不是让 Agent 自己拼 propose/apply：
+#   propose 只保证「这段文本出现在这里」，**不保证改完语义还对**。
+#   任务层在动手前把验收条件列出来，改完重新分析逐条核对，不过就回滚 ——
+#   这正是 Agent 最缺的那部分：它没有"改完再看一眼"的能力。
+# ---------------------------------------------------------------------------
+
+def _task_list(v):
+    """接受 ["a","b"] 或 "a,b" 两种写法（不同客户端习惯不同）。"""
+    if isinstance(v, (list, tuple)):
+        return [str(x).strip() for x in v if str(x).strip()]
+    return [x.strip() for x in str(v or "").split(",") if x.strip()]
+
+
+def _task_run(args, apply_it):
+    import matlabc_task as T
+    task = (args.get("task") or "").strip()
+    root = _resolve(args.get("dir") or ".")
+    if not root or not os.path.isdir(root):
+        return _err("找不到目录：%s" % (args.get("dir") or "（未给 dir）",))
+    if not _in_root(root):
+        return _err("只允许在工程目录内执行任务：%s" % root)
+
+    if task in ("rename", "rename-field"):
+        old = (args.get("old") or "").strip()
+        new = (args.get("new") or "").strip()
+        rc, log, info = T.task_rename(
+            root, old, new, apply_it=apply_it,
+            kind=("field" if task == "rename-field" else "ident"))
+    elif task == "extract":
+        rel = (args.get("file") or "").strip()
+        rng = (args.get("lines") or "").strip()
+        import re as _re
+        m = _re.match(r"^(\d+)\s*-\s*(\d+)$", rng)
+        if not rel or not m:
+            return _err("extract 需要 file（相对工程路径）与 lines（形如 12-18）")
+        rc, log, info = T.task_extract(
+            root, rel, int(m.group(1)), int(m.group(2)),
+            (args.get("name") or "").strip(),
+            _task_list(args.get("in")), _task_list(args.get("out")),
+            apply_it=apply_it, auto=bool(args.get("auto")))
+    else:
+        return _err("task 只支持 rename / rename-field / extract")
+
+    body = u"\n".join(u"[%-9s] %s" % (r["step"], r["msg"]) for r in log)
+    if rc == 0:
+        return _text(body)
+    return _err(body)
+
+
+def t_task_plan(args):
+    """**只读**：算出改哪些位置，并把验收条件列出来（不写盘）。"""
+    return _task_run(args, False)
+
+
+def t_task_apply(args):
+    """**写盘**：执行任务，改完重新分析逐条核对，不过就自动回滚。"""
+    return _task_run(args, True)
+
+
 TOOLS = [
     {"name": "matlabc_help",
      "description": "列出当前可用的工具与推荐问法。不确定能做什么、"
@@ -1498,6 +1561,34 @@ TOOLS = [
                      "properties": {"batchId": _STR},
                      "required": ["batchId"]},
      "handler": t_undo_edits},
+
+    {"name": "matlabc_task_plan",
+     "description": "**只读**地把一次改代码算成任务：列出将改动的位置，"
+                    "并把**验收条件**写出来（旧名字归零 / 函数数不变 / "
+                    "调用边不变 / 诊断不增加 / function-end 配平，视任务而定）。"
+                    "task 可选 rename、rename-field、extract。"
+                    "改代码前先调它，人可以先看计划再决定。",
+     "inputSchema": {"type": "object",
+                     "properties": {"task": _STR, "dir": _STR, "old": _STR,
+                                    "new": _STR, "file": _STR,
+                                    "lines": _STR, "name": _STR,
+                                    "in": _STR, "out": _STR,
+                                    "auto": {"type": "boolean"}},
+                     "required": ["task"]},
+     "handler": t_task_plan},
+
+    {"name": "matlabc_task_apply",
+     "description": "**会写盘**：执行 task_plan 描述的那次改动，写完后重新"
+                    "分析、逐条核对验收条件；任何一条不过或写盘失败，"
+                    "**自动逐字节回滚**并返回原因。返回里带 verdict。",
+     "inputSchema": {"type": "object",
+                     "properties": {"task": _STR, "dir": _STR, "old": _STR,
+                                    "new": _STR, "file": _STR,
+                                    "lines": _STR, "name": _STR,
+                                    "in": _STR, "out": _STR,
+                                    "auto": {"type": "boolean"}},
+                     "required": ["task"]},
+     "handler": t_task_apply},
 
     {"name": "matlabc_propose_edit",
      "description": "**不落盘**地算一次改动：返回 diff 与影响面，并给出 editId。"

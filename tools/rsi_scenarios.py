@@ -44,7 +44,7 @@ CORPUS = os.path.join(ROOT, "tests", "sample_m")
 
 #: 场景数下界。加场景是允许的，删场景必须同时改这个数（与 check_all 的
 #: MIN_GUARDS 同一套纪律：删掉一条也会红）。
-MIN_SCENARIOS = 68
+MIN_SCENARIOS = 70
 
 
 def _uri(path):
@@ -495,7 +495,9 @@ def sc_mcp_initialize(sess, ctx):
 def sc_mcp_list(sess, ctx):
     r = sess.rpc("tools/list", {})
     tools = (r.get("result") or {}).get("tools") or []
-    return len(tools) >= 19, "工具=%d" % len(tools)
+    # 下界跟着实际情况走（R376）：19 → 21（新增 task_plan / task_apply）。
+    # 用 `>=` 而不是 `==`：加工具不该让这条红，但**少**工具必须有人知道。
+    return len(tools) >= 21, "工具=%d" % len(tools)
 
 
 def sc_mcp_stats(sess, ctx):
@@ -1254,6 +1256,59 @@ def sc_task_extract_auto(ctx):
         shutil.rmtree(d, ignore_errors=True)
 
 
+
+def _taskproj():
+    return {
+        "a.m": (u"function y = helper(x)\n"
+                u"  y = x + 1;\n"
+                u"end\n", "utf-8", ""),
+        "b.m": (u"function r = run(v)\n"
+                u"  r = helper(v);\n"
+                u"end\n", "utf-8", ""),
+    }
+
+
+def sc_mcp_task_plan(sess, ctx):
+    """task_plan **只读**，且把验收条件写在前面。
+
+    这条场景自带一个小工程：共享语料里没有 `helper`，拿它去测只会得到
+    "没有命中"—— 看似通过，实际什么都没验（第 1 轮踩过同类坑）。
+    """
+    def run(s, root):
+        before = io.open(os.path.join(root, "a.m"), encoding="utf-8").read()
+        res, err = _call(s, "matlabc_task_plan",
+                         {"task": "rename", "dir": ".", "old": "helper",
+                          "new": "assist"})
+        t = _text(res)
+        after = io.open(os.path.join(root, "a.m"), encoding="utf-8").read()
+        ok = ((not err) and before == after
+              and u"criteria" in t and u"dry-run" in t)
+        return ok, "未写盘=%s 有判据=%s" % (before == after, u"criteria" in t)
+    return _mcp_with(_taskproj(), run)
+
+
+def sc_mcp_task_apply(sess, ctx):
+    """task_apply 写入并逐条验收；改成一个已存在的名字时必须拦住并回滚。"""
+    def run(s, root):
+        res, err = _call(s, "matlabc_task_apply",
+                         {"task": "rename", "dir": ".", "old": "helper",
+                          "new": "assist"})
+        t = _text(res)
+        a = io.open(os.path.join(root, "a.m"), encoding="utf-8").read()
+        ok_pass = ((not err) and u"验收通过（4/4）" in t and u"assist" in a)
+        if not ok_pass:
+            return False, "apply 未通过：%r" % (t[-60:],)
+        snap = a
+        res2, err2 = _call(s, "matlabc_task_apply",
+                           {"task": "rename", "dir": ".", "old": "assist",
+                            "new": "run"})
+        t2 = _text(res2)
+        a2 = io.open(os.path.join(root, "a.m"), encoding="utf-8").read()
+        ok_rb = bool(err2) and (u"rollback" in t2) and (a2 == snap)
+        return ok_rb, "验收通过=%s 冲突回滚=%s" % (ok_pass, ok_rb)
+    return _mcp_with(_taskproj(), run)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default="")
@@ -1357,7 +1412,9 @@ def main(argv=None):
                   ("MCP changed", sc_mcp_changed),
                   ("MCP explain", sc_mcp_explain),
                   ("MCP definition", sc_mcp_definition),
-                  ("MCP references", sc_mcp_references)]
+                  ("MCP references", sc_mcp_references),
+                  ("MCP task_plan", sc_mcp_task_plan),
+                  ("MCP task_apply", sc_mcp_task_apply)]
         ms = _mcp(root)
         try:
             for name, fn in mcp_sc:
