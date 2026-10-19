@@ -240,6 +240,25 @@ def _unpack_text(rec_file):
     return rec_file.get("before")
 
 
+def _git_head(root):
+    """当前 HEAD（拿不到就返回空串）。
+
+    为什么记它：撤销时如果仓库已经往前走了，说明"现在的代码"和"当初那次任务"
+    之间还夹着别人的提交 —— 用户判断该不该撤时需要知道这一点。
+    """
+    try:
+        import subprocess
+        p = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                           cwd=root, stdin=subprocess.DEVNULL,
+                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                           timeout=10)
+        if p.returncode == 0:
+            return p.stdout.decode("utf-8", "replace").strip()
+    except Exception:
+        pass
+    return u""
+
+
 def _sha_of(path):
     try:
         return hashlib.sha256(io.open(path, "rb").read()).hexdigest()
@@ -269,6 +288,7 @@ def record_task(root, kind, params, backup, created=None, scan=None):
             "when": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now)),
             "undone": False,
             "batch": _CURRENT_BATCH or u"",
+            "git_head": _git_head(root),
             # 任务**之前**的结构（函数数 / 调用边 / 诊断数）。
             # 撤销时拿它当验收标准：把文件恢复原样之后，结构也必须回到这里。
             "scan": ({k: (scan or {}).get(k) for k in
@@ -460,7 +480,8 @@ def _plan_undo(root, recs):
     return state, sorted(gone), conflicts
 
 
-def task_undo(root, apply_it=False, rec_id=None, whole_batch=False):
+def task_undo(root, apply_it=False, rec_id=None, whole_batch=False,
+               show_diff=False):
     """撤销任务。
 
     默认只撤**最近一次**；`whole_batch=True` 时把最近那一批（batch）整批撤掉，
@@ -522,6 +543,34 @@ def task_undo(root, apply_it=False, rec_id=None, whole_batch=False):
     if not apply_it:
         say("plan", u"将恢复 %d 个文件、删除 %d 个新建文件（未写盘）"
             % (len(writes), len(deletes)))
+        if show_diff:
+            import difflib
+            for p in sorted(writes):
+                try:
+                    old = io.open(p, encoding="utf-8").read()
+                except (IOError, OSError):
+                    continue
+                rel = os.path.relpath(p, root)
+                diff = difflib.unified_diff(
+                    old.splitlines(), writes[p].splitlines(),
+                    fromfile=u"当前 %s" % rel,
+                    tofile=u"撤销后 %s" % rel, lineterm=u"")
+                chunk = list(diff)
+                if not chunk:
+                    say("diff", u"%s：内容相同（不会改动）" % rel)
+                    continue
+                say("diff", u"%s：" % rel)
+                for ln in chunk[:120]:
+                    log.append({"step": "diff", "msg": ln})
+                if len(chunk) > 120:
+                    log.append({"step": "diff",
+                                "msg": u"…（还有 %d 行）" % (len(chunk) - 120)})
+        # 记录时的 HEAD 与现在不同 -> 提醒一句（不阻止）
+        heads = set((r.get("git_head") or u"") for r in recs)
+        cur_head = _git_head(root)
+        if any(heads) and cur_head and cur_head not in heads:
+            say("undo", u"注意：任务之后仓库有新提交（记录时 %s，现在 %s）"
+                % (u", ".join(sorted(h for h in heads if h)) or u"?", cur_head))
         return 0, log, {"verdict": "plan",
                         "ids": [r.get("id") for r in recs],
                         # 界面上要显示"会恢复几个文件" —— 不返回就只能显示 0
@@ -2038,6 +2087,31 @@ def selftest():
     finally:
         shutil.rmtree(d14, ignore_errors=True)
 
+    # ---- 撤销前的 diff 预览 ---------------------------------------------
+    d15 = tempfile.mkdtemp(prefix="taskd_")
+    try:
+        _make({"d1.m": (u"function y = aa(x)\n  y = x + 1;\nend\n")}, d15)
+        task_rename(d15, "aa", "bb", apply_it=True)
+        rc_d, log_d, info_d = task_undo(d15, apply_it=False, show_diff=True)
+        text_d = u"\n".join(r["msg"] for r in log_d if r["step"] == "diff")
+        ok_d = (rc_d == 0 and u"-function y = bb(x)" in text_d
+                and u"+function y = aa(x)" in text_d)
+        if chk(ok_d, u"自证 diff：撤销前能看到将被改回的内容",
+               u"rc=%r 片段=%r" % (rc_d, text_d[:60])):
+            good += 1
+        else:
+            bad += 1
+        # 记录里带了 git head 字段（拿不到时为空串，键必须在）
+        hd = os.path.join(d15, HISTORY_DIR)
+        rec = json.loads(io.open(os.path.join(hd, sorted(os.listdir(hd))[-1]),
+                                 encoding="utf-8").read())
+        if chk("git_head" in rec, u"自证 记录：带 git_head 字段"):
+            good += 1
+        else:
+            bad += 1
+    finally:
+        shutil.rmtree(d15, ignore_errors=True)
+
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     return 1 if bad else 0
 
@@ -2063,6 +2137,8 @@ def main(argv=None):
     up.add_argument("--id", default="", help="撤销指定的那一次")
     up.add_argument("--batch", action="store_true",
                     help="撤销最近一整批（batch 是一个事务）")
+    up.add_argument("--diff", action="store_true",
+                    help="计划模式下列出将要发生的改动（unified diff）")
     up.add_argument("--apply", action="store_true")
     up.add_argument("--json", action="store_true")
     bp = sub.add_parser("batch")
@@ -2138,7 +2214,8 @@ def main(argv=None):
             return 0
         rc, log, info = task_undo(_root, apply_it=args.apply,
                                   rec_id=(args.id or None),
-                                  whole_batch=bool(args.batch))
+                                  whole_batch=bool(args.batch),
+                                  show_diff=bool(args.diff))
         if args.json:
             print(json.dumps({"ok": rc == 0, "log": log,
                               "info": info},

@@ -322,11 +322,70 @@ def fig_commands(path):
     im.save(path)
 
 
+
+# ---------------------------------------------------------------------------
+# 图 5：撤销确认（diff 预览 + 确认按钮）
+# ---------------------------------------------------------------------------
+
+def fig_undo(path):
+    im = Image.new("RGB", (W, H), BG)
+    d = ImageDraw.Draw(im)
+    chrome(d, "matlabc — 撤销上一次改动")
+
+    # 上半：Modal 对话框
+    box = [70, 56, W - 70, 176]
+    round_rect(d, box, 8, fill=(45, 45, 48), outline=BORDER)
+    d.text((94, 76), u"matlabc: 上面是撤销后会变成的样子。确认撤销？",
+           font=_font("ui", 14), fill=WHITE)
+
+    # 两个按钮
+    b1 = [W - 300, 112, W - 190, 150]
+    round_rect(d, b1, 5, fill=(14, 99, 156))
+    d.text((b1[0] + 34, 120), u"撤销", font=_font("ui", 14), fill=WHITE)
+    b2 = [W - 170, 112, W - 94, 150]
+    round_rect(d, b2, 5, fill=(60, 60, 64))
+    d.text((b2[0] + 24, 120), u"取消", font=_font("ui", 14), fill=TEXT)
+
+    # 下半：diff 视图
+    pane = [40, 196, W - 40, H - 30]
+    round_rect(d, pane, 6, fill=(37, 37, 38), outline=BORDER)
+    d.rectangle([40, 196, W - 40, 222], fill=(45, 45, 48))
+    d.text((56, 202), u"diff — 撤销后", font=_font("ui", 12), fill=(200, 200, 200))
+
+    f = _font("mono", 13)
+    rows = [
+        (u"[undo   ] 目标：20261020-003128-368", (150, 156, 165)),
+        (u"[plan   ] 将恢复 2 个文件、删除 0 个新建文件（未写盘）",
+         (150, 156, 165)),
+        (u"--- 当前 a.m", (150, 156, 165)),
+        (u"+++ 撤销后 a.m", (150, 156, 165)),
+        (u"@@ -1,3 +1,3 @@", (120, 140, 170)),
+        (u"-function y = assist(x)", (230, 140, 140)),
+        (u"+function y = helper(x)", (140, 210, 150)),
+        (u"   y = x + 1;", TEXT),
+        (u" end", TEXT),
+        (u"--- 当前 b.m", (150, 156, 165)),
+        (u"-  r = assist(v);", (230, 140, 140)),
+        (u"+  r = helper(v);", (140, 210, 150)),
+    ]
+    y = 234
+    for txt, col in rows:
+        # 含中文的行必须换雅黑：Consolas 没有 CJK 字形，画出来是空心方块
+        # （第一张图就踩过这个坑，这里再犯一次就太蠢了）。
+        ff = _font("ui", 12) if _has_cjk(txt) else f
+        d.text((56, y), txt, font=ff, fill=col)
+        y += 20
+
+    caption(d, u"示意图 · 撤销前先看 diff：红的是将被改掉的，绿的是将恢复的")
+    im.save(path)
+
+
 FIGS = [
     ("relations.png", fig_relations),
     ("codelens.png", fig_codelens),
     ("heat.png", fig_heat),
     ("commands.png", fig_commands),
+    ("undo.png", fig_undo),
 ]
 
 

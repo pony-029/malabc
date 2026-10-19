@@ -608,6 +608,7 @@ python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
 # 记录落在 `.matlabc/tasks/`。
 python matlabc_task.py undo --dir myproj/ --apply
 python matlabc_task.py undo --dir myproj/ --list   # 看过都做过什么
+python matlabc_task.py undo --dir myproj/ --diff   # 先看会改成什么样，再决定
 python matlabc_task.py undo --dir myproj/ --id 20261020-001555-413 --apply
 python matlabc_task.py undo --dir myproj/ --batch --apply   # 整批一次撤完
 python matlabc_task.py prune --dir myproj/ --keep 50 --apply  # 裁剪旧记录

@@ -639,6 +639,7 @@ python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
 # that edit. Records live in `.matlabc/tasks/`.
 python matlabc_task.py undo --dir myproj/ --apply
 python matlabc_task.py undo --dir myproj/ --list   # what has been done
+python matlabc_task.py undo --dir myproj/ --diff   # show the change before doing it
 python matlabc_task.py undo --dir myproj/ --id 20261020-001555-413 --apply
 python matlabc_task.py undo --dir myproj/ --batch --apply   # whole batch at once
 python matlabc_task.py prune --dir myproj/ --keep 50 --apply  # trim old records

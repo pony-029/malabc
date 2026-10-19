@@ -588,6 +588,8 @@ function activate(context) {
       const pick = await vscode.window.showQuickPick([
         { label: '$(refresh) 重新启动服务', act: 'matlabc.restartServer',
           description: '索引卡住、或刚改过配置时用' },
+        { label: '$(discard) 撤销上一次改动', act: 'matlabc.undoLastTask',
+          description: '先看 diff，再决定' },
         { label: '$(symbol-method) 更换 Python 解释器', act: 'matlabc.selectPython' },
         { label: '$(book) 打开使用说明', act: 'matlabc.openGuide' },
         { label: '$(output) 查看日志', act: 'matlabc.showLog' },
@@ -1238,27 +1240,24 @@ function activate(context) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('matlabc.undoLastTask', async () => {
-      // 先跑一次"计划"（不写盘）：确认有东西可撤、且没有冲突
-      const plan = await runTask(['undo', '--dir', root, '--json']);
-      let info = {};
-      try {
-        const j = JSON.parse(plan.out.slice(plan.out.indexOf('{')));
-        info = j.info || {};
-      } catch (e) { /* 解析失败就退回看原文 */ }
-
+      // 先跑"计划 + diff"（不写盘）：既确认能不能撤，又把将发生的改动摆出来。
+      // 只报一句"将恢复 N 个文件"是不够的 —— 用户真正想确认的是**内容**。
+      const plan = await runTask(['undo', '--dir', root, '--diff']);
       if (plan.rc !== 0) {
-        // 冲突 / 没有记录：把工具的原话摆出来，别自己编一句
         const first = plan.out.split('\n').filter((x) => x.trim())
           .slice(-4).join('\n');
         vscode.window.showWarningMessage('matlabc: 现在不能撤销。\n' + first);
         return;
       }
 
-      const picks = await vscode.window.showInformationMessage(
-        'matlabc: 将恢复 ' + ((info.files && info.files.length) || 0) +
-        ' 个文件、删除 ' + ((info.deleted && info.deleted.length) || 0) +
-        ' 个新建文件。撤销前会检查它们之后是否被改动过。',
-        '撤销', '取消');
+      const doc = await vscode.workspace.openTextDocument({
+        content: plan.out, language: 'diff',
+      });
+      await vscode.window.showTextDocument(doc, { preview: true });
+
+      const picks = await vscode.window.showWarningMessage(
+        'matlabc: 上面是撤销后会变成的样子。确认撤销？',
+        { modal: true }, '撤销');
       if (picks !== '撤销') return;
 
       const done = await runTask(['undo', '--dir', root, '--apply']);
