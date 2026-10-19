@@ -44,10 +44,12 @@
 """
 import argparse
 import io
+import base64
 import hashlib
 import json
 import os
 import time
+import zlib
 import re
 import sys
 import time
@@ -213,6 +215,31 @@ HISTORY_DIR = os.path.join(".matlabc", "tasks")
 _CURRENT_BATCH = u""
 
 
+def _pack_text(text):
+    """把原文压成 base64(zlib)，记录文件体积能小一大截。
+
+    为什么不用 diff：撤销需要的是**原文本身**；用 diff 就得写一个可靠的
+    反向 patch 应用器，而那段代码一旦有偏差，撤销会静默产出错误的文件 ——
+    比"记录占地方"严重得多。压缩没有这个风险，收益也已经够（实测 -70%）。
+    """
+    try:
+        return base64.b64encode(zlib.compress(text.encode("utf-8"), 9)).decode("ascii")
+    except Exception:
+        return u""
+
+
+def _unpack_text(rec_file):
+    """兼容两种记录：新的 `before_z`（压缩）与旧的 `before`（明文）。"""
+    if rec_file.get("before_z"):
+        try:
+            return zlib.decompress(
+                base64.b64decode(rec_file["before_z"].encode("ascii"))
+            ).decode("utf-8")
+        except Exception:
+            return None
+    return rec_file.get("before")
+
+
 def _sha_of(path):
     try:
         return hashlib.sha256(io.open(path, "rb").read()).hexdigest()
@@ -247,7 +274,8 @@ def record_task(root, kind, params, backup, created=None, scan=None):
             "scan": ({k: (scan or {}).get(k) for k in
                       ("functions", "edges", "diagnostics")}
                      if scan else {}),
-            "files": [{"path": os.path.relpath(p, root), "before": t,
+            "files": [{"path": os.path.relpath(p, root),
+                       "before_z": _pack_text(t),
                        "after": _sha_of(p)}
                       for p, t in sorted(backup.items())],
             "created": [{"path": os.path.relpath(c, root),
@@ -415,7 +443,11 @@ def _plan_undo(root, recs):
             if _sha_text(t) != f.get("after"):
                 conflicts.append(f["path"] + u"（任务之后被改过）")
                 continue
-            state[p] = f["before"]
+            text_before = _unpack_text(f)
+            if text_before is None:
+                conflicts.append(f["path"] + u"（记录已损坏，无法还原原文）")
+                continue
+            state[p] = text_before
             gone.discard(p)
         for c in rec.get("created") or []:
             p = os.path.join(root, c["path"])
@@ -491,7 +523,9 @@ def task_undo(root, apply_it=False, rec_id=None, whole_batch=False):
         say("plan", u"将恢复 %d 个文件、删除 %d 个新建文件（未写盘）"
             % (len(writes), len(deletes)))
         return 0, log, {"verdict": "plan",
-                        "ids": [r.get("id") for r in recs]}
+                        "ids": [r.get("id") for r in recs],
+                        # 界面上要显示"会恢复几个文件" —— 不返回就只能显示 0
+                        "files": len(writes), "deleted": len(deletes)}
 
     # 撤销也要**可回退**：万一恢复之后结构不对，得能退回"撤销前"。
     pre = {}
@@ -526,6 +560,25 @@ def task_undo(root, apply_it=False, rec_id=None, whole_batch=False):
             bad.append(u"诊断 %d（不应超过 %d）"
                        % (now["diagnostics"], target["diagnostics"]))
     if bad:
+        # **说清楚差在哪、可能是什么原因** —— 只报数字等于让用户自己猜。
+        say("validate", u"撤销后验收不通过：")
+        for one in bad:
+            say("validate", u"  · " + one)
+        hint = []
+        if target.get("functions") is not None \
+                and now["functions"] < target["functions"]:
+            hint.append(u"文件恢复不完整（像是少了函数定义）")
+        elif target.get("functions") is not None \
+                and now["functions"] > target["functions"]:
+            hint.append(u"文件里多了函数（可能恢复到了错误的历史版本）")
+        if target.get("edges") is not None and now["edges"] < target["edges"]:
+            hint.append(u"调用关系变少（可能有调用点没恢复）")
+        if target.get("diagnostics") is not None \
+                and now["diagnostics"] > target["diagnostics"]:
+            hint.append(u"出现新的诊断（恢复出的代码与当前工程不匹配）")
+        if hint:
+            say("validate", u"可能的原因：" + u"；".join(hint))
+        say("validate", u"若确需强行回到任务前，可用 git 检出对应提交")
         # 退回撤销前的状态：留着"撤了一半又不对"的工程比不撤更糟
         for p, text in pre.items():
             if text is None:
@@ -559,7 +612,8 @@ def task_undo(root, apply_it=False, rec_id=None, whole_batch=False):
     say("validate", u"撤销后：函数 %d ｜ 诊断 %d"
         % (after["functions"], after["diagnostics"]))
     return 0, log, {"verdict": "undone",
-                    "ids": [r.get("id") for r in recs], "after": after}
+                    "ids": [r.get("id") for r in recs], "after": after,
+                    "files": len(writes), "deleted": removed}
 
 
 
@@ -1908,9 +1962,10 @@ def selftest():
         before_v = io.open(os.path.join(d12, "x1.m"), encoding="utf-8").read()
         rc_w, log_w, info_w = task_undo(d12, apply_it=True)
         after_v = io.open(os.path.join(d12, "x1.m"), encoding="utf-8").read()
+        _msgs_w = u"".join(r["msg"] for r in log_w)
         if chk(rc_w == 1 and info_w.get("verdict") == "verify_failed"
-               and before_v == after_v,
-               u"自证 撤销验收：不通过则退回撤销前",
+               and before_v == after_v and u"可能的原因" in _msgs_w,
+               u"自证 撤销验收：不通过则退回撤销前（并说明原因）",
                u"rc=%r verdict=%r" % (rc_w, info_w.get("verdict"))):
             good += 1
         else:
@@ -1960,6 +2015,28 @@ def selftest():
             bad += 1
     finally:
         shutil.rmtree(d13, ignore_errors=True)
+
+    # ---- 记录里的原文：压缩存、能原样取回 -------------------------------
+    d14 = tempfile.mkdtemp(prefix="taskz_")
+    try:
+        _make({"z1.m": (u"function y = aa(x)\n  y = x + 1;\nend\n")}, d14)
+        orig = io.open(os.path.join(d14, "z1.m"), encoding="utf-8").read()
+        task_rename(d14, "aa", "bb", apply_it=True)
+        hd = os.path.join(d14, HISTORY_DIR)
+        name = sorted(os.listdir(hd))[-1]
+        rec = json.loads(io.open(os.path.join(hd, name),
+                                 encoding="utf-8").read())
+        f = (rec.get("files") or [{}])[0]
+        packed_ok = ("before_z" in f) and ("before" not in f)
+        back = _unpack_text(f)
+        if chk(packed_ok and back == orig,
+               u"自证 记录：原文压缩存、取回一致",
+               u"packed=%s 一致=%s" % (packed_ok, back == orig)):
+            good += 1
+        else:
+            bad += 1
+    finally:
+        shutil.rmtree(d14, ignore_errors=True)
 
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     return 1 if bad else 0

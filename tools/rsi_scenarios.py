@@ -44,7 +44,7 @@ CORPUS = os.path.join(ROOT, "tests", "sample_m")
 
 #: 场景数下界。加场景是允许的，删场景必须同时改这个数（与 check_all 的
 #: MIN_GUARDS 同一套纪律：删掉一条也会红）。
-MIN_SCENARIOS = 87
+MIN_SCENARIOS = 88
 
 
 def _uri(path):
@@ -1683,6 +1683,28 @@ def sc_task_prune(ctx):
         shutil.rmtree(d, ignore_errors=True)
 
 
+
+def sc_task_record_packed(ctx):
+    """记录里存的是压缩原文（before_z），撤销仍然逐字节还原。"""
+    d = _mk({"a.m": (u"function y = aa(x)\n  y = x + 1;\nend\n",
+                     "utf-8", "")})
+    try:
+        orig = io.open(os.path.join(d, "a.m"), encoding="utf-8").read()
+        _run_task_cmd(d, "rename", ["--old", "aa", "--new", "cc", "--apply"])
+        hd = os.path.join(d, ".matlabc", "tasks")
+        name = sorted(os.listdir(hd))[-1]
+        rec = json.loads(io.open(os.path.join(hd, name),
+                                 encoding="utf-8").read())
+        f = (rec.get("files") or [{}])[0]
+        packed = ("before_z" in f) and ("before" not in f)
+        rc, _ = _run_task_cmd(d, "undo", ["--apply"])
+        back = io.open(os.path.join(d, "a.m"), encoding="utf-8").read()
+        ok = packed and rc == 0 and back == orig
+        return ok, "压缩=%s 还原=%s" % (packed, back == orig)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default="")
@@ -1774,7 +1796,8 @@ def main(argv=None):
                 ("任务 undo 验收", sc_task_undo_verify),
                 ("MCP task_undo list", sc_mcp_task_undo_list),
                 ("MCP task_undo batch", sc_mcp_task_undo_batch),
-                ("任务记录裁剪", sc_task_prune)]
+                ("任务记录裁剪", sc_task_prune),
+                ("任务记录压缩存储", sc_task_record_packed)]
         for name, fn in solo:
             try:
                 ok, detail = fn({"root": root})

@@ -1217,6 +1217,61 @@ function activate(context) {
     })
   );
 
+  // ---- 撤销上一次改动（R407）------------------------------------------
+  // 任务层一直在 CLI 与 MCP 里，编辑器里没有入口 —— 而"改完想反悔"这个念头
+  // 恰恰是在编辑器里冒出来的（刚看到 diff、刚跑完一段）。
+  function taskScript() {
+    return path.join(path.dirname(lspPath), 'matlabc_task.py');
+  }
+
+  function runTask(args) {
+    return new Promise((resolve) => {
+      const { execFile } = require('child_process');
+      execFile(python, [taskScript()].concat(args),
+               { cwd: root, timeout: 120000, windowsHide: true },
+               (err, stdout, stderr) => {
+                 resolve({ rc: err ? (err.code || 1) : 0,
+                           out: String(stdout || '') + String(stderr || '') });
+               });
+    });
+  }
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.undoLastTask', async () => {
+      // 先跑一次"计划"（不写盘）：确认有东西可撤、且没有冲突
+      const plan = await runTask(['undo', '--dir', root, '--json']);
+      let info = {};
+      try {
+        const j = JSON.parse(plan.out.slice(plan.out.indexOf('{')));
+        info = j.info || {};
+      } catch (e) { /* 解析失败就退回看原文 */ }
+
+      if (plan.rc !== 0) {
+        // 冲突 / 没有记录：把工具的原话摆出来，别自己编一句
+        const first = plan.out.split('\n').filter((x) => x.trim())
+          .slice(-4).join('\n');
+        vscode.window.showWarningMessage('matlabc: 现在不能撤销。\n' + first);
+        return;
+      }
+
+      const picks = await vscode.window.showInformationMessage(
+        'matlabc: 将恢复 ' + ((info.files && info.files.length) || 0) +
+        ' 个文件、删除 ' + ((info.deleted && info.deleted.length) || 0) +
+        ' 个新建文件。撤销前会检查它们之后是否被改动过。',
+        '撤销', '取消');
+      if (picks !== '撤销') return;
+
+      const done = await runTask(['undo', '--dir', root, '--apply']);
+      const tail = done.out.split('\n').filter((x) => x.trim())
+        .slice(-2).join('\n');
+      if (done.rc === 0) {
+        vscode.window.showInformationMessage('matlabc: 已撤销。\n' + tail);
+      } else {
+        vscode.window.showWarningMessage('matlabc: 撤销未完成。\n' + tail);
+      }
+    })
+  );
+
   // ---- 选择 Python 解释器（R386）------------------------------------
   context.subscriptions.push(
     vscode.commands.registerCommand('matlabc.selectPython',
