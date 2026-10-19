@@ -694,6 +694,27 @@ def _in_root(path):
     return p == root or p.startswith(root + os.sep)
 
 
+def t_task_undo(args):
+    """撤销上一次任务。
+
+    默认**只算不写**（apply 缺省为 false）：Agent 应当先看到"会恢复哪些文件、
+    有没有冲突"，再决定要不要真撤。冲突时返回 isError，并列出是哪个文件。
+    """
+    import matlabc_task as T
+    root = _resolve(args.get("dir") or ".")
+    if not root or not os.path.isdir(root):
+        return _err("找不到目录：%s" % (args.get("dir") or "（未给 dir）",))
+    if not _in_root(root):
+        return _err("只允许在工程目录内执行任务：%s" % root)
+
+    rc, log, info = T.task_undo(root, apply_it=bool(args.get("apply")))
+    body = u"\n".join(u"[%-9s] %s" % (r["step"], r["msg"]) for r in log)
+    verdict = (info or {}).get("verdict")
+    if verdict:
+        body += u"\n\nverdict: %s" % verdict
+    return _text(body) if rc == 0 else _err(body)
+
+
 def t_propose_edit(args):
     """算一次改动：返回 diff 与影响面，**不写盘**。"""
     import difflib
@@ -1636,6 +1657,18 @@ TOOLS = [
                                     "auto": {"type": "boolean"}},
                      "required": []},
      "handler": t_task_apply},
+
+    {"name": "matlabc_task_undo",
+     "description": "撤销**上一次**任务 —— 改代码成功之后想反悔时用。"
+                    "失败的任务本来就会自动回滚，这条管的是「成功了但不满意」。"
+                    "默认只算不写（apply 缺省 false）；撤销前会校验每个被改文件"
+                    "在任务之后没被编辑过，有改动就**拒绝**并列出是哪个文件，"
+                    "而不是静默覆盖。返回带 verdict：plan / undone / conflict / nothing。",
+     "inputSchema": {"type": "object",
+                     "properties": {"dir": _STR,
+                                    "apply": {"type": "boolean"}},
+                     "required": []},
+     "handler": t_task_undo},
 
     {"name": "matlabc_propose_edit",
      "description": "**不落盘**地算一次改动：返回 diff 与影响面，并给出 editId。"

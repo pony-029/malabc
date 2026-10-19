@@ -44,7 +44,7 @@ CORPUS = os.path.join(ROOT, "tests", "sample_m")
 
 #: 场景数下界。加场景是允许的，删场景必须同时改这个数（与 check_all 的
 #: MIN_GUARDS 同一套纪律：删掉一条也会红）。
-MIN_SCENARIOS = 80
+MIN_SCENARIOS = 81
 
 
 def _uri(path):
@@ -497,7 +497,7 @@ def sc_mcp_list(sess, ctx):
     tools = (r.get("result") or {}).get("tools") or []
     # 下界跟着实际情况走（R376）：19 → 21（新增 task_plan / task_apply）。
     # 用 `>=` 而不是 `==`：加工具不该让这条红，但**少**工具必须有人知道。
-    return len(tools) >= 21, "工具=%d" % len(tools)
+    return len(tools) >= 22, "工具=%d" % len(tools)
 
 
 def sc_mcp_stats(sess, ctx):
@@ -1527,6 +1527,29 @@ def sc_task_undo_conflict(ctx):
         shutil.rmtree(d, ignore_errors=True)
 
 
+
+def sc_mcp_task_undo(ctx):
+    """MCP：改完之后能撤回去。"""
+    def run(s, root):
+        steps = {"dir": ".", "task": "rename", "old": "helper",
+                 "new": "assist"}
+        r1, e1 = _call(s, "matlabc_task_apply", steps)
+        changed = io.open(os.path.join(root, "a.m"), encoding="utf-8").read()
+        r2, e2 = _call(s, "matlabc_task_undo", {"dir": ".", "apply": True})
+        t2 = _text(r2)
+        back = io.open(os.path.join(root, "a.m"), encoding="utf-8").read()
+        ok = ((not e1) and u"assist" in changed
+              and (not e2) and u"verdict: undone" in t2
+              and u"helper" in back)
+        return ok, "改=%s 撤=%s" % (u"assist" in changed, u"helper" in back)
+    return _mcp_with({
+        "a.m": (u"function y = helper(x)\n  y = x + 1;\nend\n",
+                "utf-8", ""),
+        "b.m": (u"function r = run(v)\n  r = helper(v);\nend\n",
+                "utf-8", ""),
+    }, run)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default="")
@@ -1611,7 +1634,8 @@ def main(argv=None):
                 ("任务 batch 回滚（CLI）", sc_task_batch_cli_rollback),
                 ("任务 batch 步骤引用", sc_task_batch_ref),
                 ("任务 undo", sc_task_undo),
-                ("任务 undo 冲突拒绝", sc_task_undo_conflict)]
+                ("任务 undo 冲突拒绝", sc_task_undo_conflict),
+                ("MCP task_undo", sc_mcp_task_undo)]
         for name, fn in solo:
             try:
                 ok, detail = fn({"root": root})
