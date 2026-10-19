@@ -610,6 +610,10 @@ python matlabc_task.py undo --dir myproj/ --apply
 python matlabc_task.py undo --dir myproj/ --list   # 看过都做过什么
 python matlabc_task.py undo --dir myproj/ --id 20261020-001555-413 --apply
 python matlabc_task.py undo --dir myproj/ --batch --apply   # 整批一次撤完
+python matlabc_task.py prune --dir myproj/ --keep 50 --apply  # 裁剪旧记录
+
+# 任务记录在 `.matlabc/tasks/`（一个任务一个 JSON，上限 50 条，
+# 先删已撤销的）。不希望它们进仓库的话，把 `.matlabc/` 加进 .gitignore。
 
 # 撤销是「按记录」的：若较新的任务也改过同一个文件，撤较早那条会被拒绝，
 # 而不是悄悄盖掉后一步的改动。恢复之后会重新分析，要求结构回到任务前的样子

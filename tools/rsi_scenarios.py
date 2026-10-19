@@ -44,7 +44,7 @@ CORPUS = os.path.join(ROOT, "tests", "sample_m")
 
 #: 场景数下界。加场景是允许的，删场景必须同时改这个数（与 check_all 的
 #: MIN_GUARDS 同一套纪律：删掉一条也会红）。
-MIN_SCENARIOS = 86
+MIN_SCENARIOS = 87
 
 
 def _uri(path):
@@ -1656,6 +1656,33 @@ def sc_mcp_task_undo_batch(ctx):
     return _mcp_with(_batch_proj(), run)
 
 
+
+def sc_task_prune(ctx):
+    """CLI prune：计划不删、执行后剩 keep 条。"""
+    d = _mk({"a.m": (u"function y = aa(x)\n  y = x + 1;\nend\n",
+                     "utf-8", "")})
+    try:
+        hd = os.path.join(d, ".matlabc", "tasks")
+        if not os.path.isdir(hd):
+            os.makedirs(hd)
+        for i in range(12):
+            rid = "20261020-0000%02d-000" % i
+            io.open(os.path.join(hd, rid + ".json"), "w",
+                    encoding="utf-8", newline="").write(json.dumps({
+                        "id": rid, "kind": "rename", "when": "x",
+                        "undone": (i < 6), "files": [], "created": [],
+                        "params": {}, "batch": "", "scan": {}}))
+        rc1, out1 = _run_task_cmd(d, "prune", ["--keep", "8"])
+        n1 = len(os.listdir(hd))
+        rc2, out2 = _run_task_cmd(d, "prune", ["--keep", "8", "--apply"])
+        n2 = len(os.listdir(hd))
+        ok = (rc1 == 0 and n1 == 12 and rc2 == 0 and n2 == 8
+              and u"已撤销 4" in out1)
+        return ok, "计划=%d 执行后=%d" % (n1, n2)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default="")
@@ -1746,7 +1773,8 @@ def main(argv=None):
                 ("任务 undo 整批", sc_task_undo_batch),
                 ("任务 undo 验收", sc_task_undo_verify),
                 ("MCP task_undo list", sc_mcp_task_undo_list),
-                ("MCP task_undo batch", sc_mcp_task_undo_batch)]
+                ("MCP task_undo batch", sc_mcp_task_undo_batch),
+                ("任务记录裁剪", sc_task_prune)]
         for name, fn in solo:
             try:
                 ok, detail = fn({"root": root})

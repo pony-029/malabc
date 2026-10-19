@@ -641,6 +641,11 @@ python matlabc_task.py undo --dir myproj/ --apply
 python matlabc_task.py undo --dir myproj/ --list   # what has been done
 python matlabc_task.py undo --dir myproj/ --id 20261020-001555-413 --apply
 python matlabc_task.py undo --dir myproj/ --batch --apply   # whole batch at once
+python matlabc_task.py prune --dir myproj/ --keep 50 --apply  # trim old records
+
+# Task records live in `.matlabc/tasks/` (one JSON per task, capped at 50:
+# already-undone ones go first). Add `.matlabc/` to your .gitignore if you
+# do not want them committed.
 
 # Undo is per-task and record-ordered: undoing an older task while a newer
 # one changed the same file is refused, not silently applied. After restoring

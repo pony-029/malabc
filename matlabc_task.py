@@ -257,6 +257,8 @@ def record_task(root, kind, params, backup, created=None, scan=None):
         io.open(os.path.join(d, rid + ".json"), "w",
                 encoding="utf-8", newline="").write(
             json.dumps(rec, ensure_ascii=False, indent=1) + u"\n")
+        # 写完顺手裁一下：控制在 MAX_RECORDS 以内，先删已撤销的
+        prune_tasks(root, MAX_RECORDS, apply_it=True)
         return rid
     except Exception as exc:
         # 记不上不该让任务**失败**（任务是主体），但必须**说出来** ——
@@ -283,6 +285,56 @@ def _latest_record(root):
             rec["_file"] = path
             return rec
     return None
+
+
+#: 任务记录保留条数上限。撤销只需要最近若干条，而记录是**只增不减**的 ——
+#: 不设上限，` .matlabc/tasks/` 会随使用一直长下去。
+MAX_RECORDS = 50
+
+
+def prune_tasks(root, keep=MAX_RECORDS, apply_it=False):
+    """把记录裁到 `keep` 条：**先删已撤销的，再删最旧的**。
+
+    为什么先删已撤销的：那些记录已经用不上了（它们的目标状态已被回退），
+    而保留它们只是占地方。只有当已撤销的删光仍超限时，才动"还能撤"的记录 ——
+    那意味着用户会失去对最旧那几次操作的撤销能力，所以调用方要把这个数字报出来。
+    """
+    d = os.path.join(root, HISTORY_DIR)
+    if not os.path.isdir(d):
+        return {"total": 0, "removed_undone": 0, "removed_live": 0, "kept": 0}
+    names = sorted(n for n in os.listdir(d) if n.endswith(".json"))
+    total = len(names)
+    over = total - keep
+    if over <= 0:
+        return {"total": total, "removed_undone": 0, "removed_live": 0,
+                "kept": total}
+
+    undone, live = [], []
+    for n in names:
+        path = os.path.join(d, n)
+        try:
+            rec = json.loads(io.open(path, encoding="utf-8").read())
+            (undone if rec.get("undone") else live).append(path)
+        except Exception:
+            undone.append(path)      # 读不出来的当作可删
+
+    victims = undone[:over]
+    rest = over - len(victims)
+    removed_undone = len(victims)
+    removed_live = 0
+    if rest > 0:
+        victims += live[:rest]
+        removed_live = min(rest, len(live))
+
+    if apply_it:
+        for path in victims:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+    return {"total": total, "removed_undone": removed_undone,
+            "removed_live": removed_live,
+            "kept": total - len(victims)}
 
 
 def list_tasks(root):
@@ -1866,6 +1918,49 @@ def selftest():
     finally:
         shutil.rmtree(d12, ignore_errors=True)
 
+    # ---- 记录裁剪：先删已撤销的 -----------------------------------------
+    d13 = tempfile.mkdtemp(prefix="taskp_")
+    try:
+        hd = os.path.join(d13, HISTORY_DIR)
+        if not os.path.isdir(hd):
+            os.makedirs(hd)
+
+        def _fake(i, undone):
+            rid = "20261020-0000%02d-000" % i
+            io.open(os.path.join(hd, rid + ".json"), "w",
+                    encoding="utf-8", newline="").write(json.dumps({
+                        "id": rid, "kind": "rename", "when": "x",
+                        "undone": undone, "files": [], "created": [],
+                        "params": {}, "batch": "", "scan": {}}))
+
+        for i in range(30):
+            _fake(i, i < 10)          # 前 10 条已撤销
+        info = prune_tasks(d13, 25, apply_it=True)
+        left = len(os.listdir(hd))
+        if chk(info["removed_undone"] == 5 and info["removed_live"] == 0
+               and left == 25,
+               u"自证 prune：先删已撤销的，不动还能撤的",
+               u"info=%r left=%d" % (info, left)):
+            good += 1
+        else:
+            bad += 1
+
+        # 已撤销的删光仍超限 -> 只能删最旧的"能撤"记录，且要报出数量
+        for n in list(os.listdir(hd)):
+            os.remove(os.path.join(hd, n))
+        for i in range(30):
+            _fake(i, False)
+        info2 = prune_tasks(d13, 25, apply_it=False)
+        if chk(info2["removed_live"] == 5
+               and len(os.listdir(hd)) == 30,
+               u"自证 prune：计划不删文件、且报出会丢掉的撤销能力",
+               u"info=%r" % (info2,)):
+            good += 1
+        else:
+            bad += 1
+    finally:
+        shutil.rmtree(d13, ignore_errors=True)
+
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     return 1 if bad else 0
 
@@ -1879,6 +1974,11 @@ def main(argv=None):
     rp.add_argument("--new", required=True)
     rp.add_argument("--apply", action="store_true")
     rp.add_argument("--json", action="store_true")
+    pp = sub.add_parser("prune")
+    pp.add_argument("--dir", default=".")
+    pp.add_argument("--keep", type=int, default=MAX_RECORDS)
+    pp.add_argument("--apply", action="store_true")
+    pp.add_argument("--json", action="store_true")
     up = sub.add_parser("undo")
     up.add_argument("--dir", default=".")
     up.add_argument("--list", action="store_true",
@@ -1927,6 +2027,21 @@ def main(argv=None):
         return 0
     if args.selftest:
         return selftest()
+
+    if args.cmd == "prune":
+        rc_info = prune_tasks(os.path.abspath(args.dir), args.keep,
+                              apply_it=args.apply)
+        if args.json:
+            print(json.dumps(rc_info, ensure_ascii=False, indent=2))
+        else:
+            print("记录共 %d 条，上限 %d ｜ 将删：已撤销 %d、仍可撤销 %d ｜ 保留 %d"
+                  % (rc_info["total"], args.keep,
+                     rc_info["removed_undone"], rc_info["removed_live"],
+                     rc_info["kept"]))
+            if not args.apply and (rc_info["removed_undone"]
+                                   or rc_info["removed_live"]):
+                print("（未加 --apply，没有删任何文件）")
+        return 0
 
     if args.cmd == "undo":
         _root = os.path.abspath(args.dir)
