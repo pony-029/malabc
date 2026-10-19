@@ -1428,42 +1428,157 @@ def _task_list(v):
     return [x.strip() for x in str(v or "").split(",") if x.strip()]
 
 
-def _task_run(args, apply_it):
+def _task_exec(root, a, apply_it):
+    """执行单个任务，返回 (rc, log)。root 已校验过。"""
     import matlabc_task as T
-    task = (args.get("task") or "").strip()
+    task = (a.get("task") or "").strip()
+
+    # 单步函数返回 (rc, log, info)；这里只要前两个 —— 第一版直接 return，
+    # 于是调用方 `rc, log = ...` 报 "too many values to unpack"。
+    if task in ("rename", "rename-field"):
+        rc, log, _info = T.task_rename(
+            root, (a.get("old") or "").strip(), (a.get("new") or "").strip(),
+            apply_it=apply_it,
+            kind=("field" if task == "rename-field" else "ident"))
+        return rc, log
+    if task == "move":
+        rc, log, _info = T.task_move(
+            root, (a.get("file") or "").strip(),
+            (a.get("name") or "").strip(),
+            (a.get("to") or "").strip(), apply_it=apply_it)
+        return rc, log
+    if task == "extract":
+        import re as _re
+        rel = (a.get("file") or "").strip()
+        rng = (a.get("lines") or "").strip()
+        m = _re.match(r"^(\d+)\s*-\s*(\d+)$", rng)
+        if not rel or not m:
+            return 2, [{"step": "error",
+                        "msg": u"extract 需要 file（相对工程路径）与 lines（形如 12-18）"}]
+        rc, log, _info = T.task_extract(
+            root, rel, int(m.group(1)), int(m.group(2)),
+            (a.get("name") or "").strip(),
+            _task_list(a.get("in")), _task_list(a.get("out")),
+            apply_it=apply_it, auto=bool(a.get("auto")),
+            to=((a.get("to") or "").strip() or None))
+        return rc, log
+    return 2, [{"step": "error",
+                "msg": u"task 只支持 rename / rename-field / extract / move"}]
+
+
+def T_iter_m(root):
+    """遍历工程里的 .m 文件（副本推演与快照都用它）。"""
+    import matlabc_task as _T
+    return _T._iter_m_files(root)
+
+
+def _m_snapshot(root):
+    """把工程里所有 .m 的原文收进内存（批量任务失败时整体回滚用）。"""
+    import matlabc_task as T
+    snap = {}
+    for p in T._iter_m_files(root):
+        try:
+            snap[p] = io.open(p, "r", encoding="utf-8",
+                              errors="replace").read()
+        except (IOError, OSError):
+            continue
+    return snap
+
+
+def _m_restore(root, snap):
+    """按快照恢复：**快照里没有的文件要删掉**（新提取出来的那些）。"""
+    import matlabc_task as T
+    for p in T._iter_m_files(root):
+        if p not in snap:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+    for p, text in snap.items():
+        try:
+            io.open(p, "w", encoding="utf-8", newline="").write(text)
+        except (IOError, OSError):
+            pass
+
+
+def _render(rows):
+    out = []
+    for i, task, rc, log in rows:
+        head = u"── 第 %d 步：%s %s" % (i, task, u"✓" if rc == 0 else u"✗")
+        out.append(head)
+        for r in log:
+            out.append(u"[%-9s] %s" % (r["step"], r["msg"]))
+    return u"\n".join(out)
+
+
+def _task_batch(root, steps, apply_it):
+    """多步事务。
+
+    为什么需要它：真实重构很少只有一步（先提函数、再改名、再搬文件）。
+    逐步做的话，第二步失败时第一步已经落盘 —— 用户得到的是"改了一半"的工程，
+    而这比完全没改更难收拾。
+    """
+    if not isinstance(steps, list) or not steps:
+        return _err("steps 必须是非空数组，每项与单步任务的参数相同")
+
+    rows = []
+    if not apply_it:
+        # **在副本上真跑一遍**：逐步 dry-run 是错的 —— 第 2 步改的名字，
+        # 正是第 1 步刚改出来的（不写盘就找不到它，于是"计划"必然报失败）。
+        # 副本用完即删，工程一个字节都不动。
+        import shutil as _sh
+        import tempfile as _tf
+        tmp = _tf.mkdtemp(prefix="batch_plan_")
+        try:
+            for rel_p in T_iter_m(root):
+                rel = os.path.relpath(rel_p, root)
+                dst = os.path.join(tmp, rel)
+                d = os.path.dirname(dst)
+                if d and not os.path.isdir(d):
+                    os.makedirs(d)
+                _sh.copyfile(rel_p, dst)
+            for i, st in enumerate(steps):
+                if not isinstance(st, dict):
+                    return _err("第 %d 步不是对象" % (i + 1))
+                rc, log = _task_exec(tmp, st, True)
+                rows.append((i + 1, (st.get("task") or "?"), rc, log))
+        finally:
+            _sh.rmtree(tmp, ignore_errors=True)
+        body = _render(rows)
+        ok = all(r[2] == 0 for r in rows)
+        head = (u"批量计划：%d 步，在**副本**上按顺序推演"
+                u"（工程未被修改）—— %s\n\n"
+                % (len(rows), u"全部可执行" if ok else u"有步骤会失败"))
+        return _text(head + body) if ok else _err(head + body)
+
+    snap = _m_snapshot(root)
+    for i, st in enumerate(steps):
+        if not isinstance(st, dict):
+            _m_restore(root, snap)
+            return _err("第 %d 步不是对象 —— 已回滚" % (i + 1))
+        rc, log = _task_exec(root, st, True)
+        rows.append((i + 1, (st.get("task") or "?"), rc, log))
+        if rc != 0:
+            _m_restore(root, snap)
+            head = (u"批量任务在第 %d 步失败，**已回滚全部 %d 步**"
+                    u"（工程恢复到动手前）\n\n" % (i + 1, len(rows)))
+            return _err(head + _render(rows))
+    head = u"批量任务：%d 步全部通过\n\n" % len(rows)
+    return _text(head + _render(rows))
+
+
+def _task_run(args, apply_it):
     root = _resolve(args.get("dir") or ".")
     if not root or not os.path.isdir(root):
         return _err("找不到目录：%s" % (args.get("dir") or "（未给 dir）",))
     if not _in_root(root):
         return _err("只允许在工程目录内执行任务：%s" % root)
 
-    if task in ("rename", "rename-field"):
-        old = (args.get("old") or "").strip()
-        new = (args.get("new") or "").strip()
-        rc, log, info = T.task_rename(
-            root, old, new, apply_it=apply_it,
-            kind=("field" if task == "rename-field" else "ident"))
-    elif task == "move":
-        rc, log, info = T.task_move(
-            root, (args.get("file") or "").strip(),
-            (args.get("name") or "").strip(),
-            (args.get("to") or "").strip(), apply_it=apply_it)
-    elif task == "extract":
-        rel = (args.get("file") or "").strip()
-        rng = (args.get("lines") or "").strip()
-        import re as _re
-        m = _re.match(r"^(\d+)\s*-\s*(\d+)$", rng)
-        if not rel or not m:
-            return _err("extract 需要 file（相对工程路径）与 lines（形如 12-18）")
-        rc, log, info = T.task_extract(
-            root, rel, int(m.group(1)), int(m.group(2)),
-            (args.get("name") or "").strip(),
-            _task_list(args.get("in")), _task_list(args.get("out")),
-            apply_it=apply_it, auto=bool(args.get("auto")),
-            to=((args.get("to") or "").strip() or None))
-    else:
-        return _err("task 只支持 rename / rename-field / extract")
+    steps = args.get("steps")
+    if steps:
+        return _task_batch(root, steps, apply_it)
 
+    rc, log = _task_exec(root, args, apply_it)
     body = u"\n".join(u"[%-9s] %s" % (r["step"], r["msg"]) for r in log)
     if rc == 0:
         return _text(body)
@@ -1572,30 +1687,43 @@ TOOLS = [
      "description": "**只读**地把一次改代码算成任务：列出将改动的位置，"
                     "并把**验收条件**写出来（旧名字归零 / 函数数不变 / "
                     "调用边不变 / 诊断不增加 / function-end 配平，视任务而定）。"
-                    "task 可选 rename、rename-field、extract。"
-                    "改代码前先调它，人可以先看计划再决定。",
+                    "task 可选 rename、rename-field、extract、move。"
+                    "**多步**用 steps 数组（每项与单步参数相同），一次给出整条"
+                    "重构链的计划。改代码前先调它，人可以先看计划再决定。",
      "inputSchema": {"type": "object",
                      "properties": {"task": _STR, "dir": _STR, "old": _STR,
                                     "new": _STR, "file": _STR,
                                     "lines": _STR, "name": _STR,
                                     "in": _STR, "out": _STR,
                                     "to": _STR,
+                                    "steps": {"type": "array",
+                                              "items": {"type": "object"},
+                                              "description":
+                                              "多步任务：每项与单步参数相同，"
+                                              "按顺序执行；不写 task 时用它"},
                                     "auto": {"type": "boolean"}},
-                     "required": ["task"]},
+                     "required": []},
      "handler": t_task_plan},
 
     {"name": "matlabc_task_apply",
      "description": "**会写盘**：执行 task_plan 描述的那次改动，写完后重新"
                     "分析、逐条核对验收条件；任何一条不过或写盘失败，"
-                    "**自动逐字节回滚**并返回原因。返回里带 verdict。",
+                    "**自动逐字节回滚**并返回原因。返回里带 verdict。"
+                    "多步用 steps：按顺序执行，**任一步失败会回滚整批**"
+                    "（工程恢复到动手前），而不是留下改了一半的状态。",
      "inputSchema": {"type": "object",
                      "properties": {"task": _STR, "dir": _STR, "old": _STR,
                                     "new": _STR, "file": _STR,
                                     "lines": _STR, "name": _STR,
                                     "in": _STR, "out": _STR,
                                     "to": _STR,
+                                    "steps": {"type": "array",
+                                              "items": {"type": "object"},
+                                              "description":
+                                              "多步任务：每项与单步参数相同，"
+                                              "按顺序执行；不写 task 时用它"},
                                     "auto": {"type": "boolean"}},
-                     "required": ["task"]},
+                     "required": []},
      "handler": t_task_apply},
 
     {"name": "matlabc_propose_edit",

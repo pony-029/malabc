@@ -44,7 +44,7 @@ CORPUS = os.path.join(ROOT, "tests", "sample_m")
 
 #: 场景数下界。加场景是允许的，删场景必须同时改这个数（与 check_all 的
 #: MIN_GUARDS 同一套纪律：删掉一条也会红）。
-MIN_SCENARIOS = 72
+MIN_SCENARIOS = 75
 
 
 def _uri(path):
@@ -1357,6 +1357,59 @@ def sc_task_move(ctx):
         shutil.rmtree(d, ignore_errors=True)
 
 
+
+def _batchproj():
+    return {
+        "a.m": (u"function y = helper(x)\n"
+                u"  y = x + 1;\n"
+                u"end\n", "utf-8", ""),
+        "b.m": (u"function r = run(v)\n"
+                u"  r = helper(v);\n"
+                u"end\n", "utf-8", ""),
+    }
+
+
+def sc_mcp_task_batch(sess, ctx):
+    """两步串起来做：rename helper->assist->solve，两步都生效。"""
+    def run(s, root):
+        steps = [{"task": "rename", "old": "helper", "new": "assist"},
+                 {"task": "rename", "old": "assist", "new": "solve"}]
+        res, err = _call(s, "matlabc_task_apply", {"dir": ".", "steps": steps})
+        t = _text(res)
+        a = io.open(os.path.join(root, "a.m"), encoding="utf-8").read()
+        ok = (not err) and u"2 步全部通过" in t and u"solve" in a
+        return ok, "rc_err=%r 两步生效=%s" % (err, u"solve" in a)
+    return _mcp_with(_batchproj(), run)
+
+
+def sc_mcp_task_batch_rollback(sess, ctx):
+    """第二步撞上已存在的名字 -> 整批回滚，第一步也要退回去。"""
+    def run(s, root):
+        steps = [{"task": "rename", "old": "helper", "new": "assist"},
+                 {"task": "rename", "old": "assist", "new": "run"}]
+        before = io.open(os.path.join(root, "a.m"), encoding="utf-8").read()
+        res, err = _call(s, "matlabc_task_apply", {"dir": ".", "steps": steps})
+        t = _text(res)
+        after = io.open(os.path.join(root, "a.m"), encoding="utf-8").read()
+        ok = bool(err) and (u"已回滚全部" in t) and (after == before)
+        return ok, "回滚=%s 文件复原=%s" % (u"已回滚全部" in t, after == before)
+    return _mcp_with(_batchproj(), run)
+
+
+def sc_mcp_task_batch_plan(sess, ctx):
+    """计划在副本上推演：链式第二步也能算出可行，且工程未被改。"""
+    def run(s, root):
+        steps = [{"task": "rename", "old": "helper", "new": "assist"},
+                 {"task": "rename", "old": "assist", "new": "solve"}]
+        before = io.open(os.path.join(root, "a.m"), encoding="utf-8").read()
+        res, err = _call(s, "matlabc_task_plan", {"dir": ".", "steps": steps})
+        t = _text(res)
+        after = io.open(os.path.join(root, "a.m"), encoding="utf-8").read()
+        ok = ((not err) and u"全部可执行" in t and before == after)
+        return ok, "可执行=%s 未改动=%s" % (u"全部可执行" in t, before == after)
+    return _mcp_with(_batchproj(), run)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default="")
@@ -1464,7 +1517,10 @@ def main(argv=None):
                   ("MCP definition", sc_mcp_definition),
                   ("MCP references", sc_mcp_references),
                   ("MCP task_plan", sc_mcp_task_plan),
-                  ("MCP task_apply", sc_mcp_task_apply)]
+                  ("MCP task_apply", sc_mcp_task_apply),
+                  ("MCP task 批量执行", sc_mcp_task_batch),
+                  ("MCP task 批量回滚", sc_mcp_task_batch_rollback),
+                  ("MCP task 批量计划", sc_mcp_task_batch_plan)]
         ms = _mcp(root)
         try:
             for name, fn in mcp_sc:
