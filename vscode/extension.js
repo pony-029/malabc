@@ -151,6 +151,43 @@ function versionOk(ver) {
   return min >= MIN_PY[1];
 }
 
+// 用候选解释器**真解析一次服务端源码**（R395）。
+//
+// 为什么只查版本不够：版本够新但缺标准库模块、或源码里有该版本不认的语法时，
+// 服务端会在启动瞬间崩掉，而用户看到的是"选了个 Python 之后就没反应了"。
+// `ast.parse` 是最便宜的真实检验：能解析，才可能跑起来。
+function probeServer(py, lspPath) {
+  return new Promise((resolve) => {
+    if (!lspPath) { resolve(true); return; }   // 没有源码可验，不阻塞
+    const { spawn } = require('child_process');
+    const code = 'import ast,io,sys;' +
+                 'src=io.open(sys.argv[1],"rb").read();' +
+                 'ast.parse(src);print("ok")';
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        try { child.kill(); } catch (e) { /* 已退 */ }
+        resolve(false);
+      }
+    }, 6000);
+    let child;
+    try {
+      child = spawn(py, ['-c', code, lspPath], { windowsHide: true });
+    } catch (e) {
+      clearTimeout(timer);
+      resolve(false);
+      return;
+    }
+    child.on('error', () => {
+      if (!settled) { settled = true; clearTimeout(timer); resolve(false); }
+    });
+    child.on('exit', (code2) => {
+      if (!settled) { settled = true; clearTimeout(timer); resolve(code2 === 0); }
+    });
+  });
+}
+
 function pythonVersion(py) {
   return new Promise((resolve) => {
     const { spawn } = require('child_process');
@@ -209,20 +246,27 @@ function showPythonHelp(detail) {
     });
 }
 
-async function pickPython() {
+async function pickPython(lspPath) {
   // 先列出来：探测到的解释器（带版本）+ 一条"手动选择"
   const found = pythonCandidates();
   let py = '';
   if (found.length) {
-    const vers = await Promise.all(found.slice(0, 6).map(pythonVersion));
-    const items = found.slice(0, 6).map((p, i) => {
-      const v = vers[i];
+    const top = found.slice(0, 6);
+    const info = await Promise.all(top.map(async (p) => {
+      const v = await pythonVersion(p);
+      const runnable = v && versionOk(v) ? await probeServer(p, lspPath) : false;
+      return { ver: v, runnable: runnable };
+    }));
+    const items = top.map((p, i) => {
+      const v = info[i].ver;
       let desc;
       if (!v) desc = '（无法获取版本）';
-      else if (versionOk(v)) desc = 'Python ' + v;
-      else desc = 'Python ' + v + ' —— 版本过低，需要 ' +
-                  MIN_PY.join('.') + '+';
-      return { label: p, description: desc, picked: p, ver: v };
+      else if (!versionOk(v)) desc = 'Python ' + v + ' —— 版本过低，需要 ' +
+                                     MIN_PY.join('.') + '+';
+      else if (!info[i].runnable) desc = 'Python ' + v + ' —— 无法运行本扩展';
+      else desc = 'Python ' + v;
+      return { label: p, description: desc, picked: p,
+               ver: v, runnable: info[i].runnable };
     });
     items.push({ label: '$(folder-opened) 手动选择 python.exe…',
                  description: '上面没有我的 Python', picked: '' });
@@ -236,6 +280,12 @@ async function pickPython() {
       vscode.window.showErrorMessage(
         'matlabc: 这个 Python 是 ' + sel.ver + '，本扩展需要 ' +
         MIN_PY.join('.') + ' 或更新。请选另一个，或装一个新版本。');
+      return;
+    }
+    if (py && sel.ver && versionOk(sel.ver) && sel.runnable === false) {
+      vscode.window.showErrorMessage(
+        'matlabc: 这个 Python（' + sel.ver + '）跑不了本扩展的服务端' +
+        '（解析源码失败，可能缺标准库或环境损坏）。换一个试试。');
       return;
     }
   }
@@ -354,7 +404,8 @@ function activate(context) {
     // **起不来的时候，正是最需要自救的时候**：这三个命令原本注册在这行
     // return 之后，于是"服务器起不来"时连「打开使用说明」都不存在。
     context.subscriptions.push(
-      vscode.commands.registerCommand('matlabc.selectPython', pickPython)
+      vscode.commands.registerCommand('matlabc.selectPython',
+                                      () => pickPython(lspPath))
     );
     context.subscriptions.push(
       vscode.commands.registerCommand('matlabc.openGuide', async () => {
@@ -1050,7 +1101,8 @@ function activate(context) {
 
   // ---- 选择 Python 解释器（R386）------------------------------------
   context.subscriptions.push(
-    vscode.commands.registerCommand('matlabc.selectPython', pickPython)
+    vscode.commands.registerCommand('matlabc.selectPython',
+                                      () => pickPython(lspPath))
   );
 
   // ---- 生成 HTML 分析报告（R327）-------------------------------------
