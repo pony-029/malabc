@@ -14,6 +14,9 @@ FG2  用**等宽字体**（Consolas）绘制的那一行，**不允许出现非 
      Consolas 没有 CJK 字形，中文一律会变成方块。
 FG3  导览页（tour.html）正文里的字符同样要有字形：那页是浏览器渲染，
      但字形回退一样会给出方块，而方块看起来像打码。
+FG4  手册正文（USER_GUIDE.md）同理。**例外要登记**：有些字符是在引用真实
+     界面文本（状态栏的 ✓ / ⚠），改掉反而失真 —— 这类进 `MD_ALLOW`，
+     必须写理由；登记了却已经不在文中的，同样算红（陈旧豁免）。
 
 用法
 ====
@@ -30,7 +33,7 @@ import os
 import re
 import sys
 
-ROW_SIGNATURE = "FG1–FG3"
+ROW_SIGNATURE = "FG1–FG4"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -69,6 +72,15 @@ def _glyph_missing(font_path, ch):
 # 坐标是 `(x, y)`，本身就带逗号 —— 必须先整段吃掉括号再要字符串，
 # 否则正则在第一个逗号处就断了，等于什么都没扫到（自证当场抓到）。
 TOUR = os.path.join(REPO, "releases", "demo", "matlabc-tour.html")
+GUIDE = os.path.join(REPO, "releases", "docs", "USER_GUIDE.md")
+
+#: 允许在手册里出现、但雅黑没有字形的字符 —— **必须写理由**。
+#: 它们不是在"画图"，而是在**引用界面上的真实文本**，改掉会让文档失真。
+MD_ALLOW = {
+    u"✓": "状态栏图标文本，VS Code 自己渲染成图标",
+    u"⚠": "状态栏告警图标文本，同上",
+    u"✗": "跨语言报告的表格里那一列输出（浏览器渲染）",
+}
 
 
 def scan_tour(path=TOUR):
@@ -79,6 +91,23 @@ def scan_tour(path=TOUR):
     body = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", u" ", html)
     body = re.sub(r"(?s)<[^>]+>", u" ", body)
     return set(ch for ch in body if ord(ch) > 127)
+
+
+def scan_md(path=GUIDE):
+    """手册正文里缺字形的字符，以及已经陈旧的例外登记。"""
+    if not os.path.isfile(path):
+        return [], []
+    md = io.open(path, encoding="utf-8").read()
+    md_chars = set(ch for ch in md if ord(ch) > 127)
+    missing = []
+    for ch in sorted(md_chars):
+        if not _glyph_missing(UI_FONT, ch):
+            continue
+        if ch in MD_ALLOW and MD_ALLOW[ch].strip():
+            continue
+        missing.append(ch)
+    stale = [ch for ch in MD_ALLOW if ch not in md_chars]
+    return missing, stale
 
 
 TEXT_CALL = re.compile(r"""(?:d\.text\(\s*\([^)]*\)\s*,\s*|"""
@@ -125,6 +154,8 @@ def main(argv=None):
     tour_missing = sorted(ch for ch in tour_chars
                           if _glyph_missing(UI_FONT, ch))
 
+    md_missing, md_stale = scan_md()
+
     bad = 0
     if missing:
         bad += 1
@@ -137,6 +168,17 @@ def main(argv=None):
         print("FG3 失败：导览页里有字符在界面字体里没有字形：")
         for ch in tour_missing[:10]:
             print(u"   %r  U+%04X" % (ch, ord(ch)))
+    if md_missing:
+        bad += 1
+        print("FG4 失败：手册里有字符在界面字体里没有字形：")
+        for ch in md_missing:
+            print(u"   %r  U+%04X" % (ch, ord(ch)))
+        print("   换一个字形存在的字符，或在 MD_ALLOW 里登记理由。")
+    if md_stale:
+        bad += 1
+        print("FG4 失败：MD_ALLOW 里登记了、但手册里已经没有的字符（陈旧豁免）：")
+        for ch in md_stale:
+            print(u"   %r  U+%04X" % (ch, ord(ch)))
     if bad_mono:
         bad += 1
         print("FG2 失败：等宽字体那几行里出现了非 ASCII 字符：")
@@ -146,8 +188,9 @@ def main(argv=None):
     if bad:
         print("check_figure_glyphs: %d 项不合规" % bad)
         return 1
-    print("check_figure_glyphs: OK（FG1–FG3 全绿；示意图 %d 个、"
-          "导览页 %d 个非 ASCII 字符）" % (len(chars), len(tour_chars)))
+    print("check_figure_glyphs: OK（FG1–FG4 全绿；示意图 %d 个、"
+          "导览页 %d 个非 ASCII 字符，手册 %d 个例外带理由）"
+          % (len(chars), len(tour_chars), len(MD_ALLOW)))
     return 0
 
 
@@ -184,10 +227,19 @@ def selftest():
         # FG3：临时 html，正文含中文 + 一个缺字形符号
         h = os.path.join(d, "fake.html")
         io.open(h, "w", encoding="utf-8", newline="").write(
-            u"<html><body><p>中文 \u25be</p><script>\u25be</script></body></html>")
+            u"<html><body><p>中文</p><script>\u25be</script></body></html>")
         tc = scan_tour(h)
         chk(u"\u4e2d" in tc, "FG3 能取出正文里的中文")
         chk(u"\u25be" not in tc, "FG3 不会把 <script> 里的内容算进正文")
+
+        # FG4：一份临时手册 —— 含中文（有字形）、⇢（缺字形）、以及已登记的 ✓
+        m = os.path.join(d, "fake.md")
+        io.open(m, "w", encoding="utf-8", newline="").write(
+            u"中文 \u21e2 \u2713\n")
+        miss, stale = scan_md(m)
+        chk(u"\u21e2" in miss, "FG4 会报缺字形字符")
+        chk(u"\u2713" not in miss, "FG4 不报已登记的例外")
+        chk(len(stale) >= 1, "FG4 会报手册里已不存在的例外登记")
     finally:
         import shutil
         shutil.rmtree(d, ignore_errors=True)

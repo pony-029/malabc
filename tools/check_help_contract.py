@@ -234,8 +234,13 @@ GUARD_CONTRACT = {
            "「只在 Windows 上能跑」的代码静默通过",
         2: "缺输入（一个运行时文件都没找到）",
     },
+    "tools/check_release_gates.py": {
+        0: "通过（RG1–RG2：GATES 里的每个名字都有脚本、每个 check_*.py 要么在 GATES 要么带理由豁免）",
+        1: "有门没进发版清单（写了却从没在发布时跑过），\n          或 GATES 里有陈旧行、豁免没理由 / 已陈旧",
+        2: "缺输入（找不到 tools/release.py）",
+    },
     "tools/check_figure_glyphs.py": {
-        0: "通过（FG1–FG3：示意图与导览页要画的字符都有字形、等宽字体那几行没有非 ASCII）",
+        0: "通过（FG1–FG4：示意图与导览页要画的字符、手册正文都有字形，等宽字体那几行没有非 ASCII）",
         1: "有字符在字体里没有字形（画出来是空心方块，看起来像打码），\n          或等宽字体那一行混进了中文",
         2: "缺输入（找不到 tools/make_guide_figures.py）",
     },

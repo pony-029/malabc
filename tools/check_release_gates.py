@@ -1,0 +1,182 @@
+# -*- coding: utf-8 -*-
+"""发版门清单 check —— 一道门写了却从不参与发布，等于给自己看的笔记。
+
+为什么要有它
+============
+R413 把"新增一道门要同时改的六处"写进了 CONTRIBUTING，其中第六处
+（`release.py` 的 `GATES`）是**唯一不会红**的一处：前五处各有门守着，
+而"门没进发版清单"没有任何东西会报。
+
+于是有了这条：`tools/check_*.py` 里的每一个脚本，要么出现在 `GATES`，
+要么在 `EXEMPT` 里**写明理由**。两向都查 —— 陈旧豁免（登记了却已经在
+`GATES` 里）同样算缺陷。
+
+判据族 **RG1–RG2**。
+
+用法：
+    python tools/check_release_gates.py
+    python tools/check_release_gates.py --selftest   # 两向自证
+
+退出码：
+    0  = 清单与文件一致（RG1–RG2 全绿）
+    1  = 有门没进发版清单，或豁免陈旧 / 无理由
+    2  = 缺输入（找不到 release.py 或 tools/）
+"""
+import io
+import os
+import re
+import sys
+
+ROW_SIGNATURE = "RG1–RG2"
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(HERE)
+RELEASE = os.path.join(HERE, "release.py")
+
+#: 明确不进发版清单的门 —— **必须写理由**（空理由按无理由处理）。
+#: 典型是"总入口"与"太重、只在 CI 跑"的那几个。
+#: 只在 CI／手工跑的门。`GATES` 的承诺是"几秒内跑完"，下面这些单次就慢得多，
+#: 或者依赖夹具/基线快照 —— 把它们塞进发版流程只会让人开始跳过门。
+CI_ONLY = (
+    "check_baseline", "check_binfmt_fixtures", "check_boundary_reverse",
+    "check_browse_clean_manifest", "check_c_frontend_shapes",
+    "check_doc_flags", "check_facts_replay", "check_flag_coverage",
+    "check_flow_diagrams", "check_flow_figures", "check_import_graph",
+    "check_incremental_parity", "check_ir_attribution",
+    "check_kernel_snapshot", "check_known_red", "check_legal_parity",
+    "check_matlab_grammar", "check_operator_impl", "check_parity_registry",
+    "check_patch_ops", "check_py_js_frontend_shapes", "check_unified_graph",
+)
+
+EXEMPT = {
+    "check_all": "总入口：它调用其它门，自己不被当门调用",
+}
+for _n in CI_ONLY:
+    EXEMPT[_n] = "只在 CI / 手工跑：慢或需夹具（GATES 只收几秒内的快门）"
+
+
+def _gates():
+    """从 release.py 里取出 GATES 元组里的名字。"""
+    src = io.open(RELEASE, encoding="utf-8").read()
+    m = re.search(r"GATES\s*=\s*\((.*?)\)", src, re.S)
+    if not m:
+        return None
+    return re.findall(r'"([a-z0-9_]+)"', m.group(1))
+
+
+def _files():
+    return sorted(n[:-3] for n in os.listdir(HERE)
+                  if n.startswith("check_") and n.endswith(".py"))
+
+
+def check():
+    """返回 (问题列表, 统计)。"""
+    gates = _gates()
+    if gates is None:
+        return [("E0", "release.py 里解析不到 GATES")], {}
+    files = _files()
+    problems = []
+
+    # RG1：GATES 里列了但文件不存在（陈旧行）
+    for g in gates:
+        if not os.path.isfile(os.path.join(HERE, g + ".py")):
+            problems.append(("RG1", "GATES 列了 %s，但脚本不存在" % g))
+
+    # RG2：每个 check_*.py 要么在 GATES，要么有理由地豁免
+    for f in files:
+        if f in gates:
+            if f in EXEMPT:
+                problems.append(("RG2", "%s 已在 GATES 里，EXEMPT 里的登记陈旧" % f))
+            continue
+        if f in EXEMPT:
+            if not EXEMPT[f].strip():
+                problems.append(("RG2", "%s 的豁免没写理由" % f))
+            continue
+        problems.append(("RG2",
+                         "%s 不在发版门清单里，也没登记豁免 —— 它从没在发布时跑过"
+                         % f))
+
+    stats = {"gates": len(gates), "files": len(files),
+             "exempt": len(EXEMPT)}
+    return problems, stats
+
+
+def main(argv=None):
+    argv = argv if argv is not None else sys.argv[1:]
+    if "--selftest" in argv:
+        return selftest()
+
+    if not os.path.isfile(RELEASE):
+        print("找不到 release.py：%s" % RELEASE)
+        return 2
+
+    problems, stats = check()
+    if problems:
+        for code, msg in problems:
+            print("  - %s %s" % (code, msg))
+        print("check_release_gates: %d 项不合规" % len(problems))
+        return 1
+    print("check_release_gates: OK（RG1–RG2 全绿；%d 道门在发版清单里，"
+          "%d 个豁免带理由，%d 个 check 脚本）"
+          % (stats["gates"], stats["exempt"], stats["files"]))
+    return 0
+
+
+def selftest():
+    """两向自证：造"漏登记"与"陈旧豁免"两种坏样本，确认判据会红。"""
+    good = bad = 0
+
+    def chk(cond, name):
+        nonlocal good, bad
+        if cond:
+            good += 1
+        else:
+            bad += 1
+            print("  [FAIL] %s" % name)
+
+    real_gates = _gates()
+    chk(bool(real_gates), "能从 release.py 解析出 GATES")
+    chk("check_help_contract" in (real_gates or []), "GATES 里确实有已知的门")
+
+    # 造一个临时 tools/：release.py 只列 a，实际有 a/b/c
+    import shutil
+    import tempfile
+    d = tempfile.mkdtemp(prefix="rg_")
+    try:
+        for name in ("check_a.py", "check_b.py", "check_c.py"):
+            io.open(os.path.join(d, name), "w", encoding="utf-8").write(
+                u"pass\n")
+        io.open(os.path.join(d, "release.py"), "w", encoding="utf-8").write(
+            u'GATES = ("check_a", "check_missing")\n')
+
+        # 用临时目录替换模块级路径后复用 check()
+        global HERE, RELEASE, EXEMPT
+        old = (HERE, RELEASE, dict(EXEMPT))
+        HERE, RELEASE = d, os.path.join(d, "release.py")
+        EXEMPT = {"check_b": "太重，只在 CI 跑"}
+        problems, _ = check()
+        codes = [c for c, _ in problems]
+        chk("RG1" in codes, "RG1 会报 GATES 里的陈旧行（check_missing）")
+        chk(any("check_c" in m for _, m in problems),
+            "RG2 会报没登记也没豁免的 check_c.py")
+        chk(not any("check_b" in m for _, m in problems),
+            "RG2 不报有理由的豁免")
+
+        EXEMPT = {"check_b": ""}
+        problems2, _ = check()
+        chk(any("没写理由" in m for _, m in problems2), "RG2 会报空理由的豁免")
+
+        EXEMPT = {"check_a": "多余"}
+        problems3, _ = check()
+        chk(any("陈旧" in m for _, m in problems3), "RG2 会报陈旧豁免")
+
+        HERE, RELEASE, EXEMPT = old[0], old[1], old[2]
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+    print("SELFTEST COUNTS {\"bad\": %d, \"good\": %d}" % (bad, good))
+    return 1 if bad else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

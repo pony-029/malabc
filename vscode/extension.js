@@ -1255,8 +1255,12 @@ function activate(context) {
                              'undo-preview');
     try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (e) { /* */ }
     pendingUndo = info;
+    // 打开几个 diff 由设置决定：大工程里 20 个文件全开会把标签栏塞满。
+    const limit = Math.max(1, Math.min(40,
+      vscode.workspace.getConfiguration('matlabc')
+        .get('undoDiffLimit', 8)));
     let opened = 0;
-    for (const pv of previews.slice(0, 8)) {
+    for (const pv of previews.slice(0, limit)) {
       const right = path.join(tmpDir, pv.path.replace(/[\\/]/g, '__'));
       try {
         fs.writeFileSync(right, pv.before, 'utf8');
@@ -1325,6 +1329,7 @@ function activate(context) {
                        (rec.params ? ('\n参数: ' + JSON.stringify(rec.params)) : '');
         item.iconPath = new vscode.ThemeIcon(rec.undone ? 'check' : 'history');
         item.recordId = rid;
+        item._primary = paths[0] || '';
         item.contextValue = rec.undone ? 'taskDone' : 'taskPending';
         if (!rec.undone) {
           item.command = { command: 'matlabc.undoLastTask', title: '撤销' };
@@ -1339,12 +1344,36 @@ function activate(context) {
         }
       }
 
+      // 同一文件的多次改动折成一个可展开节点：
+      // 一次重构常常连着改同一个文件三遍，平铺时看到的是一串很像的行。
+      const byFile = {};
+      const order = [];
+      for (const it of mine) {
+        const key = it._primary || '（无文件）';
+        if (!byFile[key]) { byFile[key] = []; order.push(key); }
+        byFile[key].push(it);
+      }
+      const sessionChildren = [];
+      for (const key of order) {
+        const list = byFile[key];
+        if (list.length === 1) {
+          sessionChildren.push(list[0]);
+          continue;
+        }
+        const g = new vscode.TreeItem(key + '  ' + list.length + ' 次',
+          vscode.TreeItemCollapsibleState.Collapsed);
+        g.description = '同一文件';
+        g.iconPath = new vscode.ThemeIcon('files');
+        g.children = list;
+        sessionChildren.push(g);
+      }
+
       const groups = [];
-      if (mine.length) {
+      if (sessionChildren.length) {
         const g = new vscode.TreeItem('本次会话',
           vscode.TreeItemCollapsibleState.Expanded);
         g.iconPath = new vscode.ThemeIcon('history');
-        g.children = mine;
+        g.children = sessionChildren;
         groups.push(g);
       }
       const days = Object.keys(olderByDay).sort().reverse();

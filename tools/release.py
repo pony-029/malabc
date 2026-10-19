@@ -37,7 +37,9 @@ GATES = ("check_version_scheme", "check_eol_convention", "check_readme_parity",
          "check_js_balance", "check_tour", "check_subprocess_hygiene",
          "check_portability", "check_lsp_doc_parity",
          # 图上缺字形（方块）已经出现过三次，靠肉眼看截图不可靠
-         "check_figure_glyphs")
+         "check_figure_glyphs",
+         # 一道门写了却不进发版清单，等于只给自己看的笔记
+         "check_release_gates")
 
 
 def run(cmd, cwd=ROOT, timeout=900):
