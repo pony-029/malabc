@@ -100,20 +100,21 @@ function pythonCandidates() {
   const programData = process.env.ProgramData || '';
 
   if (process.platform === 'win32') {
-    for (const base of ['C:\\Python', 'C:\\Program Files\\Python',
-                        'C:\\Program Files (x86)\\Python']) {
-      for (let v = 313; v >= 36; v--) {
-        const maj = Math.floor(v / 10);
-        const min = v % 10;
-        push(base + maj + min + '\\python.exe');
-      }
-    }
-    for (let v = 313; v >= 36; v--) {
-      const maj = Math.floor(v / 10);
-      const min = v % 10;
-      push(local + '\\Programs\\Python\\Python' + maj + min +
-           '\\python.exe');
-    }
+    // **扫目录而不是写死版本号**：用户的 Python 可能是 3.14，也可能是 3.5，
+    // 写死一个区间就会漏掉两端 —— 而漏掉的表现是"列表里没有我的版本"，
+    // 用户只能以为扩展坏了。
+    const scan = (dir, prefix) => {
+      let names = [];
+      try { names = fs.readdirSync(dir); } catch (e) { return; }
+      names.filter((n) => n.indexOf(prefix) === 0).forEach((n) => {
+        push(path.join(dir, n, 'python.exe'));
+      });
+    };
+    scan('C:\\', 'Python');
+    scan('C:\\Program Files', 'Python');
+    scan('C:\\Program Files (x86)', 'Python');
+    scan(path.join(local, 'Programs', 'Python'), 'Python');
+    scan(local, 'Python');
     push('C:\\ProgramData\\Anaconda3\\python.exe');
     push('C:\\ProgramData\\miniconda3\\python.exe');
     push(home + '\\anaconda3\\python.exe');
@@ -138,6 +139,18 @@ function pythonCandidates() {
   });
 }
 
+//: 本扩展要求的最低 Python 版本。与 `check_py36_clean` 门、README 一致。
+const MIN_PY = [3, 6];
+
+function versionOk(ver) {
+  const m = /^(\d+)\.(\d+)/.exec(ver || '');
+  if (!m) return false;
+  const maj = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  if (maj !== MIN_PY[0]) return maj > MIN_PY[0];
+  return min >= MIN_PY[1];
+}
+
 function pythonVersion(py) {
   return new Promise((resolve) => {
     const { spawn } = require('child_process');
@@ -151,7 +164,7 @@ function pythonVersion(py) {
     }, 4000);
     let child;
     try {
-      child = spawn(py, ['-c', 'import sys;print(sys.version.split()[0])'],
+      child = spawn(py, ['-c', "import sys;print('%d.%d.%d' % sys.version_info[:3])"],
                     { windowsHide: true });
     } catch (e) {
       clearTimeout(timer);
@@ -202,11 +215,15 @@ async function pickPython() {
   let py = '';
   if (found.length) {
     const vers = await Promise.all(found.slice(0, 6).map(pythonVersion));
-    const items = found.slice(0, 6).map((p, i) => ({
-      label: p,
-      description: vers[i] ? ('Python ' + vers[i]) : '（无法获取版本）',
-      picked: p,
-    }));
+    const items = found.slice(0, 6).map((p, i) => {
+      const v = vers[i];
+      let desc;
+      if (!v) desc = '（无法获取版本）';
+      else if (versionOk(v)) desc = 'Python ' + v;
+      else desc = 'Python ' + v + ' —— 版本过低，需要 ' +
+                  MIN_PY.join('.') + '+';
+      return { label: p, description: desc, picked: p, ver: v };
+    });
     items.push({ label: '$(folder-opened) 手动选择 python.exe…',
                  description: '上面没有我的 Python', picked: '' });
     const sel = await vscode.window.showQuickPick(items, {
@@ -215,6 +232,12 @@ async function pickPython() {
     });
     if (!sel) return;
     py = sel.picked;
+    if (py && sel.ver && !versionOk(sel.ver)) {
+      vscode.window.showErrorMessage(
+        'matlabc: 这个 Python 是 ' + sel.ver + '，本扩展需要 ' +
+        MIN_PY.join('.') + ' 或更新。请选另一个，或装一个新版本。');
+      return;
+    }
   }
   if (!py) {
     const picked = await vscode.window.showOpenDialog({
@@ -250,6 +273,14 @@ async function pickPython() {
     vscode.window.showErrorMessage(
       'matlabc: 这个路径启动不了 Python：' + py +
       '。换一个试试（例如 C:\\Python310\\python.exe）。');
+    return;
+  }
+  // 手选的路径也要验版本：能启动 ≠ 够新
+  const ver = await pythonVersion(py);
+  if (ver && !versionOk(ver)) {
+    vscode.window.showErrorMessage(
+      'matlabc: 这个 Python 是 ' + ver + '，本扩展需要 ' +
+      MIN_PY.join('.') + ' 或更新。');
     return;
   }
   await vscode.workspace.getConfiguration('matlabc')
@@ -298,6 +329,17 @@ function activate(context) {
     if (!lspPath) lspPath = candidates[0];
   }
   const python = cfg.get('pythonPath', 'python');
+
+  // **启动之前先问一句版本**（R394）。3.5 及更老的 Python 会让服务端以
+  // SyntaxError 崩掉，而 stderr 里那条报错对用户毫无意义 —— 他需要知道的是
+  // "版本太旧"，以及"去哪儿换"。
+  pythonVersion(python).then((v) => {
+    if (v && !versionOk(v)) {
+      log('Python 版本过低：' + v);
+      showPythonHelp('当前 Python 是 ' + v + '，本扩展需要 ' +
+                     MIN_PY.join('.') + ' 或更新');
+    }
+  });
 
   log('工作区   : ' + root);
   log('python   : ' + python);
