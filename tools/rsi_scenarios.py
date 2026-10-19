@@ -44,7 +44,7 @@ CORPUS = os.path.join(ROOT, "tests", "sample_m")
 
 #: 场景数下界。加场景是允许的，删场景必须同时改这个数（与 check_all 的
 #: MIN_GUARDS 同一套纪律：删掉一条也会红）。
-MIN_SCENARIOS = 78
+MIN_SCENARIOS = 80
 
 
 def _uri(path):
@@ -1473,6 +1473,60 @@ def sc_task_batch_ref(ctx):
         shutil.rmtree(d, ignore_errors=True)
 
 
+
+def _run_undo(root):
+    cmd = [sys.executable, os.path.join(ROOT, "matlabc_task.py"), "undo",
+           "--dir", root, "--apply"]
+    log = os.path.join(tempfile.gettempdir(), "undo_out_%d.txt" % os.getpid())
+    with io.open(log, "wb") as fh:
+        rc = subprocess.call(cmd, cwd=ROOT, stdin=subprocess.DEVNULL,
+                             stdout=fh, stderr=subprocess.STDOUT, timeout=120)
+    text = io.open(log, "r", encoding="utf-8", errors="replace").read()
+    try:
+        os.remove(log)
+    except OSError:
+        pass
+    return rc, text
+
+
+def sc_task_undo(ctx):
+    """改成之后能原样撤回。"""
+    d = _mk({
+        "u1.m": (u"function y = aa(x)\n  y = x + 1;\nend\n", "utf-8", ""),
+        "u2.m": (u"function r = bb(v)\n  r = aa(v);\nend\n", "utf-8", ""),
+    })
+    try:
+        before = io.open(os.path.join(d, "u1.m"), encoding="utf-8").read()
+        rc, out = _run_task_cmd(d, "rename", ["--old", "aa", "--new", "cc",
+                                             "--apply"])
+        changed = io.open(os.path.join(d, "u1.m"), encoding="utf-8").read()
+        rc2, out2 = _run_undo(d)
+        after = io.open(os.path.join(d, "u1.m"), encoding="utf-8").read()
+        ok = (rc == 0 and u"cc" in changed and rc2 == 0 and after == before)
+        return ok, "改=%s 撤回=%s" % (u"cc" in changed, after == before)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def sc_task_undo_conflict(ctx):
+    """任务之后改过文件 -> 拒绝撤销，且文件不被改回。"""
+    d = _mk({
+        "u1.m": (u"function y = aa(x)\n  y = x + 1;\nend\n", "utf-8", ""),
+        "u2.m": (u"function r = bb(v)\n  r = aa(v);\nend\n", "utf-8", ""),
+    })
+    try:
+        _run_task_cmd(d, "rename", ["--old", "aa", "--new", "cc", "--apply"])
+        p = os.path.join(d, "u1.m")
+        io.open(p, "a", encoding="utf-8").write(u"% 手工改的一行\n")
+        snap = io.open(p, encoding="utf-8").read()
+        rc, out = _run_undo(d)
+        now = io.open(p, encoding="utf-8").read()
+        ok = (rc == 1 and u"被改过" in out and now == snap)
+        return ok, "rc=%s 拒绝=%s 未覆盖=%s" % (rc, u"被改过" in out, now == snap)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default="")
@@ -1555,7 +1609,9 @@ def main(argv=None):
                 ("任务 move 跨文件", sc_task_move),
                 ("任务 batch（CLI）", sc_task_batch_cli),
                 ("任务 batch 回滚（CLI）", sc_task_batch_cli_rollback),
-                ("任务 batch 步骤引用", sc_task_batch_ref)]
+                ("任务 batch 步骤引用", sc_task_batch_ref),
+                ("任务 undo", sc_task_undo),
+                ("任务 undo 冲突拒绝", sc_task_undo_conflict)]
         for name, fn in solo:
             try:
                 ok, detail = fn({"root": root})

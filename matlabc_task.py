@@ -33,6 +33,8 @@
         --name part --in x,y --out z --apply
     python matlabc_task.py extract --dir myproj --file a.m --lines 12-18 \
         --name part --auto --apply      # 接口由工具推断（启发式，先看 dry-run）
+    python matlabc_task.py undo --dir myproj            # 撤销上一次任务
+    python matlabc_task.py undo --dir myproj --apply
     python matlabc_task.py --selftest
 
 退出码：
@@ -42,8 +44,10 @@
 """
 import argparse
 import io
+import hashlib
 import json
 import os
+import time
 import re
 import sys
 import time
@@ -201,6 +205,154 @@ def _restore(backup):
             pass
 
 
+#: 任务记录目录（相对工程根）。每次**成功**的任务在这里落一条 JSON：
+#: 改前的原文、改后的哈希。`undo` 靠它把工程倒回去。
+HISTORY_DIR = os.path.join(".matlabc", "tasks")
+
+
+def _sha_of(path):
+    try:
+        return hashlib.sha256(io.open(path, "rb").read()).hexdigest()
+    except (IOError, OSError):
+        return u""
+
+
+def record_task(root, kind, params, backup, created=None):
+    """记一条任务。**只在验收通过之后调用** —— 失败的任务已经自己回滚了，
+    再记一条只会让 undo 撤销一个并不存在的变化。
+    """
+    try:
+        d = os.path.join(root, HISTORY_DIR)
+        if not os.path.isdir(d):
+            os.makedirs(d)
+        now = time.time()
+        # ⚠ 括号不能省：`"%03d" % int(now * 1000) % 1000` 会被解析成
+        # `("%03d" % int(now*1000)) % 1000` —— 先格式化再对字符串取模，
+        # 抛 TypeError，而它被下面的 except 吞掉，于是"任务成功但记不上账"。
+        # 第一版就是这样：撤销时报"没有可撤销的记录"，看起来像功能没实现。
+        rid = (time.strftime("%Y%m%d-%H%M%S", time.localtime(now)) +
+               "-%03d" % (int(now * 1000) % 1000))
+        rec = {
+            "id": rid,
+            "kind": kind,
+            "params": params,
+            "when": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now)),
+            "undone": False,
+            "files": [{"path": os.path.relpath(p, root), "before": t,
+                       "after": _sha_of(p)}
+                      for p, t in sorted(backup.items())],
+            "created": [{"path": os.path.relpath(c, root),
+                         "after": _sha_of(c)}
+                        for c in (created or []) if os.path.isfile(c)],
+        }
+        io.open(os.path.join(d, rid + ".json"), "w",
+                encoding="utf-8", newline="").write(
+            json.dumps(rec, ensure_ascii=False, indent=1) + u"\n")
+        return rid
+    except Exception as exc:
+        # 记不上不该让任务**失败**（任务是主体），但必须**说出来** ——
+        # 第一版这里静默返回空串，用户以为能 undo，真去撤时才发现没记录。
+        io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             "matlabc_task.log"), "a",
+                encoding="utf-8").write(
+            u"record_task 失败：%r\n" % (exc,))
+        return u""
+
+
+def _latest_record(root):
+    d = os.path.join(root, HISTORY_DIR)
+    if not os.path.isdir(d):
+        return None
+    names = sorted(n for n in os.listdir(d) if n.endswith(".json"))
+    for n in reversed(names):
+        path = os.path.join(d, n)
+        try:
+            rec = json.loads(io.open(path, encoding="utf-8").read())
+        except Exception:
+            continue
+        if not rec.get("undone"):
+            rec["_file"] = path
+            return rec
+    return None
+
+
+def task_undo(root, apply_it=False):
+    """撤销**最近一次**任务。
+
+    为什么需要它：任务失败会自动回滚，但**成功之后想反悔**只能靠 git ——
+    而 git 只保护已提交的状态，用户刚跑完任务时通常还没提交。
+    """
+    log = []
+
+    def say(step, msg):
+        log.append({"step": step, "msg": msg})
+
+    if not os.path.isdir(root):
+        say("error", u"目录不存在：%s" % root)
+        return 2, log, {}
+
+    rec = _latest_record(root)
+    if not rec:
+        say("undo", u"没有可撤销的任务记录（%s）" % HISTORY_DIR)
+        return 1, log, {"verdict": "nothing"}
+
+    say("undo", u"最近一次任务：%s（%s）"
+        % (rec.get("kind"), rec.get("when", "")))
+
+    # **先校验再动手**：文件在任务之后被改过时，撤销会覆盖那些改动。
+    conflicts = []
+    for f in rec.get("files") or []:
+        p = os.path.join(root, f["path"])
+        if not os.path.isfile(p):
+            conflicts.append(f["path"] + u"（已不存在）")
+        elif _sha_of(p) != f.get("after"):
+            conflicts.append(f["path"] + u"（任务之后被改过）")
+    for c in rec.get("created") or []:
+        p = os.path.join(root, c["path"])
+        if os.path.isfile(p) and _sha_of(p) != c.get("after"):
+            conflicts.append(c["path"] + u"（新建文件之后被改过）")
+
+    if conflicts:
+        say("undo", u"拒绝撤销 —— 撤销会覆盖任务之后的改动：")
+        for one in conflicts:
+            say("undo", u"  · " + one)
+        say("undo", u"确认要丢弃这些改动，可以先用 git 存一下再重试")
+        return 1, log, {"verdict": "conflict", "conflicts": conflicts}
+
+    if not apply_it:
+        say("plan", u"将恢复 %d 个文件、删除 %d 个新建文件（未写盘）"
+            % (len(rec.get("files") or []), len(rec.get("created") or [])))
+        return 0, log, {"verdict": "plan", "id": rec.get("id")}
+
+    for f in rec.get("files") or []:
+        io.open(os.path.join(root, f["path"]), "w",
+                encoding="utf-8", newline="").write(f["before"])
+    removed = 0
+    for c in rec.get("created") or []:
+        p = os.path.join(root, c["path"])
+        try:
+            os.remove(p)
+            removed += 1
+        except OSError:
+            pass
+
+    rec["undone"] = True
+    try:
+        io.open(rec["_file"], "w", encoding="utf-8", newline="").write(
+            json.dumps(dict((k, v) for k, v in rec.items()
+                            if not k.startswith("_")),
+                       ensure_ascii=False, indent=1) + u"\n")
+    except Exception:
+        pass
+
+    say("undo", u"已恢复 %d 个文件，删除 %d 个新建文件"
+        % (len(rec.get("files") or []), removed))
+    after = _scan(root)
+    say("validate", u"撤销后：函数 %d ｜ 诊断 %d"
+        % (after["functions"], after["diagnostics"]))
+    return 0, log, {"verdict": "undone", "id": rec.get("id"), "after": after}
+
+
 def task_rename(root, old, new, apply_it=False, as_json=False,
                 kind="ident"):
     """rename 任务：prepare -> 验收条件 -> apply -> validate（失败自动 rollback）。"""
@@ -268,6 +420,13 @@ def task_rename(root, old, new, apply_it=False, as_json=False,
                before["diagnostics"], after["diagnostics"]))
         if ok_left and ok_fun and ok_edge and ok_diag:
             say("validate", u"验收通过（4/4）")
+            _rid = record_task(root, ("rename-field" if kind == "field"
+                                      else "rename"),
+                               {"old": old, "new": new}, backup)
+            if _rid:
+                say("record", u"已记入 %s（可 undo）" % HISTORY_DIR)
+            else:
+                say("record", u"未能写任务记录 —— 本次无法 undo")
             return 0, log, {"before": before, "after": after,
                             "sites": len(sites), "files": len(files),
                             "criteria": criteria, "verdict": "pass"}
@@ -562,6 +721,14 @@ def task_extract(root, rel, start, end, name, ins, outs,
                u"是" if ok_txt else u"否"))
         if ok_fun and ok_diag and ok_txt:
             say("validate", u"验收通过（3/3）")
+            _rid = record_task(root, "extract",
+                               {"file": rel, "name": name,
+                                "lines": "%d-%d" % (start, end)},
+                               backup, created)
+            if _rid:
+                say("record", u"已记入 %s（可 undo）" % HISTORY_DIR)
+            else:
+                say("record", u"未能写任务记录 —— 本次无法 undo")
             return 0, log, {"before": before, "after": after,
                             "criteria": criteria, "verdict": "pass"}
         _restore(backup)
@@ -757,6 +924,13 @@ def task_move(root, rel, name, to, apply_it=False):
                u"是" if ok_txt else u"否"))
         if ok_fun and ok_diag and ok_txt:
             say("validate", u"验收通过（3/3）")
+            _rid = record_task(root, "move",
+                               {"file": rel, "name": name, "to": to},
+                               backup, created)
+            if _rid:
+                say("record", u"已记入 %s（可 undo）" % HISTORY_DIR)
+            else:
+                say("record", u"未能写任务记录 —— 本次无法 undo")
             return 0, log, {"before": before, "after": after,
                             "criteria": criteria, "verdict": "pass"}
         _restore(backup)
@@ -1378,6 +1552,40 @@ def selftest():
     finally:
         shutil.rmtree(d8, ignore_errors=True)
 
+    # ---- undo：成功之后能反悔 -------------------------------------------
+    d9 = tempfile.mkdtemp(prefix="tasku_")
+    try:
+        _make({"u1.m": (u"function y = aa(x)\n  y = x + 1;\nend\n"),
+               "u2.m": (u"function r = bb(v)\n  r = aa(v);\nend\n")}, d9)
+        orig1 = io.open(os.path.join(d9, "u1.m"), encoding="utf-8").read()
+        rc, log, info = task_rename(d9, "aa", "cc", apply_it=True)
+        changed = io.open(os.path.join(d9, "u1.m"), encoding="utf-8").read()
+        rc2, log2, info2 = task_undo(d9, apply_it=True)
+        back = io.open(os.path.join(d9, "u1.m"), encoding="utf-8").read()
+        if chk(rc == 0 and u"cc" in changed and rc2 == 0 and back == orig1,
+               u"自证 undo：改完能原样撤回",
+               u"rc=%r/%r 复原=%s" % (rc, rc2, back == orig1)):
+            good += 1
+        else:
+            bad += 1
+        # 任务之后又改过文件 -> 必须拒绝（否则会覆盖那些改动）
+        rc, log, info = task_rename(d9, "aa", "dd", apply_it=True)
+        with io.open(os.path.join(d9, "u1.m"), "a", encoding="utf-8") as fh:
+            fh.write(u"% 手工改的一行\n")
+        tail_before = io.open(os.path.join(d9, "u1.m"), encoding="utf-8").read()
+        rc3, log3, info3 = task_undo(d9, apply_it=True)
+        tail_after = io.open(os.path.join(d9, "u1.m"), encoding="utf-8").read()
+        msgs = u"".join(r["msg"] for r in log3)
+        if chk(rc3 == 1 and info3.get("verdict") == "conflict"
+               and tail_before == tail_after and u"被改过" in msgs,
+               u"自证 undo：任务后改过文件则拒绝",
+               u"rc=%r verdict=%r" % (rc3, info3.get("verdict"))):
+            good += 1
+        else:
+            bad += 1
+    finally:
+        shutil.rmtree(d9, ignore_errors=True)
+
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     return 1 if bad else 0
 
@@ -1391,6 +1599,10 @@ def main(argv=None):
     rp.add_argument("--new", required=True)
     rp.add_argument("--apply", action="store_true")
     rp.add_argument("--json", action="store_true")
+    up = sub.add_parser("undo")
+    up.add_argument("--dir", default=".")
+    up.add_argument("--apply", action="store_true")
+    up.add_argument("--json", action="store_true")
     bp = sub.add_parser("batch")
     bp.add_argument("--dir", default=".")
     bp.add_argument("--steps", required=True,
@@ -1430,6 +1642,18 @@ def main(argv=None):
         return 0
     if args.selftest:
         return selftest()
+
+    if args.cmd == "undo":
+        rc, log, info = task_undo(os.path.abspath(args.dir),
+                                   apply_it=args.apply)
+        if args.json:
+            print(json.dumps({"ok": rc == 0, "log": log,
+                              "info": info},
+                             ensure_ascii=False, indent=2))
+        else:
+            for row in log:
+                print("[%-9s] %s" % (row["step"], row["msg"]))
+        return rc
 
     if args.cmd == "batch":
         raw = io.open(args.steps, "r", encoding="utf-8").read()

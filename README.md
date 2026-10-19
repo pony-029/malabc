@@ -633,6 +633,12 @@ python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
 python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
     --name part --in x,y --out z --to part.m --apply
 
+# Undo the last task. A failed task rolls itself back; this is for the
+# case where it SUCCEEDED and you changed your mind. It refuses if any
+# touched file was edited afterwards — undoing would silently discard
+# that edit. Records live in `.matlabc/tasks/`.
+python matlabc_task.py undo --dir myproj/ --apply
+
 # Move a whole function out of a file. The target must be `<name>.m`: any other
 # name would turn it into a private subfunction and silently break every caller.
 python matlabc_task.py move --dir myproj/ --file a.m --name helper --to helper.m --apply
