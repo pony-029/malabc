@@ -106,10 +106,22 @@ def _mask_noise(line):
     return u"".join(out)
 
 
-def find_sites(root, name):
-    """返回 [(abs_path, line_idx(0 基), col, line_text)]。只认标识符边界。"""
-    pat = re.compile(u"(?<![A-Za-z0-9_.])" + re.escape(name) +
-                     u"(?![A-Za-z0-9_])")
+def _pattern(name, kind):
+    """`ident` 认独立标识符；`field` 只认**点后面的**名字（`s.old` / `s(1).old`）。
+
+    为什么要分成两种：重命名**函数**时，`s.helper` 是字段访问，不是那个函数；
+    重命名**字段**时，独立的 `helper` 变量跟这个字段无关。一套正则同时兼两件事，
+    必然在其中一边误伤。
+    """
+    tail = re.escape(name) + u"(?![A-Za-z0-9_])"
+    if kind == "field":
+        return re.compile(u"(?<=\\.)" + tail)
+    return re.compile(u"(?<![A-Za-z0-9_.])" + tail)
+
+
+def find_sites(root, name, kind="ident"):
+    """返回 [(abs_path, line_idx(0 基), col, line_text)]。col 一律指向名字首字符。"""
+    pat = _pattern(name, kind)
     sites = []
     for path in _iter_m_files(root):
         try:
@@ -185,7 +197,8 @@ def _restore(backup):
             pass
 
 
-def task_rename(root, old, new, apply_it=False, as_json=False):
+def task_rename(root, old, new, apply_it=False, as_json=False,
+                kind="ident"):
     """rename 任务：prepare -> 验收条件 -> apply -> validate（失败自动 rollback）。"""
     log = []
     def say(step, msg):
@@ -203,25 +216,29 @@ def task_rename(root, old, new, apply_it=False, as_json=False):
         return 2, log, {}
 
     before = _scan(root)
-    sites = find_sites(root, old)
+    label = ((u"." + old) if kind == "field" else old)
+    sites = find_sites(root, old, kind)
     files = sorted(set(s[0] for s in sites))
     say("prepare", u"扫描完成：%d 个 .m 文件，命中 %d 处（%d 个文件）"
         % (len(list(_iter_m_files(root))), len(sites), len(files)))
     if not sites:
-        say("plan", u"没有找到 `%s` —— 任务结束（不写任何文件）" % old)
+        say("plan", u"没有找到 `%s` —— 任务结束（不写任何文件）" % label)
         return 1, log, {"before": before, "sites": 0}
 
     # **验收条件先写出来**：动手之前就固定判据，避免事后解释。
     # 第 1 条是这轮补的：只比计数抓不到"只改了一半" —— 旧名字还有残留时，
     # 函数数与边数都可能**恰好不变**。
     criteria = [
-        u"代码里不再出现 `%s`（注释与字符串不算）" % old,
+        u"代码里不再出现 `%s`（注释与字符串不算）" % label,
         u"函数总数与改前相同（改名不改函数的数量）",
-        u"调用边数与改前相同（原来指向 `%s` 的边全部指向 `%s`）" % (old, new),
+        (u"调用边数与改前相同（字段改名不该改变调用图）" if kind == "field"
+         else u"调用边数与改前相同（原来指向 `%s` 的边全部指向 `%s`）"
+              % (old, new)),
         u"诊断数不增加（改名不该引入新问题）",
     ]
     say("plan", u"将把 %d 处 `%s` 改为 `%s`，涉及 %d 个文件"
-        % (len(sites), old, new, len(files)))
+        % (len(sites), label,
+           (u"." + new) if kind == "field" else new, len(files)))
     for i, c in enumerate(criteria):
         say("criteria", u"%d) %s" % (i + 1, c))
 
@@ -236,7 +253,7 @@ def task_rename(root, old, new, apply_it=False, as_json=False):
         say("apply", u"已写入 %d 个文件（备份在内存，验收不过自动回滚）"
             % len(backup))
         after = _scan(root)
-        left = len(find_sites(root, old))
+        left = len(find_sites(root, old, kind))
         ok_left = (left == 0)
         ok_fun = after["functions"] == before["functions"]
         ok_edge = after["edges"] == before["edges"]
@@ -410,6 +427,50 @@ def selftest():
     finally:
         shutil.rmtree(d, ignore_errors=True)
 
+    # ---- rename-field：只动 `.field`，不动同名变量，不动字符串 -------------
+    d2 = tempfile.mkdtemp(prefix="taskf_")
+    try:
+        _make({
+            "f1.m": (u"function y = f1()\n"
+                     u"s.old = 1;\n"
+                     u"old = 2;\n"
+                     u"y = s.old;\n"
+                     u"end\n"),
+            "f2.m": (u"function r = f2(t)\n"
+                     u"r = t.old + 1;\n"
+                     u"end\n"),
+            "f3.m": (u"function q = f3()\n"
+                     u"q = 's.old';\n"
+                     u"end\n"),
+        }, d2)
+        fsites = find_sites(d2, "old", kind="field")
+        if chk(len(fsites) == 3, u"自证 field：只命中 3 处 `.old`",
+               u"实际 %d 处" % (len(fsites),)):
+            good += 1
+        else:
+            bad += 1
+        rc, log, info = task_rename(d2, "old", "renamed", apply_it=True,
+                                    kind="field")
+        f1 = io.open(os.path.join(d2, "f1.m"), encoding="utf-8").read()
+        f3 = io.open(os.path.join(d2, "f3.m"), encoding="utf-8").read()
+        if chk(rc == 0 and info.get("verdict") == "pass",
+               u"自证 field：逐条验收通过",
+               u"rc=%r verdict=%r" % (rc, info.get("verdict"))):
+            good += 1
+        else:
+            bad += 1
+        if chk(u"s.renamed" in f1 and u"\nold = 2;" in f1,
+               u"自证 field：字段改名，同名变量不动"):
+            good += 1
+        else:
+            bad += 1
+        if chk(u"'s.old'" in f3, u"自证 field：字符串里的 `.old` 不动"):
+            good += 1
+        else:
+            bad += 1
+    finally:
+        shutil.rmtree(d2, ignore_errors=True)
+
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     return 1 if bad else 0
 
@@ -423,6 +484,12 @@ def main(argv=None):
     rp.add_argument("--new", required=True)
     rp.add_argument("--apply", action="store_true")
     rp.add_argument("--json", action="store_true")
+    fp = sub.add_parser("rename-field")
+    fp.add_argument("--dir", default=".")
+    fp.add_argument("--old", required=True)
+    fp.add_argument("--new", required=True)
+    fp.add_argument("--apply", action="store_true")
+    fp.add_argument("--json", action="store_true")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--help", "-h", action="store_true")
     args = ap.parse_args(argv if argv is not None else sys.argv[1:])
@@ -433,9 +500,11 @@ def main(argv=None):
     if args.selftest:
         return selftest()
 
-    if args.cmd == "rename":
+    if args.cmd in ("rename", "rename-field"):
         rc, log, info = task_rename(os.path.abspath(args.dir), args.old,
-                                    args.new, args.apply, args.json)
+                                    args.new, args.apply, args.json,
+                                    kind=("field" if args.cmd == "rename-field"
+                                          else "ident"))
         if args.json:
             print(json.dumps({"ok": rc == 0, "log": log, "info": info},
                              ensure_ascii=False, indent=2))

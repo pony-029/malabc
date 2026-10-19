@@ -611,6 +611,10 @@ python matlabc.py myproj/ --binary-attach libcublas.so.12 --json out.json
 python matlabc_task.py rename --dir myproj/ --old helper --new assist
 python matlabc_task.py rename --dir myproj/ --old helper --new assist --apply
 
+# Same task, but for a struct field: only `.old` is touched — a standalone
+# variable named `old`, or the text inside 'a.old', stays exactly as it was.
+python matlabc_task.py rename-field --dir myproj/ --old old --new new --apply
+
 # Generate a deterministic self-verified fix patch
 python matlabc flow myproj --auto-apply --gen-apply-patch
 

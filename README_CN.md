@@ -584,6 +584,9 @@ python matlabc_ask.py "风险最高在哪" --dir myproj
 # 动手**之前**先把判据列出来，写完再逐条验；任一条不过或写盘失败，自动逐字节恢复
 python matlabc_task.py rename --dir myproj/ --old helper --new assist
 python matlabc_task.py rename --dir myproj/ --old helper --new assist --apply
+
+# 同一套任务，换成结构体字段：只动 `.old`——独立变量 `old`、字符串里的 'a.old' 都不动
+python matlabc_task.py rename-field --dir myproj/ --old old --new new --apply
 ```
 
 ---

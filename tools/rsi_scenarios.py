@@ -44,7 +44,7 @@ CORPUS = os.path.join(ROOT, "tests", "sample_m")
 
 #: 场景数下界。加场景是允许的，删场景必须同时改这个数（与 check_all 的
 #: MIN_GUARDS 同一套纪律：删掉一条也会红）。
-MIN_SCENARIOS = 63
+MIN_SCENARIOS = 65
 
 
 def _uri(path):
@@ -1133,6 +1133,71 @@ def sc_task_rollback(ctx):
         shutil.rmtree(d, ignore_errors=True)
 
 
+
+def _field_demo():
+    """字段工程：一处 `.val` 两次、一个同名变量、一个字符串里的 `.val`。"""
+    return _mk({
+        "g1.m": (u"function y = g1()\n"
+                 u"s.val = 1;\n"
+                 u"val = 2;\n"
+                 u"y = s.val;\n"
+                 u"end\n", "utf-8", ""),
+        "g2.m": (u"function q = g2()\n"
+                 u"q = 's.val';\n"
+                 u"end\n", "utf-8", ""),
+    })
+
+
+def _run_task_cmd(root, sub, args):
+    cmd = [sys.executable, os.path.join(ROOT, "matlabc_task.py"), sub,
+           "--dir", root] + list(args)
+    log = os.path.join(tempfile.gettempdir(), "taskf_out_%d.txt" % os.getpid())
+    with io.open(log, "wb") as fh:
+        try:
+            rc = subprocess.call(cmd, cwd=ROOT, stdin=subprocess.DEVNULL,
+                                 stdout=fh, stderr=subprocess.STDOUT,
+                                 timeout=180)
+        except subprocess.TimeoutExpired:
+            rc = -9
+    text = io.open(log, "r", encoding="utf-8", errors="replace").read()
+    try:
+        os.remove(log)
+    except OSError:
+        pass
+    return rc, text
+
+
+def sc_task_field_dry_run(ctx):
+    """rename-field 的 dry-run：不写盘，且明说是 `.field` 而不是独立标识符。"""
+    d = _field_demo()
+    try:
+        before = io.open(os.path.join(d, "g1.m"), encoding="utf-8").read()
+        rc, out = _run_task_cmd(d, "rename-field",
+                                ["--old", "val", "--new", "value"])
+        after = io.open(os.path.join(d, "g1.m"), encoding="utf-8").read()
+        ok = (rc == 0 and before == after and u"`.val`" in out
+              and u"dry-run" in out)
+        return ok, "rc=%s 未写盘=%s" % (rc, before == after)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def sc_task_field_apply(ctx):
+    """rename-field 的 apply：字段改名、同名变量不动、字符串不动。"""
+    d = _field_demo()
+    try:
+        rc, out = _run_task_cmd(d, "rename-field",
+                                ["--old", "val", "--new", "value", "--apply"])
+        g1 = io.open(os.path.join(d, "g1.m"), encoding="utf-8").read()
+        g2 = io.open(os.path.join(d, "g2.m"), encoding="utf-8").read()
+        ok = (rc == 0 and u"验收通过（4/4）" in out
+              and u"s.value" in g1 and u"\nval = 2;" in g1
+              and u"'s.val'" in g2)
+        return ok, "rc=%s 4/4=%s" % (rc, u"4/4" in out)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default="")
@@ -1205,7 +1270,9 @@ def main(argv=None):
                 ("5000 函数大文件", sc_huge_file),
                 ("任务 rename dry-run", sc_task_dry_run),
                 ("任务 rename apply", sc_task_apply),
-                ("任务 rename 回滚", sc_task_rollback)]
+                ("任务 rename 回滚", sc_task_rollback),
+                ("任务 rename-field 计划", sc_task_field_dry_run),
+                ("任务 rename-field 应用", sc_task_field_apply)]
         for name, fn in solo:
             try:
                 ok, detail = fn({"root": root})
