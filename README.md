@@ -615,6 +615,12 @@ python matlabc_task.py rename --dir myproj/ --old helper --new assist --apply
 # variable named `old`, or the text inside 'a.old', stays exactly as it was.
 python matlabc_task.py rename-field --dir myproj/ --old old --new new --apply
 
+# Extract a block into its own function. The interface is written by you, not
+# guessed: a wrong guess is worse than no extraction. Validated by
+# "functions +1 / diagnostics unchanged / function-end still balanced".
+python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
+    --name part --in x,y --out z --apply
+
 # Generate a deterministic self-verified fix patch
 python matlabc flow myproj --auto-apply --gen-apply-patch
 

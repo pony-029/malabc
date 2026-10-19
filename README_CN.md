@@ -587,6 +587,11 @@ python matlabc_task.py rename --dir myproj/ --old helper --new assist --apply
 
 # 同一套任务，换成结构体字段：只动 `.old`——独立变量 `old`、字符串里的 'a.old' 都不动
 python matlabc_task.py rename-field --dir myproj/ --old old --new new --apply
+
+# 把一段代码提成独立函数。接口**由你写清楚**，不猜——猜错的提取比不提更糟；
+# 验收：函数数 +1 / 诊断不增加 / function-end 仍配平
+python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
+    --name part --in x,y --out z --apply
 ```
 
 ---

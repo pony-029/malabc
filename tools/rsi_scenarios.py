@@ -44,7 +44,7 @@ CORPUS = os.path.join(ROOT, "tests", "sample_m")
 
 #: 场景数下界。加场景是允许的，删场景必须同时改这个数（与 check_all 的
 #: MIN_GUARDS 同一套纪律：删掉一条也会红）。
-MIN_SCENARIOS = 65
+MIN_SCENARIOS = 67
 
 
 def _uri(path):
@@ -1198,6 +1198,46 @@ def sc_task_field_apply(ctx):
         shutil.rmtree(d, ignore_errors=True)
 
 
+
+def _extract_demo():
+    return _mk({
+        "mx.m": (u"function y = mx(x)\n"
+                 u"  a = x + 1;\n"
+                 u"  b = a * 2;\n"
+                 u"  y = b;\n"
+                 u"end\n", "utf-8", ""),
+    })
+
+
+def sc_task_extract_dry_run(ctx):
+    d = _extract_demo()
+    try:
+        before = io.open(os.path.join(d, "mx.m"), encoding="utf-8").read()
+        rc, out = _run_task_cmd(d, "extract",
+                                ["--file", "mx.m", "--lines", "3-4",
+                                 "--name", "part", "--in", "a", "--out", "y"])
+        after = io.open(os.path.join(d, "mx.m"), encoding="utf-8").read()
+        ok = (rc == 0 and before == after and u"part(a)" in out)
+        return ok, "rc=%s 未写盘=%s" % (rc, before == after)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def sc_task_extract_apply(ctx):
+    d = _extract_demo()
+    try:
+        rc, out = _run_task_cmd(d, "extract",
+                                ["--file", "mx.m", "--lines", "3-4",
+                                 "--name", "part", "--in", "a", "--out", "y",
+                                 "--apply"])
+        now = io.open(os.path.join(d, "mx.m"), encoding="utf-8").read()
+        ok = (rc == 0 and u"验收通过（3/3）" in out
+              and u"y = part(a);" in now and u"function y = part(a)" in now)
+        return ok, "rc=%s 3/3=%s" % (rc, u"3/3" in out)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default="")
@@ -1272,7 +1312,9 @@ def main(argv=None):
                 ("任务 rename apply", sc_task_apply),
                 ("任务 rename 回滚", sc_task_rollback),
                 ("任务 rename-field 计划", sc_task_field_dry_run),
-                ("任务 rename-field 应用", sc_task_field_apply)]
+                ("任务 rename-field 应用", sc_task_field_apply),
+                ("任务 extract 计划", sc_task_extract_dry_run),
+                ("任务 extract 应用", sc_task_extract_apply)]
         for name, fn in solo:
             try:
                 ok, detail = fn({"root": root})

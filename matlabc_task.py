@@ -288,6 +288,142 @@ def task_rename(root, old, new, apply_it=False, as_json=False,
         return 1, log, {"before": before, "verdict": "error"}
 
 
+
+def _split_list(text):
+    return [x.strip() for x in (text or "").split(",") if x.strip()]
+
+
+def _existing_functions(root):
+    """工程里已有的函数名集合 —— 用来在**动手前**拒绝重名。"""
+    try:
+        from analyzer.api import analyze
+    except Exception:
+        from matlabc import analyze
+    res = analyze(root, no_checks=True)
+    names = set()
+    for mf in (getattr(res, "files", None) or []):
+        for f in (getattr(mf, "functions", None) or []):
+            nm = getattr(f, "name", "") or ""
+            if nm:
+                names.add(nm)
+    return names
+
+
+def task_extract(root, rel, start, end, name, ins, outs,
+                 apply_it=False):
+    """extract 任务：把 `rel` 的第 start..end 行提成一个新函数。
+
+    **接口由调用方显式给出**（`--in` / `--out`）。自动推断输入输出需要数据流，
+    那是下一步；这一版宁可要求人写清楚，也不假装猜得准 —— 猜错的提取比不提更糟。
+    """
+    log = []
+
+    def say(step, msg):
+        log.append({"step": step, "msg": msg})
+
+    if not os.path.isdir(root):
+        say("error", u"目录不存在：%s" % root)
+        return 2, log, {}
+    path = rel if os.path.isabs(rel) else os.path.join(root, rel)
+    if not os.path.isfile(path):
+        say("error", u"文件不存在：%s" % path)
+        return 2, log, {}
+    if not re.match(u"^" + IDENT + u"$", name or u""):
+        say("error", u"新函数名不合法：%r" % (name,))
+        return 2, log, {}
+    if name in _existing_functions(root):
+        say("error", u"工程里已有同名函数 `%s` —— 换个名字" % name)
+        return 1, log, {}
+
+    text = io.open(path, "r", encoding="utf-8", errors="replace").read()
+    lines = text.splitlines()
+    if not (1 <= start <= end <= len(lines)):
+        say("error", u"行号越界：%d-%d（共 %d 行）" % (start, end, len(lines)))
+        return 2, log, {}
+    block = lines[start - 1:end]
+    for ln in block:
+        st = ln.strip()
+        if st.startswith(u"function") or st == u"end":
+            say("error", u"选区里含 `function`/`end` —— 本版只提纯语句块")
+            return 1, log, {}
+    if not u"".join(block).strip():
+        say("error", u"选区是空的")
+        return 1, log, {}
+
+    indent = block[0][:len(block[0]) - len(block[0].lstrip())]
+    lhs = u""
+    if len(outs) == 1:
+        lhs = outs[0] + u" = "
+    elif len(outs) > 1:
+        rhs = u", ".join(outs)
+        lhs = u"[" + rhs + u"] = "
+    call_line = indent + lhs + name + u"(" + u", ".join(ins) + u");"
+
+    sig = (u"function " + lhs.strip().rstrip(u"= ").strip() + u" = " + name
+           if False else None)
+    # 函数签名：有输出用 `function [a, b] = name(...)`，无输出用 `function name(...)`
+    if outs:
+        sig_outs = (outs[0] if len(outs) == 1
+                    else u"[" + u", ".join(outs) + u"]")
+        head = u"function %s = %s(%s)" % (sig_outs, name, u", ".join(ins))
+    else:
+        head = u"function %s(%s)" % (name, u", ".join(ins))
+
+    before = _scan(root)
+    say("prepare", u"%s 第 %d-%d 行（%d 行）→ 新函数 `%s`"
+        % (os.path.basename(path), start, end, len(block), name))
+    criteria = [
+        u"函数总数 +1（多出一个函数）",
+        u"诊断数不增加（提取不该引入新问题）",
+        u"文本里 `function` 与 `end` 各 +1（结构配平）",
+    ]
+    for i, c in enumerate(criteria):
+        say("criteria", u"%d) %s" % (i + 1, c))
+    say("plan", u"替换为：`%s`" % call_line.strip())
+    if not apply_it:
+        say("dry-run", u"未加 --apply，没有写入任何文件")
+        return 0, log, {"before": before, "criteria": criteria}
+
+    backup = {path: text}
+    try:
+        new_lines = (lines[:start - 1] + [call_line] + lines[end:])
+        body = u"\n".join(new_lines).rstrip(u"\n")
+        body += u"\n\n" + head + u"\n" + u"\n".join(block) + u"\nend\n"
+        io.open(path, "w", encoding="utf-8", newline="").write(body)
+        say("apply", u"已写入 %s（备份在内存）" % os.path.basename(path))
+
+        after = _scan(root)
+        now = io.open(path, "r", encoding="utf-8").read()
+        ok_fun = after["functions"] == before["functions"] + 1
+        ok_diag = after["diagnostics"] <= before["diagnostics"]
+        ok_txt = (now.count(u"function") == text.count(u"function") + 1
+                  and len(re.findall(r"(?m)^\s*end\s*$", now))
+                  == len(re.findall(r"(?m)^\s*end\s*$", text)) + 1)
+        say("validate", u"函数 %d→%d ｜ 诊断 %d→%d ｜ function/end 配平 %s"
+            % (before["functions"], after["functions"],
+               before["diagnostics"], after["diagnostics"],
+               u"是" if ok_txt else u"否"))
+        if ok_fun and ok_diag and ok_txt:
+            say("validate", u"验收通过（3/3）")
+            return 0, log, {"before": before, "after": after,
+                            "criteria": criteria, "verdict": "pass"}
+        _restore(backup)
+        why = []
+        if not ok_fun:
+            why.append(u"函数数没 +1")
+        if not ok_diag:
+            why.append(u"诊断增加了")
+        if not ok_txt:
+            why.append(u"function/end 不配平")
+        say("rollback", u"验收不通过（%s）—— 已恢复原文件" % u"、".join(why))
+        return 1, log, {"before": before, "criteria": criteria,
+                        "verdict": "rollback"}
+    except Exception as exc:
+        _restore(backup)
+        say("rollback", u"异常 %r —— 已恢复" % (exc,))
+        return 1, log, {"verdict": "error"}
+
+
 # ---------------------------------------------------------------------------
 # 自证：一个真项目、一次成功改名、一次故意失败的回滚
 # ---------------------------------------------------------------------------
@@ -471,6 +607,42 @@ def selftest():
     finally:
         shutil.rmtree(d2, ignore_errors=True)
 
+    # ---- extract：提成函数 -------------------------------------------------
+    d3 = tempfile.mkdtemp(prefix="taskx_")
+    try:
+        src = (u"function y = mx(x)\n"
+               u"  a = x + 1;\n"
+               u"  b = a * 2;\n"
+               u"  y = b;\n"
+               u"end\n")
+        _make({"mx.m": src}, d3)
+        rc, log, info = task_extract(d3, "mx.m", 3, 4, "part",
+                                     ["a"], ["y"], apply_it=False)
+        now = io.open(os.path.join(d3, "mx.m"), encoding="utf-8").read()
+        if chk(rc == 0 and now == src, u"自证 extract：dry-run 不写盘"):
+            good += 1
+        else:
+            bad += 1
+        rc, log, info = task_extract(d3, "mx.m", 3, 4, "part",
+                                     ["a"], ["y"], apply_it=True)
+        now = io.open(os.path.join(d3, "mx.m"), encoding="utf-8").read()
+        ok = (rc == 0 and info.get("verdict") == "pass"
+              and u"y = part(a);" in now
+              and u"function y = part(a)" in now)
+        if chk(ok, u"自证 extract：提取后调用点与新函数都在",
+               u"rc=%r verdict=%r" % (rc, info.get("verdict"))):
+            good += 1
+        else:
+            bad += 1
+        rc, log, info = task_extract(d3, "mx.m", 1, 2, "part",
+                                     ["a"], ["y"], apply_it=False)
+        if chk(rc == 1, u"自证 extract：重名在动手前被拒", u"rc=%r" % (rc,)):
+            good += 1
+        else:
+            bad += 1
+    finally:
+        shutil.rmtree(d3, ignore_errors=True)
+
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     return 1 if bad else 0
 
@@ -484,6 +656,15 @@ def main(argv=None):
     rp.add_argument("--new", required=True)
     rp.add_argument("--apply", action="store_true")
     rp.add_argument("--json", action="store_true")
+    ep = sub.add_parser("extract")
+    ep.add_argument("--dir", default=".")
+    ep.add_argument("--file", required=True)
+    ep.add_argument("--lines", required=True)
+    ep.add_argument("--name", required=True)
+    ep.add_argument("--in", dest="ins", default="")
+    ep.add_argument("--out", dest="outs", default="")
+    ep.add_argument("--apply", action="store_true")
+    ep.add_argument("--json", action="store_true")
     fp = sub.add_parser("rename-field")
     fp.add_argument("--dir", default=".")
     fp.add_argument("--old", required=True)
@@ -499,6 +680,23 @@ def main(argv=None):
         return 0
     if args.selftest:
         return selftest()
+
+    if args.cmd == "extract":
+        m = re.match(r"^(\d+)\s*-\s*(\d+)$", args.lines or u"")
+        if not m:
+            print("--lines 需要形如 12-18")
+            return 2
+        rc, log, info = task_extract(os.path.abspath(args.dir), args.file,
+                                     int(m.group(1)), int(m.group(2)),
+                                     args.name, _split_list(args.ins),
+                                     _split_list(args.outs), args.apply)
+        if args.json:
+            print(json.dumps({"ok": rc == 0, "log": log, "info": info},
+                             ensure_ascii=False, indent=2))
+        else:
+            for row in log:
+                print("[%-9s] %s" % (row["step"], row["msg"]))
+        return rc
 
     if args.cmd in ("rename", "rename-field"):
         rc, log, info = task_rename(os.path.abspath(args.dir), args.old,
