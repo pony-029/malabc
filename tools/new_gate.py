@@ -57,16 +57,31 @@ import sys
 ROW_SIGNATURE = "{sig}"
 
 
-def check():
-    """返回问题列表（空 = 通过）。"""
+def _inputs():
+    """真实输入从哪来（文件 / 目录 / 仓库）。骨架阶段先返回空。"""
     return []
+
+
+def check(items=None):
+    """对一组输入做判定，返回问题列表（空 = 通过）。
+
+    `items` 允许注入，是为了让自证能拿"坏样本"进来 —— 一个只能读真实仓库的
+    判据，是没法证明自己会红的（这正是新门最容易留下的空洞）。
+    """
+    items = [] if items is None else items
+    problems = []
+    for it in items:
+        if it == "__bad__":
+            problems.append("示例判据：收到坏样本 __bad__")
+        # TODO: 换成你真正要守的东西
+    return problems
 
 
 def main(argv=None):
     argv = argv if argv is not None else sys.argv[1:]
     if "--selftest" in argv:
         return selftest()
-    problems = check()
+    problems = check(_inputs())
     if problems:
         for msg in problems:
             print("  - %s" % msg)
@@ -88,7 +103,9 @@ def selftest():
             bad += 1
             print("  [FAIL] %s" % name)
 
-    chk(True, "占位：先写一条真判据，再把它变成必红的样本")
+    # 两向自证：好样本必须过，坏样本必须红 —— 否则"自证"只是打印 True
+    chk(check([]) == [], "空输入应通过")
+    chk(len(check(["__bad__"])) >= 1, "坏样本必须被判为不合规")
     print('SELFTEST COUNTS {{"bad": %d, "good": %d}}' % (bad, good))
     return 1 if bad else 0
 
@@ -278,7 +295,8 @@ def main(argv=None):
     print("")
     print("")
     print("还剩一件事脚本不做：**判据本身** ——")
-    print("  骨架里的 check() 现在总是通过，先写一条真判据，再把它变成必红的样本。")
+    print("  骨架里的 check(items) 已经支持注入，自证会拿 __bad__ 当坏样本；")
+    print("  把 check() 换成你真正要守的东西，并给 __bad__ 一个真能触发它的输入。")
     return 0
 
 

@@ -1321,6 +1321,9 @@ function activate(context) {
         const k = rec.kind || '?';
         if (rec.elapsed_ms) (byKind[k] = byKind[k] || []).push(rec.elapsed_ms);
       }
+      const cfgM = vscode.workspace.getConfiguration('matlabc');
+      const slowFactor = Math.max(1.1, cfgM.get('slowTaskFactor', 2));
+      const slowMinMs = Math.max(0, cfgM.get('slowTaskMinMs', 200));
       const median = {};
       for (const k in byKind) {
         const a = byKind[k].sort((x, y) => x - y);
@@ -1350,9 +1353,11 @@ function activate(context) {
                        (isRollback && rec.reason
                          ? ('\n回滚原因: ' + rec.reason) : '') +
                        (rec.params ? ('\n参数: ' + JSON.stringify(rec.params)) : '');
-        // 偏慢 = 超过同类中位数的 2 倍，且本身不短（否则 2ms→5ms 也会被标）
+        // 偏慢 = 超过同类中位数的 N 倍，且本身不短（否则 2ms→5ms 也会被标）。
+        // 倍率与下限都可配：大工程与小工程对"慢"的标准不同。
         const med = median[rec.kind] || 0;
-        const slow = !isRollback && med > 0 && ms > med * 2 && ms >= 200;
+        const slow = !isRollback && med > 0 &&
+                     ms > med * slowFactor && ms >= slowMinMs;
         if (slow) item.description = '偏慢  ' + item.description;
         item.iconPath = new vscode.ThemeIcon(
           slow ? 'watch'
@@ -1410,6 +1415,31 @@ function activate(context) {
         g.iconPath = new vscode.ThemeIcon('files');
         g.children = list;
         sessionChildren.push(g);
+      }
+
+      // 回滚原因排行：单看"回滚了几次"没用，按原因聚合才指出最容易踩的坑
+      const tally = {};
+      for (const rec of recs) {
+        if (sessionKnown.has(rec.id || rec._file)) continue;
+        if (rec.verdict !== 'rollback') continue;
+        for (const part of String(rec.reason || '（未记录原因）')
+                               .split('、')) {
+          const k = part.trim();
+          if (k) tally[k] = (tally[k] || 0) + 1;
+        }
+      }
+      const reasons = Object.keys(tally).sort((a, b) => tally[b] - tally[a]);
+      if (reasons.length) {
+        const top = reasons[0];
+        const it = new vscode.TreeItem(
+          '回滚原因：' + top + '（' + tally[top] + ' 次）',
+          vscode.TreeItemCollapsibleState.None);
+        it.iconPath = new vscode.ThemeIcon('warning');
+        it.description = reasons.length > 1
+          ? ('另有 ' + (reasons.length - 1) + ' 类') : '';
+        it.tooltip = '本会话的回滚原因：\n' +
+          reasons.map((k) => '  ' + k + '  ' + tally[k] + ' 次').join('\n');
+        sessionChildren.unshift(it);
       }
 
       const groups = [];

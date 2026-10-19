@@ -613,6 +613,8 @@ python matlabc_task.py undo --dir myproj/ --id 20261020-001555-413 --apply
 python matlabc_task.py undo --dir myproj/ --batch --apply   # 整批一次撤完
 python matlabc_task.py prune --dir myproj/ --keep 50 --apply  # 裁剪旧记录
 python matlabc_task.py stats --dir myproj/   # 按任务类型的耗时与回滚率
+python matlabc_task.py baseline --dir myproj/ --save  # 记住「平时多快」
+# 之后 stats 会额外列出比基线慢一倍以上的类型。
 
 # 任务记录在 `.matlabc/tasks/`（一个任务一个 JSON，上限 50 条，
 # 先删已撤销的）。不希望它们进仓库的话，把 `.matlabc/` 加进 .gitignore。

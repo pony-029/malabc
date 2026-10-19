@@ -44,7 +44,7 @@ CORPUS = os.path.join(ROOT, "tests", "sample_m")
 
 #: 场景数下界。加场景是允许的，删场景必须同时改这个数（与 check_all 的
 #: MIN_GUARDS 同一套纪律：删掉一条也会红）。
-MIN_SCENARIOS = 92
+MIN_SCENARIOS = 93
 
 
 def _uri(path):
@@ -1779,6 +1779,22 @@ def sc_mcp_task_stats(ctx):
     }, run)
 
 
+
+def sc_task_baseline(ctx):
+    """CLI：baseline --save 之后 stats 仍正常输出。"""
+    d = _mk({"a.m": (u"function y = aa(x)\n  y = x + 1;\nend\n",
+                     "utf-8", "")})
+    try:
+        _run_task_cmd(d, "rename", ["--old", "aa", "--new", "cc", "--apply"])
+        rc1, out1 = _run_task_cmd(d, "baseline", ["--save"])
+        rc2, out2 = _run_task_cmd(d, "stats", [])
+        ok = (rc1 == 0 and u"基线已保存" in out1
+              and rc2 == 0 and u"中位ms" in out2)
+        return ok, "保存=%s stats=%s" % (u"基线已保存" in out1, u"中位ms" in out2)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default="")
@@ -1873,6 +1889,7 @@ def main(argv=None):
                 ("任务记录裁剪", sc_task_prune),
                 ("任务记录统计", sc_task_stats),
                 ("MCP task_stats", sc_mcp_task_stats),
+                ("任务耗时基线", sc_task_baseline),
                 ("任务记录压缩存储", sc_task_record_packed),
                 ("任务 undo diff", sc_task_undo_diff),
                 ("任务 undo previews", sc_task_undo_previews)]

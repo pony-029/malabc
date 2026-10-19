@@ -542,6 +542,61 @@ def rollback_reasons(root):
     return rows
 
 
+#: 基线文件：记录"这类任务平时多快"。有它之后，stats 才能回答
+#: "这次是不是明显比平时慢"，而不是只给一个孤立的数字。
+BASELINE_FILE = os.path.join(".matlabc", "baseline.json")
+
+
+def save_baseline(root, keep=None):
+    """把当前每类任务的中位耗时存成基线。"""
+    rows = task_stats(root)
+    data = {"saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "kinds": dict((r["kind"], {"p50_ms": r["p50_ms"],
+                                       "count": r["count"]})
+                          for r in rows if r["p50_ms"])}
+    path = os.path.join(root, BASELINE_FILE)
+    try:
+        d = os.path.dirname(path)
+        if d and not os.path.isdir(d):
+            os.makedirs(d)
+        io.open(path, "w", encoding="utf-8", newline="").write(
+            json.dumps(data, ensure_ascii=False, indent=1) + u"\n")
+    except Exception:
+        return None
+    return data
+
+
+def load_baseline(root):
+    path = os.path.join(root, BASELINE_FILE)
+    if not os.path.isfile(path):
+        return None
+    try:
+        return json.loads(io.open(path, encoding="utf-8").read())
+    except Exception:
+        return None
+
+
+def compare_baseline(root, factor=2.0):
+    """当前中位耗时 vs 基线；返回 [(kind, now, base, ratio)]，只列明显变慢的。
+
+    `factor=2.0` 的意思是"慢了一倍以上才提" —— 阈值太紧会把噪声当回归。
+    """
+    base = load_baseline(root)
+    if not base:
+        return []
+    out = []
+    for r in task_stats(root):
+        b = (base.get("kinds") or {}).get(r["kind"])
+        if not b or not b.get("p50_ms") or not r["p50_ms"]:
+            continue
+        ratio = float(r["p50_ms"]) / float(b["p50_ms"])
+        if ratio >= factor:
+            out.append({"kind": r["kind"], "now_ms": r["p50_ms"],
+                        "base_ms": b["p50_ms"], "ratio": round(ratio, 2)})
+    out.sort(key=lambda x: -x["ratio"])
+    return out
+
+
 def task_undo(root, apply_it=False, rec_id=None, whole_batch=False,
                show_diff=False):
     """撤销任务。
@@ -2243,6 +2298,38 @@ def selftest():
     finally:
         shutil.rmtree(d17, ignore_errors=True)
 
+    # ---- 基线：能存，且慢一倍以上才报 -----------------------------------
+    d18 = tempfile.mkdtemp(prefix="taskb3_")
+    try:
+        _make({"q1.m": (u"function y = aa(x)\n  y = x + 1;\nend\n")}, d18)
+        task_rename(d18, "aa", "bb", apply_it=True)
+        data = save_baseline(d18)
+        loaded = load_baseline(d18)
+        ok_b = (data is not None and loaded is not None
+                and u"rename" in (loaded.get("kinds") or {}))
+        if chk(ok_b, u"自证 基线：能存能读",
+               u"data=%r" % (data,)):
+            good += 1
+        else:
+            bad += 1
+
+        # 把基线里的中位耗时改成 1ms -> 当前必然"慢"很多，应被报出来
+        base = load_baseline(d18)
+        for k in base["kinds"]:
+            base["kinds"][k]["p50_ms"] = 1
+        io.open(os.path.join(d18, BASELINE_FILE), "w",
+                encoding="utf-8", newline="").write(
+            json.dumps(base, ensure_ascii=False, indent=1))
+        slow = compare_baseline(d18)
+        if chk(bool(slow) and slow[0]["ratio"] > 2,
+               u"自证 基线：慢一倍以上会被报出来",
+               u"slow=%r" % (slow[:1],)):
+            good += 1
+        else:
+            bad += 1
+    finally:
+        shutil.rmtree(d18, ignore_errors=True)
+
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     return 1 if bad else 0
 
@@ -2256,6 +2343,10 @@ def main(argv=None):
     rp.add_argument("--new", required=True)
     rp.add_argument("--apply", action="store_true")
     rp.add_argument("--json", action="store_true")
+    bl = sub.add_parser("baseline")
+    bl.add_argument("--dir", default=".")
+    bl.add_argument("--save", action="store_true")
+    bl.add_argument("--json", action="store_true")
     st = sub.add_parser("stats")
     st.add_argument("--dir", default=".")
     st.add_argument("--json", action="store_true")
@@ -2315,6 +2406,37 @@ def main(argv=None):
     if args.selftest:
         return selftest()
 
+    if args.cmd == "baseline":
+        _root = os.path.abspath(args.dir)
+        if args.save:
+            data = save_baseline(_root)
+            if not data:
+                print("写不了基线文件（%s）" % BASELINE_FILE)
+                return 1
+            if args.json:
+                print(json.dumps(data, ensure_ascii=False, indent=2))
+            else:
+                print("基线已保存：%d 类任务（%s）"
+                      % (len(data["kinds"]), BASELINE_FILE))
+                for k, v in sorted(data["kinds"].items()):
+                    print("  %-14s %dms（%d 次样本）"
+                          % (k, v["p50_ms"], v["count"]))
+            return 0
+        base = load_baseline(_root)
+        if not base:
+            print("还没有基线（先跑 --save）")
+            return 1
+        print("基线（%s）：" % base.get("saved_at", "?"))
+        for k, v in sorted((base.get("kinds") or {}).items()):
+            print("  %-14s %dms" % (k, v["p50_ms"]))
+        _slow = compare_baseline(_root)
+        if _slow:
+            print("")
+            print("比基线慢：")
+            for r in _slow:
+                print("  %-14s %.1f 倍" % (r["kind"], r["ratio"]))
+        return 0
+
     if args.cmd == "stats":
         _rows = task_stats(os.path.abspath(args.dir))
         if args.json:
@@ -2331,6 +2453,13 @@ def main(argv=None):
                 print("%-14s %5d %8d %8d %8d %8d"
                       % (r["kind"], r["count"], r["rollback"],
                          r["avg_ms"], r["p50_ms"], r["max_ms"]))
+            _slow = compare_baseline(os.path.abspath(args.dir))
+            if _slow:
+                print("")
+                print("比基线慢（>2 倍）：")
+                for r in _slow:
+                    print("  %-14s 现在 %dms，基线 %dms（%.1f 倍）"
+                          % (r["kind"], r["now_ms"], r["base_ms"], r["ratio"]))
             _rr = rollback_reasons(os.path.abspath(args.dir))
             if _rr:
                 print("")

@@ -644,6 +644,8 @@ python matlabc_task.py undo --dir myproj/ --id 20261020-001555-413 --apply
 python matlabc_task.py undo --dir myproj/ --batch --apply   # whole batch at once
 python matlabc_task.py prune --dir myproj/ --keep 50 --apply  # trim old records
 python matlabc_task.py stats --dir myproj/   # per-task timing and rollback rate
+python matlabc_task.py baseline --dir myproj/ --save  # remember what normal looks like
+# ...afterwards `stats` also lists anything that got 2x slower than that baseline.
 
 # Task records live in `.matlabc/tasks/` (one JSON per task, capped at 50:
 # already-undone ones go first). Add `.matlabc/` to your .gitignore if you
