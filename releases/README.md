@@ -32,7 +32,8 @@
 
 | 版本 | 日期 | 大小 | 主要变化 | 文件 |
 | --- | --- | --- | --- | --- |
-| 0.8.1（当前） | 2026-10-19 | 1097 KB | CI 增加 **Windows** 作业：此前只有 ubuntu 在跑，而项目声称两边都能用 ——现在 Windows 侧会重放静态… | `vsix/matlabc-0.8.1.vsix` |
+| 0.8.2（当前） | 2026-10-19 | 1097 KB | CI 收敛为 **Windows 单平台**：没有 Linux 机器时，ubuntu 的红灯没人能复现，最终只会被忽略；恢复只要换成… | `vsix/matlabc-0.8.2.vsix` |
+| 0.8.1 | 2026-10-19 | 1097 KB | CI 增加 **Windows** 作业：此前只有 ubuntu 在跑，而项目声称两边都能用 ——现在 Windows 侧会重放静态… | `vsix/matlabc-0.8.1.vsix` |
 | 0.8.0 | 2026-10-19 | 1097 KB | 修正 README 末尾一处**被转义吃掉的文本**（`python tools/...` 变成了 `\tools/...`，`an… | `vsix/matlabc-0.8.0.vsix` |
 | 0.7.9 | 2026-10-19 | 1097 KB | **支持在 Linux / macOS 上部署**：同一个安装包两边通用；`calllib` 的导出表核对不再只认 Windows … | `vsix/matlabc-0.7.9.vsix` |
 | 0.7.8 | 2026-10-19 | 1094 KB | 新增**覆盖度量**：按真实调用点统计每个 MCP 工具的测试情况，立刻查出`definition` 与 `references` … | `vsix/matlabc-0.7.8.vsix` |

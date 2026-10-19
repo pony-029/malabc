@@ -560,14 +560,18 @@ flowchart TD
 
 `ci-examples/` provides ready-to-use GitHub Actions / GitLab CI templates; just copy them in.
 
-**This repository runs its own gates on both platforms.** `ci.yml` has an
-`ubuntu-latest` job and a `windows-latest` job; the Windows one replays the four
-layers that would otherwise only ever be exercised on the author's machine —
-the 33 static gates, the LSP/MCP behavioural judgements, the 60 end-to-end
-scenarios, and the mutation sampling. Cross-platform breakage is rarely a crash:
-a `C:\...` path on Linux is just "file not found", and feeding an ELF file to a
-PE parser is just "no results" — both stay silent until something runs on the
-other side.
+**This repository runs its own gates on Windows** (`ci.yml`, `windows-latest`):
+the 3.6 syntax gate, the regression suite, the 33 static gates, the LSP/MCP
+judgements, the 60 end-to-end scenarios and the mutation sampling.
+
+```bash
+python tools/ci_local.py        # same pipeline, inside a clean clone at E:\\ci\\matlabc
+```
+
+The Linux jobs were paused on purpose: without a Linux machine to reproduce a
+failure on, a red ubuntu run is a signal nobody can act on. Re-enabling takes one
+line (`runs-on: ${{ matrix.os }}` + a two-entry matrix) — and the day that
+happens, the failures will at least be reproducible.
 
 ## Command Cheatsheet
 
@@ -918,6 +922,7 @@ judgements above:
 | `bump_version.py` | moves the version on by the project's rule — **every digit runs 0–9, then carries** (`0.7.9 → 0.8.0`, `0.9.9 → 1.0.0`). `--apply` writes it into the manifest, `--check` reports whether the current number still conforms |
 | `mutate_sample.py` | mutation sampling over **14 behaviours** (LSP and MCP): breaks one at a time in a throwaway copy and requires the matching judgement to **go red**. A judgement that cannot fail is indistinguishable from no judgement at all — it has already caught one vacuous criterion (a cycle guard tested on a fixture with no cycle) and one mutation aimed at the wrong function |
 | `rsi_scenarios.py` | full-scenario probe (**60 cases**) that drives real processes over the public protocols only — LSP with `Content-Length` framing, MCP line-delimited. The set only grows: every failure a round finds becomes a new case, and the floor is pinned so deleting one turns red |
+| `ci_local.py` | runs the same pipeline as `ci.yml`, but inside a **clean clone** at `E:\ci\matlabc` — the one thing a workflow cannot tell you locally is whether the repository still works from zero. What it tests is *committed* code by definition, so commit before running it |
 | `audit_coverage.py` | counts **real call sites** per MCP tool (`_MCP.t_x(` in the judgements, `_call(sess, "matlabc_x")` in the scenarios) instead of grepping for the name. The name-based audit reported 19/19 while `matlabc_definition` and `matlabc_references` had never been called at all |
 | `json_diff.py` | compares two `--json` / `--xml` outputs after ignoring volatile keys — every "IDENTICAL" claim in this repo is made with it |
 | `tree_diff.py` | compares two directory trees (file sets and contents, with regex line-ignores) |

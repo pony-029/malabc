@@ -1,62 +1,28 @@
 name: matlabc CI
 
-# Dogfooding：让 matlabc 先分析/守护自己。
-# 流程：① Python 3.6 语法兼容门禁（任意解释器运行均可校验代码 3.6.5 兼容性）
-#       ② 运行核心测试套件
-#       ③ 用 matlabc 对自身做全量静态分析，产物作为 artifact 留存（不卡门禁，仅展示能力）
+# ============================================================================
+# 只在 **Windows** 上跑（R368）。
+#
+# 为什么去掉 ubuntu：维护者手上没有 Linux 环境，云端的 ubuntu 失败了也没法
+# 在本地复现 —— 那样的红灯只会被忽略，最后变成"点了忽略的检查"。
+# 与其两条都不可信，不如把**能本地复现**的那一条做扎实：
+# 同样的命令可以在 `E:\ci\matlabc` 里用 `python tools/ci_local.py` 跑一遍。
+#
+# 恢复 Linux 的代价很小：把 job 的 runs-on 换成矩阵即可
+# （`runs-on: ${{ matrix.os }}` + `strategy.matrix.os: [windows-latest, ubuntu-latest]`），
+# 前提是那时有人能在 Linux 上复现失败。
+#
+# 这次改动本身也修了一个真缺陷：`python tests/test_matlabc.py` 此前在
+# **任何平台**都会 ModuleNotFoundError（脚本目录进 sys.path，仓库根没进），
+# 也就是这条 CI 一直在跑一条必然失败的命令。
+# ============================================================================
 on:
   push:
     branches: [ main ]
   pull_request:
+  workflow_dispatch:
 
 jobs:
-  build-and-analyze:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Python 3.6 syntax gate (P114)
-        # matlabc 自身须可被 3.6.5 运行；此门禁用 ast+正则扫描所有 *.py 检出 3.7+ 语法
-        run: python matlabc.py . --check-py36 --max-warnings 0 --json ci_py36.json
-
-      - name: Run core test suite
-        run: python tests/test_matlabc.py
-
-      - name: Self analysis showcase
-        run: |
-          python matlabc.py . -o self_analysis.md --html self_analysis.html \
-            --browse --offline --checks all --reproducible
-
-      - name: Upload self-analysis artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: self-analysis
-          path: |
-            self_analysis.md
-            self_analysis.html
-            ci_py36.json
-
-  # ---------------------------------------------------------------
-  # R367：**Windows 与 Linux 必须都验一遍**。
-  #
-  # 在此之前，仓库只有 ubuntu 的 CI。而本项目声称「两边部署」——
-  # 跨平台真正坏掉的方式不是崩溃，是**在另一个平台上安静地不工作**
-  # （`C:\...` 只是"文件不存在"、PE 解析器读 ELF 只是"空结果"）。
-  # 这类问题只有在对面的机器上跑一遍才会露出来。
-  #
-  # 这里跑的是「行为」而不是「能启动」：
-  #   check_all        33 道静态门（每道门自带两向自证）
-  #   lsp_selftest     LSP/MCP 的行为判据（含 ELF/PE 分派、跨语言、缓存）
-  #   rsi_scenarios    两个协议端到端（60 个场景）
-  #   mutate_sample    变异抽样：证明这些判据真的会红
-  # ---------------------------------------------------------------
   windows-verify:
     runs-on: windows-latest
     steps:
@@ -67,6 +33,16 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      - name: Python 3.6 syntax gate (P114)
+        # matlabc 自身须可被 3.6.5 运行；ast + 正则扫描所有 *.py 检出 3.7+ 语法
+        run: python matlabc.py . --check-py36 --max-warnings 0 --json ci_py36.json
+
+      - name: Core regression suite
+        # 本机实测：这个套件很长（>400 条），跑满要几十分钟。
+        # 给上限，避免一个挂住的用例把整个 job 拖到 GitHub 的 6 小时上限。
+        timeout-minutes: 30
+        run: python tests/test_matlabc.py
 
       - name: Static gates (33, each self-proving)
         run: python tools/check_all.py --quiet
@@ -79,3 +55,18 @@ jobs:
 
       - name: Mutation sampling (a judgement that cannot fail is not a judgement)
         run: python tools/mutate_sample.py
+
+      - name: Self analysis showcase
+        run: |
+          python matlabc.py . -o self_analysis.md --html self_analysis.html `
+            --browse --offline --checks all --reproducible
+
+      - name: Upload self-analysis artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: self-analysis
+          path: |
+            self_analysis.md
+            self_analysis.html
+            ci_py36.json

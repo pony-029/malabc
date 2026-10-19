@@ -531,11 +531,16 @@ flowchart TD
 
 `ci-examples/` 提供开箱即用的 GitHub Actions / GitLab CI 模板，复制即可用。
 
-**本仓库自己在两个平台上跑门禁。** `ci.yml` 里有 `ubuntu-latest` 与 `windows-latest`
-两个 job；Windows 那个重放四层检查 —— 33 道静态门、LSP/MCP 行为判据、60 个端到端场景、
-变异抽样 —— 否则这些只会在作者的机器上被验证过。跨平台的坏法很少是崩溃：`C:\...`
-路径在 Linux 上只是「文件不存在」，把 ELF 喂给 PE 解析器只是「没有结果」，
-两边都很安静，直到有人在对面的机器上跑一次。
+**本仓库在 Windows 上跑自己的门禁**（`ci.yml`，`windows-latest`）：3.6 语法门、
+回归套件、33 道静态门、LSP/MCP 行为判据、60 个端到端场景、变异抽样。
+
+```bash
+python tools/ci_local.py        # 同一条流水线，在 E:\ci\matlabc 的干净克隆里跑
+```
+
+Linux 的 job 是**故意暂停**的：手上没有 Linux 机器时，ubuntu 红了也没法复现，
+那种红灯最终一定被忽略。恢复只要一行（`runs-on: ${{ matrix.os }}` + 两项目录矩阵）——
+而到那天，失败至少是可复现的。
 
 ## 命令速查
 
@@ -870,6 +875,7 @@ python tools/check_help_contract.py --list-prefixes    # 前缀 -> 主人；加�
 | `bump_version.py` | 按本项目的规则推进版本号：**每一位只走 0–9，满 10 进一位**（`0.7.9` → `0.8.0`，`0.9.9` → `1.0.0`）。`--apply` 写进扩展清单，`--check` 报告当前版本是否还合规 |
 | `mutate_sample.py` | 变异抽样：**14 处行为**（LSP 与 MCP 两侧），在一次性副本上**一次改坏一处**，要求对应判据**变红**。永远不会红的判据与没有判据等价 —— 它已经抓出过一条空判据（用无环语料验防环），以及一次改错了函数的变异 |
 | `rsi_scenarios.py` | 全场景探针（**60 个场景**），只通过公开协议驱动真实进程：LSP 走 `Content-Length` 分帧、MCP 走行分隔。场景集只增不减——每轮发现的失败都固化成新场景，下界钉住，删一条就红 |
+| `ci_local.py` | 在 `E:\ci\matlabc` 的**干净克隆**里跑与 `ci.yml` 相同的流水线——工作流在本地唯一没法回答的问题，就是「这个仓库从零开始还能不能跑起来」。它测的按定义是**已提交**的代码，所以先提交再跑 |
 | `audit_coverage.py` | 按**真实调用点**统计每个 MCP 工具被覆盖情况（判据里的 `_MCP.t_x(`、场景里的 `_call(sess, "matlabc_x")`），而不是搜名字。按名字搜时它报 19/19 全覆盖，而 `matlabc_definition` 与 `matlabc_references` 从未被调用过 |
 | `json_diff.py` | 忽略指定键后比两份 `--json` / `--xml` 是否完全一致——本仓每一句「IDENTICAL」都是用它得出的 |
 | `tree_diff.py` | 比两个目录的文件集合与内容（可按正则忽略行） |

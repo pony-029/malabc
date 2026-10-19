@@ -2,6 +2,15 @@
 
 ---
 
+## 0.8.2
+
+- CI 收敛为 **Windows 单平台**：没有 Linux 机器时，ubuntu 的红灯没人能复现，
+  最终只会被忽略；恢复只要换成矩阵一行
+- 新增 **`tools/ci_local.py`**：在 `E:\ci\matlabc` 的干净克隆里跑同一条流水线
+- 修掉一个真缺陷：`python tests/test_matlabc.py` 在**任何平台**都会
+  `ModuleNotFoundError`（脚本目录进了 sys.path、仓库根没进），
+  而 CI 一直在跑这条必然失败的命令
+
 ## 0.8.1
 
 - CI 增加 **Windows** 作业：此前只有 ubuntu 在跑，而项目声称两边都能用 ——

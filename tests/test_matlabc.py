@@ -30,6 +30,16 @@ import pytest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+
+# **必须在用 importlib 加载 matlabc.py 之前**把仓库根放进 sys.path。
+# `python tests/test_matlabc.py` 只会把**脚本所在目录**（tests/）放进
+# sys.path[0]，而 matlabc.py 第 12 行要 `from matlabc_help import ...`
+# —— 仓库根不在路径里，于是这条命令在**任何平台**都会
+# `ModuleNotFoundError: No module named 'matlabc_help'`。
+# 而 `.github/workflows/ci.yml` 跑的就是这条命令（R368 实测复现）。
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+
 ANALYZER = os.path.join(ROOT, "matlabc.py")
 SAMPLE = os.path.join(HERE, "sample_m")
 CI_EXAMPLES = os.path.join(ROOT, "ci-examples")
