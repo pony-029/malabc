@@ -44,7 +44,7 @@ CORPUS = os.path.join(ROOT, "tests", "sample_m")
 
 #: 场景数下界。加场景是允许的，删场景必须同时改这个数（与 check_all 的
 #: MIN_GUARDS 同一套纪律：删掉一条也会红）。
-MIN_SCENARIOS = 81
+MIN_SCENARIOS = 82
 
 
 def _uri(path):
@@ -1550,6 +1550,30 @@ def sc_mcp_task_undo(ctx):
     }, run)
 
 
+
+def sc_task_undo_list(ctx):
+    """CLI：两步任务 -> --list 列两条 -> 按 id 倒序撤干净。"""
+    d = _mk({"v1.m": (u"function y = aa(x)\n  y = x + 1;\nend\n",
+                      "utf-8", "")})
+    try:
+        orig = io.open(os.path.join(d, "v1.m"), encoding="utf-8").read()
+        _run_task_cmd(d, "rename", ["--old", "aa", "--new", "bb", "--apply"])
+        _run_task_cmd(d, "rename", ["--old", "bb", "--new", "cc", "--apply"])
+        rc, out = _run_task_cmd(d, "undo", ["--list"])
+        ids = [ln.split()[0] for ln in out.splitlines()
+               if ln.strip() and ln.split()[0][:8].isdigit()]
+        rc1, _ = _run_task_cmd(d, "undo", ["--id", ids[0], "--apply"]) \
+            if ids else (1, "")
+        rc2, _ = _run_task_cmd(d, "undo", ["--id", ids[1], "--apply"]) \
+            if len(ids) > 1 else (1, "")
+        back = io.open(os.path.join(d, "v1.m"), encoding="utf-8").read()
+        ok = (rc == 0 and len(ids) == 2 and rc1 == 0 and rc2 == 0
+              and back == orig)
+        return ok, "记录=%d 撤净=%s" % (len(ids), back == orig)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default="")
@@ -1635,7 +1659,8 @@ def main(argv=None):
                 ("任务 batch 步骤引用", sc_task_batch_ref),
                 ("任务 undo", sc_task_undo),
                 ("任务 undo 冲突拒绝", sc_task_undo_conflict),
-                ("MCP task_undo", sc_mcp_task_undo)]
+                ("MCP task_undo", sc_mcp_task_undo),
+                ("任务 undo 列表", sc_task_undo_list)]
         for name, fn in solo:
             try:
                 ok, detail = fn({"root": root})

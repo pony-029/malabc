@@ -638,6 +638,11 @@ python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
 # touched file was edited afterwards — undoing would silently discard
 # that edit. Records live in `.matlabc/tasks/`.
 python matlabc_task.py undo --dir myproj/ --apply
+python matlabc_task.py undo --dir myproj/ --list   # what has been done
+python matlabc_task.py undo --dir myproj/ --id 20261020-001555-413 --apply
+
+# Undo is per-task and record-ordered: undoing an older task while a newer
+# one changed the same file is refused, not silently applied.
 
 # Move a whole function out of a file. The target must be `<name>.m`: any other
 # name would turn it into a private subfunction and silently break every caller.

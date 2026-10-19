@@ -276,8 +276,50 @@ def _latest_record(root):
     return None
 
 
-def task_undo(root, apply_it=False):
-    """撤销**最近一次**任务。
+def list_tasks(root):
+    """按时间列出任务记录（新的在前）。
+
+    为什么要有：`undo` 默认只撤最近一次，而**多步任务**是一串记录 ——
+    想撤到第三步之前，得先看见有哪些、哪个是哪个。
+    """
+    d = os.path.join(root, HISTORY_DIR)
+    if not os.path.isdir(d):
+        return []
+    out = []
+    for n in sorted((x for x in os.listdir(d) if x.endswith(".json")),
+                    reverse=True):
+        try:
+            rec = json.loads(io.open(os.path.join(d, n),
+                                     encoding="utf-8").read())
+        except Exception:
+            continue
+        out.append({
+            "id": rec.get("id") or n[:-5],
+            "kind": rec.get("kind") or "?",
+            "when": rec.get("when") or "",
+            "undone": bool(rec.get("undone")),
+            "files": len(rec.get("files") or []),
+            "created": len(rec.get("created") or []),
+            "params": rec.get("params") or {},
+        })
+    return out
+
+
+def _load_record(root, rid):
+    d = os.path.join(root, HISTORY_DIR)
+    path = os.path.join(d, str(rid) + ".json")
+    if not os.path.isfile(path):
+        return None
+    try:
+        rec = json.loads(io.open(path, encoding="utf-8").read())
+    except Exception:
+        return None
+    rec["_file"] = path
+    return rec
+
+
+def task_undo(root, apply_it=False, rec_id=None):
+    """撤销一次任务（默认最近一次；给了 `rec_id` 就撤那一次）。
 
     为什么需要它：任务失败会自动回滚，但**成功之后想反悔**只能靠 git ——
     而 git 只保护已提交的状态，用户刚跑完任务时通常还没提交。
@@ -291,13 +333,22 @@ def task_undo(root, apply_it=False):
         say("error", u"目录不存在：%s" % root)
         return 2, log, {}
 
-    rec = _latest_record(root)
+    if rec_id:
+        rec = _load_record(root, rec_id)
+        if not rec:
+            say("undo", u"找不到任务记录：%s" % rec_id)
+            return 1, log, {"verdict": "nothing"}
+        if rec.get("undone"):
+            say("undo", u"这条任务已经撤销过：%s" % rec_id)
+            return 1, log, {"verdict": "nothing"}
+    else:
+        rec = _latest_record(root)
     if not rec:
         say("undo", u"没有可撤销的任务记录（%s）" % HISTORY_DIR)
         return 1, log, {"verdict": "nothing"}
 
-    say("undo", u"最近一次任务：%s（%s）"
-        % (rec.get("kind"), rec.get("when", "")))
+    say("undo", u"任务 %s：%s（%s）"
+        % (rec.get("id"), rec.get("kind"), rec.get("when", "")))
 
     # **先校验再动手**：文件在任务之后被改过时，撤销会覆盖那些改动。
     conflicts = []
@@ -1586,6 +1637,42 @@ def selftest():
     finally:
         shutil.rmtree(d9, ignore_errors=True)
 
+    # ---- undo 列表与按 id 撤销 -------------------------------------------
+    d10 = tempfile.mkdtemp(prefix="taskl_")
+    try:
+        _make({"v1.m": (u"function y = aa(x)\n  y = x + 1;\nend\n")}, d10)
+        orig = io.open(os.path.join(d10, "v1.m"), encoding="utf-8").read()
+        task_rename(d10, "aa", "bb", apply_it=True)
+        task_rename(d10, "bb", "cc", apply_it=True)
+        rows = list_tasks(d10)
+        if chk(len(rows) == 2 and rows[0]["kind"] == "rename",
+               u"自证 undo --list：两条记录，新的在前",
+               u"rows=%r" % ([r["kind"] for r in rows],)):
+            good += 1
+        else:
+            bad += 1
+        # 乱序撤销（先撤较早那条）必须被拒 —— 否则会盖掉后一步的改动
+        rc_x, log_x, info_x = task_undo(d10, apply_it=True,
+                                        rec_id=rows[1]["id"])
+        if chk(rc_x == 1 and info_x.get("verdict") == "conflict",
+               u"自证 undo --id：乱序撤销被拒",
+               u"rc=%r verdict=%r" % (rc_x, info_x.get("verdict"))):
+            good += 1
+        else:
+            bad += 1
+        # 按 id 倒序撤两次 -> 回到最初
+        rc_a, _la, _ia = task_undo(d10, apply_it=True, rec_id=rows[0]["id"])
+        rc_b, _lb, _ib = task_undo(d10, apply_it=True, rec_id=rows[1]["id"])
+        back = io.open(os.path.join(d10, "v1.m"), encoding="utf-8").read()
+        if chk(rc_a == 0 and rc_b == 0 and back == orig,
+               u"自证 undo --id：倒序撤干净",
+               u"rc=%r/%r 复原=%s" % (rc_a, rc_b, back == orig)):
+            good += 1
+        else:
+            bad += 1
+    finally:
+        shutil.rmtree(d10, ignore_errors=True)
+
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     return 1 if bad else 0
 
@@ -1601,6 +1688,9 @@ def main(argv=None):
     rp.add_argument("--json", action="store_true")
     up = sub.add_parser("undo")
     up.add_argument("--dir", default=".")
+    up.add_argument("--list", action="store_true",
+                    help="列出任务记录（新的在前）")
+    up.add_argument("--id", default="", help="撤销指定的那一次")
     up.add_argument("--apply", action="store_true")
     up.add_argument("--json", action="store_true")
     bp = sub.add_parser("batch")
@@ -1644,8 +1734,23 @@ def main(argv=None):
         return selftest()
 
     if args.cmd == "undo":
-        rc, log, info = task_undo(os.path.abspath(args.dir),
-                                   apply_it=args.apply)
+        _root = os.path.abspath(args.dir)
+        if args.list:
+            rows = list_tasks(_root)
+            if args.json:
+                print(json.dumps({"ok": True, "tasks": rows},
+                                 ensure_ascii=False, indent=2))
+            elif not rows:
+                print("没有任务记录（%s）" % HISTORY_DIR)
+            else:
+                for r in rows:
+                    print("%-18s %-13s %s  %s  文件%d/新建%d"
+                          % (r["id"], r["kind"], r["when"],
+                             u"已撤销" if r["undone"] else u"可撤销",
+                             r["files"], r["created"]))
+            return 0
+        rc, log, info = task_undo(_root, apply_it=args.apply,
+                                  rec_id=(args.id or None))
         if args.json:
             print(json.dumps({"ok": rc == 0, "log": log,
                               "info": info},

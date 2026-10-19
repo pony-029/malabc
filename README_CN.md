@@ -607,6 +607,11 @@ python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
 # 若被改过的文件在任务之后又被编辑过，它会拒绝 —— 否则会静默吞掉那些编辑。
 # 记录落在 `.matlabc/tasks/`。
 python matlabc_task.py undo --dir myproj/ --apply
+python matlabc_task.py undo --dir myproj/ --list   # 看过都做过什么
+python matlabc_task.py undo --dir myproj/ --id 20261020-001555-413 --apply
+
+# 撤销是「按记录」的：若较新的任务也改过同一个文件，撤较早那条会被拒绝，
+# 而不是悄悄盖掉后一步的改动。
 
 # 把整个函数搬到独立文件。目标必须叫 `<name>.m`——换个名字它就变成
 # 文件内私有子函数，所有调用点会**静默失效**
