@@ -609,6 +609,8 @@ python matlabc_task.py move --dir myproj/ --file a.m --name helper --to helper.m
 
 # 多步当**一个事务**：每步照常验收；任一步失败，前面已完成的步骤也一起回滚
 # —— 不会留下改了一半的工程
+# plan.json 里可以引用前面步骤的参数：
+#   {"task": "rename", "old": "${prev.new}", "new": "solve"}
 python matlabc_task.py batch --dir myproj/ --steps plan.json --apply
 ```
 

@@ -854,6 +854,70 @@ def _run_step(root, step, apply_it):
                 "msg": u"task 只支持 rename / rename-field / extract / move"}]
 
 
+
+#: 可被后续步骤引用的字段（都是"参数"，不是执行结果 —— 参数在跑之前就已知，
+#: 引用它们不需要解析输出，也就不会因为某步的解析差异而错位）。
+REF_KEYS = ("old", "new", "name", "file", "to")
+
+_RE_REF = re.compile(u"\$\{(\d+|prev)\.([a-z_]+)\}")
+
+
+def resolve_step_refs(step, prior):
+    """把 `${1.new}` / `${prev.new}` 换成前面步骤的**参数值**。
+
+    为什么只允许引用参数：引用"执行结果"需要每个任务都返回结构化产出，
+    而现在的返回是给人看的日志。参数在动手前就确定，替换是确定的 —— 这也让
+    "整批推演"与"真执行"用同一套替换逻辑（副本推演时结果本来就不同）。
+    """
+    out = {}
+    for k, v in step.items():
+        if not isinstance(v, str):
+            out[k] = v
+            continue
+
+        def sub(m):
+            idx, key = m.group(1), m.group(2)
+            if key not in REF_KEYS:
+                raise ValueError(u"引用里的字段只能是 %s，收到 `%s`"
+                                 % (u" / ".join(REF_KEYS), key))
+            if idx == u"prev":
+                if not prior:
+                    raise ValueError(u"`${prev.%s}` 用在了第 1 步" % key)
+                src = prior[-1]
+                label = u"上一步"
+            else:
+                n = int(idx)
+                if n < 1 or n > len(prior):
+                    raise ValueError(u"`${%s.%s}` 指向第 %s 步，但此前只跑了 %d 步"
+                                     % (idx, key, idx, len(prior)))
+                src = prior[n - 1]
+                label = u"第 %s 步" % idx
+            if key not in src or src[key] in (None, u""):
+                raise ValueError(u"%s没有 `%s` 可引用" % (label, key))
+            return str(src[key])
+
+        out[k] = _RE_REF.sub(sub, v)
+    return out
+
+
+def resolve_all_steps(steps):
+    """**动手之前**把整批的引用一次解析完。返回 (resolved, err)。
+
+    为什么不能在循环里边跑边解析：第 2 步引用写错时，第 1 步已经落盘了 ——
+    于是"引用错误"这种纯参数问题也会留下改了一半的工程。
+    引用只依赖前面步骤的**参数**，所以在开始写盘之前就能全部算完。
+    """
+    resolved = []
+    for i, st in enumerate(steps):
+        if not isinstance(st, dict):
+            return None, u"第 %d 步不是对象" % (i + 1)
+        try:
+            resolved.append(resolve_step_refs(st, resolved))
+        except ValueError as exc:
+            return None, u"第 %d 步引用无效：%s" % (i + 1, exc)
+    return resolved, None
+
+
 def task_batch(root, steps, apply_it=False):
     """多步事务。返回 (rc, log)，log 里每步前有一条分隔行。"""
     log = []
@@ -866,6 +930,12 @@ def task_batch(root, steps, apply_it=False):
         return 2, log
     if not isinstance(steps, (list, tuple)) or not steps:
         say("error", u"steps 必须是非空数组")
+        return 2, log
+
+    resolved, ref_err = resolve_all_steps(steps)
+    if ref_err:
+        # 一个字节都还没写 —— 引用错误是**参数**错误，不该产生任何副作用。
+        say("error", ref_err)
         return 2, log
 
     if not apply_it:
@@ -882,9 +952,9 @@ def task_batch(root, steps, apply_it=False):
                     os.makedirs(d)
                 shutil.copyfile(p, dst)
             rows = []
-            for i, st in enumerate(steps):
-                rc, one = _run_step(tmp, st, True)
-                rows.append((i + 1, st.get("task") or "?", rc, one))
+            for i, st2 in enumerate(resolved):
+                rc, one = _run_step(tmp, st2, True)
+                rows.append((i + 1, st2.get("task") or "?", rc, one))
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
         ok = all(r[2] == 0 for r in rows)
@@ -897,7 +967,7 @@ def task_batch(root, steps, apply_it=False):
 
     snap = _snapshot(root)
     done = 0
-    for i, st in enumerate(steps):
+    for i, st in enumerate(resolved):
         rc, one = _run_step(root, st, True)
         done = i + 1
         if rc != 0:
@@ -1276,6 +1346,37 @@ def selftest():
             bad += 1
     finally:
         shutil.rmtree(d7, ignore_errors=True)
+
+    # ---- batch 引用：${n.new} / ${prev.new} / 越界不动文件 -----------------
+    d8 = tempfile.mkdtemp(prefix="taskr_")
+    try:
+        _make({"r1.m": (u"function y = aa(x)\n  y = x + 1;\nend\n"),
+               "r2.m": (u"function r = bb(v)\n  r = aa(v);\nend\n")}, d8)
+        rc, log = task_batch(d8, [
+            {"task": "rename", "old": "aa", "new": "cc"},
+            {"task": "rename", "old": "${prev.new}", "new": "dd"}],
+            apply_it=True)
+        now = io.open(os.path.join(d8, "r1.m"), encoding="utf-8").read()
+        if chk(rc == 0 and u"dd" in now,
+               u"自证 引用：${prev.new} 串起来", u"rc=%r" % (rc,)):
+            good += 1
+        else:
+            bad += 1
+        # 越界引用：**一个字节都不能改**
+        snap = now
+        rc2, log2 = task_batch(d8, [
+            {"task": "rename", "old": "dd", "new": "ee"},
+            {"task": "rename", "old": "${9.new}", "new": "ff"}],
+            apply_it=True)
+        back = io.open(os.path.join(d8, "r1.m"), encoding="utf-8").read()
+        msg = u"".join(r["msg"] for r in log2)
+        if chk(rc2 == 2 and back == snap and u"引用无效" in msg,
+               u"自证 引用：越界时不动任何文件", u"rc=%r 复原=%s" % (rc2, back == snap)):
+            good += 1
+        else:
+            bad += 1
+    finally:
+        shutil.rmtree(d8, ignore_errors=True)
 
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     return 1 if bad else 0

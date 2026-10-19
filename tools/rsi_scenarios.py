@@ -44,7 +44,7 @@ CORPUS = os.path.join(ROOT, "tests", "sample_m")
 
 #: 场景数下界。加场景是允许的，删场景必须同时改这个数（与 check_all 的
 #: MIN_GUARDS 同一套纪律：删掉一条也会红）。
-MIN_SCENARIOS = 77
+MIN_SCENARIOS = 78
 
 
 def _uri(path):
@@ -1454,6 +1454,25 @@ def sc_task_batch_cli_rollback(ctx):
         shutil.rmtree(d, ignore_errors=True)
 
 
+
+def sc_task_batch_ref(ctx):
+    """CLI batch：第二步用 ${prev.new} 引用上一步改出来的名字。"""
+    d = _mk({
+        "s1.m": (u"function y = aa(x)\n  y = x + 1;\nend\n", "utf-8", ""),
+        "s2.m": (u"function r = bb(v)\n  r = aa(v);\nend\n", "utf-8", ""),
+    })
+    try:
+        p = _write_steps(d, [{"task": "rename", "old": "aa", "new": "cc"},
+                             {"task": "rename", "old": "${prev.new}",
+                              "new": "dd"}])
+        rc, out = _run_task_cmd(d, "batch", ["--steps", p, "--apply"])
+        now = io.open(os.path.join(d, "s1.m"), encoding="utf-8").read()
+        ok = (rc == 0 and u"2 步全部通过" in out and u"dd" in now)
+        return ok, "rc=%s 引用生效=%s" % (rc, u"dd" in now)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default="")
@@ -1535,7 +1554,8 @@ def main(argv=None):
                 ("任务 extract 跨文件", sc_task_extract_to),
                 ("任务 move 跨文件", sc_task_move),
                 ("任务 batch（CLI）", sc_task_batch_cli),
-                ("任务 batch 回滚（CLI）", sc_task_batch_cli_rollback)]
+                ("任务 batch 回滚（CLI）", sc_task_batch_cli_rollback),
+                ("任务 batch 步骤引用", sc_task_batch_ref)]
         for name, fn in solo:
             try:
                 ok, detail = fn({"root": root})

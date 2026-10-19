@@ -639,6 +639,8 @@ python matlabc_task.py move --dir myproj/ --file a.m --name helper --to helper.m
 
 # Several steps as ONE transaction. Each step is validated as usual; if any
 # step fails, every earlier step is rolled back too — no half-refactored tree.
+# Inside plan.json a step may reference an earlier step's parameters:
+#   {"task": "rename", "old": "${prev.new}", "new": "solve"}
 python matlabc_task.py batch --dir myproj/ --steps plan.json --apply
 
 # Generate a deterministic self-verified fix patch
