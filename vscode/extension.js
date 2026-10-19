@@ -725,6 +725,31 @@ function activate(context) {
     })
   );
 
+  // ---- 打开使用说明（R373）--------------------------------------------
+  // 手册只讲「装完怎么用」，随包分发；这里用 VS Code 自带的 Markdown 预览打开。
+  // 两个候选：装好的扩展 → 包根 USER_GUIDE.md；直接跑仓库 → vscode/USER_GUIDE.md。
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.openGuide', async () => {
+      const cands = [
+        path.join(context.extensionPath, 'USER_GUIDE.md'),
+        path.join(path.dirname(lspPath), '..', 'vscode', 'USER_GUIDE.md'),
+      ];
+      let hit = '';
+      for (const p of cands) {
+        try {
+          if (fs.existsSync(p)) { hit = p; break; }
+        } catch (e) { /* 权限问题就跳过这个候选 */ }
+      }
+      if (!hit) {
+        vscode.window.showErrorMessage('matlabc: 找不到使用说明文件');
+        return;
+      }
+      log('打开使用说明 ' + hit);
+      await vscode.commands.executeCommand(
+        'markdown.showPreview', vscode.Uri.file(hit));
+    })
+  );
+
   // ---- 生成 HTML 分析报告（R327）-------------------------------------
   // 分析器本来就能出这份报告（`--html`），只是编辑器里拿不到。
   // 报告落在工作区的 `.matlabc/` 下，不污染源码目录，也不用用户记命令。

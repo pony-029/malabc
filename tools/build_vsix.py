@@ -91,6 +91,11 @@ ASSET_DIRS = ("syntaxes", "icons", "data")
 EXTRA_FILES = (
     (os.path.join(REPO, "releases", "demo", "matlabc-tour.html"),
      "extension/media/tour.html"),
+    # 用户手册：**只讲怎么用**，不含发版与实现。挂在包根，由
+    # `matlabc: 打开使用说明` 用 Markdown 预览打开（不像导览那样在 media/，
+    # 因为它不是网页，交给 VS Code 的预览更合适）。
+    (os.path.join(REPO, "vscode", "USER_GUIDE.md"),
+     "extension/USER_GUIDE.md"),
 )
 
 #: 分析器侧：LSP 入口 + CLI + 包目录（`analyzer/` 只有 3 个源文件）
