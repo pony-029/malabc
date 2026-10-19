@@ -74,12 +74,32 @@ def _glyph_missing(font_path, ch):
 TOUR = os.path.join(REPO, "releases", "demo", "matlabc-tour.html")
 GUIDE = os.path.join(REPO, "releases", "docs", "USER_GUIDE.md")
 
+#: 会被人读到的 Markdown。手册是随包分发的（最要紧），README/CHANGELOG 在仓库里。
+MD_FILES = (
+    GUIDE,
+    os.path.join(REPO, "README.md"),
+    os.path.join(REPO, "README_CN.md"),
+    os.path.join(REPO, "vscode", "CHANGELOG.md"),
+)
+
 #: 允许在手册里出现、但雅黑没有字形的字符 —— **必须写理由**。
 #: 它们不是在"画图"，而是在**引用界面上的真实文本**，改掉会让文档失真。
 MD_ALLOW = {
     u"✓": "状态栏图标文本，VS Code 自己渲染成图标",
     u"⚠": "状态栏告警图标文本，同上",
     u"✗": "跨语言报告的表格里那一列输出（浏览器渲染）",
+    # 以下是技术记号（README / CHANGELOG 里的数学关系），不是"忘了换字形"：
+    # 它们由渲染端（GitHub / 编辑器）用回退字体负责，雅黑没有是有意的。
+    u"\u2194": "技术记号：双向关系（渲染端回退）",
+    u"\u21c4": "技术记号：两向对账（渲染端回退）",
+    u"\u21d2": "技术记号：蕴含（渲染端回退）",
+    u"\u21d4": "技术记号：等价（渲染端回退）",
+    u"\u2205": "技术记号：空集（渲染端回退）",
+    u"\u2286": "技术记号：子集（渲染端回退）",
+    u"\u21e2": "变更日志里在讨论这个字符本身（引用，不是要渲染它）",
+    u"\u21e5": "同上：讨论缩进符",
+    u"\u2317": "同上：讨论数值占位符",
+    u"\u23f8": "同上：讨论过暂停符（已换成纯文字）",
 }
 
 
@@ -93,20 +113,28 @@ def scan_tour(path=TOUR):
     return set(ch for ch in body if ord(ch) > 127)
 
 
-def scan_md(path=GUIDE):
-    """手册正文里缺字形的字符，以及已经陈旧的例外登记。"""
-    if not os.path.isfile(path):
-        return [], []
-    md = io.open(path, encoding="utf-8").read()
-    md_chars = set(ch for ch in md if ord(ch) > 127)
+def scan_md(paths=None):
+    """Markdown 里缺字形的字符，以及已经陈旧的例外登记。
+
+    返回 (missing, stale)：`missing` 是 [(文件, 字符)]，`stale` 是
+    **在所有文件里都找不到**的例外登记。
+    """
+    paths = paths or MD_FILES
+    seen = set()
     missing = []
-    for ch in sorted(md_chars):
-        if not _glyph_missing(UI_FONT, ch):
+    for p in paths:
+        if not os.path.isfile(p):
             continue
-        if ch in MD_ALLOW and MD_ALLOW[ch].strip():
-            continue
-        missing.append(ch)
-    stale = [ch for ch in MD_ALLOW if ch not in md_chars]
+        md = io.open(p, encoding="utf-8").read()
+        chars = set(ch for ch in md if ord(ch) > 127)
+        seen |= chars
+        for ch in sorted(chars):
+            if not _glyph_missing(UI_FONT, ch):
+                continue
+            if ch in MD_ALLOW and MD_ALLOW[ch].strip():
+                continue
+            missing.append((os.path.basename(p), ch))
+    stale = [ch for ch in MD_ALLOW if ch not in seen]
     return missing, stale
 
 
@@ -170,9 +198,9 @@ def main(argv=None):
             print(u"   %r  U+%04X" % (ch, ord(ch)))
     if md_missing:
         bad += 1
-        print("FG4 失败：手册里有字符在界面字体里没有字形：")
-        for ch in md_missing:
-            print(u"   %r  U+%04X" % (ch, ord(ch)))
+        print("FG4 失败：这些 Markdown 里有字符在界面字体里没有字形：")
+        for where, ch in md_missing[:12]:
+            print(u"   %-16s %r  U+%04X" % (where, ch, ord(ch)))
         print("   换一个字形存在的字符，或在 MD_ALLOW 里登记理由。")
     if md_stale:
         bad += 1
@@ -236,10 +264,11 @@ def selftest():
         m = os.path.join(d, "fake.md")
         io.open(m, "w", encoding="utf-8", newline="").write(
             u"中文 \u21e2 \u2713\n")
-        miss, stale = scan_md(m)
-        chk(u"\u21e2" in miss, "FG4 会报缺字形字符")
-        chk(u"\u2713" not in miss, "FG4 不报已登记的例外")
-        chk(len(stale) >= 1, "FG4 会报手册里已不存在的例外登记")
+        miss, stale = scan_md([m])
+        miss_chars = [ch for _, ch in miss]
+        chk(u"\u21e2" in miss_chars, "FG4 会报缺字形字符")
+        chk(u"\u2713" not in miss_chars, "FG4 不报已登记的例外")
+        chk(len(stale) >= 1, "FG4 会报文件里已不存在的例外登记")
     finally:
         import shutil
         shutil.rmtree(d, ignore_errors=True)
@@ -250,3 +279,5 @@ def selftest():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+

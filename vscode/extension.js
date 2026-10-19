@@ -1249,14 +1249,14 @@ function activate(context) {
   // 打开"撤销后"的并排预览（左＝当前，右＝撤销后）。
   // 抽成函数是因为它现在有两个调用者（命令与记录视图的右键菜单）；
   // 复制一遍就得记住两处都要保留 .m 后缀、都要设 pendingUndo。
-  async function showUndoDiffs(info) {
+  async function showUndoDiffs(info, forceLimit) {
     const previews = (info && info.previews) || [];
     const tmpDir = path.join(context.globalStoragePath || os.tmpdir(),
                              'undo-preview');
     try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (e) { /* */ }
     pendingUndo = info;
     // 打开几个 diff 由设置决定：大工程里 20 个文件全开会把标签栏塞满。
-    const limit = Math.max(1, Math.min(40,
+    const limit = forceLimit || Math.max(1, Math.min(40,
       vscode.workspace.getConfiguration('matlabc')
         .get('undoDiffLimit', 8)));
     let opened = 0;
@@ -1323,15 +1323,22 @@ function activate(context) {
 
         const item = new vscode.TreeItem(label,
           vscode.TreeItemCollapsibleState.None);
-        item.description = (rec.undone ? '已撤销  ' : '') + (rec.when || '');
+        const ms = rec.elapsed_ms || 0;
+        const dur = ms >= 1000 ? (ms / 1000).toFixed(1) + 's' : ms + 'ms';
+        const isRollback = (rec.verdict === 'rollback');
+        item.description = (isRollback ? '回滚  '
+                            : (rec.undone ? '已撤销  ' : '')) +
+                           dur + '  ' + (rec.when || '');
         item.tooltip = 'id: ' + rid +
                        '\n文件: ' + (paths.join('\n      ') || '无') +
                        (rec.params ? ('\n参数: ' + JSON.stringify(rec.params)) : '');
-        item.iconPath = new vscode.ThemeIcon(rec.undone ? 'check' : 'history');
+        item.iconPath = new vscode.ThemeIcon(
+          isRollback ? 'circle-slash' : (rec.undone ? 'check' : 'history'));
         item.recordId = rid;
         item._primary = paths[0] || '';
-        item.contextValue = rec.undone ? 'taskDone' : 'taskPending';
-        if (!rec.undone) {
+        item.contextValue = isRollback ? 'taskRollback'
+                            : (rec.undone ? 'taskDone' : 'taskPending');
+        if (!rec.undone && !isRollback) {
           item.command = { command: 'matlabc.undoLastTask', title: '撤销' };
         }
 
@@ -1551,6 +1558,9 @@ function activate(context) {
 
       const ACT_UNDO = '撤销';
       const ACT_SEE = '查看这段提交';
+      const ACT_ALL = '全部打开 diff';
+      const acts = [ACT_UNDO, ACT_SEE];
+      if ((info.files || 0) > opened) acts.push(ACT_ALL);
       const picks = await vscode.window.showWarningMessage(
         'matlabc: ' + (opened
           ? ('已打开前 ' + opened + ' 个 diff（左＝当前，右＝撤销后）' +
@@ -1558,7 +1568,11 @@ function activate(context) {
                ? '（共 ' + info.files + ' 个文件）' : '') +
              '，diff 里也能点「确认撤销」。')
           : ((info.files || 0) + ' 个文件将恢复。')) + '现在撤销？',
-        { modal: true }, ACT_UNDO, ACT_SEE);
+        { modal: true }, ...acts);
+      if (picks === ACT_ALL) {
+        await showUndoDiffs(info, 40);      // 用户明确要看全，就不再按设置截断
+        return;
+      }
       if (picks === ACT_SEE) {
         vscode.commands.executeCommand('matlabc.showRecentCommits');
         return;

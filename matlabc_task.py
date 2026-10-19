@@ -266,7 +266,8 @@ def _sha_of(path):
         return u""
 
 
-def record_task(root, kind, params, backup, created=None, scan=None):
+def record_task(root, kind, params, backup, created=None, scan=None,
+                verdict="pass", elapsed_ms=0):
     """记一条任务。**只在验收通过之后调用** —— 失败的任务已经自己回滚了，
     再记一条只会让 undo 撤销一个并不存在的变化。
     """
@@ -286,9 +287,13 @@ def record_task(root, kind, params, backup, created=None, scan=None):
             "kind": kind,
             "params": params,
             "when": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now)),
-            "undone": False,
+            "undone": (verdict != "pass"),
             "batch": _CURRENT_BATCH or u"",
             "git_head": _git_head(root),
+            #: pass = 改动已生效；rollback = 没改成、已自动回退（这种记录只作历史，
+            #: 不再提供 undo —— 它没有"改前"状态可退）
+            "verdict": verdict,
+            "elapsed_ms": int(elapsed_ms or 0),
             # 任务**之前**的结构（函数数 / 调用边 / 诊断数）。
             # 撤销时拿它当验收标准：把文件恢复原样之后，结构也必须回到这里。
             "scan": ({k: (scan or {}).get(k) for k in
@@ -677,6 +682,7 @@ def task_rename(root, old, new, apply_it=False, as_json=False,
                 kind="ident"):
     """rename 任务：prepare -> 验收条件 -> apply -> validate（失败自动 rollback）。"""
     log = []
+    t0 = time.time()
     def say(step, msg):
         log.append({"step": step, "msg": msg})
 
@@ -743,7 +749,8 @@ def task_rename(root, old, new, apply_it=False, as_json=False,
             _rid = record_task(root, ("rename-field" if kind == "field"
                                       else "rename"),
                                {"old": old, "new": new}, backup,
-                               scan=before)
+                               scan=before,
+                               elapsed_ms=(time.time() - t0) * 1000)
             if _rid:
                 say("record", u"已记入 %s（可 undo）" % HISTORY_DIR)
             else:
@@ -753,6 +760,10 @@ def task_rename(root, old, new, apply_it=False, as_json=False,
                             "criteria": criteria, "verdict": "pass"}
         # **不过就自己退回去** —— 留下一个坏状态比不改更糟
         _restore(backup)
+        # 失败也要留痕：否则"我刚才那次是不是没成"没有任何地方能查
+        record_task(root, u"rollback-" + (kind or "task"),
+                    {"old": old, "new": new}, {}, verdict="rollback",
+                    elapsed_ms=(time.time() - t0) * 1000)
         why = []
         if not ok_left:
             why.append(u"仍有 %d 处旧名字" % left)
@@ -909,6 +920,7 @@ def task_extract(root, rel, start, end, name, ins, outs,
     那是下一步；这一版宁可要求人写清楚，也不假装猜得准 —— 猜错的提取比不提更糟。
     """
     log = []
+    t0 = time.time()
 
     def say(step, msg):
         log.append({"step": step, "msg": msg})
@@ -1045,7 +1057,8 @@ def task_extract(root, rel, start, end, name, ins, outs,
             _rid = record_task(root, "extract",
                                {"file": rel, "name": name,
                                 "lines": "%d-%d" % (start, end)},
-                               backup, created, scan=before)
+                               backup, created, scan=before,
+                               elapsed_ms=(time.time() - t0) * 1000)
             if _rid:
                 say("record", u"已记入 %s（可 undo）" % HISTORY_DIR)
             else:
@@ -1143,6 +1156,7 @@ def _function_block(lines, name):
 def task_move(root, rel, name, to, apply_it=False):
     """move 任务：把 `rel` 里的函数 `name` 整块搬到 `to`（同工程）。"""
     log = []
+    t0 = time.time()
 
     def say(step, msg):
         log.append({"step": step, "msg": msg})
@@ -1247,7 +1261,8 @@ def task_move(root, rel, name, to, apply_it=False):
             say("validate", u"验收通过（3/3）")
             _rid = record_task(root, "move",
                                {"file": rel, "name": name, "to": to},
-                               backup, created, scan=before)
+                               backup, created, scan=before,
+                               elapsed_ms=(time.time() - t0) * 1000)
             if _rid:
                 say("record", u"已记入 %s（可 undo）" % HISTORY_DIR)
             else:
