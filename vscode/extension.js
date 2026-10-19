@@ -469,6 +469,11 @@ function activate(context) {
     return;
   }
 
+  collection = vscode.languages.createDiagnosticCollection('matlabc');
+
+  // **抽成函数**（R397）：索引卡住、配置刚改过时，用户需要"重启服务"而不是
+  // 重开整个窗口 —— 后者会连带丢掉未保存的编辑状态。
+  function startClient() {
   client = new LspClient({
     python: python,
     script: lspPath,
@@ -479,8 +484,6 @@ function activate(context) {
       MATLABC_DOC_LANG: cfg.get('docLang', 'both'),
     }),
   });
-
-  collection = vscode.languages.createDiagnosticCollection('matlabc');
 
   client.onNotification((msg) => {
     if (msg.method !== 'textDocument/publishDiagnostics') return;
@@ -540,6 +543,47 @@ function activate(context) {
                '启动失败：' + e.message + ' —— 点击选择解释器');
     showPythonHelp(e.message);
   });
+  }
+
+  startClient();
+
+  // 状态栏菜单（R397）：把"出问题时最常用的三件事"放在点击里。
+  if (statusBar) statusBar.command = 'matlabc.statusMenu';
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.restartServer', async () => {
+      log('手动重启服务');
+      try { if (collection) collection.clear(); } catch (e) { /* ignore */ }
+      try { if (client) client.dispose(); } catch (e) { /* 已退 */ }
+      client = null;
+      showStatus(context, '$(loading~spin) matlabc', 'matlabc：正在重启…');
+      startClient();
+      vscode.window.setStatusBarMessage('matlabc: 已重启服务', 3000);
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.statusMenu', async () => {
+      const pick = await vscode.window.showQuickPick([
+        { label: '$(refresh) 重新启动服务', act: 'matlabc.restartServer',
+          description: '索引卡住、或刚改过配置时用' },
+        { label: '$(symbol-method) 更换 Python 解释器', act: 'matlabc.selectPython' },
+        { label: '$(book) 打开使用说明', act: 'matlabc.openGuide' },
+        { label: '$(output) 查看日志', act: 'matlabc.showLog' },
+      ], { placeHolder: 'matlabc' });
+      if (pick && pick.act) vscode.commands.executeCommand(pick.act);
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.showLog', async () => {
+      const p = path.join(context.extensionPath, 'matlabc.log');
+      if (fs.existsSync(p)) {
+        const doc = await vscode.workspace.openTextDocument(p);
+        vscode.window.showTextDocument(doc);
+      } else {
+        vscode.window.showInformationMessage(
+          'matlabc: 还没有日志（' + p + '）');
+      }
+    })
+  );
 
   // 打开时推一次全文；已打开的文档补推一遍
   context.subscriptions.push(

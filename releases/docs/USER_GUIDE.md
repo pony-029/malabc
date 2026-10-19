@@ -187,7 +187,7 @@ code --install-extension matlabc-<版本>.vsix
 
 ## 3. 命令清单
 
-按 `Ctrl+Shift+P`，输入 `matlabc`，共 11 条：
+按 `Ctrl+Shift+P`，输入 `matlabc`，共 13 条：
 
 ![命令面板](figures/commands.png)
 
@@ -204,6 +204,8 @@ code --install-extension matlabc-<版本>.vsix
 | `matlabc: 打开使用说明` | 就是本文（随扩展一起分发，离线可看） |
 | `matlabc: 打开使用说明（PDF）` | 本文的 PDF 版：四张示意图直接印在页面上，也适合转发 |
 | `matlabc: 选择 Python 解释器` | 挑一个 Python 并验证能启动，写进设置 —— **启动失败时最先试它** |
+| `matlabc: 重新启动服务` | 索引卡住、刚改过设置时用 —— 只重启分析服务，不重开窗口 |
+| `matlabc: 查看日志` | 打开扩展日志 |
 | `matlabc: 打开使用导览` | 8 步动画，一屏讲清每个功能在哪 —— **第一次用建议先看它** |
 | `matlabc: 热点函数排行` | 全工程按「复杂度 × 调用者数」排序，选中即跳转 |
 | `matlabc: 热点函数排行（当前目录）` | 只看当前目录 —— 跨模块的分数没有可比性 |
