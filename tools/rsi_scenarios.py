@@ -44,7 +44,7 @@ CORPUS = os.path.join(ROOT, "tests", "sample_m")
 
 #: 场景数下界。加场景是允许的，删场景必须同时改这个数（与 check_all 的
 #: MIN_GUARDS 同一套纪律：删掉一条也会红）。
-MIN_SCENARIOS = 60
+MIN_SCENARIOS = 63
 
 
 def _uri(path):
@@ -1035,6 +1035,104 @@ def sc_huge_file(ctx):
         shutil.rmtree(d, ignore_errors=True)
 
 
+# ---- R370：任务化（matlabc_task.py）-----------------------------------
+
+def _task_demo():
+    """一个小工程：定义 + 注释 + 字符串，用来验「该改的改、不该改的不动」。"""
+    return _mk({
+        "t1.m": (u"function y = helper(x)\n"
+                 u"% helper 在注释里，不该被改\n"
+                 u"y = x;\n"
+                 u"end\n", "utf-8", ""),
+        "t2.m": (u"function r = run(v)\n"
+                 u"r = helper(v) + helper(v);\n"
+                 u"end\n", "utf-8", ""),
+        "t3.m": (u"function s = lit()\n"
+                 u"s = 'helper';\n"
+                 u"end\n", "utf-8", ""),
+    })
+
+
+def _run_task(root, args):
+    """跑一次任务，返回 (rc, stdout)。**走 CLI**，不 import 内部函数。"""
+    cmd = [sys.executable, os.path.join(ROOT, "matlabc_task.py"), "rename",
+           "--dir", root] + list(args)
+    log = os.path.join(tempfile.gettempdir(), "task_out_%d.txt" % os.getpid())
+    with io.open(log, "wb") as fh:
+        try:
+            rc = subprocess.call(cmd, cwd=ROOT, stdin=subprocess.DEVNULL,
+                                 stdout=fh, stderr=subprocess.STDOUT,
+                                 timeout=180)
+        except subprocess.TimeoutExpired:
+            rc = -9
+    text = io.open(log, "r", encoding="utf-8", errors="replace").read()
+    try:
+        os.remove(log)
+    except OSError:
+        pass
+    return rc, text
+
+
+def sc_task_dry_run(ctx):
+    """dry-run 必须**不写盘**，且把验收条件先列出来。"""
+    d = _task_demo()
+    try:
+        before = io.open(os.path.join(d, "t1.m"), encoding="utf-8").read()
+        rc, out = _run_task(d, ["--old", "helper", "--new", "assist"])
+        after = io.open(os.path.join(d, "t1.m"), encoding="utf-8").read()
+        ok = (rc == 0 and "验收" not in out and before == after
+              and u"criteria" in out and u"dry-run" in out)
+        return ok, "rc=%s 未写盘=%s" % (rc, before == after)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def sc_task_apply(ctx):
+    """apply 后：4 条验收全过、注释与字符串没被误改。"""
+    d = _task_demo()
+    try:
+        rc, out = _run_task(d, ["--old", "helper", "--new", "assist",
+                                "--apply"])
+        t1 = io.open(os.path.join(d, "t1.m"), encoding="utf-8").read()
+        t3 = io.open(os.path.join(d, "t3.m"), encoding="utf-8").read()
+        ok = (rc == 0 and u"验收通过（4/4）" in out
+              and "assist" in t1 and u"% helper 在注释里" in t1
+              and u"'helper'" in t3)
+        return ok, "rc=%s 4/4=%s" % (rc, u"4/4" in out)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def sc_task_rollback(ctx):
+    """写盘失败时必须**自己退回去**，不能留下改了一半的工程。
+
+    第一版这条场景写错了：我先改好名、再手工塞回**另一个**旧名字，然后期望
+    验收失败 —— 而那个残留名字本来就不属于本次改名，验收判通过是对的。
+    （判据写错比功能写错更隐蔽，这一条是变异抽样式的自查抓出来的。）
+
+    真正会触发回滚的是**写不进去**：把目标文件设成只读，`_apply_rename`
+    抛异常 → 备份恢复 → rc=1 且 `rollback` 出现在输出里。
+    """
+    d = _task_demo()
+    try:
+        _run_task(d, ["--old", "helper", "--new", "assist", "--apply"])
+        t1 = os.path.join(d, "t1.m")
+        t2 = os.path.join(d, "t2.m")
+        snap = io.open(t1, encoding="utf-8").read()
+        os.chmod(t2, 0o444)          # 只读：写 t2 必然失败
+        try:
+            rc, out = _run_task(d, ["--old", "assist", "--new", "helper2",
+                                    "--apply"])
+        finally:
+            os.chmod(t2, 0o666)      # 恢复权限，否则清理不掉
+        now = io.open(t1, encoding="utf-8").read()
+        ok = (rc == 1 and u"rollback" in out and now == snap)
+        return ok, "rc=%s 回滚=%s 文件复原=%s" % (
+            rc, u"rollback" in out, now == snap)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default="")
@@ -1104,7 +1202,10 @@ def main(argv=None):
                 ("连续 10 次调用", sc_mcp_sequential),
                 ("文件名≠函数名", sc_name_mismatch),
                 ("含 NUL 字节", sc_nul_bytes),
-                ("5000 函数大文件", sc_huge_file)]
+                ("5000 函数大文件", sc_huge_file),
+                ("任务 rename dry-run", sc_task_dry_run),
+                ("任务 rename apply", sc_task_apply),
+                ("任务 rename 回滚", sc_task_rollback)]
         for name, fn in solo:
             try:
                 ok, detail = fn({"root": root})

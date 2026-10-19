@@ -579,6 +579,11 @@ python matlabc flow myproj --auto-apply --gen-apply-patch
 
 # 问答式代码理解（离线 => 回显可直接粘贴的提示词）
 python matlabc_ask.py "风险最高在哪" --dir myproj
+
+# 把「改代码」当成任务：改名自带验收条件与回滚
+# 动手**之前**先把判据列出来，写完再逐条验；任一条不过或写盘失败，自动逐字节恢复
+python matlabc_task.py rename --dir myproj/ --old helper --new assist
+python matlabc_task.py rename --dir myproj/ --old helper --new assist --apply
 ```
 
 ---

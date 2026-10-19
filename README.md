@@ -605,6 +605,12 @@ python matlabc.py --binary libcublas.so.12 --binary-symbols out.json
 # ...or do both in one command (no intermediate JSON)
 python matlabc.py myproj/ --binary-attach libcublas.so.12 --json out.json
 
+# A TASK instead of a query: rename a symbol with acceptance criteria and rollback.
+# It prints the criteria BEFORE touching anything, then validates after writing —
+# and restores every touched file if any criterion fails or a write blows up.
+python matlabc_task.py rename --dir myproj/ --old helper --new assist
+python matlabc_task.py rename --dir myproj/ --old helper --new assist --apply
+
 # Generate a deterministic self-verified fix patch
 python matlabc flow myproj --auto-apply --gen-apply-patch
 
