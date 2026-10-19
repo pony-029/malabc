@@ -531,6 +531,12 @@ flowchart TD
 
 `ci-examples/` 提供开箱即用的 GitHub Actions / GitLab CI 模板，复制即可用。
 
+**本仓库自己在两个平台上跑门禁。** `ci.yml` 里有 `ubuntu-latest` 与 `windows-latest`
+两个 job；Windows 那个重放四层检查 —— 33 道静态门、LSP/MCP 行为判据、60 个端到端场景、
+变异抽样 —— 否则这些只会在作者的机器上被验证过。跨平台的坏法很少是崩溃：`C:\...`
+路径在 Linux 上只是「文件不存在」，把 ELF 喂给 PE 解析器只是「没有结果」，
+两边都很安静，直到有人在对面的机器上跑一次。
+
 ## 命令速查
 
 ```bash

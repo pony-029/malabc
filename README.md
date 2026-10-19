@@ -560,6 +560,15 @@ flowchart TD
 
 `ci-examples/` provides ready-to-use GitHub Actions / GitLab CI templates; just copy them in.
 
+**This repository runs its own gates on both platforms.** `ci.yml` has an
+`ubuntu-latest` job and a `windows-latest` job; the Windows one replays the four
+layers that would otherwise only ever be exercised on the author's machine —
+the 33 static gates, the LSP/MCP behavioural judgements, the 60 end-to-end
+scenarios, and the mutation sampling. Cross-platform breakage is rarely a crash:
+a `C:\...` path on Linux is just "file not found", and feeding an ELF file to a
+PE parser is just "no results" — both stay silent until something runs on the
+other side.
+
 ## Command Cheatsheet
 
 ```bash

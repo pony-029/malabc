@@ -42,3 +42,40 @@ jobs:
             self_analysis.md
             self_analysis.html
             ci_py36.json
+
+  # ---------------------------------------------------------------
+  # R367：**Windows 与 Linux 必须都验一遍**。
+  #
+  # 在此之前，仓库只有 ubuntu 的 CI。而本项目声称「两边部署」——
+  # 跨平台真正坏掉的方式不是崩溃，是**在另一个平台上安静地不工作**
+  # （`C:\...` 只是"文件不存在"、PE 解析器读 ELF 只是"空结果"）。
+  # 这类问题只有在对面的机器上跑一遍才会露出来。
+  #
+  # 这里跑的是「行为」而不是「能启动」：
+  #   check_all        33 道静态门（每道门自带两向自证）
+  #   lsp_selftest     LSP/MCP 的行为判据（含 ELF/PE 分派、跨语言、缓存）
+  #   rsi_scenarios    两个协议端到端（60 个场景）
+  #   mutate_sample    变异抽样：证明这些判据真的会红
+  # ---------------------------------------------------------------
+  windows-verify:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Static gates (33, each self-proving)
+        run: python tools/check_all.py --quiet
+
+      - name: Behavioural judgements (LSP / MCP)
+        run: python tools/lsp_selftest.py --all
+
+      - name: End-to-end scenarios (both protocols)
+        run: python tools/rsi_scenarios.py
+
+      - name: Mutation sampling (a judgement that cannot fail is not a judgement)
+        run: python tools/mutate_sample.py
