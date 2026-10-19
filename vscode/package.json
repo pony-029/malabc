@@ -2,7 +2,7 @@
   "name": "matlabc",
   "displayName": "matlabc",
   "description": "MATLAB 工程的代码理解工具：结构感知的诊断、跨文件导航、调用链分析与影响面评估。",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "publisher": "冯磊",
   "engines": {
     "vscode": "^1.80.0"
@@ -160,6 +160,21 @@
         "command": "matlabc.confirmUndo",
         "title": "matlabc: 确认撤销",
         "category": "matlabc"
+      },
+      {
+        "command": "matlabc.undoTaskById",
+        "title": "matlabc: 撤销这一次改动",
+        "category": "matlabc"
+      },
+      {
+        "command": "matlabc.diffTaskById",
+        "title": "matlabc: 查看这一次改了什么",
+        "category": "matlabc"
+      },
+      {
+        "command": "matlabc.copyTaskId",
+        "title": "matlabc: 复制记录 id",
+        "category": "matlabc"
       }
     ],
     "menus": {
@@ -168,6 +183,28 @@
           "command": "matlabc.showRelations",
           "when": "editorLangId == matlab",
           "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "matlabc.undoTaskById",
+          "when": "view == matlabcTasks && viewItem == taskPending",
+          "group": "inline"
+        },
+        {
+          "command": "matlabc.diffTaskById",
+          "when": "view == matlabcTasks && viewItem == taskPending",
+          "group": "1_view"
+        },
+        {
+          "command": "matlabc.diffTaskById",
+          "when": "view == matlabcTasks && viewItem == taskDone",
+          "group": "1_view"
+        },
+        {
+          "command": "matlabc.copyTaskId",
+          "when": "view == matlabcTasks",
+          "group": "2_copy"
         }
       ]
     },

@@ -136,7 +136,7 @@ def editor_panel(d, x0, y0, x1, y1, fname, lines, tab_w=170):
     y = y0 + 44
     for i, ln in enumerate(lines):
         code_line(d, x0 + 6, y, ln, f, lineno=i + 1, fnum=fnum)
-        y += 22
+        y += 20
 
 
 def caption(d, text):
@@ -222,7 +222,7 @@ def fig_codelens(path):
         u"  y = solve_it(a);",
         u"end",
     ]
-    y = 78
+    y = 72
     for i, ln in enumerate(lines):
         if i == 2:
             # CodeLens 行
@@ -283,12 +283,14 @@ def fig_heat(path):
 # ---------------------------------------------------------------------------
 
 def fig_commands(path):
-    im = Image.new("RGB", (W, H), BG)
+    # 19 条命令需要比默认画布更高的区域（多出来的那几行曾落在框外）
+    HH = 540
+    im = Image.new("RGB", (W, HH), BG)
     d = ImageDraw.Draw(im)
     chrome(d, "matlabc — 命令面板")
     d.rectangle([0, 34, W, H - 30], fill=(37, 37, 38))
 
-    box = [60, 58, W - 60, 444]
+    box = [60, 56, W - 60, 492]
     round_rect(d, box, 6, fill=(45, 45, 48), outline=BORDER)
     d.text((80, 76), u"matlabc", font=_font("mono", 15), fill=WHITE)
     d.line([74, 106, W - 74, 106], fill=BORDER)
@@ -302,6 +304,9 @@ def fig_commands(path):
         (u"matlabc: 撤销上一次改动", u"改完能反悔"),
         (u"matlabc: 查看最近的提交", u""),
         (u"matlabc: 确认撤销", u"diff 里的按钮"),
+        (u"matlabc: 撤销这一次改动", u"记录视图里用"),
+        (u"matlabc: 查看这一次改了什么", u""),
+        (u"matlabc: 复制记录 id", u""),
         (u"matlabc: 查看日志", u""),
         (u"matlabc: 打开使用导览", u"10 步动画"),
         (u"matlabc: 热点函数排行", u"复杂度 × 调用者数"),
@@ -320,7 +325,7 @@ def fig_commands(path):
         if hint:
             d.text((600, y + 1), hint, font=_font("ui", 11), fill=DIM)
         y += 21
-    caption(d, u"示意图 · Ctrl+Shift+P 输入 matlabc，共 16 条命令")
+    caption(d, u"示意图 · Ctrl+Shift+P 输入 matlabc，共 19 条命令")
     im.save(path)
 
 
@@ -442,6 +447,75 @@ def fig_flow(path):
     im.save(path)
 
 
+
+# ---------------------------------------------------------------------------
+# 图 7：侧栏「改动记录」与右键菜单
+# ---------------------------------------------------------------------------
+
+def fig_tasks(path):
+    # 三角与状态点一律**画出来**，不依赖字形：▾ / ◷ / ✓ 在雅黑里也未必有，
+    # 一旦缺失就是一片空心方块（这个坑在这一套图里已经踩过三次）。
+    W2, H2 = 900, 420
+    im = Image.new("RGB", (W2, H2), BG)
+    d = ImageDraw.Draw(im)
+    chrome(d, "侧栏 · 改动记录")
+
+    def tri(x, y, down=True, col=(190, 190, 190)):
+        if down:
+            d.polygon([(x, y), (x + 10, y), (x + 5, y + 7)], fill=col)
+        else:
+            # 收起 = 向右的三角（第一版画成了向下，等于"已展开"）
+            d.polygon([(x + 1, y), (x + 1, y + 9), (x + 8, y + 4)], fill=col)
+
+    side = [36, 56, 470, H2 - 26]
+    round_rect(d, side, 8, fill=(37, 37, 38), outline=BORDER)
+    d.rectangle([36, 56, 470, 84], fill=(45, 45, 48))
+    d.text((52, 63), u"资源管理器", font=_font("ui", 12), fill=(200, 200, 200))
+
+    f = _font("ui", 12)
+    fb = _font("ui_bold", 12)
+    y = 96
+    tri(52, y + 5, True)
+    d.text((70, y), u"改动记录（6）", font=fb, fill=WHITE)
+    y += 26
+    tri(70, y + 5, True)
+    d.text((88, y), u"本次会话", font=f, fill=(150, 200, 240))
+    y += 24
+    rows = [
+        (u"rename   2026-10-20 00:12", u"2 文件", True),
+        (u"extract  2026-10-20 00:09", u"2 文件", True),
+        (u"move     2026-10-20 00:04", u"1 文件", False),
+    ]
+    for label, desc, pending in rows:
+        if pending:
+            d.ellipse([96, y + 4, 104, y + 12], outline=(150, 200, 240))
+        else:
+            d.line([96, y + 8, 99, y + 11], fill=(120, 180, 130), width=2)
+            d.line([99, y + 11, 105, y + 4], fill=(120, 180, 130), width=2)
+        d.text((114, y), label, font=f, fill=WHITE if pending else DIM)
+        d.text((366, y), desc, font=f, fill=DIM)
+        y += 22
+    y += 6
+    tri(70, y + 5, False)
+    d.text((88, y), u"更早", font=f, fill=(150, 200, 240))
+    y += 30
+    d.text((52, y), u"点一行 = 撤销那一次；右键有更多。", font=f, fill=DIM)
+
+    mx, my = 500, 150
+    round_rect(d, [mx, my, mx + 300, my + 132], 6, fill=(45, 45, 48),
+               outline=BORDER)
+    d.text((mx + 16, my + 10), u"撤销这一次改动", font=f, fill=WHITE)
+    d.text((mx + 16, my + 40), u"查看这一次改了什么", font=f, fill=WHITE)
+    d.rectangle([mx + 8, my + 66, mx + 292, my + 67], fill=BORDER)
+    d.text((mx + 16, my + 76), u"复制记录 id", font=f, fill=WHITE)
+    d.text((mx + 16, my + 104), u"（前两项只在「未撤销」时出现）",
+           font=_font("ui", 11), fill=DIM)
+    d.text((mx, my - 26), u"右键某一行的菜单：", font=_font("ui", 12), fill=DIM)
+
+    caption(d, u"示意图 · 改了什么、还能不能撤，一眼看到")
+    im.save(path)
+
+
 FIGS = [
     ("relations.png", fig_relations),
     ("codelens.png", fig_codelens),
@@ -449,6 +523,7 @@ FIGS = [
     ("commands.png", fig_commands),
     ("undo.png", fig_undo),
     ("flow.png", fig_flow),
+    ("tasks.png", fig_tasks),
 ]
 
 

@@ -1241,44 +1241,102 @@ function activate(context) {
     });
   }
 
-  // ---- 侧栏「改动记录」（R410）--------------------------------------
+  // ---- 侧栏「改动记录」（R410 / R411 分组 + 右键菜单）------------------
   // 记录一直是 JSON 文件，只能去 `.matlabc/tasks/` 里翻 —— 而它恰恰是
   // "我刚才改了什么、还能不能撤"最直接的答案。
   const historyDir = path.join(root, '.matlabc', 'tasks');
+
+  // 打开"撤销后"的并排预览（左＝当前，右＝撤销后）。
+  // 抽成函数是因为它现在有两个调用者（命令与记录视图的右键菜单）；
+  // 复制一遍就得记住两处都要保留 .m 后缀、都要设 pendingUndo。
+  async function showUndoDiffs(info) {
+    const previews = (info && info.previews) || [];
+    const tmpDir = path.join(context.globalStoragePath || os.tmpdir(),
+                             'undo-preview');
+    try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (e) { /* */ }
+    pendingUndo = info;
+    let opened = 0;
+    for (const pv of previews.slice(0, 8)) {
+      const right = path.join(tmpDir, pv.path.replace(/[\\/]/g, '__'));
+      try {
+        fs.writeFileSync(right, pv.before, 'utf8');
+        await vscode.commands.executeCommand(
+          'vscode.diff',
+          vscode.Uri.file(path.join(root, pv.path)),
+          vscode.Uri.file(right),
+          '撤销后 ← 当前  ' + pv.path);
+        opened += 1;
+      } catch (e) { /* 单个失败不影响其它 */ }
+    }
+    return opened;
+  }
+
+  //: 扩展启动时已经存在的记录算「更早」，之后新增的算「本次会话」。
+  const sessionKnown = new Set();
+  const readRecords = () => {
+    let names = [];
+    try { names = fs.readdirSync(historyDir).filter((n) => n.endsWith('.json')); }
+    catch (e) { names = []; }
+    const out = [];
+    for (const n of names.sort().reverse().slice(0, 50)) {
+      try {
+        const rec = JSON.parse(fs.readFileSync(path.join(historyDir, n), 'utf8'));
+        rec._file = n;
+        out.push(rec);
+      } catch (e) { /* 坏记录跳过 */ }
+    }
+    return out;
+  };
+  for (const rec of readRecords()) sessionKnown.add(rec.id || rec._file);
+
   const taskProvider = {
-    _items: [],
+    _groups: [],
     onDidChangeTreeData: null,
-    getChildren() { return this._items; },
+    getChildren(el) {
+      if (!el) return this._groups;
+      return el.children || [];
+    },
     getTreeItem(it) { return it; },
     refresh() {
-      const items = [];
-      let names = [];
-      try { names = fs.readdirSync(historyDir).filter((n) => n.endsWith('.json')); }
-      catch (e) { names = []; }
-      names.sort().reverse();
-      for (const n of names.slice(0, 50)) {
-        let rec = {};
-        try {
-          rec = JSON.parse(fs.readFileSync(path.join(historyDir, n), 'utf8'));
-        } catch (e) { continue; }
+      const recs = readRecords();
+      const mine = [];
+      const older = [];
+      for (const rec of recs) {
+        const rid = rec.id || rec._file;
         const item = new vscode.TreeItem(
           (rec.kind || '?') + '  ' + (rec.when || ''),
           vscode.TreeItemCollapsibleState.None);
         item.description = (rec.undone ? '已撤销  ' : '') +
                            (rec.files ? rec.files.length + ' 文件' : '');
-        item.tooltip = 'id: ' + (rec.id || n) +
+        item.tooltip = 'id: ' + rid +
                        (rec.params ? ('\n' + JSON.stringify(rec.params)) : '');
-        item.iconPath = new vscode.ThemeIcon(
-          rec.undone ? 'check' : 'history');
+        item.iconPath = new vscode.ThemeIcon(rec.undone ? 'check' : 'history');
+        // 右键菜单靠 recordId 认人；contextValue 决定菜单项显不显示
+        item.recordId = rid;
+        item.contextValue = rec.undone ? 'taskDone' : 'taskPending';
         if (!rec.undone) {
-          item.command = {
-            command: 'matlabc.undoLastTask',
-            title: '撤销',
-          };
+          item.command = { command: 'matlabc.undoLastTask', title: '撤销' };
         }
-        items.push(item);
+        (sessionKnown.has(rid) ? older : mine).push(item);
       }
-      this._items = items;
+
+      const groups = [];
+      if (mine.length) {
+        const g = new vscode.TreeItem('本次会话',
+          vscode.TreeItemCollapsibleState.Expanded);
+        g.iconPath = new vscode.ThemeIcon('history');
+        g.children = mine;
+        groups.push(g);
+      }
+      if (older.length) {
+        const g = new vscode.TreeItem('更早',
+          vscode.TreeItemCollapsibleState.Collapsed);
+        g.iconPath = new vscode.ThemeIcon('archive');
+        g.children = older;
+        groups.push(g);
+      }
+      this._groups = groups;
+      this._count = recs.length;
       if (this.onDidChangeTreeData) this.onDidChangeTreeData();
     },
   };
@@ -1286,14 +1344,76 @@ function activate(context) {
     treeDataProvider: taskProvider,
   });
   context.subscriptions.push(treeView);
+  const refreshTasks = () => {
+    taskProvider.refresh();
+    treeView.title = '改动记录（' + (taskProvider._count || 0) + '）';
+  };
   context.subscriptions.push(
-    vscode.commands.registerCommand('matlabcTasks.refresh', () => {
-      taskProvider.refresh();
-      treeView.title = '改动记录（' + taskProvider._items.length + '）';
+    vscode.commands.registerCommand('matlabcTasks.refresh', refreshTasks)
+  );
+  refreshTasks();
+
+  // ---- 记录视图的右键菜单（撤销这次 / 看 diff / 复制 id）----------------
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.undoTaskById', async (item) => {
+      const id = item && item.recordId;
+      if (!id) return;
+      const plan = await runTask(['undo', '--dir', root, '--id', id,
+                                  '--diff', '--json']);
+      if (plan.rc !== 0) {
+        const tail = plan.out.split('\n').filter((x) => x.trim())
+          .slice(-3).join('\n');
+        vscode.window.showWarningMessage('matlabc: 不能撤销这一次。\n' + tail);
+        return;
+      }
+      let info = {};
+      try {
+        info = (JSON.parse(plan.out.slice(plan.out.indexOf('{'))) || {}).info || {};
+      } catch (e) { /* 只在展示时用到 */ }
+      const opened = await showUndoDiffs(info);
+      const pick = await vscode.window.showWarningMessage(
+        'matlabc: 撤销 ' + id + '？' + (opened ? '（已打开 diff）' : ''),
+        { modal: true }, '撤销');
+      if (pick === '撤销') {
+        const done = await runTask(['undo', '--dir', root, '--id', id, '--apply']);
+        const tail = done.out.split('\n').filter((x) => x.trim())
+          .slice(-2).join('\n');
+        vscode.window.showInformationMessage(
+          (done.rc === 0 ? 'matlabc: 已撤销。\n' : 'matlabc: 撤销未完成。\n') + tail);
+        refreshTasks();
+      }
     })
   );
-  taskProvider.refresh();
-  treeView.title = '改动记录（' + taskProvider._items.length + '）';
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.diffTaskById', async (item) => {
+      const id = item && item.recordId;
+      if (!id) return;
+      const plan = await runTask(['undo', '--dir', root, '--id', id,
+                                  '--diff', '--json']);
+      if (plan.rc !== 0) {
+        const tail = plan.out.split('\n').filter((x) => x.trim())
+          .slice(-3).join('\n');
+        vscode.window.showWarningMessage('matlabc: 看不了这一次。\n' + tail);
+        return;
+      }
+      let info = {};
+      try {
+        info = (JSON.parse(plan.out.slice(plan.out.indexOf('{'))) || {}).info || {};
+      } catch (e) { /* 同上 */ }
+      const opened = await showUndoDiffs(info);
+      if (!opened) {
+        vscode.window.showInformationMessage('matlabc: 这一次没有可预览的改动。');
+      }
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.copyTaskId', async (item) => {
+      if (item && item.recordId) {
+        await vscode.env.clipboard.writeText(item.recordId);
+        vscode.window.setStatusBarMessage('matlabc: 已复制 ' + item.recordId, 2500);
+      }
+    })
+  );
 
   context.subscriptions.push(
     vscode.commands.registerCommand('matlabc.undoLastTask', async () => {
@@ -1312,28 +1432,7 @@ function activate(context) {
         return;
       }
 
-      // 撤销后的内容落到临时文件，再用 vscode.diff 打开（左＝当前，右＝撤销后）。
-      // 文件名保留 `.m` 后缀 —— 否则右侧按纯文本高亮，看不出代码结构。
-      const previews = info.previews || [];
-      const tmpDir = path.join(context.globalStoragePath || os.tmpdir(),
-                               'undo-preview');
-      try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (e) { /* */ }
-      pendingUndo = info;
-
-      let opened = 0;
-      for (const pv of previews.slice(0, 8)) {
-        const safe = pv.path.replace(/[\\/]/g, '__');
-        const right = path.join(tmpDir, safe);
-        try {
-          fs.writeFileSync(right, pv.before, 'utf8');
-          await vscode.commands.executeCommand(
-            'vscode.diff',
-            vscode.Uri.file(path.join(root, pv.path)),
-            vscode.Uri.file(right),
-            '撤销后 ← 当前  ' + pv.path);
-          opened += 1;
-        } catch (e) { /* 单个失败不影响其它 */ }
-      }
+      const opened = await showUndoDiffs(info);
 
       const ACT_UNDO = '撤销';
       const ACT_SEE = '查看这段提交';
@@ -1373,6 +1472,14 @@ function activate(context) {
     })
   );
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.cancelUndo', async () => {
+      pendingUndo = null;
+      vscode.window.setStatusBarMessage('matlabc: 已取消这次撤销', 2500);
+      await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+    })
+  );
+
   // diff 预览文件上的 CodeLens：看完直接点，不用切回弹窗。
   context.subscriptions.push(
     vscode.languages.registerCodeLensProvider(
@@ -1380,10 +1487,16 @@ function activate(context) {
       {
         provideCodeLenses() {
           const top = new vscode.Range(0, 0, 0, 0);
-          return [new vscode.CodeLens(top, {
-            title: '$(check) 确认撤销这次改动',
-            command: 'matlabc.confirmUndo',
-          })];
+          return [
+            new vscode.CodeLens(top, {
+              title: '$(check) 确认撤销这次改动',
+              command: 'matlabc.confirmUndo',
+            }),
+            new vscode.CodeLens(top, {
+              title: '$(close) 取消',
+              command: 'matlabc.cancelUndo',
+            }),
+          ];
         },
       })
   );
