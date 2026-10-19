@@ -1454,7 +1454,8 @@ def _task_run(args, apply_it):
             root, rel, int(m.group(1)), int(m.group(2)),
             (args.get("name") or "").strip(),
             _task_list(args.get("in")), _task_list(args.get("out")),
-            apply_it=apply_it, auto=bool(args.get("auto")))
+            apply_it=apply_it, auto=bool(args.get("auto")),
+            to=((args.get("to") or "").strip() or None))
     else:
         return _err("task 只支持 rename / rename-field / extract")
 
@@ -1573,6 +1574,7 @@ TOOLS = [
                                     "new": _STR, "file": _STR,
                                     "lines": _STR, "name": _STR,
                                     "in": _STR, "out": _STR,
+                                    "to": _STR,
                                     "auto": {"type": "boolean"}},
                      "required": ["task"]},
      "handler": t_task_plan},
@@ -1586,6 +1588,7 @@ TOOLS = [
                                     "new": _STR, "file": _STR,
                                     "lines": _STR, "name": _STR,
                                     "in": _STR, "out": _STR,
+                                    "to": _STR,
                                     "auto": {"type": "boolean"}},
                      "required": ["task"]},
      "handler": t_task_apply},

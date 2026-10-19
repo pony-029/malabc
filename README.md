@@ -626,6 +626,11 @@ python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
 python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
     --name part --auto --apply
 
+# ...or move it into its own file (`--to`). The new file is written first and
+# removed again on rollback; an existing target is refused, never overwritten.
+python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
+    --name part --in x,y --out z --to part.m --apply
+
 # Generate a deterministic self-verified fix patch
 python matlabc flow myproj --auto-apply --gen-apply-patch
 

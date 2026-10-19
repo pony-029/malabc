@@ -287,6 +287,9 @@ def task_rename(root, old, new, apply_it=False, as_json=False,
         return 1, log, {"before": before, "sites": len(sites),
                         "criteria": criteria, "verdict": "rollback"}
     except Exception as exc:
+        # 注意：这里**没有** `created` —— 改名不新建文件。
+        # （加 `--to` 时我把它一起插进来了，回滚路径直接 NameError；
+        #  场景「任务 rename 回滚」当场抓到，否则只有真出异常时才会暴露。）
         _restore(backup)
         say("rollback", u"异常 %r —— 已恢复" % (exc,))
         return 1, log, {"before": before, "verdict": "error"}
@@ -419,7 +422,7 @@ def infer_interface(text, start, end):
 
 
 def task_extract(root, rel, start, end, name, ins, outs,
-                 apply_it=False, auto=False):
+                 apply_it=False, auto=False, to=None):
     """extract 任务：把 `rel` 的第 start..end 行提成一个新函数。
 
     **接口由调用方显式给出**（`--in` / `--out`）。自动推断输入输出需要数据流，
@@ -486,13 +489,35 @@ def task_extract(root, rel, start, end, name, ins, outs,
         head = u"function %s(%s)" % (name, u", ".join(ins))
 
     before = _scan(root)
-    say("prepare", u"%s 第 %d-%d 行（%d 行）→ 新函数 `%s`"
-        % (os.path.basename(path), start, end, len(block), name))
-    criteria = [
-        u"函数总数 +1（多出一个函数）",
-        u"诊断数不增加（提取不该引入新问题）",
-        u"文本里 `function` 与 `end` 各 +1（结构配平）",
-    ]
+    tgt = None
+    if to:
+        tgt = to if os.path.isabs(to) else os.path.join(root, to)
+        if not tgt.endswith(u".m"):
+            say("error", u"--to 必须是 .m 文件：%s" % to)
+            return 2, log, {}
+        if not os.path.abspath(tgt).startswith(os.path.abspath(root)):
+            say("error", u"--to 必须落在工程目录内：%s" % to)
+            return 2, log, {}
+        if os.path.exists(tgt):
+            # **不覆盖已有文件**：那是另一个函数，静默覆盖等于删代码。
+            say("error", u"目标文件已存在，拒绝覆盖：%s" % to)
+            return 1, log, {}
+
+    say("prepare", u"%s 第 %d-%d 行（%d 行）→ 新函数 `%s`%s"
+        % (os.path.basename(path), start, end, len(block), name,
+           (u"（写到 %s）" % os.path.basename(tgt)) if tgt else u"（同文件局部函数）"))
+    if tgt:
+        criteria = [
+            u"工程函数总数 +1",
+            u"诊断数不增加",
+            u"新文件只含一个函数，且名字就是 `%s`" % name,
+        ]
+    else:
+        criteria = [
+            u"函数总数 +1（多出一个函数）",
+            u"诊断数不增加（提取不该引入新问题）",
+            u"文本里 `function` 与 `end` 各 +1（结构配平）",
+        ]
     for i, c in enumerate(criteria):
         say("criteria", u"%d) %s" % (i + 1, c))
     say("plan", u"替换为：`%s`" % call_line.strip())
@@ -501,20 +526,36 @@ def task_extract(root, rel, start, end, name, ins, outs,
         return 0, log, {"before": before, "criteria": criteria}
 
     backup = {path: text}
+    created = []
     try:
         new_lines = (lines[:start - 1] + [call_line] + lines[end:])
-        body = u"\n".join(new_lines).rstrip(u"\n")
-        body += u"\n\n" + head + u"\n" + u"\n".join(block) + u"\nend\n"
-        io.open(path, "w", encoding="utf-8", newline="").write(body)
-        say("apply", u"已写入 %s（备份在内存）" % os.path.basename(path))
+        body = u"\n".join(new_lines).rstrip(u"\n") + u"\n"
+        fn_body = head + u"\n" + u"\n".join(block) + u"\nend\n"
+        if tgt:
+            # **先写新文件、再改原文件**：反过来的话，新文件写失败时原文件
+            # 已经被改成了调用一个还不存在的函数。
+            io.open(tgt, "w", encoding="utf-8", newline="").write(fn_body)
+            created.append(tgt)
+            io.open(path, "w", encoding="utf-8", newline="").write(body)
+            say("apply", u"已新建 %s，并把 %s 的 %d 行换成调用"
+                % (os.path.basename(tgt), os.path.basename(path), len(block)))
+        else:
+            body = body.rstrip(u"\n") + u"\n\n" + fn_body
+            io.open(path, "w", encoding="utf-8", newline="").write(body)
+            say("apply", u"已写入 %s（备份在内存）" % os.path.basename(path))
 
         after = _scan(root)
         now = io.open(path, "r", encoding="utf-8").read()
         ok_fun = after["functions"] == before["functions"] + 1
         ok_diag = after["diagnostics"] <= before["diagnostics"]
-        ok_txt = (now.count(u"function") == text.count(u"function") + 1
-                  and len(re.findall(r"(?m)^\s*end\s*$", now))
-                  == len(re.findall(r"(?m)^\s*end\s*$", text)) + 1)
+        if tgt:
+            ok_txt = (fn_body.count(u"function") == 1
+                      and len(re.findall(r"(?m)^\s*end\s*$", fn_body)) == 1
+                      and call_line.strip() in now)
+        else:
+            ok_txt = (now.count(u"function") == text.count(u"function") + 1
+                      and len(re.findall(r"(?m)^\s*end\s*$", now))
+                      == len(re.findall(r"(?m)^\s*end\s*$", text)) + 1)
         say("validate", u"函数 %d→%d ｜ 诊断 %d→%d ｜ function/end 配平 %s"
             % (before["functions"], after["functions"],
                before["diagnostics"], after["diagnostics"],
@@ -524,6 +565,11 @@ def task_extract(root, rel, start, end, name, ins, outs,
             return 0, log, {"before": before, "after": after,
                             "criteria": criteria, "verdict": "pass"}
         _restore(backup)
+        for _c in created:
+            try:
+                os.remove(_c)      # 新建的文件也必须撤掉，否则留下半成品
+            except OSError:
+                pass
         why = []
         if not ok_fun:
             why.append(u"函数数没 +1")
@@ -536,6 +582,11 @@ def task_extract(root, rel, start, end, name, ins, outs,
                         "verdict": "rollback"}
     except Exception as exc:
         _restore(backup)
+        for _c in created:
+            try:
+                os.remove(_c)
+            except OSError:
+                pass
         say("rollback", u"异常 %r —— 已恢复" % (exc,))
         return 1, log, {"verdict": "error"}
 
@@ -787,6 +838,40 @@ def selftest():
     finally:
         shutil.rmtree(d4, ignore_errors=True)
 
+    # ---- extract --to：提到新文件 -----------------------------------------
+    d5 = tempfile.mkdtemp(prefix="taskt_")
+    try:
+        src = (u"function y = tx(x)\n"
+               u"  a = x + 1;\n"
+               u"  b = a * 2;\n"
+               u"  y = b;\n"
+               u"end\n")
+        _make({"tx.m": src}, d5)
+        rc, log, info = task_extract(d5, "tx.m", 3, 4, "part",
+                                     ["a"], ["y"], apply_it=True,
+                                     to="part.m")
+        p = os.path.join(d5, "part.m")
+        ok = (rc == 0 and info.get("verdict") == "pass"
+              and os.path.isfile(p))
+        now = io.open(p, encoding="utf-8").read() if os.path.isfile(p) else u""
+        ok = ok and (u"function y = part(a)" in now)
+        if chk(ok, u"自证 --to：新文件已建且签名正确",
+               u"rc=%r verdict=%r" % (rc, info.get("verdict"))):
+            good += 1
+        else:
+            bad += 1
+        # 目标文件已存在时必须拒绝（不覆盖别人的函数）
+        rc2, log2, info2 = task_extract(d5, "tx.m", 2, 2, "part2",
+                                        ["x"], ["a"], apply_it=True,
+                                        to="part.m")
+        if chk(rc2 == 1 and u"拒绝覆盖" in u"".join(r["msg"] for r in log2),
+               u"自证 --to：已存在则拒绝覆盖", u"rc=%r" % (rc2,)):
+            good += 1
+        else:
+            bad += 1
+    finally:
+        shutil.rmtree(d5, ignore_errors=True)
+
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     return 1 if bad else 0
 
@@ -808,6 +893,7 @@ def main(argv=None):
     ep.add_argument("--in", dest="ins", default="")
     ep.add_argument("--out", dest="outs", default="")
     ep.add_argument("--auto", action="store_true")
+    ep.add_argument("--to", default="")
     ep.add_argument("--apply", action="store_true")
     ep.add_argument("--json", action="store_true")
     fp = sub.add_parser("rename-field")
@@ -835,7 +921,8 @@ def main(argv=None):
                                      int(m.group(1)), int(m.group(2)),
                                      args.name, _split_list(args.ins),
                                      _split_list(args.outs), args.apply,
-                                     auto=args.auto)
+                                     auto=args.auto,
+                                     to=(args.to or None))
         if args.json:
             print(json.dumps({"ok": rc == 0, "log": log, "info": info},
                              ensure_ascii=False, indent=2))

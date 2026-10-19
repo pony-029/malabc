@@ -596,6 +596,10 @@ python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
 # 也可以让它自己推断接口。它是启发式，并且**会说出来**：dry-run 先打印 `in=… | out=…`
 python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
     --name part --auto --apply
+
+# 也可以提到独立文件（`--to`）：新文件先写，回滚时一并删掉；目标已存在则拒绝覆盖
+python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
+    --name part --in x,y --out z --to part.m --apply
 ```
 
 ---
