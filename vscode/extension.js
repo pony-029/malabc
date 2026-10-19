@@ -80,6 +80,99 @@ function sendOpen(doc) {
 }
 
 
+
+// 自动探测本机的 Python 解释器（R393）。
+//
+// 为什么需要：很多人的 Python 装了但**不在 PATH 里**（官方安装器的
+// "Add to PATH" 默认不勾；conda 装在用户目录；微软商店版在 WindowsApps）。
+// 让他们"去设置里填绝对路径"等于让他们自己去翻磁盘 —— 而这台机器上
+// 扩展明明可以替他们找。
+function pythonCandidates() {
+  const out = [];
+  const push = (p) => {
+    if (!p) return;
+    try {
+      if (fs.existsSync(p) && fs.statSync(p).isFile()) out.push(p);
+    } catch (e) { /* 权限问题就跳过 */ }
+  };
+  const home = process.env.USERPROFILE || process.env.HOME || '';
+  const local = process.env.LOCALAPPDATA || '';
+  const programData = process.env.ProgramData || '';
+
+  if (process.platform === 'win32') {
+    for (const base of ['C:\\Python', 'C:\\Program Files\\Python',
+                        'C:\\Program Files (x86)\\Python']) {
+      for (let v = 313; v >= 36; v--) {
+        const maj = Math.floor(v / 10);
+        const min = v % 10;
+        push(base + maj + min + '\\python.exe');
+      }
+    }
+    for (let v = 313; v >= 36; v--) {
+      const maj = Math.floor(v / 10);
+      const min = v % 10;
+      push(local + '\\Programs\\Python\\Python' + maj + min +
+           '\\python.exe');
+    }
+    push('C:\\ProgramData\\Anaconda3\\python.exe');
+    push('C:\\ProgramData\\miniconda3\\python.exe');
+    push(home + '\\anaconda3\\python.exe');
+    push(home + '\\miniconda3\\python.exe');
+    push(home + '\\AppData\\Local\\Microsoft\\WindowsApps\\python.exe');
+  } else {
+    push('/usr/bin/python3');
+    push('/usr/local/bin/python3');
+    push('/opt/homebrew/bin/python3');
+    push('/opt/local/bin/python3');
+    push(home + '/.pyenv/shims/python3');
+    push(home + '/anaconda3/bin/python3');
+    push(home + '/miniconda3/bin/python3');
+  }
+  // 去重（大小写不敏感，Windows 上 C:\ 与 c:\ 是同一个）
+  const seen = new Set();
+  return out.filter((p) => {
+    const k = p.toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+function pythonVersion(py) {
+  return new Promise((resolve) => {
+    const { spawn } = require('child_process');
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        try { child.kill(); } catch (e) { /* 已退 */ }
+        resolve('');
+      }
+    }, 4000);
+    let child;
+    try {
+      child = spawn(py, ['-c', 'import sys;print(sys.version.split()[0])'],
+                    { windowsHide: true });
+    } catch (e) {
+      clearTimeout(timer);
+      resolve('');
+      return;
+    }
+    let buf = '';
+    child.stdout.on('data', (c) => { buf += c.toString(); });
+    child.on('error', () => {
+      if (!settled) { settled = true; clearTimeout(timer); resolve(''); }
+    });
+    child.on('exit', (code) => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        resolve(code === 0 ? buf.trim() : '');
+      }
+    });
+  });
+}
+
 // 选 Python 解释器（R386）。
 // 设置里那一项是纯字符串：用户不知道填什么，填错了也只表现为"启动失败"。
 // 这个命令让他直接挑文件，**当场验证能不能启动**，再写进设置。
@@ -104,14 +197,35 @@ function showPythonHelp(detail) {
 }
 
 async function pickPython() {
-  const picked = await vscode.window.showOpenDialog({
-    canSelectMany: false,
-    canSelectFiles: true,
-    openLabel: '使用这个 Python',
-    filters: process.platform === 'win32' ? { 'Python': ['exe'] } : undefined,
-  });
-  if (!picked || !picked.length) return;
-  const py = picked[0].fsPath;
+  // 先列出来：探测到的解释器（带版本）+ 一条"手动选择"
+  const found = pythonCandidates();
+  let py = '';
+  if (found.length) {
+    const vers = await Promise.all(found.slice(0, 6).map(pythonVersion));
+    const items = found.slice(0, 6).map((p, i) => ({
+      label: p,
+      description: vers[i] ? ('Python ' + vers[i]) : '（无法获取版本）',
+      picked: p,
+    }));
+    items.push({ label: '$(folder-opened) 手动选择 python.exe…',
+                 description: '上面没有我的 Python', picked: '' });
+    const sel = await vscode.window.showQuickPick(items, {
+      placeHolder: '选择要用哪个 Python（探测到 ' + items.length - 1 + ' 个）',
+      matchOnDescription: true,
+    });
+    if (!sel) return;
+    py = sel.picked;
+  }
+  if (!py) {
+    const picked = await vscode.window.showOpenDialog({
+      canSelectMany: false,
+      canSelectFiles: true,
+      openLabel: '使用这个 Python',
+      filters: process.platform === 'win32' ? { 'Python': ['exe'] } : undefined,
+    });
+    if (!picked || !picked.length) return;
+    py = picked[0].fsPath;
+  }
 
   const ok = await new Promise((resolve) => {
     const { spawn } = require('child_process');
