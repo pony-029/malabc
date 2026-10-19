@@ -79,6 +79,54 @@ function sendOpen(doc) {
   });
 }
 
+
+// 选 Python 解释器（R386）。
+// 设置里那一项是纯字符串：用户不知道填什么，填错了也只表现为"启动失败"。
+// 这个命令让他直接挑文件，**当场验证能不能启动**，再写进设置。
+async function pickPython() {
+  const picked = await vscode.window.showOpenDialog({
+    canSelectMany: false,
+    canSelectFiles: true,
+    openLabel: '使用这个 Python',
+    filters: process.platform === 'win32' ? { 'Python': ['exe'] } : undefined,
+  });
+  if (!picked || !picked.length) return;
+  const py = picked[0].fsPath;
+
+  const ok = await new Promise((resolve) => {
+    const { spawn } = require('child_process');
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        try { child.kill(); } catch (e) { /* 已经退了 */ }
+        resolve(false);
+      }
+    }, 8000);
+    const child = spawn(py, ['-c', 'print(1)'], { windowsHide: true });
+    child.on('error', () => {
+      if (!settled) { settled = true; clearTimeout(timer); resolve(false); }
+    });
+    child.on('exit', (code) => {
+      if (!settled) { settled = true; clearTimeout(timer); resolve(code === 0); }
+    });
+  });
+
+  if (!ok) {
+    vscode.window.showErrorMessage(
+      'matlabc: 这个路径启动不了 Python：' + py +
+      '。换一个试试（例如 C:\\Python310\\python.exe）。');
+    return;
+  }
+  await vscode.workspace.getConfiguration('matlabc')
+    .update('pythonPath', py, vscode.ConfigurationTarget.Global);
+  const act = await vscode.window.showInformationMessage(
+    'matlabc: Python 已指向 ' + py, '重新加载窗口');
+  if (act) {
+    await vscode.commands.executeCommand('workbench.action.reloadWindow');
+  }
+}
+
 function activate(context) {
   log('activate() 进入，扩展已加载');
   const cfg = vscode.workspace.getConfiguration('matlabc');
@@ -127,6 +175,29 @@ function activate(context) {
               '。若都用不了，请在设置里填 matlabc.lspPath。';
     log(m);
     vscode.window.showErrorMessage(m);
+    // **起不来的时候，正是最需要自救的时候**：这三个命令原本注册在这行
+    // return 之后，于是"服务器起不来"时连「打开使用说明」都不存在。
+    context.subscriptions.push(
+      vscode.commands.registerCommand('matlabc.selectPython', pickPython)
+    );
+    context.subscriptions.push(
+      vscode.commands.registerCommand('matlabc.openGuide', async () => {
+        const p = path.join(context.extensionPath, 'USER_GUIDE.md');
+        if (fs.existsSync(p)) {
+          await vscode.commands.executeCommand(
+            'markdown.showPreview', vscode.Uri.file(p));
+        } else {
+          vscode.window.showErrorMessage('matlabc: 找不到使用说明');
+        }
+      })
+    );
+    context.subscriptions.push(
+      vscode.commands.registerCommand('matlabc.openGuidePdf', async () => {
+        const p = path.join(context.extensionPath, 'USER_GUIDE.pdf');
+        if (fs.existsSync(p)) { vscode.env.openExternal(vscode.Uri.file(p)); }
+        else { vscode.window.showErrorMessage('matlabc: 找不到使用说明 PDF'); }
+      })
+    );
     return;
   }
 
@@ -775,6 +846,11 @@ function activate(context) {
       log('打开 PDF 说明 ' + hit);
       vscode.env.openExternal(vscode.Uri.file(hit));
     })
+  );
+
+  // ---- 选择 Python 解释器（R386）------------------------------------
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.selectPython', pickPython)
   );
 
   // ---- 生成 HTML 分析报告（R327）-------------------------------------

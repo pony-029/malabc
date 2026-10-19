@@ -24,7 +24,12 @@ code --install-extension matlabc-<版本>.vsix
 
 ### 1.2 让它认识你的 Python
 
-扩展需要一个 Python 解释器来干活。**路径就在插件设置里配**，不需要额外装脚本：
+扩展需要一个 Python 解释器来干活。**路径就在插件设置里配**。
+
+**最省事的办法**：命令面板 → `matlabc: 选择 Python 解释器` → 选中
+`python.exe`。它会先试着启动一次，能起来才写进设置，然后提示你重载窗口。
+
+也可以手动填：
 
 1. 按 `Ctrl+,` 打开设置
 2. 搜索框输入 `matlabc`
@@ -109,7 +114,7 @@ code --install-extension matlabc-<版本>.vsix
 
 ## 3. 命令清单
 
-按 `Ctrl+Shift+P`，输入 `matlabc`，共 10 条：
+按 `Ctrl+Shift+P`，输入 `matlabc`，共 11 条：
 
 ![命令面板](figures/commands.png)
 
@@ -125,6 +130,7 @@ code --install-extension matlabc-<版本>.vsix
 | --- | --- |
 | `matlabc: 打开使用说明` | 就是本文（随扩展一起分发，离线可看） |
 | `matlabc: 打开使用说明（PDF）` | 本文的 PDF 版：四张示意图直接印在页面上，也适合转发 |
+| `matlabc: 选择 Python 解释器` | 挑一个 Python 并验证能启动，写进设置 —— **启动失败时最先试它** |
 | `matlabc: 打开使用导览` | 8 步动画，一屏讲清每个功能在哪 —— **第一次用建议先看它** |
 | `matlabc: 热点函数排行` | 全工程按「复杂度 × 调用者数」排序，选中即跳转 |
 | `matlabc: 热点函数排行（当前目录）` | 只看当前目录 —— 跨模块的分数没有可比性 |
@@ -233,8 +239,11 @@ code --install-extension matlabc-<版本>.vsix
 确认你打开的是**文件夹**、并且当前文件是 `.m`。扩展只在 MATLAB 文件上激活。
 
 **Q：提示找不到 Python / 启动失败？**
-在插件设置里指定解释器：按 `Ctrl+,` → 搜索 `matlabc` → 把 **`matlabc.pythonPath`**
-填成 Python 的绝对路径（例如 `C:\Python310\python.exe`）→ 重载窗口。
+执行命令 **`matlabc: 选择 Python 解释器`**，选中你的 `python.exe` —— 它会先试着
+启动一次，能起来才写进设置，然后提示你重载窗口。
+
+也可以手动改：`Ctrl+,` → 搜索 `matlabc` → 把 `matlabc.pythonPath` 填成绝对路径
+（例如 `C:\Python310\python.exe`）→ 重载窗口。
 
 装了多个 Python 时填你想要的那个；装了 MATLAB 也不必用它的 Python。
 

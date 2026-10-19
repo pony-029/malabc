@@ -2,7 +2,7 @@
   "name": "matlabc",
   "displayName": "matlabc",
   "description": "MATLAB 工程的代码理解工具：结构感知的诊断、跨文件导航、调用链分析与影响面评估。",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "publisher": "冯磊",
   "engines": {
     "vscode": "^1.80.0"
@@ -51,7 +51,7 @@
         "matlabc.pythonPath": {
           "type": "string",
           "default": "python",
-          "description": "Python 解释器路径（需要能跑 matlabc_lsp.py）"
+          "description": "Python 解释器路径。默认 python（从系统 PATH 查找）。提示找不到 Python 时，用命令「matlabc: 选择 Python 解释器」挑选，或在这里填绝对路径，例如 C:\\\\Python310\\\\python.exe"
         },
         "matlabc.docLang": {
           "type": "string",
@@ -129,6 +129,11 @@
       {
         "command": "matlabc.openGuidePdf",
         "title": "matlabc: 打开使用说明（PDF）",
+        "category": "matlabc"
+      },
+      {
+        "command": "matlabc.selectPython",
+        "title": "matlabc: 选择 Python 解释器",
         "category": "matlabc"
       }
     ],
