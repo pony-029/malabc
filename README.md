@@ -1100,4 +1100,6 @@ Author and copyright holder: **冯磊 (Feng Lei)** — © 2026 冯磊 (Feng Lei)
 > The two are kept in sync section by section; do not mix languages within a single file.
 
 
-Plain-tool note: 	ools/incremental_parity.py checks that incremental recompute (nalyze(prev=, changed=)) returns exactly the same files and edges as a full run. **It currently fails** - the incremental path drops the qualified name, so .m:a comes out as a bare . Recorded rather than hidden.
+> **Verifying this repo**: `python tools/check_all.py` runs every static gate (each carries its own two-way self-test); `python tools/lsp_selftest.py --all --list` covers the behavioural judgements over the LSP / MCP surface.
+> `python tools/rsi_scenarios.py` drives both protocols end to end, `python tools/mutate_sample.py` proves the judgements can actually fail.
+

@@ -1043,4 +1043,6 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 > 本文档拥有完全对应的 **英文版本**：[README.md](README.md)。两者按章节一一对应、保持同步；
 > 单个文件内不混用语言。
 
-普通工具补充：	ools/incremental_parity.py 校验增量重算（nalyze(prev=, changed=)）与全量**逐项相同**。**它现在是红的**——增量路径把限定名丢了，.m:a 变成了裸的 。如实记录，不掩盖。
+> **本仓如何自证**：`python tools/check_all.py` 跑全部静态门（每道门自带两向自证）；`python tools/lsp_selftest.py --all --list` 覆盖 LSP / MCP 的行为判据。
+> `python tools/rsi_scenarios.py` 走公开协议端到端，`python tools/mutate_sample.py` 证明这些判据真的会红。
+
