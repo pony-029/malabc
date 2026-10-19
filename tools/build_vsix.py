@@ -174,6 +174,42 @@ with zipfile.ZipFile(OUT) as z:
     for n in z.namelist():
         print("  ", n)
 
+# **只保留最新一个安装包**（R374）。
+# 仓库里堆了 42 个 vsix（44.6 MB）—— 要旧版本的人应当看 CHANGELOG，
+# 而不是克隆一份 150 MB 的仓库。每次打包后清理同目录的其它包，
+# **只删自己产出目录里的**，不碰别处。
+_out_dir = os.path.dirname(OUT)
+_keep = os.path.basename(OUT)
+_pruned = 0
+try:
+    for _n in os.listdir(_out_dir):
+        if not _n.lower().endswith(".vsix") or _n == _keep:
+            continue
+        try:
+            os.remove(os.path.join(_out_dir, _n))
+            _pruned += 1
+        except OSError:
+            pass
+except OSError:
+    pass
+if _pruned:
+    print("pruned %d older .vsix (only the newest is kept)" % _pruned)
+
+# **只把最新一个入库**（R374）：`.gitignore` 里放一条 `!<当前文件名>`。
+# 这样 clone 下来就直接能装，不必先跑构建；旧版本从 CHANGELOG 查，
+# 需要时 checkout 对应提交重新打包。规则由脚本维护，避免每次发布手改。
+_gi = os.path.join(_out_dir, ".gitignore")
+try:
+    io.open(_gi, "w", encoding="utf-8", newline="").write(
+        u"# 离线安装包是构建产物（每个约 1MB）。\n"
+        u"# **只把最新一个入库**：clone 下来就能装，不必先跑构建；\n"
+        u"# 旧版本留在 CHANGELOG 里，需要时 checkout 对应提交重新打包。\n"
+        u"*.vsix\n"
+        u"!%s\n" % _keep)
+    print("gitignore allows only %s" % _keep)
+except OSError as _exc:
+    print("WARN 无法写 %s：%r" % (_gi, _exc))
+
 # 安装命令**按平台给**（R365）：这个脚本本身两边都能跑，但 `code.cmd`
 # 只在 Windows 上存在；Linux/macOS 上写 `code`。照抄错的命令会得到
 # "command not found"，而人第一反应是"包做坏了"。
