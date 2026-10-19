@@ -637,6 +637,10 @@ python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
 # name would turn it into a private subfunction and silently break every caller.
 python matlabc_task.py move --dir myproj/ --file a.m --name helper --to helper.m --apply
 
+# Several steps as ONE transaction. Each step is validated as usual; if any
+# step fails, every earlier step is rolled back too — no half-refactored tree.
+python matlabc_task.py batch --dir myproj/ --steps plan.json --apply
+
 # Generate a deterministic self-verified fix patch
 python matlabc flow myproj --auto-apply --gen-apply-patch
 

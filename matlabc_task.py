@@ -786,6 +786,133 @@ def task_move(root, rel, name, to, apply_it=False):
         return 1, log, {"verdict": "error"}
 
 
+
+# ---------------------------------------------------------------------------
+# 批量任务（R390）：一次跑一串步骤，任一步失败整批回滚。
+#
+# 为什么放在这里而不是只放在 MCP 侧：真实重构很少只有一步。若批量只对 Agent
+# 开放，人就得自己一步步敲，而那正是最容易留下"改了一半"的用法。
+# ---------------------------------------------------------------------------
+
+def _snapshot(root):
+    """{path: 原文}，只收 .m。"""
+    snap = {}
+    for p in _iter_m_files(root):
+        try:
+            snap[p] = io.open(p, "r", encoding="utf-8",
+                              errors="replace").read()
+        except (IOError, OSError):
+            continue
+    return snap
+
+
+def _restore_all(root, snap):
+    """按快照恢复；**快照里没有的 .m 要删掉**（那是新提取出来的）。"""
+    for p in _iter_m_files(root):
+        if p not in snap:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+    for p, text in snap.items():
+        try:
+            io.open(p, "w", encoding="utf-8", newline="").write(text)
+        except (IOError, OSError):
+            pass
+
+
+def _run_step(root, step, apply_it):
+    """按 step 里的 task 分派。返回 (rc, log)。"""
+    task = (step.get("task") or "").strip()
+    if task in ("rename", "rename-field"):
+        rc, log, _info = task_rename(
+            root, (step.get("old") or "").strip(),
+            (step.get("new") or "").strip(), apply_it=apply_it,
+            kind=("field" if task == "rename-field" else "ident"))
+        return rc, log
+    if task == "move":
+        rc, log, _info = task_move(
+            root, (step.get("file") or "").strip(),
+            (step.get("name") or "").strip(),
+            (step.get("to") or "").strip(), apply_it=apply_it)
+        return rc, log
+    if task == "extract":
+        rng = (step.get("lines") or "").strip()
+        rel = (step.get("file") or "").strip()
+        m = re.match(r"^(\d+)\s*-\s*(\d+)$", rng)
+        if not rel or not m:
+            return 2, [{"step": "error",
+                        "msg": u"extract 需要 file 与 lines（形如 12-18）"}]
+        rc, log, _info = task_extract(
+            root, rel, int(m.group(1)), int(m.group(2)),
+            (step.get("name") or "").strip(),
+            _split_list(step.get("in")), _split_list(step.get("out")),
+            apply_it=apply_it, auto=bool(step.get("auto")),
+            to=((step.get("to") or "").strip() or None))
+        return rc, log
+    return 2, [{"step": "error",
+                "msg": u"task 只支持 rename / rename-field / extract / move"}]
+
+
+def task_batch(root, steps, apply_it=False):
+    """多步事务。返回 (rc, log)，log 里每步前有一条分隔行。"""
+    log = []
+
+    def say(step, msg):
+        log.append({"step": step, "msg": msg})
+
+    if not os.path.isdir(root):
+        say("error", u"目录不存在：%s" % root)
+        return 2, log
+    if not isinstance(steps, (list, tuple)) or not steps:
+        say("error", u"steps 必须是非空数组")
+        return 2, log
+
+    if not apply_it:
+        # **在副本上推演**：链式第二步依赖第一步的结果，逐步 dry-run 必然误报。
+        import shutil
+        import tempfile
+        tmp = tempfile.mkdtemp(prefix="batch_plan_")
+        try:
+            for p in _iter_m_files(root):
+                rel = os.path.relpath(p, root)
+                dst = os.path.join(tmp, rel)
+                d = os.path.dirname(dst)
+                if d and not os.path.isdir(d):
+                    os.makedirs(d)
+                shutil.copyfile(p, dst)
+            rows = []
+            for i, st in enumerate(steps):
+                rc, one = _run_step(tmp, st, True)
+                rows.append((i + 1, st.get("task") or "?", rc, one))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        ok = all(r[2] == 0 for r in rows)
+        say("plan", u"批量计划：%d 步，在**副本**上按顺序推演（工程未被修改）"
+                    u"—— %s" % (len(rows), u"全部可执行" if ok else u"有步骤会失败"))
+        for i, task, rc, one in rows:
+            say("step", u"── 第 %d 步：%s %s" % (i, task, u"✓" if rc == 0 else u"✗"))
+            log.extend(one)
+        return (0 if ok else 1), log
+
+    snap = _snapshot(root)
+    done = 0
+    for i, st in enumerate(steps):
+        rc, one = _run_step(root, st, True)
+        done = i + 1
+        if rc != 0:
+            _restore_all(root, snap)
+            say("step", u"── 第 %d 步：%s ✗" % (i + 1, st.get("task") or "?"))
+            log.extend(one)
+            say("rollback", u"批量任务在第 %d 步失败，**已回滚全部 %d 步**"
+                            u"（工程恢复到动手前）" % (i + 1, done))
+            return 1, log
+        say("step", u"── 第 %d 步：%s ✓" % (i + 1, st.get("task") or "?"))
+        log.extend(one)
+    say("validate", u"批量任务：%d 步全部通过" % len(steps))
+    return 0, log
+
+
 # ---------------------------------------------------------------------------
 # 自证：一个真项目、一次成功改名、一次故意失败的回滚
 # ---------------------------------------------------------------------------
@@ -1113,6 +1240,43 @@ def selftest():
     finally:
         shutil.rmtree(d6, ignore_errors=True)
 
+    # ---- batch：多步事务 -------------------------------------------------
+    d7 = tempfile.mkdtemp(prefix="taskb_")
+    try:
+        _make({"p1.m": (u"function y = aa(x)\n  y = x + 1;\nend\n"),
+               "p2.m": (u"function r = bb(v)\n  r = aa(v);\nend\n")}, d7)
+        steps = [{"task": "rename", "old": "aa", "new": "cc"},
+                 {"task": "rename", "old": "cc", "new": "dd"}]
+        rc, log = task_batch(d7, steps, apply_it=False)
+        untouched = u"aa" in io.open(os.path.join(d7, "p1.m"),
+                                     encoding="utf-8").read()
+        if chk(rc == 0 and untouched,
+               u"自证 batch：计划在副本上推演，工程不动",
+               u"rc=%r 未改=%s" % (rc, untouched)):
+            good += 1
+        else:
+            bad += 1
+        rc, log = task_batch(d7, steps, apply_it=True)
+        now = io.open(os.path.join(d7, "p1.m"), encoding="utf-8").read()
+        if chk(rc == 0 and u"dd" in now,
+               u"自证 batch：两步都生效", u"rc=%r" % (rc,)):
+            good += 1
+        else:
+            bad += 1
+        # 第二步撞名 -> 整批回滚（第一步也要退回去）
+        snap = io.open(os.path.join(d7, "p1.m"), encoding="utf-8").read()
+        bad_steps = [{"task": "rename", "old": "dd", "new": "ee"},
+                     {"task": "rename", "old": "ee", "new": "bb"}]
+        rc2, log2 = task_batch(d7, bad_steps, apply_it=True)
+        back = io.open(os.path.join(d7, "p1.m"), encoding="utf-8").read()
+        if chk(rc2 == 1 and back == snap,
+               u"自证 batch：失败整批回滚", u"rc=%r 复原=%s" % (rc2, back == snap)):
+            good += 1
+        else:
+            bad += 1
+    finally:
+        shutil.rmtree(d7, ignore_errors=True)
+
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     return 1 if bad else 0
 
@@ -1126,6 +1290,12 @@ def main(argv=None):
     rp.add_argument("--new", required=True)
     rp.add_argument("--apply", action="store_true")
     rp.add_argument("--json", action="store_true")
+    bp = sub.add_parser("batch")
+    bp.add_argument("--dir", default=".")
+    bp.add_argument("--steps", required=True,
+                    help="步骤文件（JSON：数组，或 {\"steps\": [...]}）")
+    bp.add_argument("--apply", action="store_true")
+    bp.add_argument("--json", action="store_true")
     mp = sub.add_parser("move")
     mp.add_argument("--dir", default=".")
     mp.add_argument("--file", required=True)
@@ -1159,6 +1329,20 @@ def main(argv=None):
         return 0
     if args.selftest:
         return selftest()
+
+    if args.cmd == "batch":
+        raw = io.open(args.steps, "r", encoding="utf-8").read()
+        data = json.loads(raw)
+        steps = data.get("steps") if isinstance(data, dict) else data
+        rc, log = task_batch(os.path.abspath(args.dir), steps or [],
+                             apply_it=args.apply)
+        if args.json:
+            print(json.dumps({"ok": rc == 0, "log": log},
+                             ensure_ascii=False, indent=2))
+        else:
+            for row in log:
+                print("[%-9s] %s" % (row["step"], row["msg"]))
+        return rc
 
     if args.cmd == "move":
         rc, log, info = task_move(os.path.abspath(args.dir), args.file,

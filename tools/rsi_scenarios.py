@@ -44,7 +44,7 @@ CORPUS = os.path.join(ROOT, "tests", "sample_m")
 
 #: 场景数下界。加场景是允许的，删场景必须同时改这个数（与 check_all 的
 #: MIN_GUARDS 同一套纪律：删掉一条也会红）。
-MIN_SCENARIOS = 75
+MIN_SCENARIOS = 77
 
 
 def _uri(path):
@@ -1410,6 +1410,50 @@ def sc_mcp_task_batch_plan(sess, ctx):
     return _mcp_with(_batchproj(), run)
 
 
+
+def _write_steps(d, steps):
+    p = os.path.join(d, "plan.json")
+    io.open(p, "w", encoding="utf-8", newline="").write(
+        json.dumps({"steps": steps}, ensure_ascii=False))
+    return p
+
+
+def sc_task_batch_cli(ctx):
+    """CLI 的 batch 子命令：步骤文件 -> 两步都生效。"""
+    d = _mk({
+        "q1.m": (u"function y = aa(x)\n  y = x + 1;\nend\n", "utf-8", ""),
+        "q2.m": (u"function r = bb(v)\n  r = aa(v);\nend\n", "utf-8", ""),
+    })
+    try:
+        p = _write_steps(d, [{"task": "rename", "old": "aa", "new": "cc"},
+                             {"task": "rename", "old": "cc", "new": "dd"}])
+        rc, out = _run_task_cmd(d, "batch", ["--steps", p, "--apply"])
+        now = io.open(os.path.join(d, "q1.m"), encoding="utf-8").read()
+        ok = (rc == 0 and u"2 步全部通过" in out and u"dd" in now)
+        return ok, "rc=%s 两步生效=%s" % (rc, u"dd" in now)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def sc_task_batch_cli_rollback(ctx):
+    """CLI 的 batch：第二步失败 -> 整批回滚。"""
+    d = _mk({
+        "q1.m": (u"function y = aa(x)\n  y = x + 1;\nend\n", "utf-8", ""),
+        "q2.m": (u"function r = bb(v)\n  r = aa(v);\nend\n", "utf-8", ""),
+    })
+    try:
+        before = io.open(os.path.join(d, "q1.m"), encoding="utf-8").read()
+        p = _write_steps(d, [{"task": "rename", "old": "aa", "new": "cc"},
+                             {"task": "rename", "old": "cc", "new": "bb"}])
+        rc, out = _run_task_cmd(d, "batch", ["--steps", p, "--apply"])
+        after = io.open(os.path.join(d, "q1.m"), encoding="utf-8").read()
+        ok = (rc == 1 and u"已回滚全部" in out and after == before)
+        return ok, "rc=%s 回滚=%s 复原=%s" % (
+            rc, u"已回滚全部" in out, after == before)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default="")
@@ -1489,7 +1533,9 @@ def main(argv=None):
                 ("任务 extract 应用", sc_task_extract_apply),
                 ("任务 extract 自动推断", sc_task_extract_auto),
                 ("任务 extract 跨文件", sc_task_extract_to),
-                ("任务 move 跨文件", sc_task_move)]
+                ("任务 move 跨文件", sc_task_move),
+                ("任务 batch（CLI）", sc_task_batch_cli),
+                ("任务 batch 回滚（CLI）", sc_task_batch_cli_rollback)]
         for name, fn in solo:
             try:
                 ok, detail = fn({"root": root})

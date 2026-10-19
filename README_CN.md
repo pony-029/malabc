@@ -606,6 +606,10 @@ python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
 # 把整个函数搬到独立文件。目标必须叫 `<name>.m`——换个名字它就变成
 # 文件内私有子函数，所有调用点会**静默失效**
 python matlabc_task.py move --dir myproj/ --file a.m --name helper --to helper.m --apply
+
+# 多步当**一个事务**：每步照常验收；任一步失败，前面已完成的步骤也一起回滚
+# —— 不会留下改了一半的工程
+python matlabc_task.py batch --dir myproj/ --steps plan.json --apply
 ```
 
 ---

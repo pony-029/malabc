@@ -1466,105 +1466,16 @@ def _task_exec(root, a, apply_it):
                 "msg": u"task 只支持 rename / rename-field / extract / move"}]
 
 
-def T_iter_m(root):
-    """遍历工程里的 .m 文件（副本推演与快照都用它）。"""
-    import matlabc_task as _T
-    return _T._iter_m_files(root)
-
-
-def _m_snapshot(root):
-    """把工程里所有 .m 的原文收进内存（批量任务失败时整体回滚用）。"""
-    import matlabc_task as T
-    snap = {}
-    for p in T._iter_m_files(root):
-        try:
-            snap[p] = io.open(p, "r", encoding="utf-8",
-                              errors="replace").read()
-        except (IOError, OSError):
-            continue
-    return snap
-
-
-def _m_restore(root, snap):
-    """按快照恢复：**快照里没有的文件要删掉**（新提取出来的那些）。"""
-    import matlabc_task as T
-    for p in T._iter_m_files(root):
-        if p not in snap:
-            try:
-                os.remove(p)
-            except OSError:
-                pass
-    for p, text in snap.items():
-        try:
-            io.open(p, "w", encoding="utf-8", newline="").write(text)
-        except (IOError, OSError):
-            pass
-
-
-def _render(rows):
-    out = []
-    for i, task, rc, log in rows:
-        head = u"── 第 %d 步：%s %s" % (i, task, u"✓" if rc == 0 else u"✗")
-        out.append(head)
-        for r in log:
-            out.append(u"[%-9s] %s" % (r["step"], r["msg"]))
-    return u"\n".join(out)
-
-
 def _task_batch(root, steps, apply_it):
-    """多步事务。
+    """批量任务**只保留一份实现**（在 matlabc_task.task_batch 里）。
 
-    为什么需要它：真实重构很少只有一步（先提函数、再改名、再搬文件）。
-    逐步做的话，第二步失败时第一步已经落盘 —— 用户得到的是"改了一半"的工程，
-    而这比完全没改更难收拾。
+    上一版 MCP 自己写了一份快照/回滚，CLI 侧没有 —— 同一个语义两处代码，
+    迟早漂移。现在这里是薄薄一层格式化。
     """
-    if not isinstance(steps, list) or not steps:
-        return _err("steps 必须是非空数组，每项与单步任务的参数相同")
-
-    rows = []
-    if not apply_it:
-        # **在副本上真跑一遍**：逐步 dry-run 是错的 —— 第 2 步改的名字，
-        # 正是第 1 步刚改出来的（不写盘就找不到它，于是"计划"必然报失败）。
-        # 副本用完即删，工程一个字节都不动。
-        import shutil as _sh
-        import tempfile as _tf
-        tmp = _tf.mkdtemp(prefix="batch_plan_")
-        try:
-            for rel_p in T_iter_m(root):
-                rel = os.path.relpath(rel_p, root)
-                dst = os.path.join(tmp, rel)
-                d = os.path.dirname(dst)
-                if d and not os.path.isdir(d):
-                    os.makedirs(d)
-                _sh.copyfile(rel_p, dst)
-            for i, st in enumerate(steps):
-                if not isinstance(st, dict):
-                    return _err("第 %d 步不是对象" % (i + 1))
-                rc, log = _task_exec(tmp, st, True)
-                rows.append((i + 1, (st.get("task") or "?"), rc, log))
-        finally:
-            _sh.rmtree(tmp, ignore_errors=True)
-        body = _render(rows)
-        ok = all(r[2] == 0 for r in rows)
-        head = (u"批量计划：%d 步，在**副本**上按顺序推演"
-                u"（工程未被修改）—— %s\n\n"
-                % (len(rows), u"全部可执行" if ok else u"有步骤会失败"))
-        return _text(head + body) if ok else _err(head + body)
-
-    snap = _m_snapshot(root)
-    for i, st in enumerate(steps):
-        if not isinstance(st, dict):
-            _m_restore(root, snap)
-            return _err("第 %d 步不是对象 —— 已回滚" % (i + 1))
-        rc, log = _task_exec(root, st, True)
-        rows.append((i + 1, (st.get("task") or "?"), rc, log))
-        if rc != 0:
-            _m_restore(root, snap)
-            head = (u"批量任务在第 %d 步失败，**已回滚全部 %d 步**"
-                    u"（工程恢复到动手前）\n\n" % (i + 1, len(rows)))
-            return _err(head + _render(rows))
-    head = u"批量任务：%d 步全部通过\n\n" % len(rows)
-    return _text(head + _render(rows))
+    import matlabc_task as T
+    rc, log = T.task_batch(root, steps, apply_it)
+    body = u"\n".join(u"[%-9s] %s" % (r["step"], r["msg"]) for r in log)
+    return _text(body) if rc == 0 else _err(body)
 
 
 def _task_run(args, apply_it):
