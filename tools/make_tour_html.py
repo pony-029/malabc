@@ -317,7 +317,7 @@ button:hover{background:#333a47}
 <div id="bar">
   <button id="prev">← 上一步</button>
   <button id="next">下一步 →</button>
-  <button id="play">⏸ 暂停</button>
+  <button id="play">暂停</button>
   <div id="dots">%(dots)s</div>
 </div>
 %(cards)s
@@ -354,7 +354,7 @@ document.getElementById('next').onclick = () => { go(i + 1); restart(); };
 document.getElementById('prev').onclick = () => { go(i - 1); restart(); };
 document.getElementById('play').onclick = (ev) => {
   playing = !playing;
-  ev.target.textContent = playing ? '⏸ 暂停' : '▶ 播放';
+  ev.target.textContent = playing ? '暂停' : '播放';
 };
 document.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowRight') { go(i + 1); restart(); }

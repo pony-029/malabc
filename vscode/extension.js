@@ -1292,6 +1292,8 @@ function activate(context) {
   const taskProvider = {
     _groups: [],
     _count: 0,
+    //: 只显示动过这个文件的记录（空串 = 不过滤）。50 条时按天折叠还不够细。
+    _filter: '',
     onDidChangeTreeData: null,
     getChildren(el) {
       if (!el) return this._groups;
@@ -1303,10 +1305,14 @@ function activate(context) {
       const mine = [];
       const olderByDay = {};
 
+      const needle = (this._filter || '').toLowerCase();
       for (const rec of recs) {
         const rid = rec.id || rec._file;
         // 一行得能看出"动了哪个文件"：只写类型与时间，多文件工程里根本分不清。
         const paths = (rec.files || []).map((f) => f.path);
+        if (needle && !paths.some((p) => p.toLowerCase().indexOf(needle) >= 0)) {
+          continue;      // 过滤是"这个文件出现在这次改动里"，不是路径前缀匹配
+        }
         const head = paths.slice(0, 2).join('、');
         const more = paths.length > 2 ? (' 等 ' + paths.length + ' 个') : '';
         const label = (rec.kind || '?') + '  ' + (head || '（无文件）') + more;
@@ -1358,6 +1364,8 @@ function activate(context) {
       }
       this._groups = groups;
       this._count = recs.length;
+      this._shown = mine.length +
+                    days.reduce((n, d) => n + olderByDay[d].length, 0);
       if (this.onDidChangeTreeData) this.onDidChangeTreeData();
     },
   };
@@ -1367,7 +1375,12 @@ function activate(context) {
   context.subscriptions.push(treeView);
   const refreshTasks = () => {
     taskProvider.refresh();
-    treeView.title = '改动记录（' + (taskProvider._count || 0) + '）';
+    const shown = taskProvider._shown || 0;
+    const total = taskProvider._count || 0;
+    const f = taskProvider._filter;
+    treeView.title = '改动记录（' + shown + (f ? '/' + total : '') + '）' +
+                     (f ? ' · 只看 ' + f : '');
+    treeView.description = f ? '过滤：' + f : '';
   };
   context.subscriptions.push(
     vscode.commands.registerCommand('matlabcTasks.refresh', refreshTasks)
@@ -1392,9 +1405,13 @@ function activate(context) {
         info = (JSON.parse(plan.out.slice(plan.out.indexOf('{'))) || {}).info || {};
       } catch (e) { /* 只在展示时用到 */ }
       const opened = await showUndoDiffs(info);
+      const total = info.files || opened;
+      const note = opened
+        ? ('已打开前 ' + opened + ' 个 diff' +
+           (total > opened ? '（共 ' + total + ' 个文件，其余不逐个打开）' : ''))
+        : ('共 ' + total + ' 个文件将被恢复');
       const pick = await vscode.window.showWarningMessage(
-        'matlabc: 撤销 ' + id + '？' + (opened ? '（已打开 diff）' : ''),
-        { modal: true }, '撤销');
+        'matlabc: 撤销 ' + id + '？' + note, { modal: true }, '撤销');
       if (pick === '撤销') {
         const done = await runTask(['undo', '--dir', root, '--id', id, '--apply']);
         const tail = done.out.split('\n').filter((x) => x.trim())
@@ -1427,6 +1444,31 @@ function activate(context) {
       }
     })
   );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.filterTasks', async () => {
+      const cur = taskProvider._filter;
+      const v = await vscode.window.showInputBox({
+        prompt: '只显示动过哪个文件的记录（留空 = 取消过滤）',
+        value: cur,
+        placeHolder: '例如 a.m 或 solver',
+      });
+      if (v === undefined) return;          // 用户取消，不动现有过滤
+      taskProvider._filter = (v || '').trim();
+      refreshTasks();
+      if (taskProvider._filter) {
+        vscode.window.setStatusBarMessage(
+          'matlabc: 只显示动过 ' + taskProvider._filter + ' 的记录', 3000);
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.clearTaskFilter', () => {
+      taskProvider._filter = '';
+      refreshTasks();
+    })
+  );
+
   context.subscriptions.push(
     vscode.commands.registerCommand('matlabc.undoById', async () => {
       // 复制过 id 之后，得有个地方能把它贴进去 —— 否则 id 只能在右键菜单里用。
@@ -1482,9 +1524,11 @@ function activate(context) {
       const ACT_SEE = '查看这段提交';
       const picks = await vscode.window.showWarningMessage(
         'matlabc: ' + (opened
-          ? ('已打开 ' + opened + ' 个 diff（左＝当前，右＝撤销后），' +
-             'diff 里也可以点「确认撤销」。')
-          : (info.files + ' 个文件将恢复。')) + '现在撤销？',
+          ? ('已打开前 ' + opened + ' 个 diff（左＝当前，右＝撤销后）' +
+             ((info.files || 0) > opened
+               ? '（共 ' + info.files + ' 个文件）' : '') +
+             '，diff 里也能点「确认撤销」。')
+          : ((info.files || 0) + ' 个文件将恢复。')) + '现在撤销？',
         { modal: true }, ACT_UNDO, ACT_SEE);
       if (picks === ACT_SEE) {
         vscode.commands.executeCommand('matlabc.showRecentCommits');

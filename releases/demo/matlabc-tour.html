@@ -76,7 +76,7 @@ button:hover{background:#333a47}
 <div id="bar">
   <button id="prev">← 上一步</button>
   <button id="next">下一步 →</button>
-  <button id="play">⏸ 暂停</button>
+  <button id="play">暂停</button>
   <div id="dots"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
 </div>
 <div class="card"><h4><span class="dot" style="background:#22b8cf"></span>人在这里做什么</h4><ul><li>大纲：一个文件里有哪些函数</li><li>F12：跳到定义、首次赋值、global 声明</li><li>关系面板：光标停住就显示上游 / 下游</li><li>CodeLens：函数上方直接看到调用数</li></ul></div>
@@ -115,7 +115,7 @@ document.getElementById('next').onclick = () => { go(i + 1); restart(); };
 document.getElementById('prev').onclick = () => { go(i - 1); restart(); };
 document.getElementById('play').onclick = (ev) => {
   playing = !playing;
-  ev.target.textContent = playing ? '⏸ 暂停' : '▶ 播放';
+  ev.target.textContent = playing ? '暂停' : '播放';
 };
 document.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowRight') { go(i + 1); restart(); }

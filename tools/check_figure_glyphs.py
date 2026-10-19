@@ -12,6 +12,8 @@ FG1  源码里 `d.text(...)` / `caption(...)` / `chrome(...)` 用到的字符，
      在**界面字体**（雅黑）里必须有字形（渲染结果不等于 .notdef 的方块）。
 FG2  用**等宽字体**（Consolas）绘制的那一行，**不允许出现非 ASCII 字符** ——
      Consolas 没有 CJK 字形，中文一律会变成方块。
+FG3  导览页（tour.html）正文里的字符同样要有字形：那页是浏览器渲染，
+     但字形回退一样会给出方块，而方块看起来像打码。
 
 用法
 ====
@@ -28,7 +30,7 @@ import os
 import re
 import sys
 
-ROW_SIGNATURE = "FG1–FG2"
+ROW_SIGNATURE = "FG1–FG3"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -66,6 +68,19 @@ def _glyph_missing(font_path, ch):
 
 # 坐标是 `(x, y)`，本身就带逗号 —— 必须先整段吃掉括号再要字符串，
 # 否则正则在第一个逗号处就断了，等于什么都没扫到（自证当场抓到）。
+TOUR = os.path.join(REPO, "releases", "demo", "matlabc-tour.html")
+
+
+def scan_tour(path=TOUR):
+    """取出导览页正文里的字符（去标签、去脚本）。"""
+    if not os.path.isfile(path):
+        return set()
+    html = io.open(path, encoding="utf-8").read()
+    body = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", u" ", html)
+    body = re.sub(r"(?s)<[^>]+>", u" ", body)
+    return set(ch for ch in body if ord(ch) > 127)
+
+
 TEXT_CALL = re.compile(r"""(?:d\.text\(\s*\([^)]*\)\s*,\s*|"""
                        r"""caption\(\s*d\s*,\s*|chrome\(\s*d\s*,\s*)"""
                        r"""u?["']([^"']*)["']""")
@@ -106,6 +121,10 @@ def main(argv=None):
     chars, bad_mono = scan()
     missing = sorted(ch for ch in chars if _glyph_missing(UI_FONT, ch))
 
+    tour_chars = scan_tour()
+    tour_missing = sorted(ch for ch in tour_chars
+                          if _glyph_missing(UI_FONT, ch))
+
     bad = 0
     if missing:
         bad += 1
@@ -113,6 +132,11 @@ def main(argv=None):
         for ch in missing:
             print(u"   %r  U+%04X" % (ch, ord(ch)))
         print("   改成画形状（polygon/ellipse），或换成字体里有的字符。")
+    if tour_missing:
+        bad += 1
+        print("FG3 失败：导览页里有字符在界面字体里没有字形：")
+        for ch in tour_missing[:10]:
+            print(u"   %r  U+%04X" % (ch, ord(ch)))
     if bad_mono:
         bad += 1
         print("FG2 失败：等宽字体那几行里出现了非 ASCII 字符：")
@@ -122,8 +146,8 @@ def main(argv=None):
     if bad:
         print("check_figure_glyphs: %d 项不合规" % bad)
         return 1
-    print("check_figure_glyphs: OK（FG1–FG2 全绿；检查了 %d 个非 ASCII 字符）"
-          % len(chars))
+    print("check_figure_glyphs: OK（FG1–FG3 全绿；示意图 %d 个、"
+          "导览页 %d 个非 ASCII 字符）" % (len(chars), len(tour_chars)))
     return 0
 
 
@@ -156,6 +180,14 @@ def selftest():
         chars, bad_mono = scan(p)
         chk(u"\u4e2d" in chars, "扫描器能取出绘制字符串里的字符")
         chk(len(bad_mono) >= 1, "扫描器能发现等宽字体行里的非 ASCII")
+
+        # FG3：临时 html，正文含中文 + 一个缺字形符号
+        h = os.path.join(d, "fake.html")
+        io.open(h, "w", encoding="utf-8", newline="").write(
+            u"<html><body><p>中文 \u25be</p><script>\u25be</script></body></html>")
+        tc = scan_tour(h)
+        chk(u"\u4e2d" in tc, "FG3 能取出正文里的中文")
+        chk(u"\u25be" not in tc, "FG3 不会把 <script> 里的内容算进正文")
     finally:
         import shutil
         shutil.rmtree(d, ignore_errors=True)

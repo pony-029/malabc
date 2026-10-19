@@ -36,7 +36,7 @@
         ├─▶ check_facts_replay.py         事实重放 == 报表计数 + 位置完备 + 种类封闭（FT1–FT3；facts 层的门）
         ├─▶ check_portability.py          运行时不得假设只有 Windows（契约 PF1..PF3）
         ├─▶ check_tour.py                 导览页：分帧引用 / 端点穿框 / 换行（契约 TR1..TR3）
-        ├─▶ check_figure_glyphs.py       示意图的字形：缺字形画成方块 / 等宽行不许中文（契约 FG1..FG2）
+        ├─▶ check_figure_glyphs.py       示意图的字形：缺字形画成方块 / 等宽行不许中文（契约 FG1..FG3）
         ├─▶ check_version_scheme.py       版本号规则：每位 0–9，满 10 进位（契约 VS1..VS2）
         └─▶ check_eol_convention.py       行尾约定（EO1–EO3；手写物 CRLF / 生成物 LF / 扫描面下界）
         │

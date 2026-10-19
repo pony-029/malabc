@@ -2,7 +2,7 @@
   "name": "matlabc",
   "displayName": "matlabc",
   "description": "MATLAB 工程的代码理解工具：结构感知的诊断、跨文件导航、调用链分析与影响面评估。",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "publisher": "冯磊",
   "engines": {
     "vscode": "^1.80.0"
@@ -179,6 +179,16 @@
       {
         "command": "matlabc.undoById",
         "title": "matlabc: 按 id 撤销改动",
+        "category": "matlabc"
+      },
+      {
+        "command": "matlabc.filterTasks",
+        "title": "matlabc: 按文件过滤改动记录",
+        "category": "matlabc"
+      },
+      {
+        "command": "matlabc.clearTaskFilter",
+        "title": "matlabc: 清除改动记录过滤",
         "category": "matlabc"
       }
     ],
