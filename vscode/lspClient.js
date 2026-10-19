@@ -38,7 +38,20 @@ class LspClient {
     // 任何一次 write 都会 throw 到进程级（实测把 VSCode 宿主带崩）。
     // 这里吞掉——写失败本身已有 `pending` 的 15s 超时兜底。
     this.proc.stdin.on('error', () => { /* ignore EPIPE */ });
-    this.proc.on('error', () => { /* spawn 失败：initialize 的 catch 会报 */ });
+    // spawn 失败（最常见的是 PATH 里没有 python）：**立刻记下来并回调**。
+    // 只靠 initialize 的 catch 不行 —— 那要等 15 秒超时，用户看到的是
+    // "装了没反应"，而不是"Python 路径要设一下"。
+    this.spawnError = null;
+    this.proc.on('error', (e) => {
+      this.spawnError = e;
+      if (typeof this.onSpawnError === 'function') this.onSpawnError(e);
+      // 已经排队的请求全部立即失败，别让它们等到超时
+      for (const [, p] of this.pending) {
+        try { p.reject(new Error('无法启动 Python：' + (e && e.code))); }
+        catch (err) { /* 已经结束 */ }
+      }
+      this.pending.clear();
+    });
   }
 
   _onData(chunk) {

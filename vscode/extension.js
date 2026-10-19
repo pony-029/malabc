@@ -83,6 +83,26 @@ function sendOpen(doc) {
 // 选 Python 解释器（R386）。
 // 设置里那一项是纯字符串：用户不知道填什么，填错了也只表现为"启动失败"。
 // 这个命令让他直接挑文件，**当场验证能不能启动**，再写进设置。
+
+// Python 起不来时给**可操作**的提示（R392）。
+// 原来的提示只有一句 `matlabc LSP 启动失败：timeout` —— 用户既不知道原因，
+// 也不知道下一步该做什么。而这件事九成是"PATH 里没有 python"，
+// 解决方法是"去设置里指一个"，所以提示里就直接给那个按钮。
+function showPythonHelp(detail) {
+  const msg = 'matlabc: 启动失败 —— 找不到可用的 Python。\n' +
+              (detail ? ('原因：' + detail + '\n') : '') +
+              '请在设置里指定 Python 路径（命令面板 → matlabc: 选择 Python 解释器），' +
+              '或按 Ctrl+, 搜索 matlabc.pythonPath 填绝对路径。';
+  vscode.window.showErrorMessage(msg, '选择 Python 解释器', '打开使用说明')
+    .then((pick) => {
+      if (pick === '选择 Python 解释器') {
+        vscode.commands.executeCommand('matlabc.selectPython');
+      } else if (pick === '打开使用说明') {
+        vscode.commands.executeCommand('matlabc.openGuide');
+      }
+    });
+}
+
 async function pickPython() {
   const picked = await vscode.window.showOpenDialog({
     canSelectMany: false,
@@ -229,15 +249,39 @@ function activate(context) {
     collection.set(uri, items);
   });
 
+  // spawn 失败（PATH 里没有 python）走这里：比 initialize 超时快得多。
+  client.onSpawnError = (err) => {
+    log('spawn 失败：' + (err && (err.code || err.message)));
+    showPythonHelp((err && (err.code || err.message)) || '');
+  };
+
   client.initialize(root, {
     // 跨语言（C 源 / mex / DLL 导出表）分析开关，见设置 `matlabc.crossLanguage`
     crossLanguage: cfg.get('crossLanguage') !== false,
   }).then(() => {
     log('initialize 成功');
+    // **装好之后说一句**：只在这个版本第一次成功启动时出现一次。
+    // 否则用户装完只看到侧边栏多了一个图标，不知道下一步做什么。
+    const ver = (context.extension && context.extension.packageJSON &&
+                 context.extension.packageJSON.version) || '';
+    const seen = context.globalState.get('matlabc.welcomed', '');
+    if (seen !== ver) {
+      vscode.window
+        .showInformationMessage('matlabc 已就绪（' + ver + '）：跳转、关系面板、诊断已启用。',
+                                '打开使用说明', '看导览')
+        .then((pick) => {
+          if (pick === '打开使用说明') {
+            vscode.commands.executeCommand('matlabc.openGuide');
+          } else if (pick === '看导览') {
+            vscode.commands.executeCommand('matlabc.openTour');
+          }
+        });
+      context.globalState.update('matlabc.welcomed', ver);
+    }
   }).catch((e) => {
     log('initialize 失败：' + e.message + '   stderr尾部=' +
         (client.stderrTail || []).join('').slice(-400));
-    vscode.window.showErrorMessage('matlabc LSP 启动失败：' + e.message);
+    showPythonHelp(e.message);
   });
 
   // 打开时推一次全文；已打开的文档补推一遍
