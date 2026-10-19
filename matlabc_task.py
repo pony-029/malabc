@@ -571,10 +571,17 @@ def task_undo(root, apply_it=False, rec_id=None, whole_batch=False,
         if any(heads) and cur_head and cur_head not in heads:
             say("undo", u"注意：任务之后仓库有新提交（记录时 %s，现在 %s）"
                 % (u", ".join(sorted(h for h in heads if h)) or u"?", cur_head))
-        return 0, log, {"verdict": "plan",
-                        "ids": [r.get("id") for r in recs],
-                        # 界面上要显示"会恢复几个文件" —— 不返回就只能显示 0
-                        "files": len(writes), "deleted": len(deletes)}
+        info = {"verdict": "plan",
+                "ids": [r.get("id") for r in recs],
+                # 界面上要显示"会恢复几个文件" —— 不返回就只能显示 0
+                "files": len(writes), "deleted": len(deletes)}
+        if show_diff:
+            # 编辑器要开**原生 diff 视图**（左：现在，右：撤销后），
+            # 它需要"撤销后的内容"本身 —— 只有 diff 文本是画不出并排视图的。
+            info["previews"] = [
+                {"path": os.path.relpath(p, root), "before": writes[p]}
+                for p in sorted(writes)]
+        return 0, log, info
 
     # 撤销也要**可回退**：万一恢复之后结构不对，得能退回"撤销前"。
     pre = {}
@@ -2111,6 +2118,24 @@ def selftest():
             bad += 1
     finally:
         shutil.rmtree(d15, ignore_errors=True)
+
+    # ---- diff 预览要带"撤销后的内容"（编辑器并排视图靠它）-----------------
+    d16 = tempfile.mkdtemp(prefix="taskpv_")
+    try:
+        _make({"p1.m": (u"function y = aa(x)\n  y = x + 1;\nend\n")}, d16)
+        task_rename(d16, "aa", "bb", apply_it=True)
+        rc_p, _lp, info_p = task_undo(d16, apply_it=False, show_diff=True)
+        pvs = (info_p or {}).get("previews") or []
+        ok_p = (rc_p == 0 and len(pvs) == 1
+                and u"aa" in pvs[0].get("before", "")
+                and pvs[0].get("path"))
+        if chk(ok_p, u"自证 diff 预览：带撤销后的内容（可直接开并排视图）",
+               u"previews=%r" % (pvs[:1],)):
+            good += 1
+        else:
+            bad += 1
+    finally:
+        shutil.rmtree(d16, ignore_errors=True)
 
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     return 1 if bad else 0

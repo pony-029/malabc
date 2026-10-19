@@ -44,7 +44,7 @@ CORPUS = os.path.join(ROOT, "tests", "sample_m")
 
 #: 场景数下界。加场景是允许的，删场景必须同时改这个数（与 check_all 的
 #: MIN_GUARDS 同一套纪律：删掉一条也会红）。
-MIN_SCENARIOS = 89
+MIN_SCENARIOS = 90
 
 
 def _uri(path):
@@ -1722,6 +1722,28 @@ def sc_task_undo_diff(ctx):
         shutil.rmtree(d, ignore_errors=True)
 
 
+
+def sc_task_undo_previews(ctx):
+    """CLI：undo --diff --json 带 previews（撤销后的内容）。"""
+    d = _mk({"a.m": (u"function y = aa(x)\n  y = x + 1;\nend\n",
+                     "utf-8", "")})
+    try:
+        _run_task_cmd(d, "rename", ["--old", "aa", "--new", "cc", "--apply"])
+        rc, out = _run_task_cmd(d, "undo", ["--diff", "--json"])
+        j = None
+        try:
+            j = json.loads(out[out.index("{"):])
+        except Exception:
+            j = None
+        info = (j or {}).get("info") or {}
+        pvs = info.get("previews") or []
+        ok = (rc == 0 and len(pvs) == 1
+              and u"aa" in pvs[0].get("before", ""))
+        return ok, "previews=%d" % len(pvs)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default="")
@@ -1815,7 +1837,8 @@ def main(argv=None):
                 ("MCP task_undo batch", sc_mcp_task_undo_batch),
                 ("任务记录裁剪", sc_task_prune),
                 ("任务记录压缩存储", sc_task_record_packed),
-                ("任务 undo diff", sc_task_undo_diff)]
+                ("任务 undo diff", sc_task_undo_diff),
+                ("任务 undo previews", sc_task_undo_previews)]
         for name, fn in solo:
             try:
                 ok, detail = fn({"root": root})

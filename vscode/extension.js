@@ -8,6 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const vscode = require('vscode');
+const os = require('os');
 const { LspClient } = require('./lspClient');
 
 let client = null;
@@ -1240,9 +1241,16 @@ function activate(context) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('matlabc.undoLastTask', async () => {
-      // 先跑"计划 + diff"（不写盘）：既确认能不能撤，又把将发生的改动摆出来。
-      // 只报一句"将恢复 N 个文件"是不够的 —— 用户真正想确认的是**内容**。
-      const plan = await runTask(['undo', '--dir', root, '--diff']);
+      // 先跑"计划 + diff"（不写盘）。带 --json 是为了拿到**撤销后的内容**，
+      // 只有内容才能开 VS Code 的原生并排 diff；纯 diff 文本只能自己脑补。
+      const plan = await runTask(['undo', '--dir', root, '--diff', '--json']);
+      let info = {};
+      let raw = '';
+      try {
+        raw = plan.out.slice(plan.out.indexOf('{'));
+        info = (JSON.parse(raw) || {}).info || {};
+      } catch (e) { /* 解析失败就只按 rc 判断 */ }
+
       if (plan.rc !== 0) {
         const first = plan.out.split('\n').filter((x) => x.trim())
           .slice(-4).join('\n');
@@ -1250,15 +1258,46 @@ function activate(context) {
         return;
       }
 
-      const doc = await vscode.workspace.openTextDocument({
-        content: plan.out, language: 'diff',
-      });
-      await vscode.window.showTextDocument(doc, { preview: true });
+      // 把"撤销后的内容"落到临时文件，再用 vscode.diff 打开：
+      // 左 = 当前文件，右 = 撤销后。
+      const previews = info.previews || [];
+      const tmpDir = path.join(context.globalStoragePath || os.tmpdir(),
+                               'undo-preview');
+      try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (e) { /* */ }
+      let opened = 0;
+      for (const pv of previews.slice(0, 8)) {
+        const right = path.join(tmpDir, pv.path.replace(/[\\/]/g, '__'));
+        try {
+          fs.writeFileSync(right, pv.before, 'utf8');
+          await vscode.commands.executeCommand(
+            'vscode.diff',
+            vscode.Uri.file(path.join(root, pv.path)),
+            vscode.Uri.file(right),
+            '撤销后 ← 当前  ' + pv.path);
+          opened += 1;
+        } catch (e) { /* 单个失败不影响其它 */ }
+      }
 
+      // 记录时的 HEAD 与现在不同 -> 给一个"看这段时间提交"的入口
+      const ACT_SEE = '查看这段提交';
+      const ACT_UNDO = '撤销';
       const picks = await vscode.window.showWarningMessage(
-        'matlabc: 上面是撤销后会变成的样子。确认撤销？',
-        { modal: true }, '撤销');
-      if (picks !== '撤销') return;
+        'matlabc: ' + (opened ? ('已打开 ' + opened + ' 个 diff（左＝当前，右＝撤销后）。')
+                              : (info.files + ' 个文件将恢复。')) +
+        '确认撤销？', { modal: true }, ACT_UNDO, ACT_SEE);
+      if (picks === ACT_SEE) {
+        const out = vscode.window.createOutputChannel('matlabc: 提交对照');
+        out.show(true);
+        out.appendLine('以下是任务之后仓库里新增的提交（供对照，不影响撤销）：');
+        const { execFile } = require('child_process');
+        execFile('git', ['--no-pager', 'log', '--oneline', '-20'],
+                 { cwd: root, windowsHide: true },
+                 (err, stdout) => {
+                   out.append(stdout || (err ? String(err) : '（没有输出）'));
+                 });
+        return;
+      }
+      if (picks !== ACT_UNDO) return;
 
       const done = await runTask(['undo', '--dir', root, '--apply']);
       const tail = done.out.split('\n').filter((x) => x.trim())

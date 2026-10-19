@@ -380,12 +380,73 @@ def fig_undo(path):
     im.save(path)
 
 
+
+# ---------------------------------------------------------------------------
+# 图 6：一次改代码的流程
+# ---------------------------------------------------------------------------
+
+def fig_flow(path):
+    # 布局按**画布宽度算**，不写死坐标：上一版 4 个框 + 结论框直接顶出右边界，
+    # 截图上少了一个框（"通过 → 生效"整块不见了）。
+    W2, H2 = 900, 380
+    im = Image.new("RGB", (W2, H2), BG)
+    d = ImageDraw.Draw(im)
+    chrome(d, "一次改代码：验收条件在动手之前")
+
+    steps = [
+        (u"① 算一遍", u"改哪些位置", ACCENT),
+        (u"② 列判据", u"怎么算成功", ACCENT),
+        (u"③ 写入", u"逐文件备份", (90, 160, 220)),
+        (u"④ 复核", u"重新分析对比", (90, 160, 220)),
+        (u"通过 → 生效", u"返回 pass", GREEN),
+    ]
+    margin = 36
+    gap = 24
+    bw = (W2 - 2 * margin - gap * (len(steps) - 1)) // len(steps)
+    bh = 96
+    y = 92
+    centers = []
+    for i, (t1, t2, col) in enumerate(steps):
+        x = margin + i * (bw + gap)
+        centers.append(x + bw // 2)
+        fill = (35, 60, 45) if col == GREEN else (45, 45, 48)
+        round_rect(d, [x, y, x + bw, y + bh], 8, fill=fill, outline=col, width=2)
+        f1 = _font("ui_bold", 14 if i < len(steps) - 1 else 13)
+        d.text((x + 12, y + 20), t1, font=f1, fill=WHITE)
+        d.text((x + 12, y + 52), t2, font=_font("ui", 11), fill=DIM)
+        if i < len(steps) - 1:
+            ax = x + bw + 4
+            d.line([ax, y + bh // 2, ax + gap - 8, y + bh // 2],
+                   fill=BORDER, width=2)
+            d.polygon([(ax + gap - 9, y + bh // 2 - 5),
+                       (ax + gap - 1, y + bh // 2),
+                       (ax + gap - 9, y + bh // 2 + 5)], fill=BORDER)
+
+    # 回滚支路：从 ④ 复核 往下
+    rx = centers[-2]
+    by = y + bh + 26
+    d.line([rx, y + bh + 4, rx, by + 40], fill=(150, 90, 90), width=2)
+    d.polygon([(rx - 5, by + 40), (rx + 5, by + 40), (rx, by + 48)],
+              fill=(150, 90, 90))
+    half = 150
+    round_rect(d, [rx - half, by + 48, rx + half, by + 108], 8,
+               fill=(60, 42, 42), outline=(180, 100, 100), width=2)
+    d.text((rx - half + 14, by + 60), u"任一条不过 → 逐字节回滚",
+           font=_font("ui_bold", 12), fill=WHITE)
+    d.text((rx - half + 14, by + 84), u"返回 rollback，工程回到动手前",
+           font=_font("ui", 11), fill=DIM)
+
+    caption(d, u"示意图 · 判据先写出来，再动手；过不了就自己退回去")
+    im.save(path)
+
+
 FIGS = [
     ("relations.png", fig_relations),
     ("codelens.png", fig_codelens),
     ("heat.png", fig_heat),
     ("commands.png", fig_commands),
     ("undo.png", fig_undo),
+    ("flow.png", fig_flow),
 ]
 
 
