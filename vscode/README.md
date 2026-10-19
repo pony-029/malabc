@@ -10,10 +10,10 @@ MATLAB 工程的代码理解工具。
 
 | 想知道什么 | 看哪里 |
 | --- | --- |
-| **怎么安装、每个功能怎么用** | [`USER_GUIDE.md`](USER_GUIDE.md)（也可以直接在编辑器里执行命令 **`matlabc: 打开使用说明`**） |
+| **怎么安装、每个功能怎么用** | [`USER_GUIDE.md`](../releases/docs/USER_GUIDE.md)（也可以直接在编辑器里执行命令 **`matlabc: 打开使用说明`**） |
 | 这一版改了什么 | [`CHANGELOG.md`](CHANGELOG.md) |
-| 手册里的示意图 | [`media/guide/`](media/guide/)（4 张 PNG，按真实界面绘制，非截图） |
-| 想直接看排版 / 转发给人 | [`matlabc-guide.pdf`](../releases/demo/matlabc-guide.pdf)（8 页，图在页面上） |
+| 手册里的示意图 | [`media/guide/`](../releases/docs/figures/)（4 张 PNG，按真实界面绘制，非截图） |
+| 想直接看排版 / 转发给人 | [`matlabc-guide.pdf`](../releases/docs/matlabc-guide.pdf)（8 页，图在页面上） |
 
 > 手册是**随扩展一起分发**的：装好之后执行 `matlabc: 打开使用说明` 就能看，
 > 不需要联网，也不需要回仓库找。

@@ -26,8 +26,8 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-GUIDE = os.path.join(ROOT, "vscode", "USER_GUIDE.md")
-DEFAULT_OUT = os.path.join(ROOT, "releases", "demo", "matlabc-guide.pdf")
+GUIDE = os.path.join(ROOT, "releases", "docs", "USER_GUIDE.md")
+DEFAULT_OUT = os.path.join(ROOT, "releases", "docs", "matlabc-guide.pdf")
 
 BROWSERS = (
     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",

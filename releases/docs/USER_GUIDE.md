@@ -67,7 +67,7 @@ code --install-extension matlabc-<版本>.vsix
 **能跳的**：函数、局部函数、类方法、结构体字段（`s.field`）、结构体变量（`s`）、`global` 声明。
 字段会落到**首次赋值**那一行 —— 因为字段没有"定义语句"。
 
-![CodeLens 与转到定义](media/guide/codelens.png)
+![CodeLens 与转到定义](figures/codelens.png)
 
 *示意图：函数上方那行「3 个调用者 · 复杂度 4」是本扩展加的（CodeLens）；
 `F12` 跳过去，`Alt+F12` 就地预览。*
@@ -83,7 +83,7 @@ code --install-extension matlabc-<版本>.vsix
 
 面板里点开的分组会**被记住**：光标移到别处再移回来，仍然是你上次展开的样子。
 
-![关系面板](media/guide/relations.png)
+![关系面板](figures/relations.png)
 
 *示意图：左边是代码，右边是上下游。落不到 MATLAB 里的调用会标成跨语言，
 并给出 C 文件与行号。*
@@ -108,13 +108,13 @@ code --install-extension matlabc-<版本>.vsix
 
 按 `Ctrl+Shift+P`，输入 `matlabc`，共 10 条：
 
-![命令面板](media/guide/commands.png)
+![命令面板](figures/commands.png)
 
 *示意图：命令面板里输入 `matlabc`。*
 
 **想先看哪里最值得改**，用「热点函数排行」：
 
-![热点函数排行](media/guide/heat.png)
+![热点函数排行](figures/heat.png)
 
 *示意图：按「复杂度 × 调用者数」排序，选中即跳转。*
 

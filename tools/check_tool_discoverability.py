@@ -136,7 +136,8 @@ def main(argv=None):
     # TD4：**用户手册必须能从扩展页点到**。
     # 起因：USER_GUIDE.md 与 4 张示意图都在包里，但 README 一处都没引用 ——
     # 手册存在、用户找不到，等于没有。工具要"能被发现"，文档同样要。
-    guide = os.path.join(os.path.dirname(TOOLS), "vscode", "USER_GUIDE.md")
+    guide = os.path.join(os.path.dirname(TOOLS), "releases", "docs",
+                         "USER_GUIDE.md")
     page = os.path.join(os.path.dirname(TOOLS), "vscode", "README.md")
     try:
         page_txt = io.open(page, "r", encoding="utf-8").read()

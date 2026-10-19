@@ -5,7 +5,8 @@
 为什么不用截屏：截屏会随主题、字号、系统字体漂移，而说明书需要一套稳定的、
 跨版本看起来一样的图；另外截屏里难免带上作者自己的工程名与路径。
 
-产物：`vscode/media/guide/*.png`（打包进 vsix，与 USER_GUIDE.md 同级引用）。
+产物：`releases/docs/figures/*.png`（手册与图放在同一目录；打包时映射到
+`extension/figures/`，手册里的相对路径 `figures/x.png` 因此仍然成立）。
 
 用法：
     python tools/make_guide_figures.py
@@ -25,7 +26,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-DEFAULT_OUT = os.path.join(ROOT, "vscode", "media", "guide")
+DEFAULT_OUT = os.path.join(ROOT, "releases", "docs", "figures")
 
 W, H = 900, 520
 BG = (30, 30, 30)

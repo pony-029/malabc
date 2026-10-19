@@ -456,7 +456,7 @@ flowchart LR
 
 ## Quick Start
 
-> **Installing / using it**: the full user guide is [`vscode/USER_GUIDE.md`](vscode/USER_GUIDE.md) (bilingual tabs: install, every feature, FAQ).
+> **Installing / using it**: the full user guide is [`releases/docs/USER_GUIDE.md`](releases/docs/USER_GUIDE.md) (bilingual tabs: install, every feature, FAQ).
 
 ```bash
 # (1) Console report (zero install, clone and run)
@@ -954,7 +954,7 @@ judgements above:
 | `bump_version.py` | moves the version on by the project's rule — **every digit runs 0–9, then carries** (`0.7.9 → 0.8.0`, `0.9.9 → 1.0.0`). `--apply` writes it into the manifest, `--check` reports whether the current number still conforms |
 | `mutate_sample.py` | mutation sampling over **14 behaviours** (LSP and MCP): breaks one at a time in a throwaway copy and requires the matching judgement to **go red**. A judgement that cannot fail is indistinguishable from no judgement at all — it has already caught one vacuous criterion (a cycle guard tested on a fixture with no cycle) and one mutation aimed at the wrong function |
 | `rsi_scenarios.py` | full-scenario probe (**60 cases**) that drives real processes over the public protocols only — LSP with `Content-Length` framing, MCP line-delimited. The set only grows: every failure a round finds becomes a new case, and the floor is pinned so deleting one turns red |
-| `make_guide_figures.py` | draws the four figures used in the user guide (`vscode/media/guide/*.png`): relations panel, CodeLens, hot-function ranking, command palette. They are **stylised renderings of the real UI**, not screen captures — a screenshot drifts with theme, font size and machine, and usually carries the author's own project paths |
+| `make_guide_figures.py` | draws the four figures used in the user guide (`releases/docs/figures/*.png`): relations panel, CodeLens, hot-function ranking, command palette. They are **stylised renderings of the real UI**, not screen captures — a screenshot drifts with theme, font size and machine, and usually carries the author's own project paths |
 | `make_guide_pdf.py` | prints the user guide to **PDF** (Markdown → HTML → headless Edge): eight pages with the four figures embedded, so the images are visible the moment it opens and it can be forwarded to someone without an editor |
 | `release.py` | one command for a release: bump the version → build the `.vsix` → regenerate the version table → run the key gates, stopping at the first failure. The order used to be five manual steps, and a missed one (forgetting to install) shows up only at the very end |
 | `ci_local.py` | runs the same pipeline as `ci.yml`, but inside a **clean clone** at `E:\ci\matlabc` — the one thing a workflow cannot tell you locally is whether the repository still works from zero. What it tests is *committed* code by definition, so commit before running it |

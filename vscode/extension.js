@@ -706,7 +706,7 @@ function activate(context) {
     vscode.commands.registerCommand('matlabc.openTour', async () => {
       const cands = [
         path.join(context.extensionPath, 'media', 'tour.html'),
-        path.join(path.dirname(lspPath), '..', 'releases', 'demo',
+        path.join(path.dirname(lspPath), '..', 'releases', 'docs',
                   'matlabc-tour.html'),
       ];
       let hit = '';
@@ -727,12 +727,13 @@ function activate(context) {
 
   // ---- 打开使用说明（R373）--------------------------------------------
   // 手册只讲「装完怎么用」，随包分发；这里用 VS Code 自带的 Markdown 预览打开。
-  // 两个候选：装好的扩展 → 包根 USER_GUIDE.md；直接跑仓库 → vscode/USER_GUIDE.md。
+  // 两个候选：装好的扩展 → 包根 USER_GUIDE.md；直接跑仓库 → releases/docs/USER_GUIDE.md。
   context.subscriptions.push(
     vscode.commands.registerCommand('matlabc.openGuide', async () => {
       const cands = [
         path.join(context.extensionPath, 'USER_GUIDE.md'),
-        path.join(path.dirname(lspPath), '..', 'vscode', 'USER_GUIDE.md'),
+        path.join(path.dirname(lspPath), '..', 'releases', 'docs',
+                  'USER_GUIDE.md'),
       ];
       let hit = '';
       for (const p of cands) {
@@ -757,7 +758,7 @@ function activate(context) {
     vscode.commands.registerCommand('matlabc.openGuidePdf', async () => {
       const cands = [
         path.join(context.extensionPath, 'USER_GUIDE.pdf'),
-        path.join(path.dirname(lspPath), '..', 'releases', 'demo',
+        path.join(path.dirname(lspPath), '..', 'releases', 'docs',
                   'matlabc-guide.pdf'),
       ];
       let hit = '';

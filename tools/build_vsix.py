@@ -94,10 +94,10 @@ EXTRA_FILES = (
     # 用户手册：**只讲怎么用**，不含发版与实现。挂在包根，由
     # `matlabc: 打开使用说明` 用 Markdown 预览打开（不像导览那样在 media/，
     # 因为它不是网页，交给 VS Code 的预览更合适）。
-    (os.path.join(REPO, "vscode", "USER_GUIDE.md"),
+    (os.path.join(REPO, "releases", "docs", "USER_GUIDE.md"),
      "extension/USER_GUIDE.md"),
     # 同一份手册的 PDF 版：图直接看得见，也方便转发。
-    (os.path.join(REPO, "releases", "demo", "matlabc-guide.pdf"),
+    (os.path.join(REPO, "releases", "docs", "matlabc-guide.pdf"),
      "extension/USER_GUIDE.pdf"),
 )
 
@@ -165,13 +165,15 @@ with zipfile.ZipFile(OUT, "w", zipfile.ZIP_DEFLATED) as z:
                 z.write(full, "extension/" + rel)
 
     # 手册里的示意图：**整目录**映射，与 USER_GUIDE.md 的相对路径
-    # （`media/guide/x.png`）保持一致 —— 手册解开后图能直接显示。
-    _figdir = os.path.join(REPO, "vscode", "media", "guide")
+    # （`figures/x.png`）保持一致 —— 手册解开后图能直接显示。
+    # 手册与图**同目录**（releases/docs），包内也保持相对结构：
+    # extension/USER_GUIDE.md 里写 `figures/x.png`，图就在 extension/figures/。
+    _figdir = os.path.join(REPO, "releases", "docs", "figures")
     if os.path.isdir(_figdir):
         for _n in sorted(os.listdir(_figdir)):
             if _n.lower().endswith(".png"):
                 z.write(os.path.join(_figdir, _n),
-                        "extension/media/guide/" + _n)
+                        "extension/figures/" + _n)
 
     for src_path, arc in EXTRA_FILES:
         if not os.path.isfile(src_path):
