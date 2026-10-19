@@ -269,7 +269,7 @@ GUARD_CONTRACT = {
         2: "缺输入（tools/sweep_cli.py 不在）",
     },
     "tools/check_tool_discoverability.py": {
-        0: "通过（TD1–TD3：tools/ 下每个非护栏工具都在两侧 README 出现，"
+        0: "通过（TD1–TD4：tools/ 下每个非护栏工具都在两侧 README 出现，"
            "且名单非空）",
         1: "有工具在 README 里找不到，或只有一侧提到",
         2: "缺输入（tools/ 或 README 不在）",
