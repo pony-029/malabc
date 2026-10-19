@@ -158,7 +158,11 @@ function versionOk(ver) {
 // `ast.parse` 是最便宜的真实检验：能解析，才可能跑起来。
 function probeServer(py, lspPath) {
   return new Promise((resolve) => {
-    if (!lspPath) { resolve(true); return; }   // 没有源码可验，不阻塞
+    // 没有源码可验、或源码本身不在（自救分支：matlabc_lsp.py 丢了），
+    // 都**不阻塞** —— 否则所有候选都会被判成"无法运行"，用户选什么都过不去。
+    let exists = false;
+    try { exists = !!(lspPath && fs.existsSync(lspPath)); } catch (e) { exists = false; }
+    if (!exists) { resolve(true); return; }
     const { spawn } = require('child_process');
     const code = 'import ast,io,sys;' +
                  'src=io.open(sys.argv[1],"rb").read();' +
@@ -231,6 +235,26 @@ function pythonVersion(py) {
 // 原来的提示只有一句 `matlabc LSP 启动失败：timeout` —— 用户既不知道原因，
 // 也不知道下一步该做什么。而这件事九成是"PATH 里没有 python"，
 // 解决方法是"去设置里指一个"，所以提示里就直接给那个按钮。
+
+// 状态栏（R396）。
+//
+// 为什么要有：扩展出问题时，用户唯一能看到的东西是"没反应"。
+// 状态栏把两件事摆在外面 —— 用哪个 Python、有没有就绪 —— 出问题时有东西可看、
+// 可点、可截图发给别人。
+let statusBar = null;
+
+function showStatus(context, text, tip) {
+  if (!statusBar) {
+    statusBar = vscode.window.createStatusBarItem(
+      vscode.StatusBarAlignment.Right, 90);
+    statusBar.command = 'matlabc.selectPython';
+    context.subscriptions.push(statusBar);
+  }
+  statusBar.text = text;
+  statusBar.tooltip = tip;
+  statusBar.show();
+}
+
 function showPythonHelp(detail) {
   const msg = 'matlabc: 启动失败 —— 找不到可用的 Python。\n' +
               (detail ? ('原因：' + detail + '\n') : '') +
@@ -246,12 +270,19 @@ function showPythonHelp(detail) {
     });
 }
 
-async function pickPython(lspPath) {
+async function pickPython(lspPath, context) {
   // 先列出来：探测到的解释器（带版本）+ 一条"手动选择"
   const found = pythonCandidates();
   let py = '';
   if (found.length) {
-    const top = found.slice(0, 6);
+    // 把上次用过的排到最前面：多 Python 环境的人不用每次找。
+    const last = context.globalState.get('matlabc.lastPython', '');
+    const ordered = found.slice().sort((a, b) => {
+      const la = a.toLowerCase() === String(last).toLowerCase() ? 0 : 1;
+      const lb = b.toLowerCase() === String(last).toLowerCase() ? 0 : 1;
+      return la - lb;
+    });
+    const top = ordered.slice(0, 6);
     const info = await Promise.all(top.map(async (p) => {
       const v = await pythonVersion(p);
       const runnable = v && versionOk(v) ? await probeServer(p, lspPath) : false;
@@ -265,8 +296,9 @@ async function pickPython(lspPath) {
                                      MIN_PY.join('.') + '+';
       else if (!info[i].runnable) desc = 'Python ' + v + ' —— 无法运行本扩展';
       else desc = 'Python ' + v;
-      return { label: p, description: desc, picked: p,
-               ver: v, runnable: info[i].runnable };
+      const isLast = p.toLowerCase() === String(last).toLowerCase();
+      return { label: p, description: desc + (isLast ? '　（上次用的）' : ''),
+               picked: p, ver: v, runnable: info[i].runnable };
     });
     items.push({ label: '$(folder-opened) 手动选择 python.exe…',
                  description: '上面没有我的 Python', picked: '' });
@@ -335,6 +367,8 @@ async function pickPython(lspPath) {
   }
   await vscode.workspace.getConfiguration('matlabc')
     .update('pythonPath', py, vscode.ConfigurationTarget.Global);
+  try { await context.globalState.update('matlabc.lastPython', py); }
+  catch (e) { /* 记不住也不影响使用 */ }
   const act = await vscode.window.showInformationMessage(
     'matlabc: Python 已指向 ' + py, '重新加载窗口');
   if (act) {
@@ -380,12 +414,19 @@ function activate(context) {
   }
   const python = cfg.get('pythonPath', 'python');
 
+  // 先摆上状态栏：即便后面启动失败，用户也能看到"扩展在、但没就绪"，
+  // 而不是怀疑根本没装上。点击它 = 选择 Python 解释器。
+  showStatus(context, '$(loading~spin) matlabc', 'matlabc：正在启动…');
+
   // **启动之前先问一句版本**（R394）。3.5 及更老的 Python 会让服务端以
   // SyntaxError 崩掉，而 stderr 里那条报错对用户毫无意义 —— 他需要知道的是
   // "版本太旧"，以及"去哪儿换"。
   pythonVersion(python).then((v) => {
     if (v && !versionOk(v)) {
       log('Python 版本过低：' + v);
+      showStatus(context, '$(alert) matlabc',
+                 'Python ' + v + ' 版本过低（需要 ' + MIN_PY.join('.') +
+                 '+）—— 点击选择解释器');
       showPythonHelp('当前 Python 是 ' + v + '，本扩展需要 ' +
                      MIN_PY.join('.') + ' 或更新');
     }
@@ -405,7 +446,7 @@ function activate(context) {
     // return 之后，于是"服务器起不来"时连「打开使用说明」都不存在。
     context.subscriptions.push(
       vscode.commands.registerCommand('matlabc.selectPython',
-                                      () => pickPython(lspPath))
+                                      () => pickPython(lspPath, context))
     );
     context.subscriptions.push(
       vscode.commands.registerCommand('matlabc.openGuide', async () => {
@@ -458,15 +499,22 @@ function activate(context) {
 
   // spawn 失败（PATH 里没有 python）走这里：比 initialize 超时快得多。
   client.onSpawnError = (err) => {
-    log('spawn 失败：' + (err && (err.code || err.message)));
-    showPythonHelp((err && (err.code || err.message)) || '');
+    const why = (err && (err.code || err.message)) || '';
+    log('spawn 失败：' + why);
+    showStatus(context, '$(alert) matlabc',
+               'Python 启动失败（' + why + '）—— 点击选择解释器');
+    showPythonHelp(why);
   };
 
   client.initialize(root, {
     // 跨语言（C 源 / mex / DLL 导出表）分析开关，见设置 `matlabc.crossLanguage`
     crossLanguage: cfg.get('crossLanguage') !== false,
-  }).then(() => {
+  }).then(async () => {
     log('initialize 成功');
+    const pyVer = await pythonVersion(python);
+    showStatus(context, '$(check) matlabc',
+               'Python ' + (pyVer || '?') + '\n' + python +
+               '\n点击可更换解释器');
     // **装好之后说一句**：只在这个版本第一次成功启动时出现一次。
     // 否则用户装完只看到侧边栏多了一个图标，不知道下一步做什么。
     const ver = (context.extension && context.extension.packageJSON &&
@@ -488,6 +536,8 @@ function activate(context) {
   }).catch((e) => {
     log('initialize 失败：' + e.message + '   stderr尾部=' +
         (client.stderrTail || []).join('').slice(-400));
+    showStatus(context, '$(alert) matlabc',
+               '启动失败：' + e.message + ' —— 点击选择解释器');
     showPythonHelp(e.message);
   });
 
@@ -1102,7 +1152,7 @@ function activate(context) {
   // ---- 选择 Python 解释器（R386）------------------------------------
   context.subscriptions.push(
     vscode.commands.registerCommand('matlabc.selectPython',
-                                      () => pickPython(lspPath))
+                                      () => pickPython(lspPath, context))
   );
 
   // ---- 生成 HTML 分析报告（R327）-------------------------------------
