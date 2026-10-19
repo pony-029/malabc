@@ -640,6 +640,7 @@ python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
 python matlabc_task.py undo --dir myproj/ --apply
 python matlabc_task.py undo --dir myproj/ --list   # what has been done
 python matlabc_task.py undo --dir myproj/ --id 20261020-001555-413 --apply
+python matlabc_task.py undo --dir myproj/ --batch --apply   # whole batch at once
 
 # Undo is per-task and record-ordered: undoing an older task while a newer
 # one changed the same file is refused, not silently applied.

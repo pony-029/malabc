@@ -44,7 +44,7 @@ CORPUS = os.path.join(ROOT, "tests", "sample_m")
 
 #: 场景数下界。加场景是允许的，删场景必须同时改这个数（与 check_all 的
 #: MIN_GUARDS 同一套纪律：删掉一条也会红）。
-MIN_SCENARIOS = 82
+MIN_SCENARIOS = 83
 
 
 def _uri(path):
@@ -1574,6 +1574,29 @@ def sc_task_undo_list(ctx):
         shutil.rmtree(d, ignore_errors=True)
 
 
+
+def sc_task_undo_batch(ctx):
+    """CLI：两步 batch -> undo --batch 一次撤干净。"""
+    d = _mk({
+        "w1.m": (u"function y = aa(x)\n  y = x + 1;\nend\n", "utf-8", ""),
+        "w2.m": (u"function r = bb(v)\n  r = aa(v);\nend\n", "utf-8", ""),
+    })
+    try:
+        o1 = io.open(os.path.join(d, "w1.m"), encoding="utf-8").read()
+        o2 = io.open(os.path.join(d, "w2.m"), encoding="utf-8").read()
+        p = _write_steps(d, [{"task": "rename", "old": "aa", "new": "cc"},
+                             {"task": "rename", "old": "bb", "new": "dd"}])
+        rc0, _ = _run_task_cmd(d, "batch", ["--steps", p, "--apply"])
+        rc, out = _run_task_cmd(d, "undo", ["--batch", "--apply"])
+        b1 = io.open(os.path.join(d, "w1.m"), encoding="utf-8").read()
+        b2 = io.open(os.path.join(d, "w2.m"), encoding="utf-8").read()
+        ok = (rc0 == 0 and rc == 0 and b1 == o1 and b2 == o2
+              and u"2 个任务" in out)
+        return ok, "撤净=%s/%s" % (b1 == o1, b2 == o2)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default="")
@@ -1660,7 +1683,8 @@ def main(argv=None):
                 ("任务 undo", sc_task_undo),
                 ("任务 undo 冲突拒绝", sc_task_undo_conflict),
                 ("MCP task_undo", sc_mcp_task_undo),
-                ("任务 undo 列表", sc_task_undo_list)]
+                ("任务 undo 列表", sc_task_undo_list),
+                ("任务 undo 整批", sc_task_undo_batch)]
         for name, fn in solo:
             try:
                 ok, detail = fn({"root": root})

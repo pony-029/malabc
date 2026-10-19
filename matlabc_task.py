@@ -208,6 +208,9 @@ def _restore(backup):
 #: 任务记录目录（相对工程根）。每次**成功**的任务在这里落一条 JSON：
 #: 改前的原文、改后的哈希。`undo` 靠它把工程倒回去。
 HISTORY_DIR = os.path.join(".matlabc", "tasks")
+#: 当前批量任务的编号。由 `task_batch` 在动手前设置，
+#: 单步任务留空 —— 撤销时靠它把一批当成一次。
+_CURRENT_BATCH = u""
 
 
 def _sha_of(path):
@@ -238,6 +241,7 @@ def record_task(root, kind, params, backup, created=None):
             "params": params,
             "when": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now)),
             "undone": False,
+            "batch": _CURRENT_BATCH or u"",
             "files": [{"path": os.path.relpath(p, root), "before": t,
                        "after": _sha_of(p)}
                       for p, t in sorted(backup.items())],
@@ -301,6 +305,7 @@ def list_tasks(root):
             "files": len(rec.get("files") or []),
             "created": len(rec.get("created") or []),
             "params": rec.get("params") or {},
+            "batch": rec.get("batch") or u"",
         })
     return out
 
@@ -318,8 +323,59 @@ def _load_record(root, rid):
     return rec
 
 
-def task_undo(root, apply_it=False, rec_id=None):
-    """撤销一次任务（默认最近一次；给了 `rec_id` 就撤那一次）。
+def _sha_text(text):
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _plan_undo(root, recs):
+    """按记录**从新到旧**推演，返回 (writes, deletes, conflicts)。
+
+    为什么不逐条直接写：整批撤销要么全成、要么全不动。
+    逐条写的话，第 2 条冲突时第 1 条已经落盘 —— 用户得到一个"撤了一半"的工程，
+    而这比不撤更难收拾。
+    """
+    state = {}     # path -> 虚拟内容
+    gone = set()   # 虚拟已删除
+    conflicts = []
+
+    def current(p):
+        if p in state:
+            return state[p]
+        if p in gone:
+            return None
+        try:
+            return io.open(p, encoding="utf-8").read()
+        except (IOError, OSError):
+            return None
+
+    for rec in recs:
+        for f in rec.get("files") or []:
+            p = os.path.join(root, f["path"])
+            t = current(p)
+            if t is None:
+                conflicts.append(f["path"] + u"（已不存在）")
+                continue
+            if _sha_text(t) != f.get("after"):
+                conflicts.append(f["path"] + u"（任务之后被改过）")
+                continue
+            state[p] = f["before"]
+            gone.discard(p)
+        for c in rec.get("created") or []:
+            p = os.path.join(root, c["path"])
+            t = current(p)
+            if t is not None and _sha_text(t) != c.get("after"):
+                conflicts.append(c["path"] + u"（新建文件之后被改过）")
+                continue
+            state.pop(p, None)
+            gone.add(p)
+    return state, sorted(gone), conflicts
+
+
+def task_undo(root, apply_it=False, rec_id=None, whole_batch=False):
+    """撤销任务。
+
+    默认只撤**最近一次**；`whole_batch=True` 时把最近那一批（batch）整批撤掉，
+    因为 `batch` 本身就是一个事务 —— 撤销也该是一次。
 
     为什么需要它：任务失败会自动回滚，但**成功之后想反悔**只能靠 git ——
     而 git 只保护已提交的状态，用户刚跑完任务时通常还没提交。
@@ -333,6 +389,7 @@ def task_undo(root, apply_it=False, rec_id=None):
         say("error", u"目录不存在：%s" % root)
         return 2, log, {}
 
+    recs = []
     if rec_id:
         rec = _load_record(root, rec_id)
         if not rec:
@@ -341,28 +398,31 @@ def task_undo(root, apply_it=False, rec_id=None):
         if rec.get("undone"):
             say("undo", u"这条任务已经撤销过：%s" % rec_id)
             return 1, log, {"verdict": "nothing"}
+        recs = [rec]
     else:
-        rec = _latest_record(root)
-    if not rec:
-        say("undo", u"没有可撤销的任务记录（%s）" % HISTORY_DIR)
-        return 1, log, {"verdict": "nothing"}
+        head = _latest_record(root)
+        if not head:
+            say("undo", u"没有可撤销的任务记录（%s）" % HISTORY_DIR)
+            return 1, log, {"verdict": "nothing"}
+        bid = (head.get("batch") or u"") if whole_batch else u""
+        if bid:
+            # 同批的全部记录，按时间从新到旧
+            rows = list_tasks(root)
+            order = [r["id"] for r in rows if not r["undone"]]
+            for rid in order:
+                r = _load_record(root, rid)
+                if r and (r.get("batch") or u"") == bid:
+                    recs.append(r)
+            recs = recs or [head]
+        else:
+            recs = [head]
 
-    say("undo", u"任务 %s：%s（%s）"
-        % (rec.get("id"), rec.get("kind"), rec.get("when", "")))
+    say("undo", u"目标：%s" % u"、".join(r.get("id") or "?" for r in recs))
+    for r in recs:
+        say("undo", u"  · %s %s %s" % (r.get("kind"), r.get("when", ""),
+                                       r.get("id")))
 
-    # **先校验再动手**：文件在任务之后被改过时，撤销会覆盖那些改动。
-    conflicts = []
-    for f in rec.get("files") or []:
-        p = os.path.join(root, f["path"])
-        if not os.path.isfile(p):
-            conflicts.append(f["path"] + u"（已不存在）")
-        elif _sha_of(p) != f.get("after"):
-            conflicts.append(f["path"] + u"（任务之后被改过）")
-    for c in rec.get("created") or []:
-        p = os.path.join(root, c["path"])
-        if os.path.isfile(p) and _sha_of(p) != c.get("after"):
-            conflicts.append(c["path"] + u"（新建文件之后被改过）")
-
+    writes, deletes, conflicts = _plan_undo(root, recs)
     if conflicts:
         say("undo", u"拒绝撤销 —— 撤销会覆盖任务之后的改动：")
         for one in conflicts:
@@ -372,36 +432,38 @@ def task_undo(root, apply_it=False, rec_id=None):
 
     if not apply_it:
         say("plan", u"将恢复 %d 个文件、删除 %d 个新建文件（未写盘）"
-            % (len(rec.get("files") or []), len(rec.get("created") or [])))
-        return 0, log, {"verdict": "plan", "id": rec.get("id")}
+            % (len(writes), len(deletes)))
+        return 0, log, {"verdict": "plan",
+                        "ids": [r.get("id") for r in recs]}
 
-    for f in rec.get("files") or []:
-        io.open(os.path.join(root, f["path"]), "w",
-                encoding="utf-8", newline="").write(f["before"])
+    for p, text in writes.items():
+        io.open(p, "w", encoding="utf-8", newline="").write(text)
     removed = 0
-    for c in rec.get("created") or []:
-        p = os.path.join(root, c["path"])
+    for p in deletes:
         try:
             os.remove(p)
             removed += 1
         except OSError:
             pass
 
-    rec["undone"] = True
-    try:
-        io.open(rec["_file"], "w", encoding="utf-8", newline="").write(
-            json.dumps(dict((k, v) for k, v in rec.items()
-                            if not k.startswith("_")),
-                       ensure_ascii=False, indent=1) + u"\n")
-    except Exception:
-        pass
+    for r in recs:
+        r["undone"] = True
+        try:
+            io.open(r["_file"], "w", encoding="utf-8", newline="").write(
+                json.dumps(dict((k, v) for k, v in r.items()
+                                if not k.startswith("_")),
+                           ensure_ascii=False, indent=1) + u"\n")
+        except Exception:
+            pass
 
-    say("undo", u"已恢复 %d 个文件，删除 %d 个新建文件"
-        % (len(rec.get("files") or []), removed))
+    say("undo", u"已恢复 %d 个文件，删除 %d 个新建文件（%d 个任务）"
+        % (len(writes), removed, len(recs)))
     after = _scan(root)
     say("validate", u"撤销后：函数 %d ｜ 诊断 %d"
         % (after["functions"], after["diagnostics"]))
-    return 0, log, {"verdict": "undone", "id": rec.get("id"), "after": after}
+    return 0, log, {"verdict": "undone",
+                    "ids": [r.get("id") for r in recs], "after": after}
+
 
 
 def task_rename(root, old, new, apply_it=False, as_json=False,
@@ -1192,6 +1254,9 @@ def task_batch(root, steps, apply_it=False):
 
     snap = _snapshot(root)
     done = 0
+    #: 给这一批编个号：整批撤销靠它把 N 条记录认成一次。
+    global _CURRENT_BATCH
+    _CURRENT_BATCH = u"b" + time.strftime("%Y%m%d-%H%M%S")
     for i, st in enumerate(resolved):
         rc, one = _run_step(root, st, True)
         done = i + 1
@@ -1201,10 +1266,12 @@ def task_batch(root, steps, apply_it=False):
             log.extend(one)
             say("rollback", u"批量任务在第 %d 步失败，**已回滚全部 %d 步**"
                             u"（工程恢复到动手前）" % (i + 1, done))
+            _CURRENT_BATCH = u""
             return 1, log
         say("step", u"── 第 %d 步：%s ✓" % (i + 1, st.get("task") or "?"))
         log.extend(one)
     say("validate", u"批量任务：%d 步全部通过" % len(steps))
+    _CURRENT_BATCH = u""
     return 0, log
 
 
@@ -1673,6 +1740,49 @@ def selftest():
     finally:
         shutil.rmtree(d10, ignore_errors=True)
 
+    # ---- 整批撤销：一批要么全撤、要么全不动 -----------------------------
+    d11 = tempfile.mkdtemp(prefix="taskb2_")
+    try:
+        _make({"w1.m": (u"function y = aa(x)\n  y = x + 1;\nend\n"),
+               "w2.m": (u"function r = bb(v)\n  r = aa(v);\nend\n")}, d11)
+        o1 = io.open(os.path.join(d11, "w1.m"), encoding="utf-8").read()
+        o2 = io.open(os.path.join(d11, "w2.m"), encoding="utf-8").read()
+        rc, _lg = task_batch(d11, [
+            {"task": "rename", "old": "aa", "new": "cc"},
+            {"task": "rename", "old": "bb", "new": "dd"}], apply_it=True)
+        rc_u, log_u, info_u = task_undo(d11, apply_it=True, whole_batch=True)
+        b1 = io.open(os.path.join(d11, "w1.m"), encoding="utf-8").read()
+        b2 = io.open(os.path.join(d11, "w2.m"), encoding="utf-8").read()
+        if chk(rc == 0 and rc_u == 0 and b1 == o1 and b2 == o2,
+               u"自证 整批撤销：两个文件都回到原样",
+               u"rc=%r/%r 复原=%s/%s" % (rc, rc_u, b1 == o1, b2 == o2)):
+            good += 1
+        else:
+            bad += 1
+
+        # 一个文件被改过 -> 整批拒绝，**另一个文件也不能动**
+        _make({"w1.m": (u"function y = aa(x)\n  y = x + 1;\nend\n"),
+               "w2.m": (u"function r = bb(v)\n  r = aa(v);\nend\n")}, d11)
+        task_batch(d11, [{"task": "rename", "old": "aa", "new": "cc"},
+                         {"task": "rename", "old": "bb", "new": "dd"}],
+                   apply_it=True)
+        with io.open(os.path.join(d11, "w1.m"), "a", encoding="utf-8") as fh:
+            fh.write(u"% 手工改的\n")
+        s1 = io.open(os.path.join(d11, "w1.m"), encoding="utf-8").read()
+        s2 = io.open(os.path.join(d11, "w2.m"), encoding="utf-8").read()
+        rc_c, _lc, info_c = task_undo(d11, apply_it=True, whole_batch=True)
+        n1 = io.open(os.path.join(d11, "w1.m"), encoding="utf-8").read()
+        n2 = io.open(os.path.join(d11, "w2.m"), encoding="utf-8").read()
+        if chk(rc_c == 1 and info_c.get("verdict") == "conflict"
+               and n1 == s1 and n2 == s2,
+               u"自证 整批撤销：一个冲突则整批不动",
+               u"rc=%r 未动=%s/%s" % (rc_c, n1 == s1, n2 == s2)):
+            good += 1
+        else:
+            bad += 1
+    finally:
+        shutil.rmtree(d11, ignore_errors=True)
+
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     return 1 if bad else 0
 
@@ -1691,6 +1801,8 @@ def main(argv=None):
     up.add_argument("--list", action="store_true",
                     help="列出任务记录（新的在前）")
     up.add_argument("--id", default="", help="撤销指定的那一次")
+    up.add_argument("--batch", action="store_true",
+                    help="撤销最近一整批（batch 是一个事务）")
     up.add_argument("--apply", action="store_true")
     up.add_argument("--json", action="store_true")
     bp = sub.add_parser("batch")
@@ -1750,7 +1862,8 @@ def main(argv=None):
                              r["files"], r["created"]))
             return 0
         rc, log, info = task_undo(_root, apply_it=args.apply,
-                                  rec_id=(args.id or None))
+                                  rec_id=(args.id or None),
+                                  whole_batch=bool(args.batch))
         if args.json:
             print(json.dumps({"ok": rc == 0, "log": log,
                               "info": info},
