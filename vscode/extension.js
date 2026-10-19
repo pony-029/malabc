@@ -750,6 +750,32 @@ function activate(context) {
     })
   );
 
+  // ---- 打开使用说明的 PDF 版（R382）-----------------------------------
+  // Markdown 预览要先点一次"打开预览"，而且换台机器不一定有预览器；
+  // PDF 打开就是最终排版，四张示意图直接落在页面上，也方便转发给同事。
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.openGuidePdf', async () => {
+      const cands = [
+        path.join(context.extensionPath, 'USER_GUIDE.pdf'),
+        path.join(path.dirname(lspPath), '..', 'releases', 'demo',
+                  'matlabc-guide.pdf'),
+      ];
+      let hit = '';
+      for (const p of cands) {
+        try {
+          if (fs.existsSync(p)) { hit = p; break; }
+        } catch (e) { /* 权限问题就跳过 */ }
+      }
+      if (!hit) {
+        vscode.window.showErrorMessage(
+          'matlabc: 找不到使用说明 PDF（生成它：python tools/make_guide_pdf.py）');
+        return;
+      }
+      log('打开 PDF 说明 ' + hit);
+      vscode.env.openExternal(vscode.Uri.file(hit));
+    })
+  );
+
   // ---- 生成 HTML 分析报告（R327）-------------------------------------
   // 分析器本来就能出这份报告（`--html`），只是编辑器里拿不到。
   // 报告落在工作区的 `.matlabc/` 下，不污染源码目录，也不用用户记命令。

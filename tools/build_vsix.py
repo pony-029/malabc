@@ -96,6 +96,9 @@ EXTRA_FILES = (
     # 因为它不是网页，交给 VS Code 的预览更合适）。
     (os.path.join(REPO, "vscode", "USER_GUIDE.md"),
      "extension/USER_GUIDE.md"),
+    # 同一份手册的 PDF 版：图直接看得见，也方便转发。
+    (os.path.join(REPO, "releases", "demo", "matlabc-guide.pdf"),
+     "extension/USER_GUIDE.pdf"),
 )
 
 #: 分析器侧：LSP 入口 + CLI + 包目录（`analyzer/` 只有 3 个源文件）

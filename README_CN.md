@@ -903,6 +903,7 @@ python tools/check_help_contract.py --list-prefixes    # 前缀 -> 主人；加�
 | `mutate_sample.py` | 变异抽样：**14 处行为**（LSP 与 MCP 两侧），在一次性副本上**一次改坏一处**，要求对应判据**变红**。永远不会红的判据与没有判据等价 —— 它已经抓出过一条空判据（用无环语料验防环），以及一次改错了函数的变异 |
 | `rsi_scenarios.py` | 全场景探针（**60 个场景**），只通过公开协议驱动真实进程：LSP 走 `Content-Length` 分帧、MCP 走行分隔。场景集只增不减——每轮发现的失败都固化成新场景，下界钉住，删一条就红 |
 | `make_guide_figures.py` | 画使用说明里的 4 张示意图（`vscode/media/guide/*.png`）：关系面板、CodeLens、热点排行、命令面板。它们是**按真实界面绘制的**，不是屏幕截图 —— 截图会随主题、字号、机器漂移，还常常带着作者自己的工程路径 |
+| `make_guide_pdf.py` | 把使用说明排成 **PDF**（Markdown → HTML → 无头 Edge 打印）：8 页，4 张示意图直接印在页面上，打开就看得到、也方便转发给没装编辑器的人 |
 | `release.py` | 发布一条命令：版本号 +1 → 打包 `.vsix` → 重建版本表 → 跑关键门，任一步失败就停下。原本是五步手工，漏一步（比如忘了安装）要到最后才看得出来 |
 | `ci_local.py` | 在 `E:\ci\matlabc` 的**干净克隆**里跑与 `ci.yml` 相同的流水线——工作流在本地唯一没法回答的问题，就是「这个仓库从零开始还能不能跑起来」。它测的按定义是**已提交**的代码，所以先提交再跑 |
 | `audit_coverage.py` | 按**真实调用点**统计每个 MCP 工具被覆盖情况（判据里的 `_MCP.t_x(`、场景里的 `_call(sess, "matlabc_x")`），而不是搜名字。按名字搜时它报 19/19 全覆盖，而 `matlabc_definition` 与 `matlabc_references` 从未被调用过 |

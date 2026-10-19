@@ -295,6 +295,7 @@ def fig_commands(path):
     # **必须列全 9 条**：图上写"共 9 条"却只画 7 条，读者会去数。
     cmds = [
         (u"matlabc: 打开使用说明", u"完整手册（离线）"),
+        (u"matlabc: 打开使用说明（PDF）", u"图在页面上"),
         (u"matlabc: 打开使用导览", u"8 步动画"),
         (u"matlabc: 热点函数排行", u"复杂度 × 调用者数"),
         (u"matlabc: 热点函数排行（当前目录）", u""),
@@ -304,15 +305,15 @@ def fig_commands(path):
         (u"matlabc: 生成 HTML 分析报告", u"单文件报告"),
         (u"matlabc: 生成 MCP 配置（给 AI 客户端）", u""),
     ]
-    y = 112
+    y = 108
     for i, (name, hint) in enumerate(cmds):
         if i == 0:
             d.rectangle([68, y - 7, W - 68, y + 25], fill=(9, 71, 113))
         d.text((84, y), name, font=_font("ui", 13), fill=WHITE)
         if hint:
             d.text((600, y + 1), hint, font=_font("ui", 11), fill=DIM)
-        y += 33
-    caption(d, u"示意图 · Ctrl+Shift+P 输入 matlabc，共 9 条命令")
+        y += 30
+    caption(d, u"示意图 · Ctrl+Shift+P 输入 matlabc，共 10 条命令")
     im.save(path)
 
 
