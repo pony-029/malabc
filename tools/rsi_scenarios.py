@@ -44,7 +44,7 @@ CORPUS = os.path.join(ROOT, "tests", "sample_m")
 
 #: 场景数下界。加场景是允许的，删场景必须同时改这个数（与 check_all 的
 #: MIN_GUARDS 同一套纪律：删掉一条也会红）。
-MIN_SCENARIOS = 67
+MIN_SCENARIOS = 68
 
 
 def _uri(path):
@@ -1238,6 +1238,22 @@ def sc_task_extract_apply(ctx):
         shutil.rmtree(d, ignore_errors=True)
 
 
+
+def sc_task_extract_auto(ctx):
+    """`--auto`：接口由工具推断，dry-run 里能看见它推了什么。"""
+    d = _extract_demo()
+    try:
+        rc, out = _run_task_cmd(d, "extract",
+                                ["--file", "mx.m", "--lines", "3-4",
+                                 "--name", "part", "--auto", "--apply"])
+        now = io.open(os.path.join(d, "mx.m"), encoding="utf-8").read()
+        ok = (rc == 0 and u"in=a" in out and u"out=y" in out
+              and u"y = part(a);" in now)
+        return ok, "rc=%s 推断=%s" % (rc, u"in=a" in out)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default="")
@@ -1314,7 +1330,8 @@ def main(argv=None):
                 ("任务 rename-field 计划", sc_task_field_dry_run),
                 ("任务 rename-field 应用", sc_task_field_apply),
                 ("任务 extract 计划", sc_task_extract_dry_run),
-                ("任务 extract 应用", sc_task_extract_apply)]
+                ("任务 extract 应用", sc_task_extract_apply),
+                ("任务 extract 自动推断", sc_task_extract_auto)]
         for name, fn in solo:
             try:
                 ok, detail = fn({"root": root})

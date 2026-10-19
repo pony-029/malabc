@@ -621,6 +621,11 @@ python matlabc_task.py rename-field --dir myproj/ --old old --new new --apply
 python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
     --name part --in x,y --out z --apply
 
+# ...or let it infer the interface from the data flow. It is a heuristic and it
+# says so: the dry-run prints `in=… | out=…` before anything is written.
+python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
+    --name part --auto --apply
+
 # Generate a deterministic self-verified fix patch
 python matlabc flow myproj --auto-apply --gen-apply-patch
 

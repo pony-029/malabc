@@ -592,6 +592,10 @@ python matlabc_task.py rename-field --dir myproj/ --old old --new new --apply
 # 验收：函数数 +1 / 诊断不增加 / function-end 仍配平
 python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
     --name part --in x,y --out z --apply
+
+# 也可以让它自己推断接口。它是启发式，并且**会说出来**：dry-run 先打印 `in=… | out=…`
+python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
+    --name part --auto --apply
 ```
 
 ---

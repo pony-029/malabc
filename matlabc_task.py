@@ -28,7 +28,11 @@
 用法：
     python matlabc_task.py rename --dir myproj --old foo --new bar
     python matlabc_task.py rename --dir myproj --old foo --new bar --apply
-    python matlabc_task.py rename --dir myproj --old foo --new bar --apply --json
+    python matlabc_task.py rename-field --dir myproj --old val --new value --apply
+    python matlabc_task.py extract --dir myproj --file a.m --lines 12-18 \
+        --name part --in x,y --out z --apply
+    python matlabc_task.py extract --dir myproj --file a.m --lines 12-18 \
+        --name part --auto --apply      # 接口由工具推断（启发式，先看 dry-run）
     python matlabc_task.py --selftest
 
 退出码：
@@ -309,8 +313,113 @@ def _existing_functions(root):
     return names
 
 
+
+#: MATLAB 关键字：不是变量，推断时必须排除。
+MATLAB_KEYWORDS = set([
+    u"function", u"end", u"if", u"else", u"elseif", u"for", u"while",
+    u"switch", u"case", u"otherwise", u"try", u"catch", u"return",
+    u"break", u"continue", u"global", u"persistent", u"classdef",
+    u"methods", u"properties", u"events", u"parfor", u"spmd",
+])
+
+_RE_ASSIGN = re.compile(u"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)")
+_RE_ASSIGN_MULTI = re.compile(u"^\s*\[([^\]]*)\]\s*=")
+_RE_IDENT = re.compile(u"(?<![A-Za-z0-9_.])([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def _assigned_in(line):
+    """这一行**赋值给**了哪些名字（`y = ...` 或 `[a, b] = ...`）。"""
+    masked = _mask_noise(line)
+    m = _RE_ASSIGN_MULTI.match(masked)
+    if m:
+        return set(x.strip() for x in m.group(1).split(u",") if x.strip())
+    m = _RE_ASSIGN.match(masked)
+    return set([m.group(1)]) if m else set()
+
+
+def _used_in(line):
+    """这一行**读**了哪些名字（排除关键字、排除点后面的字段名）。"""
+    masked = _mask_noise(line)
+    out = set()
+    for m in _RE_IDENT.finditer(masked):
+        nm = m.group(1)
+        if nm in MATLAB_KEYWORDS:
+            continue
+        # 点后面的名字是字段，不是变量
+        prev = masked[:m.start()].rstrip()
+        if prev.endswith(u"."):
+            continue
+        out.add(nm)
+    return out
+
+
+def _function_outputs(lines, start):
+    """向上找最近的 `function` 行，取出它的输出变量名。
+
+    为什么需要：块尾那句 `y = b;` 之后往往就是 `end` —— 按"之后是否还被用到"
+    判断，`y` 会被漏掉，而它恰恰是**这个函数要返回的东西**。
+    """
+    for i in range(start - 2, -1, -1):
+        st = _mask_noise(lines[i]).strip()
+        if not st.startswith(u"function"):
+            continue
+        rest = st[len(u"function"):].strip()
+        if u"=" not in rest:
+            return []
+        left = rest.split(u"=", 1)[0].strip()
+        if left.startswith(u"["):
+            left = left.strip(u"[]")
+        return [x.strip() for x in left.split(u",") if x.strip()]
+    return []
+
+
+def infer_interface(text, start, end):
+    """推断提取块的输入/输出。**启发式**，不是数据流分析。
+
+    输入 = 块里**先读后写**（或只读）、且在块之前出现过的名字（含函数参数）
+    输出 = 块里赋值、且（块之后还被用到 **或** 它是本函数的返回值）
+
+    规则写在这里，是为了让人能判断它什么时候会猜错：循环里跨迭代的变量、
+    通过 `eval`/`assignin` 间接读写的名字，它都看不出来。
+    """
+    lines = text.splitlines()
+    block = lines[start - 1:end]
+    before = u"\n".join(lines[:start - 1])
+    after = u"\n".join(lines[end:])
+
+    defined_before = set()
+    for ln in before.splitlines():
+        defined_before |= _assigned_in(ln)
+        defined_before |= set(m.group(1) for m in _RE_IDENT.finditer(
+            _mask_noise(ln)))
+
+    order_u, first_use, first_asg = [], {}, {}
+    assigned_block = set()
+    order_a = []
+    for i, ln in enumerate(block):
+        for nm in _used_in(ln):
+            if nm not in first_use:
+                first_use[nm] = i
+                order_u.append(nm)
+        for nm in _assigned_in(ln):
+            if nm not in first_asg:
+                first_asg[nm] = i
+                order_a.append(nm)
+            assigned_block.add(nm)
+
+    used_after = _used_in(after)
+    fn_outs = _function_outputs(lines, start)
+
+    ins = [n for n in order_u
+           if n in defined_before
+           and first_use.get(n, 10 ** 9) < first_asg.get(n, 10 ** 9)]
+    outs = [n for n in order_a
+            if n in used_after or n in fn_outs]
+    return ins, outs
+
+
 def task_extract(root, rel, start, end, name, ins, outs,
-                 apply_it=False):
+                 apply_it=False, auto=False):
     """extract 任务：把 `rel` 的第 start..end 行提成一个新函数。
 
     **接口由调用方显式给出**（`--in` / `--out`）。自动推断输入输出需要数据流，
@@ -349,6 +458,13 @@ def task_extract(root, rel, start, end, name, ins, outs,
     if not u"".join(block).strip():
         say("error", u"选区是空的")
         return 1, log, {}
+
+    if auto and not (ins or outs):
+        ins, outs = infer_interface(text, start, end)
+        say("infer", u"自动推断：in=%s ｜ out=%s（启发式，请先看 dry-run）"
+            % (u",".join(ins) or u"无", u",".join(outs) or u"无"))
+        if not ins and not outs:
+            say("infer", u"没能推断出接口 —— 请显式给 --in/--out")
 
     indent = block[0][:len(block[0]) - len(block[0].lstrip())]
     lhs = u""
@@ -643,6 +759,34 @@ def selftest():
     finally:
         shutil.rmtree(d3, ignore_errors=True)
 
+    # ---- extract --auto：接口推断 -----------------------------------------
+    d4 = tempfile.mkdtemp(prefix="taska_")
+    try:
+        src = (u"function y = ax(x)\n"
+               u"  a = x + 1;\n"
+               u"  b = a * 2;\n"
+               u"  y = b;\n"
+               u"end\n")
+        _make({"ax.m": src}, d4)
+        ins, outs = infer_interface(src, 3, 4)
+        if chk(ins == ["a"] and outs == ["y"],
+               u"自证 auto：推断 in=a out=y", u"实际 %r/%r" % (ins, outs)):
+            good += 1
+        else:
+            bad += 1
+        rc, log, info = task_extract(d4, "ax.m", 3, 4, "part", [], [],
+                                     apply_it=True, auto=True)
+        now = io.open(os.path.join(d4, "ax.m"), encoding="utf-8").read()
+        ok = (rc == 0 and info.get("verdict") == "pass"
+              and u"y = part(a);" in now)
+        if chk(ok, u"自证 auto：推断结果直接可用",
+               u"rc=%r verdict=%r" % (rc, info.get("verdict"))):
+            good += 1
+        else:
+            bad += 1
+    finally:
+        shutil.rmtree(d4, ignore_errors=True)
+
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     return 1 if bad else 0
 
@@ -663,6 +807,7 @@ def main(argv=None):
     ep.add_argument("--name", required=True)
     ep.add_argument("--in", dest="ins", default="")
     ep.add_argument("--out", dest="outs", default="")
+    ep.add_argument("--auto", action="store_true")
     ep.add_argument("--apply", action="store_true")
     ep.add_argument("--json", action="store_true")
     fp = sub.add_parser("rename-field")
@@ -689,7 +834,8 @@ def main(argv=None):
         rc, log, info = task_extract(os.path.abspath(args.dir), args.file,
                                      int(m.group(1)), int(m.group(2)),
                                      args.name, _split_list(args.ins),
-                                     _split_list(args.outs), args.apply)
+                                     _split_list(args.outs), args.apply,
+                                     auto=args.auto)
         if args.json:
             print(json.dumps({"ok": rc == 0, "log": log, "info": info},
                              ensure_ascii=False, indent=2))
