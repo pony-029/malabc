@@ -1298,6 +1298,8 @@ function activate(context) {
     _count: 0,
     //: 只显示动过这个文件的记录（空串 = 不过滤）。50 条时按天折叠还不够细。
     _filter: '',
+    //: 按耗时排序（默认关：时间线才是常态）
+    _sortByMs: false,
     onDidChangeTreeData: null,
     getChildren(el) {
       if (!el) return this._groups;
@@ -1312,6 +1314,18 @@ function activate(context) {
       let sessRollback = 0;
 
       const needle = (this._filter || '').toLowerCase();
+
+      // 每种类型的耗时中位数：慢不慢要看同类任务，跟全局比没意义
+      const byKind = {};
+      for (const rec of recs) {
+        const k = rec.kind || '?';
+        if (rec.elapsed_ms) (byKind[k] = byKind[k] || []).push(rec.elapsed_ms);
+      }
+      const median = {};
+      for (const k in byKind) {
+        const a = byKind[k].sort((x, y) => x - y);
+        median[k] = a[Math.floor(a.length / 2)] || 0;
+      }
       for (const rec of recs) {
         const rid = rec.id || rec._file;
         // 一行得能看出"动了哪个文件"：只写类型与时间，多文件工程里根本分不清。
@@ -1336,10 +1350,16 @@ function activate(context) {
                        (isRollback && rec.reason
                          ? ('\n回滚原因: ' + rec.reason) : '') +
                        (rec.params ? ('\n参数: ' + JSON.stringify(rec.params)) : '');
+        // 偏慢 = 超过同类中位数的 2 倍，且本身不短（否则 2ms→5ms 也会被标）
+        const med = median[rec.kind] || 0;
+        const slow = !isRollback && med > 0 && ms > med * 2 && ms >= 200;
+        if (slow) item.description = '偏慢  ' + item.description;
         item.iconPath = new vscode.ThemeIcon(
-          isRollback ? 'circle-slash' : (rec.undone ? 'check' : 'history'));
+          slow ? 'watch'
+               : (isRollback ? 'circle-slash' : (rec.undone ? 'check' : 'history')));
         item.recordId = rid;
         item._primary = paths[0] || '';
+        item._ms = ms;
         item.contextValue = isRollback ? 'taskRollback'
                             : (rec.undone ? 'taskDone' : 'taskPending');
         if (!rec.undone && !isRollback) {
@@ -1367,6 +1387,9 @@ function activate(context) {
 
       // 同一文件的多次改动折成一个可展开节点：
       // 一次重构常常连着改同一个文件三遍，平铺时看到的是一串很像的行。
+      if (this._sortByMs) {
+        mine.sort((a, b) => (b._ms || 0) - (a._ms || 0));
+      }
       const byFile = {};
       const order = [];
       for (const it of mine) {
@@ -1501,6 +1524,16 @@ function activate(context) {
       }
     })
   );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.sortTasksByTime', async () => {
+      taskProvider._sortByMs = !taskProvider._sortByMs;
+      refreshTasks();
+      vscode.window.setStatusBarMessage(
+        'matlabc: 改动记录' +
+        (taskProvider._sortByMs ? '按耗时排序（降序）' : '恢复按时间排序'), 3000);
+    })
+  );
+
   context.subscriptions.push(
     vscode.commands.registerCommand('matlabc.showRollbackReason',
                                      async (reason, id) => {

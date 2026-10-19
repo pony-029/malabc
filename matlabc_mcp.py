@@ -726,6 +726,33 @@ def t_task_undo(args):
     return _text(body) if rc == 0 else _err(body)
 
 
+def t_task_stats(args):
+    """按类型给出改动的次数 / 耗时 / 回滚率，以及回滚原因排行。"""
+    import matlabc_task as T
+    root = _resolve(args.get("dir") or ".")
+    if not root or not os.path.isdir(root):
+        return _err("找不到目录：%s" % (args.get("dir") or "（未给 dir）",))
+    if not _in_root(root):
+        return _err("只允许在工程目录内执行：%s" % root)
+
+    rows = T.task_stats(root)
+    if not rows:
+        return _text(u"还没有任务记录（%s）" % T.HISTORY_DIR)
+    lines = [u"%-14s %5s %6s %8s %8s %8s"
+             % ("类型", "次数", "回滚", "平均ms", "中位ms", "最大ms")]
+    for r in rows:
+        lines.append(u"%-14s %5d %6d %8d %8d %8d"
+                     % (r["kind"], r["count"], r["rollback"],
+                        r["avg_ms"], r["p50_ms"], r["max_ms"]))
+    reasons = T.rollback_reasons(root)
+    if reasons:
+        lines.append(u"")
+        lines.append(u"回滚原因：")
+        for r in reasons:
+            lines.append(u"  %-22s %d 次" % (r["reason"], r["count"]))
+    return _text(u"\n".join(lines))
+
+
 def t_propose_edit(args):
     """算一次改动：返回 diff 与影响面，**不写盘**。"""
     import difflib
@@ -1668,6 +1695,16 @@ TOOLS = [
                                     "auto": {"type": "boolean"}},
                      "required": []},
      "handler": t_task_apply},
+
+    {"name": "matlabc_task_stats",
+     "description": "按任务类型给出改动的**次数 / 回滚数 / 平均·中位·最大耗时**，"
+                    "以及**回滚原因排行**（哪条验收判据最常让人失败）。"
+                    "回答「这类改动通常多快」「我刚才那次为什么没成」时用它，"
+                    "比逐条读记录快。",
+     "inputSchema": {"type": "object",
+                     "properties": {"dir": _STR},
+                     "required": []},
+     "handler": t_task_stats},
 
     {"name": "matlabc_task_undo",
      "description": "撤销**上一次**任务 —— 改代码成功之后想反悔时用。"

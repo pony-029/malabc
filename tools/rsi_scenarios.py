@@ -44,7 +44,7 @@ CORPUS = os.path.join(ROOT, "tests", "sample_m")
 
 #: 场景数下界。加场景是允许的，删场景必须同时改这个数（与 check_all 的
 #: MIN_GUARDS 同一套纪律：删掉一条也会红）。
-MIN_SCENARIOS = 91
+MIN_SCENARIOS = 92
 
 
 def _uri(path):
@@ -497,7 +497,7 @@ def sc_mcp_list(sess, ctx):
     tools = (r.get("result") or {}).get("tools") or []
     # 下界跟着实际情况走（R376）：19 → 21（新增 task_plan / task_apply）。
     # 用 `>=` 而不是 `==`：加工具不该让这条红，但**少**工具必须有人知道。
-    return len(tools) >= 22, "工具=%d" % len(tools)
+    return len(tools) >= 23, "工具=%d" % len(tools)
 
 
 def sc_mcp_stats(sess, ctx):
@@ -1759,6 +1759,26 @@ def sc_task_stats(ctx):
         shutil.rmtree(d, ignore_errors=True)
 
 
+
+def sc_mcp_task_stats(ctx):
+    """MCP：stats 给出表头与回滚原因排行。"""
+    def run(s, root):
+        _call(s, "matlabc_task_apply",
+              {"dir": ".", "task": "rename", "old": "aa", "new": "cc"})
+        # 制造一次回滚：改名成已存在的 run
+        _call(s, "matlabc_task_apply",
+              {"dir": ".", "task": "rename", "old": "cc", "new": "run"})
+        res, err = _call(s, "matlabc_task_stats", {"dir": "."})
+        t = _text(res)
+        ok = ((not err) and u"中位ms" in t and u"回滚原因" in t
+              and u"调用边数变了" in t)
+        return ok, "含原因=%s" % (u"回滚原因" in t)
+    return _mcp_with({
+        "a.m": (u"function y = aa(x)\n  y = x + 1;\nend\n", "utf-8", ""),
+        "b.m": (u"function r = run(v)\n  r = aa(v);\nend\n", "utf-8", ""),
+    }, run)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default="")
@@ -1852,6 +1872,7 @@ def main(argv=None):
                 ("MCP task_undo batch", sc_mcp_task_undo_batch),
                 ("任务记录裁剪", sc_task_prune),
                 ("任务记录统计", sc_task_stats),
+                ("MCP task_stats", sc_mcp_task_stats),
                 ("任务记录压缩存储", sc_task_record_packed),
                 ("任务 undo diff", sc_task_undo_diff),
                 ("任务 undo previews", sc_task_undo_previews)]

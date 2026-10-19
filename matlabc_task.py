@@ -523,6 +523,25 @@ def task_stats(root):
     return out
 
 
+def rollback_reasons(root):
+    """回滚原因分类：哪条判据最常让人失败。
+
+    单看"回滚了几次"没用；**按原因聚合**才指出最容易踩的那个坑
+    （例如"调用边数变了"通常意味着改名撞了已有函数）。
+    """
+    tally = {}
+    for r in list_tasks(root):
+        if r.get("verdict") != "rollback":
+            continue
+        reason = (r.get("reason") or u"（未记录原因）").strip()
+        # 一个原因字符串可能是 "函数数变了、诊断增加了" —— 拆开分别计数
+        for part in [p.strip() for p in reason.split(u"、") if p.strip()]:
+            tally[part] = tally.get(part, 0) + 1
+    rows = [{"reason": k, "count": v} for k, v in tally.items()]
+    rows.sort(key=lambda x: (-x["count"], x["reason"]))
+    return rows
+
+
 def task_undo(root, apply_it=False, rec_id=None, whole_batch=False,
                show_diff=False):
     """撤销任务。
@@ -2299,7 +2318,9 @@ def main(argv=None):
     if args.cmd == "stats":
         _rows = task_stats(os.path.abspath(args.dir))
         if args.json:
-            print(json.dumps({"ok": True, "stats": _rows},
+            print(json.dumps({"ok": True, "stats": _rows,
+                              "rollback_reasons":
+                                  rollback_reasons(os.path.abspath(args.dir))},
                              ensure_ascii=False, indent=2))
         elif not _rows:
             print("还没有任务记录（%s）" % HISTORY_DIR)
@@ -2310,6 +2331,12 @@ def main(argv=None):
                 print("%-14s %5d %8d %8d %8d %8d"
                       % (r["kind"], r["count"], r["rollback"],
                          r["avg_ms"], r["p50_ms"], r["max_ms"]))
+            _rr = rollback_reasons(os.path.abspath(args.dir))
+            if _rr:
+                print("")
+                print("回滚原因：")
+                for r in _rr:
+                    print("  %-22s %d 次" % (r["reason"], r["count"]))
         return 0
 
     if args.cmd == "prune":

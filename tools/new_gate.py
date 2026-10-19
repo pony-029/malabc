@@ -213,6 +213,30 @@ def fix_counts(apply_it):
         print("   [ok ] %s：%d 处改成了 %d" % (rel, len(hits), n))
 
 
+def verify(path):
+    """生成之后立刻跑一次：骨架必须能过自己的两道（主检查 + 自证）。
+
+    为什么必须有这一步：骨架的 check() 现在总是通过 —— 如果它连
+    `python tools/<name>.py` 都跑不起来，"看起来生成了"就是唯一的结果。
+    """
+    import subprocess
+    ok = True
+    for extra in ([], ["--selftest"]):
+        cmd = [sys.executable, path] + extra
+        p = subprocess.run(cmd, stdin=subprocess.DEVNULL,
+                           stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT, timeout=120)
+        tag = "自证" if extra else "主检查"
+        if p.returncode == 0:
+            print("   [ok ] 骨架%s通过" % tag)
+        else:
+            ok = False
+            print("   [FAIL] 骨架%s失败（rc=%d）" % (tag, p.returncode))
+            for ln in p.stdout.decode("utf-8", "replace").splitlines()[-4:]:
+                print("          " + ln)
+    return ok
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument("--name", required=True)
@@ -237,13 +261,19 @@ def main(argv=None):
         print("%s 已存在，拒绝覆盖" % os.path.relpath(path, REPO))
         return 1
 
-    apply_it = args.register and not args.dry_run
+    # 写文件与"登记"是两件事：不加 --register 也该生成骨架，
+    # 只有 --dry-run 才什么都不落盘（第一版把它俩绑在一起，于是生成完
+    #  立刻去跑一个并不存在的文件）。
+    write_it = not args.dry_run
+    apply_it = args.register and write_it
     _write(path, TEMPLATE.format(name=args.name, sig=args.signature,
-                                 desc=args.desc), apply_it)
+                                 desc=args.desc), write_it)
     if args.register:
         register(args.name, args.signature, args.desc, args.in_release, apply_it)
     if args.fix_counts:
         fix_counts(apply_it)
+    if write_it:
+        verify(path)
 
     print("")
     print("")
