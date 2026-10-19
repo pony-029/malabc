@@ -24,13 +24,19 @@ code --install-extension matlabc-<版本>.vsix
 
 ### 1.2 让它认识你的 Python
 
-扩展靠一个 Python 进程干活。如果 `python` 不在系统 PATH 里（或你有多个 Python），
-在设置里指明：
+扩展需要一个 Python 解释器来干活。**路径就在插件设置里配**，不需要额外装脚本：
+
+1. 按 `Ctrl+,` 打开设置
+2. 搜索框输入 `matlabc`
+3. 找到 **`matlabc.pythonPath`**，填 Python 的绝对路径，例如 `C:\Python310\python.exe`
+4. 按 `Ctrl+Shift+P` → `Developer: Reload Window` 重载窗口
+
+下面几项都在同一处：
 
 | 设置 | 默认值 | 什么时候要改 |
 | --- | --- | --- |
 | `matlabc.pythonPath` | `python` | 提示「找不到 Python」、或装了多个版本 |
-| `matlabc.lspPath` | 空 | 扩展没和你打开的工程放在一起时，填 `matlabc_lsp.py` 的绝对路径 |
+| `matlabc.lspPath` | 空 | 一般不用动。只有把扩展文件放在别处时，才需要填扩展自带 `matlabc_lsp.py` 的绝对路径 |
 | `matlabc.enabled` | 勾选 | 想临时关掉全部诊断与跳转 |
 | `matlabc.docLang` | `both` | 内置函数说明只想看中文 / 只看英文 |
 | `matlabc.crossLanguage` | 勾选 | 不想扫 C 源与 mex/DLL 时关掉（见第 5 节） |
@@ -227,8 +233,10 @@ code --install-extension matlabc-<版本>.vsix
 确认你打开的是**文件夹**、并且当前文件是 `.m`。扩展只在 MATLAB 文件上激活。
 
 **Q：提示找不到 Python / 启动失败？**
-设置 `matlabc.pythonPath` 为 Python 的绝对路径（例如 `C:\Python310\python.exe`），
-然后重载窗口。命令行先用它跑一次 `python matlabc_lsp.py --help` 确认能起来。
+在插件设置里指定解释器：按 `Ctrl+,` → 搜索 `matlabc` → 把 **`matlabc.pythonPath`**
+填成 Python 的绝对路径（例如 `C:\Python310\python.exe`）→ 重载窗口。
+
+装了多个 Python 时填你想要的那个；装了 MATLAB 也不必用它的 Python。
 
 **Q：大工程很慢、编辑卡顿？**
 第一次分析最慢，之后增量更新。实在太大可以关掉 `matlabc.crossLanguage`（省掉扫 C 源与二进制）。
