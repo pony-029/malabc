@@ -44,7 +44,7 @@ CORPUS = os.path.join(ROOT, "tests", "sample_m")
 
 #: 场景数下界。加场景是允许的，删场景必须同时改这个数（与 check_all 的
 #: MIN_GUARDS 同一套纪律：删掉一条也会红）。
-MIN_SCENARIOS = 83
+MIN_SCENARIOS = 84
 
 
 def _uri(path):
@@ -1597,6 +1597,23 @@ def sc_task_undo_batch(ctx):
         shutil.rmtree(d, ignore_errors=True)
 
 
+
+def sc_task_undo_verify(ctx):
+    """CLI：撤销之后必须打印结构验收通过。"""
+    d = _mk({
+        "x1.m": (u"function y = aa(x)\n  y = x + 1;\nend\n", "utf-8", ""),
+        "x2.m": (u"function r = bb(v)\n  r = aa(v);\nend\n", "utf-8", ""),
+    })
+    try:
+        _run_task_cmd(d, "rename", ["--old", "aa", "--new", "cc", "--apply"])
+        rc, out = _run_task_cmd(d, "undo", ["--apply"])
+        ok = (rc == 0 and u"撤销验收通过（3/3）" in out
+              and u"结构回到任务前" in out)
+        return ok, "rc=%s 验收=%s" % (rc, u"撤销验收通过" in out)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default="")
@@ -1684,7 +1701,8 @@ def main(argv=None):
                 ("任务 undo 冲突拒绝", sc_task_undo_conflict),
                 ("MCP task_undo", sc_mcp_task_undo),
                 ("任务 undo 列表", sc_task_undo_list),
-                ("任务 undo 整批", sc_task_undo_batch)]
+                ("任务 undo 整批", sc_task_undo_batch),
+                ("任务 undo 验收", sc_task_undo_verify)]
         for name, fn in solo:
             try:
                 ok, detail = fn({"root": root})

@@ -643,7 +643,9 @@ python matlabc_task.py undo --dir myproj/ --id 20261020-001555-413 --apply
 python matlabc_task.py undo --dir myproj/ --batch --apply   # whole batch at once
 
 # Undo is per-task and record-ordered: undoing an older task while a newer
-# one changed the same file is refused, not silently applied.
+# one changed the same file is refused, not silently applied. After restoring
+# it re-analyses and requires the structure to be back to the pre-task state
+# (functions / call edges / diagnostics); if not, the undo itself is reverted.
 
 # Move a whole function out of a file. The target must be `<name>.m`: any other
 # name would turn it into a private subfunction and silently break every caller.

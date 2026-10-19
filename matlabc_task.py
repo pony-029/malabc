@@ -220,7 +220,7 @@ def _sha_of(path):
         return u""
 
 
-def record_task(root, kind, params, backup, created=None):
+def record_task(root, kind, params, backup, created=None, scan=None):
     """记一条任务。**只在验收通过之后调用** —— 失败的任务已经自己回滚了，
     再记一条只会让 undo 撤销一个并不存在的变化。
     """
@@ -242,6 +242,11 @@ def record_task(root, kind, params, backup, created=None):
             "when": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now)),
             "undone": False,
             "batch": _CURRENT_BATCH or u"",
+            # 任务**之前**的结构（函数数 / 调用边 / 诊断数）。
+            # 撤销时拿它当验收标准：把文件恢复原样之后，结构也必须回到这里。
+            "scan": ({k: (scan or {}).get(k) for k in
+                      ("functions", "edges", "diagnostics")}
+                     if scan else {}),
             "files": [{"path": os.path.relpath(p, root), "before": t,
                        "after": _sha_of(p)}
                       for p, t in sorted(backup.items())],
@@ -436,6 +441,14 @@ def task_undo(root, apply_it=False, rec_id=None, whole_batch=False):
         return 0, log, {"verdict": "plan",
                         "ids": [r.get("id") for r in recs]}
 
+    # 撤销也要**可回退**：万一恢复之后结构不对，得能退回"撤销前"。
+    pre = {}
+    for p in list(writes) + list(deletes):
+        try:
+            pre[p] = io.open(p, encoding="utf-8").read()
+        except (IOError, OSError):
+            pre[p] = None
+
     for p, text in writes.items():
         io.open(p, "w", encoding="utf-8", newline="").write(text)
     removed = 0
@@ -445,6 +458,38 @@ def task_undo(root, apply_it=False, rec_id=None, whole_batch=False):
             removed += 1
         except OSError:
             pass
+
+    # **撤销后验收**：结构必须回到"任务之前"的样子。
+    # 目标取自这一批里**最早**那条记录的 scan（recs 是从新到旧）。
+    target = (recs[-1].get("scan") or {}) if recs else {}
+    now = _scan(root)
+    bad = []
+    if target.get("functions") is not None:
+        if now["functions"] != target["functions"]:
+            bad.append(u"函数数 %d（应为 %d）"
+                       % (now["functions"], target["functions"]))
+        if now["edges"] != target["edges"]:
+            bad.append(u"调用边 %d（应为 %d）" % (now["edges"], target["edges"]))
+        if now["diagnostics"] > target["diagnostics"]:
+            bad.append(u"诊断 %d（不应超过 %d）"
+                       % (now["diagnostics"], target["diagnostics"]))
+    if bad:
+        # 退回撤销前的状态：留着"撤了一半又不对"的工程比不撤更糟
+        for p, text in pre.items():
+            if text is None:
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+            else:
+                io.open(p, "w", encoding="utf-8", newline="").write(text)
+        say("validate", u"撤销后验收不通过：%s" % u"、".join(bad))
+        say("validate", u"已退回撤销前的状态（工程未变）")
+        return 1, log, {"verdict": "verify_failed", "issues": bad}
+    if target:
+        say("validate", u"结构回到任务前：函数 %d ｜ 调用边 %d ｜ 诊断 %d"
+            % (now["functions"], now["edges"], now["diagnostics"]))
+        say("validate", u"撤销验收通过（3/3）")
 
     for r in recs:
         r["undone"] = True
@@ -535,7 +580,8 @@ def task_rename(root, old, new, apply_it=False, as_json=False,
             say("validate", u"验收通过（4/4）")
             _rid = record_task(root, ("rename-field" if kind == "field"
                                       else "rename"),
-                               {"old": old, "new": new}, backup)
+                               {"old": old, "new": new}, backup,
+                               scan=before)
             if _rid:
                 say("record", u"已记入 %s（可 undo）" % HISTORY_DIR)
             else:
@@ -837,7 +883,7 @@ def task_extract(root, rel, start, end, name, ins, outs,
             _rid = record_task(root, "extract",
                                {"file": rel, "name": name,
                                 "lines": "%d-%d" % (start, end)},
-                               backup, created)
+                               backup, created, scan=before)
             if _rid:
                 say("record", u"已记入 %s（可 undo）" % HISTORY_DIR)
             else:
@@ -1039,7 +1085,7 @@ def task_move(root, rel, name, to, apply_it=False):
             say("validate", u"验收通过（3/3）")
             _rid = record_task(root, "move",
                                {"file": rel, "name": name, "to": to},
-                               backup, created)
+                               backup, created, scan=before)
             if _rid:
                 say("record", u"已记入 %s（可 undo）" % HISTORY_DIR)
             else:
@@ -1782,6 +1828,43 @@ def selftest():
             bad += 1
     finally:
         shutil.rmtree(d11, ignore_errors=True)
+
+    # ---- 撤销后的验收：结构必须回到任务前 -------------------------------
+    d12 = tempfile.mkdtemp(prefix="taskv_")
+    try:
+        _make({"x1.m": (u"function y = aa(x)\n  y = x + 1;\nend\n"),
+               "x2.m": (u"function r = bb(v)\n  r = aa(v);\nend\n")}, d12)
+        task_rename(d12, "aa", "cc", apply_it=True)
+        rc_v, log_v, info_v = task_undo(d12, apply_it=True)
+        msgs = u"".join(r["msg"] for r in log_v)
+        if chk(rc_v == 0 and u"撤销验收通过（3/3）" in msgs,
+               u"自证 撤销验收：结构回到任务前",
+               u"rc=%r msg=%r" % (rc_v, msgs[-40:])):
+            good += 1
+        else:
+            bad += 1
+
+        # 把记录里的目标改坏 -> 必须判不通过，并**退回撤销前的状态**
+        task_rename(d12, "aa", "dd", apply_it=True)
+        recs = [n for n in os.listdir(os.path.join(d12, HISTORY_DIR))
+                if n.endswith(".json")]
+        target = os.path.join(d12, HISTORY_DIR, sorted(recs)[-1])
+        data = json.loads(io.open(target, encoding="utf-8").read())
+        data["scan"] = {"functions": 99, "edges": 99, "diagnostics": 0}
+        io.open(target, "w", encoding="utf-8", newline="").write(
+            json.dumps(data, ensure_ascii=False, indent=1))
+        before_v = io.open(os.path.join(d12, "x1.m"), encoding="utf-8").read()
+        rc_w, log_w, info_w = task_undo(d12, apply_it=True)
+        after_v = io.open(os.path.join(d12, "x1.m"), encoding="utf-8").read()
+        if chk(rc_w == 1 and info_w.get("verdict") == "verify_failed"
+               and before_v == after_v,
+               u"自证 撤销验收：不通过则退回撤销前",
+               u"rc=%r verdict=%r" % (rc_w, info_w.get("verdict"))):
+            good += 1
+        else:
+            bad += 1
+    finally:
+        shutil.rmtree(d12, ignore_errors=True)
 
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     return 1 if bad else 0
