@@ -902,7 +902,7 @@ python tools/check_help_contract.py --list-prefixes    # 前缀 -> 主人；加�
 | --- | --- |
 | `build_vsix.py` | 直接产出离线 `.vsix` 到 `releases/vsix/`——版本号读自扩展清单，文件名与实际安装的版本永远一致 |
 | `make_tour_gif.py` | 逐帧重绘 `releases/demo/matlabc-tour.gif`（四个场景：大纲、转到定义、关系面板、热点排行）——不是录屏，改文案改配色都只改脚本 |
-| `make_tour_html.py` | 从 archify 格式的 `matlabc-tour.architecture.json` 渲染出 `releases/demo/matlabc-tour.html`（8 步可播放导览）——模块图与讲解词各自只有一处，不会说两套话 |
+| `make_tour_html.py` | 从 archify 格式的 `matlabc-tour.architecture.json` 渲染出 `releases/demo/matlabc-tour.html`（10 步可播放导览）——模块图与讲解词各自只有一处，不会说两套话 |
 | `check_tour.py` | 守这页：每一帧引用的模块必须存在、连线端点必须在框外（否则箭头压在文字上）、文件必须是 LF 且无模板残留 |
 | `make_release.py` | 从三处事实重建 `releases/README.md` 的版本表：版本号读自扩展清单、摘要读自更新日志、大小与日期读自 `.vsix` 文件。默认只列真的有包的版本，`--all` 才全列 |
 | `bump_version.py` | 按本项目的规则推进版本号：**每一位只走 0–9，满 10 进一位**（`0.7.9` → `0.8.0`，`0.9.9` → `1.0.0`）。`--apply` 写进扩展清单，`--check` 报告当前版本是否还合规 |

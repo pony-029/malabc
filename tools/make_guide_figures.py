@@ -300,7 +300,7 @@ def fig_commands(path):
         (u"matlabc: 选择 Python 解释器", u"启动失败先试它"),
         (u"matlabc: 重新启动服务", u"索引卡住时用"),
         (u"matlabc: 查看日志", u""),
-        (u"matlabc: 打开使用导览", u"8 步动画"),
+        (u"matlabc: 打开使用导览", u"10 步动画"),
         (u"matlabc: 热点函数排行", u"复杂度 × 调用者数"),
         (u"matlabc: 热点函数排行（当前目录）", u""),
         (u"matlabc: 预览调用关系图", u""),
