@@ -600,6 +600,10 @@ python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
 # 也可以提到独立文件（`--to`）：新文件先写，回滚时一并删掉；目标已存在则拒绝覆盖
 python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
     --name part --in x,y --out z --to part.m --apply
+
+# 把整个函数搬到独立文件。目标必须叫 `<name>.m`——换个名字它就变成
+# 文件内私有子函数，所有调用点会**静默失效**
+python matlabc_task.py move --dir myproj/ --file a.m --name helper --to helper.m --apply
 ```
 
 ---

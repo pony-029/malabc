@@ -631,6 +631,10 @@ python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
 python matlabc_task.py extract --dir myproj/ --file a.m --lines 12-18 \
     --name part --in x,y --out z --to part.m --apply
 
+# Move a whole function out of a file. The target must be `<name>.m`: any other
+# name would turn it into a private subfunction and silently break every caller.
+python matlabc_task.py move --dir myproj/ --file a.m --name helper --to helper.m --apply
+
 # Generate a deterministic self-verified fix patch
 python matlabc flow myproj --auto-apply --gen-apply-patch
 

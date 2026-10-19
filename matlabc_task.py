@@ -591,6 +591,201 @@ def task_extract(root, rel, start, end, name, ins, outs,
         return 1, log, {"verdict": "error"}
 
 
+
+def _function_name_of(line):
+    """从一行 `function ...` 里取出**函数名**；不是函数行返回 None。
+
+    为什么不写一条正则直接匹配"带名字的 function 行"：
+    `function y = helper(x)` / `function helper(x)` / `function [a,b] = helper(x)`
+    三种形态，再叠加 `\b` / `[^\n]*?` 的交互，非常容易写出"外部测着对、
+    放进函数里就不匹配"的模式（我就踩了一次）。拆开做，每一步都能单独验。
+    """
+    st = line.strip()
+    if not st.startswith(u"function"):
+        return None
+    rest = st[len(u"function"):]
+    head = rest.split(u"(", 1)[0]
+    if u"=" in head:
+        head = head.split(u"=", 1)[1]
+    m = re.match(u"\s*([A-Za-z_][A-Za-z0-9_]*)", head)
+    return m.group(1) if m else None
+
+
+def _function_block(lines, name):
+    """定位 `name` 这个函数的**整块**（0 基，含首尾）。
+
+    两种写法都要认：有 `end` 的，到同缩进的 `end`；**省略 `end`** 的，
+    到下一个同缩进的 `function` 或文件末尾。
+    认错的后果是把下一个函数一起搬走 —— 而文件仍然合法、仍然能跑。
+    """
+    start = None
+    for i, ln in enumerate(lines):
+        if _function_name_of(ln) == name:
+            start = i
+            break
+    if start is None:
+        return None
+
+    indent = lines[start][:len(lines[start]) - len(lines[start].lstrip())]
+    end = None
+    for j in range(start + 1, len(lines)):
+        st = lines[j].strip()
+        # 「同缩进」= 去掉基准缩进后**不以空白开头**。
+        # 第一版写成 `not line[len(indent):len(indent)+1].strip()`，缩进为空时
+        # 取到的是行首那个字母，永远判 False —— 于是 main 的块一路延伸到了
+        # 文件末尾（把后面的 helper 也含进去）。
+        rest = lines[j][len(indent):]
+        at_same_indent = (lines[j].startswith(indent)
+                          and not rest.startswith(u" ")
+                          and not rest.startswith(u"\t"))
+        if st == u"end" and at_same_indent:
+            end = j
+            break
+        if st.startswith(u"function") and at_same_indent:
+            end = j - 1
+            break
+    if end is None:
+        end = len(lines) - 1
+    while end > start and not lines[end].strip():
+        end -= 1
+    return (start, end)
+
+
+
+def task_move(root, rel, name, to, apply_it=False):
+    """move 任务：把 `rel` 里的函数 `name` 整块搬到 `to`（同工程）。"""
+    log = []
+
+    def say(step, msg):
+        log.append({"step": step, "msg": msg})
+
+    if not os.path.isdir(root):
+        say("error", u"目录不存在：%s" % root)
+        return 2, log, {}
+    src = rel if os.path.isabs(rel) else os.path.join(root, rel)
+    dst = to if os.path.isabs(to) else os.path.join(root, to)
+    if not os.path.isfile(src):
+        say("error", u"源文件不存在：%s" % rel)
+        return 2, log, {}
+    if not dst.endswith(u".m"):
+        say("error", u"目标必须是 .m 文件：%s" % to)
+        return 2, log, {}
+    if os.path.abspath(src) == os.path.abspath(dst):
+        say("error", u"源与目标相同 —— 同文件内调整顺序不在本任务范围内")
+        return 1, log, {}
+
+    text = io.open(src, "r", encoding="utf-8", errors="replace").read()
+    lines = text.splitlines()
+    blk = _function_block(lines, name)
+    if blk is None:
+        say("error", u"%s 里没有找到函数 `%s`" % (rel, name))
+        return 1, log, {}
+    s0, e0 = blk
+    block = lines[s0:e0 + 1]
+
+    before = _scan(root)
+    say("prepare", u"%s 第 %d-%d 行（%d 行）→ 搬到 %s"
+        % (rel, s0 + 1, e0 + 1, len(block), to))
+    criteria = [
+        u"工程函数总数不变（搬动不增减函数）",
+        u"诊断数不增加",
+        u"源文件里不再定义 `%s`，目标文件里出现" % name,
+        u"目标文件名为 `%s.m`（否则调用点会失效）" % name,
+    ]
+    for i, c in enumerate(criteria):
+        say("criteria", u"%d) %s" % (i + 1, c))
+
+    # **MATLAB 的语义约束**：函数搬到别的文件后，只有**文件名与函数名相同**
+    # 时才能被外部调用；而且原文件里的调用点仍然写 `helper(...)` ——
+    # 搬到 `util.m` 里就变成"文件内私有子函数"，调用点会**静默失效**
+    # （分析器报 unresolved，运行时报 undefined，而那时已经改完了）。
+    base = os.path.splitext(os.path.basename(dst))[0]
+    if base != name:
+        say("error", u"目标文件名必须与函数名相同（%s.m），否则调用点会失效"
+            % name)
+        return 1, log, {}
+    if os.path.isfile(dst):
+        say("error", u"目标文件已存在，拒绝覆盖：%s" % to)
+        return 1, log, {}
+
+    dst_text = u""
+
+    if not apply_it:
+        say("dry-run", u"未加 --apply，没有写入任何文件")
+        return 0, log, {"before": before, "criteria": criteria}
+
+    backup = {src: text}
+    created = []
+    if os.path.isfile(dst):
+        backup[dst] = dst_text
+    try:
+        # 先写目标、再改源：反过来的话，源被删掉而目标写失败 → 函数丢了
+        # 空文件不要分隔符 —— 否则新文件第一行是空行（`function` 不在第一行，
+        # 不影响运行，但看起来像谁手滑删了东西）。
+        sep = u"" if not dst_text else (
+            u"\n" if dst_text.endswith(u"\n") else u"\n\n")
+        io.open(dst, "w", encoding="utf-8", newline="").write(
+            dst_text + sep + u"\n".join(block) + u"\n")
+        if dst not in backup:
+            created.append(dst)
+        rest = lines[:s0] + lines[e0 + 1:]
+        # 搬走后留下的连续空行压成一个
+        out = []
+        for ln in rest:
+            if not ln.strip() and out and not out[-1].strip():
+                continue
+            out.append(ln)
+        io.open(src, "w", encoding="utf-8", newline="").write(
+            u"\n".join(out).rstrip(u"\n") + u"\n")
+        say("apply", u"已写入 %s，并从 %s 删除定义" % (to, rel))
+
+        after = _scan(root)
+        src_now = io.open(src, "r", encoding="utf-8").read()
+        dst_now = io.open(dst, "r", encoding="utf-8").read()
+        ok_fun = after["functions"] == before["functions"]
+        ok_diag = after["diagnostics"] <= before["diagnostics"]
+        # 用同一个函数名解析器判断"定义在不在"，而不是另写一族正则：
+        # 上一版这里又写了一条 `function\b[^\n]*?\b" + name`，
+        # 与 `_function_block` 里那条同源，于是同一个坑踩了两次。
+        def _defines(txt):
+            return any(_function_name_of(ln) == name
+                       for ln in txt.splitlines())
+        ok_txt = (not _defines(src_now)) and _defines(dst_now)
+        say("validate", u"函数 %d→%d ｜ 诊断 %d→%d ｜ 定义已迁移 %s"
+            % (before["functions"], after["functions"],
+               before["diagnostics"], after["diagnostics"],
+               u"是" if ok_txt else u"否"))
+        if ok_fun and ok_diag and ok_txt:
+            say("validate", u"验收通过（3/3）")
+            return 0, log, {"before": before, "after": after,
+                            "criteria": criteria, "verdict": "pass"}
+        _restore(backup)
+        for _c in created:
+            try:
+                os.remove(_c)
+            except OSError:
+                pass
+        why = []
+        if not ok_fun:
+            why.append(u"函数数变了")
+        if not ok_diag:
+            why.append(u"诊断增加了")
+        if not ok_txt:
+            why.append(u"定义没搬干净")
+        say("rollback", u"验收不通过（%s）—— 已恢复" % u"、".join(why))
+        return 1, log, {"before": before, "criteria": criteria,
+                        "verdict": "rollback"}
+    except Exception as exc:
+        _restore(backup)
+        for _c in created:
+            try:
+                os.remove(_c)
+            except OSError:
+                pass
+        say("rollback", u"异常 %r —— 已恢复" % (exc,))
+        return 1, log, {"verdict": "error"}
+
+
 # ---------------------------------------------------------------------------
 # 自证：一个真项目、一次成功改名、一次故意失败的回滚
 # ---------------------------------------------------------------------------
@@ -872,6 +1067,52 @@ def selftest():
     finally:
         shutil.rmtree(d5, ignore_errors=True)
 
+    # ---- move：跨文件搬函数 -----------------------------------------------
+    d6 = tempfile.mkdtemp(prefix="taskm_")
+    try:
+        src = (u"function y = main2(x)\n"
+               u"  y = helper2(x);\n"
+               u"end\n"
+               u"\n"
+               u"function z = helper2(v)\n"
+               u"  z = v * 2;\n"
+               u"end\n")
+        _make({"m2.m": src}, d6)
+        lines = src.splitlines()
+        # **块定位**：空缩进时"同缩进"判断最容易写错（第一版把 main2 的块
+        # 一路延伸到了文件末尾，会把 helper2 一起搬走）。
+        b1 = _function_block(lines, u"main2")
+        b2 = _function_block(lines, u"helper2")
+        if chk(b1 == (0, 2) and b2 == (4, 6),
+               u"自证 move：两个函数的块边界正确", u"%r / %r" % (b1, b2)):
+            good += 1
+        else:
+            bad += 1
+        rc, log, info = task_move(d6, "m2.m", "helper2", "helper2.m",
+                                  apply_it=True)
+        a = io.open(os.path.join(d6, "m2.m"), encoding="utf-8").read()
+        b = io.open(os.path.join(d6, "helper2.m"), encoding="utf-8").read()
+        # 搬走的是**定义**，调用点必须留着 —— 第一版写成"名字不出现"，
+        # 于是正确的实现被判成失败（`y = helper2(x);` 还在原文件里）。
+        ok = (rc == 0 and info.get("verdict") == "pass"
+              and _function_block(a.splitlines(), u"helper2") is None
+              and u"y = helper2(x);" in a
+              and b.startswith(u"function z = helper2"))
+        if chk(ok, u"自证 move：定义搬走且新文件首行是 function",
+               u"rc=%r verdict=%r" % (rc, info.get("verdict"))):
+            good += 1
+        else:
+            bad += 1
+        # 目标文件名与函数名不同 → 调用点会失效，必须拒绝
+        rc2, log2, _ = task_move(d6, "m2.m", "main2", "util.m",
+                                 apply_it=False)
+        if chk(rc2 == 1, u"自证 move：目标名不匹配则拒绝", u"rc=%r" % (rc2,)):
+            good += 1
+        else:
+            bad += 1
+    finally:
+        shutil.rmtree(d6, ignore_errors=True)
+
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     return 1 if bad else 0
 
@@ -885,6 +1126,13 @@ def main(argv=None):
     rp.add_argument("--new", required=True)
     rp.add_argument("--apply", action="store_true")
     rp.add_argument("--json", action="store_true")
+    mp = sub.add_parser("move")
+    mp.add_argument("--dir", default=".")
+    mp.add_argument("--file", required=True)
+    mp.add_argument("--name", required=True)
+    mp.add_argument("--to", required=True)
+    mp.add_argument("--apply", action="store_true")
+    mp.add_argument("--json", action="store_true")
     ep = sub.add_parser("extract")
     ep.add_argument("--dir", default=".")
     ep.add_argument("--file", required=True)
@@ -911,6 +1159,17 @@ def main(argv=None):
         return 0
     if args.selftest:
         return selftest()
+
+    if args.cmd == "move":
+        rc, log, info = task_move(os.path.abspath(args.dir), args.file,
+                                  args.name, args.to, args.apply)
+        if args.json:
+            print(json.dumps({"ok": rc == 0, "log": log, "info": info},
+                             ensure_ascii=False, indent=2))
+        else:
+            for row in log:
+                print("[%-9s] %s" % (row["step"], row["msg"]))
+        return rc
 
     if args.cmd == "extract":
         m = re.match(r"^(\d+)\s*-\s*(\d+)$", args.lines or u"")

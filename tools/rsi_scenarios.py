@@ -44,7 +44,7 @@ CORPUS = os.path.join(ROOT, "tests", "sample_m")
 
 #: 场景数下界。加场景是允许的，删场景必须同时改这个数（与 check_all 的
 #: MIN_GUARDS 同一套纪律：删掉一条也会红）。
-MIN_SCENARIOS = 71
+MIN_SCENARIOS = 72
 
 
 def _uri(path):
@@ -1328,6 +1328,35 @@ def sc_task_extract_to(ctx):
         shutil.rmtree(d, ignore_errors=True)
 
 
+
+def sc_task_move(ctx):
+    """move：把函数搬到同名新文件，调用点不动。"""
+    d = _mk({
+        "m3.m": (u"function y = main3(x)\n"
+                 u"  y = helper3(x);\n"
+                 u"end\n"
+                 u"\n"
+                 u"function z = helper3(v)\n"
+                 u"  z = v * 2;\n"
+                 u"end\n", "utf-8", ""),
+    })
+    try:
+        rc, out = _run_task_cmd(d, "move", ["--file", "m3.m",
+                                            "--name", "helper3",
+                                            "--to", "helper3.m", "--apply"])
+        p = os.path.join(d, "helper3.m")
+        a = io.open(os.path.join(d, "m3.m"), encoding="utf-8").read()
+        # 定义搬走、**调用点留着** —— 这才是"搬函数"该有的样子。
+        gone = u"function z = helper3" not in a
+        ok = (rc == 0 and os.path.isfile(p) and gone
+              and u"y = helper3(x);" in a
+              and io.open(p, encoding="utf-8").read().startswith(
+                  u"function z = helper3"))
+        return ok, "rc=%s 定义已搬走=%s" % (rc, gone)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default="")
@@ -1406,7 +1435,8 @@ def main(argv=None):
                 ("任务 extract 计划", sc_task_extract_dry_run),
                 ("任务 extract 应用", sc_task_extract_apply),
                 ("任务 extract 自动推断", sc_task_extract_auto),
-                ("任务 extract 跨文件", sc_task_extract_to)]
+                ("任务 extract 跨文件", sc_task_extract_to),
+                ("任务 move 跨文件", sc_task_move)]
         for name, fn in solo:
             try:
                 ok, detail = fn({"root": root})

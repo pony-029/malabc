@@ -1443,6 +1443,11 @@ def _task_run(args, apply_it):
         rc, log, info = T.task_rename(
             root, old, new, apply_it=apply_it,
             kind=("field" if task == "rename-field" else "ident"))
+    elif task == "move":
+        rc, log, info = T.task_move(
+            root, (args.get("file") or "").strip(),
+            (args.get("name") or "").strip(),
+            (args.get("to") or "").strip(), apply_it=apply_it)
     elif task == "extract":
         rel = (args.get("file") or "").strip()
         rng = (args.get("lines") or "").strip()
