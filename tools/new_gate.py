@@ -166,6 +166,53 @@ def register(name, sig, desc, in_release, apply_it):
                       apply_it, "GATES")
 
 
+COUNT_FILES = ("README.md", "README_CN.md", "CONTRIBUTING.md",
+               "matlabc_help.py")
+
+#: 散文里出现过的写法。N1 不认写法、只认数字与事实是否一致 ——
+#: 这里也一样：把长得像"门数"的数字全换掉。
+COUNT_PAT = re.compile(u"(\\d+)( 道静态门| 道登记制护栏| 道门| 道，| gates)")
+
+#: 只改**看起来像门总数**的数字。试跑时它曾想把 "7 gates" / "8 gates" /
+#: "19 道门" 一起改成 36 —— 那些讲的是别的东西，改了就是制造错误。
+#: 门数目前是三十几，20 是个安全下界；低于它的匹配只报不改。
+MIN_PLAUSIBLE = 20
+
+
+def real_gate_count():
+    return len([n for n in os.listdir(HERE)
+                if n.startswith("check_") and n.endswith(".py")])
+
+
+def fix_counts(apply_it):
+    """把四份文档里的「N 道门」改成真实数量。"""
+    n = real_gate_count()
+    for rel in COUNT_FILES:
+        p = os.path.join(REPO, rel)
+        if not os.path.isfile(p):
+            continue
+        t = io.open(p, encoding="utf-8").read()
+        hits = [m.group(0) for m in COUNT_PAT.finditer(t)
+                if int(m.group(1)) != n and int(m.group(1)) >= MIN_PLAUSIBLE]
+        skipped = [m.group(0) for m in COUNT_PAT.finditer(t)
+                   if int(m.group(1)) != n and int(m.group(1)) < MIN_PLAUSIBLE]
+        if skipped and apply_it:
+            print("   [跳过] %s：%s（不像门总数，留给人判断）"
+                  % (rel, "、".join(skipped[:3])))
+        if not hits:
+            continue
+        if not apply_it:
+            print("   [dry] %s：%d 处数字将改为 %d（%s）"
+                  % (rel, len(hits), n, "、".join(hits[:3])))
+            continue
+        t2 = COUNT_PAT.sub(
+            lambda m: (u"%d%s" % (n, m.group(2))
+                       if int(m.group(1)) >= MIN_PLAUSIBLE
+                       else m.group(0)), t)
+        io.open(p, "w", encoding="utf-8", newline="").write(t2)
+        print("   [ok ] %s：%d 处改成了 %d" % (rel, len(hits), n))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument("--name", required=True)
@@ -174,6 +221,8 @@ def main(argv=None):
     ap.add_argument("--in-release", action="store_true")
     ap.add_argument("--register", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--fix-counts", action="store_true",
+                    help="顺带把散文里的「N 道门」改成真实数量")
     args = ap.parse_args(argv)
 
     if not re.match(r"^check_[a-z0-9_]+$", args.name):
@@ -193,11 +242,13 @@ def main(argv=None):
                                  desc=args.desc), apply_it)
     if args.register:
         register(args.name, args.signature, args.desc, args.in_release, apply_it)
+    if args.fix_counts:
+        fix_counts(apply_it)
 
     print("")
-    print("还有两件事脚本不做（它猜不到你的意图）：")
-    print("  1) 散文里的「N 道门」如果变了，`check_help_contract` 的 N1 会告诉你")
-    print("  2) 判据本身 —— 骨架里的 check() 现在总是通过，先写一条真判据")
+    print("")
+    print("还剩一件事脚本不做：**判据本身** ——")
+    print("  骨架里的 check() 现在总是通过，先写一条真判据，再把它变成必红的样本。")
     return 0
 
 

@@ -44,7 +44,7 @@ CORPUS = os.path.join(ROOT, "tests", "sample_m")
 
 #: 场景数下界。加场景是允许的，删场景必须同时改这个数（与 check_all 的
 #: MIN_GUARDS 同一套纪律：删掉一条也会红）。
-MIN_SCENARIOS = 90
+MIN_SCENARIOS = 91
 
 
 def _uri(path):
@@ -1744,6 +1744,21 @@ def sc_task_undo_previews(ctx):
         shutil.rmtree(d, ignore_errors=True)
 
 
+
+def sc_task_stats(ctx):
+    """CLI：stats 输出表头与至少一行。"""
+    d = _mk({"a.m": (u"function y = aa(x)\n  y = x + 1;\nend\n",
+                     "utf-8", "")})
+    try:
+        _run_task_cmd(d, "rename", ["--old", "aa", "--new", "cc", "--apply"])
+        rc, out = _run_task_cmd(d, "stats", [])
+        ok = (rc == 0 and u"类型" in out and u"rename" in out
+              and u"中位ms" in out)
+        return ok, "rc=%s" % rc
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--only", default="")
@@ -1836,6 +1851,7 @@ def main(argv=None):
                 ("MCP task_undo list", sc_mcp_task_undo_list),
                 ("MCP task_undo batch", sc_mcp_task_undo_batch),
                 ("任务记录裁剪", sc_task_prune),
+                ("任务记录统计", sc_task_stats),
                 ("任务记录压缩存储", sc_task_record_packed),
                 ("任务 undo diff", sc_task_undo_diff),
                 ("任务 undo previews", sc_task_undo_previews)]

@@ -267,7 +267,7 @@ def _sha_of(path):
 
 
 def record_task(root, kind, params, backup, created=None, scan=None,
-                verdict="pass", elapsed_ms=0):
+                verdict="pass", elapsed_ms=0, reason=u""):
     """记一条任务。**只在验收通过之后调用** —— 失败的任务已经自己回滚了，
     再记一条只会让 undo 撤销一个并不存在的变化。
     """
@@ -294,6 +294,8 @@ def record_task(root, kind, params, backup, created=None, scan=None,
             #: 不再提供 undo —— 它没有"改前"状态可退）
             "verdict": verdict,
             "elapsed_ms": int(elapsed_ms or 0),
+            #: 失败原因（只在 verdict=rollback 时有值）："函数数变了、诊断增加了"
+            "reason": reason or u"",
             # 任务**之前**的结构（函数数 / 调用边 / 诊断数）。
             # 撤销时拿它当验收标准：把文件恢复原样之后，结构也必须回到这里。
             "scan": ({k: (scan or {}).get(k) for k in
@@ -416,6 +418,9 @@ def list_tasks(root):
             "created": len(rec.get("created") or []),
             "params": rec.get("params") or {},
             "batch": rec.get("batch") or u"",
+            "verdict": rec.get("verdict") or u"",
+            "elapsed_ms": rec.get("elapsed_ms") or 0,
+            "reason": rec.get("reason") or u"",
         })
     return out
 
@@ -483,6 +488,39 @@ def _plan_undo(root, recs):
             state.pop(p, None)
             gone.add(p)
     return state, sorted(gone), conflicts
+
+
+def task_stats(root):
+    """按任务类型聚合记录：次数、耗时、回滚率。
+
+    为什么需要：单条记录的耗时只说明那一次快不快；**同一类任务的典型耗时**
+    才是能拿来做基线的东西（"改名通常 100ms 内，这次 800ms 就该看一眼"）。
+    """
+    rows = list_tasks(root)
+    agg = {}
+    for r in rows:
+        kind = r.get("kind") or "?"
+        a = agg.setdefault(kind, {"kind": kind, "n": 0, "rollback": 0,
+                                  "ms": []})
+        a["n"] += 1
+        if r.get("verdict") == "rollback":
+            a["rollback"] += 1
+        ms = r.get("elapsed_ms") or 0
+        if ms:
+            a["ms"].append(ms)
+
+    out = []
+    for a in agg.values():
+        ms = sorted(a["ms"])
+        n = len(ms)
+        avg = int(sum(ms) / n) if n else 0
+        p50 = ms[n // 2] if n else 0
+        out.append({"kind": a["kind"], "count": a["n"],
+                    "rollback": a["rollback"],
+                    "avg_ms": avg, "p50_ms": p50,
+                    "max_ms": ms[-1] if n else 0})
+    out.sort(key=lambda r: (-r["count"], r["kind"]))
+    return out
 
 
 def task_undo(root, apply_it=False, rec_id=None, whole_batch=False,
@@ -760,10 +798,6 @@ def task_rename(root, old, new, apply_it=False, as_json=False,
                             "criteria": criteria, "verdict": "pass"}
         # **不过就自己退回去** —— 留下一个坏状态比不改更糟
         _restore(backup)
-        # 失败也要留痕：否则"我刚才那次是不是没成"没有任何地方能查
-        record_task(root, u"rollback-" + (kind or "task"),
-                    {"old": old, "new": new}, {}, verdict="rollback",
-                    elapsed_ms=(time.time() - t0) * 1000)
         why = []
         if not ok_left:
             why.append(u"仍有 %d 处旧名字" % left)
@@ -775,6 +809,10 @@ def task_rename(root, old, new, apply_it=False, as_json=False,
             why.append(u"诊断增加了")
         say("rollback", u"验收不通过（%s）—— 已逐字节恢复 %d 个文件"
             % (u"、".join(why), len(backup)))
+        # 失败也要留痕，而且**连原因一起** —— 只记"回滚过"回答不了"为什么"。
+        record_task(root, u"rollback", {"old": old, "new": new}, {},
+                    verdict="rollback", reason=u"、".join(why),
+                    elapsed_ms=(time.time() - t0) * 1000)
         return 1, log, {"before": before, "sites": len(sites),
                         "criteria": criteria, "verdict": "rollback"}
     except Exception as exc:
@@ -2152,6 +2190,40 @@ def selftest():
     finally:
         shutil.rmtree(d16, ignore_errors=True)
 
+    # ---- 回滚留痕要带原因；stats 要能按类型聚合 -------------------------
+    d17 = tempfile.mkdtemp(prefix="tasks_")
+    try:
+        _make({"s1.m": (u"function y = aa(x)\n  y = x + 1;\nend\n"),
+               "s2.m": (u"function r = run(v)\n  r = aa(v);\nend\n")}, d17)
+        # 一次成功
+        task_rename(d17, "aa", "bb", apply_it=True)
+        # 一次必然验收失败：改名成已存在的 run（调用边会变）
+        _make({"s1.m": (u"function y = bb(x)\n  y = x + 1;\nend\n"),
+               "s2.m": (u"function r = run(v)\n  r = bb(v);\nend\n")}, d17)
+        rc_rb, _l, _i = task_rename(d17, "bb", "run", apply_it=True)
+
+        rows = list_tasks(d17)
+        kinds = set(r["kind"] for r in rows)
+        rb = [r for r in rows if r.get("verdict") == "rollback"]
+        if chk(rc_rb == 1 and rb and rb[0].get("reason"),
+               u"自证 回滚记录：留下原因",
+               u"rc=%r reasons=%r" % (rc_rb, [r.get("reason") for r in rb])):
+            good += 1
+        else:
+            bad += 1
+
+        stats = task_stats(d17)
+        by = dict((r["kind"], r) for r in stats)
+        ok_s = (u"rename" in by and by[u"rename"]["count"] >= 1
+                and by[u"rename"]["p50_ms"] > 0)
+        if chk(ok_s, u"自证 stats：按类型聚合出次数与中位耗时",
+               u"stats=%r" % (stats[:2],)):
+            good += 1
+        else:
+            bad += 1
+    finally:
+        shutil.rmtree(d17, ignore_errors=True)
+
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     return 1 if bad else 0
 
@@ -2165,6 +2237,9 @@ def main(argv=None):
     rp.add_argument("--new", required=True)
     rp.add_argument("--apply", action="store_true")
     rp.add_argument("--json", action="store_true")
+    st = sub.add_parser("stats")
+    st.add_argument("--dir", default=".")
+    st.add_argument("--json", action="store_true")
     pp = sub.add_parser("prune")
     pp.add_argument("--dir", default=".")
     pp.add_argument("--keep", type=int, default=MAX_RECORDS)
@@ -2220,6 +2295,22 @@ def main(argv=None):
         return 0
     if args.selftest:
         return selftest()
+
+    if args.cmd == "stats":
+        _rows = task_stats(os.path.abspath(args.dir))
+        if args.json:
+            print(json.dumps({"ok": True, "stats": _rows},
+                             ensure_ascii=False, indent=2))
+        elif not _rows:
+            print("还没有任务记录（%s）" % HISTORY_DIR)
+        else:
+            print("%-14s %5s %8s %8s %8s %8s"
+                  % ("类型", "次数", "回滚", "平均ms", "中位ms", "最大ms"))
+            for r in _rows:
+                print("%-14s %5d %8d %8d %8d %8d"
+                      % (r["kind"], r["count"], r["rollback"],
+                         r["avg_ms"], r["p50_ms"], r["max_ms"]))
+        return 0
 
     if args.cmd == "prune":
         rc_info = prune_tasks(os.path.abspath(args.dir), args.keep,

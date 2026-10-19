@@ -1308,6 +1308,8 @@ function activate(context) {
       const recs = readRecords();
       const mine = [];
       const olderByDay = {};
+      let sessPass = 0;
+      let sessRollback = 0;
 
       const needle = (this._filter || '').toLowerCase();
       for (const rec of recs) {
@@ -1331,6 +1333,8 @@ function activate(context) {
                            dur + '  ' + (rec.when || '');
         item.tooltip = 'id: ' + rid +
                        '\n文件: ' + (paths.join('\n      ') || '无') +
+                       (isRollback && rec.reason
+                         ? ('\n回滚原因: ' + rec.reason) : '') +
                        (rec.params ? ('\n参数: ' + JSON.stringify(rec.params)) : '');
         item.iconPath = new vscode.ThemeIcon(
           isRollback ? 'circle-slash' : (rec.undone ? 'check' : 'history'));
@@ -1340,6 +1344,16 @@ function activate(context) {
                             : (rec.undone ? 'taskDone' : 'taskPending');
         if (!rec.undone && !isRollback) {
           item.command = { command: 'matlabc.undoLastTask', title: '撤销' };
+        } else if (isRollback) {
+          // 回滚行不能撤销，但点一下能看清"为什么没成"
+          item.command = { command: 'matlabc.showRollbackReason',
+                           title: '查看原因',
+                           arguments: [rec.reason || '', rid] };
+        }
+
+        if (!sessionKnown.has(rid)) {
+          if (rec.verdict === 'rollback') sessRollback += 1;
+          else sessPass += 1;
         }
 
         if (sessionKnown.has(rid)) {
@@ -1400,6 +1414,7 @@ function activate(context) {
       }
       this._groups = groups;
       this._count = recs.length;
+      this._session = { pass: sessPass, rollback: sessRollback };
       this._shown = mine.length +
                     days.reduce((n, d) => n + olderByDay[d].length, 0);
       if (this.onDidChangeTreeData) this.onDidChangeTreeData();
@@ -1414,7 +1429,13 @@ function activate(context) {
     const shown = taskProvider._shown || 0;
     const total = taskProvider._count || 0;
     const f = taskProvider._filter;
-    treeView.title = '改动记录（' + shown + (f ? '/' + total : '') + '）' +
+    const ses = taskProvider._session || { pass: 0, rollback: 0 };
+    // 汇总放在标题里：逐行看得清，整体看不清
+    const head = ses.pass || ses.rollback
+      ? ('本次会话 ' + ses.pass + ' 成功' +
+         (ses.rollback ? ' / ' + ses.rollback + ' 回滚' : ''))
+      : ('共 ' + total + ' 条');
+    treeView.title = '改动记录 · ' + head +
                      (f ? ' · 只看 ' + f : '');
     treeView.description = f ? '过滤：' + f : '';
   };
@@ -1480,6 +1501,16 @@ function activate(context) {
       }
     })
   );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.showRollbackReason',
+                                     async (reason, id) => {
+      const body = (reason || '').trim() || '（这条记录没有留下原因）';
+      vscode.window.showInformationMessage(
+        'matlabc: 这次没有通过验收，工程已自动退回。\n原因：' + body +
+        (id ? ('\n记录：' + id) : ''));
+    })
+  );
+
   context.subscriptions.push(
     vscode.commands.registerCommand('matlabc.filterTasks', async () => {
       const cur = taskProvider._filter;
