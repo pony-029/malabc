@@ -873,8 +873,17 @@ def repo_root():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+#: `_docstring` 的结果缓存：(path, mtime, size) -> (src, doc)。
+# 实测这道门里有 200 次 `ast.parse`、其中大部分是**同一个文件被反复解析**
+# （每个判据都要拿一次正文/源码）。缓存后只剩几十次。
+_DOC_CACHE = {}
+
+
 def _docstring(path):
     """取一个脚本的**帮助正文**，以及它的源码。
+
+    结果按 (路径, mtime, 大小) 缓存 —— 用 mtime 而不是"只缓存一次"，
+    是为了同一进程里文件被改过时仍然取到新内容。
 
     R247：`matlabc.py` 的帮助正文搬到了同目录的 `matlabc_help.py`
     （原因见那个文件的 docstring：正文留在这里会让「改一句文案」改变
@@ -884,6 +893,14 @@ def _docstring(path):
     字符串常量 `HELP_TEXT`，就用它当正文；否则仍然用模块 docstring。
     约定是显式的 —— 不是「猜哪个文件像帮助」。
     """
+    try:
+        st = os.stat(path)
+        key = (path, int(st.st_mtime), st.st_size)
+    except OSError:
+        return None, None
+    hit = _DOC_CACHE.get(key)
+    if hit is not None:
+        return hit
     try:
         with io.open(path, "r", encoding="utf-8", errors="replace") as fh:
             src = fh.read()
@@ -895,6 +912,7 @@ def _docstring(path):
         return src, None
     doc = ast.get_docstring(tree, clean=False)
     if doc and "诚实的边界" in doc:
+        _DOC_CACHE[key] = (src, doc)
         return src, doc
 
     stem = os.path.splitext(os.path.basename(path))[0]
@@ -1437,6 +1455,48 @@ def _r5c_verdict(script, canon_bytes, canon_snapshot):
                canon_bytes - canon_snapshot, script, canon_bytes))
 
 
+def _prefetch_help(root, cache):
+    """把每个入口的 `--help`（两种测量口径）**并发**跑掉。
+
+    为什么：每次 `--help` 都是一次冷启动（导入整套分析器，实测 ~0.8s），
+    6 个入口串行就是 5 秒多。而这些子进程彼此独立、只吃 CPU 等待，
+    并发跑完再进主循环，等于把这道门从 5.3s 压到 1s 出头。
+
+    只预取**已知会被用到**的键，主循环里的缓存判断保持原样 ——
+    这样即使某天口径变了，也只会退回串行，不会算错。
+    """
+    jobs = []
+    # 两种测量口径：`HELP_MEASURE_COLUMNS`（终端里真读得到）与
+    # `HELP_CANON_COLUMNS`（宽到不折行，只剩内容）。键必须与主循环一致。
+    cols_all = []
+    for c in (HELP_MEASURE_COLUMNS, HELP_CANON_COLUMNS):
+        c = int(c)
+        if c not in cols_all:
+            cols_all.append(c)
+    for script in ENTRY_SCRIPTS:
+        lo, hi = HELP_BYTES.get(script, (0, 0))
+        if hi <= 0:
+            continue
+        for cols in cols_all:
+            hk = "%s::--help@C%d" % (script, cols)
+            if hk in cache:
+                continue
+            jobs.append((hk, script, cols))
+    if not jobs:
+        return
+
+    import concurrent.futures as cf
+    with cf.ThreadPoolExecutor(max_workers=min(8, len(jobs))) as pool:
+        futs = {pool.submit(_run_safe_example, root, sc, ["--help"],
+                            env_extra={"COLUMNS": str(cols)}): (hk, sc, cols)
+                for hk, sc, cols in jobs}
+        for fut, (hk, sc, cols) in futs.items():
+            try:
+                cache[hk] = fut.result()
+            except Exception:      # 预取失败就不写缓存，让主循环自己跑一次
+                pass
+
+
 def audit(root, on_problem, cache=None):
     """对真实仓库施加 R1/R2/R3/R4/R5/R5c；返回检查过的脚本数。
 
@@ -1446,6 +1506,7 @@ def audit(root, on_problem, cache=None):
     """
     if cache is None:
         cache = {}
+    _prefetch_help(root, cache)
     n = 0
     for script in ENTRY_SCRIPTS:
         spec = CONTRACT[script]

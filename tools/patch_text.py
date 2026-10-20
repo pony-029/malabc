@@ -112,7 +112,7 @@ def patch(path, old, new, count=1, apply_it=True):
         shown, hits, "CRLF" if crlf else "LF")
 
 
-def run_plan(path, apply_it=True):
+def run_plan(path, apply_it=True, fail_fast=False):
     """按 JSON 计划批量打补丁。
 
     为什么要批量：一轮改动常常 6~10 个文件，逐个调一次命令既慢又容易漏。
@@ -157,6 +157,9 @@ def run_plan(path, apply_it=True):
         if not ok:
             ok_all = False
             print(u"  ! %s" % msg)      # 失败原因单独一行，别塞进表格
+            if fail_fast:
+                print(u"  （--fail-fast：停在第 %d 个，剩余未执行）" % i)
+                break
     # 表头对齐：文件最长按 46 列截断，够看路径尾部
     print(u"  %-3s %-46s %5s %5s" % (u"#", u"文件", u"命中", u"结果"))
     for (idx, hits, st), it in zip(rows, items):
@@ -174,6 +177,8 @@ def main(argv=None):
     ap.add_argument("--new")
     ap.add_argument("--count", type=int, default=1)
     ap.add_argument("--plan", help="批量补丁的 JSON 文件")
+    ap.add_argument("--fail-fast", action="store_true",
+                    help="批量时遇到第一个失败就停")
     ap.add_argument("--dry-run", action="store_true",
                     help="只报每处命中几次，不写盘")
     ap.add_argument("--selftest", action="store_true")
@@ -182,7 +187,8 @@ def main(argv=None):
     if args.selftest:
         return selftest()
     if args.plan:
-        ok, msg = run_plan(args.plan, apply_it=not args.dry_run)
+        ok, msg = run_plan(args.plan, apply_it=not args.dry_run,
+                           fail_fast=args.fail_fast)
         return 0 if ok else 1
     if not (args.file and args.old and args.new):
         print("需要 --plan，或 --file / --old / --new（--old/--new 是**文件路径**）")
@@ -252,6 +258,21 @@ def selftest():
         okp, _m = run_plan(plan)
         body = io.open(p3, encoding="utf-8").read()
         chk(okp and u"a = 2" in body and u"b = 2" in body, "批量计划两条都生效")
+
+        # fail-fast：第 2 条锚点故意写错，第 3 条不该被执行
+        pa = os.path.join(d, "f1.py")
+        pb = os.path.join(d, "f2.py")
+        for f in (pa, pb):
+            io.open(f, "w", encoding="utf-8", newline="").write(u"v = 1\n")
+        plan2 = os.path.join(d, "plan2.json")
+        io.open(plan2, "w", encoding="utf-8", newline="").write(
+            u'{"patches": [{"file": "%s", "old": "v = 1", "new": "v = 2"},'
+            u' {"file": "%s", "old": "不存在", "new": "x"},'
+            u' {"file": "%s", "old": "v = 1", "new": "v = 3"}]}'
+            % tuple(f.replace("\\", "/") for f in (pa, pa, pb)))
+        okf, _mf = run_plan(plan2, fail_fast=True)
+        chk(not okf and u"v = 3" not in io.open(pb, encoding="utf-8").read(),
+            "fail-fast 在第 2 条失败处停下（第 3 条未执行）")
     finally:
         import shutil
         shutil.rmtree(d, ignore_errors=True)

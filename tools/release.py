@@ -34,6 +34,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 
 #: 发布前必须绿的门（快、且都在几秒内）。`check_all` 太慢，留给 CI / 手工。
+#: 单道门超过这个耗时就在发布日志里提醒（不判负）。
+SLOW_MS = 5000
+
 GATES = ("check_version_scheme", "check_eol_convention", "check_readme_parity",
          "check_py36_clean", "check_tool_discoverability", "check_help_contract",
          "check_js_balance", "check_tour", "check_subprocess_hygiene",
@@ -122,8 +125,12 @@ def main(argv=None):
     _slow = sorted([(v.get("ms") or 0, k) for k, v in stamps.items()
                     if k in GATES], reverse=True)[:3]
     if _slow:
+        _flag = u" ⚠" if _slow[0][0] > SLOW_MS else u""
         print("  （最慢）" + " ｜ ".join(
-            "%s %.1fs" % (k, ms / 1000.0) for ms, k in _slow))
+            "%s %.1fs" % (k, ms / 1000.0) for ms, k in _slow) + _flag)
+        if _slow[0][0] > SLOW_MS:
+            print("         超过 %dms 的门会让每次发布都多等这么久，值得优化"
+                  % SLOW_MS)
     print("  [%s] %d 道关键门%s"
           % ("OK  " if not bad else "FAIL", len(GATES),
              "" if not bad else "，失败 %d" % bad))

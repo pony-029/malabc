@@ -603,7 +603,7 @@ function activate(context) {
         { label: '$(database) 大纲缓存：命中 ' + outlineStats.hit +
                  ' / 旧版失效 ' + outlineStats.stale +
                  ' / 无缓存 ' + outlineStats.miss,
-          description: '点击清空缓存并重扫当前文件',
+          description: '本次启动累计 · 点击清空缓存并重扫（计数归零）',
           act: 'matlabc.refreshOutline' },
         { label: '$(discard) 撤销上一次改动', act: 'matlabc.undoLastTask',
           description: '先看 diff，再决定' },
@@ -995,6 +995,10 @@ function activate(context) {
       }
       const doc = ed.document;
       outlineCache.delete(doc.uri.toString());
+      // 重扫即重置计数：数字只增不减就失去意义（"命中 300 次"说明不了任何事）。
+      outlineStats.hit = 0;
+      outlineStats.stale = 0;
+      outlineStats.miss = 0;
       const t0 = Date.now();
       let n = -1;
       try {
