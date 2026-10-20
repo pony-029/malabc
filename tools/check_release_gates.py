@@ -11,7 +11,10 @@ R413 把"新增一道门要同时改的六处"写进了 CONTRIBUTING，其中第
 要么在 `EXEMPT` 里**写明理由**。两向都查 —— 陈旧豁免（登记了却已经在
 `GATES` 里）同样算缺陷。
 
-判据族 **RG1–RG2**。
+判据族 **RG1–RG3**。
+
+    RG3  每个门都要在 `releases/gates-last-run.json` 里有"上次真跑"的记录。
+         一道门存在却从没被跑过，与不存在在效果上一样。
 
 用法：
     python tools/check_release_gates.py
@@ -23,14 +26,16 @@ R413 把"新增一道门要同时改的六处"写进了 CONTRIBUTING，其中第
     2  = 缺输入（找不到 release.py 或 tools/）
 """
 import io
+import json
 import os
 import re
 import sys
 
-ROW_SIGNATURE = "RG1–RG2"
+ROW_SIGNATURE = "RG1–RG3"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
+STAMPS = os.path.join(REPO, "releases", "gates-last-run.json")
 RELEASE = os.path.join(HERE, "release.py")
 
 #: 明确不进发版清单的门 —— **必须写理由**（空理由按无理由处理）。
@@ -73,28 +78,42 @@ def check():
     """返回 (问题列表, 统计)。"""
     gates = _gates()
     if gates is None:
-        return [("E0", "release.py 里解析不到 GATES")], {}
+        return [u"E0 release.py 里解析不到 GATES"], {}
     files = _files()
     problems = []
 
     # RG1：GATES 里列了但文件不存在（陈旧行）
     for g in gates:
         if not os.path.isfile(os.path.join(HERE, g + ".py")):
-            problems.append(("RG1", "GATES 列了 %s，但脚本不存在" % g))
+            problems.append(u"RG1 GATES 列了 %s，但脚本不存在" % g)
 
     # RG2：每个 check_*.py 要么在 GATES，要么有理由地豁免
     for f in files:
         if f in gates:
             if f in EXEMPT:
-                problems.append(("RG2", "%s 已在 GATES 里，EXEMPT 里的登记陈旧" % f))
+                problems.append(
+                    u"RG2 %s 已在 GATES 里，EXEMPT 里的登记陈旧" % f)
             continue
         if f in EXEMPT:
             if not EXEMPT[f].strip():
-                problems.append(("RG2", "%s 的豁免没写理由" % f))
+                problems.append(u"RG2 %s 的豁免没写理由" % f)
             continue
-        problems.append(("RG2",
-                         "%s 不在发版门清单里，也没登记豁免 —— 它从没在发布时跑过"
-                         % f))
+        problems.append(
+            u"RG2 %s 不在发版门清单里，也没登记豁免 —— 它从没在发布时跑过" % f)
+
+    # RG3：有没有"从没跑过"的门
+    try:
+        stamps = json.loads(io.open(STAMPS, encoding="utf-8").read())
+    except (IOError, OSError, ValueError):
+        stamps = None
+    if stamps is None:
+        print("  （提示）还没有 releases/gates-last-run.json —— "
+              "跑一次 tools/release.py 就会生成；本次不判负")
+    else:
+        for g in gates:
+            if g not in stamps:
+                problems.append(
+                    u"RG3 %s 在 GATES 里，但没有跑过的记录" % g)
 
     stats = {"gates": len(gates), "files": len(files),
              "exempt": len(EXEMPT)}
@@ -116,7 +135,7 @@ def main(argv=None):
             print("  - %s %s" % (code, msg))
         print("check_release_gates: %d 项不合规" % len(problems))
         return 1
-    print("check_release_gates: OK（RG1–RG2 全绿；%d 道门在发版清单里，"
+    print("check_release_gates: OK（RG1–RG3 全绿；%d 道门在发版清单里，"
           "%d 个豁免带理由，%d 个 check 脚本）"
           % (stats["gates"], stats["exempt"], stats["files"]))
     return 0
@@ -155,20 +174,20 @@ def selftest():
         HERE, RELEASE = d, os.path.join(d, "release.py")
         EXEMPT = {"check_b": "太重，只在 CI 跑"}
         problems, _ = check()
-        codes = [c for c, _ in problems]
-        chk("RG1" in codes, "RG1 会报 GATES 里的陈旧行（check_missing）")
-        chk(any("check_c" in m for _, m in problems),
+        chk(any(m.startswith("RG1 ") for m in problems),
+            "RG1 会报 GATES 里的陈旧行（check_missing）")
+        chk(any("check_c" in m for m in problems),
             "RG2 会报没登记也没豁免的 check_c.py")
-        chk(not any("check_b" in m for _, m in problems),
+        chk(not any("check_b" in m for m in problems),
             "RG2 不报有理由的豁免")
 
         EXEMPT = {"check_b": ""}
         problems2, _ = check()
-        chk(any("没写理由" in m for _, m in problems2), "RG2 会报空理由的豁免")
+        chk(any("没写理由" in m for m in problems2), "RG2 会报空理由的豁免")
 
         EXEMPT = {"check_a": "多余"}
         problems3, _ = check()
-        chk(any("陈旧" in m for _, m in problems3), "RG2 会报陈旧豁免")
+        chk(any("陈旧" in m for m in problems3), "RG2 会报陈旧豁免")
 
         HERE, RELEASE, EXEMPT = old[0], old[1], old[2]
     finally:

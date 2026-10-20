@@ -24,9 +24,11 @@
 """
 import argparse
 import io
+import json
 import os
 import subprocess
 import sys
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -94,11 +96,28 @@ def main(argv=None):
 
     # 版本号是发布的地基：它错，后面全错，所以先验
     bad = 0
+    # **记录每道门最后一次真跑的时间**：一道门"存在但半年没跑"和"不存在"
+    # 在效果上几乎一样，而现在没有任何地方能看出这一点。
+    stamps = {}
+    _stamp_path = os.path.join(ROOT, "releases", "gates-last-run.json")
+    try:
+        if os.path.isfile(_stamp_path):
+            stamps = json.loads(io.open(_stamp_path, encoding="utf-8").read())
+    except (IOError, OSError, ValueError):
+        stamps = {}
     for g in GATES:
+        t0 = time.time()
         rc, tail = run([py, os.path.join("tools", g + ".py")])
+        stamps[g] = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                     "ms": int((time.time() - t0) * 1000), "rc": rc}
         if rc != 0:
             bad += 1
             print("  [FAIL] %s ｜ %s" % (g, (tail[-1] if tail else "")[:90]))
+    try:
+        io.open(_stamp_path, "w", encoding="utf-8", newline="").write(
+            json.dumps(stamps, ensure_ascii=False, indent=1) + u"\n")
+    except (IOError, OSError):
+        pass
     print("  [%s] %d 道关键门%s"
           % ("OK  " if not bad else "FAIL", len(GATES),
              "" if not bad else "，失败 %d" % bad))

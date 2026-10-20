@@ -786,7 +786,7 @@ python tools/check_all.py        # 跑完 tools/check_*.py 全部护栏 + 各自
 | `check_tool_discoverability.py` | `TD1–TD4` — `tools/` 下每个非护栏脚本都必须在**两侧** README 里被提到。护栏有两个对手方（树 + 这张表），而普通工具**一个都没有**——`sweep_cli.py` 因此长到 118 条判据却从未进 README，`lsp_selftest.py` 因此红了六轮没人知道。 **TD4**：用户手册必须能从扩展页点开 —— 手册与 4 张示意图原先都在包里，而 `README.md` 一处都没引用，文件存在却没人找得到。 |
 | `check_tour.py` | `TR1–TR3` —— 导览页**静静变差**的三种方式：某一帧引用了图上已不存在的模块（那一步什么都不高亮，页面照样打开）；连线端点留在自己框内（线压在标题上，看起来就是「箭头指过了头」）；页面残留模板转义 `%%` 或 CRLF。三者都不报错，而且破掉的那一帧和正常的一帧，截图上看不出区别 |
 | `check_figure_glyphs.py` | 守示意图（FG1–FG4）：图上要画的字必须在字体里有字形—— 缺了就是空心方块，而方块看起来像打码；等宽字体那几行也不许出现非 ASCII |
-| `check_release_gates.py` | `RG1–RG2` — 写了却从不参与发布的门，等于给自己看的笔记：每个 `check_*.py` 要么在 `release.py` 的 `GATES` 里，要么**带理由**豁免（陈旧豁免同样算红） |
+| `check_release_gates.py` | `RG1–RG3` — 写了却从不参与发布的门，等于给自己看的笔记：每个 `check_*.py` 要么在 `release.py` 的 `GATES` 里，要么**带理由**豁免（陈旧豁免同样算红） |
 | `check_symbol_ranges.py` | `SR1–SR3` — 每个符号的起止行必须落在文件内。越界的 Range 会让编辑器**拒收整批符号**，大纲于是永远停在「正在加载…」 |
 | `check_tool_selftests.py` | `TS1–TS2` — 凡是声明 `SELFTEST = True` 的工具，发版时都真跑一次。工具的自证和其他门一样：**有人执行它才存在** |
 | `check_portability.py` | `PF1–PF3` —— 运行时不得假设只有 Windows。Windows 绝对路径只有在该行**登记过且有 POSIX 对照**时才允许；Windows 专属 API（`os.startfile` / `winreg` / `msvcrt` / `ctypes.windll`）一律不豁免。注释与文档串被跳过——写成 `C:\Temp\yalmip` 的实测记录是证据，不是平台假设。PF3 抓反方向：登记的锚点文字消失即陈旧 |

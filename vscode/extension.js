@@ -20,6 +20,9 @@ let pendingUndo = null;
 const outlineCache = new Map();
 //: 每个文档上一次提示缓存失效的时间（节流到 30 秒一次）
 const outlineHintAt = {};
+//: 缓存的命中 / 旧版失效 / 无缓存计数：导出日志里带一行，
+// 否则「大纲有时快有时慢」只能靠猜。
+const outlineStats = { hit: 0, stale: 0, miss: 0 };
 
 // 侧栏「关系」视图的“钉住某个名字”入口（R298）。
 // 定义在 activate 内部（那里才有 TreeDataProvider），这里先留一个引用，
@@ -1056,6 +1059,8 @@ function activate(context) {
             mCount = found.length;
           } catch (e) { /* 大工程可能超时 */ }
           head += '.m 文件数: ' + (mCount >= 0 ? mCount : '(统计超时)') + '\n';
+          head += '大纲缓存: 命中 ' + outlineStats.hit + ' / 旧版失效 ' +
+                  outlineStats.stale + ' / 无缓存 ' + outlineStats.miss + '\n';
         } catch (e) {
           head += '（环境信息采集失败：' + (e && e.message) + '）\n';
         }
@@ -2351,6 +2356,24 @@ function activate(context) {
       return it;
     };
 
+    // **读某一行的源码片段**：上游子项用它，下游也要用 —— 只有一边带片段，
+    // 用户在两侧看到的信息量就不一样（不一致本身就是一种 bug）。
+    const _srcCache = {};
+    const lineText = (rel, ln) => {
+      if (!rel || !ln) return '';
+      try {
+        if (!_srcCache[rel]) {
+          _srcCache[rel] = fs.readFileSync(path.join(root, rel), 'utf8')
+            .split(/\r?\n/);
+        }
+        const t = (_srcCache[rel][ln - 1] || '').trim();
+        if (!t) return '';
+        return t.length > 52 ? (t.slice(0, 52) + '…') : t;
+      } catch (e) {
+        return '';
+      }
+    };
+
     const refreshRel = async (doc, pos, forced) => {
       // **整段兜底 + 打点**（R312）。侧栏空白的几种可能（未触发 / 抛异常 /
       // 组为空）在界面上完全一样，只能靠日志区分。
@@ -2516,20 +2539,9 @@ function activate(context) {
           const extraLines = Object.keys(extra).map(Number)
             .filter((ln) => ln && ln !== jump).sort((x, y) => x - y);
           // 只写 `line 12` 还是得点进去才能确认 —— 把那一行代码带出来。
-          const srcLines = (() => {
-            try {
-              return fs.readFileSync(path.join(root, nd.node.rel), 'utf8')
-                .split(/\r?\n/);
-            } catch (e) { return []; }
-          })();
-          const snippet = (ln) => {
-            const t = (srcLines[ln - 1] || '').trim();
-            if (!t) return '';
-            return t.length > 52 ? (t.slice(0, 52) + '…') : t;
-          };
           const extraKids = extraLines.slice(0, 8).map((ln) =>
             mkItem('调用处 line ' + ln, {
-              desc: snippet(ln) || nd.node.rel,
+              desc: lineText(nd.node.rel, ln) || nd.node.rel,
               rel: nd.node.rel, line: ln,
             }));
           const allKids = kids.concat(extraKids);
@@ -2575,9 +2587,11 @@ function activate(context) {
         const dns = (info.down || []).slice(0, 20).map((d) => {
           const jump = d.call_line || d.line;
           const defLine = d.line || 1;
+          const snip = lineText(d.call_rel || d.rel, jump);
           const it = mkItem(d.name, {
             desc: shortDesc(d) +
-                  (defLine && defLine !== jump ? '  · 定义 ' + defLine : ''),
+                  (defLine && defLine !== jump ? '  · 定义 ' + defLine : '') +
+                  (snip ? '  · ' + snip : ''),
             // 同理：跳到"我这里调用它的那一行"；服务端没给（跨语言/无行号）
             // 才退回定义处。
             rel: d.call_rel || d.rel,
@@ -3193,11 +3207,14 @@ function activate(context) {
             // 对不上 —— 一份"过期的正确结果"比空白更误导（点过去在错地方，
             // 而且看起来完全正常）。版本不符就老老实实走本地扫描。
             const cached = outlineCache.get(doc.uri.toString());
+            if (!cached) outlineStats.miss += 1;
             if (cached && cached.raw && cached.raw.length) {
               if (cached.version === doc.version) {
                 raw = cached.raw;
+                outlineStats.hit += 1;
                 _why = (_why || '本次无结果') + '，改用同版本缓存';
               } else {
+                outlineStats.stale += 1;
                 _why = (_why || '本次无结果') + '，缓存属于旧版本（已弃用）';
               }
             }

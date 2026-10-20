@@ -25,6 +25,7 @@
 """
 import argparse
 import io
+import json
 import os
 import subprocess
 import sys
@@ -83,6 +84,11 @@ def patch(path, old, new, count=1):
     if not os.path.isfile(path):
         return False, "找不到文件：%s" % path
     text, crlf = _read(path)
+    # **锚点做换行归一**：仓库里大多是 CRLF，而锚点文件通常是 LF ——
+    # 不归一就必然「锚点没命中」，而这看起来像是"文件已被改过"，很误导。
+    text = text.replace("\r\n", "\n")
+    old = old.replace("\r\n", "\n")
+    new = new.replace("\r\n", "\n")
     hits = text.count(old)
     if hits == 0:
         return False, "锚点没命中（0 处）—— 文件可能已被改过"
@@ -103,19 +109,60 @@ def patch(path, old, new, count=1):
         shown, hits, "CRLF" if crlf else "LF")
 
 
+def run_plan(path, apply_=True):
+    """按 JSON 计划批量打补丁。
+
+    为什么要批量：一轮改动常常 6~10 个文件，逐个调一次命令既慢又容易漏。
+    计划里 old/new 是**内联字符串**（JSON 里写，不经 shell），
+    所以引号/反斜杠仍然是安全的。
+    """
+    try:
+        data = json.loads(io.open(path, encoding="utf-8").read())
+    except (IOError, OSError, ValueError) as exc:
+        return False, u"读不了计划文件：%s" % exc
+    items = data.get("patches") if isinstance(data, dict) else data
+    if not isinstance(items, list) or not items:
+        return False, u"计划里没有 patches（应为非空数组）"
+
+    ok_all = True
+    for i, it in enumerate(items, 1):
+        if not isinstance(it, dict):
+            print(u"  %d. 跳过：不是对象" % i)
+            ok_all = False
+            continue
+        f = it.get("file") or u""
+        old = it.get("old") or u""
+        new = it.get("new") or u""
+        cnt = int(it.get("count", 1) or 0)
+        if not (f and old):
+            print(u"  %d. 跳过：缺 file / old" % i)
+            ok_all = False
+            continue
+        target = f if os.path.isabs(f) else os.path.join(REPO, f)
+        ok, msg = patch(target, old, new, cnt)
+        print(u"  %d. %s" % (i, msg))
+        if not ok:
+            ok_all = False
+    return ok_all, u"%d 个补丁" % len(items)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument("--file")
     ap.add_argument("--old")
     ap.add_argument("--new")
     ap.add_argument("--count", type=int, default=1)
+    ap.add_argument("--plan", help="批量补丁的 JSON 文件")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args(argv)
 
     if args.selftest:
         return selftest()
+    if args.plan:
+        ok, msg = run_plan(args.plan)
+        return 0 if ok else 1
     if not (args.file and args.old and args.new):
-        print("需要 --file / --old / --new（--old/--new 是**文件路径**）")
+        print("需要 --plan，或 --file / --old / --new（--old/--new 是**文件路径**）")
         return 2
     try:
         old = io.open(args.old, encoding="utf-8").read()
@@ -162,6 +209,18 @@ def selftest():
         io.open(p2, "wb").write(b"x = 1\r\n")
         patch(p2, u"x = 1", u"x = 9")
         chk(b"\r\n" in io.open(p2, "rb").read(), "CRLF 被保留")
+
+        # 批量计划：两条都该生效
+        p3 = os.path.join(d, "z.py")
+        io.open(p3, "w", encoding="utf-8", newline="").write(u"a = 1\nb = 1\n")
+        plan = os.path.join(d, "plan.json")
+        io.open(plan, "w", encoding="utf-8", newline="").write(
+            u'{"patches": [{"file": "%s", "old": "a = 1", "new": "a = 2"},'
+            u' {"file": "%s", "old": "b = 1", "new": "b = 2"}]}'
+            % (p3.replace("\\", "/"), p3.replace("\\", "/")))
+        okp, _m = run_plan(plan)
+        body = io.open(p3, encoding="utf-8").read()
+        chk(okp and u"a = 2" in body and u"b = 2" in body, "批量计划两条都生效")
     finally:
         import shutil
         shutil.rmtree(d, ignore_errors=True)

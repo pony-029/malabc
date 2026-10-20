@@ -37,7 +37,7 @@
         ├─▶ check_portability.py          运行时不得假设只有 Windows（契约 PF1..PF3）
         ├─▶ check_tour.py                 导览页：分帧引用 / 端点穿框 / 换行（契约 TR1..TR3）
         ├─▶ check_figure_glyphs.py       示意图的字形：缺字形画成方块 / 等宽行不许中文（契约 FG1..FG4）
-        ├─▶ check_release_gates.py        发版门清单：写了没进 GATES 的门 / 陈旧豁免（契约 RG1..RG2）
+        ├─▶ check_release_gates.py        发版门清单：写了没进 GATES 的门 / 陈旧豁免（契约 RG1..RG3）
         ├─▶ check_symbol_ranges.py        符号行号必须在文件内：越界会让大纲永远转圈（契约 SR1..SR3）
         ├─▶ check_tool_selftests.py        带自证的工具每次发版都真跑一遍（契约 TS1..TS2）
         ├─▶ check_version_scheme.py       版本号规则：每位 0–9，满 10 进位（契约 VS1..VS2）
