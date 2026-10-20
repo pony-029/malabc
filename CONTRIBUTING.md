@@ -275,6 +275,18 @@ python tools/sweep_cli.py --meta     # 11 条：**变异测试**（判据自己�
    **15 分钟以上**仍未落盘。CPU 利用率从 88% 掉到 82%，内存在 6–8 GB 之间反复。
    **探针是独占资源的任务**：启动后只允许 `Get-Content` / `Test-Path` 这类只读查询。
 
+## 改仓库文件：用 `tools/patch_text.py`，不要现写脚本（R422）
+
+"写一段临时 Python 去改文件"这件事，本仓已经出过三次同类自伤：脚本里的字符串
+带引号/换行/中文标点，于是**脚本自己语法错**，或者改完的文件语法错到下一轮才炸。
+
+```bash
+python tools/patch_text.py --file vscode/extension.js --old old.txt --new new.txt
+```
+
+它做三件事：原文/新文从**文件**读（shell 不参与）、保留 CRLF/LF、改完**立刻**
+py_compile 或 `node --check`，不通过就回滚。命中数不符也会拒绝（防止"改错地方"）。
+
 ## 提交约定
 
 - 提交信息建议 `类型: 简述`，类型如 `feat` / `fix` / `docs` / `refactor` / `test` / `ci`。

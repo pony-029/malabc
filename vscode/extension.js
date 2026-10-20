@@ -1064,6 +1064,17 @@ function activate(context) {
           text += '===== ' + path.basename(f) + ' =====\n' +
                   fs.readFileSync(f, 'utf8') + '\n';
         }
+        // **服务端崩溃现场**：扩展日志里只有"请求失败"，真正的原因
+        // （Python traceback）在子进程的 stderr 里。
+        try {
+          const tail = (client && client.stderrTail) ? client.stderrTail : [];
+          const joined = tail.join('');
+          if (joined.trim()) {
+            const lines50 = joined.split(/\r?\n/).slice(-50).join('\n');
+            text += '\n===== 服务端 stderr（最近 50 行）=====\n' +
+                    lines50 + '\n';
+          }
+        } catch (e) { /* 拿不到就算了 */ }
         fs.writeFileSync(target.fsPath, text, 'utf8');
         const pick = await vscode.window.showInformationMessage(
           'matlabc: 日志已导出到 ' + target.fsPath,
@@ -2482,6 +2493,18 @@ function activate(context) {
           // `line 8`，点下去却跳到函数第 23 行（用户的原话是"却不在调用的位置"）。
           const jump = nd.node.call_line || nd.node.line;
           const defLine = nd.node.line || 1;
+          // 同一函数从多行调到这里时，除了主行以外的那几行**也要能点** ——
+          // 只写"共 N 处"而不给入口，等于告诉用户"还有两处，自己找"。
+          const extra = (outLines[nd.node.rel + ':' + nd.node.name] || {});
+          const extraLines = Object.keys(extra).map(Number)
+            .filter((ln) => ln && ln !== jump).sort((x, y) => x - y);
+          const extraKids = extraLines.slice(0, 8).map((ln) =>
+            mkItem('调用处 line ' + ln, {
+              desc: nd.node.rel,
+              rel: nd.node.rel, line: ln,
+            }));
+          const allKids = kids.concat(extraKids);
+
           const it = mkItem(nd.node.name, {
             // 行上写清两件事：**在哪一行的调用处**、**定义在第几行**。
             // 只写一个位置时，用户想看定义就只能靠 F12 再找一遍。
@@ -2490,7 +2513,7 @@ function activate(context) {
                   (multiCount(nd.node) > 1
                     ? '  · 共 ' + multiCount(nd.node) + ' 处调用' : ''),
             rel: nd.node.rel, line: jump,
-            children: kids.length ? kids : undefined,
+            children: allKids.length ? allKids : undefined,
           });
           it.contextValue = 'relNode';
           it._defRel = nd.node.rel;
@@ -3131,13 +3154,23 @@ function activate(context) {
             log('大纲 ' + path.basename(doc.uri.fsPath) + ' ' + _why);
           }
           if (raw.length) {
-            try { outlineCache.set(doc.uri.toString(), raw.slice(0, 5000)); }
-            catch (e) { /* 缓存失败不影响本次渲染 */ }
+            try {
+              outlineCache.set(doc.uri.toString(),
+                               { version: doc.version,
+                                 raw: raw.slice(0, 5000) });
+            } catch (e) { /* 缓存失败不影响本次渲染 */ }
           } else {
+            // **只认同一版本的缓存**：文档刚改过时，旧符号的行号会跟内容
+            // 对不上 —— 一份"过期的正确结果"比空白更误导（点过去在错地方，
+            // 而且看起来完全正常）。版本不符就老老实实走本地扫描。
             const cached = outlineCache.get(doc.uri.toString());
-            if (cached && cached.length) {
-              raw = cached;
-              _why = (_why || '本次无结果') + '，改用上次缓存';
+            if (cached && cached.raw && cached.raw.length) {
+              if (cached.version === doc.version) {
+                raw = cached.raw;
+                _why = (_why || '本次无结果') + '，改用同版本缓存';
+              } else {
+                _why = (_why || '本次无结果') + '，缓存属于旧版本（已弃用）';
+              }
             }
           }
           if (!_why && !raw.length) _why = '服务端返回 0 个符号';
