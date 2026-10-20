@@ -456,6 +456,12 @@ def _impact(c):
          "impact/down-call-rel-points-to-caller-file（%r）" % (_d0,))
     _chk(isinstance(_d0.get("call_line"), int) and _d0["call_line"] > 0,
          "impact/down-call-line-positive（%r）" % (_d0,))
+    # 多处调用要能展开：节点得带**全部**调用点，而不只是最小的那个行号。
+    _sites = _d0.get("call_sites") or []
+    _chk(isinstance(_sites, list) and len(_sites) >= 1,
+         "impact/down-carries-call-sites（%r）" % (_sites,))
+    _chk(bool(_sites) and _sites[0].get("rel") and _sites[0].get("line"),
+         "impact/down-call-sites-have-rel-and-line（%r）" % (_sites[:1],))
 
     _chk(call("no_such_function_xyz") is None,
          "impact/missing-returns-null（不是空对象）")

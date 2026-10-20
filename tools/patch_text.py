@@ -79,8 +79,8 @@ def _syntax_ok(path):
     return True, ""
 
 
-def patch(path, old, new, count=1):
-    """返回 (ok, msg)。失败时不改动文件。"""
+def patch(path, old, new, count=1, apply_it=True):
+    """返回 (ok, msg)。失败时不改动文件；`apply_it=False` 只报命中数。"""
     if not os.path.isfile(path):
         return False, "找不到文件：%s" % path
     text, crlf = _read(path)
@@ -95,6 +95,9 @@ def patch(path, old, new, count=1):
     if count and hits != count:
         return False, "锚点命中 %d 处，期望 %d 处（用 --count 0 表示不限）" % (
             hits, count)
+    if not apply_it:
+        return True, u"[dry] %s 命中 %d 处（未写盘）" % (
+            os.path.basename(path), hits)
     out = text.replace(old, new) if not count else text.replace(old, new, count)
     _write(path, out, crlf)
     ok, why = _syntax_ok(path)
@@ -109,7 +112,7 @@ def patch(path, old, new, count=1):
         shown, hits, "CRLF" if crlf else "LF")
 
 
-def run_plan(path, apply_=True):
+def run_plan(path, apply_it=True):
     """按 JSON 计划批量打补丁。
 
     为什么要批量：一轮改动常常 6~10 个文件，逐个调一次命令既慢又容易漏。
@@ -139,7 +142,7 @@ def run_plan(path, apply_=True):
             ok_all = False
             continue
         target = f if os.path.isabs(f) else os.path.join(REPO, f)
-        ok, msg = patch(target, old, new, cnt)
+        ok, msg = patch(target, old, new, cnt, apply_it=apply_it)
         print(u"  %d. %s" % (i, msg))
         if not ok:
             ok_all = False
@@ -153,13 +156,15 @@ def main(argv=None):
     ap.add_argument("--new")
     ap.add_argument("--count", type=int, default=1)
     ap.add_argument("--plan", help="批量补丁的 JSON 文件")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="只报每处命中几次，不写盘")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args(argv)
 
     if args.selftest:
         return selftest()
     if args.plan:
-        ok, msg = run_plan(args.plan)
+        ok, msg = run_plan(args.plan, apply_it=not args.dry_run)
         return 0 if ok else 1
     if not (args.file and args.old and args.new):
         print("需要 --plan，或 --file / --old / --new（--old/--new 是**文件路径**）")
@@ -170,7 +175,8 @@ def main(argv=None):
     except (IOError, OSError) as exc:
         print("读不了锚点/新文：%s" % exc)
         return 2
-    ok, msg = patch(args.file, old, new, args.count)
+    ok, msg = patch(args.file, old, new, args.count,
+                    apply_it=not args.dry_run)
     print(msg)
     return 0 if ok else 1
 
@@ -203,6 +209,13 @@ def selftest():
         ok3, msg3 = patch(p, u"a = 2", u"a = ((")
         after = io.open(p, encoding="utf-8").read()
         chk(not ok3 and after == before, "语法错会回滚（%s）" % msg3[:40])
+
+        # dry-run：只报命中数，文件一个字节都不动
+        before_dry = io.open(p, encoding="utf-8").read()
+        okd, msgd = patch(p, u"a = 2", u"a = 3", apply_it=False)
+        after_dry = io.open(p, encoding="utf-8").read()
+        chk(okd and after_dry == before_dry and u"[dry]" in msgd,
+            "dry-run 不写盘（%s）" % msgd[:40])
 
         # CRLF 保留
         p2 = os.path.join(d, "y.py")

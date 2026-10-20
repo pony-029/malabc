@@ -2381,7 +2381,10 @@ def _impact(name, depth=30, down_depth=3):
     # 下游每个节点也要知道「**是被哪个文件的第几行调用的**」：
     # 否则点击只能跳到它的定义处，而用户点这一行的意图是"看它在我这里
     # 是怎么被用的"。`call_sites` 一直有这份数据，只是下游没带上。
-    down_call = {}          # callee_key -> (parent_rel, line)
+    # callee_key -> {(parent_rel, line): 1}
+    # 同一被调用者可能从**多个调用行**被调到（if/else 两支、循环里、多处复用）。
+    # 只留一个行号，界面上就只能显示"一处"，而用户看到的"共 N 处"没法展开。
+    down_call = {}
     for i in range(limit):
         nxt = []
         for k in d_layer:
@@ -2393,11 +2396,7 @@ def _impact(name, depth=30, down_depth=3):
                     c_ln = 0
                 if c_ln <= 0:
                     continue
-                # 同一节点被多处调用时取**最小行号**：它是最先读到的那个调用点，
-                # 也最接近用户此刻在看的位置。
-                prev = down_call.get(c)
-                if prev is None or c_ln < prev[1]:
-                    down_call[c] = (krel, c_ln)
+                down_call.setdefault(c, {})[(krel, c_ln)] = 1
         for k in d_layer:
             for c, _ln in fwd.get(k, []):
                 if c not in d_seen:
@@ -2405,11 +2404,14 @@ def _impact(name, depth=30, down_depth=3):
                     nxt.append(c)
         if not nxt:
             break
-        down_levels.append([
-            dict(node_info(k),
-                 call_rel=(down_call.get(k) or (u"", 0))[0],
-                 call_line=(down_call.get(k) or (u"", 0))[1])
-            for k in sorted(nxt)])
+        def _down_node(k):
+            sites = sorted(down_call.get(k) or {})
+            first = sites[0] if sites else (u"", 0)
+            return dict(node_info(k),
+                        call_rel=first[0], call_line=first[1],
+                        call_sites=[{"rel": r, "line": ln} for r, ln in sites])
+
+        down_levels.append([_down_node(k) for k in sorted(nxt)])
         d_layer = nxt
         if i == limit - 1 and any(fwd.get(k) for k in d_layer):
             # 还有下一层但到了上限 —— 如实说「被截断」，

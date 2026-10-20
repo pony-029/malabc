@@ -2588,14 +2588,26 @@ function activate(context) {
           const jump = d.call_line || d.line;
           const defLine = d.line || 1;
           const snip = lineText(d.call_rel || d.rel, jump);
+          // 多处调用：与上游同一套处理 —— 只报数字等于让用户自己找。
+          const sites = (d.call_sites || []).filter((x) => x && x.line > 0);
+          const otherSites = sites.filter(
+            (x) => !(x.rel === (d.call_rel || d.rel) && x.line === jump))
+            .slice(0, 8);
+          const siteKids = otherSites.map((x) =>
+            mkItem('调用处 line ' + x.line, {
+              desc: lineText(x.rel, x.line) || x.rel,
+              rel: x.rel, line: x.line,
+            }));
           const it = mkItem(d.name, {
             desc: shortDesc(d) +
                   (defLine && defLine !== jump ? '  · 定义 ' + defLine : '') +
-                  (snip ? '  · ' + snip : ''),
+                  (snip ? '  · ' + snip : '') +
+                  (sites.length > 1 ? '  · 共 ' + sites.length + ' 处调用' : ''),
             // 同理：跳到"我这里调用它的那一行"；服务端没给（跨语言/无行号）
             // 才退回定义处。
             rel: d.call_rel || d.rel,
             line: jump,
+            children: siteKids.length ? siteKids : undefined,
           });
           it.contextValue = 'relNode';
           it._defRel = d.rel;

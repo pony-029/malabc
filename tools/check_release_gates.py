@@ -13,8 +13,9 @@ R413 把"新增一道门要同时改的六处"写进了 CONTRIBUTING，其中第
 
 判据族 **RG1–RG3**。
 
-    RG3  每个门都要在 `releases/gates-last-run.json` 里有"上次真跑"的记录。
-         一道门存在却从没被跑过，与不存在在效果上一样。
+    RG3  每个门都要在 `releases/gates-last-run.json` 里有"上次真跑"的记录，
+         且不能太久以前（`STALE_DAYS`）。一道门存在却从没被跑过、
+         或半年没跑过，与不存在在效果上一样。
 
 用法：
     python tools/check_release_gates.py
@@ -36,6 +37,8 @@ ROW_SIGNATURE = "RG1–RG3"
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 STAMPS = os.path.join(REPO, "releases", "gates-last-run.json")
+#: 超过这么多天没跑，就当成"实际上没在守"（提示，不判负）。
+STALE_DAYS = 30
 RELEASE = os.path.join(HERE, "release.py")
 
 #: 明确不进发版清单的门 —— **必须写理由**（空理由按无理由处理）。
@@ -110,10 +113,23 @@ def check():
         print("  （提示）还没有 releases/gates-last-run.json —— "
               "跑一次 tools/release.py 就会生成；本次不判负")
     else:
+        import datetime
+        now = datetime.datetime.now()
         for g in gates:
             if g not in stamps:
                 problems.append(
                     u"RG3 %s 在 GATES 里，但没有跑过的记录" % g)
+                continue
+            at = (stamps.get(g) or {}).get("at") or ""
+            try:
+                age = (now - datetime.datetime.strptime(
+                    at, "%Y-%m-%dT%H:%M:%S")).days
+            except (ValueError, TypeError):
+                age = -1
+            if age > STALE_DAYS:
+                # **只提示不判负**：本仓的门是发版时跑，两次发版间隔可能很长；
+                # 判负会逼着人为凑一次发布，那是更坏的结果。
+                print(u"  （提示）%s 上次跑是 %d 天前，建议重跑一次" % (g, age))
 
     stats = {"gates": len(gates), "files": len(files),
              "exempt": len(EXEMPT)}
