@@ -31,6 +31,10 @@ import sys
 import tempfile
 
 ROW_SIGNATURE = "PT1-PT2"
+#: 显式声明"本工具支持 --selftest"。
+# 为什么不用搜索 `--selftest` 字符串来判定：`new_gate.py` 的**模板**
+# 里也写着这四个字，于是被误判成"带自证的工具"，一跑就报参数缺失。
+SELFTEST = True
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)

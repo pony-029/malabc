@@ -18,6 +18,8 @@ let pendingUndo = null;
 // 服务端超时/未就绪时先用它，而不是退回「只有 function 行」的
 // 本地扫描 —— 后者会把类、嵌套函数全丢掉，看起来像「大纲坏了」。
 const outlineCache = new Map();
+//: 每个文档上一次提示缓存失效的时间（节流到 30 秒一次）
+const outlineHintAt = {};
 
 // 侧栏「关系」视图的“钉住某个名字”入口（R298）。
 // 定义在 activate 内部（那里才有 TreeDataProvider），这里先留一个引用，
@@ -1075,12 +1077,27 @@ function activate(context) {
                     lines50 + '\n';
           }
         } catch (e) { /* 拿不到就算了 */ }
-        fs.writeFileSync(target.fsPath, text, 'utf8');
+        // 大日志压一下：纯文本动辄几 MB，附件常被邮件网关拒。
+        let finalPath = target.fsPath;
+        let note = '';
+        if (Buffer.byteLength(text, 'utf8') > 512 * 1024) {
+          try {
+            const zlib = require('zlib');
+            finalPath = target.fsPath.replace(/\.(log|txt)$/i, '') + '.log.gz';
+            fs.writeFileSync(finalPath, zlib.gzipSync(Buffer.from(text, 'utf8')));
+            note = '（已压缩）';
+          } catch (e) {
+            finalPath = target.fsPath;     // 压缩失败就写原文件
+          }
+        } else {
+          fs.writeFileSync(target.fsPath, text, 'utf8');
+        }
         const pick = await vscode.window.showInformationMessage(
-          'matlabc: 日志已导出到 ' + target.fsPath,
+          'matlabc: 日志已导出到 ' + finalPath + note,
           '打开所在文件夹');
         if (pick) {
-          vscode.commands.executeCommand('revealFileInOS', target);
+          vscode.commands.executeCommand('revealFileInOS',
+                                         vscode.Uri.file(finalPath));
         }
       } catch (e) {
         vscode.window.showErrorMessage(
@@ -2498,9 +2515,21 @@ function activate(context) {
           const extra = (outLines[nd.node.rel + ':' + nd.node.name] || {});
           const extraLines = Object.keys(extra).map(Number)
             .filter((ln) => ln && ln !== jump).sort((x, y) => x - y);
+          // 只写 `line 12` 还是得点进去才能确认 —— 把那一行代码带出来。
+          const srcLines = (() => {
+            try {
+              return fs.readFileSync(path.join(root, nd.node.rel), 'utf8')
+                .split(/\r?\n/);
+            } catch (e) { return []; }
+          })();
+          const snippet = (ln) => {
+            const t = (srcLines[ln - 1] || '').trim();
+            if (!t) return '';
+            return t.length > 52 ? (t.slice(0, 52) + '…') : t;
+          };
           const extraKids = extraLines.slice(0, 8).map((ln) =>
             mkItem('调用处 line ' + ln, {
-              desc: nd.node.rel,
+              desc: snippet(ln) || nd.node.rel,
               rel: nd.node.rel, line: ln,
             }));
           const allKids = kids.concat(extraKids);
@@ -3174,6 +3203,17 @@ function activate(context) {
             }
           }
           if (!_why && !raw.length) _why = '服务端返回 0 个符号';
+          // **让用户知道现在看到的是哪来的**：只写日志等于没说 ——
+          // 用户不知道自己在看"上次的结果"还是"这次的"。
+          if (_why && /缓存|本地|0 个/.test(_why)) {
+            const key = doc.uri.toString();
+            const now = Date.now();
+            if (!outlineHintAt[key] || now - outlineHintAt[key] > 30000) {
+              outlineHintAt[key] = now;
+              vscode.window.setStatusBarMessage(
+                'matlabc: 大纲 ' + _why, 4000);
+            }
+          }
           log('大纲 ' + path.basename(doc.uri.fsPath) + ' -> ' + raw.length +
               ' 个符号' + (_why ? '（' + _why + '）' : ''));
 

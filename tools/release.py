@@ -41,7 +41,9 @@ GATES = ("check_version_scheme", "check_eol_convention", "check_readme_parity",
          # 一道门写了却不进发版清单，等于只给自己看的笔记
          "check_release_gates",
          # 越界的符号行号会让大纲永远转圈
-         "check_symbol_ranges")
+         "check_symbol_ranges",
+         # 工具的自证需要有人执行，否则等于没写
+         "check_tool_selftests")
 
 
 def run(cmd, cwd=ROOT, timeout=900):
