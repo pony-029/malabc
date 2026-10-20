@@ -128,9 +128,10 @@ def run_plan(path, apply_it=True):
         return False, u"计划里没有 patches（应为非空数组）"
 
     ok_all = True
+    rows = []
     for i, it in enumerate(items, 1):
         if not isinstance(it, dict):
-            print(u"  %d. 跳过：不是对象" % i)
+            rows.append((u"%d" % i, u"?", u"跳过：不是对象"))
             ok_all = False
             continue
         f = it.get("file") or u""
@@ -138,14 +139,31 @@ def run_plan(path, apply_it=True):
         new = it.get("new") or u""
         cnt = int(it.get("count", 1) or 0)
         if not (f and old):
-            print(u"  %d. 跳过：缺 file / old" % i)
+            rows.append((u"%d" % i, u"?", u"跳过：缺 file / old"))
             ok_all = False
             continue
         target = f if os.path.isabs(f) else os.path.join(REPO, f)
+        # 命中数自己数一遍：`patch()` 的返回值是给人看的句子，
+        # 从句子里抠数字既脆又难读。
+        try:
+            body = io.open(target, encoding="utf-8", newline="").read()
+            hits = body.replace("\r\n", "\n").count(
+                old.replace("\r\n", "\n"))
+        except (IOError, OSError):
+            hits = -1
         ok, msg = patch(target, old, new, cnt, apply_it=apply_it)
-        print(u"  %d. %s" % (i, msg))
+        rows.append((u"%d" % i, u"?" if hits < 0 else u"%d" % hits,
+                     u"OK" if ok else u"失败"))
         if not ok:
             ok_all = False
+            print(u"  ! %s" % msg)      # 失败原因单独一行，别塞进表格
+    # 表头对齐：文件最长按 46 列截断，够看路径尾部
+    print(u"  %-3s %-46s %5s %5s" % (u"#", u"文件", u"命中", u"结果"))
+    for (idx, hits, st), it in zip(rows, items):
+        f = (it.get("file") or u"") if isinstance(it, dict) else u""
+        if len(f) > 46:
+            f = u"…" + f[-45:]
+        print(u"  %-3s %-46s %5s %5s" % (idx, f, hits, st))
     return ok_all, u"%d 个补丁" % len(items)
 
 

@@ -600,6 +600,11 @@ function activate(context) {
       const pick = await vscode.window.showQuickPick([
         { label: '$(refresh) 重新启动服务', act: 'matlabc.restartServer',
           description: '索引卡住、或刚改过配置时用' },
+        { label: '$(database) 大纲缓存：命中 ' + outlineStats.hit +
+                 ' / 旧版失效 ' + outlineStats.stale +
+                 ' / 无缓存 ' + outlineStats.miss,
+          description: '点击清空缓存并重扫当前文件',
+          act: 'matlabc.refreshOutline' },
         { label: '$(discard) 撤销上一次改动', act: 'matlabc.undoLastTask',
           description: '先看 diff，再决定' },
         { label: '$(symbol-method) 更换 Python 解释器', act: 'matlabc.selectPython' },
@@ -2702,12 +2707,17 @@ function activate(context) {
         // （R322）。顶层直接取 `info.line` 永远是 undefined，
         // 所以这里一直显示 `line 1`。
         const _tg = (info.definitions || [{}])[0] || {};
-        relState.roots = [mkItem(word, {
+        const _rootIt = mkItem(word, {
           // 顶层也**只写行号**：同一屏里出现两遍完整路径就是噪音。
           desc: 'line ' + (_tg.line || 1),
           rel: _tg.rel || rel, line: _tg.line || 1,
           children: groups,
-        })];
+        });
+        // 根节点也要能右键跳定义：子节点都有，根没有就成了"最上面那行点不动"。
+        _rootIt.contextValue = 'relNode';
+        _rootIt._defRel = _tg.rel || rel;
+        _rootIt._defLine = _tg.line || 1;
+        relState.roots = [_rootIt];
         relEmitter.fire();
         return;
       } else {

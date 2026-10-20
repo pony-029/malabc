@@ -118,6 +118,12 @@ def main(argv=None):
             json.dumps(stamps, ensure_ascii=False, indent=1) + u"\n")
     except (IOError, OSError):
         pass
+    # 有耗时数据就该看一眼：最慢的那几道决定了一次发布要等多久。
+    _slow = sorted([(v.get("ms") or 0, k) for k, v in stamps.items()
+                    if k in GATES], reverse=True)[:3]
+    if _slow:
+        print("  （最慢）" + " ｜ ".join(
+            "%s %.1fs" % (k, ms / 1000.0) for ms, k in _slow))
     print("  [%s] %d 道关键门%s"
           % ("OK  " if not bad else "FAIL", len(GATES),
              "" if not bad else "，失败 %d" % bad))
