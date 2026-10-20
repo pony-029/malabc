@@ -121,7 +121,13 @@ def main(argv=None):
         rc, tail = run([py, os.path.join("tools", g + ".py")])
         return g, rc, tail, int((time.time() - t0) * 1000)
 
-    workers = max(1, min(int(getattr(ns, "jobs", 0) or 0) or 4, len(GATES)))
+    # 默认按机器来：写死 4 在强机上浪费、在弱机上过载。
+    try:
+        _cpu = len(os.sched_getaffinity(0))       # Linux 上更准
+    except (AttributeError, OSError):
+        _cpu = os.cpu_count() or 4
+    _want = int(getattr(ns, "jobs", 0) or 0) or max(1, min(_cpu - 1, 8))
+    workers = max(1, min(_want, len(GATES)))
     if workers == 1:
         for g in GATES:
             for item in [_one(g)]:
@@ -142,7 +148,11 @@ def main(argv=None):
                      "rc": rc}
         if rc != 0:
             bad += 1
+            # **每行都带门名**：并行时多道门同时失败，读者要靠前缀分辨
+            # 哪一行属于哪道门（串行时代靠"紧接着"就能判断，并行不行）。
             print("  [FAIL] %s ｜ %s" % (g, (tail[-1] if tail else "")[:90]))
+            for ln in (tail or [])[-4:-1]:
+                print("         %s | %s" % (g, ln[:100]))
     total_ms = int((time.time() - t_all) * 1000)
     try:
         io.open(_stamp_path, "w", encoding="utf-8", newline="").write(
@@ -169,12 +179,32 @@ def main(argv=None):
     _slow = sorted([(v.get("ms") or 0, k) for k, v in stamps.items()
                     if k in GATES], reverse=True)[:3]
     if _slow:
-        _flag = u" ⚠" if _slow[0][0] > SLOW_MS else u""
-        print("  （最慢）" + " ｜ ".join(
-            "%s %.1fs" % (k, ms / 1000.0) for ms, k in _slow) + _flag)
-        if _slow[0][0] > SLOW_MS:
-            print("         超过 %dms 的门会让每次发布都多等这么久，值得优化"
-                  % SLOW_MS)
+        # **并行下这个读数含排队**：8 路一起跑时，单门墙钟会被 CPU 争抢拉长
+        # （实测同一道门串行 4.1s、8 路并行 5.6s）。所以并行时只作参考，
+        # 不拿它触发"值得优化"的结论 —— 否则天天误报，警告很快就没人看。
+        if workers > 1:
+            print("  （最慢）" + " ｜ ".join(
+                "%s %.1fs" % (k, ms / 1000.0) for ms, k in _slow) +
+                u"（%d 路并行，含排队）" % workers)
+        else:
+            _flag = u" ⚠" if _slow[0][0] > SLOW_MS else u""
+            print("  （最慢）" + " ｜ ".join(
+                "%s %.1fs" % (k, ms / 1000.0) for ms, k in _slow) + _flag)
+            if _slow[0][0] > SLOW_MS:
+                print("         超过 %dms 的门会让每次发布都多等这么久，值得优化"
+                      % SLOW_MS)
+    # 总时长走势：单次数字看不出"是不是越来越慢"，三个数就够了。
+    try:
+        _hrows = [json.loads(x) for x in
+                  io.open(os.path.join(ROOT, "releases",
+                                       "gates-history.jsonl"),
+                          encoding="utf-8").read().splitlines() if x.strip()]
+    except (IOError, OSError, ValueError):
+        _hrows = []
+    _tot = [r.get("total_ms") for r in _hrows[-4:] if r.get("total_ms")]
+    if len(_tot) >= 2:
+        print("  （趋势）最近 %d 次总时长: %s 秒"
+              % (len(_tot), " → ".join("%.1f" % (v / 1000.0) for v in _tot)))
     print("  [%s] %d 道关键门%s（%.1fs，%d 路并行）"
           % ("OK  " if not bad else "FAIL", len(GATES),
              "" if not bad else "，失败 %d" % bad,

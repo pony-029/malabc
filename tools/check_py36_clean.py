@@ -52,6 +52,8 @@
 """
 import argparse
 import io
+import json
+import time
 import os
 import re
 import shutil
@@ -169,6 +171,46 @@ def _selftest(py, analyzer):
     return 0
 
 
+HELPER = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                      "..", "releases", ".py36-cache.json")
+
+
+def _fingerprint(root, analyzer):
+    """整仓 .py 的指纹 + 检查器自身指纹。
+
+    用 (相对路径, mtime_ns, 大小) 排序后算 sha256：
+      * 内容改了一定变（mtime 或大小会动）
+      * **检查器本身改了也必须重跑** —— 否则"判据升级了，结论还是旧的"
+    """
+    import hashlib
+    h = hashlib.sha256()
+    for extra in (analyzer, os.path.abspath(__file__)):
+        try:
+            st = os.stat(extra)
+            h.update(b"|S|" + str(int(st.st_mtime_ns)).encode())
+            h.update(b"|" + str(st.st_size).encode())
+        except OSError:
+            pass
+    skip = {".git", "releases", "__pycache__", "node_modules", ".matlabc"}
+    rows = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in skip]
+        for n in filenames:
+            if not n.endswith(".py"):
+                continue
+            p = os.path.join(dirpath, n)
+            try:
+                st = os.stat(p)
+            except OSError:
+                continue
+            rows.append((os.path.relpath(p, root).replace("\\", "/"),
+                         int(st.st_mtime_ns), st.st_size))
+    rows.sort()
+    for rel, mt, sz in rows:
+        h.update(("%s|%d|%d;" % (rel, mt, sz)).encode("utf-8"))
+    return h.hexdigest(), len(rows)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--selftest", action="store_true")
@@ -185,6 +227,18 @@ def main(argv=None):
 
     if args.selftest:
         return _selftest(py, analyzer)
+
+    # **增量**：指纹没变就复用上次的"通过"结论。
+    # 只缓存**通过** —— 失败必须每次重算（否则改坏又改回时结论会错位）。
+    fp, n_py = _fingerprint(root, analyzer)
+    try:
+        cache = json.loads(io.open(HELPER, encoding="utf-8").read())
+    except (IOError, OSError, ValueError):
+        cache = {}
+    if cache.get("fingerprint") == fp and cache.get("rc") == 0:
+        print("check_py36_clean: OK（%d 个 .py；与上次相同，复用结论 %s）"
+              % (n_py, cache.get("at") or "?"))
+        return 0
 
     rc, out = _run_gate(py, analyzer, root)
     if rc is None:
@@ -204,6 +258,14 @@ def main(argv=None):
         print("  提示：本仓承诺严格兼容 Python 3.6.5，"
               "CONTRIBUTING.md「代码风格」一节有禁用清单。")
         return 1
+    # 只缓存**通过**：失败必须每次重算（改坏又改回时，旧结论会错位）。
+    try:
+        io.open(HELPER, "w", encoding="utf-8", newline="").write(
+            json.dumps({"fingerprint": fp, "rc": rc,
+                        "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                        "files": n_files}, ensure_ascii=False))
+    except (IOError, OSError):
+        pass
     print("check_py36_clean: OK（本仓 %s 个 .py 文件全部通过 3.6.5 语法兼容门 "
           "%s）" % (n_files, ROW_SIGNATURE))
     return 0

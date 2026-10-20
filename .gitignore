@@ -48,3 +48,6 @@ Thumbs.db
 .debt_trend.json
 .matlabc_cache.pkl
 .matlabc_lsp_cache.json
+
+# py36 门禁的本地增量缓存（可随时删，删了重算）
+releases/.py36-cache.json
