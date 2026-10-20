@@ -66,9 +66,64 @@ def run(cmd, cwd=ROOT, timeout=900):
     return p.returncode, lines[-4:]
 
 
+def _children_cpu():
+    """所有子进程累计 CPU 秒数（不含墙钟里的等待）。
+
+    `resource` 只在 POSIX 有；Windows 上用 `os.times()` 的 children_* 兜底 ——
+    这正是"并行省的是等待还是计算"要看的那两个数。
+    """
+    try:
+        import resource
+        r = resource.getrusage(resource.RUSAGE_CHILDREN)
+        return r.ru_utime + r.ru_stime
+    except (ImportError, AttributeError):
+        pass
+    try:
+        t = os.times()
+        return t.children_user + t.children_system
+    except (AttributeError, OSError):
+        return None
+
+
+def show_trend():
+    """打印各门最近若干次的中位/最大耗时 —— 只看总时长看不出是谁在变慢。"""
+    path = os.path.join(ROOT, "releases", "gates-history.jsonl")
+    try:
+        rows = [json.loads(x) for x in
+                io.open(path, encoding="utf-8").read().splitlines() if x.strip()]
+    except (IOError, OSError, ValueError):
+        print("还没有 releases/gates-history.jsonl（发一次版才会有）")
+        return 1
+    rows = rows[-20:]
+    if not rows:
+        print("历史为空")
+        return 1
+    per = {}
+    for r in rows:
+        for g, ms in (r.get("gates") or {}).items():
+            if isinstance(ms, int):
+                per.setdefault(g, []).append(ms)
+    print("%-30s %6s %8s %8s %8s" % ("门", "次数", "中位ms", "最大ms", "最近ms"))
+    for g in GATES:
+        vals = per.get(g) or []
+        if not vals:
+            print("%-30s %6d %8s %8s %8s" % (g, 0, "-", "-", "-"))
+            continue
+        srt = sorted(vals)
+        print("%-30s %6d %8d %8d %8d"
+              % (g, len(vals), srt[len(srt) // 2], srt[-1], vals[-1]))
+    tot = [r.get("total_ms") for r in rows if r.get("total_ms")]
+    if tot:
+        print("\n总时长：最近 %d 次 %s 秒"
+              % (len(tot), " → ".join("%.1f" % (v / 1000.0) for v in tot[-6:])))
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument("--apply", action="store_true", help="真的执行（默认只干跑）")
+    ap.add_argument("--trend", action="store_true",
+                    help="只看各门的历史耗时，不发版")
     ap.add_argument("--jobs", type=int, default=0,
                     help="并行的门数（0 = 默认 4）")
     ap.add_argument("--install", action="store_true", help="装到本机 VS Code")
@@ -78,6 +133,9 @@ def main(argv=None):
     ns = ap.parse_args(argv)
 
     py = sys.executable
+    if getattr(ns, "trend", False):
+        return show_trend()
+
     steps = [
         ("版本号 +1", [py, "tools/bump_version.py", "--apply"], True),
         ("打包 vsix", [py, "tools/build_vsix.py"], True),
@@ -113,6 +171,9 @@ def main(argv=None):
     # **门之间互不依赖**，串行跑纯属浪费：15 道门里最慢的一道 4s，
     # 串行总时长就是它们的和。并行跑把这段压到"最慢那道 + 一点"。
     # 输出仍按 GATES 顺序打，日志读起来与串行一致。
+    # **CPU 时间与墙钟是两件事**：并行把墙钟压下去，但 CPU 总量不变。
+    # 两个数一起看，才知道"省的是等待"还是"省的是计算"。
+    _cpu0 = _children_cpu()
     t_all = time.time()
     results = {}
 
@@ -154,6 +215,18 @@ def main(argv=None):
             for ln in (tail or [])[-4:-1]:
                 print("         %s | %s" % (g, ln[:100]))
     total_ms = int((time.time() - t_all) * 1000)
+    cpu_note = u""
+    # **并行收益**用「各门累计 / 墙钟」度量：这个在 Windows 也算得出来。
+    # （`os.times()` 在 Windows 上不给子进程时间，`resource` 只有 POSIX —— 
+    #  所以 CPU 只在能拿到时附带，不拿它当"收益"的唯一证据。）
+    _sum_ms = sum(stamps[g]["ms"] for g in GATES)
+    if workers > 1 and total_ms > 0:
+        cpu_note = u"，各门累计 %.1fs → 墙钟 %.1fs（%.1f× 并行收益）" % (
+            _sum_ms / 1000.0, total_ms / 1000.0,
+            _sum_ms / float(total_ms))
+    _cpu1 = _children_cpu()
+    if _cpu0 is not None and _cpu1 is not None and (_cpu1 - _cpu0) > 0:
+        cpu_note += u"，CPU %.1fs" % (_cpu1 - _cpu0)
     try:
         io.open(_stamp_path, "w", encoding="utf-8", newline="").write(
             json.dumps(stamps, ensure_ascii=False, indent=1) + u"\n")
@@ -205,10 +278,18 @@ def main(argv=None):
     if len(_tot) >= 2:
         print("  （趋势）最近 %d 次总时长: %s 秒"
               % (len(_tot), " → ".join("%.1f" % (v / 1000.0) for v in _tot)))
-    print("  [%s] %d 道关键门%s（%.1fs，%d 路并行）"
+    # 增量命中的门单独点数：命中会让"跑得很快"这件事有解释，
+    # 否则读者会怀疑是不是检查被跳过了。
+    _hits = 0
+    for g in GATES:
+        tail = results[g][2] or []
+        if any(u"增量命中" in ln for ln in tail):
+            _hits += 1
+    print("  [%s] %d 道关键门%s（%.1fs，%d 路并行%s%s）"
           % ("OK  " if not bad else "FAIL", len(GATES),
              "" if not bad else "，失败 %d" % bad,
-             total_ms / 1000.0, workers))
+             total_ms / 1000.0, workers,
+             u"，%d 道增量命中" % _hits if _hits else u"", cpu_note))
     if bad:
         print("门没过就不该发版 —— 停在这里，包已经打好但先别推。")
         return 1

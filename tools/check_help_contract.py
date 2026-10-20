@@ -117,6 +117,9 @@ import argparse
 import ast
 import io
 import os
+import sys as _sys
+_sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gate_cache  # noqa: E402  （同目录的增量判定公共件）
 import re
 import sys
 
@@ -3151,6 +3154,20 @@ def main(argv=None):
     if not os.path.isdir(os.path.join(root, "tools")):
         print("check_help_contract: 找不到 tools/（缺输入 → 红）")
         return 2
+    # **增量**：这道门最慢（起 6 个入口子进程，实测 4~5s），而它读的东西
+    # 完全由磁盘内容决定 —— 指纹没变就没有理由重跑。
+    # 覆盖范围要够宽：入口脚本、tools 下的门、文档（`--help` 体积与措辞都在里面）。
+    _fp, _nfiles = gate_cache.fingerprint(
+        root, ["*.py", "*.md", "*.json"], __file__)
+    _hit = gate_cache.load_hit(root, "help_contract", _fp)
+    if _hit:
+        print("check_help_contract: OK（增量命中：%d 个文件未改动，复用 %s 的结论；"
+              "%d 个入口脚本 + %d 道门在此前已核对）"
+              % (_nfiles, _hit.get("at") or "?",
+                 (_hit.get("info") or {}).get("entries", 0),
+                 (_hit.get("info") or {}).get("guards", 0)))
+        return 0
+
     probs = []
     n = audit(root, on_problem_collector(probs), cache={})
     ng = audit_guards(root, on_problem_collector(probs))
@@ -3180,6 +3197,9 @@ def main(argv=None):
           % (n, ng, nc, nd, n_ex, len(RUNNABLE), nb, nbd,
              HELP_DRIFT_BYTES, HELP_MEASURE_COLUMNS, HELP_CANON_COLUMNS,
              ROW_SIGNATURE))
+    # 只记**通过**：失败必须每次重算。
+    gate_cache.save_hit(root, "help_contract", _fp,
+                        {"entries": n, "guards": ng})
     return 0
 
 
