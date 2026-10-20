@@ -13,6 +13,8 @@ R413 把"新增一道门要同时改的六处"写进了 CONTRIBUTING，其中第
 
 判据族 **RG1–RG3**。
 
+    RG4  某道门比**它自己的历史中位数**慢 `SLOW_RATIO` 倍以上时点名提示
+         （不判负）—— 单次数字看不出退化，趋势能。
     RG3  每个门都要在 `releases/gates-last-run.json` 里有"上次真跑"的记录，
          且不能太久以前（`STALE_DAYS`）。一道门存在却从没被跑过、
          或半年没跑过，与不存在在效果上一样。
@@ -32,13 +34,16 @@ import os
 import re
 import sys
 
-ROW_SIGNATURE = "RG1–RG3"
+ROW_SIGNATURE = "RG1–RG4"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 STAMPS = os.path.join(REPO, "releases", "gates-last-run.json")
 #: 超过这么多天没跑，就当成"实际上没在守"（提示，不判负）。
 STALE_DAYS = 30
+#: 比历史中位数慢这么多倍就提示（不判负）。
+SLOW_RATIO = 1.5
+HISTORY = os.path.join(REPO, "releases", "gates-history.jsonl")
 RELEASE = os.path.join(HERE, "release.py")
 
 #: 明确不进发版清单的门 —— **必须写理由**（空理由按无理由处理）。
@@ -131,6 +136,26 @@ def check():
                 # 判负会逼着人为凑一次发布，那是更坏的结果。
                 print(u"  （提示）%s 上次跑是 %d 天前，建议重跑一次" % (g, age))
 
+    # RG4：与自己的历史比 —— 只提示，不判负（机器负载会影响单次读数）
+    try:
+        rows = [json.loads(x) for x in
+                io.open(HISTORY, encoding="utf-8").read().splitlines()
+                if x.strip()][-20:]
+    except (IOError, OSError, ValueError):
+        rows = []
+    if len(rows) >= 3:
+        now = rows[-1].get("gates") or {}
+        for g in gates:
+            series = [(r.get("gates") or {}).get(g) for r in rows[:-1]]
+            series = sorted(v for v in series if isinstance(v, int) and v > 0)
+            cur = now.get(g)
+            if not series or not isinstance(cur, int):
+                continue
+            med = series[len(series) // 2]
+            if med > 0 and cur > med * SLOW_RATIO:
+                print(u"RG4 （提示）%s 这次 %dms，历史中位 %dms（%.1f 倍）"
+                      % (g, cur, med, float(cur) / med))
+
     stats = {"gates": len(gates), "files": len(files),
              "exempt": len(EXEMPT)}
     return problems, stats
@@ -151,7 +176,7 @@ def main(argv=None):
             print("  - %s %s" % (code, msg))
         print("check_release_gates: %d 项不合规" % len(problems))
         return 1
-    print("check_release_gates: OK（RG1–RG3 全绿；%d 道门在发版清单里，"
+    print("check_release_gates: OK（RG1–RG4 全绿；%d 道门在发版清单里，"
           "%d 个豁免带理由，%d 个 check 脚本）"
           % (stats["gates"], stats["exempt"], stats["files"]))
     return 0

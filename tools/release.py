@@ -69,6 +69,8 @@ def run(cmd, cwd=ROOT, timeout=900):
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument("--apply", action="store_true", help="真的执行（默认只干跑）")
+    ap.add_argument("--jobs", type=int, default=0,
+                    help="并行的门数（0 = 默认 4）")
     ap.add_argument("--install", action="store_true", help="装到本机 VS Code")
     ap.add_argument("--commit", action="store_true", help="git add + commit")
     ap.add_argument("--push", action="store_true", help="git push（需要 --commit）")
@@ -108,17 +110,59 @@ def main(argv=None):
             stamps = json.loads(io.open(_stamp_path, encoding="utf-8").read())
     except (IOError, OSError, ValueError):
         stamps = {}
-    for g in GATES:
+    # **门之间互不依赖**，串行跑纯属浪费：15 道门里最慢的一道 4s，
+    # 串行总时长就是它们的和。并行跑把这段压到"最慢那道 + 一点"。
+    # 输出仍按 GATES 顺序打，日志读起来与串行一致。
+    t_all = time.time()
+    results = {}
+
+    def _one(g):
         t0 = time.time()
         rc, tail = run([py, os.path.join("tools", g + ".py")])
-        stamps[g] = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                     "ms": int((time.time() - t0) * 1000), "rc": rc}
+        return g, rc, tail, int((time.time() - t0) * 1000)
+
+    workers = max(1, min(int(getattr(ns, "jobs", 0) or 0) or 4, len(GATES)))
+    if workers == 1:
+        for g in GATES:
+            for item in [_one(g)]:
+                results[item[0]] = item
+                print("  [%s] %s ｜ %s" % ("OK  " if item[1] == 0 else "FAIL",
+                                          g, (item[2][-1] if item[2] else "")[:70]))
+    else:
+        import concurrent.futures as cf
+        with cf.ThreadPoolExecutor(max_workers=workers) as pool:
+            futs = [pool.submit(_one, g) for g in GATES]
+            for fut in futs:
+                g, rc, tail, ms = fut.result()
+                results[g] = (g, rc, tail, ms)
+
+    for g in GATES:
+        g, rc, tail, ms = results[g]
+        stamps[g] = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "ms": ms,
+                     "rc": rc}
         if rc != 0:
             bad += 1
             print("  [FAIL] %s ｜ %s" % (g, (tail[-1] if tail else "")[:90]))
+    total_ms = int((time.time() - t_all) * 1000)
     try:
         io.open(_stamp_path, "w", encoding="utf-8", newline="").write(
             json.dumps(stamps, ensure_ascii=False, indent=1) + u"\n")
+    except (IOError, OSError):
+        pass
+    # **趋势要留**：单次耗时说明不了退化，只有和"它自己以前"比才行。
+    _hist = os.path.join(ROOT, "releases", "gates-history.jsonl")
+    try:
+        line = json.dumps({"at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                           "total_ms": total_ms,
+                           "gates": dict((g, stamps[g]["ms"]) for g in GATES)},
+                          ensure_ascii=False)
+        old_hist = []
+        if os.path.isfile(_hist):
+            old_hist = [x for x in io.open(_hist, encoding="utf-8")
+                        .read().splitlines() if x.strip()]
+        old_hist.append(line)
+        io.open(_hist, "w", encoding="utf-8", newline="").write(
+            u"\n".join(old_hist[-200:]) + u"\n")     # 只留最近 200 次
     except (IOError, OSError):
         pass
     # 有耗时数据就该看一眼：最慢的那几道决定了一次发布要等多久。
@@ -131,9 +175,10 @@ def main(argv=None):
         if _slow[0][0] > SLOW_MS:
             print("         超过 %dms 的门会让每次发布都多等这么久，值得优化"
                   % SLOW_MS)
-    print("  [%s] %d 道关键门%s"
+    print("  [%s] %d 道关键门%s（%.1fs，%d 路并行）"
           % ("OK  " if not bad else "FAIL", len(GATES),
-             "" if not bad else "，失败 %d" % bad))
+             "" if not bad else "，失败 %d" % bad,
+             total_ms / 1000.0, workers))
     if bad:
         print("门没过就不该发版 —— 停在这里，包已经打好但先别推。")
         return 1

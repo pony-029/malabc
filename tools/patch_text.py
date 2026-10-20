@@ -143,6 +143,7 @@ def run_plan(path, apply_it=True, fail_fast=False):
             ok_all = False
             continue
         target = f if os.path.isabs(f) else os.path.join(REPO, f)
+        optional = bool(it.get("optional"))
         # 命中数自己数一遍：`patch()` 的返回值是给人看的句子，
         # 从句子里抠数字既脆又难读。
         try:
@@ -152,11 +153,14 @@ def run_plan(path, apply_it=True, fail_fast=False):
         except (IOError, OSError):
             hits = -1
         ok, msg = patch(target, old, new, cnt, apply_it=apply_it)
-        rows.append((u"%d" % i, u"?" if hits < 0 else u"%d" % hits,
-                     u"OK" if ok else u"失败"))
+        # `optional`：这一条"能改就改"，锚点没命中不算整批失败
+        # （典型场景：同一份计划打在不同版本的仓库上）。
+        state = u"OK" if ok else (u"跳过(可选)" if optional else u"失败")
+        rows.append((u"%d" % i, u"?" if hits < 0 else u"%d" % hits, state))
         if not ok:
-            ok_all = False
-            print(u"  ! %s" % msg)      # 失败原因单独一行，别塞进表格
+            if not optional:
+                ok_all = False
+            print(u"  ! %s%s" % (msg, u"（可选，不计失败）" if optional else ""))
             if fail_fast:
                 print(u"  （--fail-fast：停在第 %d 个，剩余未执行）" % i)
                 break
@@ -273,6 +277,21 @@ def selftest():
         okf, _mf = run_plan(plan2, fail_fast=True)
         chk(not okf and u"v = 3" not in io.open(pb, encoding="utf-8").read(),
             "fail-fast 在第 2 条失败处停下（第 3 条未执行）")
+
+        # optional：锚点没命中不算整批失败，且其余条目照常执行
+        pc = os.path.join(d, "f3.py")
+        pd = os.path.join(d, "f4.py")
+        for f in (pc, pd):
+            io.open(f, "w", encoding="utf-8", newline="").write(u"w = 1\n")
+        plan3 = os.path.join(d, "plan3.json")
+        io.open(plan3, "w", encoding="utf-8", newline="").write(
+            u'{"patches": [{"file": "%s", "old": "不存在", "new": "x",'
+            u' "optional": true},'
+            u' {"file": "%s", "old": "w = 1", "new": "w = 2"}]}'
+            % (pc.replace("\\", "/"), pd.replace("\\", "/")))
+        oko, _mo = run_plan(plan3)
+        chk(oko and u"w = 2" in io.open(pd, encoding="utf-8").read(),
+            "optional 失败不算整批失败，后续照常执行")
     finally:
         import shutil
         shutil.rmtree(d, ignore_errors=True)

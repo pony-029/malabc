@@ -22,7 +22,8 @@ const outlineCache = new Map();
 const outlineHintAt = {};
 //: 缓存的命中 / 旧版失效 / 无缓存计数：导出日志里带一行，
 // 否则「大纲有时快有时慢」只能靠猜。
-const outlineStats = { hit: 0, stale: 0, miss: 0 };
+const outlineStats = { hit: 0, stale: 0, miss: 0,
+                        calls: 0, ms: 0 };
 
 // 侧栏「关系」视图的“钉住某个名字”入口（R298）。
 // 定义在 activate 内部（那里才有 TreeDataProvider），这里先留一个引用，
@@ -602,8 +603,12 @@ function activate(context) {
           description: '索引卡住、或刚改过配置时用' },
         { label: '$(database) 大纲缓存：命中 ' + outlineStats.hit +
                  ' / 旧版失效 ' + outlineStats.stale +
-                 ' / 无缓存 ' + outlineStats.miss,
-          description: '本次启动累计 · 点击清空缓存并重扫（计数归零）',
+                 ' / 无缓存 ' + outlineStats.miss +
+                 (outlineStats.calls
+                   ? ' · 平均 ' + Math.round(outlineStats.ms /
+                                            outlineStats.calls) + 'ms'
+                   : ''),
+          description: '本次启动累计 · 点击清空缓存并重扫（计数与耗时归零）',
           act: 'matlabc.refreshOutline' },
         { label: '$(discard) 撤销上一次改动', act: 'matlabc.undoLastTask',
           description: '先看 diff，再决定' },
@@ -999,6 +1004,8 @@ function activate(context) {
       outlineStats.hit = 0;
       outlineStats.stale = 0;
       outlineStats.miss = 0;
+      outlineStats.calls = 0;
+      outlineStats.ms = 0;
       const t0 = Date.now();
       let n = -1;
       try {
@@ -3337,6 +3344,10 @@ function activate(context) {
         } catch (e) {
           log('大纲失败：' + (e && e.message));
           return [];
+        } finally {
+          // 命中缓存不代表快 —— 记下**每次真实耗时**，平均值才有意义。
+          outlineStats.calls += 1;
+          outlineStats.ms += (Date.now() - _t0);
         }
       },
     })

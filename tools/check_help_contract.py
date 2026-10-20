@@ -245,7 +245,7 @@ GUARD_CONTRACT = {
         2: "缺输入（找不到 tests/sample_m 或 analyzer 包）",
     },
     "tools/check_release_gates.py": {
-        0: "通过（RG1–RG3：GATES 里每个名字都有脚本、每个 check_*.py 有交代、每道门都有跑过的记录）",
+        0: "通过（RG1–RG4：GATES 里每个名字都有脚本、每个 check_*.py 有交代、每道门有跑过的记录且不明显变慢）",
         1: "有门没进发版清单（写了却从没在发布时跑过），\n          或 GATES 里有陈旧行、豁免没理由 / 已陈旧",
         2: "缺输入（找不到 tools/release.py）",
     },
