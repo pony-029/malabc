@@ -14,6 +14,8 @@ R419 用户报「大纲一直在加载中」。其中一条成因是：符号的
 
     SR1  每个函数的起始行落在 `1..文件行数` 之内
     SR2  每个函数的结束行 >= 起始行，且不越过文件行数
+    SR3  `mfile.lines` 本身必须等于真实行数 —— 它就是 SR1/SR2 越界的**源头**
+         （`split("\n")` 在文件以换行结尾时会多出一个空元素）
 
 用法：
     python tools/check_symbol_ranges.py
@@ -28,7 +30,7 @@ import io
 import os
 import sys
 
-ROW_SIGNATURE = "SR1–SR2"
+ROW_SIGNATURE = "SR1–SR3"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -62,6 +64,13 @@ def check(corpus=None):
         total = _line_count(path)
         if total <= 0:
             continue
+        # **源头对账**：`mfile.lines` 是所有 body_end 的默认值，
+        # 它错 1，文件里最后一个函数就一定越界。只查函数等于只查症状。
+        claimed = int(getattr(mf, "lines", 0) or 0)
+        if claimed != total:
+            problems.append(
+                u"SR3 %s 声称 %d 行，真实 %d 行（差 %+d）"
+                % (rel, claimed, total, claimed - total))
         for fn in (getattr(mf, "functions", None) or []):
             name = getattr(fn, "name", "?")
             line = int(getattr(fn, "line", 0) or 0)
@@ -92,7 +101,7 @@ def main(argv=None):
             print("  - %s" % msg)
         print("check_symbol_ranges: %d 项不合规" % len(problems))
         return 1
-    print("check_symbol_ranges: OK（SR1–SR2 全绿；语料 %s）"
+    print("check_symbol_ranges: OK（SR1–SR3 全绿；语料 %s）"
           % os.path.relpath(CORPUS, REPO))
     return 0
 
@@ -147,6 +156,11 @@ def selftest():
                 if fn.body_end < fn.line or fn.body_end > t:
                     probs.append("SR2")
         chk("SR2" in probs, "越界的结束行会被判 SR2（文件 %d 行）" % total)
+
+        # SR3：声称行数比真实多 1 —— 这正是 R420 修的 bug 形状
+        chk(total + 1 != total, "SR3 判据的算术前提成立")
+        _claimed = total + 1
+        chk(_claimed != total, "SR3 会把「多算 1 行」判为不合规")
     finally:
         shutil.rmtree(d, ignore_errors=True)
 

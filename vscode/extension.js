@@ -14,6 +14,10 @@ const { LspClient } = require('./lspClient');
 let client = null;
 //: 撤销计划（等用户在 diff 上点确认）
 let pendingUndo = null;
+//: 大纲缓存：uri -> 服务端最近一次给的原始符号。
+// 服务端超时/未就绪时先用它，而不是退回「只有 function 行」的
+// 本地扫描 —— 后者会把类、嵌套函数全丢掉，看起来像「大纲坏了」。
+const outlineCache = new Map();
 
 // 侧栏「关系」视图的“钉住某个名字”入口（R298）。
 // 定义在 activate 内部（那里才有 TreeDataProvider），这里先留一个引用，
@@ -969,6 +973,41 @@ function activate(context) {
   // 关系行上"调用处"是左键，**定义处**放在右键 —— 两个位置都该到得了。
   // **一键导出日志**：报障时最缺的就是日志，而让别人去 %TEMP% 里翻
   // 一个带 .log 的隐藏目录，成功率很低。
+  // **重新扫描大纲**：清缓存 + 主动请求一次，把结果与耗时说出来。
+  // VS Code 没有公开的「刷新大纲」命令，所以这里只能做到这一步：
+  // 重新请求并如实告知 —— 界面刷新要靠切换文件或重载窗口。
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.refreshOutline', async () => {
+      const ed = vscode.window.activeTextEditor;
+      if (!ed || !/matlab/.test(ed.document.languageId)) {
+        vscode.window.showInformationMessage('matlabc: 请先打开一个 .m 文件');
+        return;
+      }
+      const doc = ed.document;
+      outlineCache.delete(doc.uri.toString());
+      const t0 = Date.now();
+      let n = -1;
+      try {
+        const r = await vscode.commands.executeCommand(
+          'vscode.executeDocumentSymbolProvider', doc.uri);
+        n = (r && r.length) || 0;
+      } catch (e) {
+        log('重扫大纲失败：' + (e && e.message));
+      }
+      const ms = Date.now() - t0;
+      log('重扫大纲 ' + path.basename(doc.uri.fsPath) + ' -> ' + n +
+          ' 个符号，' + ms + 'ms');
+      if (n >= 0) {
+        vscode.window.showInformationMessage(
+          'matlabc: 已重新扫描 ' + n + ' 个符号（' + ms +
+          'ms）。若大纲面板没刷新，切换一下文件即可。');
+      } else {
+        vscode.window.showWarningMessage(
+          'matlabc: 扫描失败，详见日志（matlabc: 导出日志）');
+      }
+    })
+  );
+
   context.subscriptions.push(
     vscode.commands.registerCommand('matlabc.exportLog', async () => {
       const files = [];
@@ -994,7 +1033,33 @@ function activate(context) {
       });
       if (!target) return;
       try {
-        let text = '';
+        // 报障时最省时间的一段：版本、系统、Python、工程规模。
+        let head = '=== matlabc 环境 ===\n';
+        try {
+          const ver = (context.extension && context.extension.packageJSON
+            ? context.extension.packageJSON.version : '?');
+          head += '扩展版本: ' + ver + '\n';
+          head += 'VS Code: ' + vscode.version + '\n';
+          head += '系统: ' + process.platform + ' ' + process.arch + ' / ' +
+                  os.release() + '\n';
+          const cfg = vscode.workspace.getConfiguration('matlabc');
+          head += 'pythonPath: ' + (cfg.get('pythonPath') || '(默认 python)') +
+                  '\n';
+          head += 'lspPath: ' + (cfg.get('lspPath') || '(默认)') + '\n';
+          head += 'LSP 状态: ' + (client ? '已连接' : '未连接') + '\n';
+          head += '工作区: ' + (root || '(未打开)') + '\n';
+          let mCount = -1;
+          try {
+            const found = await vscode.workspace.findFiles('**/*.m', null, 20000);
+            mCount = found.length;
+          } catch (e) { /* 大工程可能超时 */ }
+          head += '.m 文件数: ' + (mCount >= 0 ? mCount : '(统计超时)') + '\n';
+        } catch (e) {
+          head += '（环境信息采集失败：' + (e && e.message) + '）\n';
+        }
+        head += '\n';
+
+        let text = head;
         for (const f of files) {
           text += '===== ' + path.basename(f) + ' =====\n' +
                   fs.readFileSync(f, 'utf8') + '\n';
@@ -2394,6 +2459,21 @@ function activate(context) {
           return (base && base !== curBase ? base + ' · ' : '') +
                  'line ' + (ln || 1);
         };
+        // 同一函数可能从多个调用行调到这里：树上按 rel:name 合并成一条，
+        // 不写清有几处，读者会以为只有显示的那一行。
+        const outLines = {};
+        (info.chains || []).forEach((ch) => {
+          (ch || []).forEach((n) => {
+            if (!n || !n.call_line) return;
+            const k = n.rel + ':' + n.name;
+            (outLines[k] = outLines[k] || {})[n.call_line] = 1;
+          });
+        });
+        const multiCount = (n) => {
+          const m = outLines[n.rel + ':' + n.name];
+          return m ? Object.keys(m).length : 0;
+        };
+
         const toItem = (nd) => {
           const kids = [];
           nd.children.forEach((v) => kids.push(toItem(v)));
@@ -2406,7 +2486,9 @@ function activate(context) {
             // 行上写清两件事：**在哪一行的调用处**、**定义在第几行**。
             // 只写一个位置时，用户想看定义就只能靠 F12 再找一遍。
             desc: shortDesc(nd.node) +
-                  (defLine && defLine !== jump ? '  · 定义 ' + defLine : ''),
+                  (defLine && defLine !== jump ? '  · 定义 ' + defLine : '') +
+                  (multiCount(nd.node) > 1
+                    ? '  · 共 ' + multiCount(nd.node) + ' 处调用' : ''),
             rel: nd.node.rel, line: jump,
             children: kids.length ? kids : undefined,
           });
@@ -3047,6 +3129,16 @@ function activate(context) {
               ? ('请求超时（800ms 未返回）')
               : ('请求失败：' + msg);
             log('大纲 ' + path.basename(doc.uri.fsPath) + ' ' + _why);
+          }
+          if (raw.length) {
+            try { outlineCache.set(doc.uri.toString(), raw.slice(0, 5000)); }
+            catch (e) { /* 缓存失败不影响本次渲染 */ }
+          } else {
+            const cached = outlineCache.get(doc.uri.toString());
+            if (cached && cached.length) {
+              raw = cached;
+              _why = (_why || '本次无结果') + '，改用上次缓存';
+            }
           }
           if (!_why && !raw.length) _why = '服务端返回 0 个符号';
           log('大纲 ' + path.basename(doc.uri.fsPath) + ' -> ' + raw.length +

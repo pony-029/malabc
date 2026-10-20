@@ -285,13 +285,13 @@ def fig_heat(path):
 
 def fig_commands(path):
     # 19 条命令需要比默认画布更高的区域（多出来的那几行曾落在框外）
-    HH = 672
+    HH = 696
     im = Image.new("RGB", (W, HH), BG)
     d = ImageDraw.Draw(im)
     chrome(d, "matlabc — 命令面板", HH)
     d.rectangle([0, 34, W, HH - 30], fill=(37, 37, 38))
 
-    box = [60, 48, W - 60, 620]
+    box = [60, 46, W - 60, 646]
     round_rect(d, box, 6, fill=(45, 45, 48), outline=BORDER)
     d.text((80, 76), u"matlabc", font=_font("mono", 15), fill=WHITE)
     d.line([74, 106, W - 74, 106], fill=BORDER)
@@ -302,6 +302,7 @@ def fig_commands(path):
         (u"matlabc: 打开使用说明（PDF）", u"图在页面上"),
         (u"matlabc: 选择 Python 解释器", u"启动失败先试它"),
         (u"matlabc: 重新启动服务", u"索引卡住时用"),
+        (u"matlabc: 重新扫描大纲", u"大纲看着不对"),
         (u"matlabc: 撤销上一次改动", u"改完能反悔"),
         (u"matlabc: 查看最近的提交", u""),
         (u"matlabc: 确认撤销", u"diff 里的按钮"),
@@ -332,7 +333,7 @@ def fig_commands(path):
         if hint:
             d.text((600, y + 1), hint, font=_font("ui", 11), fill=DIM)
         y += 21
-    caption(d, u"示意图 · Ctrl+Shift+P 输入 matlabc，共 25 条命令", HH)
+    caption(d, u"示意图 · Ctrl+Shift+P 输入 matlabc，共 26 条命令", HH)
     im.save(path)
 
 
