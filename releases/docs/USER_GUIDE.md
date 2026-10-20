@@ -190,7 +190,7 @@ code --install-extension matlabc-<版本>.vsix
 
 ## 3. 命令清单
 
-按 `Ctrl+Shift+P`，输入 `matlabc`，共 23 条：
+按 `Ctrl+Shift+P`，输入 `matlabc`，共 25 条：
 
 ![命令面板](figures/commands.png)
 
@@ -213,6 +213,8 @@ code --install-extension matlabc-<版本>.vsix
 | `matlabc: 撤销这一次改动` | 记录视图里对某一行用（右键菜单） |
 | `matlabc: 查看这一次改了什么` | 同上，只看 diff 不动文件 |
 | `matlabc: 复制记录 id` | 排查问题时把 id 发给别人 |
+| `matlabc: 导出日志` | 把日志存到你选的位置（报障时直接发这个文件） |
+| `matlabc: 跳到定义处` | 关系面板某一行右键用：左键去调用处，右键去定义处 |
 | `matlabc: 按 id 撤销改动` | 手上有 id 时直接撤（会读剪贴板并校验格式） |
 | `matlabc: 改动记录按耗时排序` | 切成按耗时降序，再点一次恢复时间线 |
 | `matlabc: 按文件过滤改动记录` | 只看动过某个文件的记录（留空 = 不过滤） |

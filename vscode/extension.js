@@ -966,6 +966,61 @@ function activate(context) {
   };
 
   // 关系图里每个 `rel:line` 与每个调用行号都指向这个命令。
+  // 关系行上"调用处"是左键，**定义处**放在右键 —— 两个位置都该到得了。
+  // **一键导出日志**：报障时最缺的就是日志，而让别人去 %TEMP% 里翻
+  // 一个带 .log 的隐藏目录，成功率很低。
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.exportLog', async () => {
+      const files = [];
+      try {
+        const dir = path.dirname(LOGFILE);
+        for (const n of fs.readdirSync(dir)) {
+          if (n === path.basename(LOGFILE) ||
+              n === path.basename(LOGFILE) + '.1') {
+            files.push(path.join(dir, n));
+          }
+        }
+      } catch (e) { /* 没有日志文件 */ }
+      if (!files.length) {
+        vscode.window.showInformationMessage(
+          'matlabc: 还没有日志文件（' + LOGFILE + '）');
+        return;
+      }
+      const target = await vscode.window.showSaveDialog({
+        saveLabel: '导出',
+        filters: { '日志': ['log', 'txt'] },
+        defaultUri: vscode.Uri.file(
+          path.join(os.homedir ? os.homedir() : '.', 'matlabc-ext.log')),
+      });
+      if (!target) return;
+      try {
+        let text = '';
+        for (const f of files) {
+          text += '===== ' + path.basename(f) + ' =====\n' +
+                  fs.readFileSync(f, 'utf8') + '\n';
+        }
+        fs.writeFileSync(target.fsPath, text, 'utf8');
+        const pick = await vscode.window.showInformationMessage(
+          'matlabc: 日志已导出到 ' + target.fsPath,
+          '打开所在文件夹');
+        if (pick) {
+          vscode.commands.executeCommand('revealFileInOS', target);
+        }
+      } catch (e) {
+        vscode.window.showErrorMessage(
+          'matlabc: 导出失败 —— ' + (e && e.message));
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.openDefinitionOf', (node) => {
+      if (!node || !node._defRel) return;
+      vscode.commands.executeCommand('matlabc.openAt',
+                                     node._defRel, node._defLine || 1);
+    })
+  );
+
   context.subscriptions.push(
     vscode.commands.registerCommand('matlabc.openAt', async (rel, line) => {
       try {
@@ -2346,11 +2401,19 @@ function activate(context) {
           // 就是 `call_line`，而上面原来给的是 `node.line` —— 于是行上写着
           // `line 8`，点下去却跳到函数第 23 行（用户的原话是"却不在调用的位置"）。
           const jump = nd.node.call_line || nd.node.line;
-          return mkItem(nd.node.name, {
-            desc: shortDesc(nd.node),
+          const defLine = nd.node.line || 1;
+          const it = mkItem(nd.node.name, {
+            // 行上写清两件事：**在哪一行的调用处**、**定义在第几行**。
+            // 只写一个位置时，用户想看定义就只能靠 F12 再找一遍。
+            desc: shortDesc(nd.node) +
+                  (defLine && defLine !== jump ? '  · 定义 ' + defLine : ''),
             rel: nd.node.rel, line: jump,
             children: kids.length ? kids : undefined,
           });
+          it.contextValue = 'relNode';
+          it._defRel = nd.node.rel;
+          it._defLine = defLine;
+          return it;
         };
         // 用 chains 建一棵**共享前缀**的树：把每条链逆序（直接调用者 → 入口），
         // 同一入口的不同路径自然合流，不会重复列出。
@@ -2375,14 +2438,22 @@ function activate(context) {
           : mkItem('←  无调用者（它是入口）'));
 
         // 被调用：只展开一层，够判断"它还依赖谁"即可。
-        const dns = (info.down || []).slice(0, 20).map((d) =>
-          mkItem(d.name, {
-            desc: shortDesc(d),
+        const dns = (info.down || []).slice(0, 20).map((d) => {
+          const jump = d.call_line || d.line;
+          const defLine = d.line || 1;
+          const it = mkItem(d.name, {
+            desc: shortDesc(d) +
+                  (defLine && defLine !== jump ? '  · 定义 ' + defLine : ''),
             // 同理：跳到"我这里调用它的那一行"；服务端没给（跨语言/无行号）
             // 才退回定义处。
             rel: d.call_rel || d.rel,
-            line: d.call_line || d.line,
-          }));
+            line: jump,
+          });
+          it.contextValue = 'relNode';
+          it._defRel = d.rel;
+          it._defLine = defLine;
+          return it;
+        });
         groups.push(mkItem('→  被调用（' + (info.down_total || 0) + '）',
                            { desc: '我 → 谁',
                              children: dns.length ? dns : [mkItem('（叶子）')] }));
@@ -2953,6 +3024,7 @@ function activate(context) {
           // 实测（C:\Temp\yalmip\@sdpvar\toeplitz.m，真实子进程）：
           // 服务端毫秒级返回 1 个符号，根本不需要等。
           let raw = [];
+          let _why = client ? '' : '（服务未启动）';
           try {
             if (client) {
               // **800ms 超时**（R307）：首次打开工作区时，服务端正在做全库
@@ -2967,9 +3039,18 @@ function activate(context) {
               raw = (rr && rr.result) || [];
             }
           } catch (e) {
-            log('大纲请求失败/超时：' + (e && e.message));
+            // **超时与"服务端给了 0 个"是两种事**：前者是链路问题，
+            // 后者是解析问题。都走兜底，但排查方向完全不同 ——
+            // 日志里必须分开写，否则用户报障时只能看到"用了兜底"。
+            const msg = String((e && e.message) || e || '');
+            _why = /超时/.test(msg)
+              ? ('请求超时（800ms 未返回）')
+              : ('请求失败：' + msg);
+            log('大纲 ' + path.basename(doc.uri.fsPath) + ' ' + _why);
           }
-          log('大纲 ' + path.basename(doc.uri.fsPath) + ' -> ' + raw.length + ' 个符号');
+          if (!_why && !raw.length) _why = '服务端返回 0 个符号';
+          log('大纲 ' + path.basename(doc.uri.fsPath) + ' -> ' + raw.length +
+              ' 个符号' + (_why ? '（' + _why + '）' : ''));
 
           // **兜底：服务端给不出符号时，就在当前文档上自己扫一遍**（R288）。
           // 连续几轮远程排查都没能让它出符号（服务端本地验过是对的），
@@ -2989,7 +3070,8 @@ function activate(context) {
             // 连本地扫描都找不到函数时，**不许留空白** —— 空大纲无法与
             // 「工具坏了」区分。放一行说明，并写明该把什么发回来。
             if (!found.length) {
-              const msg = '未识别到 function（本地扫描 0 个）';
+              const msg = '未识别到 function（本地扫描 0 个 · ' +
+                          (_why || '原因未知') + '）';
               return [new vscode.DocumentSymbol(
                 msg, '请把输出频道 matlabc 的内容发回来',
                 vscode.SymbolKind.Function,

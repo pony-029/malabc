@@ -39,7 +39,9 @@ GATES = ("check_version_scheme", "check_eol_convention", "check_readme_parity",
          # 图上缺字形（方块）已经出现过三次，靠肉眼看截图不可靠
          "check_figure_glyphs",
          # 一道门写了却不进发版清单，等于只给自己看的笔记
-         "check_release_gates")
+         "check_release_gates",
+         # 越界的符号行号会让大纲永远转圈
+         "check_symbol_ranges")
 
 
 def run(cmd, cwd=ROOT, timeout=900):

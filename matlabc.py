@@ -4291,7 +4291,15 @@ def parse_file(mfile, forced_encoding=None):
 
     code = scrub_source(text)
     lines = code.split("\n")
-    mfile.lines = len(lines)
+    # **行数不能用 `len(lines)`**：文件以换行结尾时 `split` 会多出一个空元素，
+    # 于是 `mfile.lines` 比真实行数多 1。后果不是"数字难看"：EOF 处结束的
+    # 函数会得到 `body_end = mfile.lines`（= N+1），大纲据此造出的 Range
+    # 越过文件末尾 —— 编辑器**拒收整批符号**，界面永远停在「正在加载…」。
+    # （R419 用户报障的直接成因之一。）
+    real_lines = len(lines)
+    if lines and lines[-1] == "":
+        real_lines -= 1
+    mfile.lines = real_lines
     mfile.source_lines = text.split("\n")
     mfile.scrubbed_lines = lines   # 缓存，供调用分析复用（避免二次词法清洗）
 

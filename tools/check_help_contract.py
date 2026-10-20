@@ -234,6 +234,11 @@ GUARD_CONTRACT = {
            "「只在 Windows 上能跑」的代码静默通过",
         2: "缺输入（一个运行时文件都没找到）",
     },
+    "tools/check_symbol_ranges.py": {
+        0: "通过（SR1–SR2：每个函数的起始/结束行都落在文件行数内）",
+        1: "有符号行号越界 —— 编辑器会拒收整批符号，大纲永远停在\u300c正在加载\u2026\u300d",
+        2: "缺输入（找不到 tests/sample_m 或 analyzer 包）",
+    },
     "tools/check_release_gates.py": {
         0: "通过（RG1–RG2：GATES 里的每个名字都有脚本、每个 check_*.py 要么在 GATES 要么带理由豁免）",
         1: "有门没进发版清单（写了却从没在发布时跑过），\n          或 GATES 里有陈旧行、豁免没理由 / 已陈旧",
