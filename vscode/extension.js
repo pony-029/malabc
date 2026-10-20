@@ -2342,9 +2342,13 @@ function activate(context) {
         const toItem = (nd) => {
           const kids = [];
           nd.children.forEach((v) => kids.push(toItem(v)));
+          // **点这一行应该去"调用处"，不是"定义处"**：`shortDesc` 显示的
+          // 就是 `call_line`，而上面原来给的是 `node.line` —— 于是行上写着
+          // `line 8`，点下去却跳到函数第 23 行（用户的原话是"却不在调用的位置"）。
+          const jump = nd.node.call_line || nd.node.line;
           return mkItem(nd.node.name, {
             desc: shortDesc(nd.node),
-            rel: nd.node.rel, line: nd.node.line,
+            rel: nd.node.rel, line: jump,
             children: kids.length ? kids : undefined,
           });
         };
@@ -2373,7 +2377,11 @@ function activate(context) {
         // 被调用：只展开一层，够判断"它还依赖谁"即可。
         const dns = (info.down || []).slice(0, 20).map((d) =>
           mkItem(d.name, {
-            desc: shortDesc(d), rel: d.rel, line: d.line,
+            desc: shortDesc(d),
+            // 同理：跳到"我这里调用它的那一行"；服务端没给（跨语言/无行号）
+            // 才退回定义处。
+            rel: d.call_rel || d.rel,
+            line: d.call_line || d.line,
           }));
         groups.push(mkItem('→  被调用（' + (info.down_total || 0) + '）',
                            { desc: '我 → 谁',
@@ -2934,6 +2942,7 @@ function activate(context) {
   context.subscriptions.push(
     vscode.languages.registerDocumentSymbolProvider({ language: 'matlab' }, {
       provideDocumentSymbols: async (doc) => {
+        const _t0 = Date.now();
         try {
           // **只问一次，立刻回来**（R292）。
           //
@@ -2990,21 +2999,39 @@ function activate(context) {
             return found.map((f, i) => {
               const endLine = (i + 1 < found.length)
                 ? found[i + 1].line - 1 : lines.length - 1;
-              const range = new vscode.Range(f.line, 0,
-                                             Math.max(f.line, endLine), 0);
+              let range = new vscode.Range(f.line, 0,
+                                           Math.max(f.line, endLine), 0);
               const sel = new vscode.Range(f.line, 0, f.line, f.name.length);
+              // **选区必须落在 range 内**：`endLine == f.line` 时 range 的
+              // 结束列是 0，而选区结束列是名字长度 —— 于是 VS Code 抛
+              // "selectionRange must be contained"，**整批符号被拒**，
+              // 大纲就一直停在「正在加载…」。这条路径是本地兜底，
+              // 恰恰在服务端给不出符号时才走，所以最容易没人测到。
+              if (range.end.isBefore(sel.end) ||
+                  range.start.isAfter(sel.start)) {
+                range = range.union(sel);
+              }
               return new vscode.DocumentSymbol(f.name, '',
                                                vscode.SymbolKind.Function,
                                                range, sel);
             });
           }
 
+          // **钳制到文档范围内**：服务端若给的是旧版本的行号（文件刚被删掉
+          // 几十行），越界的 Range 会让内置「大纲」一直转圈而不报错 ——
+          // 用户看到的就是"一直在加载中"。
+          const lastLine = Math.max(0, doc.lineCount - 1);
+          const clamp = (r) => {
+            const line = Math.max(0, Math.min(r.start.line, lastLine));
+            const eline = Math.max(line, Math.min(r.end.line, lastLine));
+            return new vscode.Range(line, 0, eline, 200);
+          };
           return raw.map((s) => {
             const kind = s.kind === 12
               ? vscode.SymbolKind.Function
               : vscode.SymbolKind.Class;
-            let range = toRange(s.range);
-            const sel = toRange(s.selectionRange);
+            let range = clamp(toRange(s.range));
+            const sel = clamp(toRange(s.selectionRange));
             // **`selectionRange` 必须落在 `range` 内**，否则 VSCode 抛
             // `selectionRange must be contained in fullRange`，**整批符号被拒**，
             // 大纲一片空白（R294 就是这么空了好几轮）。
@@ -3013,6 +3040,8 @@ function activate(context) {
             if (range.start.isAfter(sel.start) || range.end.isBefore(sel.end)) {
               range = range.union(sel);
             }
+            log('大纲 ' + path.basename(doc.uri.fsPath) + ' 映射完成，用时 ' +
+                (Date.now() - _t0) + 'ms');
             return new vscode.DocumentSymbol(s.name, '', kind, range, sel);
           });
         } catch (e) {

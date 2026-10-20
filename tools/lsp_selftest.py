@@ -426,11 +426,36 @@ def _impact(c):
             _chk(direct[0].get("is_entry") is False,
                  "impact/entry-flag-false-for-called（%r）"
                  % (direct[0].get("is_entry"),))
+        # **行上写的是调用行，点下去也必须是调用行**（R419，用户报障：
+        # 「显示调用这个关系，点进去却不在调用的位置」）。
+        # 链节点带 `call_line` = 它调用下一跳的那一行；最后一跳（目标自己）
+        # 没有出边，必须是 None —— 客户端据此回退到定义行。
+        chains = info.get("chains") or []
+        _chk(bool(chains), "impact/chains-not-empty")
+        if chains:
+            ch0 = chains[0]
+            first = ch0[0] if ch0 else {}
+            last = ch0[-1] if ch0 else {}
+            _chk(isinstance(first.get("call_line"), int)
+                 and first["call_line"] > 0,
+                 "impact/chain-caller-carries-call-line（%r）" % (first,))
+            _chk(last.get("call_line") in (None, 0),
+                 "impact/chain-last-has-no-call-line（%r）" % (last,))
 
     info2 = call("switch_case")
     _chk(isinstance(info2, dict) and info2.get("total") == 0,
          "impact/switch_case-total==0（它是入口）")
     _chk((info2 or {}).get("direct") == [], "impact/switch_case-no-direct")
+
+    # **被调用者同理**（R419）：点它要跳到「我这里调用它的那一行」。
+    # 否则只能跳到它的定义处 —— 而用户点这一行的意图是"看它在我这里怎么被用"。
+    _chk(bool((info2 or {}).get("down")),
+         "impact/down-not-empty-for-root")
+    _d0 = ((info2 or {}).get("down") or [{}])[0]
+    _chk(bool(_d0.get("call_rel")) and _d0.get("call_rel") != _d0.get("rel"),
+         "impact/down-call-rel-points-to-caller-file（%r）" % (_d0,))
+    _chk(isinstance(_d0.get("call_line"), int) and _d0["call_line"] > 0,
+         "impact/down-call-line-positive（%r）" % (_d0,))
 
     _chk(call("no_such_function_xyz") is None,
          "impact/missing-returns-null（不是空对象）")
