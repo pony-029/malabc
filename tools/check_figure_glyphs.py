@@ -30,6 +30,9 @@ FG4  手册正文（USER_GUIDE.md）同理。**例外要登记**：有些字符�
 """
 import io
 import os
+import sys as _sys
+_sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gate_cache  # noqa: E402
 import re
 import sys
 
@@ -175,6 +178,13 @@ def main(argv=None):
         print("找不到 %s" % SRC)
         return 2
 
+    # 增量：图与源都没变时结论必然一样（字体是系统资源，不随仓库变）。
+    _fp, _nf = gate_cache.fingerprint(REPO, ["*.py", "*.png", "*.html"], __file__)
+    _hit = gate_cache.load_hit(REPO, "glyphs", _fp)
+    if _hit:
+        print("check_figure_glyphs: OK（增量命中：%d 个文件未改动，复用 %s 的结论）"
+              % (_nf, _hit.get("at") or "?"))
+        return 0
     chars, bad_mono = scan()
     missing = sorted(ch for ch in chars if _glyph_missing(UI_FONT, ch))
 
@@ -216,6 +226,8 @@ def main(argv=None):
     if bad:
         print("check_figure_glyphs: %d 项不合规" % bad)
         return 1
+    gate_cache.save_hit(REPO, "glyphs", _fp,
+                        {"chars": len(chars), "tour": len(tour_chars)})
     print("check_figure_glyphs: OK（FG1–FG4 全绿；示意图 %d 个、"
           "导览页 %d 个非 ASCII 字符，手册 %d 个例外带理由）"
           % (len(chars), len(tour_chars), len(MD_ALLOW)))

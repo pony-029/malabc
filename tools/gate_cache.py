@@ -34,6 +34,9 @@ import io
 import json
 import os
 
+#: 声明本工具支持 --selftest（`check_tool_selftests` 据此纳入发版跑）
+SELFTEST = True
+
 CACHE_VERSION = 2
 CACHE_PATH = os.path.join("releases", ".gate-cache.json")
 
@@ -56,6 +59,55 @@ def _expand(root, patterns):
                     out.append(rel)
                     break
     return sorted(set(out))
+
+
+def selftest():
+    """两向自证：无关文件变化仍命中，相关文件变化必须失效。"""
+    import shutil
+    import tempfile
+    good = bad = 0
+
+    def chk(cond, name):
+        nonlocal good, bad
+        if cond:
+            good += 1
+        else:
+            bad += 1
+            print("  [FAIL] %s" % name)
+
+    d = tempfile.mkdtemp(prefix="gc_")
+    try:
+        io.open(os.path.join(d, "a.py"), "w", encoding="utf-8").write(u"x = 1\n")
+        io.open(os.path.join(d, "note.txt"), "w", encoding="utf-8").write(u"n\n")
+        fp1, n1 = fingerprint(d, ["*.py"], __file__)
+        chk(n1 == 1, "只统计匹配到的文件（%d）" % n1)
+        save_hit(d, "k", fp1, {"x": 1})
+        chk(load_hit(d, "k", fp1) is not None, "同指纹应命中")
+
+        # 无关文件变了 → 指纹不变 → 仍命中
+        io.open(os.path.join(d, "note.txt"), "w", encoding="utf-8").write(u"m\n")
+        fp2, _ = fingerprint(d, ["*.py"], __file__)
+        chk(fp2 == fp1, "无关文件（.txt）不影响指纹")
+        chk(load_hit(d, "k", fp2) is not None, "无关文件变化仍命中")
+
+        # 相关文件变了 → 指纹变 → 必须失效
+        io.open(os.path.join(d, "a.py"), "w", encoding="utf-8").write(u"x = 2\n")
+        fp3, _ = fingerprint(d, ["*.py"], __file__)
+        chk(fp3 != fp1, "相关文件变化必须改变指纹")
+        chk(load_hit(d, "k", fp3) is None, "指纹变了不能命中")
+
+        # 失败永不缓存：把 key 写成 rc=1 也应该取不到
+        save_hit(d, "k2", fp3)
+        data = _read(d)
+        data["items"]["k2"]["rc"] = 1
+        io.open(_path(d), "w", encoding="utf-8").write(
+            json.dumps(data, ensure_ascii=False))
+        chk(load_hit(d, "k2", fp3) is None, "rc!=0 的缓存不算命中")
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+    print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
+    return 1 if bad else 0
 
 
 def fingerprint(root, patterns, own_file=None):
@@ -121,3 +173,11 @@ def save_hit(root, key, fp, info=None):
             json.dumps(data, ensure_ascii=False, indent=1) + u"\n")
     except (IOError, OSError):
         pass
+
+
+if __name__ == "__main__":
+    import sys
+    if "--selftest" in sys.argv:
+        raise SystemExit(selftest())
+    print(__doc__)
+    raise SystemExit(0)

@@ -58,6 +58,9 @@
 import argparse
 import ast
 import os
+import sys as _sys
+_sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gate_cache  # noqa: E402
 import sys
 
 # R62/P5：「质量门表」里本门那一行的**签名**（本门自己的判据族，
@@ -418,6 +421,13 @@ def _selftest():
 
     # 真实仓库核对：两张登记表都必须与代码一致
     root = repo_root()
+    # 增量：这道门 2.6s，扫描的是源码文本 —— 指纹没变就没有理由重扫。
+    _fp, _nf = gate_cache.fingerprint(root, ["*.py"], __file__)
+    _hit = gate_cache.load_hit(root, "subprocess", _fp)
+    if _hit:
+        print("check_subprocess_hygiene: OK（增量命中：%d 个 .py 未改动，"
+              "复用 %s 的结论）" % (_nf, _hit.get("at") or "?"))
+        return 0
     problems, r_sites, t_sites, popen_keys, blind_keys = scan(root)
     reg_problems = []
     check_registry(popen_keys, POPEN_STREAMING, "S3 Popen", reg_problems.append)
@@ -456,6 +466,13 @@ def main(argv=None):
     if not os.path.isdir(os.path.join(root, "tools")):
         print("check_subprocess_hygiene: 找不到 tools/（缺输入 → 红）")
         return 2
+    # 增量：这道门 2.6s，扫的是源码文本 —— 指纹没变就没有理由重扫。
+    _fp, _nf = gate_cache.fingerprint(root, ["*.py"], __file__)
+    _hit = gate_cache.load_hit(root, "subprocess", _fp)
+    if _hit:
+        print("check_subprocess_hygiene: OK（增量命中：%d 个 .py 未改动，"
+              "复用 %s 的结论）" % (_nf, _hit.get("at") or "?"))
+        return 0
     problems, r_sites, t_sites, popen_keys, blind_keys = scan(root)
     check_registry(popen_keys, POPEN_STREAMING, "S3 Popen 未登记", problems.append)
     check_registry(blind_keys, UNVERIFIABLE, "S4 盲区未登记", problems.append)
@@ -464,6 +481,8 @@ def main(argv=None):
         for p in problems:
             print("  - " + p)
         return 1
+    gate_cache.save_hit(root, "subprocess", _fp,
+                        {"sites": r_sites + t_sites})
     print("check_subprocess_hygiene: OK（运行时捕获点 %d 全部切断 stdin；"
           "run 类全部带 timeout；Popen 捕获点 %d、**kwargs 盲区 %d 全部登记；"
           "tests/ 另有 %d 点按设计不计入；判据族 %s）"

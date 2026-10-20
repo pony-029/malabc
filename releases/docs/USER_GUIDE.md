@@ -190,7 +190,7 @@ code --install-extension matlabc-<版本>.vsix
 
 ## 3. 命令清单
 
-按 `Ctrl+Shift+P`，输入 `matlabc`，共 26 条：
+按 `Ctrl+Shift+P`，输入 `matlabc`，共 27 条：
 
 ![命令面板](figures/commands.png)
 
@@ -208,6 +208,7 @@ code --install-extension matlabc-<版本>.vsix
 | `matlabc: 打开使用说明（PDF）` | 本文的 PDF 版：四张示意图直接印在页面上，也适合转发 |
 | `matlabc: 选择 Python 解释器` | 挑一个 Python 并验证能启动，写进设置 —— **启动失败时最先试它** |
 | `matlabc: 重新启动服务` | 索引卡住、刚改过设置时用 —— 只重启分析服务，不重开窗口 |
+| `matlabc: 生成工程 HTML 报告` | 一条命令出整份报告（调用图内嵌），存到 `.matlabc/report.html`，完成后可直接在浏览器打开 |
 | `matlabc: 重新扫描大纲` | 大纲看着不对时用：清缓存并重新扫一次，会告诉你几个符号、用了多久 |
 | `matlabc: 撤销上一次改动` | 改完想反悔时用：先开并排 diff，确认后才动手 |
 | `matlabc: 确认撤销` | 在 diff 里点 CodeLens 时用的就是这个（一般不用手动执行） |

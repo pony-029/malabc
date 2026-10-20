@@ -1029,6 +1029,76 @@ function activate(context) {
     })
   );
 
+  // **一条命令生成 HTML 报告**：以前只能去命令行敲
+  // `python matlabc.py <dir> --html out.html` —— 而"想看一眼整体结构"
+  // 这个念头是在编辑器里冒出来的。
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.generateHtmlReport', async () => {
+      if (!root) {
+        vscode.window.showWarningMessage('matlabc: 请先打开一个文件夹');
+        return;
+      }
+      const cfg = vscode.workspace.getConfiguration('matlabc');
+      const py = cfg.get('pythonPath') || 'python';
+      const script = path.join(context.extensionPath, 'matlabc.py');
+      if (!fs.existsSync(script)) {
+        vscode.window.showErrorMessage(
+          'matlabc: 扩展里找不到 matlabc.py，无法生成报告');
+        return;
+      }
+      const outDir = path.join(root, '.matlabc');
+      const out = path.join(outDir, 'report.html');
+      try {
+        if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+      } catch (e) {
+        vscode.window.showErrorMessage('matlabc: 建不了输出目录：' + e.message);
+        return;
+      }
+
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification,
+          title: 'matlabc: 正在生成 HTML 报告',
+          cancellable: false },
+        () => new Promise((resolve) => {
+          // 大工程要几十秒，必须给超时并且断开 stdin（本仓有真实挂死案例）。
+          const cp = require('child_process').execFile(
+            py, [script, root, '--html', out],
+            { cwd: root, timeout: 300000, maxBuffer: 32 * 1024 * 1024,
+              windowsHide: true },
+            (err, stdout, stderr) => {
+              if (err) {
+                log('生成报告失败：' + ((stderr || '') + (err.message || '')));
+                vscode.window.showErrorMessage(
+                  'matlabc: 生成失败 —— ' +
+                  String((stderr || err.message || '')).trim().split('\n')[0] +
+                  '（详见 matlabc: 导出日志）');
+                resolve();
+                return;
+              }
+              if (!fs.existsSync(out)) {
+                vscode.window.showWarningMessage(
+                  'matlabc: 命令跑完了，但没有生成 ' + out);
+                resolve();
+                return;
+              }
+              const kb = Math.round(fs.statSync(out).size / 1024);
+              vscode.window.showInformationMessage(
+                'matlabc: 报告已生成（' + kb + ' KB）',
+                '在浏览器打开', '在编辑器中预览').then((pick) => {
+                  if (pick === '在浏览器打开') {
+                    vscode.env.openExternal(vscode.Uri.file(out));
+                  } else if (pick === '在编辑器中预览') {
+                    vscode.commands.executeCommand(
+                      'vscode.openWith', vscode.Uri.file(out), 'vscode.html-preview');
+                  }
+                  resolve();
+                });
+            });
+          cp.stdin = null;
+        }));
+    })
+  );
+
   context.subscriptions.push(
     vscode.commands.registerCommand('matlabc.exportLog', async () => {
       const files = [];

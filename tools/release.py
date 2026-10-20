@@ -116,6 +116,10 @@ def show_trend():
     if tot:
         print("\n总时长：最近 %d 次 %s 秒"
               % (len(tot), " → ".join("%.1f" % (v / 1000.0) for v in tot[-6:])))
+    hits = [r.get("hits") for r in rows if r.get("hits") is not None]
+    if hits:
+        print("增量命中：最近 %d 次 %s 道"
+              % (len(hits), " → ".join(str(v) for v in hits[-6:])))
     return 0
 
 
@@ -232,11 +236,19 @@ def main(argv=None):
             json.dumps(stamps, ensure_ascii=False, indent=1) + u"\n")
     except (IOError, OSError):
         pass
+    # 增量命中的门先数出来：历史行与汇总行都要用（顺序错了会 UnboundLocalError）。
+    _hits = 0
+    for g in GATES:
+        _tail = results[g][2] or []
+        if any(u"增量命中" in ln for ln in _tail):
+            _hits += 1
+
     # **趋势要留**：单次耗时说明不了退化，只有和"它自己以前"比才行。
     _hist = os.path.join(ROOT, "releases", "gates-history.jsonl")
     try:
         line = json.dumps({"at": time.strftime("%Y-%m-%dT%H:%M:%S"),
                            "total_ms": total_ms,
+                           "hits": _hits,
                            "gates": dict((g, stamps[g]["ms"]) for g in GATES)},
                           ensure_ascii=False)
         old_hist = []
@@ -278,13 +290,7 @@ def main(argv=None):
     if len(_tot) >= 2:
         print("  （趋势）最近 %d 次总时长: %s 秒"
               % (len(_tot), " → ".join("%.1f" % (v / 1000.0) for v in _tot)))
-    # 增量命中的门单独点数：命中会让"跑得很快"这件事有解释，
-    # 否则读者会怀疑是不是检查被跳过了。
-    _hits = 0
-    for g in GATES:
-        tail = results[g][2] or []
-        if any(u"增量命中" in ln for ln in tail):
-            _hits += 1
+    # （_hits 已在写历史前算好）
     print("  [%s] %d 道关键门%s（%.1fs，%d 路并行%s%s）"
           % ("OK  " if not bad else "FAIL", len(GATES),
              "" if not bad else "，失败 %d" % bad,

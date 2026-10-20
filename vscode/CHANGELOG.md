@@ -2,6 +2,18 @@
 
 ---
 
+## 1.5.1
+
+- 新增命令 **`matlabc: 生成工程 HTML 报告`**：一条命令出整份报告（调用图内嵌），
+  写到 `.matlabc/report.html`，完成后可直接在浏览器打开 —— 以前只能去命令行敲
+  `python matlabc.py <dir> --html out.html`
+- 另外两道门也接上增量判定（`check_subprocess_hygiene` 2.6s、`check_figure_glyphs` 1.1s），
+  命中后各自只要 0.2s 左右
+- `gate_cache` 自带 7 条自证（无关文件不影响指纹 / 相关文件必失效 / 失败不缓存），
+  并纳入发版必跑清单
+- `--trend` 多一列**增量命中数**；发版历史每次也记下来
+- CONTRIBUTING 补一条：改 JSON 用文件脚本，别用 `-c` 内联（引号会被 shell 吃掉）
+
 ## 1.5.0
 
 - 增量判定抽成公共件 **`tools/gate_cache.py`**，`check_help_contract` 也接上了：
