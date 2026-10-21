@@ -134,9 +134,10 @@ def _git_exists(rev, path=None):
     return r.returncode == 0
 
 
-def _git_batch_missing(rev, paths):
-    """一次 git cat-file --batch-check 查 revision + 所有 source 路径。"""
-    specs = [rev] + ["%s:%s" % (rev, p) for p in paths]
+def _git_batch_missing(specs):
+    """一次 git cat-file --batch-check 查任意多个 revision / path。"""
+    if not specs:
+        return set()
     tmp = tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8")
     try:
         tmp.write("\n".join(specs) + "\n")
@@ -193,6 +194,9 @@ def main(argv=None):
     total = 0
     problems = []
     checked = 0
+    specs = []
+    seen = set()
+    entries = []
     for it in items:
         iid = it["id"]
         path = os.path.join(ARCH, it["candidate"])
@@ -204,20 +208,20 @@ def main(argv=None):
             if not re.match(r"^[0-9a-fA-F]{40}$", rev):
                 problems.append("%s revision 非法：%r" % (iid, rev))
             else:
-                paths = []
+                if rev not in seen:
+                    seen.add(rev)
+                    specs.append(rev)
+                entries.append((iid, rev, None, rev))
                 for n in _nodes(cj):
                     for src in n.get("sources") or []:
                         p = src.get("path")
-                        if p:
-                            paths.append(p)
-                miss = _git_batch_missing(rev, paths)
-                if rev in miss:
-                    problems.append("%s revision 在 Git 中不存在：%s"
-                                    % (iid, rev))
-                for p in paths:
-                    if "%s:%s" % (rev, p) in miss:
-                        problems.append("%s 的 %r 在 %s 不存在"
-                                        % (iid, p, rev[:7]))
+                        if not p:
+                            continue
+                        spec = "%s:%s" % (rev, p)
+                        if spec not in seen:
+                            seen.add(spec)
+                            specs.append(spec)
+                        entries.append((iid, rev, p, spec))
             if iid in SRC and not repo:
                 problems.append("%s 缺 repository" % iid)
             checked += 1
@@ -231,6 +235,21 @@ def main(argv=None):
             fh.write("\n")
         print("%-22s nodes_with_sources=%d" % (iid, hit))
     if args.check:
+        miss = _git_batch_missing(specs)
+        bad_revs = set()
+        for iid, rev, p, spec in entries:
+            if spec not in miss:
+                continue
+            if p is None:
+                bad_revs.add(rev)
+                problems.append("%s revision 在 Git 中不存在：%s"
+                                % (iid, rev))
+        for iid, rev, p, spec in entries:
+            if p is None or rev in bad_revs:
+                continue
+            if spec in miss:
+                problems.append("%s 的 %r 在 %s 不存在"
+                                % (iid, p, rev[:7]))
         if problems:
             for p in problems:
                 print("  - %s" % p)

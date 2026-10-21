@@ -270,7 +270,7 @@ python tools/release_arch_check.py --check
 | ADR（AD11） | **8 条**（含 ADR-008 评审记录）；14 张图挂 `adr`；`Status`/`Diagrams` 双向；无孤儿 |
 | 发布总闸（R32） | `release_arch_check.py --check` → 快照/版本/PNG/评审 **4/4 OK** |
 | PNG 阈值（R33） | 同尺寸改 0.04% 像素：`--max-ratio 0.0001` → **exit 1**；`0.5` → **exit 0** |
-| 源码批量校验（R34） | 14 次 `git cat-file --batch-check`，**8.3 s** 覆盖 137 条 sources |
+| 源码批量校验（R34/R37） | **1 次全局** `git cat-file --batch-check`，**0.75 s** 覆盖 137 条 sources（原 14 次 8.3 s） |
 | 评审记录（R36） | `REVIEWS.md`：**1.16.72 / pass / pony-029**；`record_arch_review --check` 通过 |
 | 快照 diff（R15） | `snapshot_arch --diff 1.16.72 current` → **0 changes** |
 | PNG diff（R26） | `diff_arch_png` 能报尺寸/像素变化；`--fail-on-change` 可当评审闸 |
