@@ -247,6 +247,13 @@ GUARD_CONTRACT = {
         1: "有符号行号越界 —— 编辑器会拒收整批符号，大纲永远停在\u300c正在加载\u2026\u300d",
         2: "缺输入（找不到 tests/sample_m 或 analyzer 包）",
     },
+    "tools/check_translate_port.py": {
+        0: "通过（TP1–TP4：ABI 契约 / 双侧适配器 / 算子目录与 C 发射 / "
+           "golden 保真与移植台账）",
+        1: "有移植链路不合规（ABI 缺契约、适配器配不上、算子夹具缺失、"
+           "保真失败或台账声明无兑现）",
+        2: "缺输入（找不到 c_runtime / translate / port_ledger.json）",
+    },
     "tools/check_release_gates.py": {
         0: "通过（RG1–RG4：GATES 里每个名字都有脚本、每个 check_*.py 有交代、每道门有跑过的记录且不明显变慢）",
         1: "有门没进发版清单（写了却从没在发布时跑过），\n          或 GATES 里有陈旧行、豁免没理由 / 已陈旧",

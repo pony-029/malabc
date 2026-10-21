@@ -59,6 +59,9 @@ CI_ONLY = (
     "check_kernel_snapshot", "check_known_red", "check_legal_parity",
     "check_matlab_grammar", "check_operator_impl", "check_parity_registry",
     "check_patch_ops", "check_py_js_frontend_shapes", "check_unified_graph",
+    # 依赖 golden 夹具 + 可选 C 编译器；进发版快跑清单会把“没编译器”
+    # 与“门本身慢”混在一起，故只在 CI / 手工跑。
+    "check_translate_port",
 )
 
 EXEMPT = {

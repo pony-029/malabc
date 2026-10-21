@@ -427,25 +427,30 @@ def _selftest():
     if _hit:
         print("check_subprocess_hygiene: OK（增量命中：%d 个 .py 未改动，"
               "复用 %s 的结论）" % (_nf, _hit.get("at") or "?"))
-        return 0
-    problems, r_sites, t_sites, popen_keys, blind_keys = scan(root)
-    reg_problems = []
-    check_registry(popen_keys, POPEN_STREAMING, "S3 Popen", reg_problems.append)
-    check_registry(blind_keys, UNVERIFIABLE, "S4 盲区", reg_problems.append)
-    print("  真实仓库：运行时捕获点 %d、tests 捕获点 %d；"
-          "Popen 登记点 %d、盲区登记点 %d"
-          % (len(r_sites), len(t_sites), len(popen_keys), len(blind_keys)))
-    # S5（R72）：`tests/` 单独计数并**打印**（不判红；tests 的挂死由 pytest 自身
-    # 的超时兜底）。⚠ 字面量**必须**以判据前缀开头 —— 签名里有 5 个前缀，而这一行
-    # 以前完全没有编号，于是 `S5` 在源码里找不到任何「以它开头」的输出，判据身份
-    # 对不上（H2 的「幽灵声明」）。缩进留给输出本身，不放进字面量里。
-    print("S5 tests/ 捕获点单独计数：%d（设计如此：不计入违规，只不隐瞒）"
-          % len(t_sites))
-    if problems or reg_problems:
-        fails.append("真实仓库")
-        print("  *** 真实仓库有 %d 项违规（S1/S2=%d, S3/S4=%d）***"
-              % (len(problems) + len(reg_problems), len(problems),
-                 len(reg_problems)))
+        # **不要在这里 return**：`SELFTEST COUNTS` 是 runner 认自证的唯一凭据；
+        # 增量命中只该省掉重扫，不该把凭证一起省掉。R432 实测：命中时
+        # `check_all` 判「没输出 SELFTEST COUNTS」，自证等于静默失效。
+    else:
+        problems, r_sites, t_sites, popen_keys, blind_keys = scan(root)
+        reg_problems = []
+        check_registry(popen_keys, POPEN_STREAMING, "S3 Popen",
+                       reg_problems.append)
+        check_registry(blind_keys, UNVERIFIABLE, "S4 盲区",
+                       reg_problems.append)
+        print("  真实仓库：运行时捕获点 %d、tests 捕获点 %d；"
+              "Popen 登记点 %d、盲区登记点 %d"
+              % (len(r_sites), len(t_sites), len(popen_keys), len(blind_keys)))
+        # S5（R72）：`tests/` 单独计数并**打印**（不判红；tests 的挂死由 pytest 自身
+        # 的超时兜底）。⚠ 字面量**必须**以判据前缀开头 —— 签名里有 5 个前缀，而这一行
+        # 以前完全没有编号，于是 `S5` 在源码里找不到任何「以它开头」的输出，判据身份
+        # 对不上（H2 的「幽灵声明」）。缩进留给输出本身，不放进字面量里。
+        print("S5 tests/ 捕获点单独计数：%d（设计如此：不计入违规，只不隐瞒）"
+              % len(t_sites))
+        if problems or reg_problems:
+            fails.append("真实仓库")
+            print("  *** 真实仓库有 %d 项违规（S1/S2=%d, S3/S4=%d）***"
+                  % (len(problems) + len(reg_problems), len(problems),
+                     len(reg_problems)))
 
     print("SELFTEST COUNTS {\"bad\": %d, \"good\": %d}" % (bad, good))
     if fails:

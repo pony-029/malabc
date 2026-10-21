@@ -1,0 +1,12 @@
+{
+  "name": "op_matmul_2x2",
+  "operator": "OP-MATMUL",
+  "rules": ["ORDER-1"],
+  "inputs": {
+    "A": {"dtype": "f64", "shape": [2, 2], "data": [[1.0, 2.0], [3.0, 4.0]]},
+    "B": {"dtype": "f64", "shape": [2, 2], "data": [[5.0, 6.0], [7.0, 8.0]]}
+  },
+  "expected": {"dtype": "f64", "shape": [2, 2],
+               "data": [[19.0, 22.0], [43.0, 50.0]]},
+  "tol": {"abs": 1e-12, "rel": 1e-9}
+}

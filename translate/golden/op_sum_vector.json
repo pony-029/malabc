@@ -1,0 +1,10 @@
+{
+  "name": "op_sum_vector",
+  "operator": "OP-SUM",
+  "rules": ["ORDER-1"],
+  "inputs": {
+    "x": {"dtype": "f64", "shape": [4], "data": [1.0, 2.0, 3.0, 4.0]}
+  },
+  "expected": {"dtype": "f64", "shape": [1], "data": [10.0]},
+  "tol": {"abs": 1e-12, "rel": 1e-9}
+}

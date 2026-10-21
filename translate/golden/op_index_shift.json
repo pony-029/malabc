@@ -1,0 +1,11 @@
+{
+  "name": "op_index_shift",
+  "operator": "OP-INDEX",
+  "rules": ["IDX-1"],
+  "inputs": {
+    "x": {"dtype": "f64", "shape": [3], "data": [10.0, 20.0, 30.0]},
+    "i": 2
+  },
+  "expected": {"dtype": "f64", "shape": [1], "data": [20.0]},
+  "tol": {"abs": 1e-12, "rel": 1e-9}
+}
