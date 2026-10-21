@@ -36,7 +36,7 @@ import sys
 import tempfile
 
 #: P5 的对手方：本门在 README 质量门表那一行里声明的判据族。
-ROW_SIGNATURE = "TP1–TP6"
+ROW_SIGNATURE = "TP1–TP8"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -274,6 +274,124 @@ def check_ownership(fast=None):
         return ["TP6 所有权测试未通过：%s" % (bad[:3] or out.strip()[:120],)]
     print("  [TP6] 所有权/错误路径：通过（空输入、零命中、长度不符、find 1-based）")
     return []
+
+
+def check_project_dir(fast=None):
+    """TP7：目录级转换。
+
+    真实的 MATLAB 工程是**一堆 .m 互相调用**，单文件转换看不出这个问题 ——
+    跨文件调用会被当成"未知名字"而拒绝，而门一直是绿的。
+    """
+    fast = FAST if fast is None else fast
+    probs = []
+    src_dir = os.path.join(ROOT, "translate", "examples", "proj")
+    exp = os.path.join(ROOT, "translate", "examples", "proj.expected")
+    if not os.path.isdir(src_dir) or not os.path.isfile(exp):
+        return ["TP7 缺样例工程（translate/examples/proj）"]
+
+    d = tempfile.mkdtemp(prefix="m2c_proj_")
+    mir = os.path.join(d, "proj.mir")
+    rc, out = _run([sys.executable, os.path.join("translate", "mir.py"),
+                    src_dir, "-o", mir])
+    if rc != 0:
+        return ["TP7 目录转换失败：%s" % (out.strip().splitlines()[:2],)]
+
+    text = io.open(mir, encoding="utf-8").read()
+    n_func = text.count("\nfunc:") + (1 if text.startswith("func:") else 0)
+    if n_func != 3:
+        probs.append("TP7 目录里 3 个 .m 应产出 3 个函数，实得 %d" % n_func)
+    if "call:y:addone:x" not in text:
+        probs.append("TP7 跨文件调用没被解析（addone 在另一个 .m 里）")
+
+    if fast:
+        print("  [TP7] 目录转换：%d 个函数（快检，跳过编译）" % n_func)
+        return probs
+
+    gen = os.path.join(d, "gen")
+    rc, out = _run([M2C_BIN, "build", "--mir", mir, "--out", gen,
+                    "--name", "proj", "--expect", exp])
+    if rc != 0:
+        probs.append("TP7 生成工程失败：%s" % (out.strip().splitlines()[:2],))
+        return probs
+
+    cc = fidelity.find_c_compiler()
+    if not cc:
+        probs.append("TP7 没有可用 C 编译器")
+        return probs
+    rt = os.path.join(ROOT, "c_runtime")
+    exe = os.path.join(gen, "proj.exe" if os.name == "nt" else "proj")
+    base = list(cc) if isinstance(cc, (list, tuple)) else [cc]
+    rc, out = _run(base + ["-std=c99", "-O1",
+                           "-I", os.path.join(gen, "include"),
+                           "-I", os.path.join(rt, "include"),
+                           os.path.join(gen, "src", "gen.c"),
+                           os.path.join(gen, "src", "main.c"),
+                           os.path.join(rt, "src", "mlc_runtime.c"),
+                           os.path.join(rt, "src", "mlc_ops.c"), "-o", exe])
+    if rc != 0:
+        probs.append("TP7 工程编译失败：%s" % (out.strip().splitlines()[:2],))
+        return probs
+
+    rc, out = _run([exe], timeout=60)
+    if rc != 0:
+        probs.append("TP7 工程运行失败（rc=%s）：%s"
+                     % (rc, out.strip().splitlines()[:2]))
+        return probs
+    bad = compare_outputs([ln.strip() for ln in out.strip().splitlines()],
+                          exp, "工程级")
+    if bad:
+        probs.append(bad)
+    else:
+        print("  [TP7] 多文件工程：3 个 .m -> 3 个函数，跨文件调用，数值一致")
+    return probs
+
+
+def check_dynamic_consistency():
+    """分配型算子清单的三份副本必须一致。
+
+    同一件事现在写在三处：算子表（dynamic 标注）、Rust（DYNAMIC_OPS）、
+    C（`*_alloc` 符号）。三处不同步的后果是**静默的**：
+    算子表说动态、Rust 不知道 -> 生成器预先 init 一个长度不对的数组。
+    """
+    probs = []
+    mine = operators.dynamic_ops()
+
+    rust = set()
+    rs = os.path.join(ROOT, "rust", "m2c", "src", "emit.rs")
+    if os.path.isfile(rs):
+        txt = io.open(rs, encoding="utf-8").read()
+        m = re.search(r"DYNAMIC_OPS:\s*&\[&str\]\s*=\s*&\[(.*?)\]", txt, re.S)
+        if m:
+            rust = set(re.findall(r'"(OP-[A-Z0-9]+)"', m.group(1)))
+        else:
+            probs.append("TP8 在 emit.rs 里找不到 DYNAMIC_OPS 清单")
+    else:
+        probs.append("TP8 找不到 rust/m2c/src/emit.rs")
+
+    cpaths = [os.path.join(ROOT, "c_runtime", "include", "mlc_ops.h")]
+    calls = set()
+    for p in cpaths:
+        if os.path.isfile(p):
+            txt = io.open(p, encoding="utf-8").read()
+            calls = set(re.findall(r"mlc_op_([a-z0-9_]+)_alloc\s*\(", txt))
+    # C 侧符号名 -> 算子 ID 映射靠算子表里的 c 字段
+    from_c = set()
+    for o in operators.OPERATORS:
+        name = (o.get("c") or "")
+        short = name[len("mlc_op_"):] if name.startswith("mlc_op_") else name
+        short = short.replace("_alloc", "")
+        if short in calls:
+            from_c.add(o["id"])
+
+    if mine != rust:
+        probs.append("TP8 分配型算子不一致：算子表 %s vs Rust %s"
+                     % (sorted(mine), sorted(rust)))
+    if mine != from_c:
+        probs.append("TP8 分配型算子不一致：算子表 %s vs C 的 *_alloc %s"
+                     % (sorted(mine), sorted(from_c)))
+    if not probs:
+        print("  [TP8] 分配型算子三处一致：%s" % "、".join(sorted(mine)))
+    return probs
 
 
 def check_ledger_stale(path=None):
@@ -691,6 +809,8 @@ def run_checks(require_c=False):
     probs.extend(fp)
     probs.extend(check_ledger_stale())
     probs.extend(check_ownership())
+    probs.extend(check_dynamic_consistency())
+    probs.extend(check_project_dir())
     m2c_probs, m2c_stats = check_m2c(require_c=require_c, fast=FAST)
     probs.extend(m2c_probs)
     probs.extend(check_ledger())
@@ -945,7 +1065,7 @@ def main(argv=None):
         return 1
     _mm = stats.get("m2c") or {}
     _dump_stats(stats)
-    print("check_translate_port: OK（TP1–TP5 全绿；golden %d/%d；C %s；"
+    print("check_translate_port: OK（TP1–TP8 全绿；golden %d/%d；C %s；"
           "台账 %d 条；MIR 函数 %s / 算子 %s / 未映射 %s / 编译 %s）"
           % (stats["fidelity"]["passed"], stats["fidelity"]["total"],
              ("未跑（快检）" if FAST

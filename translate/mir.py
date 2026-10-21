@@ -232,18 +232,23 @@ def oid0_is_slice(oid):
     return oid == "OP-SLICE"
 
 
-def to_mir(source):
+def to_mir(source, extra_names=None, header=True):
     """返回 (mir_text, stats)。
 
     stats: {functions, ops, unmapped, per_op} —— 门与报告都用它，
     避免"读一行 OK 就当覆盖率"。
+
+    `extra_names`：**整个工程**的函数名。目录转换时传入 ——
+    否则跨文件调用会被当成"未知名字"而拒绝，而单文件视角看不出这是错的。
     """
     funcs = split_functions(source)
     fnames = set(f["name"] for f in funcs)
+    if extra_names:
+        fnames |= set(extra_names)
     n_calls = [0]
     n_tmp = [0]
     n_ops_delta = [0]
-    out = ["version 3"]
+    out = ["version 3"] if header else []
     n_ops = 0
     n_unmapped = 0
     per_op = {}
@@ -400,6 +405,52 @@ def main(argv=None):
     ap.add_argument("source")
     ap.add_argument("-o", "--out", default=None)
     args = ap.parse_args(argv)
+
+    import os
+
+    if os.path.isdir(args.source):
+        # **目录级转换**：真实 MATLAB 工程是一堆 .m 互相调用；
+        # 单文件视角会把跨文件调用当成未知名字。
+        names, files = set(), []
+        for fn in sorted(os.listdir(args.source)):
+            if not fn.lower().endswith(".m"):
+                continue
+            p = os.path.join(args.source, fn)
+            if not os.path.isfile(p):
+                continue
+            try:
+                src0 = io.open(p, encoding="utf-8", errors="replace").read()
+            except (IOError, OSError) as exc:
+                print("读不了 %s：%s" % (p, exc))
+                return 2
+            files.append(fn)
+            for f in split_functions(src0):
+                names.add(f["name"])
+        if not files:
+            print("目录里没有 .m 文件：%s" % args.source)
+            return 1
+        total = {"functions": 0, "ops": 0, "unmapped": 0, "per_op": {},
+                 "calls": 0}
+        body = None
+        for fn in files:
+            p = os.path.join(args.source, fn)
+            src = io.open(p, encoding="utf-8", errors="replace").read()
+            t, st = to_mir(src, extra_names=names, header=(body is None))
+            body = t if body is None else body + t
+            for k in ("functions", "ops", "unmapped", "calls"):
+                total[k] += st[k]
+            for k, v in st["per_op"].items():
+                total["per_op"][k] = total["per_op"].get(k, 0) + v
+        text, stats = body, total
+        stats["files"] = len(files)
+        if args.out:
+            io.open(args.out, "w", encoding="utf-8", newline="").write(text)
+            print("[ok] %s（%d 个 .m / 函数 %d / 算子 %d / 未映射 %d）"
+                  % (args.out, len(files), stats["functions"], stats["ops"],
+                     stats["unmapped"]))
+            return 0
+        sys.stdout.write(text)
+        return 0
 
     try:
         src = io.open(args.source, encoding="utf-8", errors="replace").read()

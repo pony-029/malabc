@@ -57,7 +57,7 @@ OPERATORS = (
      "sample": "y = x(2);",
      "verified_by": "op_index_shift.json"},
     {"id": "OP-FIND", "matlab": "find(x > k)", "c": "mlc_op_find_alloc",
-     "kind": "select", "rules": ("IDX-1",),
+     "kind": "select", "rules": ("IDX-1",), "dynamic": True,
      "sample": "i = find(x > 1);",
      "verified_by": "op_find_gt.json"},
     {"id": "OP-FLATTEN", "matlab": "A(:)", "c": "mlc_op_flatten",
@@ -65,7 +65,7 @@ OPERATORS = (
      "sample": "y = A(:);",
      "verified_by": "op_flatten_2x2.json"},
     {"id": "OP-MASK", "matlab": "x(x > k)", "c": "mlc_op_mask",
-     "kind": "select", "rules": ("IDX-1",),
+     "kind": "select", "rules": ("IDX-1",), "dynamic": True,
      "sample": "y = x(x > 1);",
      "verified_by": "op_mask_gt.json"},
     {"id": "OP-SLICE", "matlab": "x(a:b)", "c": "mlc_op_slice",
@@ -126,6 +126,11 @@ def operator_ids():
         if op["id"] not in out:
             out.append(op["id"])
     return tuple(out)
+
+
+def dynamic_ops():
+    """算子表里标了 "dynamic" 的那些（输出长度数据相关 -> 由算子分配）。"""
+    return {o["id"] for o in OPERATORS if o.get("dynamic")}
 
 
 def by_id(op_id):
