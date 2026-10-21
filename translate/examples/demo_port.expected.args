@@ -1,0 +1,7 @@
+addone: 20 40 60
+pick: 30
+sumall: 60
+add_and_sum: 20 40 60 | 60
+pickbig: 30
+repeater: 20 40 60
+fancy: skipped (no shape)

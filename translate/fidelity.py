@@ -14,6 +14,7 @@
 """
 
 import io
+import itertools
 import json
 import os
 import shlex
@@ -62,18 +63,50 @@ def _expect(shape, data):
     return {"dtype": "f64", "shape": list(shape), "data": _flat(data)}
 
 
+def _bcast_shape(shapes):
+    """按尾维对齐求广播形状；不可广播就抛错（不猜）。"""
+    n = max(len(sh) for sh in shapes)
+    out = []
+    for i in range(n):
+        dims = []
+        for sh in shapes:
+            j = len(sh) - n + i
+            dims.append(sh[j] if j >= 0 else 1)
+        m = max(dims)
+        for d in dims:
+            if d != m and d != 1:
+                raise ValueError("bcast: 形状不可广播 %r" % (shapes,))
+        out.append(m)
+    return out
+
+
+def _bcast_value(flat, shape, idx):
+    """把输出多下标映射到输入下标；广播维（形状为 1 或缺失）取 0。"""
+    off = 0
+    stride = 1
+    n = len(shape)
+    for i in range(n - 1, -1, -1):
+        j = len(idx) - n + i
+        pos = 0 if shape[i] == 1 else idx[j]
+        off += pos * stride
+        stride *= shape[i]
+    return flat[off]
+
+
 def _run_binary(case, fn):
-    """元素级二元运算：同形或标量广播；越界形态直接报错（不猜）。"""
-    fa = _flat(case["inputs"]["a"]["data"])
-    fb = _flat(case["inputs"]["b"]["data"])
-    n = max(len(fa), len(fb))
-    if len(fa) not in (1, n) or len(fb) not in (1, n):
-        raise ValueError("binary: 形状不能广播")
-    out = [fn(fa[0] if len(fa) == 1 else fa[i],
-              fb[0] if len(fb) == 1 else fb[i]) for i in range(n)]
-    shape = case["inputs"]["a"]["shape"]
-    if len(fa) == 1:
-        shape = case["inputs"]["b"]["shape"]
+    """元素级二元运算：按尾维对齐广播（与 mlc_ops.c 的 mlc_bcast_shape 同规则）。"""
+    a = case["inputs"]["a"]
+    b = case["inputs"]["b"]
+    fa = _flat(a["data"])
+    fb = _flat(b["data"])
+    sa = list(a.get("shape") or [len(fa)])
+    sb = list(b.get("shape") or [len(fb)])
+    if len(fa) != _numel(sa) or len(fb) != _numel(sb):
+        raise ValueError("binary: 数据长度与形状不符")
+    shape = _bcast_shape([sa, sb])
+    out = []
+    for idx in itertools.product(*[range(d) for d in shape]):
+        out.append(fn(_bcast_value(fa, sa, idx), _bcast_value(fb, sb, idx)))
     return _expect(shape, out)
 
 
@@ -259,17 +292,39 @@ _UNARY_C = {"OP-SUM": "mlc_op_sum", "OP-MEAN": "mlc_op_mean",
             "OP-MAX": "mlc_op_max", "OP-MIN": "mlc_op_min"}
 
 
-def _c_array_lines(name, arr):
-    """生成一个 1D f64 数组的声明与 mlc_array 绑定。"""
-    flat = _flat(arr.get("data"))
+def _strides(shape):
+    """行主序步长（元素单位）。"""
+    st = [1] * len(shape)
+    for i in range(len(shape) - 2, -1, -1):
+        st[i] = st[i + 1] * shape[i + 1]
+    return st
+
+
+def _c_array_decl(name, shape, flat):
+    """生成 (数据数组声明, mlc_array 字段赋值) —— 用**真实形状**，不是压平。"""
     n = len(flat)
     vals = ", ".join("%.17g" % v for v in flat)
+    st = _strides(shape)
+    fields = ["{0}.data={0}d".format(name), "{0}.dtype=MLC_F64".format(name)]
+    fields.append("{0}.ndim={1}".format(name, len(shape)))
+    for i, d in enumerate(shape):
+        fields.append("{0}.shape[{1}]={2}".format(name, i, d))
+    for i, d in enumerate(st):
+        fields.append("{0}.strides[{1}]={2}".format(name, i, d))
+    fields.append("{0}.owns_data=0".format(name))
     return [
         "    double {0}d[{1}] = {{{2}}};".format(name, n, vals),
-        ("    mlc_array {0}; {0}.data={0}d; {0}.dtype=MLC_F64; "
-         "{0}.ndim=1; {0}.shape[0]={1}; {0}.strides[0]=1; "
-         "{0}.owns_data=0;").format(name, n),
+        "    mlc_array {0}; {1};".format(name, "; ".join(fields)),
     ]
+
+
+def _c_array_lines(name, arr):
+    flat = _flat(arr.get("data"))
+    shape = list(arr.get("shape") or [len(flat)])
+    if len(flat) != _numel(shape):
+        raise ValueError("%s: 数据长度 %d 与形状 %r 不符"
+                         % (name, len(flat), shape))
+    return _c_array_decl(name, shape, flat)
 
 
 def emit_c_program(case):
@@ -279,15 +334,15 @@ def emit_c_program(case):
             '#include "mlc_ops.h"', 'int main(void) {']
     if op in _BINARY_C:
         a, b = case["inputs"]["a"], case["inputs"]["b"]
-        na = len(_flat(a["data"]))
-        nb = len(_flat(b["data"]))
-        no = max(na, nb)
+        sha = list(a.get("shape") or [len(_flat(a["data"]))])
+        shb = list(b.get("shape") or [len(_flat(b["data"]))])
+        osh = _bcast_shape([sha, shb])
+        no = _numel(osh)
         lines = head + _c_array_lines("a", a) + _c_array_lines("b", b)
         lines += [
             "    double od[{0}] = {{0}};".format(no),
-            "    mlc_array o; mlc_status st;",
-            ("    o.data=od; o.dtype=MLC_F64; o.ndim=1; o.shape[0]={0}; "
-             "o.strides[0]=1; o.owns_data=0;").format(no),
+            "    mlc_status st;",
+            _c_array_decl("o", osh, [0.0] * no)[1],
             "    st = {0}(&a, &b, &o);".format(_BINARY_C[op]),
             '    if (st != MLC_OK) { printf("ERR %d\\n", (int)st);'
             ' return 1; }',

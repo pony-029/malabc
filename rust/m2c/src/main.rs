@@ -211,6 +211,17 @@ fn selftest() -> ExitCode {
     let code6 = emit::emit_func(&lp[0]).unwrap_or_default();
     chk(code6.contains("for (int64_t i = 1; i <= 3; ++i)"), "for 发射成 C 循环");
 
+    // 广播：与 C / Python 同规则
+    let bc = mir::parse(
+        "version 2\nfunc:b\narg:a:f64:2,3\narg:d:f64:3\nret:y:f64:2,3\nop:OP-ADD:y:a:d\nend\n",
+    )
+    .unwrap_or_default();
+    let code_bc = emit::emit_func(&bc[0]).unwrap_or_default();
+    chk(code_bc.contains("mlc_array_init(y, MLC_F64, 2, (int64_t[]){2, 3})"),
+        "2x3 + 3 广播成 2x3");
+    chk(emit::bcast_shape(&[3, 1], &[1, 4]) == Some(vec![3, 4]), "3x1 与 1x4 广播成 3x4");
+    chk(emit::bcast_shape(&[2], &[3]).is_none(), "2 与 3 不可广播（必须拒绝）");
+
     // 确定性
     let a = emit::emit_func(&funcs[0]).unwrap_or_default();
     let b = emit::emit_func(&funcs[0]).unwrap_or_default();

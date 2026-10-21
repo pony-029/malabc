@@ -6,7 +6,7 @@
 //! 3. **只调 `mlc.h` / `mlc_ops.h` 已有契约**；
 //! 4. **谁分配谁释放**：局部临时由本函数 `mlc_array_free`；返回值由调用方释放。
 
-use crate::mir::{Func, Loop, Op};
+use crate::mir::{Func, If, Loop, Op};
 
 /// 已经有 C 落点的算子（与 `translate/operators.py` 的 `C_IMPLEMENTED` 对齐）。
 pub const C_IMPLEMENTED: &[&str] = &[
@@ -93,20 +93,34 @@ pub fn proto(f: &Func) -> String {
     format!("mlc_status m2c_{}({});", ident(&f.name), params.join(", "))
 }
 
+/// 按尾维对齐的广播：逐维取 max；某维既不相等、也不含 1 → 不可广播（返回 None）。
+/// 与 `mlc_ops.c::mlc_bcast_shape` 和 `fidelity._bcast_shape` **必须同规则**，
+/// 否则"生成出来能编译、跑起来报 ERR"这类错会反复出现。
+pub fn bcast_shape(a: &[i64], b: &[i64]) -> Option<Vec<i64>> {
+    let n = a.len().max(b.len());
+    let mut out = Vec::with_capacity(n);
+    for i in 0..n {
+        let da = if i + a.len() >= n { a[i + a.len() - n] } else { 1 };
+        let db = if i + b.len() >= n { b[i + b.len() - n] } else { 1 };
+        if da != db && da != 1 && db != 1 {
+            return None;
+        }
+        out.push(da.max(db));
+    }
+    Some(out)
+}
+
 /// 输出形状推断：命中不了就 None（调用方发 TODO）。
 fn out_shape(f: &Func, op: &Op) -> Option<Vec<i64>> {
     if REDUCTIONS.contains(&op.id.as_str()) || op.id == "OP-INDEX" {
         return Some(vec![1]);
     }
-    // 元素级：取第一个数组参数；第二个是标量形状忽略，形状不同则不支持（诚实边界）
+    // 元素级：按尾维对齐求广播形状（与 mlc_ops.c 的 mlc_bcast_shape 同规则）。
     let s0 = f.var_shape(&op.args[0]);
     if op.args.len() == 2 {
         let s1 = f.var_shape(&op.args[1]);
         if let (Some(a), Some(b)) = (s0.clone(), s1.clone()) {
-            if a != b && a != vec![1] && b != vec![1] {
-                return None; // 真正的广播尚未实现
-            }
-            return Some(if a == vec![1] { b } else { a });
+            return bcast_shape(&a, &b);
         }
     }
     s0
@@ -216,7 +230,7 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool) -> Vec<String> {
     out
 }
 
-fn emit_loop(f: &Func, lp: &Loop, indent_extra: bool) -> Vec<String> {
+fn emit_loop(f: &Func, lp: &Loop) -> Vec<String> {
     let mut out = Vec::new();
     let var = ident(&lp.var);
     // 起止必须是整数字面量或已声明标量；不猜
@@ -249,13 +263,95 @@ fn emit_loop(f: &Func, lp: &Loop, indent_extra: bool) -> Vec<String> {
     out
 }
 
-/// 一个函数的 C 定义。
+/// 某个名字（返回值 / 临时）的形状：取**最后一条写它**的算子的输出形状。
+fn out_shape_for(f: &Func, name: &str) -> Option<Vec<i64>> {
+    let mut shape = None;
+    for op in &f.ops {
+        if op.lhs == name {
+            shape = out_shape(f, op).or(shape);
+        }
+    }
+    for lp in &f.loops {
+        for op in &lp.ops {
+            if op.lhs == name {
+                shape = out_shape(f, op).or(shape);
+            }
+        }
+    }
+    for blk in &f.ifs {
+        for op in blk.then_ops.iter().chain(blk.else_ops.iter()) {
+            if op.lhs == name {
+                shape = out_shape(f, op).or(shape);
+            }
+        }
+    }
+    shape
+}
+
+fn cmp_c(op: &str) -> &'static str {
+    match op {
+        "eq" => "==",
+        "ne" => "!=",
+        "lt" => "<",
+        "le" => "<=",
+        "gt" => ">",
+        _ => ">=",
+    }
+}
+
+fn emit_if(f: &Func, blk: &If) -> Vec<String> {
+    let mut out = Vec::new();
+    let var = ident(&blk.var);
+    // 左值必须是已声明的标量；右值只收整数字面量或标量名（不猜表达式）
+    let ok_var = f.var_dtype(&blk.var).map(|d| is_scalar(d.as_str())).unwrap_or(false);
+    if !ok_var {
+        out.push(format!(
+            "    /* TODO(if): 条件变量 {} 不是 i64 标量（本版只支持标量比较）*/",
+            sanitize_comment(&blk.var)
+        ));
+        out.push("    return MLC_UNIMPLEMENTED;".to_string());
+        return out;
+    }
+    let rhs = if is_int_literal(&blk.rhs) {
+        blk.rhs.clone()
+    } else if f.var_dtype(&blk.rhs).map(|d| is_scalar(d.as_str())).unwrap_or(false) {
+        ident(&blk.rhs)
+    } else {
+        out.push(format!(
+            "    /* TODO(if): 右值 {} 既不是整数字面量也不是 i64 标量 */",
+            sanitize_comment(&blk.rhs)
+        ));
+        out.push("    return MLC_UNIMPLEMENTED;".to_string());
+        return out;
+    };
+    out.push(format!("    if ({} {} {}) {{", var, cmp_c(&blk.cmp), rhs));
+    let mut term = false;
+    for op in &blk.then_ops {
+        let is_ret = f.rets.iter().any(|r| r.name == op.lhs);
+        for line in emit_op(f, op, is_ret) {
+            term |= line.trim().starts_with("return ");
+            out.push(format!("    {}", line.trim_start()));
+        }
+    }
+    if !blk.else_ops.is_empty() {
+        out.push("    } else {".to_string());
+        for op in &blk.else_ops {
+            let is_ret = f.rets.iter().any(|r| r.name == op.lhs);
+            for line in emit_op(f, op, is_ret) {
+                term |= line.trim().starts_with("return ");
+                out.push(format!("    {}", line.trim_start()));
+            }
+        }
+    }
+    out.push("    }".to_string());
+    let _ = term;
+    out
+}
+
+/// 一个函数的 C 定义（支持多返回值）。
 pub fn emit_func(f: &Func) -> Result<String, String> {
     if f.rets.is_empty() {
         return Err(format!("函数 {} 没有 ret（本版只支持有返回值的函数）", f.name));
-    }
-    if f.rets.len() > 1 {
-        return Err(format!("函数 {} 有多个返回值（本版只支持单返回）", f.name));
     }
 
     let mut out: Vec<String> = Vec::new();
@@ -264,35 +360,34 @@ pub fn emit_func(f: &Func) -> Result<String, String> {
     out.push("    mlc_status st = MLC_OK;".to_string());
     out.push("    (void)st;".to_string());
 
-    // 返回值 / 临时的初始化（形状必须已知 —— 否则发 TODO）
-    let ret = &f.rets[0];
-    let ret_name = ident(&ret.name);
-    let mut need_free: Vec<String> = Vec::new();
-
-    if is_scalar(&ret.dtype) {
-        // 标量返回：不需要 mlc_array_init
-    } else {
-        let shape = match out_shape_last(f) {
+    // 每个返回值都按自己的形状初始化（mlc.h 要求调用方 init）
+    for ret in &f.rets {
+        if is_scalar(&ret.dtype) {
+            continue;
+        }
+        let name = ident(&ret.name);
+        let shape = match out_shape_for(f, &ret.name) {
             Some(sh) => sh,
             None => {
-                // 先如实说明"哪几条没被映射"，再说"形状推不出" ——
-                // 否则读者只看到后者，会以为问题出在形状上。
                 if !f.unmapped.is_empty() {
                     out.push("    /* 以下语句未能确定性映射（不是猜测的翻译）： */".to_string());
                     for u in &f.unmapped {
                         out.push(format!("    /* TODO(unmapped): {} */", sanitize_comment(u)));
                     }
                 }
-                out.push("    /* TODO(ret): 推断不出返回值形状（需要形状标注或更简单的表达式）*/".to_string());
+                out.push(format!(
+                    "    /* TODO(ret): 推断不出 {} 的形状（需要形状标注）*/",
+                    ret.name
+                ));
                 out.push("    return MLC_UNIMPLEMENTED;".to_string());
                 out.push("}".to_string());
                 return Ok(out.join("\n"));
             }
         };
-        match init_call(&ret_name, &ret.dtype, &shape, true) {
+        match init_call(&name, &ret.dtype, &shape, true) {
             Some(l) => out.push(l),
             None => {
-                out.push("    /* TODO(ret): 不支持的 dtype */".to_string());
+                out.push(format!("    /* TODO(ret): 不支持的 dtype {} */", ret.dtype));
                 out.push("    return MLC_UNIMPLEMENTED;".to_string());
                 out.push("}".to_string());
                 return Ok(out.join("\n"));
@@ -301,6 +396,7 @@ pub fn emit_func(f: &Func) -> Result<String, String> {
     }
 
     // 局部临时
+    let mut need_free: Vec<String> = Vec::new();
     for op in &f.ops {
         let is_arg = f.args.iter().any(|x| x.name == op.lhs);
         let is_ret = f.rets.iter().any(|x| x.name == op.lhs);
@@ -313,10 +409,10 @@ pub fn emit_func(f: &Func) -> Result<String, String> {
         }
         out.push(format!("    mlc_array {};", t));
         let shape = out_shape(f, op).unwrap_or_else(|| vec![1]);
-        let dt = f.var_dtype(&op.lhs).unwrap_or_else(|| "f64".to_string());
+        let dt = "f64".to_string();
         match init_call(&t, &dt, &shape, false) {
             Some(l) => out.push(l),
-            None => out.push(format!("    /* TODO({}): 不支持的 dtype {} */", t, dt)),
+            None => out.push(format!("    /* TODO({}): 不支持的 dtype */", t)),
         }
         need_free.push(t);
     }
@@ -335,7 +431,15 @@ pub fn emit_func(f: &Func) -> Result<String, String> {
         if terminated {
             break;
         }
-        let block = emit_loop(f, lp, false);
+        let block = emit_loop(f, lp);
+        terminated = block.iter().any(|l| l.trim().starts_with("return "));
+        out.extend(block);
+    }
+    for blk in &f.ifs {
+        if terminated {
+            break;
+        }
+        let block = emit_if(f, blk);
         terminated = block.iter().any(|l| l.trim().starts_with("return "));
         out.extend(block);
     }

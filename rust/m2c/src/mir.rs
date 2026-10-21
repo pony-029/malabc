@@ -45,8 +45,24 @@ pub struct Func {
     pub ops: Vec<Op>,
     /// `for:<循环变量>:<起>:<止>` 的展开形式：这里只记循环体起点下标。
     pub loops: Vec<Loop>,
+    /// `if:<变量>:<比较>:<右值>` 块。
+    pub ifs: Vec<If>,
     /// 未能映射的原始语句（保持原文，便于人读与 TODO 注释）。
     pub unmapped: Vec<String>,
+}
+
+/// 一个 `if/else`（本版只支持「标量与整数字面量比较」这一种条件）。
+///
+/// 为什么要这么窄：没有表达式 IR 的时候，把任意条件原样透传成 C 会
+/// **把未验证的语义悄悄带进生成物**。这里只收 `== != < <= > >=` 六种，
+/// 其余一律 `unmapped` —— 宁可不生成，也不生成一段没把握的代码。
+#[derive(Debug, Clone, PartialEq)]
+pub struct If {
+    pub var: String,
+    pub cmp: String,
+    pub rhs: String,
+    pub then_ops: Vec<Op>,
+    pub else_ops: Vec<Op>,
 }
 
 /// 一个 `for` 循环（本版只支持 `i = a:b` 的整数步长）。
@@ -75,6 +91,11 @@ impl Func {
         for lp in &self.loops {
             v.push(lp.var.clone());
             for op in &lp.ops {
+                v.push(op.lhs.clone());
+            }
+        }
+        for blk in &self.ifs {
+            for op in blk.then_ops.iter().chain(blk.else_ops.iter()) {
                 v.push(op.lhs.clone());
             }
         }
@@ -152,6 +173,8 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
     let mut funcs: Vec<Func> = Vec::new();
     let mut cur: Option<Func> = None;
     let mut loop_cur: Option<Loop> = None;
+    let mut if_cur: Option<If> = None;
+    let mut in_else = false;
     let mut seen_version = false;
 
     for (lineno, raw) in text.lines().enumerate() {
@@ -180,11 +203,26 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
                 rets: Vec::new(),
                 ops: Vec::new(),
                 loops: Vec::new(),
+                ifs: Vec::new(),
                 unmapped: Vec::new(),
             });
             continue;
         }
+        if line == "else" {
+            if if_cur.is_none() {
+                return Err(format!("第 {} 行：多余的 else", lineno + 1));
+            }
+            in_else = true;
+            continue;
+        }
         if line == "end" {
+            if let Some(blk) = if_cur.take() {
+                if let Some(f) = cur.as_mut() {
+                    f.ifs.push(blk);
+                }
+                in_else = false;
+                continue;
+            }
             if let Some(lp) = loop_cur.take() {
                 // `end` 关的是循环体
                 if let Some(f) = cur.as_mut() {
@@ -219,11 +257,37 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
                 to: parts[2].to_string(),
                 ops: Vec::new(),
             });
+        } else if let Some(rest) = line.strip_prefix("if:") {
+            if if_cur.is_some() {
+                return Err(format!("第 {} 行：if 不支持嵌套（本版）", lineno + 1));
+            }
+            let parts: Vec<&str> = rest.split(':').map(|x| x.trim()).collect();
+            if parts.len() != 3 {
+                return Err(format!("if 需要 变量:比较:右值：{}", rest));
+            }
+            if !["eq", "ne", "lt", "le", "gt", "ge"].contains(&parts[1]) {
+                return Err(format!("不支持的比较符：{}", parts[1]));
+            }
+            if_cur = Some(If {
+                var: parts[0].to_string(),
+                cmp: parts[1].to_string(),
+                rhs: parts[2].to_string(),
+                then_ops: Vec::new(),
+                else_ops: Vec::new(),
+            });
         } else if let Some(rest) = line.strip_prefix("op:") {
             let op = parse_op(rest)?;
-            match loop_cur.as_mut() {
-                Some(lp) => lp.ops.push(op),
-                None => f.ops.push(op),
+            if let Some(blk) = if_cur.as_mut() {
+                if in_else {
+                    blk.else_ops.push(op);
+                } else {
+                    blk.then_ops.push(op);
+                }
+            } else {
+                match loop_cur.as_mut() {
+                    Some(lp) => lp.ops.push(op),
+                    None => f.ops.push(op),
+                }
             }
         } else if let Some(rest) = line.strip_prefix("unmapped:") {
             f.unmapped.push(rest.to_string());
@@ -232,6 +296,9 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
         }
     }
 
+    if if_cur.is_some() {
+        return Err("文件结束时仍有未收束的 if".to_string());
+    }
     if loop_cur.is_some() {
         return Err("文件结束时仍有未收束的 for".to_string());
     }

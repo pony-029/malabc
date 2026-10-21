@@ -44,6 +44,11 @@ _FUNC_RE = re.compile(
     r"(?P<name>[A-Za-z_]\w*)\s*\((?P<args>[^)]*)\)")
 #: `% @m2c i64 i` —— 显式类型标注
 _ANNO_RE = re.compile(r"^\s*%\s*@m2c\s+(?P<type>i64|f64)\s+(?P<names>[A-Za-z_][\w\s,]*)$")
+#: `if i > 1` —— 只认「标量与整数字面量/变量」的六种比较；其余进 unmapped。
+_IF_RE = re.compile(r"^if\s+(?P<var>[A-Za-z_]\w*)\s*"
+                    r"(?P<cmp>==|~=|<=|>=|<|>)\s*(?P<rhs>[A-Za-z_\w]+)$")
+_CMP = {"==": "eq", "~=": "ne", "<": "lt", "<=": "le", ">": "gt", ">=": "ge"}
+
 #: `for i = 1:3` —— 只认整数边界（变量名或字面量），复杂形式进 unmapped。
 _FOR_RE = re.compile(r"^for\s+(?P<var>[A-Za-z_]\w*)\s*=\s*(?P<a>[\w]+)\s*:\s*(?P<b>[\w]+)\s*$")
 
@@ -136,21 +141,34 @@ def to_mir(source):
             out.append(_var_line("arg", a, f))
         for r in f["rets"]:
             out.append(_var_line("ret", r, f))
-        depth = 0
+        blocks = []                    # 块栈："for" / "if"
         for line in f["lines"]:
             code = _clean(line).strip()
             if not code:
                 continue
+            if code == "else":
+                if blocks and blocks[-1] == "if":
+                    out.append("else")
+                else:
+                    out.append("unmapped:%s" % code)
+                continue
             if code == "end" or code.startswith("end "):
-                if depth:
-                    out.append("end")      # 收束循环体
-                    depth -= 1
+                if blocks:
+                    out.append("end")      # 收束块
+                    blocks.pop()
                 continue
             fm = _FOR_RE.match(code)
             if fm:
                 out.append("for:%s:%s:%s" % (fm.group("var"), fm.group("a"),
                                              fm.group("b")))
-                depth += 1
+                blocks.append("for")
+                continue
+            im = _IF_RE.match(code)
+            if im:
+                out.append("if:%s:%s:%s" % (im.group("var"),
+                                            _CMP[im.group("cmp")],
+                                            im.group("rhs")))
+                blocks.append("if")
                 continue
             use = operators.parse_line(code)
             if use is None:
@@ -162,9 +180,9 @@ def to_mir(source):
                        % (use["operator"], use["lhs"], ":".join(args)))
             n_ops += 1
             per_op[use["operator"]] = per_op.get(use["operator"], 0) + 1
-        while depth:
-            out.append("end")              # 容错：没写 end 的循环也收束
-            depth -= 1
+        while blocks:
+            out.append("end")              # 容错：没写 end 的块也收束
+            blocks.pop()
         out.append("end")
     stats = {"functions": len(funcs), "ops": n_ops,
              "unmapped": n_unmapped, "per_op": per_op}

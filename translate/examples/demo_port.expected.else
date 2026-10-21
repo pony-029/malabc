@@ -1,0 +1,7 @@
+addone: 2 4 6
+pick: 1
+sumall: 6
+add_and_sum: 2 4 6 | 6
+pickbig: 6
+repeater: 2 4 6
+fancy: skipped (no shape)

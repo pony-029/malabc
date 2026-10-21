@@ -398,23 +398,35 @@ def check_m2c(require_c=False):
                 probs.append("TP5 生成工程链接失败：%s"
                              % (out.strip().splitlines()[:2],))
             else:
-                rc, out = _run([exe])
-                if rc != 0:
-                    probs.append("TP5 生成的程序退出码 %s：%s"
-                                 % (rc, out.strip().splitlines()[:2]))
-                else:
+                # **两组输入**：默认（a[i]=i+1）与 argv（10 20 30 3）。
+                # 只跑默认值的话，"输入从哪来"这条链路根本没被验证过。
+                # 第三组故意让 i=1，覆盖 `if i > 1` 的 **else** 分支 ——
+                # 两组都走 then 的话，else 里那几行等于没被测过。
+                cases = [
+                    ([], "demo_port.expected"),
+                    (["10", "20", "30", "3"], "demo_port.expected.args"),
+                    (["1", "2", "3", "1"], "demo_port.expected.else"),
+                ]
+                for extra, exp_name in cases:
+                    rc, out = _run([exe] + extra)
+                    tag = "默认" if not extra else "argv %s" % " ".join(extra)
+                    if rc != 0:
+                        probs.append("TP5 生成程序退出码 %s（%s）：%s"
+                                     % (rc, tag, out.strip().splitlines()[:2]))
+                        continue
                     got = [ln.strip() for ln in out.strip().splitlines()]
                     exp_path = os.path.join(ROOT, "translate", "examples",
-                                            "demo_port.expected")
+                                            exp_name)
                     exp = [ln.strip() for ln in
                            io.open(exp_path, encoding="utf-8").read()
                            .splitlines() if ln.strip()]
                     if got != exp:
                         probs.append(
-                            "TP5 生成程序输出与期望不符：\n  期望 %r\n  实得 %r"
-                            % (exp, got))
+                            "TP5 输出与期望不符（%s）：\n  期望 %r\n  实得 %r"
+                            % (tag, exp, got))
                     else:
-                        print("  [TP5] 运行结果与期望一致（%d 行）" % len(exp))
+                        print("  [TP5] %s 输入：%d 行与期望一致"
+                              % (tag, len(exp)))
     else:
         print(u"  [TP5] 没有 C 编译器：只验了「可发射 + 确定性」，"
               u"没验「可编译」")

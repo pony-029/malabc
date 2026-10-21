@@ -16,13 +16,56 @@ enum {
     MLC_BIN_DIV = 3
 };
 
+/*
+ * 广播形状：按**尾维对齐**，逐维取 max；只有当某一维相等或其中之一为 1 时才算可广播。
+ * 返回 0 表示不可广播（调用方应报 MLC_ERR —— 不猜一个形状）。
+ */
+static int mlc_bcast_shape(const mlc_array *a, const mlc_array *b,
+                           int64_t *shape, int32_t *ndim)
+{
+    int32_t na = a->ndim, nb = b->ndim, n, i;
+    if (na <= 0 || nb <= 0 || na > MLC_MAX_DIMS || nb > MLC_MAX_DIMS) {
+        return 0;
+    }
+    n = (na > nb) ? na : nb;
+    for (i = 0; i < n; ++i) {
+        int32_t ia = na - n + i, ib = nb - n + i;
+        int64_t da = (ia >= 0) ? a->shape[ia] : 1;
+        int64_t db = (ib >= 0) ? b->shape[ib] : 1;
+        if (da != db && da != 1 && db != 1) {
+            return 0;
+        }
+        shape[i] = (da > db) ? da : db;
+    }
+    *ndim = n;
+    return 1;
+}
+
+/* 把「输出多下标」映射到某个输入的下标：广播维（输入该维为 1 或缺失）步长记 0。 */
+static int64_t mlc_bcast_offset(const mlc_array *x, int32_t out_ndim,
+                                const int64_t *idx)
+{
+    int32_t n = x->ndim, i;
+    int64_t off = 0;
+    for (i = 0; i < n; ++i) {
+        int32_t oi = out_ndim - n + i;
+        int64_t d = x->shape[i];
+        int64_t pos = (d == 1) ? 0 : idx[oi];
+        off += pos * x->strides[i];
+    }
+    return off;
+}
+
 static mlc_status mlc_binary_f64(const mlc_array *a, const mlc_array *b,
                                  mlc_array *out, int op)
 {
-    int64_t na, nb, no, i;
+    int64_t shape[MLC_MAX_DIMS];
+    int32_t ndim = 0, i;
+    int64_t no, k;
     const double *pa;
     const double *pb;
     double *po;
+    int64_t idx[MLC_MAX_DIMS];
 
     if (a == NULL || b == NULL || out == NULL) {
         return MLC_ERR;
@@ -30,15 +73,20 @@ static mlc_status mlc_binary_f64(const mlc_array *a, const mlc_array *b,
     if (a->dtype != MLC_F64 || b->dtype != MLC_F64 || out->dtype != MLC_F64) {
         return MLC_ERR;
     }
-    na = mlc_array_numel(a);
-    nb = mlc_array_numel(b);
-    no = mlc_array_numel(out);
-    if (na < 0 || nb < 0 || no < 0) {
+    if (!mlc_bcast_shape(a, b, shape, &ndim)) {
+        return MLC_ERR;              /* 不可广播：不猜 */
+    }
+    /* 输出形状必须与广播结论一致（调用方负责 init） */
+    if (out->ndim != ndim) {
         return MLC_ERR;
     }
-    /* 只支持三种形态：同形 / a 标量 / b 标量。其余一律报错（不猜广播）。 */
-    if (!((na == no && nb == no) || (na == 1 && nb == no) ||
-          (nb == 1 && na == no))) {
+    for (i = 0; i < ndim; ++i) {
+        if (out->shape[i] != shape[i]) {
+            return MLC_ERR;
+        }
+    }
+    no = mlc_array_numel(out);
+    if (no < 0) {
         return MLC_ERR;
     }
     if (no == 0) {
@@ -50,25 +98,34 @@ static mlc_status mlc_binary_f64(const mlc_array *a, const mlc_array *b,
     if (pa == NULL || pb == NULL || po == NULL) {
         return MLC_ERR;
     }
-    for (i = 0; i < no; ++i) {
-        double va = (na == 1) ? pa[0] : pa[i];
-        double vb = (nb == 1) ? pb[0] : pb[i];
+    for (i = 0; i < ndim; ++i) {
+        idx[i] = 0;
+    }
+    for (k = 0; k < no; ++k) {
+        double va = pa[mlc_bcast_offset(a, ndim, idx)];
+        double vb = pb[mlc_bcast_offset(b, ndim, idx)];
         switch (op) {
         case MLC_BIN_ADD:
-            po[i] = va + vb;
+            po[k] = va + vb;
             break;
         case MLC_BIN_SUB:
-            po[i] = va - vb;
+            po[k] = va - vb;
             break;
         case MLC_BIN_MUL:
-            po[i] = va * vb;
+            po[k] = va * vb;
             break;
         case MLC_BIN_DIV:
-            /* MATLAB `./` 与 IEEE double 除法同语义：除零得 Inf/NaN，不静默改值。 */
-            po[i] = va / vb;
+            po[k] = va / vb;
             break;
         default:
             return MLC_ERR;
+        }
+        /* 行主序推进多下标 */
+        for (i = ndim - 1; i >= 0; --i) {
+            if (++idx[i] < shape[i]) {
+                break;
+            }
+            idx[i] = 0;
         }
     }
     return MLC_OK;

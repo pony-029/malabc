@@ -20,6 +20,27 @@ function s = sumall(v)
 s = sum(v);
 end
 
+function [y, s] = add_and_sum(x)
+% @m2c shape x 3
+% @m2c shape y 3
+% @m2c shape s 1
+% 多返回值：每个返回值各自有形状
+y = x + x;
+s = sum(x);
+end
+
+function r = pickbig(v, i)
+% @m2c shape v 3
+% @m2c shape r 1
+% @m2c i64 i
+% 分支：i > 1 取单个元素，否则求和
+if i > 1
+r = v(i);
+else
+r = sum(v);
+end
+end
+
 function y = repeater(x)
 % @m2c shape x 3
 % @m2c shape y 3
