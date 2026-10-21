@@ -152,6 +152,20 @@ fn out_shape_for(f: &Func, name: &str) -> Option<Vec<i64>> {
     shape
 }
 
+/// 作为**输入**使用一个名字时的 C 写法：
+/// * `i64` 标量 → 名字本身
+/// * 返回值（`mlc_array *` 形参）→ 名字本身（已经是指针）
+/// * 局部临时（`mlc_array` 值）→ `&名字`
+fn arg_ref(f: &Func, name: &str) -> String {
+    if f.var_dtype(name).map(|d| is_scalar_dt(&d)).unwrap_or(false) {
+        return ident(name);
+    }
+    if f.rets.iter().any(|r| r.name == name) {
+        return ident(name);
+    }
+    format!("&{}", ident(name))
+}
+
 fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
     let mut out = Vec::new();
     let pad = indent.to_string();
@@ -183,7 +197,7 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
         }
     }
 
-    let arg0 = ident(&op.args[0]);
+    let arg0 = arg_ref(f, &op.args[0]);
     if op.id == "OP-INDEX" {
         if op.args.len() != 2 {
             out.push(format!("{}/* TODO(OP-INDEX): 需要 2 个参数，实际 {} */",
@@ -209,13 +223,13 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
         } else {
             ident(idx)
         };
-        out.push(format!("{}st = mlc_op_index(&{}, {}, {});", pad, arg0, idx_c, dst));
+        out.push(format!("{}st = mlc_op_index({}, {}, {});", pad, arg0, idx_c, dst));
     } else if op.args.len() == 1 {
-        out.push(format!("{}st = mlc_op_{}(&{}, {});", pad, op_c_name(&op.id), arg0, dst));
+        out.push(format!("{}st = mlc_op_{}({}, {});", pad, op_c_name(&op.id), arg0, dst));
     } else if op.args.len() == 2 {
-        let arg1 = ident(&op.args[1]);
+        let arg1 = arg_ref(f, &op.args[1]);
         out.push(format!(
-            "{}st = mlc_op_{}(&{}, &{}, {});",
+            "{}st = mlc_op_{}({}, {}, {});",
             pad,
             op_c_name(&op.id),
             arg0,
@@ -280,7 +294,7 @@ fn c_bin(op: &str) -> &'static str {
 
 /// 递归发射一段语句。返回 (行列表, 是否已终止)。
 fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
-              known: &[String]) -> (Vec<String>, bool) {
+              known: &[Func]) -> (Vec<String>, bool) {
     let mut out: Vec<String> = Vec::new();
     let mut terminated = false;
     for s in stmts {
@@ -366,15 +380,49 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                 }
             }
             Stmt::Call { lhs, func, args } => {
-                // 只调用**同文件内**的生成函数；名字不在名单里就如实报错，
-                // 不生成一段"看起来像调用"的代码。
-                let known_names = known.iter().any(|n| n.as_str() == func.as_str());
+                // 只调用**同文件内**的生成函数，并且要**签名对得上**：
+                // 名字存在但参数个数/类型不符，是比"名字不存在"更隐蔽的错 ——
+                // C 编译器会替你挡一部分，但 mlc_array 与 int64_t 的混用它也可能只是警告。
+                let callee = known.iter().find(|k| k.name == *func);
+                let mut sig_err: Option<String> = None;
+                if let Some(c) = callee {
+                    if c.args.len() != args.len() {
+                        sig_err = Some(format!(
+                            "参数个数不符：{} 要 {} 个，实际 {} 个",
+                            func, c.args.len(), args.len()));
+                    } else if c.rets.len() != 1 {
+                        sig_err = Some(format!(
+                            "{} 有 {} 个返回值（本版只支持单返回）",
+                            func, c.rets.len()));
+                    } else {
+                        for (actual, formal) in args.iter().zip(c.args.iter()) {
+                            let a_scalar = f
+                                .var_dtype(actual)
+                                .map(|d| is_scalar_dt(&d))
+                                .unwrap_or(false);
+                            if a_scalar != is_scalar_dt(&formal.dtype) {
+                                sig_err = Some(format!(
+                                    "参数类型不符：{} 形参 {} 是 {}，实参 {} 是 {}",
+                                    func, formal.name, formal.dtype, actual,
+                                    f.var_dtype(actual).unwrap_or_default()));
+                                break;
+                            }
+                        }
+                    }
+                }
+                let known_names = callee.is_some() && sig_err.is_none();
                 let mut call_args: Vec<String> = Vec::new();
                 let mut ok = known_names;
                 // 形参一律**按值**（`mlc_array x` / `int64_t i`），
                 // 所以实参直接写名字；只有"输出参数"才取地址。
                 for a in args {
                     match f.var_dtype(a) {
+                        // 形参按值传：返回值是指针，要解引用；其余直接写名字
+                        Some(dt) if !is_scalar_dt(&dt)
+                            && f.rets.iter().any(|r| &r.name == a) =>
+                        {
+                            call_args.push(format!("*{}", ident(a)))
+                        }
                         Some(_) => call_args.push(ident(a)),
                         None => {
                             ok = false;
@@ -400,11 +448,12 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                     ));
                     out.push(format!("{}if (st != MLC_OK) {{ return st; }}", indent));
                 } else {
-                    out.push(format!(
-                        "{}/* TODO(call): {} 不是本文件里已生成的函数 */",
-                        indent,
-                        sanitize_comment(func)
-                    ));
+                    let why = match sig_err {
+                        Some(e) => format!("TODO(call): {}", e),
+                        None => format!("TODO(call): {} 不是本文件里已生成的函数",
+                                        func),
+                    };
+                    out.push(format!("{}{}*/", indent, format!("/* {} ", why)));
                     out.push(format!("{}return MLC_UNIMPLEMENTED;", indent));
                     terminated = true;
                 }
@@ -452,7 +501,7 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
 }
 
 /// 一个函数的 C 定义（支持多返回值与嵌套块）。
-pub fn emit_func(f: &Func, known: &[String]) -> Result<String, String> {
+pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
     if f.rets.is_empty() {
         return Err(format!("函数 {} 没有 ret（本版只支持有返回值的函数）", f.name));
     }

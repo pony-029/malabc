@@ -71,6 +71,8 @@ _ATOM = re.compile(r"^(\d+|[A-Za-z_]\w*)$")
 #: 标量二元：`a + 1`
 _BIN = re.compile(r"^([A-Za-z_]\d*\w*|\d+)\s*([+\-*/])\s*([A-Za-z_]\w*|\d+)$")
 _BIN_OP = {"+": "add", "-": "sub", "*": "mul", "/": "div"}
+#: 带调用/下标的二元式：`r + v(1)` / `sum(v) + w`
+_EXPR_BIN = re.compile(r"^(\S.*?)\s*([+\-*/])\s*(\S.*?)$")
 _CALL = re.compile(r"^([A-Za-z_]\w*)\s*\((.*)\)$")
 
 
@@ -157,6 +159,62 @@ def _var_line(kind, name, f):
     return "%s:%s:%s" % (kind, name, dt)
 
 
+#: 表达式里的一个"原子"：名字 / 整数 / 调用或下标
+_EXPR_SIDE = re.compile(r"^(?:([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*|\d+)\s*\)"
+                        r"|(\d+)|([A-Za-z_]\w*))$")
+
+
+def _side_atom(text):
+    """把表达式的一侧解析成 ('call', fname, arg) / ('num', n) / ('name', n)。"""
+    m = _EXPR_SIDE.match(text.strip())
+    if not m:
+        return None
+    if m.group(1):
+        return ("call", m.group(1), m.group(2))
+    if m.group(3):
+        return ("num", m.group(3))
+    if m.group(4):
+        return ("name", m.group(4))
+    return None
+
+
+def _lower_binary(lhs, left, op, right, fnames, emit, counter):
+    """把 `lhs = left op right` 降级；两侧都可以是 调用/下标。
+
+    为什么要降级：MIR 是**语句级**的，没有嵌套表达式。真实代码里
+    `r = r + v(1)`、`s = sum(v) + w` 到处都是 —— 直接在 MIR 里塞表达式，
+    等于把"求值顺序"这个语义问题藏进发射器。拆成两条语句，顺序就写明了。
+    """
+    sides = []
+    for text in (left, right):
+        side = _side_atom(text)
+        if side is None:
+            return False
+        sides.append(side)
+
+    operands = []
+    for side in sides:
+        if side[0] == "call":
+            _, fname, arg = side
+            counter[0] += 1
+            tmp = "__t%d" % counter[0]
+            if fname in fnames:
+                emit("call:%s:%s:%s" % (tmp, fname, arg))
+            else:
+                emit("op:OP-INDEX:%s:%s:%s" % (tmp, fname, arg))
+            operands.append(tmp)
+        elif side[0] == "num":
+            # 立即数在被调算子侧不支持（形状未知）—— 如实放弃，不猜
+            return False
+        else:
+            operands.append(side[1])
+
+    # 算子 ID 是 `OP-ADD`（与 operators.py 的目录一致），不是 C 函数名的 `add`
+    emit("op:OP-%s:%s:%s:%s"
+         % (_BIN_OP[op].upper(), lhs, operands[0], operands[1]))
+    return True
+
+
 def to_mir(source):
     """返回 (mir_text, stats)。
 
@@ -166,6 +224,8 @@ def to_mir(source):
     funcs = split_functions(source)
     fnames = set(f["name"] for f in funcs)
     n_calls = [0]
+    n_tmp = [0]
+    n_ops_delta = [0]
     out = ["version 3"]
     n_ops = 0
     n_unmapped = 0
@@ -241,6 +301,13 @@ def to_mir(source):
                         out.append("setb:%s:%s:%s:%s"
                                    % (lhs, _BIN_OP[bm.group(2)],
                                       bm.group(1), bm.group(3)))
+                        continue
+                    # 两侧带调用/下标的二元式：降级成多条语句
+                    em = _EXPR_BIN.match(rhs)
+                    if em and _lower_binary(lhs, em.group(1), em.group(2),
+                                            em.group(3), fnames, out.append,
+                                            n_tmp):
+                        n_ops_delta[0] += 1
                         continue
                     cm = _CALL.match(rhs)
                     if cm and cm.group(1) in fnames:

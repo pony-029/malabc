@@ -48,7 +48,17 @@ GATES = ("check_version_scheme", "check_eol_convention", "check_readme_parity",
          # 越界的符号行号会让大纲永远转圈
          "check_symbol_ranges",
          # 工具的自证需要有人执行，否则等于没写
-         "check_tool_selftests")
+         "check_tool_selftests",
+         # 移植链路（MIR → C → 编译 → 跑数）是最活跃的子系统，
+         # 只放在 CI 里跑的话，改它的人跑一次发版会看到"假全绿"
+         "check_translate_port")
+
+
+#: 明知且合理的慢门（值 = 理由）。有了它，⚠ 才只对"不该慢"的门亮 ——
+#: 一个天天亮的警告，很快就没人看了。
+SLOW_OK = {
+    "check_translate_port": "要真编译并运行生成的 C 工程，6s 属于正常",
+}
 
 
 def run(cmd, cwd=ROOT, timeout=900):
@@ -272,12 +282,15 @@ def main(argv=None):
                 "%s %.1fs" % (k, ms / 1000.0) for ms, k in _slow) +
                 u"（%d 路并行，含排队）" % workers)
         else:
-            _flag = u" ⚠" if _slow[0][0] > SLOW_MS else u""
+            _flag = (u" ⚠" if (_slow[0][0] > SLOW_MS
+                     and _slow[0][1] not in SLOW_OK) else u"")
             print("  （最慢）" + " ｜ ".join(
                 "%s %.1fs" % (k, ms / 1000.0) for ms, k in _slow) + _flag)
-            if _slow[0][0] > SLOW_MS:
+            if _slow[0][0] > SLOW_MS and _slow[0][1] not in SLOW_OK:
                 print("         超过 %dms 的门会让每次发布都多等这么久，值得优化"
                       % SLOW_MS)
+            elif _slow[0][1] in SLOW_OK and _slow[0][0] > SLOW_MS:
+                print("         （已知慢门：%s）" % SLOW_OK[_slow[0][1]])
     # 总时长走势：单次数字看不出"是不是越来越慢"，三个数就够了。
     try:
         _hrows = [json.loads(x) for x in

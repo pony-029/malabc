@@ -37,7 +37,7 @@ import os
 #: 声明本工具支持 --selftest（`check_tool_selftests` 据此纳入发版跑）
 SELFTEST = True
 
-CACHE_VERSION = 2
+CACHE_VERSION = 3
 CACHE_PATH = os.path.join("releases", ".gate-cache.json")
 
 #: 这些目录不参与指纹（生成物 / 缓存 / 依赖）。
@@ -125,10 +125,15 @@ def fingerprint(root, patterns, own_file=None):
     for rel in files:
         try:
             st = os.stat(os.path.join(root, rel))
-        except OSError:
+            blob = io.open(os.path.join(root, rel), "rb").read()
+            digest = hashlib.sha256(blob).hexdigest()[:16]
+        except (IOError, OSError):
             continue
-        h.update(("%s|%d|%d;" % (rel, int(st.st_mtime_ns), st.st_size))
-                 .encode("utf-8"))
+        # 只有 (mtime, size) 不够：**同长度**改写若落在同一时间戳刻度内，
+        # 指纹不变 -> 该失效时仍命中 -> 增量变成漏检。
+        # 这个缺陷是 gate_cache 自己的自证抓到的。
+        h.update(("%s|%d|%d|%s;" % (rel, int(st.st_mtime_ns), st.st_size,
+                                   digest)).encode("utf-8"))
     return h.hexdigest(), len(files)
 
 

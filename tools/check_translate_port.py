@@ -357,8 +357,20 @@ def check_m2c(require_c=False):
         io.open(p, "w", encoding="utf-8", newline="").write(mir_text)
         exp_default = os.path.join(ROOT, "translate", "examples",
                                    "demo_port.expected")
-        rc, out = _run([M2C_BIN, "build", "--mir", p, "--out", d,
-                        "--name", "demo", "--expect", exp_default])
+        ex = os.path.join(ROOT, "translate", "examples")
+        # 三组夹具都编进生成物自测：拿工程单独走的人，跑 ctest 就能覆盖
+        # 默认 / x=10 20 30 i=3 / i=1（else 分支）这三种输入。
+        cases = [
+            "%s=%s" % (os.path.join(ex, "demo_port.fixture"),
+                       os.path.join(ex, "demo_port.expected.args")),
+            "%s=%s" % (os.path.join(ex, "demo_port.fixture.else"),
+                       os.path.join(ex, "demo_port.expected.else")),
+        ]
+        cmd = [M2C_BIN, "build", "--mir", p, "--out", d,
+               "--name", "demo", "--expect", exp_default]
+        for c in cases:
+            cmd.extend(["--case", c])
+        rc, out = _run(cmd)
         if rc != 0:
             probs.append("TP5 发射失败：%s"
                          % (out.strip().splitlines()[-1:] or rc))

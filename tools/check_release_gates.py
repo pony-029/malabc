@@ -61,7 +61,6 @@ CI_ONLY = (
     "check_patch_ops", "check_py_js_frontend_shapes", "check_unified_graph",
     # 依赖 golden 夹具 + 可选 C 编译器；进发版快跑清单会把“没编译器”
     # 与“门本身慢”混在一起，故只在 CI / 手工跑。
-    "check_translate_port",
     # 依赖 docs/architecture 的生成物（HTML/SVG）；发版清单只收几秒内的快门，
     # 生成物对账放在 CI 更合适。
     "check_architecture_docs",
@@ -178,10 +177,13 @@ def main(argv=None):
 
     problems, stats = check()
     if problems:
-        for code, msg in problems:
-            print("  - %s %s" % (code, msg))
+        # problems 里的元素是**字符串**（带判据前缀）——早先按元组解包，
+        # 于是"有问题的时候"这条路径必崩，用 traceback 替代了报告。
+        for msg in problems:
+            print("  - %s" % msg)
         print("check_release_gates: %d 项不合规" % len(problems))
         return 1
+
     print("check_release_gates: OK（RG1–RG4 全绿；%d 道门在发版清单里，"
           "%d 个豁免带理由，%d 个 check 脚本）"
           % (stats["gates"], stats["exempt"], stats["files"]))

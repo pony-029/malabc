@@ -59,6 +59,16 @@ function s = viasum(v)
 s = sumall(v);
 end
 
+function r = accumlast(v)
+% @m2c shape v 3
+% @m2c shape r 1
+% 数组累加：循环里把 v(1) 加到 r 上（验证"表达式降级"：取元素 + 相加两条语句）
+r = sum(v);
+for k = 1:2
+r = r + v(1);
+end
+end
+
 function y = repeater(x)
 % @m2c shape x 3
 % @m2c shape y 3
