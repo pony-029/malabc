@@ -383,6 +383,38 @@ def check_m2c(require_c=False):
         if rc != 0:
             probs.append("TP5 生成的 C 编译失败：%s"
                          % (out.strip().splitlines()[:2],))
+        else:
+            # **光能编译不够**：还要跑出与 MATLAB 语义一致的数值。
+            # 期望值由人写在 .expected 里（golden 纪律：人声明、机器核对）。
+            exe = os.path.join(d, "demo.exe" if os.name == "nt" else "demo")
+            src_main = os.path.join(d, "src", "main.c")
+            rt = os.path.join(ROOT, "c_runtime", "src")
+            rc, out = _run(base + [
+                "-std=c99", "-O1", "-I", inc, "-I", rt_inc,
+                gen_c, src_main,
+                os.path.join(rt, "mlc_runtime.c"),
+                os.path.join(rt, "mlc_ops.c"), "-o", exe])
+            if rc != 0:
+                probs.append("TP5 生成工程链接失败：%s"
+                             % (out.strip().splitlines()[:2],))
+            else:
+                rc, out = _run([exe])
+                if rc != 0:
+                    probs.append("TP5 生成的程序退出码 %s：%s"
+                                 % (rc, out.strip().splitlines()[:2]))
+                else:
+                    got = [ln.strip() for ln in out.strip().splitlines()]
+                    exp_path = os.path.join(ROOT, "translate", "examples",
+                                            "demo_port.expected")
+                    exp = [ln.strip() for ln in
+                           io.open(exp_path, encoding="utf-8").read()
+                           .splitlines() if ln.strip()]
+                    if got != exp:
+                        probs.append(
+                            "TP5 生成程序输出与期望不符：\n  期望 %r\n  实得 %r"
+                            % (exp, got))
+                    else:
+                        print("  [TP5] 运行结果与期望一致（%d 行）" % len(exp))
     else:
         print(u"  [TP5] 没有 C 编译器：只验了「可发射 + 确定性」，"
               u"没验「可编译」")

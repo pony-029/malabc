@@ -44,6 +44,12 @@ _FUNC_RE = re.compile(
     r"(?P<name>[A-Za-z_]\w*)\s*\((?P<args>[^)]*)\)")
 #: `% @m2c i64 i` —— 显式类型标注
 _ANNO_RE = re.compile(r"^\s*%\s*@m2c\s+(?P<type>i64|f64)\s+(?P<names>[A-Za-z_][\w\s,]*)$")
+#: `for i = 1:3` —— 只认整数边界（变量名或字面量），复杂形式进 unmapped。
+_FOR_RE = re.compile(r"^for\s+(?P<var>[A-Za-z_]\w*)\s*=\s*(?P<a>[\w]+)\s*:\s*(?P<b>[\w]+)\s*$")
+
+#: `% @m2c shape x 3` / `% @m2c shape x 3,3` —— 形状必须**显式**说明。
+#: 没有它，发射器不知道 `mlc_array_init` 该给多大，只能发 TODO。
+_SHAPE_RE = re.compile(r"^\s*%\s*@m2c\s+shape\s+(?P<name>[A-Za-z_]\w*)\s+(?P<dims>[\d,\s]+)$")
 
 
 def _clean(line):
@@ -78,7 +84,7 @@ def split_functions(source):
             args = [x.strip() for x in (m.group("args") or "").split(",")
                     if x.strip()]
             cur = {"name": m.group("name"), "args": args, "rets": rets,
-                   "lines": [], "types": {}}
+                   "lines": [], "types": {}, "shapes": {}}
             funcs.append(cur)
             depth = 1
             continue
@@ -88,6 +94,11 @@ def split_functions(source):
         if raw.strip() == "end":
             depth = 0
             cur = None
+            continue
+        sm = _SHAPE_RE.match(raw)
+        if sm:
+            dims = [d.strip() for d in sm.group("dims").split(",") if d.strip()]
+            cur["shapes"][sm.group("name")] = dims
             continue
         am = _ANNO_RE.match(raw)
         if am:
@@ -99,6 +110,15 @@ def split_functions(source):
     return funcs
 
 
+def _var_line(kind, name, f):
+    """`arg:x:f64:3` —— 形状已知就写出来，不知道就不写（发射器会发 TODO）。"""
+    dt = f["types"].get(name, "f64")
+    dims = f["shapes"].get(name) or []
+    if dims:
+        return "%s:%s:%s:%s" % (kind, name, dt, ",".join(dims))
+    return "%s:%s:%s" % (kind, name, dt)
+
+
 def to_mir(source):
     """返回 (mir_text, stats)。
 
@@ -106,21 +126,31 @@ def to_mir(source):
     避免"读一行 OK 就当覆盖率"。
     """
     funcs = split_functions(source)
-    out = ["version 1"]
+    out = ["version 2"]
     n_ops = 0
     n_unmapped = 0
     per_op = {}
     for f in funcs:
         out.append("func:%s" % f["name"])
         for a in f["args"]:
-            out.append("arg:%s:%s" % (a, f["types"].get(a, "f64")))
+            out.append(_var_line("arg", a, f))
         for r in f["rets"]:
-            out.append("ret:%s:%s" % (r, f["types"].get(r, "f64")))
+            out.append(_var_line("ret", r, f))
+        depth = 0
         for line in f["lines"]:
             code = _clean(line).strip()
             if not code:
                 continue
-            if code.startswith("end"):
+            if code == "end" or code.startswith("end "):
+                if depth:
+                    out.append("end")      # 收束循环体
+                    depth -= 1
+                continue
+            fm = _FOR_RE.match(code)
+            if fm:
+                out.append("for:%s:%s:%s" % (fm.group("var"), fm.group("a"),
+                                             fm.group("b")))
+                depth += 1
                 continue
             use = operators.parse_line(code)
             if use is None:
@@ -132,6 +162,9 @@ def to_mir(source):
                        % (use["operator"], use["lhs"], ":".join(args)))
             n_ops += 1
             per_op[use["operator"]] = per_op.get(use["operator"], 0) + 1
+        while depth:
+            out.append("end")              # 容错：没写 end 的循环也收束
+            depth -= 1
         out.append("end")
     stats = {"functions": len(funcs), "ops": n_ops,
              "unmapped": n_unmapped, "per_op": per_op}

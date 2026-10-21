@@ -1,20 +1,36 @@
 function y = addone(x)
-% 加法（已映射）
+% @m2c shape x 3
+% @m2c shape y 3
+% 元素级：y = x + x
 y = x + x;
 end
 
 function z = pick(v, i)
+% @m2c shape v 3
+% @m2c shape z 1
 % @m2c i64 i
-% 下标（索引基准由 C 侧 mlc_op_index 负责 -1）
+% 下标（1-based 由 mlc_op_index 负责换成 0-based）
 z = v(i);
 end
 
 function s = sumall(v)
+% @m2c shape v 3
+% @m2c shape s 1
 % 归约
 s = sum(v);
 end
 
+function y = repeater(x)
+% @m2c shape x 3
+% @m2c shape y 3
+% 循环：同一语句执行 3 次（用来证明 for 真的被发射）
+for k = 1:3
+y = x + x;
+end
+end
+
 function y = fancy(x)
+% @m2c shape x 3
 % 故意未映射：转置与矩阵乘仍是诚实边界
 y = x';
 end

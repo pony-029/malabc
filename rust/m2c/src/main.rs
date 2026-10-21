@@ -1,4 +1,4 @@
-//! `m2c`：MIR → C 的发射器（R434）。
+//! `m2c`：MIR → C 的发射器（R434 / Week1）。
 //!
 //! 用法：
 //!   m2c build --mir out.mir --out gen/ --name solver
@@ -9,6 +9,7 @@
 
 mod emit;
 mod mir;
+mod project;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -111,7 +112,7 @@ fn main() -> ExitCode {
                     return ExitCode::from(2);
                 }
             };
-            let files = match emit::emit_project(&funcs, &name) {
+            let files = match project::emit_project(&funcs, &name) {
                 Ok(v) => v,
                 Err(e) => {
                     eprintln!("发射失败：{}", e);
@@ -154,57 +155,80 @@ fn selftest() -> ExitCode {
         }
     };
 
-    let src = "version 1\nfunc:f\narg:x:f64\nret:y:f64\nop:OP-ADD:y:x:x\nend\n";
+    let src = "version 2\nfunc:f\narg:x:f64:3\nret:y:f64:3\nop:OP-ADD:y:x:x\nend\n";
     let parsed = mir::parse(src);
-    chk(parsed.is_ok(), "能解析最小 MIR");
+    chk(parsed.is_ok(), "能解析带形状的 MIR");
     let funcs = parsed.unwrap_or_default();
     chk(funcs.len() == 1 && funcs[0].name == "f", "函数名正确");
-    chk(funcs[0].declared() == vec!["x".to_string(), "y".to_string()],
-        "作用域 = 参数 + 返回值 + 算子输出（去重）");
+    chk(
+        funcs[0].declared() == vec!["x".to_string(), "y".to_string()],
+        "作用域 = 参数 + 返回值 + 算子输出（去重）",
+    );
+    chk(funcs[0].var_shape("x") == Some(vec![3]), "形状被解析出来");
 
-    // 不认识的行必须报错（不静默跳过）
     chk(mir::parse("version 1\nfunc:f\n???\nend\n").is_err(), "未知构造报错");
     chk(mir::parse("func:f\nend\n").is_err(), "缺 version 报错");
 
-    // 发射：实现了的算子
     let code = emit::emit_func(&funcs[0]).unwrap_or_default();
     chk(code.contains("mlc_op_add"), "实现了的算子发射成 mlc_op_*");
+    chk(code.contains("mlc_array_init(y"), "返回值按形状初始化（指针直传，不取地址）");
     chk(code.contains("return st;"), "无 unmapped 时返回 st");
 
-    // 未实现算子：必须明确失败，而不是编一段
-    let un = mir::parse("version 1\nfunc:g\narg:x:f64\nret:y:f64\nop:OP-TRANSPOSE:y:x\nend\n")
+    // 未实现算子：必须明确失败
+    let un = mir::parse("version 2\nfunc:g\narg:x:f64:2\nret:y:f64:2\nop:OP-TRANSPOSE:y:x\nend\n")
         .unwrap_or_default();
     let code2 = emit::emit_func(&un[0]).unwrap_or_default();
     chk(code2.contains("MLC_UNIMPLEMENTED"), "未实现算子发 MLC_UNIMPLEMENTED");
     chk(!code2.contains("mlc_op_transpose("), "不会凭空调用不存在的函数");
 
-    // unmapped 语句：要有 TODO 且整体部分实现
+    // unmapped
     let um = mir::parse(
-        "version 1\nfunc:h\nret:y:f64\nunmapped:y = foo(x);\nend\n").unwrap_or_default();
+        "version 2\nfunc:h\narg:x:f64:2\nret:y:f64:2\nunmapped:y = foo(x);\nend\n",
+    )
+    .unwrap_or_default();
     let code3 = emit::emit_func(&um[0]).unwrap_or_default();
     chk(code3.contains("TODO(unmapped)"), "unmapped 变成 TODO");
 
-    // 作用域外的参数：必须拒绝
-    let out_scope = mir::parse("version 1\nfunc:k\nret:y:f64\nop:OP-ADD:y:y:zzz\nend\n")
-        .unwrap_or_default();
+    // 作用域外参数
+    let out_scope =
+        mir::parse("version 2\nfunc:k\narg:y:f64:2\nret:y:f64:2\nop:OP-ADD:y:y:zzz\nend\n")
+            .unwrap_or_default();
     let code4 = emit::emit_func(&out_scope[0]).unwrap_or_default();
     chk(code4.contains("TODO(arg)"), "作用域外参数被拒绝");
+
+    // 立即数下标
+    let idx = mir::parse("version 2\nfunc:p\narg:v:f64:3\nret:z:f64:1\nop:OP-INDEX:z:v:3\nend\n")
+        .unwrap_or_default();
+    let code5 = emit::emit_func(&idx[0]).unwrap_or_default();
+    chk(code5.contains("(int64_t)3"), "立即数下标发射成字面量");
+
+    // for 循环
+    let lp = mir::parse(
+        "version 2\nfunc:q\narg:v:f64:3\nret:s:f64:1\nfor:i:1:3\nop:OP-SUM:s:v\nend\nend\n",
+    )
+    .unwrap_or_default();
+    chk(!lp.is_empty() && lp[0].loops.len() == 1, "for 循环被解析");
+    let code6 = emit::emit_func(&lp[0]).unwrap_or_default();
+    chk(code6.contains("for (int64_t i = 1; i <= 3; ++i)"), "for 发射成 C 循环");
 
     // 确定性
     let a = emit::emit_func(&funcs[0]).unwrap_or_default();
     let b = emit::emit_func(&funcs[0]).unwrap_or_default();
     chk(a == b, "同一 MIR 两次发射逐字节一致");
 
-    // 项目骨架
-    let proj = emit::emit_project(&funcs, "demo").unwrap_or_default();
+    // 工程骨架
+    let proj = project::emit_project(&funcs, "demo").unwrap_or_default();
     let names: Vec<&str> = proj.iter().map(|(n, _)| n.as_str()).collect();
     chk(names.contains(&"CMakeLists.txt"), "工程产出含 CMakeLists");
     chk(names.contains(&"include/demo.h"), "工程产出含头文件");
+    let main_c = proj
+        .iter()
+        .find(|(n, _)| n == "src/main.c")
+        .map(|(_, b)| b.clone())
+        .unwrap_or_default();
+    chk(main_c.contains("m2c_f("), "main 真的调用生成函数");
 
-    println!(
-        "SELFTEST COUNTS {{\"bad\": {}, \"good\": {}}}",
-        bad, good
-    );
+    println!("SELFTEST COUNTS {{\"bad\": {}, \"good\": {}}}", bad, good);
     if bad == 0 {
         ExitCode::SUCCESS
     } else {
