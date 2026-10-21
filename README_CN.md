@@ -788,7 +788,7 @@ python tools/check_all.py        # 跑完 tools/check_*.py 全部护栏 + 各自
 | `check_figure_glyphs.py` | 守示意图（FG1–FG4）：图上要画的字必须在字体里有字形—— 缺了就是空心方块，而方块看起来像打码；等宽字体那几行也不许出现非 ASCII |
 | `check_release_gates.py` | `RG1–RG4` — 写了却从不参与发布的门，等于给自己看的笔记：每个 `check_*.py` 要么在 `release.py` 的 `GATES` 里，要么**带理由**豁免（陈旧豁免同样算红） |
 | `check_symbol_ranges.py` | `SR1–SR3` — 每个符号的起止行必须落在文件内。越界的 Range 会让编辑器**拒收整批符号**，大纲于是永远停在「正在加载…」 |
-| `check_translate_port.py` | `TP1–TP4` — MATLAB→C 移植链路：ABI 契约（禁止裸指针）/ 双侧适配器（ADP-1..3）/ 算子目录与 C 发射 / golden 保真 + 移植台账。未验证是一等状态，但「已声明」必须能被夹具兑现 |
+| `check_translate_port.py` | `TP1–TP5` — MATLAB→C 移植链路：ABI 契约（禁止裸指针）/ 双侧适配器（ADP-1..3）/ 算子目录与 C 发射 / golden 保真 + 移植台账。未验证是一等状态，但「已声明」必须能被夹具兑现 |
 | `check_architecture_docs.py` | `AD1–AD11` — 架构文档不许漂移：`FLOW_INDEX.json` ⇄ `candidates/*.json` ⇄ `html/*.html` ⇄ `svg/*.svg` 三向对账；SHA-256 陈旧门；离线版式不变量；CODEOWNERS 覆盖；本地图片路径；中英标签一致；术语表一致（AD9）；术语覆盖率 = 100%（AD10）；ADR 覆盖（AD11）；两份根 README 必须链接索引并嵌入总框架 SVG |
 | `check_tool_selftests.py` | `TS1–TS2` — 凡是声明 `SELFTEST = True` 的工具，发版时都真跑一次。工具的自证和其他门一样：**有人执行它才存在** |
 | `check_portability.py` | `PF1–PF3` —— 运行时不得假设只有 Windows。Windows 绝对路径只有在该行**登记过且有 POSIX 对照**时才允许；Windows 专属 API（`os.startfile` / `winreg` / `msvcrt` / `ctypes.windll`）一律不豁免。注释与文档串被跳过——写成 `C:\Temp\yalmip` 的实测记录是证据，不是平台假设。PF3 抓反方向：登记的锚点文字消失即陈旧 |

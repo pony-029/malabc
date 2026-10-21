@@ -15,7 +15,8 @@
       "adr": [
         "decisions/ADR-001-single-file-core.md",
         "decisions/ADR-006-gates-as-registry.md",
-        "decisions/ADR-008-architecture-review-record.md"
+        "decisions/ADR-008-architecture-review-record.md",
+        "decisions/ADR-009-rust-for-port-pipeline.md"
       ]
     },
     {

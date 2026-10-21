@@ -21,3 +21,4 @@
 ADR-101 Accepted），用来演示 `Status` 与 `Supersedes`/`Superseded by`
 的互指格式。它们**不是项目决策**，也不进 `FLOW_INDEX`；AD11 只扫描本目录
 根下的 `ADR-*.md`，因此不会把示例当成孤儿。
+| ADR-009 | Rust 用于移植管线（MIR + 发射器），交付物仍是 C | Accepted | [ADR-009-rust-for-port-pipeline.md](ADR-009-rust-for-port-pipeline.md) |

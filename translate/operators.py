@@ -74,7 +74,7 @@ _ASSIGN_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*(.+?)\s*;\s*$")
 _BIN_RE = re.compile(r"^([A-Za-z_]\w*)\s*(\.\*|\./|\+|-|\*)\s*([A-Za-z_]\w*)$")
 _CALL_RE = re.compile(r"^(sum|mean|max|min)\s*\(\s*([A-Za-z_]\w*)\s*\)$")
 _TRANS_RE = re.compile(r"^([A-Za-z_]\w*)\s*\.'\s*$")
-_INDEX_RE = re.compile(r"^([A-Za-z_]\w*)\s*\(\s*(\d+)\s*\)$")
+_INDEX_RE = re.compile(r"^([A-Za-z_]\w*)\s*\(\s*(\d+|[A-Za-z_]\w*)\s*\)$")
 
 _CALL_OPS = {"sum": "OP-SUM", "mean": "OP-MEAN",
              "max": "OP-MAX", "min": "OP-MIN"}

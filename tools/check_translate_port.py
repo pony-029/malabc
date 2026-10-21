@@ -36,7 +36,7 @@ import sys
 import tempfile
 
 #: P5 的对手方：本门在 README 质量门表那一行里声明的判据族。
-ROW_SIGNATURE = "TP1–TP4"
+ROW_SIGNATURE = "TP1–TP5"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -284,6 +284,114 @@ def check_ledger(path=None):
     return probs
 
 
+M2C_DIR = os.path.join(ROOT, "rust", "m2c")
+M2C_BIN = os.path.join(M2C_DIR, "target", "release",
+                       "m2c.exe" if os.name == "nt" else "m2c")
+MIR_EXAMPLE = os.path.join(ROOT, "translate", "examples", "demo_port.m")
+
+
+def _run(cmd, cwd=None, timeout=300):
+    import subprocess
+    try:
+        p = subprocess.run(cmd, cwd=cwd or ROOT, stdin=subprocess.DEVNULL,
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                           timeout=timeout)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return None, str(exc)
+    return p.returncode, p.stdout.decode("utf-8", "replace")
+
+
+def build_m2c():
+    """按需编译 Rust 发射器。返回 (可用?, 说明)。"""
+    if not os.path.isfile(os.path.join(M2C_DIR, "Cargo.toml")):
+        return False, "没有 rust/m2c（本版未启用 MIR 发射器）"
+    newest_src = 0
+    for dp, dn, fn in os.walk(os.path.join(M2C_DIR, "src")):
+        for f in fn:
+            newest_src = max(newest_src, os.path.getmtime(os.path.join(dp, f)))
+    if os.path.isfile(M2C_BIN) and os.path.getmtime(M2C_BIN) >= newest_src:
+        return True, "已是最新"
+    rc, out = _run(["cargo", "build", "--release"], cwd=M2C_DIR)
+    if rc is None:
+        return False, "没有 cargo（跳过 TP5，不算绿）"
+    if rc != 0:
+        return False, "cargo build 失败：%s" % out.strip().splitlines()[-1:]
+    return True, "刚编译"
+
+
+def check_m2c(require_c=False):
+    """TP5：MIR 生成 → C 发射 → gcc 语法编译 → 两次发射逐字节一致。
+
+    为什么要有它：TP1–TP4 证明的是"算子→C 的调用能编译能跑"，
+    但**没有任何东西**证明"整条链路（.m → MIR → C 工程）产出的是合法 C"。
+    """
+    probs = []
+    ok, why = build_m2c()
+    if not ok:
+        print("  [TP5] 跳过：%s" % why)
+        if require_c:
+            probs.append("TP5 缺 Rust 发射器（--require-c 下判红）：%s" % why)
+        return probs, {"available": False, "why": why}
+
+    # 1) .m → MIR（Python 侧，复用算子表 = 单一事实源）
+    sys.path.insert(0, ROOT)
+    sys.path.insert(0, os.path.join(ROOT, "translate"))
+    from translate import mir as mir_mod  # noqa: E402
+
+    src = io.open(MIR_EXAMPLE, "r", encoding="utf-8").read()
+    mir_text, st = mir_mod.to_mir(src)
+    if not st["functions"]:
+        probs.append("TP5 样例没有解析出函数")
+        return probs, {"available": True, "why": "无函数"}
+    if not st["ops"]:
+        probs.append("TP5 样例没有映射出任何算子")
+
+    # 2) MIR → 两遍 C（确定性）
+    import tempfile
+    outs = []
+    for _ in range(2):
+        d = tempfile.mkdtemp(prefix="m2c_")
+        p = os.path.join(d, "in.mir")
+        io.open(p, "w", encoding="utf-8", newline="").write(mir_text)
+        rc, out = _run([M2C_BIN, "build", "--mir", p, "--out", d,
+                        "--name", "demo"])
+        if rc != 0:
+            probs.append("TP5 发射失败：%s"
+                         % (out.strip().splitlines()[-1:] or rc))
+            return probs, {"available": True, "why": "发射失败"}
+        gen = io.open(os.path.join(d, "src", "gen.c"), "rb").read()
+        outs.append(gen)
+    if outs[0] != outs[1]:
+        probs.append("TP5 两次发射结果不一致（不满足确定性）")
+
+    # 3) 生成的 C 必须能被真编译器接受
+    inc = os.path.join(d, "include")
+    rt_inc = os.path.join(ROOT, "c_runtime", "include")
+    gen_c = os.path.join(d, "src", "gen.c")
+    cc = None
+    try:
+        from translate import fidelity  # noqa: E402
+        cc = fidelity.find_c_compiler()
+    except Exception:  # noqa: BLE001 - 找不到就当没有
+        cc = None
+    if cc:
+        # `find_c_compiler()` 可能返回 str，也可能返回 ["zig", "cc"] ——
+        # 拼命令前统一成 list，否则 subprocess 会拿到一个 list 当可执行名。
+        base = list(cc) if isinstance(cc, (list, tuple)) else [cc]
+        rc, out = _run(base + ["-std=c99", "-fsyntax-only",
+                               "-I", inc, "-I", rt_inc, gen_c])
+        if rc != 0:
+            probs.append("TP5 生成的 C 编译失败：%s"
+                         % (out.strip().splitlines()[:2],))
+    else:
+        print(u"  [TP5] 没有 C 编译器：只验了「可发射 + 确定性」，"
+              u"没验「可编译」")
+
+    return probs, {"available": True, "why": why, "functions": st["functions"],
+                   "ops": st["ops"], "unmapped": st["unmapped"],
+                   "compiled": bool(cc)}
+
+
 def run_checks(require_c=False):
     probs = []
     probs.extend(check_abi())
@@ -292,6 +400,8 @@ def run_checks(require_c=False):
     probs.extend(check_operators())
     fp, rep = check_fidelity(require_c=require_c)
     probs.extend(fp)
+    m2c_probs, m2c_stats = check_m2c(require_c=require_c)
+    probs.extend(m2c_probs)
     probs.extend(check_ledger())
     entries = []
     if os.path.isfile(LEDGER):
@@ -314,6 +424,7 @@ def run_checks(require_c=False):
         "c_ok": c_ok,
         "c_total": len(c_res),
         "ledger": entries,
+        "m2c": m2c_stats,
     }
     return probs, stats
 
@@ -447,6 +558,11 @@ def main(argv=None):
         return 2
 
     probs, stats = run_checks(require_c=args.require_c)
+    _m = stats.get("m2c") or {}
+    if _m.get("available"):
+        print("  [TP5] MIR 链路：函数 %d / 算子 %d / 未映射 %d / 编译 %s"
+              % (_m.get("functions"), _m.get("ops"), _m.get("unmapped"),
+                 "通过" if _m.get("compiled") else "未验（无编译器）"))
     print("  [统计] 算子 %d（已验证 %d / 未验证 %d）；适配器规则 %s"
           % (stats["operators"]["total"], stats["operators"]["verified"],
              stats["operators"]["unverified"],
@@ -471,10 +587,14 @@ def main(argv=None):
             print("  - %s" % p)
         print("check_translate_port: %d 项不合规" % len(probs))
         return 1
-    print("check_translate_port: OK（TP1–TP4 全绿；golden %d/%d；C %d/%d；"
-          "台账 %d 条）"
+    _mm = stats.get("m2c") or {}
+    print("check_translate_port: OK（TP1–TP5 全绿；golden %d/%d；C %d/%d；"
+          "台账 %d 条；MIR 函数 %s / 算子 %s / 未映射 %s / 编译 %s）"
           % (stats["fidelity"]["passed"], stats["fidelity"]["total"],
-             stats["c_ok"], stats["c_total"], len(stats["ledger"])))
+             stats["c_ok"], stats["c_total"], len(stats["ledger"]),
+             _mm.get("functions", "-"), _mm.get("ops", "-"),
+             _mm.get("unmapped", "-"),
+             "通过" if _mm.get("compiled") else "未验"))
     return 0
 
 

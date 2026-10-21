@@ -1,0 +1,19 @@
+[package]
+name = "m2c"
+version = "0.1.0"
+edition = "2021"
+description = "MATLAB→C 的 MIR 与发射器（零第三方依赖，纯 std）"
+
+[[bin]]
+name = "m2c"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 2
+# panic 必须可捕获：跨 FFI/子进程边界要把 panic 变成退出码，而不是烂掉。
+panic = "unwind"
+# 整数溢出语义在 debug/release 必须一致（INT-1：不得 UB，也不得随构建模式变）。
+overflow-checks = true
+
+# 刻意没有 [dependencies]：ADR-001「零第三方依赖」。
+# 需要 JSON/CLI 的那天，先写 ADR，再引依赖。

@@ -248,7 +248,7 @@ GUARD_CONTRACT = {
         2: "缺输入（找不到 tests/sample_m 或 analyzer 包）",
     },
     "tools/check_translate_port.py": {
-        0: "通过（TP1–TP4：ABI 契约 / 双侧适配器 / 算子目录与 C 发射 / "
+        0: "通过（TP1–TP5：ABI 契约 / 双侧适配器 / 算子目录与 C 发射 / "
            "golden 保真与移植台账）",
         1: "有移植链路不合规（ABI 缺契约、适配器配不上、算子夹具缺失、"
            "保真失败或台账声明无兑现）",
