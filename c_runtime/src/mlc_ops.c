@@ -440,6 +440,54 @@ mlc_status mlc_op_mask(const mlc_array *a, int cmp, double k, mlc_array *out)
     return MLC_OK;
 }
 
+/*
+ * `x(x >k)` 的动态形状版本：长度由命中数决定，由**算子**分配 out。
+ *
+ * 这是 "算子只填数据、不重新分配" 的唯一例外 —— 因为长度是数据相关的，
+ * 调用方不可能预先给出正确形状。所有权转移给调用方（需 mlc_array_free）。
+ */
+mlc_status mlc_op_mask_alloc(const mlc_array *a, int cmp, double k,
+                             mlc_array *out)
+{
+    int64_t n, i, hit;
+    int64_t shape1[1];
+    const double *pa;
+    double *po;
+    mlc_status st;
+
+    if (a == NULL || out == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    n = mlc_array_numel(a);
+    pa = (const double *)a->data;
+    if (pa == NULL) {
+        return MLC_ERR;
+    }
+    hit = 0;
+    for (i = 0; i < n; ++i) {
+        if (mlc_mask_test(pa[i], cmp, k)) {
+            ++hit;
+        }
+    }
+    shape1[0] = hit;
+    st = mlc_array_init(out, MLC_F64, 1, shape1);
+    if (st != MLC_OK) {
+        return st;
+    }
+    po = (double *)out->data;
+    hit = 0;
+    for (i = 0; i < n; ++i) {
+        if (mlc_mask_test(pa[i], cmp, k)) {
+            po[hit] = pa[i];
+            ++hit;
+        }
+    }
+    return MLC_OK;
+}
+
 mlc_status mlc_op_transpose(const mlc_array *a, mlc_array *out)
 {
     int64_t m, n, i, j;

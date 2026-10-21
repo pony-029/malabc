@@ -408,6 +408,16 @@ fn selftest() -> ExitCode {
     let code_slb = emit::emit_func(&sl_bad[0], &[] as &[mir::Func]).unwrap_or_default();
     chk(code_slb.contains("TODO"), "越界的切片被拒绝");
 
+    // 动态形状：x(x>1) 的长度由数据决定 -> 不 init，调 _alloc
+    let dyn_mir = mir::parse(
+        "version 3\nfunc:dm\narg:x:f64:4\nret:y:f64\nop:OP-MASK:y:x:0:2\nend\n",
+    )
+    .unwrap_or_default();
+    let code_dyn = emit::emit_func(&dyn_mir[0], &[] as &[mir::Func]).unwrap_or_default();
+    chk(!code_dyn.contains("mlc_array_init(y"), "动态返回值不预先 init");
+    chk(code_dyn.contains("mlc_op_mask_alloc(&x, 0, 2, y)"), "动态返回值用 _alloc 变体");
+    chk(emit::ret_is_dynamic(&dyn_mir[0], "y"), "ret_is_dynamic 能识别");
+
     // 确定性
     let a = emit::emit_func(&funcs[0], &[] as &[mir::Func]).unwrap_or_default();
     let b = emit::emit_func(&funcs[0], &[] as &[mir::Func]).unwrap_or_default();

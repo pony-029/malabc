@@ -46,6 +46,13 @@ mlc_status mlc_op_flatten(const mlc_array *a, mlc_array *out);
 mlc_status mlc_op_mask(const mlc_array *a, int cmp, double k,
                        mlc_array *out);
 
+/* `x(x >k)` 的**动态形状**版本：长度由数据决定，算子自己分配 `out`。
+   这是 ABI "算子只填数据、不重新分配" 的**唯一例外**，理由：
+   长度是数据相关的，调用方无法预先给出正确形状。
+   所有权：成功时 `out` 由调用方 `mlc_array_free`。 */
+mlc_status mlc_op_mask_alloc(const mlc_array *a, int cmp, double k,
+                             mlc_array *out);
+
 mlc_status mlc_op_index(const mlc_array *a, int64_t matlab_index,
                         mlc_array *out);
 mlc_status mlc_op_transpose(const mlc_array *a, mlc_array *out);

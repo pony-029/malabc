@@ -44,6 +44,27 @@ pub fn ident(name: &str) -> String {
     }
 }
 
+/// 输出长度**数据相关**的算子：不能由调用方预先 init，
+/// 必须由算子自己分配（`*_alloc` 变体），调用方负责 free。
+pub const DYNAMIC_OPS: &[&str] = &["OP-MASK"];
+
+pub fn op_is_dynamic(id: &str) -> bool {
+    DYNAMIC_OPS.contains(&id)
+}
+
+/// 这个返回值是不是由动态长度算子产生的。
+pub fn ret_is_dynamic(f: &Func, name: &str) -> bool {
+    let mut dyn_out = false;
+    walk_stmts(&f.body, &mut |s| {
+        if let Stmt::Op(op) = s {
+            if op.lhs == name && op_is_dynamic(&op.id) {
+                dyn_out = true;
+            }
+        }
+    });
+    dyn_out
+}
+
 fn c_dtype(dt: &str) -> Option<&'static str> {
     match dt {
         "f64" => Some("MLC_F64"),
@@ -325,7 +346,9 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
             out.push(format!("{}return MLC_UNIMPLEMENTED;", pad));
             return out;
         }
-        out.push(format!("{}st = mlc_op_mask({}, {}, {}, {});", pad, arg0, cmp, k, dst));
+        // 动态长度：调用 _alloc 变体，dst 直接是 out（由算子分配）
+        out.push(format!("{}st = mlc_op_mask_alloc({}, {}, {}, {});",
+                         pad, arg0, cmp, k, dst));
     } else if op.id == "OP-SLICE" && op.args.len() == 3 {
         let from = &op.args[1];
         let to = &op.args[2];
@@ -631,8 +654,28 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
             continue;
         }
         let name = ident(&ret.name);
+        if ret_is_dynamic(f, &ret.name) {
+            // 长度数据相关：由算子分配（`*_alloc`）。
+            // 注意返回值是**形参指针**（`mlc_array *y`），不能在这里再声明一个同名局部；
+            // 调用方负责把它初始化为 {0}，否则 free 会碰到野指针。
+            continue;
+        }
         // 形状来源：先看"哪条语句写了它"，否则用 ret 上声明的形状。
         // （`call:` 写出的返回值没有单条算子可查，但它有声明。）
+        // 形状谎言检测：声明与推断都在时，必须一致。
+        // 不一致说明"人写的注解"和"代码真实行为"已经分叉 —— 那是最难查的一类错。
+        if let (Some(inferred), Some(declared)) =
+            (out_shape_for(f, &ret.name), f.var_shape(&ret.name))
+        {
+            if inferred != declared {
+                out.push(format!(
+                    "    /* WARN(shape): {} 声明 {:?} 与推断 {:?} 不一致，按推断执行 */",
+                    ret.name, declared, inferred));
+                eprintln!(
+                    "warn: {} 的 {} 声明形状 {:?} 与推断 {:?} 不一致",
+                    f.name, ret.name, declared, inferred);
+            }
+        }
         let shape = match out_shape_for(f, &ret.name).or_else(|| f.var_shape(&ret.name)) {
             Some(sh) => sh,
             None => {

@@ -46,7 +46,12 @@ fn drivable(f: &Func) -> bool {
         && arrays.iter().all(|a| !a.shape.is_empty())
         && scalars.len() == f.args.len() - arrays.len()
         && !f.rets.is_empty()
-        && f.rets.iter().all(|r| r.dtype == "f64" && !r.shape.is_empty())
+        && f.rets.iter().all(|r| {
+            r.dtype == "f64"
+                // 动态长度的返回值没有声明形状，由算子分配 —— 这是合法的
+                && (!r.shape.is_empty()
+                    || crate::emit::ret_is_dynamic(f, &r.name))
+        })
 }
 
 /// 夹具解析器（纯 C，固定容量，避免在生成物里引入 malloc）。
@@ -124,9 +129,10 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
     out.push("    }".to_string());
     out.push("}".to_string());
     out.push(String::new());
-    out.push("int main(int argc, char **argv) {".to_string());
-    out.push("    if (argc > 1) m2c_load(argv[1]);".to_string());
-    out.push("    double vals[M2C_MAX_VALS];".to_string());
+    // 逐函数跑 → 抽成函数，main 才能对**多个夹具**各跑一遍
+    out.push("static double vals[M2C_MAX_VALS];".to_string());
+    out.push(String::new());
+    out.push("static int m2c_run_all(void) {".to_string());
 
     for f in funcs {
         if !drivable(f) {
@@ -198,11 +204,16 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
         let mut ret_names: Vec<String> = Vec::new();
         for r in &f.rets {
             let rn = ident(&r.name);
-            out.push(format!("        mlc_array {};", rn));
-            out.push(format!(
-                "        mlc_array_init(&{}, MLC_F64, 1, (int64_t[]){{1}});",
-                rn
-            ));
+            if crate::emit::ret_is_dynamic(f, &r.name) {
+                // 长度数据相关：算子自己分配；零初始化以保证 free 安全
+                out.push(format!("        mlc_array {} = {{0}};", rn));
+            } else {
+                out.push(format!("        mlc_array {};", rn));
+                out.push(format!(
+                    "        mlc_array_init(&{}, MLC_F64, 1, (int64_t[]){{1}});",
+                    rn
+                ));
+            }
             ret_names.push(rn);
         }
         let mut call_args: Vec<String> = f.args.iter().map(|a| ident(&a.name)).collect();
@@ -237,6 +248,20 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
         }
         out.push("    }".to_string());
     }
+    out.push("    return 0;".to_string());
+    out.push("}".to_string());
+    out.push(String::new());
+    out.push("int main(int argc, char **argv) {".to_string());
+    out.push("    if (argc <= 1) {".to_string());
+    out.push("        return m2c_run_all();   /* 无夹具：默认输入 a[i]=i+1 */".to_string());
+    out.push("    }".to_string());
+    out.push("    for (int fi = 1; fi < argc; ++fi) {".to_string());
+    out.push("        if (argc > 2) printf(\"=== %s\\n\", argv[fi]);".to_string());
+    out.push("        m2c_nfx = 0;            /* 每个夹具重新开始 */".to_string());
+    out.push("        m2c_load(argv[fi]);".to_string());
+    out.push("        int rc = m2c_run_all();".to_string());
+    out.push("        if (rc != 0) return rc;".to_string());
+    out.push("    }".to_string());
     out.push("    return 0;".to_string());
     out.push("}".to_string());
     out.join("\n")
@@ -531,8 +556,12 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
             let mut rets: Vec<String> = Vec::new();
             for r in &f.rets {
                 let rn = ident(&r.name);
-                out.push(format!("        mlc_array {};", rn));
-                out.push(format!("        mlc_array_init(&{}, MLC_F64, 1, (int64_t[]){{1}});", rn));
+                if crate::emit::ret_is_dynamic(f, &r.name) {
+                    out.push(format!("        mlc_array {} = {{0}};", rn));
+                } else {
+                    out.push(format!("        mlc_array {};", rn));
+                    out.push(format!("        mlc_array_init(&{}, MLC_F64, 1, (int64_t[]){{1}});", rn));
+                }
                 rets.push(rn);
             }
             let mut call_args: Vec<String> = f.args.iter().map(|a| ident(&a.name)).collect();
@@ -543,7 +572,43 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
                              ident(&f.name), ident(&f.name), call_args.join(", ")));
             let want = case.expect.get(&f.name).cloned().unwrap_or_default();
             let parts: Vec<&str> = want.split('|').map(|x| x.trim()).collect();
-            if parts.len() == rets.len() && !want.is_empty() {
+            // 期望值是状态词时断言**状态**：这正是"该拒的确实拒了"。
+            // 以前一律 `if (st == MLC_OK) 比数值`，于是 cellish 这类负面夹具
+            // 被静默跳过 —— 负面判据从没被执行过。
+            let fname_c = ident(&f.name);
+            let stv = format!("st_{}", fname_c);
+            // C 侧 main 里没有 `cname` 变量（它只是 m2c_check 的形参），
+            // 这里要写**字符串字面量**。
+            let clit = format!("\"{}\"", cname);
+            let status_checks: Option<Vec<String>> = if want == "unimplemented" {
+                Some(vec![
+                    format!("        if ({0} != MLC_UNIMPLEMENTED) {{", stv),
+                    format!("            printf(\"FAIL [%s] {0}: 期望 unimplemented，实得 %d\\n\",",
+                            f.name),
+                    format!("                   {1}, (int){0});", stv, clit),
+                    "            m2c_fail = 1;".to_string(),
+                    "        } else {".to_string(),
+                    format!("            printf(\"ok   [%s] {0}: unimplemented\\n\", {1});",
+                            f.name, clit),
+                    "        }".to_string(),
+                ])
+            } else if want == "error" {
+                Some(vec![
+                    format!("        if ({0} == MLC_OK) {{", stv),
+                    format!("            printf(\"FAIL [%s] {0}: 期望失败但成功了\\n\", {1});",
+                            f.name, clit),
+                    "            m2c_fail = 1;".to_string(),
+                    "        } else {".to_string(),
+                    format!("            printf(\"ok   [%s] {0}: error\\n\", {1});",
+                            f.name, clit),
+                    "        }".to_string(),
+                ])
+            } else {
+                None
+            };
+            if let Some(lines) = status_checks {
+                out.extend(lines);
+            } else if parts.len() == rets.len() && !want.is_empty() {
                 for (k, rn) in rets.iter().enumerate() {
                     out.push(format!(
                         "        if (st_{} == MLC_OK) m2c_check(\"{}\", \"{}.{}\", &{}, \"{}\");",
@@ -553,6 +618,14 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
             } else {
                 out.push(format!("        /* {} 在这组夹具里没有期望值，跳过比较 */",
                                  f.name));
+            }
+            // 期望是数值，但调用失败 —— 这是**必须红**的：
+            // 以前这里只有 `if (st == MLC_OK) 比数值`，失败时整段被跳过，
+            // 于是"把 unimplemented 写成数字"这种错期望仍然是绿的。
+            if want != "unimplemented" && want != "error" && !want.is_empty() {
+                out.push(format!(
+                    "        if (st_{0} != MLC_OK) {{ printf(\"FAIL [%s] {1}: 期望数值，实得状态 %d\\n\", {2}, (int)st_{0}); m2c_fail = 1; }}",
+                    ident(&f.name), f.name, clit));
             }
             out.push(format!("        (void)st_{};", ident(&f.name)));
             out.push(format!("        mlc_array_free(&{});", an));
