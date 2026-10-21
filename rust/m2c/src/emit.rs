@@ -336,8 +336,8 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                     }
                 }
             }
-            // const 的值在函数开头就填好了（见上方 consts 收集），这里不再产出语句
-            Stmt::Const { .. } => {}
+            // const / fill 的值在函数开头就填好了，这里不再产出语句
+            Stmt::Const { .. } | Stmt::Fill { .. } => {}
             Stmt::Set { lhs, value } => {
                 let ok_lhs = f
                     .var_dtype(lhs)
@@ -552,13 +552,22 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
     let mut temps: Vec<(String, Vec<i64>)> = Vec::new();
     // 立即数也要有实体：算子签名只认 mlc_array
     let mut consts: Vec<(String, String)> = Vec::new();
-    walk_stmts(&f.body, &mut |s| {
-        if let Stmt::Const { name, value } = s {
+    // 多维常量：(名字, 形状, 值)
+    let mut fills: Vec<(String, Vec<i64>, String)> = Vec::new();
+    walk_stmts(&f.body, &mut |s| match s {
+        Stmt::Const { name, value } => {
             let n = ident(name);
             if !consts.iter().any(|(x, _)| x == &n) {
                 consts.push((n, value.clone()));
             }
         }
+        Stmt::Fill { name, dims, value } => {
+            let n = ident(name);
+            if !fills.iter().any(|(x, _, _)| x == &n) {
+                fills.push((n, dims.clone(), value.clone()));
+            }
+        }
+        _ => {}
     });
     walk_stmts(&f.body, &mut |s| {
         if let Stmt::Op(op) = s {
@@ -587,6 +596,16 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
             out.push(l);
         }
         out.push(format!("    ((double *){}.data)[0] = {};", n, v));
+        need_free.push(n.clone());
+    }
+    for (n, dims, v) in &fills {
+        out.push(format!("    mlc_array {};", n));
+        if let Some(l) = init_call(n, "f64", dims, false) {
+            out.push(l);
+        }
+        out.push(format!(
+            "    for (int64_t i = 0; i < mlc_array_numel(&{}); ++i) {{ ((double *){}.data)[i] = {}; }}",
+            n, n, v));
         need_free.push(n.clone());
     }
 

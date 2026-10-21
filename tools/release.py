@@ -61,6 +61,22 @@ SLOW_OK = {
 }
 
 
+def _gate_detail(stats_dir):
+    """读各门写下的统计（当前只有移植门会写）。"""
+    detail = {}
+    if not os.path.isdir(stats_dir):
+        return detail
+    for fn in sorted(os.listdir(stats_dir)):
+        if not fn.endswith(".json"):
+            continue
+        try:
+            detail[fn[:-5]] = json.loads(
+                io.open(os.path.join(stats_dir, fn), encoding="utf-8").read())
+        except (IOError, OSError, ValueError):
+            continue
+    return detail
+
+
 def run(cmd, cwd=ROOT, timeout=900):
     """跑一条命令，stdout/stderr 合并返回 (rc, 最后若干行)。"""
     try:
@@ -191,6 +207,10 @@ def main(argv=None):
     # 在发版时只做结构检查，CI 那边不设这个变量、仍然跑全量。
     # 这样既不牺牲发版速度，也不会出现"发版绿了但没验"的假象 —— 门会打印"未跑（快检）"。
     os.environ["MATLABC_GATE_FAST"] = "1"
+    # 门可以把机器可读统计写到这个目录；历史里就能区分
+    # "变快是因为快检" 还是 "因为真的改好了"。
+    _stats_dir = os.path.join(ROOT, "releases", ".gate-stats")
+    os.environ["MATLABC_GATE_STATS"] = _stats_dir
     _cpu0 = _children_cpu()
     t_all = time.time()
     results = {}
@@ -263,7 +283,8 @@ def main(argv=None):
         line = json.dumps({"at": time.strftime("%Y-%m-%dT%H:%M:%S"),
                            "total_ms": total_ms,
                            "hits": _hits,
-                           "gates": dict((g, stamps[g]["ms"]) for g in GATES)},
+                           "gates": dict((g, stamps[g]["ms"]) for g in GATES),
+                           "detail": _gate_detail(_stats_dir)},
                           ensure_ascii=False)
         old_hist = []
         if os.path.isfile(_hist):

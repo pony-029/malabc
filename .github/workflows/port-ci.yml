@@ -33,6 +33,26 @@ jobs:
       - name: Install C compiler (zig; Windows needs it)
         run: python -m pip install --disable-pip-version-check ziglang
 
+      - name: Set up Rust (m2c 发射器)
+        uses: dtolnay/rust-toolchain@stable
+
+      # 生成物自带自测（src/selftest.c）：这里用**真实 cmake + ctest** 跑一遍，
+      # 而不是只 `gcc` 编译单文件 —— 用户拿到的就是这个工程。
+      - name: Generated project: cmake + ctest
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --release --manifest-path rust/m2c/Cargo.toml
+          python translate/mir.py translate/examples/demo_port.m -o /tmp/demo.mir
+          rust/m2c/target/release/m2c build --mir /tmp/demo.mir --out /tmp/gen \
+            --name demo \
+            --expect translate/examples/demo_port.expected \
+            --case "translate/examples/demo_port.fixture=translate/examples/demo_port.expected.args" \
+            --case "translate/examples/demo_port.fixture.else=translate/examples/demo_port.expected.else"
+          cmake -S /tmp/gen -B /tmp/gen/build -DMLC_RUNTIME="$PWD/c_runtime"
+          cmake --build /tmp/gen/build
+          ctest --test-dir /tmp/gen/build --output-on-failure
+
       - name: Port gate (ABI / adapters / operators / fidelity+ledger)
         # --require-c：没有 C 编译器就判红，禁止“跳过编译也算绿”。
         run: python tools/check_translate_port.py --require-c

@@ -7,5 +7,6 @@ lastpick: 10
 viasum: 60
 accumlast: 80
 scale: 20 40 60
+zerosum: 60
 repeater: 20 40 60
 fancy: skipped (no shape)

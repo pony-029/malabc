@@ -76,6 +76,14 @@ function r = scale(v)
 r = v * 2;
 end
 
+function r = zerosum(v)
+% @m2c shape v 3
+% @m2c shape r 1
+% 多维常量：zeros(1,3) 是 1x3 的矩阵；两侧都是归约调用
+z = zeros(1,3);
+r = sum(z) + sum(v);
+end
+
 function y = repeater(x)
 % @m2c shape x 3
 % @m2c shape y 3

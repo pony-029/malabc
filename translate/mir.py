@@ -71,6 +71,10 @@ _ATOM = re.compile(r"^(\d+|[A-Za-z_]\w*)$")
 #: 标量二元：`a + 1`
 _BIN = re.compile(r"^([A-Za-z_]\d*\w*|\d+)\s*([+\-*/])\s*([A-Za-z_]\w*|\d+)$")
 _BIN_OP = {"+": "add", "-": "sub", "*": "mul", "/": "div"}
+#: `zeros(3)` / `ones(2,3)` —— 多维常量
+_FILL_RE = re.compile(r"^(zeros|ones)\s*\(\s*([\d,\s]+)\s*\)$")
+_FILL_VAL = {"zeros": "0", "ones": "1"}
+
 #: 带调用/下标的二元式：`r + v(1)` / `sum(v) + w`
 _EXPR_BIN = re.compile(r"^(\S.*?)\s*([+\-*/])\s*(\S.*?)$")
 _CALL = re.compile(r"^([A-Za-z_]\w*)\s*\((.*)\)$")
@@ -201,7 +205,13 @@ def _lower_binary(lhs, left, op, right, fnames, emit, counter):
             if fname in fnames:
                 emit("call:%s:%s:%s" % (tmp, fname, arg))
             else:
-                emit("op:OP-INDEX:%s:%s:%s" % (tmp, fname, arg))
+                # 先问算子目录：`sum(z)` 是归约，不是"对 z 取名为 sum 的下标"
+                use = operators.parse_line("%s = %s(%s);" % (tmp, fname, arg))
+                if use is not None and use["operator"] != "OP-INDEX":
+                    emit("op:%s:%s:%s"
+                         % (use["operator"], tmp, ":".join(use["args"])))
+                else:
+                    emit("op:OP-INDEX:%s:%s:%s" % (tmp, fname, arg))
             operands.append(tmp)
         elif side[0] == "num":
             # 立即数 → 形状 [1] 的 mlc_array（MATLAB 里标量就是 1×1）
@@ -304,6 +314,15 @@ def to_mir(source):
                     if _ATOM.match(rhs):
                         out.append("set:%s:%s" % (lhs, rhs))
                         continue
+                    fm0 = _FILL_RE.match(rhs)
+                    if fm0:
+                        dims = [d.strip() for d in fm0.group(2).split(",")
+                                if d.strip()]
+                        out.append("fill:%s:%s:%s"
+                                   % (lhs, ",".join(dims),
+                                      _FILL_VAL[fm0.group(1)]))
+                        n_ops_delta[0] += 1
+                        continue
                     bm = _BIN.match(rhs)
                     # `setb` 生成的是 `int64_t x = ...`，只能用**标量**左值。
                     # `r = v * 2` 里的 r 是数组 —— 早先它被误判成标量赋值，
@@ -341,9 +360,17 @@ def to_mir(source):
             out.append("end")              # 容错：没写 end 的块也收束
             blocks.pop()
         out.append("end")
-    stats = {"functions": len(funcs), "ops": n_ops,
-             "unmapped": n_unmapped, "per_op": per_op,
-             "calls": n_calls[0]}
+    # **统计以 MIR 文本为准**：降级/展开会追加语句，用计数器容易漏计
+    # （实测 `zerosum` 生成了 3 条算子语句，计数器仍显示 10）。
+    ops_lines = [x for x in out if x.startswith("op:")]
+    unmapped_lines = [x for x in out if x.startswith("unmapped:")]
+    per_op_final = {}
+    for x in ops_lines:
+        oid = x.split(":")[1]
+        per_op_final[oid] = per_op_final.get(oid, 0) + 1
+    stats = {"functions": len(funcs), "ops": len(ops_lines),
+             "unmapped": len(unmapped_lines), "per_op": per_op_final,
+             "calls": sum(1 for x in out if x.startswith("call:"))}
     return "\n".join(out) + "\n", stats
 
 

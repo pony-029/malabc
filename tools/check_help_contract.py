@@ -115,6 +115,7 @@ H2（R72）「签名 ⇄ 它**实际发出**的判据前缀」：H1 只证明「
 """
 import argparse
 import ast
+import hashlib
 import io
 import os
 import sys as _sys
@@ -498,6 +499,23 @@ CI_RELIES_ON_NONZERO = {
 }
 
 SH_EXIT_RE = re.compile(r"\bexit\s+(\d+)\b")
+
+
+#: AST 缓存：同一份源码会被 docstring / sys.exit / 判据前缀等多个判据反复解析。
+#: 冷启动实测 208 次 ast.parse（1.8s），而源码去重后只有几十份。
+#: 只缓存**解析成功**的结果：SyntaxError 必须每次如实抛给调用方。
+_AST_CACHE = {}
+
+
+def _parse(src):
+    if not src:
+        return None
+    key = hashlib.sha1(src.encode("utf-8", "replace")).hexdigest()
+    hit = _AST_CACHE.get(key)
+    if hit is None:
+        hit = ast.parse(src)          # 语法错的照常抛
+        _AST_CACHE[key] = hit
+    return hit
 
 
 def _sh_exit_literals(src):
@@ -925,7 +943,7 @@ def _docstring(path):
     except OSError:
         return None, None
     try:
-        tree = ast.parse(src)
+        tree = _parse(src)
     except SyntaxError:
         return src, None
     doc = ast.get_docstring(tree, clean=False)
@@ -987,7 +1005,7 @@ def help_body_leaked(src):
     正在被探针测 sha 的文件，那会作废一趟 19 分钟的测量。
     """
     try:
-        doc = ast.get_docstring(ast.parse(src), clean=False) or ""
+        doc = ast.get_docstring(_parse(src), clean=False) or ""
     except SyntaxError:
         return False
     return "诚实的边界" in doc
@@ -1341,7 +1359,7 @@ def _literal_sys_exits(src):
     if not src:
         return out
     try:
-        tree = ast.parse(src)
+        tree = _parse(src)
     except SyntaxError:
         return out
     for n in ast.walk(tree):
@@ -2072,7 +2090,7 @@ def narrow_judgement_prefixes(src):
     if src is None:
         return None
     try:
-        tree = ast.parse(src)
+        tree = _parse(src)
     except SyntaxError:
         return None
     found = set()

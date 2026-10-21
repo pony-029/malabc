@@ -668,6 +668,35 @@ def _missing_inputs():
     return miss
 
 
+def _dump_stats(stats):
+    """把机器可读的统计写到 `MATLABC_GATE_STATS` 目录（供发版历史记录）。
+
+    为什么不用解析 stdout：日志文案会随排版变，而历史数据是要长期比的 ——
+    一旦某次改了措辞，趋势就断了。
+    """
+    out_dir = os.environ.get("MATLABC_GATE_STATS")
+    if not out_dir:
+        return
+    m = stats.get("m2c") or {}
+    payload = {
+        "fast": bool(m.get("fast")),
+        "coverage": m.get("coverage"),
+        "ops": m.get("ops"),
+        "unmapped": m.get("unmapped"),
+        "functions": m.get("functions"),
+        "golden": stats.get("fidelity", {}).get("passed"),
+        "golden_total": stats.get("fidelity", {}).get("total"),
+    }
+    try:
+        if not os.path.isdir(out_dir):
+            os.makedirs(out_dir)
+        io.open(os.path.join(out_dir, "check_translate_port.json"), "w",
+                encoding="utf-8", newline="").write(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
+    except (IOError, OSError):
+        pass
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="MATLAB→C 移植链路总门（TP1–TP4）")
     ap.add_argument("--selftest", action="store_true", help="两向自证")
@@ -726,6 +755,7 @@ def main(argv=None):
         print("check_translate_port: %d 项不合规" % len(probs))
         return 1
     _mm = stats.get("m2c") or {}
+    _dump_stats(stats)
     print("check_translate_port: OK（TP1–TP5 全绿；golden %d/%d；C %s；"
           "台账 %d 条；MIR 函数 %s / 算子 %s / 未映射 %s / 编译 %s）"
           % (stats["fidelity"]["passed"], stats["fidelity"]["total"],
