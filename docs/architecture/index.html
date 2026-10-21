@@ -6,6 +6,7 @@
 <title>malabc 架构图索引</title>
 <style>
   :root { --bg:#0b1020; --panel:#141b2d; --line:#2a3550; --text:#e6ebf5; --muted:#93a0bb; --accent:#5eead4; }
+  html[data-theme="light"] { --bg:#f6f8fc; --panel:#ffffff; --line:#d7deea; --text:#162033; --muted:#5b6b85; --accent:#0f766e; }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--text); font:15px/1.6 system-ui,"Segoe UI",Roboto,"Noto Sans SC",sans-serif; }
   header { padding:56px 24px 24px; max-width:1200px; margin:0 auto; }
@@ -34,6 +35,16 @@
   #count { color:var(--muted); font-size:13px; margin-left:auto; }
   #none { color:var(--muted); padding:18px 0; }
   kbd { border:1px solid var(--line); border-bottom-width:2px; border-radius:4px; padding:0 5px; font-size:12px; }
+  #theme { padding:6px 12px; border-radius:999px; border:1px solid var(--line);
+           background:transparent; color:var(--muted); font:inherit; font-size:13px; cursor:pointer; }
+  @media (max-width: 640px) {
+    header { padding:32px 16px 16px; }
+    main { padding:8px 16px 40px; }
+    .grid { grid-template-columns:1fr; }
+    .toolbar { flex-direction:column; align-items:stretch; }
+    #count { margin-left:0; }
+    #q { width:100%; }
+  }
 </style>
 </head>
 <body>
@@ -54,6 +65,7 @@
       <button type="button" data-filter="mermaid" aria-pressed="false">mermaid</button>
     </div>
     <span id="count" aria-live="polite"></span>
+    <button id="theme" type="button" aria-label="切换亮色/暗色主题">亮色</button>
   </div>
 
   <h2>总框架</h2>
@@ -154,7 +166,33 @@
   var chips = Array.prototype.slice.call(document.querySelectorAll('button[data-filter]'));
   var count = document.getElementById('count');
   var none = document.getElementById('none');
+  var theme = document.getElementById('theme');
   var active = 'all';
+  function setTheme(light) {
+    if (light) {
+      document.documentElement.setAttribute('data-theme', 'light');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+    theme.textContent = light ? '暗色' : '亮色';
+    try { localStorage.setItem('malabc-arch-theme', light ? 'light' : 'dark'); } catch (e) {}
+  }
+  var saved = null;
+  try { saved = localStorage.getItem('malabc-arch-theme'); } catch (e) {}
+  var th = /[?&]theme=(light|dark)/.exec(location.search);
+  if (th) {
+    setTheme(th[1] === 'light');
+  } else if (saved === 'light') {
+    setTheme(true);
+  } else if (!saved && window.matchMedia &&
+             window.matchMedia('(prefers-color-scheme: light)').matches) {
+    setTheme(true);
+  } else {
+    setTheme(false);
+  }
+  theme.addEventListener('click', function () {
+    setTheme(document.documentElement.getAttribute('data-theme') !== 'light');
+  });
   function apply() {
     var term = (q.value || '').trim().toLowerCase();
     var shown = 0;

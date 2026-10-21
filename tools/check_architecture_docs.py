@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""架构文档一致性门（AD1–AD8）。
+"""架构文档一致性门（AD1–AD9）。
 
 判据族：
     AD1  索引形状：`FLOW_INDEX.json` 的 version/items/id/type/title 齐全且唯一。
@@ -19,13 +19,15 @@
          且每个 owner 都以 `@` 开头。
     AD8  中英一致：每张图必须有 `en/candidates/<id>.json`；两者的
          节点 id、连线端点、节点/连线/消息计数必须一致；英文版**不得残留中文**。
+    AD9  术语一致：`GLOSSARY.md` 的机器块给出中文术语 → 可接受英文写法；
+         中文节点 label 含某术语时，英文 label 必须命中其中一种写法。
 
 为什么需要它：架构图是**生成物**，最容易出现的缺陷不是“画错”，而是
 “改了 candidate 没重渲染 / 渲染了没登记 / 嵌了图但路径写错”——这三种
 在 git diff 里都只是几行，靠人看不住。
 
 退出码：
-    0  = AD1–AD8 全绿
+    0  = AD1–AD9 全绿
     1  = 有架构文档不一致
     2  = 缺输入（找不到 docs/architecture 或根 README）
 """
@@ -40,7 +42,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 #: P5 的对手方：本门在 README 质量门表那一行里声明的判据族。
-ROW_SIGNATURE = "AD1–AD8"
+ROW_SIGNATURE = "AD1–AD9"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -51,6 +53,7 @@ ARCH_README = os.path.join(ARCH, "README.md")
 CODEOWNERS = os.path.join(ROOT, ".github", "CODEOWNERS")
 MODULE_DOC = os.path.join(ROOT, "docs", "ARCHITECTURE_MAP.md")
 CHECKLIST = os.path.join(ARCH, "REVIEW_CHECKLIST.md")
+GLOSSARY = os.path.join(ARCH, "GLOSSARY.md")
 ROOT_READMES = (os.path.join(ROOT, "README.md"),
                 os.path.join(ROOT, "README_CN.md"))
 TYPES = ("architecture", "workflow", "lifecycle", "sequence", "dataflow")
@@ -290,9 +293,52 @@ def _label_problems(iid, zh, en):
     return probs
 
 
+def _glossary_terms(path):
+    if not os.path.isfile(path):
+        return None
+    m = re.search(r"<!--\s*GLOSSARY v1\s*([\s\S]*?)-->", _read(path))
+    if not m:
+        return None
+    try:
+        data = json.loads(m.group(1))
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    out = {}
+    for k, v in data.items():
+        if isinstance(v, str):
+            v = [v]
+        if isinstance(v, list) and v and all(isinstance(x, str) for x in v):
+            out[k] = v
+    return out or None
+
+
+def _node_labels(cj):
+    nodes = (cj.get("components") or cj.get("nodes")
+             or cj.get("participants") or cj.get("states") or [])
+    return dict((n.get("id"), n.get("label") or "")
+                for n in nodes if n.get("id"))
+
+
+def _glossary_problems(iid, zh, en, terms):
+    probs = []
+    zl, el = _node_labels(zh), _node_labels(en)
+    for nid, z in zl.items():
+        e = el.get(nid) or ""
+        low = e.lower()
+        for zh_term, alts in terms.items():
+            if zh_term not in z:
+                continue
+            if not any(a.lower() in low for a in alts):
+                probs.append("AD9 %s 节点 %s：中文 %r 含「%s」，英文 %r 缺 %r"
+                             % (iid, nid, z, zh_term, e, alts))
+    return probs
+
+
 def check(index_path=None, arch_dir=None, arch_readme=None,
           root_readmes=None, manifest_path=None, codeowners_path=None,
-          module_doc_path=None, checklist_path=None):
+          module_doc_path=None, checklist_path=None, glossary_path=None):
     """纯函数：返回问题列表；空 = 干净。参数可注入（自证用）。"""
     index_path = index_path or INDEX
     arch_dir = arch_dir or ARCH
@@ -303,6 +349,7 @@ def check(index_path=None, arch_dir=None, arch_readme=None,
     codeowners_path = codeowners_path or CODEOWNERS
     module_doc_path = module_doc_path or MODULE_DOC
     checklist_path = checklist_path or CHECKLIST
+    glossary_path = glossary_path or GLOSSARY
     if not os.path.isfile(index_path):
         return ["AD1 缺索引：%s" % index_path]
     try:
@@ -319,6 +366,9 @@ def check(index_path=None, arch_dir=None, arch_readme=None,
         probs.append("AD1 version 非法")
     if not data.get("generated"):
         probs.append("AD1 缺 generated")
+    terms = _glossary_terms(glossary_path)
+    if terms is None:
+        probs.append("AD9 缺/坏 GLOSSARY.md：%s" % glossary_path)
 
     seen = set()
     for it in items:
@@ -437,6 +487,8 @@ def check(index_path=None, arch_dir=None, arch_readme=None,
                              % (iid, e))
             else:
                 probs.extend(_label_problems(iid, cj, ej))
+                if terms:
+                    probs.extend(_glossary_problems(iid, cj, ej, terms))
     # AD7：模块责任人
     probs.extend(_codeowners_problems(codeowners_path))
 
@@ -484,8 +536,9 @@ def check(index_path=None, arch_dir=None, arch_readme=None,
 
     # 索引页与模块边界图：搜索框/过滤片/14 张入口/模块图入口都必须在。
     for name, needles in (
-            ("index.html", ('id="q"', "data-filter", "MODULE_GRAPH.md",
-                            "html/13-sequence.html")),
+            ("index.html", ('id="q"', 'id="theme"',
+                            "@media (max-width: 640px)", "data-filter",
+                            "MODULE_GRAPH.md", "html/13-sequence.html")),
             ("MODULE_GRAPH.md", ("graph LR", "core -->"))):
         path = os.path.join(arch_dir, name)
         if not os.path.isfile(path):
@@ -572,9 +625,14 @@ def _selftest():
         checklist = os.path.join(arch, "REVIEW_CHECKLIST.md")
         _write(checklist,
                "FLOW_INDEX MANIFEST CODEOWNERS arch_compare\n")
+        glossary = os.path.join(arch, "GLOSSARY.md")
+        _write(glossary,
+               '<!-- GLOSSARY v1\n{"入口": ["entry"]}\n-->\n')
         index_html = os.path.join(arch, "index.html")
         _write(index_html,
                '<input id="q"><button data-filter="all"></button>\n'
+               '<button id="theme"></button>\n'
+               "@media (max-width: 640px) {}\n"
                "[g](MODULE_GRAPH.md)\n[13](html/13-sequence.html)\n")
         module_graph = os.path.join(arch, "MODULE_GRAPH.md")
         _write(module_graph, "```mermaid\ngraph LR\n  core -->|1| x\n```\n")
@@ -599,8 +657,17 @@ def _selftest():
                 os.path.join(arch, "README.md"), (r_en, r_cn))
         kw = {"codeowners_path": co,
               "module_doc_path": module_doc,
-              "checklist_path": checklist}
+              "checklist_path": checklist,
+              "glossary_path": glossary}
         chk(not check(*args, **kw), "好样本被误伤")
+        terms = _glossary_terms(glossary)
+        zh_g = {"components": [{"id": "a", "label": "入口"}]}
+        en_g = {"components": [{"id": "a", "label": "Entry"}]}
+        en_bad = {"components": [{"id": "a", "label": "CLI"}]}
+        chk(not _glossary_problems("g", zh_g, en_g, terms),
+            "AD9 good 被误伤")
+        chk(bool(_glossary_problems("g", zh_g, en_bad, terms)),
+            "AD9 译法不一致未判红")
         # AD8：英文版残留中文 / 缺节点
         _write(encand, EN.replace('"label": "A"', '"label": "甲"'))
         chk(bool(check(*args, **kw)), "AD8 英文残留中文未判红")
@@ -709,6 +776,8 @@ def _selftest():
         chk(bool(check(*args, **kw)), "AD3 搜索框缺失未判红")
         _write(index_html,
                '<input id="q"><button data-filter="all"></button>\n'
+               '<button id="theme"></button>\n'
+               "@media (max-width: 640px) {}\n"
                "[g](MODULE_GRAPH.md)\n[13](html/13-sequence.html)\n")
         chk(not check(*args, **kw), "恢复后仍误伤")
     finally:
@@ -716,11 +785,11 @@ def _selftest():
         shutil.rmtree(tmp, ignore_errors=True)
 
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad[0], good[0]))
-    return 0 if (bad[0] == 0 and good[0] >= 19) else 1
+    return 0 if (bad[0] == 0 and good[0] >= 21) else 1
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="架构文档一致性门（AD1–AD8）")
+    ap = argparse.ArgumentParser(description="架构文档一致性门（AD1–AD9）")
     ap.add_argument("--selftest", action="store_true", help="两向自证")
     args = ap.parse_args(argv)
     if args.selftest:
@@ -738,7 +807,7 @@ def main(argv=None):
             print("  - %s" % p)
         print("check_architecture_docs: %d 项不合规" % len(probs))
         return 1
-    print("check_architecture_docs: OK（AD1–AD8 全绿；"
+    print("check_architecture_docs: OK（AD1–AD9 全绿；"
           "索引 %d 条对账 candidate/html/svg；根 README 已嵌图）"
           % len(_load_json(INDEX).get("items") or []))
     return 0

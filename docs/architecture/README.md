@@ -38,7 +38,8 @@
 
 **一页式导览**：[`../ARCHITECTURE_MAP.md`](../ARCHITECTURE_MAP.md)（按模块嵌入 14 张图）；
 **模块边界**：[`MODULE_GRAPH.md`](MODULE_GRAPH.md)（Mermaid，边由 import graph 现算）；
-**评审清单**：[`REVIEW_CHECKLIST.md`](REVIEW_CHECKLIST.md)（新增/修改/删除各要过哪些门）。
+**评审清单**：[`REVIEW_CHECKLIST.md`](REVIEW_CHECKLIST.md)（新增/修改/删除各要过哪些门）；
+**术语表**：[`GLOSSARY.md`](GLOSSARY.md)（AD9 的中英规范译法 + 机器块）。
 
 ---
 
@@ -162,7 +163,7 @@
 | 模块 | 主文件 | 最近提交 |
 | --- | --- | --- |
 | 00 总框架 | `matlabc.py` · `matlabc_boot.py` | `eee6968` 2026-10-20 |
-| 01 入口与 CLI | `matlabc.py` · `matlabc_boot.py` · `matlabc_help.py` · `gui.py` | `791b70a` 2026-10-21 |
+| 01 入口与 CLI | `matlabc.py` · `matlabc_boot.py` · `matlabc_help.py` · `gui.py` | `b5856d6` 2026-10-21 |
 | 02 MATLAB 前端 | `matlabc.py` · `frontends/matlab.py` | `eee6968` 2026-10-20 |
 | 03 多语言 + IR | `frontends/ir.py` · `matlabc.py` · `pyast_frontend.py` | `eee6968` 2026-10-20 |
 | 04 分析引擎 | `matlabc.py` · `facts.py` · `entity_model.py` · `unified_graph.py` | `eee6968` 2026-10-20 |
@@ -170,7 +171,7 @@
 | 06 LSP + VS Code | `matlabc_lsp.py` · `vscode/` | `c71c475` 2026-10-21 |
 | 07 AI / MCP | `matlabc_mcp.py` · `matlabc_ask.py` · `ai_cli.py` | `6a03133` 2026-10-20 |
 | 08 修复闭环 | `agent_loop.py` · `matlabc_flow.py` · `analyzer_memory.py` | `2caf526` 2026-10-10 |
-| 09 门禁 / CI | `tools/` · `.github/workflows/` | `aa595a3` 2026-10-21 |
+| 09 门禁 / CI | `tools/` · `.github/workflows/` | `b95fb26` 2026-10-21 |
 | 10 MATLAB→C 移植 | `translate/` · `c_runtime/` · `port_ledger.json` | `aa595a3` 2026-10-21 |
 | 11 二进制分析 | `binfmt/` · `binhops.py` · `callrel.py` | `6cf824b` 2026-10-13 |
 
@@ -207,8 +208,9 @@ python tools/build_arch_svg_en.py
 python tools/arch_compare.py --id 00-overall
 ```
 
-> 纯 Python 快跑门在 `.github/workflows/arch-docs.yml`：AD1–AD8、SVG 哈希清单、
-> 英文 SVG 存在性、模块边界图新鲜度、中英 README 对等、行尾约定；不依赖 archify/Node。
+> 纯 Python 快跑门在 `.github/workflows/arch-docs.yml`：AD1–AD9、SVG 哈希清单、
+> 英文 SVG 存在性、模块边界图新鲜度、归属表新鲜度、中英 README 对等、行尾约定；
+> 不依赖 archify/Node。
 
 类型映射：
 
@@ -232,17 +234,22 @@ python tools/arch_compare.py --id 00-overall
 | 独立 SVG（14 个） | **14/14 XML 解析通过**；CSS 裁剪到 **4–5 KB**（丢弃 @font-face，靠系统等宽兜底） |
 | SVG 渲染烟测 | `00-overall` 1444×744 **3585 色 / 40.89% 非白**；`12-dataflow` 980×520 **4430 色 / 57.57%**；`13-sequence` 1020×700 **3752 色 / 63.04%** |
 | SVG 体积 | **3.7 MB → 353 KB**（约 10.5×，单张 17–41 KB） |
-| 架构文档门 | `python tools/check_architecture_docs.py` → **OK（AD1–AD8）** |
+| 架构文档门 | `python tools/check_architecture_docs.py` → **OK（AD1–AD9）** |
 | 离线版式（AD6） | 14/14：viewBox（dataflow/sequence）、id 唯一、连线端点已知、sequence y≥160 且间距≥28、标签长度 |
 | 责任人（AD7） | 13 个关键模块全部有 `.github/CODEOWNERS` 负责人，owner 均为 `@pony-029` |
 | 图片路径（AD3） | 根 README 的本地图片全部存在；总框架中文/英文各嵌各的图 |
 | 陈旧门 | `python tools/export_arch_svg.py --check` → **OK（14 条清单与 candidate/html/svg 一致）** |
-| 快跑 CI | `.github/workflows/arch-docs.yml`（AD1–AD8 + 清单 + 英文 SVG + 模块图 + README 对等 + 行尾）；YAML 可解析：1 job / 8 steps |
+| 快跑 CI | `.github/workflows/arch-docs.yml`（AD1–AD9 + 清单 + 英文 SVG + 模块图 + 归属表 + README 对等 + 行尾）；YAML 可解析：1 job / 9 steps |
 | 模块边界（R16） | `python tools/build_module_graph.py` → 57 个运行时模块 / 20 条跨组边；`--check` 可复现 |
 | 索引搜索（R14） | Chrome `?q=sequence` → 15 卡片中仅 1 张可见；`?q=no-such` → 0 张 + “无结果” |
 | 版式差异（R13） | `python tools/arch_compare.py --id 00-overall --head <changed>` → delta HTML **2,163,473 B** + receipt **2,022 B** |
 | 根 README | 中英两份都链接 `docs/architecture/index.html`；中文用 `svg/00-overall.svg`，英文用 `en/svg/00-overall.svg` |
 | `.html` / `.svg` 行尾 | **LF**（`00-overall.html` CRLF=0；SVG 由导出器按 LF 写） |
+| 术语表（AD9） | `GLOSSARY.md` 38 条术语；14/14 节点 label 命中规范译法 |
+| 源码链接（R17） | `00-overall` HTML 内嵌 `archify-source-evidence-data`：`verified:true` / 30 条引用 / GitHub blob 链接 |
+| 主题/响应式（R19/R20） | `?theme=light` 生效；390×844 单列渲染（1100 色 / 5.79% 非白） |
+| pre-commit（R21） | `.githooks/pre-commit` 跑 5 道快跑门；`install_git_hooks.py --check` 只读 |
+| 归属表（R10） | `build_ownership_table.py --check`：12 个模块的最近提交与 `git log` 一致 |
 | 产物体积 | HTML 约 **10.1 MB**（14 张） + SVG 约 **344 KB** |
 
 > 说明：这是**架构/流程图**，回答“模块怎么组织、数据怎么流”；不是函数级调用图。

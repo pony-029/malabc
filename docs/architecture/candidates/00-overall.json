@@ -6,7 +6,13 @@
     "locale": "zh-CN",
     "quality_profile": "showcase",
     "subtitle": "入口与输入在顶部，前端/模型/分析/输出在中间，闭环与移植在底部",
-    "output": "docs/architecture/html/00-overall.html"
+    "output": "docs/architecture/html/00-overall.html",
+    "repository": {
+      "url": "https://github.com/pony-029/malabc",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "b95fb26f78b49bd647b6cce4d232011d5db2916e"
+    }
   },
   "components": [
     {
@@ -21,6 +27,16 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        },
+        {
+          "path": "matlabc_boot.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -35,6 +51,12 @@
       "size": [
         340,
         64
+      ],
+      "sources": [
+        {
+          "path": "docs/matlabc_USAGE.md",
+          "label": "main"
+        }
       ]
     },
     {
@@ -49,6 +71,16 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "frontends/matlab.py",
+          "label": "main"
+        },
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -63,6 +95,16 @@
       "size": [
         320,
         64
+      ],
+      "sources": [
+        {
+          "path": "frontends/ir.py",
+          "label": "main"
+        },
+        {
+          "path": "pyast_frontend.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -77,6 +119,20 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "entity_model.py",
+          "label": "main"
+        },
+        {
+          "path": "unified_graph.py",
+          "label": "main"
+        },
+        {
+          "path": "facts.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -91,6 +147,16 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "analyzer/__init__.py",
+          "label": "main"
+        },
+        {
+          "path": "unified_graph.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -105,6 +171,16 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "renderers/__init__.py",
+          "label": "main"
+        },
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -119,6 +195,16 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "matlabc_lsp.py",
+          "label": "main"
+        },
+        {
+          "path": "vscode/extension.js",
+          "label": "main"
+        }
       ]
     },
     {
@@ -133,6 +219,20 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "matlabc_mcp.py",
+          "label": "main"
+        },
+        {
+          "path": "matlabc_ask.py",
+          "label": "main"
+        },
+        {
+          "path": "ai_cli.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -147,6 +247,20 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "matlabc_flow.py",
+          "label": "main"
+        },
+        {
+          "path": "agent_loop.py",
+          "label": "main"
+        },
+        {
+          "path": "analyzer_memory.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -161,6 +275,20 @@
       "size": [
         320,
         64
+      ],
+      "sources": [
+        {
+          "path": "translate/__init__.py",
+          "label": "main"
+        },
+        {
+          "path": "c_runtime/include/mlc.h",
+          "label": "main"
+        },
+        {
+          "path": "port_ledger.json",
+          "label": "main"
+        }
       ]
     },
     {
@@ -175,6 +303,16 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "binfmt/__init__.py",
+          "label": "main"
+        },
+        {
+          "path": "binhops.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -189,6 +327,12 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "tools/check_all.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -203,6 +347,12 @@
       "size": [
         1340,
         64
+      ],
+      "sources": [
+        {
+          "path": "docs/matlabc_USAGE.md",
+          "label": "main"
+        }
       ]
     },
     {
@@ -217,6 +367,12 @@
       "size": [
         240,
         56
+      ],
+      "sources": [
+        {
+          "path": ".github/workflows/ci.yml",
+          "label": "main"
+        }
       ]
     }
   ],

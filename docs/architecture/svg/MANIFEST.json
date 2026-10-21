@@ -1,9 +1,9 @@
 {
-  "generated": "2026-10-21T06:36:49Z",
+  "generated": "2026-10-21T08:30:11Z",
   "items": {
     "00-overall": {
-      "candidate_sha256": "d39f1e38b2de2080f387328a14b0dedb3ff210930685dfc6258944926d2daca2",
-      "html_sha256": "cfc8a66ea47197ad01861bc5681c11c5f9512fa0f9ab68ff08d58224e0539c7a",
+      "candidate_sha256": "8b0c142d8623500cbd7b25fe768c5788380940487a534531f10c58daf611c4df",
+      "html_sha256": "1be8f2173a4b85e8a886ee361245343977bf591d154fba93c601692216d2593e",
       "svg_bytes": 41202,
       "svg_sha256": "c21a164eb4ba2a6dcbdc4d1812c6b3ea52402acd32b8fcd10a439c6873e7a6c0"
     },

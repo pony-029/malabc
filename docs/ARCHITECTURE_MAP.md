@@ -35,6 +35,10 @@
 
 ## 维护
 
+> 总框架 `00-overall` 的 HTML 已内嵌源码证据（`archify-source-evidence-data`，
+> `verified:true`，30 条 Git 引用）；其余图可按体检清单逐步补 `sources`。
+
 - 新增/修改/删除一张图，按 [`architecture/REVIEW_CHECKLIST.md`](architecture/REVIEW_CHECKLIST.md) 走。
+- 中英规范译法见 [`architecture/GLOSSARY.md`](architecture/GLOSSARY.md)（AD9）。
 - 图的可编辑源在 `architecture/candidates/`；不要手改 `html/` 或 `svg/`。
 - 重新生成：`python tools/export_arch_svg.py --all`；英文版：`python tools/build_arch_svg_en.py`。

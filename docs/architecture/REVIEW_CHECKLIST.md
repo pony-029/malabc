@@ -1,7 +1,7 @@
 # 架构图评审清单
 
 > 这张清单把“改一张图要过哪些门”从口口相传变成可执行步骤。
-> 三道总闸：`check_architecture_docs.py`（AD1–AD8）、
+> 三道总闸：`check_architecture_docs.py`（AD1–AD9）、
 > `export_arch_svg.py --check`（AD5 哈希）、
 > `arch_compare.py`（base/head 版式差异）。
 
@@ -25,7 +25,7 @@
    ```
 
 5. 写英文 candidate（`en/candidates/<id>.json`，结构 id/边/计数必须与中文一致，
-   **不得残留中文**），生成英文 SVG：
+   **不得残留中文**，节点 label 必须命中 `GLOSSARY.md` 的规范译法），生成英文 SVG：
 
    ```bash
    python tools/build_arch_svg_en.py
@@ -38,6 +38,8 @@
    python tools/check_architecture_docs.py
    python tools/export_arch_svg.py --check
    python tools/build_arch_svg_en.py --check
+   python tools/build_module_graph.py --check
+   python tools/build_ownership_table.py --check
    python tools/check_eol_convention.py
    ```
 
@@ -64,8 +66,19 @@
 - [ ] 连线端点都在节点集合里吗？有没有“画了箭头但目标不存在”？
 - [ ] sequence 的消息间距 ≥ 28、y ≥ 160 吗？段有没有越界？
 - [ ] 英文版与中文版的 id/边/计数一致吗？英文版还有中文吗？
+- [ ] 英文 label 命中了 `GLOSSARY.md` 的规范译法吗（AD9）？
 
 ## 责任人
 
 - 模块 owner 见 `.github/CODEOWNERS`；AD7 会核对关键模块是否都有 `@` 开头的 owner。
 - 架构文档本身归 `/docs/architecture/` 的 owner。
+
+## 可选：提交前自动跑
+
+```bash
+python tools/install_git_hooks.py          # 接上 .githooks/pre-commit（只改本仓库配置）
+python tools/install_git_hooks.py --check  # 只读检查是否接上
+```
+
+钩子只跑 5 道纯 Python 快跑门（AD / 归属表 / SVG 清单 / 英文 SVG / 模块图），
+不需要 archify，也不会改工作区。

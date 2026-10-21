@@ -1,0 +1,13 @@
+#!/bin/sh
+# malabc architecture pre-commit (R21)
+# 接上：python tools/install_git_hooks.py
+# 只跑纯 Python 快跑门；不需要 archify/Node，也不会改工作区。
+set -e
+PY=python
+command -v python >/dev/null 2>&1 || PY=python3
+
+$PY tools/check_architecture_docs.py
+$PY tools/build_ownership_table.py --check
+$PY tools/export_arch_svg.py --check
+$PY tools/build_arch_svg_en.py --check
+$PY tools/build_module_graph.py --check
