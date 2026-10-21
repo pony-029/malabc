@@ -92,7 +92,7 @@ python tools/export_arch_png.py --all        # 汇报用 PNG
 python tools/export_arch_png.py --baseline   # 冻结 PNG 基线
 python tools/record_arch_review.py --write --reviewer <name> --result pass
 python tools/release_arch_check.py --check   # 快照/版本/PNG/评审总闸
-python tools/release_arch_check.py --diff <prev> --fail-on-change
+python tools/release_arch_check.py --diff --fail-on-change   # 自动找上一版本
 ```
 
 - `SNAPSHOTS.json` 按 `matlabc.py` 的 `VERSION` 归档；同版本重跑覆盖，新版本追加。
