@@ -2,6 +2,19 @@
 
 ---
 
+## 1.5.2
+
+- **大纲修复（脚本）**：脚本文件没有 `function` 时，不再显示内部伪符号
+  `<script>` 或空白；改为按 `%%` 分节列出，无分节时显示文件名本身。
+  服务端（`matlabc_lsp.py` 的 `_script_symbols`）与客户端兜底保持同一形态。
+- **新增 site 级 HTML 文档**：命令 **`matlabc: 生成工程站点（site 级 HTML 文档）`**，
+  调用 `matlabc.py --browse` 输出多页站点到 `.matlabc/site/index.html`
+  （源码页 / 函数详情 / 调用图 / 目录与规则索引），可点击跳转、可分享。
+- 修复仓库内调试时找不到 `matlabc.py`：三个报告/站点命令统一走
+  `findMatlabcPy()`，依次尝试 LSP 同目录、扩展根、仓库根与工作区。
+- `vscode/test_extension.js` 的 mock 补全 `extensionPath` 与常用 vscode API，
+  测试重新可用（8 条断言）。
+
 ## 1.5.1
 
 - 新增命令 **`matlabc: 生成工程 HTML 报告`**：一条命令出整份报告（调用图内嵌），

@@ -2680,10 +2680,68 @@ def _code_lens(uri):
     return out
 
 
+#: LSP `SymbolKind.File` = 1（脚本文件本身）
+_SYMBOL_FILE = 1
+#: LSP `SymbolKind.Module` = 2（脚本的 `%%` 分节）
+_SYMBOL_MODULE = 2
 #: LSP `SymbolKind.Function` = 12
 _SYMBOL_FUNCTION = 12
 #: LSP `SymbolKind.Class` = 5
 _SYMBOL_CLASS = 5
+
+
+def _script_symbols(rel, source_lines, file_lines, path=None):
+    """脚本（无 function）的大纲：优先 `%%` 分节，否则用文件名占位。
+
+    为什么不能直接透出 `MatlabFunction("<script>")`：那是**调用分析**内部用的
+    句柄，不是给人看的名字。用户在大纲里只看到一行 `<script>`（或 0 个符号），
+    观感就是「大纲加载不出来」。而脚本里真正可导航的是 `%%` 分节 —— 这也是
+    MATLAB 编辑器的大纲形态。
+
+    缓存命中的 `SimpleNamespace` **没有 `source_lines`**（见 `_CACHED_MF_FIELDS`），
+    此时直接读一次磁盘：大纲是用户点开文件就要看的，不能因为缓存 schema 少一个
+    字段就退化成只有文件名。
+    """
+    stem = os.path.splitext(os.path.basename(rel or ""))[0] or "script"
+    lines = source_lines
+    if not lines and path:
+        try:
+            with io.open(path, "r", encoding="utf-8", errors="replace") as fh:
+                lines = fh.read().split("\n")
+        except (IOError, OSError):
+            lines = []
+    lines = lines or []
+    n = max(1, int(file_lines or len(lines) or 1))
+    secs = []
+    for i, ln in enumerate(lines):
+        m = re.match(r"^\s*%%+\s*(.*\S)\s*$", ln or "")
+        if m:
+            secs.append((i, m.group(1).strip()))
+    if not secs:
+        last = max(0, n - 1)
+        return [{
+            "name": stem,
+            "kind": _SYMBOL_FILE,
+            "range": {"start": {"line": 0, "character": 0},
+                      "end": {"line": last, "character": 0}},
+            "selectionRange": {"start": {"line": 0, "character": 0},
+                               "end": {"line": 0, "character": len(stem)}},
+        }]
+    out = []
+    for idx, (line, title) in enumerate(secs):
+        nxt = secs[idx + 1][0] if idx + 1 < len(secs) else n
+        end0 = max(line, min(n - 1, nxt - 1))
+        text_len = len(lines[line]) if line < len(lines) else len(title)
+        out.append({
+            "name": title,
+            "kind": _SYMBOL_MODULE,
+            "range": {"start": {"line": line, "character": 0},
+                      "end": {"line": end0,
+                              "character": text_len if end0 == line else 0}},
+            "selectionRange": {"start": {"line": line, "character": 0},
+                               "end": {"line": line, "character": text_len}},
+        })
+    return out
 
 
 def _document_symbols(uri):
@@ -2708,7 +2766,7 @@ def _document_symbols(uri):
         rel = os.path.basename(path)
     want = os.path.basename(rel).lower()
 
-    def _build(fns, file_lines):
+    def _build(fns, file_lines, source_lines=None, file_kind=None):
         """把函数列表转成 LSP 符号数组。
 
         `range` 覆盖函数体，`selectionRange` 只覆盖名字那一行 —— 后者必须
@@ -2717,7 +2775,14 @@ def _document_symbols(uri):
         `body_end` 缺失时（缓存重建的对象没有这个字段）不能退化成单行：
         退化的后果是「点了大纲里的函数却只选中一行」。改用下一个函数的
         起始行往前一行，最后一个函数用文件行数兜底。
+
+        脚本（内部只有 `<script>` 伪函数）改走 `_script_symbols`：透出
+        `%%` 分节或文件名，而不是把内部句柄当符号名（R432）。
         """
+        if (file_kind == "script"
+                or (len(fns) == 1
+                    and (getattr(fns[0], "name", "") or "") == "<script>")):
+            return _script_symbols(rel, source_lines, file_lines, path)
         starts = sorted(int(getattr(x, "line", 1) or 1) for x in fns)
         out2 = []
         for f in fns:
@@ -2763,7 +2828,9 @@ def _document_symbols(uri):
         if os.path.basename(getattr(mf, "rel", "") or "").lower() != want:
             continue
         out = _build((getattr(mf, "functions", None) or []),
-                     getattr(mf, "lines", 0))
+                     getattr(mf, "lines", 0),
+                     getattr(mf, "source_lines", None),
+                     getattr(mf, "kind", None))
         if out:
             return out
 
@@ -2777,7 +2844,9 @@ def _document_symbols(uri):
         _mf = _M.MatlabFile(path, rel)
         _M.parse_file(_mf)
         return _build(getattr(_mf, "functions", None) or [],
-                      getattr(_mf, "lines", 0))
+                      getattr(_mf, "lines", 0),
+                      getattr(_mf, "source_lines", None),
+                      getattr(_mf, "kind", None))
     except Exception as exc:
         _log("documentSymbol 兜底解析失败：%r" % (exc,))
         return []

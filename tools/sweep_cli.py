@@ -699,17 +699,18 @@ def group8(tmp):
             {"textDocument": {"uri": _uri(empty)},
              "position": {"line": 0, "character": 0}})
     _chk((r or {}).get("result") == [], "empty/definition-empty")
-    # **实测：空文件返回 1 个 `<script>` 占位符，不是 []**。
-    # 我第一版断言 [] 是错的（第 14 次凭印象）——否则大纲面板打开脚本会全空。
+    # R432：脚本不再透出内部 `<script>` 句柄，改为**文件名占位**（SymbolKind.File）。
+    # 空文件没有分节，文件名是唯一可导航的东西；返回 [] 会让大纲面板全空。
     r = req(c, 4, "textDocument/documentSymbol",
             {"textDocument": {"uri": _uri(empty)}})
     syms = (r or {}).get("result") or []
-    _chk(len(syms) == 1 and syms[0].get("name") == "<script>",
-         "empty/symbols-script-placeholder",
-         "got %r" % ([s.get("name") for s in syms],))
+    _chk(len(syms) == 1 and syms[0].get("name") == "empty"
+         and syms[0].get("kind") == 1,
+         "empty/symbols-file-placeholder",
+         "got %r" % ([(s.get("name"), s.get("kind")) for s in syms],))
     c.close()
 
-    # 脚本文件（无 function）：hover null、`<script>` 占位、range 覆盖正文
+    # 脚本文件（无 function、无 `%%`）：hover null、文件名占位、range 覆盖正文
     sc = o("script.m")
     write_text(sc, u"a = 1;\nb = a + 1;\n")
     c = _lsp_client()
@@ -722,11 +723,23 @@ def group8(tmp):
     r = req(c, 3, "textDocument/documentSymbol",
             {"textDocument": {"uri": _uri(sc)}})
     syms = (r or {}).get("result") or []
-    _chk(len(syms) == 1 and syms[0].get("name") == "<script>",
-         "script/script-placeholder")
+    _chk(len(syms) == 1 and syms[0].get("name") == "script"
+         and syms[0].get("kind") == 1,
+         "script/file-placeholder")
     _chk(bool(syms) and syms[0]["range"]["end"]["line"] >= 1,
          "script/placeholder-range-covers-body",
          "range 只到第 0 行，没覆盖脚本正文")
+
+    # 有 `%%` 分节的脚本：大纲应逐节列出（SymbolKind.Module=2），而不是一行文件名。
+    sc2 = o("sections.m")
+    write_text(sc2, u"%% Load data\nx = 1;\n%% Fit model\ny = x + 1;\n")
+    r = req(c, 4, "textDocument/documentSymbol",
+            {"textDocument": {"uri": _uri(sc2)}})
+    syms = (r or {}).get("result") or []
+    _chk([s.get("name") for s in syms] == ["Load data", "Fit model"]
+         and all(s.get("kind") == 2 for s in syms),
+         "script/sections-outline",
+         "got %r" % ([(s.get("name"), s.get("kind")) for s in syms],))
     c.close()
 
 

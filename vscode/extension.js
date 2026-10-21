@@ -440,6 +440,24 @@ function activate(context) {
   }
   const python = cfg.get('pythonPath', 'python');
 
+  // **matlabc.py 的唯一定位点（R432）**：以前两个报告命令各自拼路径，
+  // 其中 `context.extensionPath/matlabc.py` 只在**装好的 .vsix** 里成立；
+  // 在仓库里直接调试时扩展目录是 `vscode/`，于是永远「找不到 matlabc.py」。
+  // 这里按「LSP 同目录 → 扩展根 → 扩展上级（仓库根）→ 工作区」依次试。
+  function findMatlabcPy() {
+    const cands = [
+      path.join(path.dirname(lspPath), 'matlabc.py'),
+      path.join(context.extensionPath, 'matlabc.py'),
+      path.join(context.extensionPath, '..', 'matlabc.py'),
+      path.join(root, 'matlabc.py'),
+      path.join(root, 'malabc', 'matlabc.py'),
+    ];
+    for (const c of cands) {
+      try { if (fs.existsSync(c)) return c; } catch (e) { /* 下一个 */ }
+    }
+    return null;
+  }
+
   // 先摆上状态栏：即便后面启动失败，用户也能看到"扩展在、但没就绪"，
   // 而不是怀疑根本没装上。点击它 = 选择 Python 解释器。
   showStatus(context, '$(loading~spin) matlabc', 'matlabc：正在启动…');
@@ -1040,10 +1058,10 @@ function activate(context) {
       }
       const cfg = vscode.workspace.getConfiguration('matlabc');
       const py = cfg.get('pythonPath') || 'python';
-      const script = path.join(context.extensionPath, 'matlabc.py');
-      if (!fs.existsSync(script)) {
+      const script = findMatlabcPy();
+      if (!script) {
         vscode.window.showErrorMessage(
-          'matlabc: 扩展里找不到 matlabc.py，无法生成报告');
+          'matlabc: 找不到 matlabc.py，无法生成报告（已试过扩展目录与工作区）');
         return;
       }
       const outDir = path.join(root, '.matlabc');
@@ -2021,8 +2039,8 @@ function activate(context) {
       // `python`。而这份配置是在**别的客户端**里跑的，PATH 与编辑器不同，
       // 报错只会说「启动失败」，没人会想到是配置生成器读错了键。
       const py = cfg.get('pythonPath', 'python');
-      const mpy = path.join(path.dirname(lspPath), 'matlabc.py');
-      if (!fs.existsSync(mpy)) {
+      const mpy = findMatlabcPy();
+      if (!mpy) {
         vscode.window.showErrorMessage('matlabc: 找不到 matlabc.py');
         return;
       }
@@ -2059,13 +2077,87 @@ function activate(context) {
     })
   );
 
+  // ---- 生成工程站点（--browse，R432）----------------------------------
+  // 单页 `--html` 只回答「整体什么样」；`--browse` 是 matlabc 的 **site 级**
+  // 能力：源码页 + 调用图 + 函数详情 + 目录/规则索引，可点击跳转、可分享。
+  // 以前只能在命令行敲，现在与其它分析命令放在同一处。
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.generateSite', async () => {
+      if (!root) {
+        vscode.window.showWarningMessage('matlabc: 请先打开一个工作区');
+        return;
+      }
+      const py = cfg.get('pythonPath', 'python');
+      const script = findMatlabcPy();
+      if (!script) {
+        vscode.window.showErrorMessage(
+          'matlabc: 找不到 matlabc.py，无法生成工程站点');
+        return;
+      }
+      const outDir = path.join(root, '.matlabc', 'site');
+      try {
+        fs.mkdirSync(outDir, { recursive: true });
+      } catch (e) { /* 已存在 */ }
+
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification,
+          title: 'matlabc: 正在生成工程站点（HTML 文档）',
+          cancellable: false },
+        () => new Promise((resolve) => {
+          // 站点比单页报告重得多（大工程可达数十秒），超时给足；
+          // 同样断开 stdin —— 本仓有真实挂死案例。
+          const cp = require('child_process').execFile(
+            py, [script, root, '--browse', outDir],
+            { cwd: root, timeout: 600000, maxBuffer: 64 * 1024 * 1024,
+              windowsHide: true },
+            (err, stdout, stderr) => {
+              if (err) {
+                log('站点失败：' + ((stderr || '') + (err.message || '')));
+                vscode.window.showErrorMessage(
+                  'matlabc: 生成工程站点失败 —— ' +
+                  String((stderr || err.message || '')).trim().split('\n')[0] +
+                  '（详见 matlabc: 导出日志）');
+                resolve();
+                return;
+              }
+              const index = path.join(outDir, 'index.html');
+              if (!fs.existsSync(index)) {
+                vscode.window.showWarningMessage(
+                  'matlabc: 命令跑完了，但没有生成 ' + index);
+                resolve();
+                return;
+              }
+              let n = 0;
+              try {
+                n = fs.readdirSync(outDir).filter(
+                  (f) => /\.html$/i.test(f)).length;
+              } catch (e) { /* 统计失败不影响打开 */ }
+              log('工程站点已生成 ' + outDir + '（根目录 ' + n + ' 个页面）');
+              vscode.window.showInformationMessage(
+                'matlabc: 工程站点已生成（.matlabc/site/index.html）',
+                '在浏览器打开', '在编辑器中预览').then((pick) => {
+                  if (pick === '在浏览器打开') {
+                    vscode.env.openExternal(vscode.Uri.file(index));
+                  } else if (pick === '在编辑器中预览') {
+                    vscode.commands.executeCommand(
+                      'vscode.openWith', vscode.Uri.file(index),
+                      'vscode.html-preview');
+                  }
+                  resolve();
+                });
+            });
+          cp.stdin = null;
+        }));
+    })
+  );
+
   // ---- 生成 MCP 配置（R327）-------------------------------------------
   // 用户要在别的 AI 客户端里用这套能力，就得手写一段 JSON；
   // 而 python 路径、脚本路径、工程根三个值都容易填错。
   // 这里直接生成好，两个格式都给：VS Code 内置 MCP 与通用 mcpServers。
   context.subscriptions.push(
     vscode.commands.registerCommand('matlabc.generateMcpConfig', async () => {
-      const py = cfg.get('python') || 'python';
+      const py = cfg.get('pythonPath', 'python');
       const mcp = path.join(path.dirname(lspPath), 'matlabc_mcp.py')
         .replace(/\\/g, '/');
       const ws = (root || '${workspaceFolder}').replace(/\\/g, '/');
@@ -3352,16 +3444,49 @@ function activate(context) {
             }
             log('大纲 ' + path.basename(doc.uri.fsPath) +
                 ' 服务端为空，本地扫描得到 ' + found.length + ' 个');
-            // 连本地扫描都找不到函数时，**不许留空白** —— 空大纲无法与
-            // 「工具坏了」区分。放一行说明，并写明该把什么发回来。
+            // **脚本兜底（R432）**：脚本没有 function，但有 `%%` 分节。
+            // 以前这里返回「未识别到 function」，用户看到的仍是一行错误而不是大纲；
+            // 现在按分节出符号，与服务端 `_script_symbols` 保持同一形态。
             if (!found.length) {
-              const msg = '未识别到 function（本地扫描 0 个 · ' +
+              const secs = [];
+              for (let i = 0; i < lines.length; i += 1) {
+                const m = /^\s*%%+\s*(\S.*?)\s*$/.exec(lines[i]);
+                if (m) secs.push({ name: m[1].trim(), line: i });
+              }
+              if (secs.length) {
+                log('大纲 ' + path.basename(doc.uri.fsPath) +
+                    ' 脚本分节 ' + secs.length + ' 个');
+                return secs.map((s, i) => {
+                  const endLine = (i + 1 < secs.length)
+                    ? secs[i + 1].line - 1 : lines.length - 1;
+                  const textLen = (lines[s.line] || '').length;
+                  let range = new vscode.Range(s.line, 0,
+                                               Math.max(s.line, endLine), 0);
+                  const sel = new vscode.Range(s.line, 0, s.line,
+                                               Math.max(1, textLen));
+                  if (range.end.isBefore(sel.end) ||
+                      range.start.isAfter(sel.start)) {
+                    range = range.union(sel);
+                  }
+                  return new vscode.DocumentSymbol(
+                    s.name, '脚本分节', vscode.SymbolKind.Module, range, sel);
+                });
+              }
+              // 既无 function 也无 `%%`：给**文件本身**一个符号，别留空白。
+              // 空大纲无法与「工具坏了」区分；文件名至少告诉用户「这里确实
+              // 是个脚本」，副标题再说明为什么没有更多内容。
+              const stem = path.basename(doc.uri.fsPath)
+                .replace(/\.[^.]+$/, '') || 'script';
+              const why = '脚本（无 function / %% 分节 · ' +
                           (_why || '原因未知') + '）';
+              const lastLine = Math.max(0, doc.lineCount - 1);
+              const stemLen = Math.max(1, stem.length);
+              const fullRange = lastLine === 0
+                ? new vscode.Range(0, 0, 0, stemLen)
+                : new vscode.Range(0, 0, lastLine, 0);
               return [new vscode.DocumentSymbol(
-                msg, '请把输出频道 matlabc 的内容发回来',
-                vscode.SymbolKind.Function,
-                new vscode.Range(0, 0, 0, msg.length),
-                new vscode.Range(0, 0, 0, msg.length))];
+                stem, why, vscode.SymbolKind.File,
+                fullRange, new vscode.Range(0, 0, 0, stemLen))];
             }
             return found.map((f, i) => {
               const endLine = (i + 1 < found.length)

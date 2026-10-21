@@ -30,12 +30,35 @@ function chk(cond, msg) {
 const registered = [];
 const disposed = [];
 
-const fakeVscode = {
+// 兜底桩：未显式实现的 vscode API（枚举 / 新注册函数 / 未来新增）都不该让
+// activate 抛 TypeError。真实宿主里这些永远存在，mock 只需「存在且不炸」。
+function _permissive(name) {
+  const target = function () { return _permissive(name + '()'); };
+  return new Proxy(target, {
+    get(t, prop) {
+      if (prop === 'dispose') return () => {};
+      // `.then` 必须存在（有些代码链式 .then），但别让 await 误判成真 Promise。
+      if (prop === 'then') return () => _permissive(name + '.then');
+      if (prop === Symbol.toPrimitive) return () => 0;
+      if (prop === 'toString') return () => name;
+      return _permissive(name + '.' + String(prop));
+    },
+    construct() { return _permissive(name + '{}'); },
+    apply() { return _permissive(name + '()'); },
+  });
+}
+
+const _base = {
   workspace: {
     workspaceFolders: [{ uri: { fsPath: CORPUS } }],
     textDocuments: [],
-    getConfiguration: () => ({ get: (k, d) => d }),
+    getConfiguration: () => ({ get: (k, d) => d, update: () => Promise.resolve() }),
     onDidOpenTextDocument: () => ({ dispose: () => disposed.push('onDidOpen') }),
+    onDidSaveTextDocument: () => ({ dispose: () => {} }),
+    onDidChangeTextDocument: () => ({ dispose: () => {} }),
+    onDidChangeConfiguration: () => ({ dispose: () => {} }),
+    findFiles: () => Promise.resolve([]),
+    openTextDocument: () => Promise.resolve({ getText: () => '' }),
   },
   languages: {
     createDiagnosticCollection: () => ({
@@ -58,14 +81,44 @@ const fakeVscode = {
       registered.push('symbol');
       return { dispose: () => disposed.push('symbol') };
     },
+    registerCodeLensProvider: () => ({ dispose: () => disposed.push('codeLens') }),
+    registerDocumentHighlightProvider: () => ({ dispose: () => disposed.push('highlight') }),
+    registerDocumentSemanticTokensProvider: () => ({ dispose: () => disposed.push('tokens') }),
+  },
+  commands: {
+    registerCommand: (name) => {
+      registered.push('cmd:' + name);
+      return { dispose: () => {} };
+    },
+    executeCommand: () => Promise.resolve(),
+  },
+  env: {
+    clipboard: { writeText: () => Promise.resolve() },
+    openExternal: () => Promise.resolve(),
   },
   Uri: {
     parse: (s) => ({ toString: () => s, fsPath: s, scheme: 'file' }),
+    file: (s) => ({ toString: () => 'file:///' + s, fsPath: s, scheme: 'file' }),
   },
   Range: class {
     constructor(sl, sc, el, ec) {
       this.start = { line: sl, character: sc };
       this.end = { line: el, character: ec };
+    }
+    union(o) {
+      return new this.constructor(this.start.line, this.start.character,
+                                 o.end.line, o.end.character);
+    }
+    isBefore(o) {
+      return this.end.line < o.start.line ||
+             (this.end.line === o.start.line && this.end.character < o.start.character);
+    }
+    isAfter(o) {
+      return this.start.line > o.end.line ||
+             (this.start.line === o.end.line && this.start.character > o.end.character);
+    }
+    contains(o) {
+      return !this.isBefore(o) && !this.isAfter(o);
     }
   },
   Location: class {
@@ -84,7 +137,7 @@ const fakeVscode = {
   Hover: class {
     constructor(c) { this.contents = c; }
   },
-  SymbolKind: { Function: 12, Class: 5, Variable: 13 },
+  SymbolKind: { File: 0, Module: 2, Class: 5, Function: 12, Variable: 13 },
   DocumentSymbol: class {
     constructor(name, detail, kind, range, selectionRange) {
       this.name = name;
@@ -95,8 +148,78 @@ const fakeVscode = {
     }
   },
   DiagnosticSeverity: { Error: 0, Warning: 1, Information: 2, Hint: 3 },
-  window: { showErrorMessage: (m) => console.log('  [window] ' + m) },
+  ViewColumn: { One: 1, Two: 2, Three: 3, Beside: -2, Active: -1 },
+  ProgressLocation: { SourceControl: 1, Window: 10, Notification: 15 },
+  StatusBarAlignment: { Left: 1, Right: 2 },
+  TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+  TextEditorRevealType: { InCenter: 1 },
+  ConfigurationTarget: { Global: 1, Workspace: 2 },
+  DocumentHighlightKind: { Text: 1 },
+  EventEmitter: class {
+    constructor() { this.event = () => ({ dispose: () => {} }); }
+    fire() {}
+    dispose() {}
+  },
+  ThemeIcon: class { constructor(id) { this.id = id; } },
+  TreeItem: class {
+    constructor(label, state) { this.label = label; this.collapsibleState = state; }
+  },
+  CodeLens: class { constructor(range) { this.range = range; } },
+  Position: class { constructor(line, character) { this.line = line; this.character = character; } },
+  Selection: class {
+    constructor(sl, sc, el, ec) {
+      this.start = { line: sl, character: sc };
+      this.end = { line: el, character: ec };
+      this.anchor = this.start;
+      this.active = this.end;
+    }
+  },
+  SemanticTokens: class { constructor(data) { this.data = data; } },
+  SemanticTokensLegend: class {
+    constructor(types, modifiers) { this.tokenTypes = types; this.tokenModifiers = modifiers; }
+  },
+  DocumentHighlight: class { constructor(range, kind) { this.range = range; this.kind = kind; } },
+  window: {
+    activeTextEditor: undefined,
+    showErrorMessage: () => Promise.resolve(undefined),
+    showWarningMessage: () => Promise.resolve(undefined),
+    showInformationMessage: () => Promise.resolve(undefined),
+    showQuickPick: () => Promise.resolve(undefined),
+    showInputBox: () => Promise.resolve(undefined),
+    showOpenDialog: () => Promise.resolve(undefined),
+    showSaveDialog: () => Promise.resolve(undefined),
+    showTextDocument: () => Promise.resolve(undefined),
+    withProgress: (opts, fn) => Promise.resolve(typeof fn === 'function' ? fn() : undefined),
+    createOutputChannel: () => ({ appendLine() {}, append() {}, show() {}, dispose() {} }),
+    createStatusBarItem: () => ({
+      show() {}, hide() {}, dispose() {}, text: '', tooltip: '', command: '',
+    }),
+    createTreeView: () => ({
+      dispose() {}, reveal() {}, message: '',
+      onDidChangeSelection: () => ({ dispose: () => {} }),
+      onDidChangeVisibility: () => ({ dispose: () => {} }),
+    }),
+    createWebviewPanel: () => ({
+      webview: {
+        html: '', cspSource: '',
+        asWebviewUri: (u) => u,
+        onDidReceiveMessage: () => ({ dispose: () => {} }),
+      },
+      onDidDispose: () => ({ dispose: () => {} }),
+      reveal() {}, dispose() {},
+    }),
+    onDidChangeActiveTextEditor: () => ({ dispose: () => {} }),
+    onDidChangeTextEditorSelection: () => ({ dispose: () => {} }),
+    setStatusBarMessage: () => ({ dispose: () => {} }),
+  },
 };
+
+const fakeVscode = new Proxy(_base, {
+  get(t, k) {
+    if (k in t) return t[k];
+    return _permissive(String(k));
+  },
+});
 
 const origLoad = Module._load;
 Module._load = function (request, parent, isMain) {
@@ -106,7 +229,11 @@ Module._load = function (request, parent, isMain) {
 
 const ext = require('./extension.js');
 
-const ctx = { subscriptions: [] };
+// 真实宿主一定提供 extensionPath / extensionUri；mock 缺了它，
+// activate 里 `path.join(context.extensionPath, ...)` 会直接抛 TypeError，
+// 测试就永远测不到后面注册了哪些 provider。
+const ctx = { subscriptions: [], extensionPath: ROOT,
+              extensionUri: { fsPath: ROOT } };
 
 try {
   ext.activate(ctx);
@@ -120,6 +247,9 @@ chk(registered.indexOf('definition') >= 0, '应注册 definitionProvider');
 chk(registered.indexOf('references') >= 0, '应注册 referenceProvider');
 chk(registered.indexOf('hover') >= 0, '应注册 hoverProvider');
 chk(registered.indexOf('symbol') >= 0, '应注册 documentSymbolProvider');
+// R432：site 级 HTML 文档生成（--browse）必须真的注册进插件。
+chk(registered.indexOf('cmd:matlabc.generateSite') >= 0,
+  '应注册 site 级 HTML 文档命令（matlabc.generateSite）');
 chk(ctx.subscriptions.length >= 5,
   'subscriptions 应至少 5 项（definition + references + hover + symbol + 诊断集合），实际 '
   + ctx.subscriptions.length);

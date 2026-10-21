@@ -2,7 +2,7 @@
   "name": "matlabc",
   "displayName": "matlabc",
   "description": "MATLAB 工程的代码理解工具：结构感知的诊断、跨文件导航、调用链分析与影响面评估。",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "publisher": "冯磊",
   "engines": {
     "vscode": "^1.80.0"
@@ -170,6 +170,11 @@
       {
         "command": "matlabc.generateHtmlReport",
         "title": "matlabc: 生成工程 HTML 报告",
+        "category": "matlabc"
+      },
+      {
+        "command": "matlabc.generateSite",
+        "title": "matlabc: 生成工程站点（site 级 HTML 文档）",
         "category": "matlabc"
       },
       {
