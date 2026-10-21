@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "LSP 与 VS Code：编辑器里的诊断/大纲/跳转从哪来",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "subtitle": "扩展 → 手写 LSP 客户端 → matlabc_lsp.py → analyzer 结果",
+    "output": "docs/architecture/html/06-lsp.html"
+  },
+  "components": [
+    {
+      "id": "ext",
+      "type": "frontend",
+      "label": "VS Code 扩展",
+      "sublabel": "extension.js · 命令/视图/CodeLens",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "client",
+      "type": "backend",
+      "label": "LSP 客户端",
+      "sublabel": "lspClient.js（零 npm 依赖）",
+      "pos": [
+        400,
+        40
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "LSP 服务端",
+      "sublabel": "matlabc_lsp.py（stdio JSON-RPC）",
+      "pos": [
+        740,
+        40
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "handlers",
+      "type": "backend",
+      "label": "请求处理",
+      "sublabel": "documentSymbol/definition/references/hover/tokens",
+      "pos": [
+        40,
+        160
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "analyzer",
+      "type": "backend",
+      "label": "analyzer/api",
+      "sublabel": "analyze() → PipelineResult",
+      "pos": [
+        400,
+        160
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "cache",
+      "type": "database",
+      "label": "缓存",
+      "sublabel": "_load_cache/_save_cache（schema 受门禁）",
+      "pos": [
+        740,
+        160
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "ui",
+      "type": "cloud",
+      "label": "编辑器 UI",
+      "sublabel": "diagnostics · Outline · 关系侧栏",
+      "pos": [
+        40,
+        280
+      ],
+      "size": [
+        320,
+        64
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "e-c",
+      "from": "ext",
+      "to": "client"
+    },
+    {
+      "id": "c-s",
+      "from": "client",
+      "to": "server"
+    },
+    {
+      "id": "s-h",
+      "from": "server",
+      "to": "handlers"
+    },
+    {
+      "id": "h-a",
+      "from": "handlers",
+      "to": "analyzer"
+    },
+    {
+      "id": "h-k",
+      "from": "handlers",
+      "to": "cache"
+    },
+    {
+      "id": "s-u",
+      "from": "server",
+      "to": "ui"
+    },
+    {
+      "id": "u-e",
+      "from": "ui",
+      "to": "ext"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "零 npm",
+      "items": [
+        "手写 LSP 客户端只有 Content-Length 两种帧",
+        "内网/离线可用，不需要 node_modules"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "大纲的两次兜底",
+      "items": [
+        "800ms 超时后立刻本地扫描（脚本按 %% 分节，无分节用文件名）",
+        "服务端缓存命中缺 source_lines 时回读磁盘"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "缓存 schema 是契约",
+      "items": [
+        "_CACHED_MF_FIELDS 一处定义，save/load 都从它推导",
+        "漏字段会让大纲 Range 退化，check_symbol_ranges 守边界"
+      ]
+    }
+  ]
+}

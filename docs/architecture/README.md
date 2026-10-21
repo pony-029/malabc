@@ -1,0 +1,172 @@
+# malabc 架构图（archify）
+
+> 本目录用 **archify** 画出 malabc 的**总框架 + 11 个模块**。每张图都是
+> `candidate.json`（可编辑源）+ `.html`（可交互产物），不是截图。
+>
+> 生成器：`D:\work\rea\archify`（`archify render / validate / check`）。
+> 图型：`architecture`（组件/连线）、`workflow`（工序/分支）、`lifecycle`（状态机）。
+
+---
+
+## 1. 一眼看懂：12 张图
+
+| # | 图 | 类型 | 文件 | 它回答的问题 |
+| --- | --- | --- | --- | --- |
+| 00 | **总框架** | architecture | [html/00-overall.html](html/00-overall.html) | 这个工程由哪些层/模块组成？主干怎么走？ |
+| 01 | 入口与 CLI | workflow | [html/01-entry.html](html/01-entry.html) | 一条命令如何走到分析内核？退出码怎么来？ |
+| 02 | MATLAB 前端 | workflow | [html/02-matlab-frontend.html](html/02-matlab-frontend.html) | 源码如何变成函数/调用边？unresolved 在哪判定？ |
+| 03 | 多语言前端 + IR | workflow | [html/03-multilang-ir.html](html/03-multilang-ir.html) | C/Py/JS/asm 如何归因？IR 的唯一判定点在哪？ |
+| 04 | 分析引擎 | architecture | [html/04-analysis.html](html/04-analysis.html) | 调用图/影响面/依赖/污点/维度/检查如何共享模型？ |
+| 05 | 渲染与输出 | workflow | [html/05-render.html](html/05-render.html) | 一份模型如何出五种出口（报告/站点/JSON/SARIF/补丁）？ |
+| 06 | LSP 与 VS Code | architecture | [html/06-lsp.html](html/06-lsp.html) | 编辑器里的诊断/大纲/跳转从哪来？ |
+| 07 | AI 与 MCP | architecture | [html/07-ai-mcp.html](html/07-ai-mcp.html) | 外部 Agent 如何调用工程理解能力？离线怎么降级？ |
+| 08 | 修复闭环 | lifecycle | [html/08-fix-loop.html](html/08-fix-loop.html) | 修复如何验证/回退/进人工复核/记入记忆？ |
+| 09 | 门禁与 CI | workflow | [html/09-gates.html](html/09-gates.html) | 39 道门如何被组织、增量、发版与进 CI？ |
+| 10 | MATLAB→C 移植 | architecture | [html/10-porting.html](html/10-porting.html) | 契约/算子/保真/台账如何把 MATLAB 落到 C？ |
+| 11 | 二进制分析 | architecture | [html/11-binary.html](html/11-binary.html) | PE/ELF/Mach-O/GPU 如何回答“这个名字归谁”？ |
+
+索引页：[`index.html`](index.html)。
+
+---
+
+## 2. 逐模块说明
+
+### 00 总框架
+
+- **入口**：`matlabc_boot.py` 路由 CLI / ask / flow / GUI；真正内核是单文件 `matlabc.py`。
+- **前端**：MATLAB（`parse_file`/`analyze_calls`）+ 多语言（`FRONTEND_REGISTRY`/`frontends/ir.py`）。
+- **模型/分析**：`entity_model.py`、`unified_graph.py`、`facts.py` + 调用/影响面/污渍/维度/检查。
+- **四种出口**：`renderers/` 报告与站点、`matlabc_lsp.py` 编辑器、`matlabc_mcp.py` Agent、`matlabc_flow.py` 修复闭环。
+- **两条新线**：`translate/ + c_runtime/`（MATLAB→C）、`binfmt/`（二进制元数据）。
+- **门禁**：`tools/check_*.py` + `check_all.py` + `.github/workflows/`。
+
+### 01 入口与 CLI
+
+- `matlabc_boot.py` 只做路由；`matlabc.py` 负责 argparse、配置合并、扫描、分析、输出。
+- 配置优先级：CLI 显式参数 > `analyzer_config.json` > 内置默认。
+- 模式：`analyze` / `--html` / `--browse` / `--json` / SARIF / patch / `--mcp` / `--lsp` / `--flow` / GUI。
+- 退出码：`0=ok`、`1=error`、`2=unimplemented`；由 `check_help_contract` 双向核对。
+
+### 02 MATLAB 前端
+
+- `scrub_source`：注释/字符串替换为空格，**保留换行与行号**。
+- `_logical_statements`：合并 `...` 续行，避免跨行调用漏检。
+- `parse_file`：识别 `function`/`classdef`/块/两种 `end` 风格，产出 `MatlabFile/Function/Class`。
+- `analyze_calls` / `resolve_call`：建项目内调用边 + 外部调用计数。
+- `frontends/matlab.py`：MATLAB 侧 **unresolved 的唯一判定点**（`external_calls` 形状，不许抹平）。
+
+### 03 多语言前端 + IR
+
+- `FRONTEND_REGISTRY`：`lang → Frontend 类`；C/Py/JS/asm 各自一个前端。
+- C：`_parse_c_source` / `build_c_model`；Py：`pyast_frontend`；JS：行锚定 + 跨行/箭头形态。
+- `frontends/ir.py::resolve_calls`：C/Py/JS 共用「解析不到的调用」判定点。
+- `IR_LANG_OWNERS`：每语言谁负责 unresolved；`check_ir_attribution` 两向核对。
+- `binfmt/` 提供导出表/内核名，帮助 `mex`/`calllib` 边界归因（只读元数据，不执行）。
+
+### 04 分析引擎
+
+- 调用图：`build_call_graph` + `callers_of/calls_of`；影响面：上游/下游闭包。
+- 依赖：`#include` / `addpath` / 文件级边；污点：源/汇站点 + 变量级/字段级传播。
+- 维度：`_make_dims_probe_script` + 内置函数维度引擎；检查：未初始化/死代码/缺文档/风险。
+- 复杂度/热点：圈复杂度 × 调用者数；重复：函数级指纹。
+- `facts.py`：结论 ⇄ 位置，可重放；`unified_graph.py`：跨语言节点/边/规则统一图。
+
+### 05 渲染与输出
+
+- `build_analysis_model` 是统一数据层，`renderers/` 只消费它。
+- 单页：Markdown / `--html`（内嵌调用图，`report.css` + `app.js` 同源）。
+- 多页：`--browse` 站点（`index/src/funcs/deps/dir/rule`，四语言同形）。
+- 机器数据：`--json`（full/summary/compact）、SARIF 2.1.0、`--export-doxygen-xml`。
+- 修复产物：patch、测试骨架、PR 描述草稿。
+- 纪律：页面外链了什么，就必须把那个文件写出来（无死链）。
+
+### 06 LSP 与 VS Code
+
+- `vscode/extension.js`：命令、视图、CodeLens、关系侧栏；`lspClient.js` 是零 npm 的手写客户端。
+- `matlabc_lsp.py`：stdio JSON-RPC；`initialize/didOpen/didSave`、`documentSymbol`、`definition`、`references`、`hover`、`semanticTokens`。
+- `analyzer/api.analyze` 产出 `PipelineResult`；`_load_cache/_save_cache` 缓存结构层 + 诊断。
+- 大纲：800ms 超时后本地兜底（脚本按 `%%` 分节；无分节用文件名），缓存命中缺 `source_lines` 时回读磁盘。
+
+### 07 AI 与 MCP
+
+- `matlabc_mcp.py`：stdio MCP server，工具 `stats/outline/search/explain/impact/gen_patch`。
+- `matlabc_ask.py`：自然语言问答；`ai_cli.py`：多供应商（deepseek/qwen/zhipu/moonshot/…）。
+- `matlabc_flow.py`：LLM 修复源（无 key 时退回确定性补丁）；`analyzer_memory.py`：误报抑制 + learned_fixes。
+- AI 只吃 `unmapped`/无策略的输入，不替代确定性段。
+
+### 08 修复闭环
+
+- `agent_loop.py`：基线分析 → 尝试循环 → `fix_source` → 应用 → **重扫验证** → 接受/回退。
+- 验证判据：`no_new_alerts && progress`；失败用 `git apply -R` 或快照恢复，绝不留下半截。
+- 出口：tier 0（无事）/ tier 1（已验证）/ tier 2（检查点 + 可选 Draft PR）。
+- `--review-gate`：验证通过也不落地，回退并产出审查产物，`exit 3`。
+- 记忆：只有接受后才 `record_learned_fix`。
+
+### 09 门禁与 CI
+
+- `tools/check_all.py` 自动发现并运行 `tools/check_*.py`（当前 39 道），每道门必须 `--selftest` 两向自证。
+- `gate_cache.py`：指纹命中则复用结论（只省时间，不省凭据）。
+- `release.py` 的 `GATES` 是发版清单；`check_release_gates` 守“写了却从没跑过”。
+- CI：`ci.yml`（Windows 主链路）+ `port-ci.yml`（ubuntu/windows，`--require-c`）。
+- 手工门：`lsp_selftest.py`、`sweep_cli.py`（不进 `check_all`，避免拖慢）。
+
+### 10 MATLAB→C 移植
+
+- `translate/operators.py`：11 个算子（add/sub/mul/div/sum/mean/max/min/index/transpose/matmul）。
+- `translate/adapters.py`：ADP-1/2/3（名字/arity、dtype/rank、错误映射），生成两侧胶水。
+- `translate/fidelity.py` + `translate/golden/`：11 个 golden；有编译器时**真编译执行**。
+- `c_runtime/include/mlc.h`：ABI 契约（`mlc_array`/`mlc_status`/`owns_data`，禁止裸 `double*`）。
+- `c_runtime/src/mlc_ops.c`：9 个算子已 `verified`（MinGW gcc 16.2.0 真编译）；transpose/matmul 仍 `MLC_UNIMPLEMENTED`。
+- `port_ledger.json`：逐算子状态；`--sync-ledger` 只按 C 结果升级。
+- `translate/contracts/matlab_c_constraints.json`：双侧约束（1-based/列主序/隐式扩展/UB/错误模型）。
+
+### 11 二进制分析
+
+- `binfmt/pe.py` / `elf.py` / `macho.py`：依赖、导出表、段/节元数据。
+- `binfmt/gpu.py`：CUDA fatbin/cubin、AMD HSA、Vulkan SPIR-V 的 kernel 名。
+- `binhops.py` / `callrel.py`：跳转/调用关系；`attribute.py` / `resolve.py`：名字归属。
+- `--binary-attach`：把二进制读数接到源码分析；输出三态 `library / gpu_kernel / missing`。
+- 纪律：**不执行、不反汇编**；不可解析是一等状态。
+
+---
+
+## 3. 如何重新生成
+
+```bash
+# 1) 校验 candidate（12/12 必须 ok）
+node D:/work/rea/archify/archify/bin/archify.mjs validate architecture \
+  docs/architecture/candidates/00-overall.json --quality showcase
+
+# 2) 渲染（注意：本机 D: 同卷硬链接发布会报 “multiple hard-link names”，
+#    先渲染到 C: 临时目录，再复制回 docs/architecture/html/）
+node D:/work/rea/archify/archify/bin/archify.mjs render architecture \
+  docs/architecture/candidates/00-overall.json %TEMP%/00-overall.html --quality showcase
+copy %TEMP%/00-overall.html docs/architecture/html/00-overall.html
+
+# 3) 产物校验
+node D:/work/rea/archify/archify/bin/archify.mjs check \
+  docs/architecture/html/00-overall.html
+```
+
+类型映射：
+
+| 图 | 类型 |
+| --- | --- |
+| 00 / 04 / 06 / 07 / 10 / 11 | `architecture` |
+| 01 / 02 / 03 / 05 / 09 | `workflow` |
+| 08 | `lifecycle` |
+
+---
+
+## 4. 验证证据（本轮实跑）
+
+| 检查 | 结果 |
+| --- | --- |
+| `archify validate`（12 个 candidate） | **12/12 ok**（composition showcase: 0 errors, 0 warnings） |
+| `archify render`（12 张） | **12/12 成功** |
+| `archify check`（12 个 HTML） | **12/12 通过** |
+| `.html` 行尾 | **LF**（`00-overall.html` CRLF=0） |
+| 产物体积 | 约 **9.1 MB**（12 张，单张 ~750 KB） |
+
+> 说明：这是**架构/流程图**，回答“模块怎么组织、数据怎么流”；不是函数级调用图。
+> 函数级调用图请用 `python matlabc.py <dir> --browse <out>` 或 `--callgraph`。

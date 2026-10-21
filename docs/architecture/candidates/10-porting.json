@@ -1,0 +1,231 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "MATLAB→C 移植链路：契约、算子、保真、台账",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "subtitle": "MATLAB 是语义参考；C 必须通过 golden + 真编译证明；未验证是一等状态",
+    "output": "docs/architecture/html/10-porting.html"
+  },
+  "components": [
+    {
+      "id": "matlab",
+      "type": "database",
+      "label": "MATLAB 参考实现",
+      "sublabel": "语义唯一事实源",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "ops",
+      "type": "backend",
+      "label": "算子目录",
+      "sublabel": "translate/operators.py（11 个）",
+      "pos": [
+        400,
+        40
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "adp",
+      "type": "backend",
+      "label": "双侧适配器",
+      "sublabel": "ADP-1/2/3（名字/类型/错误）",
+      "pos": [
+        760,
+        40
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "abi",
+      "type": "backend",
+      "label": "C ABI 契约",
+      "sublabel": "mlc.h（mlc_array/status/ownership）",
+      "pos": [
+        40,
+        160
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "cops",
+      "type": "backend",
+      "label": "C 算子实现",
+      "sublabel": "mlc_ops.c（9 个 verified）",
+      "pos": [
+        400,
+        160
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "fid",
+      "type": "backend",
+      "label": "保真执行器",
+      "sublabel": "fidelity.py + golden 11",
+      "pos": [
+        760,
+        160
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "ledger",
+      "type": "database",
+      "label": "移植台账",
+      "sublabel": "port_ledger.json（verified/not_started）",
+      "pos": [
+        40,
+        280
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "con",
+      "type": "backend",
+      "label": "双侧约束",
+      "sublabel": "matlab_c_constraints.json",
+      "pos": [
+        400,
+        280
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "gate",
+      "type": "security",
+      "label": "TP1–TP4 门",
+      "sublabel": "ABI/适配器/算子/保真+台账",
+      "pos": [
+        760,
+        280
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "rt",
+      "type": "backend",
+      "label": "malabc-rt（未来）",
+      "sublabel": "Rust 语义骨架，未接线",
+      "pos": [
+        40,
+        400
+      ],
+      "size": [
+        1020,
+        64
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "m-o",
+      "from": "matlab",
+      "to": "ops"
+    },
+    {
+      "id": "o-a",
+      "from": "ops",
+      "to": "adp"
+    },
+    {
+      "id": "a-c",
+      "from": "adp",
+      "to": "cops"
+    },
+    {
+      "id": "abi-c",
+      "from": "abi",
+      "to": "cops"
+    },
+    {
+      "id": "c-f",
+      "from": "cops",
+      "to": "fid"
+    },
+    {
+      "id": "f-l",
+      "from": "fid",
+      "to": "ledger"
+    },
+    {
+      "id": "con-g",
+      "from": "con",
+      "to": "gate"
+    },
+    {
+      "id": "f-g",
+      "from": "fid",
+      "to": "gate"
+    },
+    {
+      "id": "l-g",
+      "from": "ledger",
+      "to": "gate"
+    },
+    {
+      "id": "rt-c",
+      "from": "rt",
+      "to": "cops"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "三层契约",
+      "items": [
+        "接口：签名/参数/返回；数值：dtype/shape/序/容差；生命周期：owns_data/view",
+        "对外禁止裸 double*；错误一律 mlc_status 0/1/2"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "C 9/9",
+      "items": [
+        "add/sub/mul/div + sum/mean/max/min + index 已真编译通过",
+        "transpose/matmul 仍 MLC_UNIMPLEMENTED（诚实边界）"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "台账棘轮",
+      "items": [
+        "verified 必须有 golden；C 未过只能 ported_unverified",
+        "--sync-ledger 只按 C 结果升级，不手写状态"
+      ]
+    }
+  ]
+}

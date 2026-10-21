@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "AI 与 MCP：把工程理解能力交给外部 Agent",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "subtitle": "MCP 工具、自然语言问答、LLM 修复源、跨运行记忆共用同一份分析内核",
+    "output": "docs/architecture/html/07-ai-mcp.html"
+  },
+  "components": [
+    {
+      "id": "mcp",
+      "type": "frontend",
+      "label": "MCP Server",
+      "sublabel": "matlabc_mcp.py（stdio JSON-RPC）",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "tools",
+      "type": "backend",
+      "label": "工具集",
+      "sublabel": "stats/outline/search/explain/impact/gen_patch",
+      "pos": [
+        400,
+        40
+      ],
+      "size": [
+        340,
+        64
+      ]
+    },
+    {
+      "id": "ask",
+      "type": "backend",
+      "label": "matlabc_ask.py",
+      "sublabel": "自然语言问答",
+      "pos": [
+        780,
+        40
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "ai",
+      "type": "cloud",
+      "label": "AI 供应商",
+      "sublabel": "deepseek/qwen/zhipu/moonshot/...",
+      "pos": [
+        40,
+        160
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "flow",
+      "type": "backend",
+      "label": "matlabc_flow.py",
+      "sublabel": "LLM 修复源（离线降级）",
+      "pos": [
+        400,
+        160
+      ],
+      "size": [
+        340,
+        64
+      ]
+    },
+    {
+      "id": "memory",
+      "type": "database",
+      "label": "analyzer_memory",
+      "sublabel": "known-false-positive + learned_fixes",
+      "pos": [
+        780,
+        160
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "core",
+      "type": "backend",
+      "label": "matlabc.py 分析内核",
+      "sublabel": "同一份解析/调用/影响面",
+      "pos": [
+        40,
+        280
+      ],
+      "size": [
+        1040,
+        64
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "m-t",
+      "from": "mcp",
+      "to": "tools"
+    },
+    {
+      "id": "t-c",
+      "from": "tools",
+      "to": "core"
+    },
+    {
+      "id": "a-ai",
+      "from": "ask",
+      "to": "ai"
+    },
+    {
+      "id": "a-c",
+      "from": "ask",
+      "to": "core"
+    },
+    {
+      "id": "f-ai",
+      "from": "flow",
+      "to": "ai"
+    },
+    {
+      "id": "f-c",
+      "from": "flow",
+      "to": "core"
+    },
+    {
+      "id": "f-m",
+      "from": "flow",
+      "to": "memory"
+    },
+    {
+      "id": "m-c",
+      "from": "mcp",
+      "to": "core"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "MCP 即插即用",
+      "items": [
+        "stdio 服务，零依赖；VS Code / 其它客户端都能接",
+        "工具返回结构化 JSON，不靠自然语言猜"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "离线降级",
+      "items": [
+        "没有 API key 时，修复源退回确定性补丁",
+        "AI 只吃“解析不到/无策略”的 unmapped，不替代确定性段"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "记忆",
+      "items": [
+        "误报抑制只影响基线计数，绝不自动抑制真实缺陷",
+        "learned_fixes 只在验证通过后记录"
+      ]
+    }
+  ]
+}

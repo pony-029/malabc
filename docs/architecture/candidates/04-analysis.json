@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "分析引擎：调用图 → 影响面 → 依赖/污点/维度/检查",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "subtitle": "所有分析共享同一份模型；事实层负责把「结论」与「位置」绑定",
+    "output": "docs/architecture/html/04-analysis.html"
+  },
+  "components": [
+    {
+      "id": "cg",
+      "type": "backend",
+      "label": "调用图",
+      "sublabel": "build_call_graph · callers_of/calls_of",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "impact",
+      "type": "backend",
+      "label": "影响面",
+      "sublabel": "上游/下游闭包 + 跨文件",
+      "pos": [
+        380,
+        40
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "deps",
+      "type": "backend",
+      "label": "依赖",
+      "sublabel": "#include / addpath / 文件级边",
+      "pos": [
+        720,
+        40
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "taint",
+      "type": "backend",
+      "label": "污点流",
+      "sublabel": "源/汇站点 · 变量级/字段级传播",
+      "pos": [
+        40,
+        160
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "dims",
+      "type": "backend",
+      "label": "维度引擎",
+      "sublabel": "_make_dims_probe_script · 内置函数维度",
+      "pos": [
+        380,
+        160
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "checks",
+      "type": "backend",
+      "label": "静态检查",
+      "sublabel": "未初始化/死代码/缺文档/风险",
+      "pos": [
+        720,
+        160
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "complex",
+      "type": "backend",
+      "label": "复杂度 / 热点",
+      "sublabel": "圈复杂度 × 调用者数",
+      "pos": [
+        40,
+        280
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "dups",
+      "type": "backend",
+      "label": "重复指纹",
+      "sublabel": "函数级指纹 + 近似重复",
+      "pos": [
+        380,
+        280
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "facts",
+      "type": "backend",
+      "label": "事实层 facts.py",
+      "sublabel": "结论 ⇄ 位置，可重放",
+      "pos": [
+        720,
+        280
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "entity",
+      "type": "backend",
+      "label": "实体模型",
+      "sublabel": "entity_model.py",
+      "pos": [
+        40,
+        400
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "unified",
+      "type": "backend",
+      "label": "统一图",
+      "sublabel": "unified_graph.py（节点/边/规则）",
+      "pos": [
+        380,
+        400
+      ],
+      "size": [
+        300,
+        64
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "cg-i",
+      "from": "cg",
+      "to": "impact"
+    },
+    {
+      "id": "cg-d",
+      "from": "cg",
+      "to": "deps"
+    },
+    {
+      "id": "cg-t",
+      "from": "cg",
+      "to": "taint"
+    },
+    {
+      "id": "d-c",
+      "from": "dims",
+      "to": "checks"
+    },
+    {
+      "id": "t-f",
+      "from": "taint",
+      "to": "facts"
+    },
+    {
+      "id": "c-f",
+      "from": "checks",
+      "to": "facts"
+    },
+    {
+      "id": "cx-f",
+      "from": "complex",
+      "to": "facts"
+    },
+    {
+      "id": "du-f",
+      "from": "dups",
+      "to": "facts"
+    },
+    {
+      "id": "e-u",
+      "from": "entity",
+      "to": "unified"
+    },
+    {
+      "id": "i-u",
+      "from": "impact",
+      "to": "unified"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "共享模型，不重复解析",
+      "items": [
+        "调用图、影响面、依赖、污点、维度、检查都吃同一份 MatlabFile/Function",
+        "build_analysis_model 统一给渲染与 JSON 使用"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "事实层可重放",
+      "items": [
+        "facts.py 把「结论」与「位置」绑定，check_facts_replay 重放核对",
+        "结论种类封闭：新增种类必须登记"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "热点排序",
+      "items": [
+        "复杂度 × 调用者数回答“先看哪几个函数”",
+        "影响面回答“改它会影响谁”"
+      ]
+    }
+  ]
+}

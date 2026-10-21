@@ -1,0 +1,168 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "入口与 CLI：一条命令如何走到分析内核",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "subtitle": "matlabc_boot.py 负责路由；matlabc.py 负责参数、扫描、分析与输出",
+    "output": "docs/architecture/html/01-entry.html"
+  },
+  "lanes": [
+    {
+      "id": "boot",
+      "label": "入口路由"
+    },
+    {
+      "id": "cli",
+      "label": "CLI 主流程"
+    },
+    {
+      "id": "modes",
+      "label": "其它入口"
+    },
+    {
+      "id": "exit",
+      "label": "退出"
+    }
+  ],
+  "mainPath": [
+    "bootn",
+    "parse",
+    "dispatch",
+    "analyze",
+    "output",
+    "exitn"
+  ],
+  "nodes": [
+    {
+      "id": "bootn",
+      "lane": "boot",
+      "col": 0,
+      "type": "frontend",
+      "label": "matlabc_boot.py",
+      "sublabel": "路由 CLI / ask / flow / GUI",
+      "width": 170
+    },
+    {
+      "id": "parse",
+      "lane": "cli",
+      "col": 1,
+      "type": "backend",
+      "label": "参数 + 配置",
+      "sublabel": "CLI > analyzer_config.json > 默认",
+      "width": 190
+    },
+    {
+      "id": "dispatch",
+      "lane": "cli",
+      "col": 2,
+      "type": "backend",
+      "label": "dispatch",
+      "sublabel": "analyze/html/browse/json/sarif/patch",
+      "width": 210
+    },
+    {
+      "id": "analyze",
+      "lane": "cli",
+      "col": 3,
+      "type": "backend",
+      "label": "analyze()",
+      "sublabel": "扫描 → 解析 → 模型 → 分析",
+      "width": 190
+    },
+    {
+      "id": "output",
+      "lane": "cli",
+      "col": 4,
+      "type": "backend",
+      "label": "输出",
+      "sublabel": "报告 / 站点 / JSON / SARIF",
+      "width": 170
+    },
+    {
+      "id": "other",
+      "lane": "modes",
+      "col": 2,
+      "type": "backend",
+      "label": "其它入口",
+      "sublabel": "lsp / mcp / flow / gui",
+      "width": 160
+    },
+    {
+      "id": "exitn",
+      "lane": "exit",
+      "col": 5,
+      "type": "security",
+      "label": "退出码",
+      "sublabel": "0=ok / 1=error / 2=unimplemented",
+      "width": 200
+    }
+  ],
+  "edges": [
+    {
+      "id": "b-p",
+      "from": "bootn",
+      "to": "parse"
+    },
+    {
+      "id": "p-d",
+      "from": "parse",
+      "to": "dispatch"
+    },
+    {
+      "id": "d-a",
+      "from": "dispatch",
+      "to": "analyze",
+      "variant": "emphasis"
+    },
+    {
+      "id": "a-o",
+      "from": "analyze",
+      "to": "output"
+    },
+    {
+      "id": "o-e",
+      "from": "output",
+      "to": "exitn"
+    },
+    {
+      "id": "d-x",
+      "from": "dispatch",
+      "to": "other",
+      "variant": "dashed",
+      "label": "其它模式"
+    },
+    {
+      "id": "x-e",
+      "from": "other",
+      "to": "exitn"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "零依赖启动",
+      "items": [
+        "matlabc_boot.py 只做路由；真正内核始终是 matlabc.py",
+        "不需要 pip install，3.6.5 解释器即可"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "配置优先级写死",
+      "items": [
+        "CLI 显式参数 > 配置文件 > 内置默认",
+        "任何新增开关都要同时进帮助、文档与 check_doc_flags"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "退出码是契约",
+      "items": [
+        "0/1/2 三态由 check_help_contract 双向核对",
+        "CI 只认退出码，不认日志里的“看起来成功”"
+      ]
+    }
+  ]
+}

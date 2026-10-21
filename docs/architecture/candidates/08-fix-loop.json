@@ -1,0 +1,252 @@
+{
+  "schema_version": 2,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "修复闭环：验证通过才接受，失败必回退",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "subtitle": "agent_loop.py 的受控自校验循环；人工复核门与记忆是两条安全出口",
+    "output": "docs/architecture/html/08-fix-loop.html"
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "主循环"
+    },
+    {
+      "id": "apply",
+      "label": "应用门"
+    },
+    {
+      "id": "recovery",
+      "label": "回退 + 反馈"
+    },
+    {
+      "id": "exits",
+      "label": "出口"
+    }
+  ],
+  "states": [
+    {
+      "id": "s",
+      "type": "start",
+      "label": "基线分析",
+      "sublabel": "analyze()",
+      "lane": "main",
+      "col": 0,
+      "step": "01",
+      "tag": "告警数"
+    },
+    {
+      "id": "q",
+      "type": "decision",
+      "label": "total == 0 ?",
+      "sublabel": "无事可做",
+      "lane": "main",
+      "col": 1,
+      "step": "02",
+      "tag": "门"
+    },
+    {
+      "id": "l",
+      "type": "active",
+      "label": "尝试循环",
+      "sublabel": "for attempt in range(max_turns)",
+      "lane": "main",
+      "col": 2,
+      "step": "03",
+      "tag": "有界"
+    },
+    {
+      "id": "fx",
+      "type": "active",
+      "label": "fix_source()",
+      "sublabel": "返回 patch | None",
+      "lane": "main",
+      "col": 3,
+      "step": "04",
+      "tag": "确定性/LLM"
+    },
+    {
+      "id": "v",
+      "type": "decision",
+      "label": "重扫验证",
+      "sublabel": "no_new_alerts && progress",
+      "lane": "main",
+      "col": 4,
+      "step": "05",
+      "tag": "自证"
+    },
+    {
+      "id": "ap",
+      "type": "decision",
+      "label": "git apply --check",
+      "sublabel": "或进程内严格校验",
+      "lane": "apply",
+      "col": 3,
+      "tag": "dry run"
+    },
+    {
+      "id": "fb",
+      "type": "waiting",
+      "label": "结构化反馈",
+      "sublabel": "rejected_patch + 原因",
+      "lane": "recovery",
+      "col": 2,
+      "tag": "下一轮输入",
+      "width": 190
+    },
+    {
+      "id": "rv",
+      "type": "active",
+      "label": "回退",
+      "sublabel": "git apply -R / 快照恢复",
+      "lane": "recovery",
+      "col": 3,
+      "tag": "无半截状态"
+    },
+    {
+      "id": "clean",
+      "type": "success",
+      "label": "already_clean",
+      "sublabel": "tier 0",
+      "lane": "exits",
+      "col": 0,
+      "tag": "无事"
+    },
+    {
+      "id": "t2",
+      "type": "failure",
+      "label": "轮次用尽",
+      "sublabel": "tier 2 · 检查点 + Draft PR",
+      "lane": "exits",
+      "col": 1,
+      "tag": "有界"
+    },
+    {
+      "id": "ok",
+      "type": "success",
+      "label": "accept",
+      "sublabel": "tier 0/1 · 记录 learned_fix",
+      "lane": "exits",
+      "col": 2,
+      "tag": "已验证"
+    },
+    {
+      "id": "rg",
+      "type": "failure",
+      "label": "review_gate",
+      "sublabel": "回退 + 审查产物 · exit 3",
+      "lane": "exits",
+      "col": 3,
+      "tag": "人工",
+      "width": 170
+    }
+  ],
+  "transitions": [
+    {
+      "from": "s",
+      "to": "q"
+    },
+    {
+      "from": "q",
+      "to": "clean",
+      "label": "无告警",
+      "variant": "emphasis",
+      "labelDy": -31
+    },
+    {
+      "from": "q",
+      "to": "l",
+      "label": "有告警",
+      "labelDy": -31
+    },
+    {
+      "from": "l",
+      "to": "fx"
+    },
+    {
+      "from": "l",
+      "to": "t2",
+      "label": "循环耗尽",
+      "variant": "security"
+    },
+    {
+      "from": "fx",
+      "to": "t2",
+      "label": "无补丁",
+      "variant": "security"
+    },
+    {
+      "from": "fx",
+      "to": "ap",
+      "label": "有补丁"
+    },
+    {
+      "from": "ap",
+      "to": "fb",
+      "label": "校验失败",
+      "variant": "security"
+    },
+    {
+      "from": "ap",
+      "to": "v",
+      "label": "校验通过"
+    },
+    {
+      "from": "v",
+      "to": "ok",
+      "label": "验证通过",
+      "variant": "emphasis"
+    },
+    {
+      "from": "v",
+      "to": "rv",
+      "label": "回归",
+      "variant": "security"
+    },
+    {
+      "from": "fb",
+      "to": "l",
+      "label": "重试"
+    },
+    {
+      "from": "rv",
+      "to": "l",
+      "label": "重试"
+    },
+    {
+      "from": "ok",
+      "to": "rg",
+      "label": "review_gate",
+      "variant": "security",
+      "labelDy": 57
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "验证是唯一出口",
+      "items": [
+        "补丁不是“生成了就接受”，而是“重扫证明没有更差”才接受",
+        "两道独立门：应用前 apply --check，应用后重扫"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "有界且可解释",
+      "items": [
+        "max_turns 封顶；耗尽也是正常结果（tier 2）",
+        "tier 0=无事、tier 1=已验证、tier 2=需人工"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "绝不留下半截",
+      "items": [
+        "验证失败用 git apply -R 或快照恢复",
+        "review_gate 回退工作副本并产出审查产物，exit 3"
+      ]
+    }
+  ]
+}

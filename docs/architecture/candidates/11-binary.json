@@ -1,0 +1,209 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "二进制分析：只读元数据，回答「这个名字归谁」",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "subtitle": "PE/ELF/Mach-O/GPU 容器解析出依赖与导出表；不执行、不反汇编",
+    "output": "docs/architecture/html/11-binary.html"
+  },
+  "components": [
+    {
+      "id": "attach",
+      "type": "frontend",
+      "label": "--binary-attach",
+      "sublabel": "CLI 入口（CSV/单文件）",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "pe",
+      "type": "backend",
+      "label": "PE",
+      "sublabel": "binfmt/pe.py",
+      "pos": [
+        400,
+        40
+      ],
+      "size": [
+        220,
+        64
+      ]
+    },
+    {
+      "id": "elf",
+      "type": "backend",
+      "label": "ELF",
+      "sublabel": "binfmt/elf.py",
+      "pos": [
+        650,
+        40
+      ],
+      "size": [
+        220,
+        64
+      ]
+    },
+    {
+      "id": "macho",
+      "type": "backend",
+      "label": "Mach-O",
+      "sublabel": "binfmt/macho.py",
+      "pos": [
+        900,
+        40
+      ],
+      "size": [
+        220,
+        64
+      ]
+    },
+    {
+      "id": "gpu",
+      "type": "backend",
+      "label": "GPU 容器",
+      "sublabel": "fatbin/cubin/HSA/SPIR-V",
+      "pos": [
+        40,
+        160
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "resolve",
+      "type": "backend",
+      "label": "导出表 / 归属",
+      "sublabel": "attribute.py · resolve.py",
+      "pos": [
+        400,
+        160
+      ],
+      "size": [
+        340,
+        64
+      ]
+    },
+    {
+      "id": "hops",
+      "type": "backend",
+      "label": "跳转/调用关系",
+      "sublabel": "binhops.py · callrel.py",
+      "pos": [
+        780,
+        160
+      ],
+      "size": [
+        340,
+        64
+      ]
+    },
+    {
+      "id": "out",
+      "type": "cloud",
+      "label": "三态输出",
+      "sublabel": "library / gpu_kernel / missing",
+      "pos": [
+        40,
+        280
+      ],
+      "size": [
+        1080,
+        64
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "a-p",
+      "from": "attach",
+      "to": "pe"
+    },
+    {
+      "id": "a-e",
+      "from": "attach",
+      "to": "elf"
+    },
+    {
+      "id": "a-m",
+      "from": "attach",
+      "to": "macho"
+    },
+    {
+      "id": "a-g",
+      "from": "attach",
+      "to": "gpu"
+    },
+    {
+      "id": "p-r",
+      "from": "pe",
+      "to": "resolve"
+    },
+    {
+      "id": "e-r",
+      "from": "elf",
+      "to": "resolve"
+    },
+    {
+      "id": "m-r",
+      "from": "macho",
+      "to": "resolve"
+    },
+    {
+      "id": "g-r",
+      "from": "gpu",
+      "to": "resolve"
+    },
+    {
+      "id": "r-h",
+      "from": "resolve",
+      "to": "hops"
+    },
+    {
+      "id": "r-o",
+      "from": "resolve",
+      "to": "out"
+    },
+    {
+      "id": "h-o",
+      "from": "hops",
+      "to": "out"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "不执行、不反汇编",
+      "items": [
+        "只读头部/段表/导出表/节名，绝不运行二进制",
+        "不可解析是一等状态，不猜一个名字"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "三个真实陷阱",
+      "items": [
+        "PE 段名 8 字节硬截断：.nv_fatbin → .nv_fatb",
+        "cubin 不是标准 ELF（e_type=0x8000）",
+        "CUDA kernel 名在 .text._Z… 节名表里"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "跨语言桥接",
+      "items": [
+        "mex/calllib 让调用链在边界断掉",
+        "有导出表就明确 ✓/✗，没有就诚实说 missing"
+      ]
+    }
+  ]
+}

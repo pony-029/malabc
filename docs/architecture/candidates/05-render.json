@@ -1,0 +1,171 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "渲染与输出：一份模型，五种出口",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "subtitle": "单页报告、多页站点、机器数据、CI 证据、修复产物都从同一份模型出发",
+    "output": "docs/architecture/html/05-render.html"
+  },
+  "lanes": [
+    {
+      "id": "model",
+      "label": "模型"
+    },
+    {
+      "id": "single",
+      "label": "单页"
+    },
+    {
+      "id": "site",
+      "label": "站点"
+    },
+    {
+      "id": "machine",
+      "label": "机器数据"
+    }
+  ],
+  "mainPath": [
+    "bm",
+    "md",
+    "html"
+  ],
+  "nodes": [
+    {
+      "id": "bm",
+      "lane": "model",
+      "col": 0,
+      "type": "backend",
+      "label": "build_analysis_model",
+      "sublabel": "统一数据层",
+      "width": 190
+    },
+    {
+      "id": "md",
+      "lane": "single",
+      "col": 1,
+      "type": "backend",
+      "label": "Markdown",
+      "sublabel": "结构报告",
+      "width": 140
+    },
+    {
+      "id": "html",
+      "lane": "single",
+      "col": 2,
+      "type": "backend",
+      "label": "--html 报告",
+      "sublabel": "内嵌调用图 + report.css/app.js",
+      "width": 210
+    },
+    {
+      "id": "browse",
+      "lane": "site",
+      "col": 1,
+      "type": "backend",
+      "label": "--browse 站点",
+      "sublabel": "index/src/funcs/deps/dir/rule",
+      "width": 230
+    },
+    {
+      "id": "json",
+      "lane": "machine",
+      "col": 1,
+      "type": "backend",
+      "label": "--json",
+      "sublabel": "full / summary / compact",
+      "width": 170
+    },
+    {
+      "id": "sarif",
+      "lane": "machine",
+      "col": 2,
+      "type": "security",
+      "label": "SARIF 2.1.0",
+      "sublabel": "CI 告警证据",
+      "width": 160
+    },
+    {
+      "id": "dox",
+      "lane": "machine",
+      "col": 3,
+      "type": "backend",
+      "label": "Doxygen XML",
+      "sublabel": "--export-doxygen-xml",
+      "width": 180
+    },
+    {
+      "id": "patch",
+      "lane": "machine",
+      "col": 4,
+      "type": "backend",
+      "label": "patch / 测试骨架",
+      "sublabel": "修复产物",
+      "width": 180
+    }
+  ],
+  "edges": [
+    {
+      "id": "b-md",
+      "from": "bm",
+      "to": "md"
+    },
+    {
+      "id": "md-h",
+      "from": "md",
+      "to": "html"
+    },
+    {
+      "id": "b-b",
+      "from": "bm",
+      "to": "browse"
+    },
+    {
+      "id": "b-j",
+      "from": "bm",
+      "to": "json"
+    },
+    {
+      "id": "j-s",
+      "from": "json",
+      "to": "sarif"
+    },
+    {
+      "id": "s-d",
+      "from": "sarif",
+      "to": "dox"
+    },
+    {
+      "id": "d-p",
+      "from": "dox",
+      "to": "patch"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "单页 vs 多页",
+      "items": [
+        "--html 回答“整体什么样”，一个文件就能分享",
+        "--browse 回答“点进去看”，源码页/函数详情/目录/规则都可跳转"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "四语言同形",
+      "items": [
+        "renderers/csite.py 是语言无关站点引擎",
+        "C/MATLAB/Py/JS 的 funcs/file/dir/deps/rule 同名同形"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "无死链纪律",
+      "items": [
+        "页面外链了什么，就必须把那个文件写出来",
+        "report.css / app.js 与站点共用同一份源"
+      ]
+    }
+  ]
+}

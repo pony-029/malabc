@@ -1,0 +1,160 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "门禁与 CI：39 道门如何被组织、增量与发版",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "subtitle": "check_all.py 发现并运行所有 check_*.py；每道门必须能自证；发版清单独立核对",
+    "output": "docs/architecture/html/09-gates.html"
+  },
+  "lanes": [
+    {
+      "id": "runner",
+      "label": "总入口"
+    },
+    {
+      "id": "gates",
+      "label": "门"
+    },
+    {
+      "id": "ci",
+      "label": "CI / 手工"
+    }
+  ],
+  "mainPath": [
+    "all",
+    "gate",
+    "release",
+    "ciy",
+    "exitn"
+  ],
+  "nodes": [
+    {
+      "id": "all",
+      "lane": "runner",
+      "col": 0,
+      "type": "backend",
+      "label": "check_all.py",
+      "sublabel": "发现 tools/check_*.py",
+      "width": 190
+    },
+    {
+      "id": "gate",
+      "lane": "gates",
+      "col": 1,
+      "type": "security",
+      "label": "39 道门",
+      "sublabel": "各自 --selftest（两向）",
+      "width": 190
+    },
+    {
+      "id": "cache",
+      "lane": "gates",
+      "col": 2,
+      "type": "database",
+      "label": "gate_cache",
+      "sublabel": "指纹命中则复用结论",
+      "width": 180
+    },
+    {
+      "id": "release",
+      "lane": "gates",
+      "col": 3,
+      "type": "security",
+      "label": "release.py GATES",
+      "sublabel": "发版清单 + 最慢门",
+      "width": 190
+    },
+    {
+      "id": "ciy",
+      "lane": "ci",
+      "col": 3,
+      "type": "backend",
+      "label": "ci.yml / port-ci.yml",
+      "sublabel": "Windows + 移植编译矩阵",
+      "width": 220
+    },
+    {
+      "id": "manual",
+      "lane": "ci",
+      "col": 2,
+      "type": "backend",
+      "label": "手工门",
+      "sublabel": "lsp_selftest / sweep_cli",
+      "width": 190
+    },
+    {
+      "id": "exitn",
+      "lane": "ci",
+      "col": 4,
+      "type": "security",
+      "label": "退出码",
+      "sublabel": "0=全绿 / 1=有红 / 2=缺输入",
+      "width": 200
+    }
+  ],
+  "edges": [
+    {
+      "id": "a-g",
+      "from": "all",
+      "to": "gate"
+    },
+    {
+      "id": "g-c",
+      "from": "gate",
+      "to": "cache"
+    },
+    {
+      "id": "g-r",
+      "from": "gate",
+      "to": "release"
+    },
+    {
+      "id": "r-ci",
+      "from": "release",
+      "to": "ciy"
+    },
+    {
+      "id": "g-m",
+      "from": "gate",
+      "to": "manual"
+    },
+    {
+      "id": "ci-e",
+      "from": "ciy",
+      "to": "exitn"
+    },
+    {
+      "id": "m-e",
+      "from": "manual",
+      "to": "exitn"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "登记制",
+      "items": [
+        "新增门要同步 MIN_GUARDS / CI_ONLY / README / CONTRIBUTING / 帮助 / GUARD_CONTRACT",
+        "check_release_gates 守“写了却从没跑过”"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "两向自证",
+      "items": [
+        "每道门都要证明“坏样本会红、好样本会过”",
+        "自证没输出 SELFTEST COUNTS 也算红"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "门数棘轮",
+      "items": [
+        "门数只能增不能减；删门/漏登记都会红",
+        "增量缓存只省时间，不省凭据"
+      ]
+    }
+  ]
+}

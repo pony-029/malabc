@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "generated": "2026-10-21",
+  "tool": "archify (D:/work/rea/archify)",
+  "items": [
+    {"id": "00-overall", "type": "architecture", "candidate": "candidates/00-overall.json", "html": "html/00-overall.html", "title": "总框架"},
+    {"id": "01-entry", "type": "workflow", "candidate": "candidates/01-entry.json", "html": "html/01-entry.html", "title": "入口与 CLI"},
+    {"id": "02-matlab-frontend", "type": "workflow", "candidate": "candidates/02-matlab-frontend.json", "html": "html/02-matlab-frontend.html", "title": "MATLAB 前端"},
+    {"id": "03-multilang-ir", "type": "workflow", "candidate": "candidates/03-multilang-ir.json", "html": "html/03-multilang-ir.html", "title": "多语言前端 + IR"},
+    {"id": "04-analysis", "type": "architecture", "candidate": "candidates/04-analysis.json", "html": "html/04-analysis.html", "title": "分析引擎"},
+    {"id": "05-render", "type": "workflow", "candidate": "candidates/05-render.json", "html": "html/05-render.html", "title": "渲染与输出"},
+    {"id": "06-lsp", "type": "architecture", "candidate": "candidates/06-lsp.json", "html": "html/06-lsp.html", "title": "LSP 与 VS Code"},
+    {"id": "07-ai-mcp", "type": "architecture", "candidate": "candidates/07-ai-mcp.json", "html": "html/07-ai-mcp.html", "title": "AI 与 MCP"},
+    {"id": "08-fix-loop", "type": "lifecycle", "candidate": "candidates/08-fix-loop.json", "html": "html/08-fix-loop.html", "title": "修复闭环"},
+    {"id": "09-gates", "type": "workflow", "candidate": "candidates/09-gates.json", "html": "html/09-gates.html", "title": "门禁与 CI"},
+    {"id": "10-porting", "type": "architecture", "candidate": "candidates/10-porting.json", "html": "html/10-porting.html", "title": "MATLAB→C 移植"},
+    {"id": "11-binary", "type": "architecture", "candidate": "candidates/11-binary.json", "html": "html/11-binary.html", "title": "二进制分析"}
+  ]
+}

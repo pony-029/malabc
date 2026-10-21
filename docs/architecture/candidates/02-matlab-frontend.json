@@ -1,0 +1,150 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "MATLAB 前端：从源码到函数/调用边",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "subtitle": "先去注释/字符串保留行锚点，再解析函数/类，最后建调用边",
+    "output": "docs/architecture/html/02-matlab-frontend.html"
+  },
+  "lanes": [
+    {
+      "id": "read",
+      "label": "读取"
+    },
+    {
+      "id": "lex",
+      "label": "词法清洗"
+    },
+    {
+      "id": "parse",
+      "label": "解析"
+    },
+    {
+      "id": "model",
+      "label": "模型"
+    },
+    {
+      "id": "calls",
+      "label": "调用分析"
+    }
+  ],
+  "mainPath": [
+    "readf",
+    "scrub",
+    "logical",
+    "parsef",
+    "modelf",
+    "callsf"
+  ],
+  "nodes": [
+    {
+      "id": "readf",
+      "lane": "read",
+      "col": 0,
+      "type": "database",
+      "label": "读取 .m",
+      "sublabel": "编码探测 / 按行",
+      "width": 150
+    },
+    {
+      "id": "scrub",
+      "lane": "lex",
+      "col": 1,
+      "type": "backend",
+      "label": "scrub_source",
+      "sublabel": "去注释/字符串，保留行号",
+      "width": 200
+    },
+    {
+      "id": "logical",
+      "lane": "lex",
+      "col": 2,
+      "type": "backend",
+      "label": "_logical_statements",
+      "sublabel": "合并 ... 续行",
+      "width": 210
+    },
+    {
+      "id": "parsef",
+      "lane": "parse",
+      "col": 3,
+      "type": "backend",
+      "label": "parse_file",
+      "sublabel": "function/classdef/块/end 风格",
+      "width": 210
+    },
+    {
+      "id": "modelf",
+      "lane": "model",
+      "col": 4,
+      "type": "backend",
+      "label": "MatlabFile/Function/Class",
+      "sublabel": "body_end/header/source_lines",
+      "width": 240
+    },
+    {
+      "id": "callsf",
+      "lane": "calls",
+      "col": 5,
+      "type": "backend",
+      "label": "analyze_calls / resolve_call",
+      "sublabel": "建调用边 + 外部调用计数",
+      "width": 240
+    }
+  ],
+  "edges": [
+    {
+      "id": "r-s",
+      "from": "readf",
+      "to": "scrub"
+    },
+    {
+      "id": "s-l",
+      "from": "scrub",
+      "to": "logical"
+    },
+    {
+      "id": "l-p",
+      "from": "logical",
+      "to": "parsef"
+    },
+    {
+      "id": "p-m",
+      "from": "parsef",
+      "to": "modelf"
+    },
+    {
+      "id": "m-c",
+      "from": "modelf",
+      "to": "callsf"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "行锚点不可丢",
+      "items": [
+        "注释/字符串替换为空格但保留换行：后续行号与源码一致",
+        "body_end 缺失会让大纲 Range 越界，编辑器拒收整批符号"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "两种函数风格",
+      "items": [
+        "显式 end 风格：按 end 配对关闭",
+        "旧式平级局部函数：由下一个 function 隐式关闭上一个"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "唯一判定点",
+      "items": [
+        "MATLAB 的 unresolved 只由 frontends/matlab.py 产出",
+        "IR_LANG_OWNERS 登记谁负责判定，check_ir_attribution 双向核对"
+      ]
+    }
+  ]
+}
