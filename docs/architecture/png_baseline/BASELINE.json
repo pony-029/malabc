@@ -1,0 +1,62 @@
+{
+  "version": "1.16.72",
+  "date": "2026-10-21",
+  "items": {
+    "00-overall": {
+      "sha256": "29cbf63985e49fc024a07ba6b915a4c249e87b6406e05e70de50a27e77b8ab98",
+      "bytes": 71643
+    },
+    "01-entry": {
+      "sha256": "4879fb6a4ac75f1272168817ce09695d3118fafeef31a02b017bf09c74f86488",
+      "bytes": 37344
+    },
+    "02-matlab-frontend": {
+      "sha256": "5b2c8acbb74f97e23adae25e98f9838843e5b83d0cb9db32e8bcb157d9c2ed2a",
+      "bytes": 38001
+    },
+    "03-multilang-ir": {
+      "sha256": "25cd3ffb9f576c9c87c3bbe9ea649abd8d57df7ca930330e9d0cf7da1c6692c0",
+      "bytes": 39473
+    },
+    "04-analysis": {
+      "sha256": "638e10f257a094acc7e36c6aa0c0ad8bd8c1b659e0fb08a10a2d2ffce8572f1d",
+      "bytes": 39681
+    },
+    "05-render": {
+      "sha256": "b96034a8acad9a6175454589a0e63379cdfa192e46b8def31f4099db2bc24445",
+      "bytes": 35709
+    },
+    "06-lsp": {
+      "sha256": "3fdbbd76af104a37ac448acaa7d18430962073d71e0d1f8ec5126693a6df3e9f",
+      "bytes": 34405
+    },
+    "07-ai-mcp": {
+      "sha256": "bded2894179fdaeedd6a19788084d2bf8b355483672f842d25d3eb72bfbd62b3",
+      "bytes": 33908
+    },
+    "08-fix-loop": {
+      "sha256": "11e1f195e0ba99fa343a658f3d013a6bad0ceb5476541cf71267e2881c85b2a6",
+      "bytes": 67849
+    },
+    "09-gates": {
+      "sha256": "374360f41911be9cf6a29c96936d4f23deef7c7f1abacba814b57bb7f2d97056",
+      "bytes": 33430
+    },
+    "10-porting": {
+      "sha256": "1ca9a3ec36e64b5f34be57935637147e8e777abe07e3942d53e6dc228678c3d8",
+      "bytes": 39619
+    },
+    "11-binary": {
+      "sha256": "bfcd2feee8f34970aef63791b9e3845a1959a4de32029efa8fb9f5716255850f",
+      "bytes": 28005
+    },
+    "12-dataflow": {
+      "sha256": "41c8ceca534675a4f49defbb433825225b10aee412e566987866eb04dfec120d",
+      "bytes": 47279
+    },
+    "13-sequence": {
+      "sha256": "82c23d8a489bb799b3e15c1c2a0ddf5bec251fb4cd4172813d25b179ff67ed1a",
+      "bytes": 49547
+    }
+  }
+}

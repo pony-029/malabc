@@ -89,6 +89,7 @@ ADR 索引全登记、无孤儿；`Superseded` 必须与 `Supersedes`/`Supersede
 python tools/snapshot_arch.py --write        # 冻结本版本 14 张图的三个哈希
 python tools/build_arch_versions.py --write  # 刷新 since/changed_in
 python tools/export_arch_png.py --all        # 汇报用 PNG
+python tools/export_arch_png.py --baseline   # 冻结 PNG 基线
 python tools/record_arch_review.py --write --reviewer <name> --result pass
 python tools/release_arch_check.py --check   # 快照/版本/PNG/评审总闸
 python tools/release_arch_check.py --diff <prev> --fail-on-change

@@ -219,7 +219,8 @@ python tools/apply_arch_sources.py --write
 
 # 7) 发布评审：快照 diff / PNG diff / 发布总闸
 python tools/snapshot_arch.py --diff 1.16.72 current
-python tools/diff_arch_png.py --base old/png --head docs/architecture/png --max-ratio 0.005
+python tools/export_arch_png.py --baseline      # 当前 png/ 冻结为基线
+python tools/diff_arch_png.py --max-ratio 0.005 --fail-on-change
 python tools/release_arch_check.py --check
 ```
 
@@ -266,10 +267,11 @@ python tools/release_arch_check.py --check
 | 责任人（AD7） | 13 个关键模块全部有 `.github/CODEOWNERS` 负责人，owner 均为 `@pony-029` |
 | 图片路径（AD3） | 根 README 的本地图片全部存在；总框架中文/英文各嵌各的图 |
 | 陈旧门 | `python tools/export_arch_svg.py --check` → **OK（14 条清单与 candidate/html/svg 一致）** |
-| 快跑 CI | `.github/workflows/arch-docs.yml`（AD1–AD11 + 清单 + 英文 SVG + 模块图 + 归属表 + 快照 + 版本记录 + PNG + 评审记录 + 源码证据 + README 对等 + 行尾）；YAML 可解析：1 job / 14 steps |
+| 快跑 CI | `.github/workflows/arch-docs.yml`（AD1–AD11 + 清单 + 英文 SVG + 模块图 + 归属表 + 快照 + 版本记录 + PNG + PNG 基线 + 评审记录 + 源码证据 + README 对等 + 行尾）；YAML 可解析：1 job / 15 steps |
 | ADR（AD11） | **8 条**（含 ADR-008 评审记录）；14 张图挂 `adr`；`Status`/`Diagrams` 双向；`decisions/README.md` 全登记；无孤儿 |
 | 替代链示例（R39） | `decisions/examples/`：ADR-100 Superseded ⇄ ADR-101 Accepted，**双向互指** |
-| 发布总闸（R32） | `release_arch_check.py --check` → 快照/版本/PNG/评审 **4/4 OK** |
+| 发布总闸（R32/R40） | `release_arch_check.py --check` → 快照/版本/PNG/基线/评审 **5/5 OK** |
+| PNG 基线（R40） | `png_baseline/` 14 张 + `BASELINE.json`（583 KB）；默认 diff **0 changes** |
 | PNG 阈值（R33） | 同尺寸改 0.04% 像素：`--max-ratio 0.0001` → **exit 1**；`0.5` → **exit 0** |
 | 源码批量校验（R34/R37） | **1 次全局** `git cat-file --batch-check`，**0.75 s** 覆盖 137 条 sources（原 14 次 8.3 s） |
 | 评审记录（R36） | `REVIEWS.md`：**1.16.72 / pass / pony-029**；`record_arch_review --check` 通过 |

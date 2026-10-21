@@ -13,18 +13,23 @@
     python tools/export_arch_png.py --id 00-overall
 """
 import argparse
+import hashlib
 import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 ARCH = os.path.join(ROOT, "docs", "architecture")
 INDEX = os.path.join(ARCH, "FLOW_INDEX.json")
 OUT = os.path.join(ARCH, "png")
+BASELINE = os.path.join(ARCH, "png_baseline")
+BASELINE_MANIFEST = os.path.join(BASELINE, "BASELINE.json")
 CHROME_CANDIDATES = (
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
@@ -48,6 +53,24 @@ def _chrome():
 def _items():
     with io.open(INDEX, "r", encoding="utf-8") as fh:
         return json.load(fh).get("items") or []
+
+
+def _sha(path):
+    h = hashlib.sha256()
+    with io.open(path, "rb") as fh:
+        while True:
+            b = fh.read(65536)
+            if not b:
+                break
+            h.update(b)
+    return h.hexdigest()
+
+
+def _version():
+    text = io.open(os.path.join(ROOT, "matlabc.py"), "r",
+                   encoding="utf-8", errors="replace").read()
+    m = re.search(r'^VERSION\s*=\s*["\']([^"\']+)', text, re.M)
+    return m.group(1) if m else "unknown"
 
 
 def _viewbox(svg_path):
@@ -103,6 +126,69 @@ def build(only=None):
     return 0
 
 
+def build_baseline():
+    items = _items()
+    if not os.path.isdir(BASELINE):
+        os.makedirs(BASELINE)
+    meta = {"version": _version(),
+            "date": time.strftime("%Y-%m-%d", time.gmtime()),
+            "items": {}}
+    for it in items:
+        iid = it["id"]
+        src = os.path.join(OUT, iid + ".png")
+        dst = os.path.join(BASELINE, iid + ".png")
+        if not os.path.isfile(src):
+            print("MISSING %s（先跑 --all）" % src)
+            return 1
+        shutil.copyfile(src, dst)
+        meta["items"][iid] = {"sha256": _sha(dst),
+                              "bytes": os.path.getsize(dst)}
+    with io.open(BASELINE_MANIFEST, "w", encoding="utf-8",
+                 newline="\n") as fh:
+        json.dump(meta, fh, ensure_ascii=False, indent=2)
+        fh.write("\n")
+    print("wrote baseline %s（%d 张，%s）"
+          % (BASELINE, len(meta["items"]), meta["version"]))
+    return 0
+
+
+def check_baseline():
+    bad = []
+    items = _items()
+    if not os.path.isfile(BASELINE_MANIFEST):
+        bad.append("缺 %s" % BASELINE_MANIFEST)
+        meta = {}
+    else:
+        try:
+            with io.open(BASELINE_MANIFEST, "r", encoding="utf-8") as fh:
+                meta = json.load(fh)
+        except ValueError as e:
+            bad.append("BASELINE.json 非法：%s" % e)
+            meta = {}
+    recs = meta.get("items") or {}
+    for it in items:
+        iid = it["id"]
+        path = os.path.join(BASELINE, iid + ".png")
+        if not os.path.isfile(path):
+            bad.append("%s 缺基线 PNG" % iid)
+            continue
+        with io.open(path, "rb") as fh:
+            head = fh.read(8)
+        if head != PNG_MAGIC or os.path.getsize(path) < 1024:
+            bad.append("%s 基线不是有效 PNG" % iid)
+            continue
+        rec = recs.get(iid)
+        if not rec or rec.get("sha256") != _sha(path):
+            bad.append("%s 基线哈希与清单不一致" % iid)
+    if bad:
+        for b in bad:
+            print("  - %s" % b)
+        return 1
+    print("export_arch_png: OK（%d 张 PNG 基线一致，version %s）"
+          % (len(items), meta.get("version", "?")))
+    return 0
+
+
 def check():
     bad = []
     items = _items()
@@ -129,9 +215,16 @@ def main(argv=None):
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--id")
     ap.add_argument("--check", action="store_true")
+    ap.add_argument("--baseline", action="store_true",
+                    help="把当前 png/ 冻结为 png_baseline/")
+    ap.add_argument("--check-baseline", action="store_true")
     args = ap.parse_args(argv)
     if args.check:
         return check()
+    if args.check_baseline:
+        return check_baseline()
+    if args.baseline:
+        return build_baseline()
     if not args.all and not args.id:
         ap.print_help()
         return 2

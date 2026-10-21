@@ -2,9 +2,9 @@
 # 架构文档快跑门（R12）
 # -----------------------------------------------------------------------------
 # 为什么单独开一条：`ci.yml` 的 `check_all.py` 是 2 分钟级的大跑，架构图
-# 改坏时反馈太慢。这条工作流只做 12 件纯 Python、秒级的事：
+# 改坏时反馈太慢。这条工作流只做 13 件纯 Python、秒级的事：
 #   AD1–AD11 架构文档门 / SVG 哈希清单 / 英文 SVG / 模块图 / 归属表 /
-#   版本快照 / 逐图版本记录 / PNG 存在性 / 源码证据 / 评审记录 /
+#   版本快照 / 逐图版本记录 / PNG 存在性 / PNG 基线 / 源码证据 / 评审记录 /
 #   README 对等 / 行尾。
 #
 # 它**不需要** archify 或 Node：渲染与英文 SVG 构建在本地完成，
@@ -28,6 +28,7 @@ on:
       - "docs/architecture/REVIEWS.md"
       - "docs/ARCHITECTURE_MAP.md"
       - "docs/architecture/SNAPSHOTS.json"
+      - "docs/architecture/png_baseline/**"
       - "docs/architecture/VERSIONS.md"
       - ".github/CODEOWNERS"
       - "README.md"
@@ -75,6 +76,9 @@ jobs:
 
       - name: PNG presence
         run: python tools/export_arch_png.py --check
+
+      - name: PNG baseline freshness
+        run: python tools/export_arch_png.py --check-baseline
 
       - name: Architecture review record
         run: python tools/record_arch_review.py --check

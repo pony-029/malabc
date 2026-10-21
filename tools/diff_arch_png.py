@@ -7,9 +7,10 @@
     有 Pillow 时再给像素 bbox / 变化比例；没有 Pillow 也能用。
 
 用法：
+    python tools/diff_arch_png.py
     python tools/diff_arch_png.py --base old/png --head docs/architecture/png
     python tools/diff_arch_png.py --base a --head b --json
-    python tools/diff_arch_png.py --base a --head b --fail-on-change
+    python tools/diff_arch_png.py --max-ratio 0.005 --fail-on-change
 """
 import argparse
 import hashlib
@@ -17,6 +18,12 @@ import io
 import json
 import os
 import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+ARCH = os.path.join(ROOT, "docs", "architecture")
+DEFAULT_BASE = os.path.join(ARCH, "png_baseline")
+DEFAULT_HEAD = os.path.join(ARCH, "png")
 
 
 def _sha(path):
@@ -60,8 +67,8 @@ def _files(d):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="对比架构 PNG")
-    ap.add_argument("--base", required=True)
-    ap.add_argument("--head", required=True)
+    ap.add_argument("--base", default=DEFAULT_BASE)
+    ap.add_argument("--head", default=DEFAULT_HEAD)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--fail-on-change", action="store_true")
     ap.add_argument("--max-ratio", type=float, default=0.005,

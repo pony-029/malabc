@@ -41,11 +41,12 @@ def main(argv=None):
             ("snapshot", snapshot_arch.main(["--check"])),
             ("versions", build_arch_versions.main(["--check"])),
             ("png", export_arch_png.check()),
+            ("baseline", export_arch_png.check_baseline()),
             ("review", record_arch_review.main(["--check"]))):
         print("[%s] %s" % ("OK" if rc == 0 else "FAIL", name))
         if rc != 0:
             return rc
-    print("release_arch_check: OK（快照/版本/PNG/评审全绿）")
+    print("release_arch_check: OK（快照/版本/PNG/基线/评审全绿）")
     return 0
 
 
