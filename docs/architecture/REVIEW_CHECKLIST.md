@@ -17,7 +17,7 @@
    copy %TEMP%/<id>.html html/<id>.html
    ```
 
-3. 登记 `FLOW_INDEX.json`（id/type/candidate/html/svg/title）。
+3. 登记 `FLOW_INDEX.json`（id/type/candidate/html/svg/title，以及 `adr` 列表）。
 4. 生成中文 SVG，写 `svg/MANIFEST.json`：
 
    ```bash
@@ -67,11 +67,18 @@
 - [ ] sequence 的消息间距 ≥ 28、y ≥ 160 吗？段有没有越界？
 - [ ] 英文版与中文版的 id/边/计数一致吗？英文版还有中文吗？
 - [ ] 英文 label 命中了 `GLOSSARY.md` 的规范译法吗（AD9）？
+- [ ] 这张图的 ADR 写清了 Context / Decision / Consequences 吗（AD11）？
 
 ## 责任人
 
 - 模块 owner 见 `.github/CODEOWNERS`；AD7 会核对关键模块是否都有 `@` 开头的 owner。
 - 架构文档本身归 `/docs/architecture/` 的 owner。
+
+## 决策记录
+
+新图/改图如果改变了架构取舍，写一条 `decisions/ADR-<n>-<slug>.md`
+（`# ADR-...` + `Status` + `Context` / `Decision` / `Consequences`），
+并把路径挂到 `FLOW_INDEX` 的 `adr` 列表。AD11 会检查文件存在、结构齐全、无孤儿。
 
 ## 发布前
 

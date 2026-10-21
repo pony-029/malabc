@@ -11,7 +11,11 @@
       "svg": "svg/00-overall.svg",
       "title": "总框架",
       "since": "1e9cd50 2026-10-21",
-      "changed_in": "ca1db62 2026-10-21"
+      "changed_in": "ca1db62 2026-10-21",
+      "adr": [
+        "decisions/ADR-001-single-file-core.md",
+        "decisions/ADR-006-gates-as-registry.md"
+      ]
     },
     {
       "id": "01-entry",
@@ -21,7 +25,10 @@
       "svg": "svg/01-entry.svg",
       "title": "入口与 CLI",
       "since": "1e9cd50 2026-10-21",
-      "changed_in": "209d16e 2026-10-21"
+      "changed_in": "209d16e 2026-10-21",
+      "adr": [
+        "decisions/ADR-001-single-file-core.md"
+      ]
     },
     {
       "id": "02-matlab-frontend",
@@ -31,7 +38,10 @@
       "svg": "svg/02-matlab-frontend.svg",
       "title": "MATLAB 前端",
       "since": "1e9cd50 2026-10-21",
-      "changed_in": "209d16e 2026-10-21"
+      "changed_in": "209d16e 2026-10-21",
+      "adr": [
+        "decisions/ADR-002-unified-ir.md"
+      ]
     },
     {
       "id": "03-multilang-ir",
@@ -41,7 +51,10 @@
       "svg": "svg/03-multilang-ir.svg",
       "title": "多语言前端 + IR",
       "since": "1e9cd50 2026-10-21",
-      "changed_in": "209d16e 2026-10-21"
+      "changed_in": "209d16e 2026-10-21",
+      "adr": [
+        "decisions/ADR-002-unified-ir.md"
+      ]
     },
     {
       "id": "04-analysis",
@@ -51,7 +64,10 @@
       "svg": "svg/04-analysis.svg",
       "title": "分析引擎",
       "since": "1e9cd50 2026-10-21",
-      "changed_in": "209d16e 2026-10-21"
+      "changed_in": "209d16e 2026-10-21",
+      "adr": [
+        "decisions/ADR-002-unified-ir.md"
+      ]
     },
     {
       "id": "05-render",
@@ -61,7 +77,10 @@
       "svg": "svg/05-render.svg",
       "title": "渲染与输出",
       "since": "1e9cd50 2026-10-21",
-      "changed_in": "209d16e 2026-10-21"
+      "changed_in": "209d16e 2026-10-21",
+      "adr": [
+        "decisions/ADR-002-unified-ir.md"
+      ]
     },
     {
       "id": "06-lsp",
@@ -71,7 +90,10 @@
       "svg": "svg/06-lsp.svg",
       "title": "LSP 与 VS Code",
       "since": "1e9cd50 2026-10-21",
-      "changed_in": "209d16e 2026-10-21"
+      "changed_in": "209d16e 2026-10-21",
+      "adr": [
+        "decisions/ADR-004-thin-editor-client.md"
+      ]
     },
     {
       "id": "07-ai-mcp",
@@ -81,7 +103,10 @@
       "svg": "svg/07-ai-mcp.svg",
       "title": "AI 与 MCP",
       "since": "1e9cd50 2026-10-21",
-      "changed_in": "209d16e 2026-10-21"
+      "changed_in": "209d16e 2026-10-21",
+      "adr": [
+        "decisions/ADR-004-thin-editor-client.md"
+      ]
     },
     {
       "id": "08-fix-loop",
@@ -91,7 +116,10 @@
       "svg": "svg/08-fix-loop.svg",
       "title": "修复闭环",
       "since": "1e9cd50 2026-10-21",
-      "changed_in": "1e9cd50 2026-10-21"
+      "changed_in": "1e9cd50 2026-10-21",
+      "adr": [
+        "decisions/ADR-003-verification-gated-fix-loop.md"
+      ]
     },
     {
       "id": "09-gates",
@@ -101,7 +129,10 @@
       "svg": "svg/09-gates.svg",
       "title": "门禁与 CI",
       "since": "1e9cd50 2026-10-21",
-      "changed_in": "209d16e 2026-10-21"
+      "changed_in": "209d16e 2026-10-21",
+      "adr": [
+        "decisions/ADR-006-gates-as-registry.md"
+      ]
     },
     {
       "id": "10-porting",
@@ -111,7 +142,10 @@
       "svg": "svg/10-porting.svg",
       "title": "MATLAB→C 移植",
       "since": "1e9cd50 2026-10-21",
-      "changed_in": "209d16e 2026-10-21"
+      "changed_in": "209d16e 2026-10-21",
+      "adr": [
+        "decisions/ADR-005-deterministic-porting.md"
+      ]
     },
     {
       "id": "11-binary",
@@ -121,7 +155,10 @@
       "svg": "svg/11-binary.svg",
       "title": "二进制分析",
       "since": "1e9cd50 2026-10-21",
-      "changed_in": "209d16e 2026-10-21"
+      "changed_in": "209d16e 2026-10-21",
+      "adr": [
+        "decisions/ADR-007-binary-read-only.md"
+      ]
     },
     {
       "id": "12-dataflow",
@@ -131,7 +168,10 @@
       "svg": "svg/12-dataflow.svg",
       "title": "数据流",
       "since": "b60374a 2026-10-21",
-      "changed_in": "209d16e 2026-10-21"
+      "changed_in": "209d16e 2026-10-21",
+      "adr": [
+        "decisions/ADR-002-unified-ir.md"
+      ]
     },
     {
       "id": "13-sequence",
@@ -141,7 +181,10 @@
       "svg": "svg/13-sequence.svg",
       "title": "LSP 时序",
       "since": "b60374a 2026-10-21",
-      "changed_in": "209d16e 2026-10-21"
+      "changed_in": "209d16e 2026-10-21",
+      "adr": [
+        "decisions/ADR-004-thin-editor-client.md"
+      ]
     }
   ]
 }

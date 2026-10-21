@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""架构文档一致性门（AD1–AD10）。
+"""架构文档一致性门（AD1–AD11）。
 
 判据族：
     AD1  索引形状：`FLOW_INDEX.json` 的 version/items/id/type/title 齐全且唯一。
@@ -21,15 +21,17 @@
          节点 id、连线端点、节点/连线/消息计数必须一致；英文版**不得残留中文**。
     AD9  术语一致：`GLOSSARY.md` 的机器块给出中文术语 → 可接受英文写法；
          中文节点 label 含某术语时，英文 label 必须命中其中一种写法。
-    AD10 术语覆盖：所有中文节点 label 中，至少 90% 能命中术语表；
+    AD10 术语覆盖：所有中文节点 label 必须 100% 命中术语表；
          低于阈值时列出缺口，防止“新图绕开术语表”。
+    AD11 决策记录：每张图必须挂 `adr`（ADR 文件列表）；文件必须存在且含
+         Context/Decision/Consequences；`decisions/ADR-*.md` 不得有孤儿。
 
 为什么需要它：架构图是**生成物**，最容易出现的缺陷不是“画错”，而是
 “改了 candidate 没重渲染 / 渲染了没登记 / 嵌了图但路径写错”——这三种
 在 git diff 里都只是几行，靠人看不住。
 
 退出码：
-    0  = AD1–AD10 全绿
+    0  = AD1–AD11 全绿
     1  = 有架构文档不一致
     2  = 缺输入（找不到 docs/architecture 或根 README）
 """
@@ -44,7 +46,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 #: P5 的对手方：本门在 README 质量门表那一行里声明的判据族。
-ROW_SIGNATURE = "AD1–AD10"
+ROW_SIGNATURE = "AD1–AD11"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -56,6 +58,7 @@ CODEOWNERS = os.path.join(ROOT, ".github", "CODEOWNERS")
 MODULE_DOC = os.path.join(ROOT, "docs", "ARCHITECTURE_MAP.md")
 CHECKLIST = os.path.join(ARCH, "REVIEW_CHECKLIST.md")
 GLOSSARY = os.path.join(ARCH, "GLOSSARY.md")
+ADR_DIR = os.path.join(ARCH, "decisions")
 ROOT_READMES = (os.path.join(ROOT, "README.md"),
                 os.path.join(ROOT, "README_CN.md"))
 TYPES = ("architecture", "workflow", "lifecycle", "sequence", "dataflow")
@@ -352,6 +355,34 @@ def _glossary_coverage(cj, terms):
     return covered, total, misses
 
 
+def _adr_problems(items, arch_dir):
+    probs = []
+    refs = set()
+    for it in items:
+        iid = it.get("id")
+        adr = it.get("adr")
+        if not isinstance(adr, list) or not adr:
+            probs.append("AD11 %s 缺 adr 列表" % iid)
+            continue
+        for rel in adr:
+            path = os.path.join(arch_dir, rel)
+            if not os.path.isfile(path):
+                probs.append("AD11 %s 引用的 ADR 不存在：%s" % (iid, rel))
+                continue
+            txt = _read(path)
+            for need in ("# ADR", "Status", "## Context", "## Decision",
+                         "## Consequences"):
+                if need not in txt:
+                    probs.append("AD11 %s 缺 %r" % (rel, need))
+            refs.add(os.path.basename(rel))
+    adr_dir = os.path.join(arch_dir, "decisions")
+    if os.path.isdir(adr_dir):
+        for fn in sorted(os.listdir(adr_dir)):
+            if fn.startswith("ADR-") and fn.endswith(".md") and fn not in refs:
+                probs.append("AD11 ADR 未被任何图引用：%s" % fn)
+    return probs
+
+
 def check(index_path=None, arch_dir=None, arch_readme=None,
           root_readmes=None, manifest_path=None, codeowners_path=None,
           module_doc_path=None, checklist_path=None, glossary_path=None):
@@ -510,9 +541,10 @@ def check(index_path=None, arch_dir=None, arch_readme=None,
         cov[0] += c
         cov[1] += t
         cov[2].extend(m)
-    if cov[1] and cov[0] * 100 < 90 * cov[1]:
-        probs.append("AD10 术语覆盖率 %.1f%% < 90%%；缺口（前 8 个）：%r"
+    if cov[1] and cov[0] * 100 < 100 * cov[1]:
+        probs.append("AD10 术语覆盖率 %.1f%% < 100%%；缺口（前 8 个）：%r"
                      % (100.0 * cov[0] / cov[1], cov[2][:8]))
+    probs.extend(_adr_problems(items, arch_dir))
     # AD7：模块责任人
     probs.extend(_codeowners_problems(codeowners_path))
 
@@ -634,6 +666,7 @@ def _selftest():
             "items": [{"id": "00-overall", "type": "architecture",
                        "candidate": "candidates/00-overall.json",
                        "html": "html/00-overall.html",
+                       "adr": ["decisions/ADR-001-x.md"],
                        "title": "x"}]}))
         for ip in (os.path.join(tmp, "docs", "architecture", "en", "svg",
                                 "00-overall.svg"),
@@ -653,6 +686,9 @@ def _selftest():
         glossary = os.path.join(arch, "GLOSSARY.md")
         _write(glossary,
                '<!-- GLOSSARY v1\n{"入口": ["entry"]}\n-->\n')
+        adr = os.path.join(arch, "decisions", "ADR-001-x.md")
+        _write(adr, "# ADR-001: x\n- Status: Accepted\n## Context\nc\n"
+                    "## Decision\nd\n## Consequences\ne\n")
         index_html = os.path.join(arch, "index.html")
         _write(index_html,
                '<input id="q"><button data-filter="all"></button>\n'
@@ -811,17 +847,27 @@ def _selftest():
                '<button id="theme"></button>\n'
                "@media (max-width: 640px) {}\n"
                "[g](MODULE_GRAPH.md)\n[13](html/13-sequence.html)\n")
+        # AD11：缺 ADR / 孤儿 ADR
+        os.remove(adr)
+        chk(bool(check(*args, **kw)), "AD11 缺 ADR 未判红")
+        _write(adr, "# ADR-001: x\n- Status: Accepted\n## Context\nc\n"
+                    "## Decision\nd\n## Consequences\ne\n")
+        orphan = os.path.join(arch, "decisions", "ADR-999-orphan.md")
+        _write(orphan, "# ADR-999: x\n- Status: Accepted\n## Context\nc\n"
+                       "## Decision\nd\n## Consequences\ne\n")
+        chk(bool(check(*args, **kw)), "AD11 孤儿 ADR 未判红")
+        os.remove(orphan)
         chk(not check(*args, **kw), "恢复后仍误伤")
     finally:
         import shutil
         shutil.rmtree(tmp, ignore_errors=True)
 
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad[0], good[0]))
-    return 0 if (bad[0] == 0 and good[0] >= 23) else 1
+    return 0 if (bad[0] == 0 and good[0] >= 25) else 1
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="架构文档一致性门（AD1–AD10）")
+    ap = argparse.ArgumentParser(description="架构文档一致性门（AD1–AD11）")
     ap.add_argument("--selftest", action="store_true", help="两向自证")
     args = ap.parse_args(argv)
     if args.selftest:
@@ -839,7 +885,7 @@ def main(argv=None):
             print("  - %s" % p)
         print("check_architecture_docs: %d 项不合规" % len(probs))
         return 1
-    print("check_architecture_docs: OK（AD1–AD10 全绿；"
+    print("check_architecture_docs: OK（AD1–AD11 全绿；"
           "索引 %d 条对账 candidate/html/svg；根 README 已嵌图）"
           % len(_load_json(INDEX).get("items") or []))
     return 0

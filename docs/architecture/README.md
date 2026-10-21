@@ -41,7 +41,8 @@
 **评审清单**：[`REVIEW_CHECKLIST.md`](REVIEW_CHECKLIST.md)（新增/修改/删除各要过哪些门）；
 **术语表**：[`GLOSSARY.md`](GLOSSARY.md)（AD9 的中英规范译法 + 机器块）；
 **快照/版本**：[`SNAPSHOTS.json`](SNAPSHOTS.json) · [`VERSIONS.md`](VERSIONS.md)；
-**PNG**：[`png/`](png/)（14 张，汇报/幻灯片用）。
+**PNG**：[`png/`](png/)（14 张，汇报/幻灯片用）；
+**决策记录**：[`decisions/`](decisions/)（7 条 ADR：单文件内核 / 统一 IR / 验证门控闭环 / 轻薄编辑器 / 确定性移植 / 登记制门禁 / 二进制只读）。
 
 ---
 
@@ -214,9 +215,13 @@ python tools/snapshot_arch.py --write
 python tools/build_arch_versions.py --write
 python tools/export_arch_png.py --all
 python tools/apply_arch_sources.py --write
+
+# 7) 发布评审：快照 diff / PNG diff
+python tools/snapshot_arch.py --diff 1.16.72 current
+python tools/diff_arch_png.py --base old/png --head docs/architecture/png
 ```
 
-> 纯 Python 快跑门在 `.github/workflows/arch-docs.yml`：AD1–AD10、SVG 哈希清单、
+> 纯 Python 快跑门在 `.github/workflows/arch-docs.yml`：AD1–AD11、SVG 哈希清单、
 > 英文 SVG、模块边界图、归属表、版本快照、PNG 存在性、源码证据、中英 README 对等、
 > 行尾约定；不依赖 archify/Node。
 
@@ -242,12 +247,16 @@ python tools/apply_arch_sources.py --write
 | 独立 SVG（14 个） | **14/14 XML 解析通过**；CSS 裁剪到 **4–5 KB**（丢弃 @font-face，靠系统等宽兜底） |
 | SVG 渲染烟测 | `00-overall` 1444×744 **3585 色 / 40.89% 非白**；`12-dataflow` 980×520 **4430 色 / 57.57%**；`13-sequence` 1020×700 **3752 色 / 63.04%** |
 | SVG 体积 | **3.7 MB → 353 KB**（约 10.5×，单张 17–41 KB） |
-| 架构文档门 | `python tools/check_architecture_docs.py` → **OK（AD1–AD10）** |
+| 架构文档门 | `python tools/check_architecture_docs.py` → **OK（AD1–AD11）** |
 | 离线版式（AD6） | 14/14：viewBox（dataflow/sequence）、id 唯一、连线端点已知、sequence y≥160 且间距≥28、标签长度 |
 | 责任人（AD7） | 13 个关键模块全部有 `.github/CODEOWNERS` 负责人，owner 均为 `@pony-029` |
 | 图片路径（AD3） | 根 README 的本地图片全部存在；总框架中文/英文各嵌各的图 |
 | 陈旧门 | `python tools/export_arch_svg.py --check` → **OK（14 条清单与 candidate/html/svg 一致）** |
-| 快跑 CI | `.github/workflows/arch-docs.yml`（AD1–AD10 + 清单 + 英文 SVG + 模块图 + 归属表 + 快照 + 版本记录 + PNG + 源码证据 + README 对等 + 行尾）；YAML 可解析：1 job / 13 steps |
+| 快跑 CI | `.github/workflows/arch-docs.yml`（AD1–AD11 + 清单 + 英文 SVG + 模块图 + 归属表 + 快照 + 版本记录 + PNG + 源码证据 + README 对等 + 行尾）；YAML 可解析：1 job / 13 steps |
+| ADR（AD11） | **7 条**；14 张图全部挂 `adr`，无孤儿；Context/Decision/Consequences 齐全 |
+| 快照 diff（R15） | `snapshot_arch --diff 1.16.72 current` → **0 changes** |
+| PNG diff（R26） | `diff_arch_png` 能报尺寸/像素变化；`--fail-on-change` 可当评审闸 |
+| 源码证据校验（R17） | 14 张图 / **137 条 sources**（107 + 30）；`git cat-file` 验 revision 与文件存在 |
 | 模块边界（R16） | `python tools/build_module_graph.py` → 57 个运行时模块 / 20 条跨组边；`--check` 可复现 |
 | 索引搜索（R14） | Chrome `?q=sequence` → 15 卡片中仅 1 张可见；`?q=no-such` → 0 张 + “无结果” |
 | 版式差异（R13） | `python tools/arch_compare.py --id 00-overall --head <changed>` → delta HTML **2,163,473 B** + receipt **2,022 B** |

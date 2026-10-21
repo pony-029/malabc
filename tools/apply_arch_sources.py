@@ -15,6 +15,7 @@ import argparse
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -124,6 +125,14 @@ def _head():
     return (r.stdout or b"").decode("utf-8", "replace").strip()
 
 
+def _git_exists(rev, path=None):
+    spec = rev if path is None else "%s:%s" % (rev, path)
+    r = subprocess.run(["git", "cat-file", "-e", spec], cwd=ROOT,
+                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, timeout=15)
+    return r.returncode == 0
+
+
 def _nodes(cj):
     return (cj.get("components") or cj.get("nodes")
             or cj.get("participants") or cj.get("states") or [])
@@ -155,19 +164,34 @@ def main(argv=None):
         items = json.load(fh).get("items") or []
     sha = _head()
     total = 0
+    problems = []
+    checked = 0
     for it in items:
         iid = it["id"]
-        if iid not in SRC:
-            continue
         path = os.path.join(ARCH, it["candidate"])
         with io.open(path, "r", encoding="utf-8") as fh:
             cj = json.load(fh)
         if args.check:
             repo = (cj.get("meta") or {}).get("repository") or {}
-            ok = (repo.get("revision") and
-                  any(n.get("sources") for n in _nodes(cj)))
-            if not ok:
-                print("  - %s 缺 repository 或 sources" % iid)
+            rev = repo.get("revision") or ""
+            if not re.match(r"^[0-9a-fA-F]{40}$", rev):
+                problems.append("%s revision 非法：%r" % (iid, rev))
+            elif not _git_exists(rev):
+                problems.append("%s revision 在 Git 中不存在：%s"
+                                % (iid, rev))
+            else:
+                for n in _nodes(cj):
+                    for src in n.get("sources") or []:
+                        p = src.get("path")
+                        if not p or not _git_exists(rev, p):
+                            problems.append(
+                                "%s 节点 %s 的 %r 在 %s 不存在"
+                                % (iid, n.get("id"), p, rev[:7]))
+            if iid in SRC and not repo:
+                problems.append("%s 缺 repository" % iid)
+            checked += 1
+            continue
+        if iid not in SRC:
             continue
         hit = _apply(iid, cj, sha)
         total += hit
@@ -176,7 +200,12 @@ def main(argv=None):
             fh.write("\n")
         print("%-22s nodes_with_sources=%d" % (iid, hit))
     if args.check:
-        print("apply_arch_sources: check 完成（上面无输出即全绿）")
+        if problems:
+            for p in problems:
+                print("  - %s" % p)
+            return 1
+        print("apply_arch_sources: OK（%d 张图的 revision 与 sources 在 Git 中存在）"
+              % checked)
         return 0
     print("wrote 13 candidates；共 %d 个节点有源码引用（revision %s）"
           % (total, sha[:7]))
