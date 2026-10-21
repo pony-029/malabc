@@ -131,7 +131,7 @@
       "id": "m2c.op_transpose",
       "matlab": "catalog:OP-TRANSPOSE",
       "c": "c_runtime/src/mlc_ops.c",
-      "status": "not_started",
+      "status": "verified",
       "operators": [
         "OP-TRANSPOSE"
       ],
@@ -145,7 +145,7 @@
       "id": "m2c.op_matmul",
       "matlab": "catalog:OP-MATMUL",
       "c": "c_runtime/src/mlc_ops.c",
-      "status": "not_started",
+      "status": "verified",
       "operators": [
         "OP-MATMUL"
       ],

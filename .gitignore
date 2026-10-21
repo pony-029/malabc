@@ -52,6 +52,7 @@ Thumbs.db
 # py36 门禁的本地增量缓存（可随时删，删了重算）
 releases/.py36-cache.json
 releases/.gate-cache.json
+releases/.help-output-cache.json
 
 # Rust 构建产物
 rust/*/target/

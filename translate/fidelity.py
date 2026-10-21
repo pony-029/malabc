@@ -162,11 +162,19 @@ def _run_index(case):
 
 
 def _run_transpose(case):
-    x = case["inputs"]["x"]["data"]
-    rows = len(x)
-    cols = len(x[0]) if rows else 0
-    out = [[x[r][c] for r in range(rows)] for c in range(cols)]
-    return _expect([cols, rows], out)
+    """2-D 转置。与其它算子一样用 **shape + 扁平 data** ——
+    早先这里假设 data 是嵌套列表；matmul 有同一个毛病，一并修掉了。
+    """
+    X = case["inputs"]["x"]
+    sh = list(X.get("shape") or [])
+    if len(sh) != 2:
+        raise ValueError("transpose: 只支持 2-D")
+    m, n = sh
+    flat = _flat(X["data"])
+    if len(flat) != m * n:
+        raise ValueError("transpose: 数据长度与形状不符")
+    out = [flat[i * n + j] for j in range(n) for i in range(m)]
+    return _expect([n, m], out)
 
 
 def _run_matmul(case):
@@ -392,6 +400,21 @@ def emit_c_program(case):
             "    mlc_status st;",
             _c_array_decl("o", osh, [0.0] * no)[1],
             "    st = mlc_op_matmul(&A, &B, &o);",
+            '    if (st != MLC_OK) { printf("ERR %d\\n", (int)st); return 1; }',
+            '    for (int i=0;i<{0};i++) printf("%.17g\\n", od[i]);'.format(no),
+            "    return 0;", "}"]
+        return "\n".join(lines) + "\n"
+    if op == "OP-TRANSPOSE":
+        X = case["inputs"]["x"]
+        sh = list(X.get("shape") or [])
+        osh = [sh[1], sh[0]]
+        lines = head + _c_array_lines("x", X)
+        no = osh[0] * osh[1]
+        lines += [
+            "    double od[{0}] = {{0}};".format(no),
+            "    mlc_status st;",
+            _c_array_decl("o", osh, [0.0] * no)[1],
+            "    st = mlc_op_transpose(&x, &o);",
             '    if (st != MLC_OK) { printf("ERR %d\\n", (int)st); return 1; }',
             '    for (int i=0;i<{0};i++) printf("%.17g\\n", od[i]);'.format(no),
             "    return 0;", "}"]

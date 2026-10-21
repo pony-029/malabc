@@ -1,0 +1,10 @@
+{
+  "name": "op_transpose_2x3",
+  "operator": "OP-TRANSPOSE",
+  "rules": ["ORDER-1"],
+  "inputs": {
+    "x": {"dtype": "f64", "shape": [2, 3], "data": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]}
+  },
+  "expected": {"dtype": "f64", "shape": [3, 2], "data": [1.0, 4.0, 2.0, 5.0, 3.0, 6.0]},
+  "tol": {"abs": 1e-12, "rel": 1e-9}
+}

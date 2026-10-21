@@ -1501,6 +1501,9 @@ def _r5c_verdict(script, canon_bytes, canon_snapshot):
 #:   2. **原子写**（写临时文件再 replace），失败不会留下半截；
 #:   3. 读写都吞掉所有异常 —— 缓存坏了只该"没命中"，不该让门崩。
 _HELP_CACHE_FILE = "releases/.help-output-cache.json"
+#: 缓存条目上限：6 个入口 × 2 种口径 = 12，留一倍余量。
+#: 派生产物要有生命周期 —— 只增不减的缓存会变成"永久垃圾"。
+_HELP_CACHE_MAX = 24
 
 
 def _help_fingerprint(root, script):
@@ -1513,6 +1516,18 @@ def _help_fingerprint(root, script):
             h.update(b"-")
         h.update(b"|")
     return h.hexdigest()[:16]
+
+
+def _prune_help_cache(data):
+    """超过上限就按 `at` 从旧到新丢弃（原地修改）。"""
+    if len(data) <= _HELP_CACHE_MAX:
+        return
+    def _at(kv):
+        v = kv[1]
+        return v.get("at", "") if isinstance(v, dict) else ""
+
+    for k, _ in sorted(data.items(), key=_at)[:len(data) - _HELP_CACHE_MAX]:
+        data.pop(k, None)
 
 
 def _load_help_cache(root):
@@ -1597,11 +1612,13 @@ def _prefetch_help(root, cache):
                     "fp": fps[sc],
                     "rc": int(res[0]),
                     "out_b64": base64.b64encode(res[1]).decode("ascii"),
+                    "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
                 }
                 dirty = True
             except Exception:      # noqa: BLE001
                 pass
         if dirty:
+            _prune_help_cache(stored)
             _save_help_cache(root, stored)
 
 

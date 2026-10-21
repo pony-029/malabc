@@ -283,11 +283,44 @@ mlc_status mlc_op_index(const mlc_array *a, int64_t matlab_index,
     return MLC_OK;
 }
 
+/*
+ * 转置（`x'`）。MATLAB 的 `'` 是**共轭**转置；本版只支持实数 f64，
+ * 所以等价于普通转置 —— 复数进来会因 dtype 不符被拒，不会静默算错。
+ *
+ * 只做 2-D：`out` 由调用方按 [n, m] 初始化（mlc.h 的约定）。
+ */
 mlc_status mlc_op_transpose(const mlc_array *a, mlc_array *out)
 {
-    (void)a;
-    (void)out;
-    return MLC_UNIMPLEMENTED;
+    int64_t m, n, i, j;
+    const double *pa;
+    double *po;
+
+    if (a == NULL || out == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64 || out->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    if (a->ndim != 2 || out->ndim != 2) {
+        return MLC_ERR;
+    }
+    m = a->shape[0];
+    n = a->shape[1];
+    if (out->shape[0] != n || out->shape[1] != m) {
+        return MLC_ERR;
+    }
+    pa = (const double *)a->data;
+    po = (double *)out->data;
+    if (pa == NULL || po == NULL) {
+        return MLC_ERR;
+    }
+    for (i = 0; i < m; ++i) {
+        for (j = 0; j < n; ++j) {
+            po[j * out->strides[0] + i * out->strides[1]] =
+                pa[i * a->strides[0] + j * a->strides[1]];
+        }
+    }
+    return MLC_OK;
 }
 
 /*

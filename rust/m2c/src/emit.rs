@@ -11,11 +11,12 @@ use crate::mir::{walk_stmts, Cond, Func, Op, Stmt};
 /// 已经有 C 落点的算子（与 `translate/operators.py` 的 `C_IMPLEMENTED` 对齐）。
 pub const C_IMPLEMENTED: &[&str] = &[
     "OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-SUM", "OP-MEAN", "OP-MAX",
-    "OP-MIN", "OP-INDEX", "OP-MATMUL",
+    "OP-MIN", "OP-INDEX", "OP-MATMUL", "OP-TRANSPOSE",
 ];
 
 /// 已知但 C 落点仍未实现的算子（诚实边界）。
-pub const C_UNIMPLEMENTED: &[&str] = &["OP-TRANSPOSE"];
+//: 目前没有"已知但未实现"的算子了；保留这个清单是为了让"诚实边界"仍然可表达。
+pub const C_UNIMPLEMENTED: &[&str] = &[];
 
 /// 全归约算子：输出形状固定 `[1]`。
 const REDUCTIONS: &[&str] = &["OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN"];
@@ -128,6 +129,14 @@ fn init_call(var: &str, dtype: &str, shape: &[i64], is_ptr: bool) -> Option<Stri
 fn out_shape(f: &Func, op: &Op) -> Option<Vec<i64>> {
     if REDUCTIONS.contains(&op.id.as_str()) || op.id == "OP-INDEX" {
         return Some(vec![1]);
+    }
+    // 转置：形状是 [n, m]
+    if op.id == "OP-TRANSPOSE" && op.args.len() == 1 {
+        let s = f.var_shape(&op.args[0])?;
+        if s.len() != 2 {
+            return None;
+        }
+        return Some(vec![s[1], s[0]]);
     }
     // 矩阵乘：形状是 [a.m, b.n]，不是广播结果（广播会把 2x3 与 3x2 判成不可广播）
     if op.id == "OP-MATMUL" && op.args.len() == 2 {

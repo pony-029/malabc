@@ -72,12 +72,14 @@ OPERATORS = (
 #: 由 translate/mir.py 在知道 shape 之后决定是否升级成 OP-MATMUL。
 C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV",
                  "OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN", "OP-INDEX",
-                 "OP-MATMUL")
+                 "OP-MATMUL", "OP-TRANSPOSE")
 
 _ASSIGN_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*(.+?)\s*;\s*$")
 _BIN_RE = re.compile(r"^([A-Za-z_]\w*)\s*(\.\*|\./|\+|-|\*)\s*([A-Za-z_]\w*)$")
 _CALL_RE = re.compile(r"^(sum|mean|max|min)\s*\(\s*([A-Za-z_]\w*)\s*\)$")
-_TRANS_RE = re.compile(r"^([A-Za-z_]\w*)\s*\.'\s*$")
+# `x'` 是共轭转置，`x.'` 是普通转置。本目录只处理实数 f64，二者等价，
+# 所以两种写法都收 —— 只收 `.'` 会让真实代码里的 `x'` 全部掉进 unmapped。
+_TRANS_RE = re.compile(r"^([A-Za-z_]\w*)\s*\.?'\s*$")
 _INDEX_RE = re.compile(r"^([A-Za-z_]\w*)\s*\(\s*(\d+|[A-Za-z_]\w*)\s*\)$")
 
 _CALL_OPS = {"sum": "OP-SUM", "mean": "OP-MEAN",

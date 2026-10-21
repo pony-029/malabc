@@ -102,8 +102,15 @@ end
 end
 
 function y = fancy(x)
-% @m2c shape x 3
-% @m2c shape y 3
-% 负面夹具：函数体没被确定性映射 -> 必须返回 unimplemented（不能返回垃圾值）
+% @m2c shape x 1,3
+% @m2c shape y 3,1
+% 转置：2-D 才成立（1-D 会被 C 侧拒绝 —— 那是语义，不是缺陷）
 y = x';
+end
+
+function y = slicer(x)
+% @m2c shape x 3
+% @m2c shape y 2
+% 负面夹具：切片 x(1:2) 尚未支持 -> 必须返回 unimplemented（不能返回垃圾值）
+y = x(1:2);
 end

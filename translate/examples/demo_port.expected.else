@@ -10,4 +10,5 @@ scale: 2 4 6
 zerosum: 6
 mm: 22 28 49 64
 repeater: 2 4 6
-fancy: unimplemented
+fancy: 1 2 3
+slicer: unimplemented

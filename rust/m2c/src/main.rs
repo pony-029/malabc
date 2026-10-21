@@ -276,11 +276,22 @@ fn selftest() -> ExitCode {
     chk(code.contains("return st;"), "无 unmapped 时返回 st");
 
     // 未实现算子：必须明确失败
-    let un = mir::parse("version 2\nfunc:g\narg:x:f64:2\nret:y:f64:2\nop:OP-TRANSPOSE:y:x\nend\n")
+    // 用**真正未知**的算子：OP-TRANSPOSE 现在已实现，拿它当反例会失效
+    let un = mir::parse("version 2\nfunc:g\narg:x:f64:2\nret:y:f64:2\nop:OP-NOSUCH:y:x\nend\n")
         .unwrap_or_default();
     let code2 = emit::emit_func(&un[0], &[] as &[mir::Func]).unwrap_or_default();
     chk(code2.contains("MLC_UNIMPLEMENTED"), "未实现算子发 MLC_UNIMPLEMENTED");
-    chk(!code2.contains("mlc_op_transpose("), "不会凭空调用不存在的函数");
+    chk(!code2.contains("mlc_op_nosuch("), "不会凭空调用不存在的函数");
+
+    // 转置已实现：2x3 -> 3x2
+    let tr = mir::parse(
+        "version 3\nfunc:tr\narg:x:f64:2,3\nret:t:f64:3,2\nop:OP-TRANSPOSE:t:x\nend\n",
+    )
+    .unwrap_or_default();
+    let code_tr = emit::emit_func(&tr[0], &[] as &[mir::Func]).unwrap_or_default();
+    chk(code_tr.contains("mlc_array_init(t, MLC_F64, 2, (int64_t[]){3, 2})"),
+        "转置输出形状是 [n, m]");
+    chk(code_tr.contains("mlc_op_transpose(&x, t)"), "转置发射正确");
 
     // unmapped
     let um = mir::parse(

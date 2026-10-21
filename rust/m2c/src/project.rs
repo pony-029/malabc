@@ -243,6 +243,40 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
 }
 
 
+
+/// 夹具样例：按**参数名**给出可直接用的值。
+///
+/// 为什么不能只在 README 里写格式：读文档要动手抄，而"抄错一个逗号"的成本
+/// 比"复制一个文件"高得多。
+fn gen_fixture_example(funcs: &[Func]) -> String {
+    let mut out: Vec<String> = Vec::new();
+    out.push("# 夹具样例：按参数名给值，可直接 `./build/demo fixture.example.txt`".to_string());
+    out.push("# 数组按 numel 给足；标量给一个整数。".to_string());
+    let mut seen: Vec<String> = Vec::new();
+    for f in funcs {
+        if !drivable(f) {
+            continue;
+        }
+        for a in &f.args {
+            if seen.iter().any(|x| x == &a.name) {
+                continue;
+            }
+            seen.push(a.name.clone());
+            if a.dtype == "i64" {
+                out.push(format!("{} = 2", a.name));
+            } else if a.shape.is_empty() {
+                continue;
+            } else {
+                let n: i64 = a.shape.iter().product();
+                let vals: Vec<String> =
+                    (1..=n.min(16)).map(|i| i.to_string()).collect();
+                out.push(format!("{} = {}", a.name, vals.join(" ")));
+            }
+        }
+    }
+    out.join("\n") + "\n"
+}
+
 /// 生成物自带的说明：拿到工程的人第一眼就知道该敲什么。
 fn gen_readme(name: &str) -> String {
     let mut out: Vec<String> = Vec::new();
@@ -273,6 +307,8 @@ fn gen_readme(name: &str) -> String {
     out.push("./build/demo                 # 默认输入（a[i] = i+1）".to_string());
     out.push("./build/demo fixture.txt     # 夹具输入：按参数名给值".to_string());
     out.push("```".to_string());
+    out.push(String::new());
+    out.push("夹具样例就在本目录：`fixture.example.txt`（复制改名即可）。".to_string());
     out.push(String::new());
     out.push("夹具格式（每行一个参数）：".to_string());
     out.push(String::new());
@@ -369,6 +405,7 @@ pub fn emit_project(funcs: &[Func], name: &str, cases: &[Case],
         ("src/selftest.c".to_string(), emit_selftest(funcs, name, cases) + "\n"),
         ("CMakeLists.txt".to_string(), cmake.join("\n") + "\n"),
         ("README.md".to_string(), gen_readme(name)),
+        ("fixture.example.txt".to_string(), gen_fixture_example(funcs)),
     ])
 }
 
