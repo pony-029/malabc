@@ -34,6 +34,7 @@ fn main() -> ExitCode {
     let mut mir_path: Option<PathBuf> = None;
     let mut out_dir: Option<PathBuf> = None;
     let mut name = String::from("gen");
+    let mut expect_path: Option<PathBuf> = None;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -52,6 +53,14 @@ fn main() -> ExitCode {
                     return ExitCode::from(2);
                 }
                 out_dir = Some(PathBuf::from(&args[i]));
+            }
+            "--expect" => {
+                i += 1;
+                if i >= args.len() {
+                    eprintln!("--expect 缺参数");
+                    return ExitCode::from(2);
+                }
+                expect_path = Some(PathBuf::from(&args[i]));
             }
             "--name" => {
                 i += 1;
@@ -93,8 +102,9 @@ fn main() -> ExitCode {
 
     match cmd {
         "emit" => {
+            let names: Vec<String> = funcs.iter().map(|f| f.name.clone()).collect();
             for f in &funcs {
-                match emit::emit_func(f) {
+                match emit::emit_func(f, &names) {
                     Ok(code) => println!("{}", code),
                     Err(e) => {
                         eprintln!("发射失败：{}", e);
@@ -112,7 +122,8 @@ fn main() -> ExitCode {
                     return ExitCode::from(2);
                 }
             };
-            let files = match project::emit_project(&funcs, &name) {
+            let expect = load_expect(expect_path.as_ref());
+            let files = match project::emit_project(&funcs, &name, &expect) {
                 Ok(v) => v,
                 Err(e) => {
                     eprintln!("发射失败：{}", e);
@@ -143,6 +154,29 @@ fn main() -> ExitCode {
 }
 
 /// 自证：不需要 cargo test 也能在门里跑（门跑的是二进制）。
+
+fn load_expect(path: Option<&PathBuf>) -> std::collections::BTreeMap<String, String> {
+    let mut m = std::collections::BTreeMap::new();
+    let p = match path {
+        Some(p) => p,
+        None => return m,
+    };
+    let text = match fs::read_to_string(p) {
+        Ok(t) => t,
+        Err(_) => return m,
+    };
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some((k, v)) = line.split_once(':') {
+            m.insert(k.trim().to_string(), v.trim().to_string());
+        }
+    }
+    m
+}
+
 fn selftest() -> ExitCode {
     let mut good = 0u32;
     let mut bad = 0u32;
@@ -169,7 +203,7 @@ fn selftest() -> ExitCode {
     chk(mir::parse("version 1\nfunc:f\n???\nend\n").is_err(), "未知构造报错");
     chk(mir::parse("func:f\nend\n").is_err(), "缺 version 报错");
 
-    let code = emit::emit_func(&funcs[0]).unwrap_or_default();
+    let code = emit::emit_func(&funcs[0], &[] as &[String]).unwrap_or_default();
     chk(code.contains("mlc_op_add"), "实现了的算子发射成 mlc_op_*");
     chk(code.contains("mlc_array_init(y"), "返回值按形状初始化（指针直传，不取地址）");
     chk(code.contains("return st;"), "无 unmapped 时返回 st");
@@ -177,7 +211,7 @@ fn selftest() -> ExitCode {
     // 未实现算子：必须明确失败
     let un = mir::parse("version 2\nfunc:g\narg:x:f64:2\nret:y:f64:2\nop:OP-TRANSPOSE:y:x\nend\n")
         .unwrap_or_default();
-    let code2 = emit::emit_func(&un[0]).unwrap_or_default();
+    let code2 = emit::emit_func(&un[0], &[] as &[String]).unwrap_or_default();
     chk(code2.contains("MLC_UNIMPLEMENTED"), "未实现算子发 MLC_UNIMPLEMENTED");
     chk(!code2.contains("mlc_op_transpose("), "不会凭空调用不存在的函数");
 
@@ -186,20 +220,20 @@ fn selftest() -> ExitCode {
         "version 2\nfunc:h\narg:x:f64:2\nret:y:f64:2\nunmapped:y = foo(x);\nend\n",
     )
     .unwrap_or_default();
-    let code3 = emit::emit_func(&um[0]).unwrap_or_default();
+    let code3 = emit::emit_func(&um[0], &[] as &[String]).unwrap_or_default();
     chk(code3.contains("TODO(unmapped)"), "unmapped 变成 TODO");
 
     // 作用域外参数
     let out_scope =
         mir::parse("version 2\nfunc:k\narg:y:f64:2\nret:y:f64:2\nop:OP-ADD:y:y:zzz\nend\n")
             .unwrap_or_default();
-    let code4 = emit::emit_func(&out_scope[0]).unwrap_or_default();
+    let code4 = emit::emit_func(&out_scope[0], &[] as &[String]).unwrap_or_default();
     chk(code4.contains("TODO(arg)"), "作用域外参数被拒绝");
 
     // 立即数下标
     let idx = mir::parse("version 2\nfunc:p\narg:v:f64:3\nret:z:f64:1\nop:OP-INDEX:z:v:3\nend\n")
         .unwrap_or_default();
-    let code5 = emit::emit_func(&idx[0]).unwrap_or_default();
+    let code5 = emit::emit_func(&idx[0], &[] as &[String]).unwrap_or_default();
     chk(code5.contains("(int64_t)3"), "立即数下标发射成字面量");
 
     // for 循环
@@ -212,7 +246,7 @@ fn selftest() -> ExitCode {
         .map(|f| f.body.iter().any(|s| matches!(s, mir::Stmt::For { .. })))
         .unwrap_or(false);
     chk(has_for, "for 循环被解析成语句");
-    let code6 = emit::emit_func(&lp[0]).unwrap_or_default();
+    let code6 = emit::emit_func(&lp[0], &[] as &[String]).unwrap_or_default();
     chk(code6.contains("for (int64_t i = 1; i <= 3; ++i)"), "for 发射成 C 循环");
 
     // while + 嵌套 if（分支里再套分支）
@@ -222,7 +256,7 @@ fn selftest() -> ExitCode {
          end\nop:OP-ADD:r:r:r\nend\nend\n",
     )
     .unwrap_or_default();
-    let code7 = emit::emit_func(&nest[0]).unwrap_or_default();
+    let code7 = emit::emit_func(&nest[0], &[] as &[String]).unwrap_or_default();
     chk(code7.contains("while (i < 3)"), "while 发射成 C 循环");
     chk(code7.contains("if (i > 1)") && code7.contains("} else {"),
         "嵌套 if/else 发射正确");
@@ -232,7 +266,7 @@ fn selftest() -> ExitCode {
         "version 2\nfunc:b\narg:a:f64:2,3\narg:d:f64:3\nret:y:f64:2,3\nop:OP-ADD:y:a:d\nend\n",
     )
     .unwrap_or_default();
-    let code_bc = emit::emit_func(&bc[0]).unwrap_or_default();
+    let code_bc = emit::emit_func(&bc[0], &[] as &[String]).unwrap_or_default();
     chk(code_bc.contains("mlc_array_init(y, MLC_F64, 2, (int64_t[]){2, 3})"),
         "2x3 + 3 广播成 2x3");
     chk(emit::bcast_shape(&[3, 1], &[1, 4]) == Some(vec![3, 4]), "3x1 与 1x4 广播成 3x4");
@@ -241,12 +275,13 @@ fn selftest() -> ExitCode {
         "3D：2x1x3 与 1x4x1 广播成 2x4x3");
 
     // 确定性
-    let a = emit::emit_func(&funcs[0]).unwrap_or_default();
-    let b = emit::emit_func(&funcs[0]).unwrap_or_default();
+    let a = emit::emit_func(&funcs[0], &[] as &[String]).unwrap_or_default();
+    let b = emit::emit_func(&funcs[0], &[] as &[String]).unwrap_or_default();
     chk(a == b, "同一 MIR 两次发射逐字节一致");
 
     // 工程骨架
-    let proj = project::emit_project(&funcs, "demo").unwrap_or_default();
+    let empty = std::collections::BTreeMap::new();
+    let proj = project::emit_project(&funcs, "demo", &empty).unwrap_or_default();
     let names: Vec<&str> = proj.iter().map(|(n, _)| n.as_str()).collect();
     chk(names.contains(&"CMakeLists.txt"), "工程产出含 CMakeLists");
     chk(names.contains(&"include/demo.h"), "工程产出含头文件");

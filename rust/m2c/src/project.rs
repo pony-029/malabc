@@ -208,7 +208,9 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
 }
 
 /// 整个项目：头 + 源 + main + CMakeLists。顺序固定（确定性）。
-pub fn emit_project(funcs: &[Func], name: &str) -> Result<Vec<(String, String)>, String> {
+pub fn emit_project(funcs: &[Func], name: &str,
+                    expect: &std::collections::BTreeMap<String, String>,
+) -> Result<Vec<(String, String)>, String> {
     let guard = format!("M2C_{}_H", ident(name).to_uppercase());
     let mut h = vec![
         format!("/* {} —— 由 m2c 生成，勿手改 */", name),
@@ -230,8 +232,9 @@ pub fn emit_project(funcs: &[Func], name: &str) -> Result<Vec<(String, String)>,
         format!("#include \"{}.h\"", name),
         String::new(),
     ];
+    let names: Vec<String> = funcs.iter().map(|f| f.name.clone()).collect();
     for f in funcs {
-        c.push(emit_func(f)?);
+        c.push(emit_func(f, &names)?);
         c.push(String::new());
     }
 
@@ -248,12 +251,114 @@ pub fn emit_project(funcs: &[Func], name: &str) -> Result<Vec<(String, String)>,
         String::new(),
         "add_executable(demo src/main.c)".to_string(),
         "target_link_libraries(demo PRIVATE m2c_gen)".to_string(),
+        String::new(),
+        "# 生成物自带测试：不依赖 Python，`ctest` 就能验默认输入下的数值。".to_string(),
+        "enable_testing()".to_string(),
+        "add_executable(m2c_selftest src/selftest.c)".to_string(),
+        "target_link_libraries(m2c_selftest PRIVATE m2c_gen)".to_string(),
+        "add_test(NAME default_case COMMAND m2c_selftest)".to_string(),
     ];
 
     Ok(vec![
         (format!("include/{}.h", name), h.join("\n") + "\n"),
         ("src/gen.c".to_string(), c.join("\n") + "\n"),
         ("src/main.c".to_string(), emit_main(funcs, name) + "\n"),
+        ("src/selftest.c".to_string(), emit_selftest(funcs, name, expect) + "\n"),
         ("CMakeLists.txt".to_string(), cmake.join("\n") + "\n"),
     ])
+}
+
+/// 自测程序：用**默认输入**跑每个可驱动函数，与嵌入的期望串逐字比较。
+///
+/// 为什么嵌进 C：拿生成工程走的人未必有 Python；
+/// 而"这堆生成代码算得对不对"这个问题，应该在工程内就能回答。
+fn emit_selftest(funcs: &[Func], name: &str,
+                 expect: &std::collections::BTreeMap<String, String>) -> String {
+    let mut out: Vec<String> = Vec::new();
+    out.push("/* 由 m2c 生成的 C 自测（ctest）。 */".to_string());
+    out.push(format!("#include \"{}.h\"", name));
+    out.push("#include <stdio.h>".to_string());
+    out.push("#include <string.h>".to_string());
+    out.push(String::new());
+    out.push("static int m2c_fail = 0;".to_string());
+    out.push(String::new());
+    out.push("static void m2c_check(const char *name, const mlc_array *a,".to_string());
+    out.push("                      const char *want) {".to_string());
+    out.push("    char got[512];".to_string());
+    out.push("    size_t off = 0;".to_string());
+    out.push("    int64_t n = mlc_array_numel(a);".to_string());
+    out.push("    got[0] = 0;".to_string());
+    out.push("    for (int64_t i = 0; i < n; ++i) {".to_string());
+    out.push("        off += (size_t)snprintf(got + off, sizeof(got) - off,".to_string());
+    out.push("                                \" %.10g\", ((const double *)a->data)[i]);".to_string());
+    out.push("        if (off >= sizeof(got)) break;".to_string());
+    out.push("    }".to_string());
+    out.push("    const char *trimmed = got;".to_string());
+    out.push("    while (*trimmed == ' ') ++trimmed;".to_string());
+    out.push("    if (strcmp(trimmed, want) != 0) {".to_string());
+    out.push("        printf(\"FAIL %s: got[%s] want[%s]\\n\", name, got, want);".to_string());
+    out.push("        m2c_fail = 1;".to_string());
+    out.push("    } else {".to_string());
+    out.push("        printf(\"ok   %s:%s\\n\", name, got);".to_string());
+    out.push("    }".to_string());
+    out.push("}".to_string());
+    out.push(String::new());
+    out.push("int main(void) {".to_string());
+
+    for f in funcs {
+        if !drivable(f) {
+            continue;
+        }
+        let arr = f.args.iter().find(|a| a.dtype == "f64").unwrap();
+        let dims: Vec<String> = arr.shape.iter().map(|d| d.to_string()).collect();
+        let shape_lit = format!("(int64_t[]){{{}}}", dims.join(", "));
+        let an = ident(&arr.name);
+        out.push("    {".to_string());
+        out.push(format!("        mlc_array {};", an));
+        out.push(format!(
+            "        if (mlc_array_init(&{}, MLC_F64, {}, {}) != MLC_OK) return 2;",
+            an, arr.shape.len(), shape_lit));
+        out.push(format!(
+            "        for (int64_t i = 0; i < mlc_array_numel(&{}); ++i) {{ ((double *){}.data)[i] = (double)(i + 1); }}",
+            an, an));
+        for sc in f.args.iter().filter(|a| a.dtype == "i64") {
+            out.push(format!("        int64_t {} = 2;", ident(&sc.name)));
+        }
+        let mut rets: Vec<String> = Vec::new();
+        for r in &f.rets {
+            let rn = ident(&r.name);
+            out.push(format!("        mlc_array {};", rn));
+            out.push(format!("        mlc_array_init(&{}, MLC_F64, 1, (int64_t[]){{1}});", rn));
+            rets.push(rn);
+        }
+        let mut call_args: Vec<String> = f.args.iter().map(|a| ident(&a.name)).collect();
+        for rn in &rets {
+            call_args.push(format!("&{}", rn));
+        }
+        out.push(format!("        mlc_status st_{} = m2c_{}({});",
+                         ident(&f.name), ident(&f.name), call_args.join(", ")));
+        // 期望串：多返回值用 " | " 连接
+        let want = expect.get(&f.name).cloned().unwrap_or_default();
+        let parts: Vec<&str> = want.split('|').map(|x| x.trim()).collect();
+        if parts.len() == rets.len() {
+            for (k, rn) in rets.iter().enumerate() {
+                out.push(format!(
+                    "        if (st_{} == MLC_OK) m2c_check(\"{}\", &{}, \"{}\");",
+                    ident(&f.name), f.name, rn,
+                    parts[k].replace('\\', "\\\\").replace('"', "\\\"")));
+            }
+        } else {
+            out.push(format!("        /* {} 的期望串缺失或不匹配，跳过比较 */",
+                             f.name));
+        }
+        out.push("        (void)st_" .to_string() + &ident(&f.name) + ";");
+        out.push(format!("        mlc_array_free(&{});", an));
+        for rn in &rets {
+            out.push(format!("        mlc_array_free(&{});", rn));
+        }
+        out.push("    }".to_string());
+    }
+    out.push("    return m2c_fail;".to_string());
+    out.push("}".to_string());
+    out.join("\n")
 }

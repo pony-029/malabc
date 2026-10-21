@@ -59,6 +59,12 @@ pub enum Stmt {
     If { cond: Cond, then_body: Vec<Stmt>, else_body: Vec<Stmt> },
     /// `while:<var>:<cmp>:<rhs>`
     While { cond: Cond, body: Vec<Stmt> },
+    /// `set:<lhs>:<值>` —— 标量赋值（值：整数字面量，或已声明的 i64 标量名）
+    Set { lhs: String, value: String },
+    /// `setb:<lhs>:<op>:<a>:<b>` —— 标量二元运算（+ - * /），int64
+    SetBin { lhs: String, op: String, a: String, b: String },
+    /// `call:<lhs>:<函数名>:<实参...>` —— 调用同文件内的另一个生成函数
+    Call { lhs: String, func: String, args: Vec<String> },
 }
 
 /// 一个 MATLAB 函数。
@@ -67,6 +73,8 @@ pub struct Func {
     pub name: String,
     pub args: Vec<Var>,
     pub rets: Vec<Var>,
+    /// 局部标量声明（`var:n:i64`）。数组临时仍由算子输出隐式产生。
+    pub locals: Vec<Var>,
     pub body: Vec<Stmt>,
     pub unmapped: Vec<String>,
 }
@@ -80,6 +88,9 @@ impl Func {
         }
         for r in &self.rets {
             v.push(r.name.clone());
+        }
+        for l in &self.locals {
+            v.push(l.name.clone());
         }
         walk_stmts(&self.body, &mut |s| match s {
             Stmt::Op(op) => v.push(op.lhs.clone()),
@@ -101,7 +112,7 @@ impl Func {
     }
 
     pub fn var_dtype(&self, name: &str) -> Option<String> {
-        for a in self.args.iter().chain(self.rets.iter()) {
+        for a in self.args.iter().chain(self.rets.iter()).chain(self.locals.iter()) {
             if a.name == name {
                 return Some(a.dtype.clone());
             }
@@ -115,7 +126,7 @@ pub fn walk_stmts<F: FnMut(&Stmt)>(stmts: &[Stmt], f: &mut F) {
     for s in stmts {
         f(s);
         match s {
-            Stmt::Op(_) => {}
+            Stmt::Op(_) | Stmt::Set { .. } | Stmt::SetBin { .. } | Stmt::Call { .. } => {}
             Stmt::For { body, .. } => walk_stmts(body, f),
             Stmt::If { then_body, else_body, .. } => {
                 walk_stmts(then_body, f);
@@ -245,6 +256,7 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
                 name: name.trim().to_string(),
                 args: Vec::new(),
                 rets: Vec::new(),
+                locals: Vec::new(),
                 body: Vec::new(),
                 unmapped: Vec::new(),
             });
@@ -308,6 +320,49 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
         } else if let Some(rest) = line.strip_prefix("op:") {
             let op = parse_op(rest)?;
             push_stmt!(Stmt::Op(op));
+        } else if let Some(rest) = line.strip_prefix("var:") {
+            let v = parse_var(rest)?;
+            if let Some(f) = cur.as_mut() {
+                f.locals.push(v);
+            }
+        } else if let Some(rest) = line.strip_prefix("set:") {
+            let parts: Vec<&str> = rest.split(':').map(|x| x.trim()).collect();
+            if parts.len() != 2 {
+                return Err(format!("set 需要 左值:值：{}", rest));
+            }
+            push_stmt!(Stmt::Set {
+                lhs: parts[0].to_string(),
+                value: parts[1].to_string(),
+            });
+        } else if let Some(rest) = line.strip_prefix("setb:") {
+            let parts: Vec<&str> = rest.split(':').map(|x| x.trim()).collect();
+            if parts.len() != 4 {
+                return Err(format!("setb 需要 左值:运算:左:右：{}", rest));
+            }
+            if !["add", "sub", "mul", "div"].contains(&parts[1]) {
+                return Err(format!("不支持的标量运算：{}", parts[1]));
+            }
+            push_stmt!(Stmt::SetBin {
+                lhs: parts[0].to_string(),
+                op: parts[1].to_string(),
+                a: parts[2].to_string(),
+                b: parts[3].to_string(),
+            });
+        } else if let Some(rest) = line.strip_prefix("call:") {
+            let parts: Vec<&str> = rest.split(':').map(|x| x.trim()).collect();
+            if parts.len() < 2 {
+                return Err(format!("call 需要 左值:函数名：{}", rest));
+            }
+            let args: Vec<String> = parts[2..]
+                .iter()
+                .filter(|x| !x.is_empty())
+                .map(|x| x.to_string())
+                .collect();
+            push_stmt!(Stmt::Call {
+                lhs: parts[0].to_string(),
+                func: parts[1].to_string(),
+                args,
+            });
         } else if let Some(rest) = line.strip_prefix("unmapped:") {
             if let Some(f) = cur.as_mut() {
                 f.unmapped.push(rest.to_string());

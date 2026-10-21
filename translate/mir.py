@@ -62,6 +62,16 @@ _FOR_RE = re.compile(r"^for\s+(?P<var>[A-Za-z_]\w*)\s*=\s*(?P<a>[\w]+)\s*:\s*(?P
 #: `% @m2c shape x 3` / `% @m2c shape x 3,3` —— 形状必须**显式**说明。
 #: 没有它，发射器不知道 `mlc_array_init` 该给多大，只能发 TODO。
 _SHAPE_RE = re.compile(r"^\s*%\s*@m2c\s+shape\s+(?P<name>[A-Za-z_]\w*)\s+(?P<dims>[\d,\s]+)$")
+#: `% @m2c local n i64` —— 声明一个局部 i64 标量（数组临时由算子输出隐式产生）
+_LOCAL_RE = re.compile(r"^\s*%\s*@m2c\s+local\s+(?P<name>[A-Za-z_]\w*)\s+i64$")
+#: `lhs = rhs` 的通用形状（算子识别失败后才会走到这里）
+_ASSIGN_SPLIT = re.compile(r"^([A-Za-z_]\w*)\s*=\s*(.+)$")
+#: 纯整数或纯名字
+_ATOM = re.compile(r"^(\d+|[A-Za-z_]\w*)$")
+#: 标量二元：`a + 1`
+_BIN = re.compile(r"^([A-Za-z_]\d*\w*|\d+)\s*([+\-*/])\s*([A-Za-z_]\w*|\d+)$")
+_BIN_OP = {"+": "add", "-": "sub", "*": "mul", "/": "div"}
+_CALL = re.compile(r"^([A-Za-z_]\w*)\s*\((.*)\)$")
 
 
 def _clean(line):
@@ -96,16 +106,32 @@ def split_functions(source):
             args = [x.strip() for x in (m.group("args") or "").split(",")
                     if x.strip()]
             cur = {"name": m.group("name"), "args": args, "rets": rets,
-                   "lines": [], "types": {}, "shapes": {}}
+                   "lines": [], "types": {}, "shapes": {},
+                   "locals": []}
             funcs.append(cur)
             depth = 1
             continue
         if cur is None:
             continue
-        # `end` 收束（只认顶层 end）
-        if raw.strip() == "end":
-            depth = 0
-            cur = None
+        code = _clean(raw).strip()
+        # 块开始/结束要按**深度**记账：第一版直接在第一处 `end` 就把函数收掉，
+        # 于是 while/if/for 之后的语句被整段丢弃（生成的函数悄悄变短）。
+        if code.startswith("for ") or code.startswith("while ") or \
+                code.startswith("if "):
+            depth += 1
+            cur["lines"].append(raw)
+            continue
+        if code == "end" or code.startswith("end "):
+            depth -= 1
+            if depth <= 0:
+                depth = 0
+                cur = None
+            else:
+                cur["lines"].append(raw)
+            continue
+        lm = _LOCAL_RE.match(raw)
+        if lm:
+            cur["locals"].append(lm.group("name"))
             continue
         sm = _SHAPE_RE.match(raw)
         if sm:
@@ -138,7 +164,9 @@ def to_mir(source):
     避免"读一行 OK 就当覆盖率"。
     """
     funcs = split_functions(source)
-    out = ["version 2"]
+    fnames = set(f["name"] for f in funcs)
+    n_calls = [0]
+    out = ["version 3"]
     n_ops = 0
     n_unmapped = 0
     per_op = {}
@@ -148,6 +176,8 @@ def to_mir(source):
             out.append(_var_line("arg", a, f))
         for r in f["rets"]:
             out.append(_var_line("ret", r, f))
+        for l in f.get("locals") or []:
+            out.append("var:%s:i64" % l)
         blocks = []                    # 块栈："for" / "if"
         for line in f["lines"]:
             code = _clean(line).strip()
@@ -184,8 +214,42 @@ def to_mir(source):
                                                wm.group("rhs")))
                 blocks.append("while")
                 continue
+            # **先判调用**：`f(x)` 与 `v(i)` 在词法上无法区分，
+            # 只有"f 是不是本文件里的函数"能决定它是调用还是下标。
+            am0 = _ASSIGN_SPLIT.match(code)
+            if am0:
+                cm0 = _CALL.match(am0.group(2).strip().rstrip(";").strip())
+                if cm0 and cm0.group(1) in fnames:
+                    args = [x.strip() for x in cm0.group(2).split(",")
+                            if x.strip()]
+                    out.append("call:%s:%s:%s"
+                               % (am0.group(1), cm0.group(1), ":".join(args)))
+                    n_calls[0] += 1
+                    continue
             use = operators.parse_line(code)
             if use is None:
+                # 不是算子：可能是**标量赋值**或**同文件函数调用**（都不是猜）
+                am = _ASSIGN_SPLIT.match(code)
+                if am:
+                    lhs = am.group(1)
+                    rhs = am.group(2).strip().rstrip(";").strip()
+                    if _ATOM.match(rhs):
+                        out.append("set:%s:%s" % (lhs, rhs))
+                        continue
+                    bm = _BIN.match(rhs)
+                    if bm:
+                        out.append("setb:%s:%s:%s:%s"
+                                   % (lhs, _BIN_OP[bm.group(2)],
+                                      bm.group(1), bm.group(3)))
+                        continue
+                    cm = _CALL.match(rhs)
+                    if cm and cm.group(1) in fnames:
+                        args = [x.strip() for x in cm.group(2).split(",")
+                                if x.strip()]
+                        out.append("call:%s:%s:%s"
+                                   % (lhs, cm.group(1), ":".join(args)))
+                        n_calls[0] += 1
+                        continue
                 out.append("unmapped:%s" % code)
                 n_unmapped += 1
                 continue
@@ -199,7 +263,8 @@ def to_mir(source):
             blocks.pop()
         out.append("end")
     stats = {"functions": len(funcs), "ops": n_ops,
-             "unmapped": n_unmapped, "per_op": per_op}
+             "unmapped": n_unmapped, "per_op": per_op,
+             "calls": n_calls[0]}
     return "\n".join(out) + "\n", stats
 
 

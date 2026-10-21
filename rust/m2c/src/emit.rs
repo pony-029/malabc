@@ -258,8 +258,29 @@ fn cond_expr(f: &Func, c: &Cond) -> Option<String> {
     Some(format!("{} {} {}", ident(&c.var), cmp_c(&c.cmp), rhs))
 }
 
+/// 标量右值 → C 表达式。只接受整数字面量与已声明的 i64 标量。
+fn scalar_expr(f: &Func, tok: &str) -> Option<String> {
+    if is_int_literal(tok) {
+        return Some(tok.to_string());
+    }
+    match f.var_dtype(tok) {
+        Some(dt) if is_scalar_dt(&dt) => Some(ident(tok)),
+        _ => None,
+    }
+}
+
+fn c_bin(op: &str) -> &'static str {
+    match op {
+        "add" => "+",
+        "sub" => "-",
+        "mul" => "*",
+        _ => "/",
+    }
+}
+
 /// 递归发射一段语句。返回 (行列表, 是否已终止)。
-fn emit_block(f: &Func, stmts: &[Stmt], indent: &str) -> (Vec<String>, bool) {
+fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
+              known: &[String]) -> (Vec<String>, bool) {
     let mut out: Vec<String> = Vec::new();
     let mut terminated = false;
     for s in stmts {
@@ -288,7 +309,7 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str) -> (Vec<String>, bool) {
                         let v = ident(var);
                         out.push(format!("{}for (int64_t {} = {}; {} <= {}; ++{}) {{",
                                          indent, v, a, v, b, v));
-                        let (inner, t) = emit_block(f, body, &format!("{}    ", indent));
+                        let (inner, t) = emit_block(f, body, &format!("{}    ", indent), known);
                         out.extend(inner);
                         out.push(format!("{}}}", indent));
                         terminated = t;
@@ -301,10 +322,97 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str) -> (Vec<String>, bool) {
                     }
                 }
             }
+            Stmt::Set { lhs, value } => {
+                let ok_lhs = f
+                    .var_dtype(lhs)
+                    .map(|d| is_scalar_dt(&d))
+                    .unwrap_or(false)
+                    || f.locals.iter().any(|v| &v.name == lhs);
+                match (ok_lhs, scalar_expr(f, value)) {
+                    (true, Some(v)) => {
+                        out.push(format!("{}{} = {};", indent, ident(lhs), v))
+                    }
+                    _ => {
+                        out.push(format!(
+                            "{}/* TODO(set): {} = {} 不是合法的标量赋值 */",
+                            indent,
+                            sanitize_comment(lhs),
+                            sanitize_comment(value)
+                        ));
+                        out.push(format!("{}return MLC_UNIMPLEMENTED;", indent));
+                        terminated = true;
+                    }
+                }
+            }
+            Stmt::SetBin { lhs, op, a, b } => {
+                match (scalar_expr(f, a), scalar_expr(f, b)) {
+                    (Some(x), Some(y)) => out.push(format!(
+                        "{}{} = {} {} {};",
+                        indent,
+                        ident(lhs),
+                        x,
+                        c_bin(op),
+                        y
+                    )),
+                    _ => {
+                        out.push(format!(
+                            "{}/* TODO(setb): {} 的操作数不是 i64 标量 */",
+                            indent,
+                            sanitize_comment(lhs)
+                        ));
+                        out.push(format!("{}return MLC_UNIMPLEMENTED;", indent));
+                        terminated = true;
+                    }
+                }
+            }
+            Stmt::Call { lhs, func, args } => {
+                // 只调用**同文件内**的生成函数；名字不在名单里就如实报错，
+                // 不生成一段"看起来像调用"的代码。
+                let known_names = known.iter().any(|n| n.as_str() == func.as_str());
+                let mut call_args: Vec<String> = Vec::new();
+                let mut ok = known_names;
+                // 形参一律**按值**（`mlc_array x` / `int64_t i`），
+                // 所以实参直接写名字；只有"输出参数"才取地址。
+                for a in args {
+                    match f.var_dtype(a) {
+                        Some(_) => call_args.push(ident(a)),
+                        None => {
+                            ok = false;
+                            call_args.push(ident(a));
+                        }
+                    }
+                }
+                let is_ret = f.rets.iter().any(|r| &r.name == lhs);
+                call_args.push(if is_ret {
+                    ident(lhs)
+                } else {
+                    format!("&{}", ident(lhs))
+                });
+                if !ok {
+                    ok = false;
+                }
+                if ok {
+                    out.push(format!(
+                        "{}st = m2c_{}({});",
+                        indent,
+                        ident(func),
+                        call_args.join(", ")
+                    ));
+                    out.push(format!("{}if (st != MLC_OK) {{ return st; }}", indent));
+                } else {
+                    out.push(format!(
+                        "{}/* TODO(call): {} 不是本文件里已生成的函数 */",
+                        indent,
+                        sanitize_comment(func)
+                    ));
+                    out.push(format!("{}return MLC_UNIMPLEMENTED;", indent));
+                    terminated = true;
+                }
+            }
             Stmt::While { cond, body } => match cond_expr(f, cond) {
                 Some(expr) => {
                     out.push(format!("{}while ({}) {{", indent, expr));
-                    let (inner, t) = emit_block(f, body, &format!("{}    ", indent));
+                    let (inner, t) = emit_block(f, body, &format!("{}    ", indent), known);
                     out.extend(inner);
                     out.push(format!("{}}}", indent));
                     terminated = t;
@@ -319,11 +427,11 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str) -> (Vec<String>, bool) {
             Stmt::If { cond, then_body, else_body } => match cond_expr(f, cond) {
                 Some(expr) => {
                     out.push(format!("{}if ({}) {{", indent, expr));
-                    let (a, t1) = emit_block(f, then_body, &format!("{}    ", indent));
+                    let (a, t1) = emit_block(f, then_body, &format!("{}    ", indent), known);
                     out.extend(a);
                     if !else_body.is_empty() {
                         out.push(format!("{}}} else {{", indent));
-                        let (b, t2) = emit_block(f, else_body, &format!("{}    ", indent));
+                        let (b, t2) = emit_block(f, else_body, &format!("{}    ", indent), known);
                         out.extend(b);
                         terminated = t1 && t2;
                     } else {
@@ -344,7 +452,7 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str) -> (Vec<String>, bool) {
 }
 
 /// 一个函数的 C 定义（支持多返回值与嵌套块）。
-pub fn emit_func(f: &Func) -> Result<String, String> {
+pub fn emit_func(f: &Func, known: &[String]) -> Result<String, String> {
     if f.rets.is_empty() {
         return Err(format!("函数 {} 没有 ret（本版只支持有返回值的函数）", f.name));
     }
@@ -360,7 +468,9 @@ pub fn emit_func(f: &Func) -> Result<String, String> {
             continue;
         }
         let name = ident(&ret.name);
-        let shape = match out_shape_for(f, &ret.name) {
+        // 形状来源：先看"哪条语句写了它"，否则用 ret 上声明的形状。
+        // （`call:` 写出的返回值没有单条算子可查，但它有声明。）
+        let shape = match out_shape_for(f, &ret.name).or_else(|| f.var_shape(&ret.name)) {
             Some(sh) => sh,
             None => {
                 for u in &f.unmapped {
@@ -411,7 +521,10 @@ pub fn emit_func(f: &Func) -> Result<String, String> {
         }
     }
 
-    let (body, terminated) = emit_block(f, &f.body, "    ");
+    for l in &f.locals {
+        out.push(format!("    int64_t {} = 0;", ident(&l.name)));
+    }
+    let (body, terminated) = emit_block(f, &f.body, "    ", known);
     out.extend(body);
 
     if !terminated {

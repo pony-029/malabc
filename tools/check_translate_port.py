@@ -355,8 +355,10 @@ def check_m2c(require_c=False):
         d = tempfile.mkdtemp(prefix="m2c_")
         p = os.path.join(d, "in.mir")
         io.open(p, "w", encoding="utf-8", newline="").write(mir_text)
+        exp_default = os.path.join(ROOT, "translate", "examples",
+                                   "demo_port.expected")
         rc, out = _run([M2C_BIN, "build", "--mir", p, "--out", d,
-                        "--name", "demo"])
+                        "--name", "demo", "--expect", exp_default])
         if rc != 0:
             probs.append("TP5 发射失败：%s"
                          % (out.strip().splitlines()[-1:] or rc))
@@ -435,6 +437,30 @@ def check_m2c(require_c=False):
                     else:
                         print("  [TP5] %s 输入：%d 行与期望一致"
                               % (tag, len(exp)))
+
+                # 生成物**自带**自测（src/selftest.c）：拿这个工程单独走的人，
+                # 不装 Python 也能回答"这堆生成代码算得对不对"。
+                st_src = os.path.join(d, "src", "selftest.c")
+                if os.path.isfile(st_src):
+                    st_exe = os.path.join(d, "selftest" if os.name != "nt"
+                                          else "selftest.exe")
+                    rc, out = _run(base + [
+                        "-std=c99", "-O1", "-I", inc, "-I", rt_inc,
+                        gen_c, st_src,
+                        os.path.join(rt, "mlc_runtime.c"),
+                        os.path.join(rt, "mlc_ops.c"), "-o", st_exe])
+                    if rc != 0:
+                        probs.append("TP5 生成物自测编译失败：%s"
+                                     % (out.strip().splitlines()[:2],))
+                    else:
+                        rc, out = _run([st_exe], timeout=60)
+                        if rc != 0:
+                            probs.append("TP5 生成物自测未通过：%s"
+                                         % (" | ".join(out.strip().splitlines()[:3]),))
+                        else:
+                            print("  [TP5] 生成物自带自测：%d 项全过"
+                                  % len([l for l in out.splitlines()
+                                         if l.startswith("ok")]))
     else:
         print(u"  [TP5] 没有 C 编译器：只验了「可发射 + 确定性」，"
               u"没验「可编译」")
@@ -448,6 +474,13 @@ def check_m2c(require_c=False):
     else:
         print("  [TP5] 覆盖：%d/%d = %.1f%%（未映射 %d）"
               % (st["ops"], total, cov * 100.0, st["unmapped"]))
+        per = st.get("per_op") or {}
+        if per:
+            top = sorted(per.items(), key=lambda kv: (-kv[1], kv[0]))
+            print("  [TP5] 算子分布：%s"
+                  % "、".join("%s×%d" % (k, v) for k, v in top[:6]))
+        if st.get("calls"):
+            print("  [TP5] 函数间调用：%d 处" % st["calls"])
 
     return probs, {"available": True, "why": why, "functions": st["functions"],
                    "ops": st["ops"], "unmapped": st["unmapped"],
