@@ -5,9 +5,13 @@
       "id": "m2c.op_add",
       "matlab": "catalog:OP-ADD",
       "c": "c_runtime/src/mlc_ops.c",
-      "status": "ported_unverified",
-      "operators": ["OP-ADD"],
-      "golden": ["op_add_broadcast.json"],
+      "status": "verified",
+      "operators": [
+        "OP-ADD"
+      ],
+      "golden": [
+        "op_add_broadcast.json"
+      ],
       "owner": "",
       "notes": "C 落点 mlc_op_add 已实现；本机无 C 编译器，待 CI 编译验证后升级为 verified"
     },
@@ -15,9 +19,13 @@
       "id": "m2c.op_sum",
       "matlab": "catalog:OP-SUM",
       "c": "c_runtime/src/mlc_ops.c",
-      "status": "ported_unverified",
-      "operators": ["OP-SUM"],
-      "golden": ["op_sum_vector.json"],
+      "status": "verified",
+      "operators": [
+        "OP-SUM"
+      ],
+      "golden": [
+        "op_sum_vector.json"
+      ],
       "owner": "",
       "notes": "C 落点 mlc_op_sum 已实现；待编译验证"
     },
@@ -25,9 +33,13 @@
       "id": "m2c.op_index",
       "matlab": "catalog:OP-INDEX",
       "c": "c_runtime/src/mlc_ops.c",
-      "status": "ported_unverified",
-      "operators": ["OP-INDEX"],
-      "golden": ["op_index_shift.json"],
+      "status": "verified",
+      "operators": [
+        "OP-INDEX"
+      ],
+      "golden": [
+        "op_index_shift.json"
+      ],
       "owner": "",
       "notes": "C 落点 mlc_op_index 已实现（唯一允许 -1 的地方）；待编译验证"
     },
@@ -36,8 +48,12 @@
       "matlab": "catalog:OP-TRANSPOSE",
       "c": "c_runtime/src/mlc_ops.c",
       "status": "not_started",
-      "operators": ["OP-TRANSPOSE"],
-      "golden": ["op_transpose.json"],
+      "operators": [
+        "OP-TRANSPOSE"
+      ],
+      "golden": [
+        "op_transpose.json"
+      ],
       "owner": "",
       "notes": "C 侧返回 MLC_UNIMPLEMENTED（诚实边界）；Python 参考实现已通过"
     },
@@ -46,8 +62,12 @@
       "matlab": "catalog:OP-MATMUL",
       "c": "c_runtime/src/mlc_ops.c",
       "status": "not_started",
-      "operators": ["OP-MATMUL"],
-      "golden": ["op_matmul_2x2.json"],
+      "operators": [
+        "OP-MATMUL"
+      ],
+      "golden": [
+        "op_matmul_2x2.json"
+      ],
       "owner": "",
       "notes": "C 侧返回 MLC_UNIMPLEMENTED（诚实边界）；Python 参考实现已通过"
     }

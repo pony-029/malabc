@@ -16,8 +16,10 @@
 import io
 import json
 import os
+import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -152,13 +154,31 @@ def compare(case, got):
 
 
 def find_c_compiler():
-    """返回第一个可用的 C 编译器路径；没有返回 None。"""
-    for cand in (os.environ.get("CC"), "gcc", "clang", "cc", "cl"):
-        if not cand:
-            continue
-        p = shutil.which(cand) if not os.path.isabs(cand) else cand
-        if p and os.path.isfile(p):
-            return p
+    """返回可用的 C 编译命令前缀 list；没有返回 None。
+
+    支持三类：
+      * `CC` 环境变量（可带参数，如 `zig cc`）；
+      * PATH 里的 gcc / clang / cc / cl；
+      * 通过 pip 安装的 `ziglang`（`python -m ziglang cc`）——
+        本机没有系统编译器时，这是唯一能**真编译**的离线路径。
+    """
+    cands = []
+    env_cc = os.environ.get("CC")
+    if env_cc:
+        cands.append(shlex.split(env_cc))
+    for name in ("gcc", "clang", "cc", "cl"):
+        p = shutil.which(name)
+        if p:
+            cands.append([p])
+    try:
+        import importlib.util
+        if importlib.util.find_spec("ziglang") is not None:
+            cands.append([sys.executable, "-m", "ziglang", "cc"])
+    except (ImportError, ValueError):
+        pass
+    for c in cands:
+        if c and (os.path.isabs(c[0]) or shutil.which(c[0])):
+            return c
     return None
 
 
@@ -241,10 +261,10 @@ def run_c(case):
         exe = os.path.join(tmp, "case.exe" if os.name == "nt" else "case")
         with io.open(cpath, "w", encoding="utf-8") as fh:
             fh.write(src)
-        cp = subprocess.run([cc, "-I", INCLUDE_DIR, cpath,
-                             os.path.join(SRC_DIR, "mlc_runtime.c"),
-                             os.path.join(SRC_DIR, "mlc_ops.c"), "-o", exe],
-                            stdin=subprocess.DEVNULL,
+        cmd = list(cc) + ["-I", INCLUDE_DIR, cpath,
+                          os.path.join(SRC_DIR, "mlc_runtime.c"),
+                          os.path.join(SRC_DIR, "mlc_ops.c"), "-o", exe]
+        cp = subprocess.run(cmd, stdin=subprocess.DEVNULL,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             timeout=60)
         if cp.returncode != 0:
@@ -298,7 +318,8 @@ def run_all(golden_dir=None, with_c=False):
         "passed": passed,
         "failed": [r for r in results if not r.get("ok")],
         "results": results,
-        "c_backend": {"available": cc is not None, "compiler": cc},
+        "c_backend": {"available": cc is not None,
+                      "compiler": (" ".join(cc) if cc else None)},
     }
 
 

@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "name": "matlab-c-constraints",
+  "description": "MATLAB 参考实现与 C 落点的双侧约束。机器可读；由 tools/check_translate_port.py 的 TP1b 与 mlc.h / translate.rules / translate.adapters 双向核对。",
+  "matlab": {
+    "index_base": 1,
+    "memory_order": "column-major",
+    "default_numeric_type": "double",
+    "implicit_expansion": true,
+    "integer_overflow": "saturating-or-wrapping-not-ub",
+    "error_model": "MException",
+    "variadic": "varargin/varargout",
+    "empty": "[]",
+    "logical_indexing": true,
+    "copy_on_write": true
+  },
+  "c": {
+    "index_base": 0,
+    "memory_order": "row-major",
+    "default_numeric_type": "double",
+    "implicit_expansion": false,
+    "integer_overflow": "undefined-behavior-must-guard",
+    "error_model": "mlc_status",
+    "variadic": "forbidden-at-abi-boundary",
+    "empty": "numel==0,data==NULL",
+    "logical_indexing": false,
+    "ownership": "owns_data-or-view"
+  },
+  "rules": [
+    {
+      "id": "IDX-1",
+      "from": "matlab:1-based",
+      "to": "c:0-based",
+      "enforced_by": "mlc_op_index"
+    },
+    {
+      "id": "ORDER-1",
+      "from": "matlab:column-major",
+      "to": "c:row-major",
+      "enforced_by": "mlc_array.strides"
+    },
+    {
+      "id": "EXPAND-1",
+      "from": "matlab:implicit-expansion",
+      "to": "c:explicit-broadcast",
+      "enforced_by": "mlc_op_add"
+    },
+    {
+      "id": "INT-1",
+      "from": "matlab:double-default",
+      "to": "c:int-overflow",
+      "enforced_by": "mlc_runtime.mlc_array_numel"
+    }
+  ],
+  "adapters": [
+    {
+      "id": "ADP-1",
+      "from": "matlab:name/arity",
+      "to": "c:symbol/arity"
+    },
+    {
+      "id": "ADP-2",
+      "from": "matlab:double+shape",
+      "to": "c:mlc_array"
+    },
+    {
+      "id": "ADP-3",
+      "from": "matlab:MException",
+      "to": "c:mlc_status"
+    }
+  ],
+  "abi": {
+    "max_dims": 8,
+    "status_codes": {
+      "MLC_OK": 0,
+      "MLC_ERR": 1,
+      "MLC_UNIMPLEMENTED": 2
+    },
+    "dtypes": [
+      "f64",
+      "f32",
+      "i64",
+      "i32",
+      "u8",
+      "bool"
+    ],
+    "forbidden_public_types": [
+      "double*",
+      "float*"
+    ]
+  },
+  "tolerances": {
+    "abs": 1e-12,
+    "rel": 1e-09,
+    "ulp": 0
+  }
+}
