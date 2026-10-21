@@ -336,6 +336,8 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                     }
                 }
             }
+            // const 的值在函数开头就填好了（见上方 consts 收集），这里不再产出语句
+            Stmt::Const { .. } => {}
             Stmt::Set { lhs, value } => {
                 let ok_lhs = f
                     .var_dtype(lhs)
@@ -548,6 +550,16 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
     // 局部临时：所有"既不是参数也不是返回值"的算子输出
     let mut need_free: Vec<String> = Vec::new();
     let mut temps: Vec<(String, Vec<i64>)> = Vec::new();
+    // 立即数也要有实体：算子签名只认 mlc_array
+    let mut consts: Vec<(String, String)> = Vec::new();
+    walk_stmts(&f.body, &mut |s| {
+        if let Stmt::Const { name, value } = s {
+            let n = ident(name);
+            if !consts.iter().any(|(x, _)| x == &n) {
+                consts.push((n, value.clone()));
+            }
+        }
+    });
     walk_stmts(&f.body, &mut |s| {
         if let Stmt::Op(op) = s {
             let is_arg = f.args.iter().any(|x| x.name == op.lhs);
@@ -568,6 +580,14 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
         if let Some(l) = init_call(t, "f64", shape, false) {
             out.push(l);
         }
+    }
+    for (n, v) in &consts {
+        out.push(format!("    mlc_array {};", n));
+        if let Some(l) = init_call(n, "f64", &[1], false) {
+            out.push(l);
+        }
+        out.push(format!("    ((double *){}.data)[0] = {};", n, v));
+        need_free.push(n.clone());
     }
 
     for l in &f.locals {

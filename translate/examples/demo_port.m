@@ -69,6 +69,13 @@ r = r + v(1);
 end
 end
 
+function r = scale(v)
+% @m2c shape v 3
+% @m2c shape r 3
+% 立即数：MATLAB 里标量就是 1x1 数组，所以 r = v * 2 是元素级缩放
+r = v * 2;
+end
+
 function y = repeater(x)
 % @m2c shape x 3
 % @m2c shape y 3

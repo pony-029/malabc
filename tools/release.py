@@ -187,6 +187,10 @@ def main(argv=None):
     # 输出仍按 GATES 顺序打，日志读起来与串行一致。
     # **CPU 时间与墙钟是两件事**：并行把墙钟压下去，但 CPU 总量不变。
     # 两个数一起看，才知道"省的是等待"还是"省的是计算"。
+    # **发版是快筛，CI 是全量**：真编译/真运行的门（如 check_translate_port）
+    # 在发版时只做结构检查，CI 那边不设这个变量、仍然跑全量。
+    # 这样既不牺牲发版速度，也不会出现"发版绿了但没验"的假象 —— 门会打印"未跑（快检）"。
+    os.environ["MATLABC_GATE_FAST"] = "1"
     _cpu0 = _children_cpu()
     t_all = time.time()
     results = {}

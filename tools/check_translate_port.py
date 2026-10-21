@@ -180,9 +180,11 @@ def check_operators():
     return probs
 
 
-def check_fidelity(require_c=False):
+def check_fidelity(require_c=False, fast=None):
+    fast = FAST if fast is None else fast
     """golden 全通过（Python + 可选 C）；`--require-c` 时无编译器判红。"""
-    rep = fidelity.run_all(with_c=True)
+    # 快检不跑 C（11 个 golden 各编译一次是这道门的主要耗时）
+    rep = fidelity.run_all(with_c=not fast)
     probs = []
     if not rep.get("total"):
         probs.append("TP4 没有任何 golden 夹具")
@@ -193,7 +195,8 @@ def check_fidelity(require_c=False):
     cc = rep.get("c_backend") or {}
     if require_c and not cc.get("available"):
         probs.append("TP4 --require-c：没有可用 C 编译器")
-    if cc.get("available"):
+    # 快检没跑 C：`c` 是空字典，不能据此判失败（"没测"不等于"不通过"）
+    if cc.get("available") and not fast:
         for r in rep.get("results") or []:
             op = r.get("operator")
             if op not in operators.C_IMPLEMENTED:
@@ -289,7 +292,12 @@ M2C_BIN = os.path.join(M2C_DIR, "target", "release",
                        "m2c.exe" if os.name == "nt" else "m2c")
 MIR_EXAMPLE = os.path.join(ROOT, "translate", "examples", "demo_port.m")
 #: 样例的确定性覆盖率下界（只许升）。它挡住"多写 unmapped 让它变绿"这条路。
-MIN_M2C_COVERAGE = 0.8
+#: 已经到 90.9%，下界跟上（棘轮：只许升）
+MIN_M2C_COVERAGE = 0.9
+
+#: 快检：跳过一切"真编译/真运行"（发版快筛用；CI 永远跑全量）。
+#: 用环境变量而不是只能在命令行传参，是为了让 release.py 一行就能打开。
+FAST = os.environ.get("MATLABC_GATE_FAST") == "1"
 
 
 def _run(cmd, cwd=None, timeout=300):
@@ -321,7 +329,8 @@ def build_m2c():
     return True, "刚编译"
 
 
-def check_m2c(require_c=False):
+def check_m2c(require_c=False, fast=None):
+    fast = FAST if fast is None else fast
     """TP5：MIR 生成 → C 发射 → gcc 语法编译 → 两次发射逐字节一致。
 
     为什么要有它：TP1–TP4 证明的是"算子→C 的调用能编译能跑"，
@@ -379,6 +388,18 @@ def check_m2c(require_c=False):
         outs.append(gen)
     if outs[0] != outs[1]:
         probs.append("TP5 两次发射结果不一致（不满足确定性）")
+
+    if fast:
+        print("  [TP5] 快检：跳过 C 编译与运行（发版快筛；CI 跑全量）")
+        total = st["ops"] + st["unmapped"]
+        cov = (float(st["ops"]) / total) if total else 0.0
+        if cov < MIN_M2C_COVERAGE:
+            probs.append("TP5 确定性覆盖率 %.1f%% 低于下界 %.0f%%"
+                         % (cov * 100.0, MIN_M2C_COVERAGE * 100.0))
+        return probs, {"available": True, "why": why, "functions": st["functions"],
+                       "ops": st["ops"], "unmapped": st["unmapped"],
+                       "coverage": round(cov, 4), "compiled": False,
+                       "fast": True}
 
     # 3) 生成的 C 必须能被真编译器接受
     inc = os.path.join(d, "include")
@@ -506,9 +527,9 @@ def run_checks(require_c=False):
     probs.extend(check_constraints())
     probs.extend(check_adapters())
     probs.extend(check_operators())
-    fp, rep = check_fidelity(require_c=require_c)
+    fp, rep = check_fidelity(require_c=require_c, fast=FAST)
     probs.extend(fp)
-    m2c_probs, m2c_stats = check_m2c(require_c=require_c)
+    m2c_probs, m2c_stats = check_m2c(require_c=require_c, fast=FAST)
     probs.extend(m2c_probs)
     probs.extend(check_ledger())
     entries = []
@@ -650,6 +671,8 @@ def _missing_inputs():
 def main(argv=None):
     ap = argparse.ArgumentParser(description="MATLAB→C 移植链路总门（TP1–TP4）")
     ap.add_argument("--selftest", action="store_true", help="两向自证")
+    ap.add_argument("--fast", action="store_true",
+                    help="跳过 C 编译与运行（发版快筛）")
     ap.add_argument("--require-c", action="store_true",
                     help="没有可用 C 编译器时判红（CI 用）")
     ap.add_argument("--sync-ledger", action="store_true",
@@ -657,6 +680,9 @@ def main(argv=None):
     ap.add_argument("--write", action="store_true",
                     help="与 --sync-ledger 联用：真正写回台账")
     args = ap.parse_args(argv)
+    global FAST
+    if getattr(args, "fast", False):
+        FAST = True
     if args.selftest:
         return _selftest()
 
@@ -677,9 +703,13 @@ def main(argv=None):
              ", ".join(stats["rules_adapters"])))
     fb = stats["fidelity"]
     if fb["c_backend"] and fb["c_backend"].get("available"):
-        print("  [C 后端] %s；C 用例 %d/%d 通过"
-              % (fb["c_backend"].get("compiler"), stats["c_ok"],
-                 stats["c_total"]))
+        if FAST:
+            print("  [C 后端] %s；C 用例未跑（快检）"
+                  % (fb["c_backend"].get("compiler"),))
+        else:
+            print("  [C 后端] %s；C 用例 %d/%d 通过"
+                  % (fb["c_backend"].get("compiler"), stats["c_ok"],
+                     stats["c_total"]))
     else:
         print("  [C 后端] 不可用（未找到 CC/gcc/clang/cc/cl）—— "
               "Python 参考实现已跑，C 编译验证待 CI")
@@ -696,10 +726,12 @@ def main(argv=None):
         print("check_translate_port: %d 项不合规" % len(probs))
         return 1
     _mm = stats.get("m2c") or {}
-    print("check_translate_port: OK（TP1–TP5 全绿；golden %d/%d；C %d/%d；"
+    print("check_translate_port: OK（TP1–TP5 全绿；golden %d/%d；C %s；"
           "台账 %d 条；MIR 函数 %s / 算子 %s / 未映射 %s / 编译 %s）"
           % (stats["fidelity"]["passed"], stats["fidelity"]["total"],
-             stats["c_ok"], stats["c_total"], len(stats["ledger"]),
+             ("未跑（快检）" if FAST
+              else "%d/%d" % (stats["c_ok"], stats["c_total"])),
+             len(stats["ledger"]),
              _mm.get("functions", "-"), _mm.get("ops", "-"),
              _mm.get("unmapped", "-"),
              "通过" if _mm.get("compiled") else "未验"))

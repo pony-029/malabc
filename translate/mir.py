@@ -204,8 +204,11 @@ def _lower_binary(lhs, left, op, right, fnames, emit, counter):
                 emit("op:OP-INDEX:%s:%s:%s" % (tmp, fname, arg))
             operands.append(tmp)
         elif side[0] == "num":
-            # 立即数在被调算子侧不支持（形状未知）—— 如实放弃，不猜
-            return False
+            # 立即数 → 形状 [1] 的 mlc_array（MATLAB 里标量就是 1×1）
+            counter[0] += 1
+            tmp = "__k%d" % counter[0]
+            emit("const:%s:%s" % (tmp, side[1]))
+            operands.append(tmp)
         else:
             operands.append(side[1])
 
@@ -238,6 +241,11 @@ def to_mir(source):
             out.append(_var_line("ret", r, f))
         for l in f.get("locals") or []:
             out.append("var:%s:i64" % l)
+        # 标量名 = i64 标注过 + 局部标量；其余都是数组（mlc_array）
+        scalars = set(f.get("locals") or [])
+        for _n, _t in list(f["types"].items()):
+            if _t == "i64":
+                scalars.add(_n)
         blocks = []                    # 块栈："for" / "if"
         for line in f["lines"]:
             code = _clean(line).strip()
@@ -297,7 +305,11 @@ def to_mir(source):
                         out.append("set:%s:%s" % (lhs, rhs))
                         continue
                     bm = _BIN.match(rhs)
-                    if bm:
+                    # `setb` 生成的是 `int64_t x = ...`，只能用**标量**左值。
+                    # `r = v * 2` 里的 r 是数组 —— 早先它被误判成标量赋值，
+                    # 生成的 C 里出现 `r = v * 2;`（mlc_array 不能这么算）。
+                    if bm and lhs in scalars and bm.group(1) in scalars \
+                            and (bm.group(3).isdigit() or bm.group(3) in scalars):
                         out.append("setb:%s:%s:%s:%s"
                                    % (lhs, _BIN_OP[bm.group(2)],
                                       bm.group(1), bm.group(3)))

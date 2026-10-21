@@ -65,6 +65,12 @@ pub enum Stmt {
     SetBin { lhs: String, op: String, a: String, b: String },
     /// `call:<lhs>:<函数名>:<实参...>` —— 调用同文件内的另一个生成函数
     Call { lhs: String, func: String, args: Vec<String> },
+    /// `const:<名字>:<数值>` —— 立即数变成形状 `[1]` 的数组
+    ///
+    /// 为什么需要它：算子签名全是 `mlc_array`，没有标量版本。
+    /// `r = r * 2` 要么被拒绝（现状），要么给它造一个 1×1 的数组 ——
+    /// 后者是 MATLAB 的真实语义（标量就是 1×1）。
+    Const { name: String, value: String },
 }
 
 /// 一个 MATLAB 函数。
@@ -94,6 +100,7 @@ impl Func {
         }
         walk_stmts(&self.body, &mut |s| match s {
             Stmt::Op(op) => v.push(op.lhs.clone()),
+            Stmt::Const { name, .. } => v.push(name.clone()),
             Stmt::For { var, .. } => v.push(var.clone()),
             _ => {}
         });
@@ -126,7 +133,8 @@ pub fn walk_stmts<F: FnMut(&Stmt)>(stmts: &[Stmt], f: &mut F) {
     for s in stmts {
         f(s);
         match s {
-            Stmt::Op(_) | Stmt::Set { .. } | Stmt::SetBin { .. } | Stmt::Call { .. } => {}
+            Stmt::Op(_) | Stmt::Set { .. } | Stmt::SetBin { .. } | Stmt::Call { .. }
+            | Stmt::Const { .. } => {}
             Stmt::For { body, .. } => walk_stmts(body, f),
             Stmt::If { then_body, else_body, .. } => {
                 walk_stmts(then_body, f);
@@ -362,6 +370,18 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
                 lhs: parts[0].to_string(),
                 func: parts[1].to_string(),
                 args,
+            });
+        } else if let Some(rest) = line.strip_prefix("const:") {
+            let parts: Vec<&str> = rest.split(':').map(|x| x.trim()).collect();
+            if parts.len() != 2 {
+                return Err(format!("const 需要 名字:数值：{}", rest));
+            }
+            if parts[1].parse::<f64>().is_err() {
+                return Err(format!("const 的数值不是数字：{}", rest));
+            }
+            push_stmt!(Stmt::Const {
+                name: parts[0].to_string(),
+                value: parts[1].to_string(),
             });
         } else if let Some(rest) = line.strip_prefix("unmapped:") {
             if let Some(f) = cur.as_mut() {
