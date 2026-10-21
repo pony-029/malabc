@@ -62,6 +62,9 @@ CI_ONLY = (
     # 依赖 golden 夹具 + 可选 C 编译器；进发版快跑清单会把“没编译器”
     # 与“门本身慢”混在一起，故只在 CI / 手工跑。
     "check_translate_port",
+    # 依赖 docs/architecture 的生成物（HTML/SVG）；发版清单只收几秒内的快门，
+    # 生成物对账放在 CI 更合适。
+    "check_architecture_docs",
 )
 
 EXEMPT = {

@@ -27,6 +27,9 @@
 
 索引页：[`index.html`](index.html)。
 
+**独立 SVG**：每张图的矢量版在 `svg/<id>.svg`（12 个，样式已内联，可直接嵌入 Markdown）；
+总框架 `svg/00-overall.svg` 已嵌入根 `README.md` / `README_CN.md`。
+
 ---
 
 ## 2. 逐模块说明
@@ -130,6 +133,28 @@
 
 ---
 
+## 2.5 模块归属（主文件 / 最近提交）
+
+| 模块 | 主文件 | 最近提交 |
+| --- | --- | --- |
+| 00 总框架 | `matlabc.py` · `matlabc_boot.py` | `eee6968` 2026-10-20 |
+| 01 入口与 CLI | `matlabc.py` · `matlabc_boot.py` · `matlabc_help.py` · `gui.py` | `791b70a` 2026-10-21 |
+| 02 MATLAB 前端 | `matlabc.py` · `frontends/matlab.py` | `eee6968` 2026-10-20 |
+| 03 多语言 + IR | `frontends/ir.py` · `matlabc.py` · `pyast_frontend.py` | `eee6968` 2026-10-20 |
+| 04 分析引擎 | `matlabc.py` · `facts.py` · `entity_model.py` · `unified_graph.py` | `eee6968` 2026-10-20 |
+| 05 渲染与输出 | `renderers/` · `matlabc.py` | `eee6968` 2026-10-20 |
+| 06 LSP + VS Code | `matlabc_lsp.py` · `vscode/` | `c71c475` 2026-10-21 |
+| 07 AI / MCP | `matlabc_mcp.py` · `matlabc_ask.py` · `ai_cli.py` | `6a03133` 2026-10-20 |
+| 08 修复闭环 | `agent_loop.py` · `matlabc_flow.py` · `analyzer_memory.py` | `2caf526` 2026-10-10 |
+| 09 门禁 / CI | `tools/` · `.github/workflows/` | `aa595a3` 2026-10-21 |
+| 10 MATLAB→C 移植 | `translate/` · `c_runtime/` · `port_ledger.json` | `aa595a3` 2026-10-21 |
+| 11 二进制分析 | `binfmt/` · `binhops.py` · `callrel.py` | `6cf824b` 2026-10-13 |
+
+> 最近提交由 `git log -1 --format='%h %ad' --date=short -- <主文件>` 现算；
+> 改动主文件后重跑即可，不要手写提交号。
+
+---
+
 ## 3. 如何重新生成
 
 ```bash
@@ -165,8 +190,12 @@ node D:/work/rea/archify/archify/bin/archify.mjs check \
 | `archify validate`（12 个 candidate） | **12/12 ok**（composition showcase: 0 errors, 0 warnings） |
 | `archify render`（12 张） | **12/12 成功** |
 | `archify check`（12 个 HTML） | **12/12 通过** |
-| `.html` 行尾 | **LF**（`00-overall.html` CRLF=0） |
-| 产物体积 | 约 **9.1 MB**（12 张，单张 ~750 KB） |
+| 独立 SVG（12 个） | **12/12 XML 解析通过**；样式已内联（CSS 286 KB） |
+| SVG 渲染烟测 | Chrome headless `1444×744`，**3591 色 / 40.9% 非白**（不是空白图） |
+| 架构文档门 | `python tools/check_architecture_docs.py` → **OK（AD1–AD4）** |
+| 根 README | 中英两份都链接 `docs/architecture/index.html` 并嵌入 `svg/00-overall.svg` |
+| `.html` / `.svg` 行尾 | **LF**（`00-overall.html` CRLF=0；SVG 由导出器按 LF 写） |
+| 产物体积 | HTML 约 **9.1 MB** + SVG 约 **3.7 MB** |
 
 > 说明：这是**架构/流程图**，回答“模块怎么组织、数据怎么流”；不是函数级调用图。
 > 函数级调用图请用 `python matlabc.py <dir> --browse <out>` 或 `--callgraph`。

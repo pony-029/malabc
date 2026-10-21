@@ -254,6 +254,12 @@ GUARD_CONTRACT = {
            "保真失败或台账声明无兑现）",
         2: "缺输入（找不到 c_runtime / translate / port_ledger.json）",
     },
+    "tools/check_architecture_docs.py": {
+        0: "通过（AD1–AD4：索引形状 / candidate-html-svg 三向对账 / "
+           "文档可发现 / meta.output 自述）",
+        1: "架构文档不一致（未登记、未渲染、SVG 非法或根 README 未嵌图）",
+        2: "缺输入（找不到 docs/architecture 或根 README）",
+    },
     "tools/check_release_gates.py": {
         0: "通过（RG1–RG4：GATES 里每个名字都有脚本、每个 check_*.py 有交代、每道门有跑过的记录且不明显变慢）",
         1: "有门没进发版清单（写了却从没在发布时跑过），\n          或 GATES 里有陈旧行、豁免没理由 / 已陈旧",

@@ -534,7 +534,7 @@ flowchart TD
 `ci-examples/` 提供开箱即用的 GitHub Actions / GitLab CI 模板，复制即可用。
 
 **本仓库在 Windows 上跑自己的门禁**（`ci.yml`，`windows-latest`）：3.6 语法门、
-回归套件、38 道静态门、LSP/MCP 行为判据、60 个端到端场景、变异抽样。
+回归套件、39 道静态门、LSP/MCP 行为判据、60 个端到端场景、变异抽样。
 
 ```bash
 python tools/ci_local.py        # 同一条流水线，在 E:\ci\matlabc 的干净克隆里跑
@@ -789,6 +789,7 @@ python tools/check_all.py        # 跑完 tools/check_*.py 全部护栏 + 各自
 | `check_release_gates.py` | `RG1–RG4` — 写了却从不参与发布的门，等于给自己看的笔记：每个 `check_*.py` 要么在 `release.py` 的 `GATES` 里，要么**带理由**豁免（陈旧豁免同样算红） |
 | `check_symbol_ranges.py` | `SR1–SR3` — 每个符号的起止行必须落在文件内。越界的 Range 会让编辑器**拒收整批符号**，大纲于是永远停在「正在加载…」 |
 | `check_translate_port.py` | `TP1–TP4` — MATLAB→C 移植链路：ABI 契约（禁止裸指针）/ 双侧适配器（ADP-1..3）/ 算子目录与 C 发射 / golden 保真 + 移植台账。未验证是一等状态，但「已声明」必须能被夹具兑现 |
+| `check_architecture_docs.py` | `AD1–AD4` — 架构文档不许漂移：`FLOW_INDEX.json` ⇄ `candidates/*.json` ⇄ `html/*.html` ⇄ `svg/*.svg` 三向对账；两份根 README 必须链接索引并嵌入总框架 SVG |
 | `check_tool_selftests.py` | `TS1–TS2` — 凡是声明 `SELFTEST = True` 的工具，发版时都真跑一次。工具的自证和其他门一样：**有人执行它才存在** |
 | `check_portability.py` | `PF1–PF3` —— 运行时不得假设只有 Windows。Windows 绝对路径只有在该行**登记过且有 POSIX 对照**时才允许；Windows 专属 API（`os.startfile` / `winreg` / `msvcrt` / `ctypes.windll`）一律不豁免。注释与文档串被跳过——写成 `C:\Temp\yalmip` 的实测记录是证据，不是平台假设。PF3 抓反方向：登记的锚点文字消失即陈旧 |
 | `check_version_scheme.py` | `VS1–VS2` —— 版本号脱离自己定的规则。每一位都必须留在 `0–9`（`0.7.9` → `0.8.0`，`0.9.9` → `1.0.0`）；这道门之前，`0.6.105` 和 `0.7.0` 在任何地方都看不出区别，于是补丁位一路涨到 `0.6.104`——读起来像日期，也说明不了改了多少。**VS2** 把扩展清单和版本表绑在一起：升了版本却忘了重新生成表，两边就会静静地对不上 |
@@ -892,7 +893,7 @@ python matlabc.py <root> --ai-context "modules/global/compileQuadratic.m:compile
 
 ## 全场景扫测（手工跑，118 条判据）
 
-上面 38 道门是静态的、快的。这一套不是——它要起子进程与 LSP 服务端，所以**不进 `check_all`**，靠手工跑：
+上面 39 道门是静态的、快的。这一套不是——它要起子进程与 LSP 服务端，所以**不进 `check_all`**，靠手工跑：
 
 ```powershell
 python tools/sweep_cli.py              # 118 条 / 9 组 / 约 85 秒
@@ -962,7 +963,7 @@ python matlabc_flow.py --help     # 修复闭环：五站点流水线图 + 五�
 python matlabc_ask.py --help      # 问答式理解：事实底座如何装配成答案
 python matlabc_mcp.py --help      # MCP 服务：五个工具 + 「为什么 stdin 必须切断」
 python gui.py --help              # 图形界面：表单每一格等价于哪个命令行开关
-python tools/check_all.py --help  # 护栏总纲：38 道门各自拦什么
+python tools/check_all.py --help  # 护栏总纲：39 道门各自拦什么
 ```
 
 这不是口头承诺，而是被 `check_help_contract.py` 与 `check_doc_flags.py` 同时盯着的 ——
@@ -1088,10 +1089,15 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 - [docs/matlabc_STRUCTURE.md](docs/matlabc_STRUCTURE.md) — 代码结构总览
 - [docs/matlabc_AI_ROADMAP.md](docs/matlabc_AI_ROADMAP.md) — AI 演进路线图
 - [docs/analysis/](docs/analysis/) — 深度分析报告（六顶思考帽复盘、方案对比）
+- [docs/architecture/](docs/architecture/) — 架构图：总框架 + 11 个模块（archify HTML/SVG）
 - [docs/SUPERPOWER_REVIEW_R31.md](docs/SUPERPOWER_REVIEW_R31.md) — 逐轮复盘：二进制/GPU 接入、子进程卫生、以及那道会挂死的门
 - [docs/SUPERPOWER_REVIEW_R33.md](docs/SUPERPOWER_REVIEW_R33.md) — 逐轮复盘：`--binary-attach`、README 双语对等门、可执行的帮助示例，以及那个抓出自身 bug 的退出码匹配器
 - [docs/KERNEL_RUN.md](docs/KERNEL_RUN.md) — 全树读数（Linux 内核语料）的**唯一事实源**：出处 + **cwd 口径**、三档**并列**分母，以及最近一次跑次与冻结的 R81 基线的逐字段对照
 - [docs/GITHUB_REPO_ABOUT.md](docs/GITHUB_REPO_ABOUT.md) — 可直接粘贴的 GitHub 仓库 About 面板文案（简介 / 网站 / 主题标签）
+
+![malabc 总框架](docs/architecture/svg/00-overall.svg)
+
+可交互版本：[docs/architecture/index.html](docs/architecture/index.html) —— 总框架 + 11 个模块图。
 
 ---
 
