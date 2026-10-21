@@ -227,6 +227,18 @@ python tools/release_arch_check.py --check
 > 英文 SVG、模块边界图、归属表、版本快照、PNG 存在性、源码证据、中英 README 对等、
 > 行尾约定；不依赖 archify/Node。
 
+### 换一台电脑
+
+- **只读 / 评审**：`git clone` 后直接打开 `index.html` 或 README 里的 SVG，
+  不需要 archify / Node；纯 Python 门可直接跑：
+  `python tools/release_arch_check.py --check`。
+- **要重新渲染**：安装 Node + archify，设置环境变量 `ARCHIFY_BIN` 指向
+  `archify.mjs`（Windows `set ARCHIFY_BIN=...`，macOS/Linux `export ARCHIFY_BIN=...`）。
+  仓库里的 `D:/work/rea/archify` 只是本机默认值，不是硬依赖。
+- **换机可复现**：克隆后跑 `check_architecture_docs` + `release_arch_check`
+  全绿，说明提交的 HTML/SVG/PNG/清单自足；`apply_arch_sources --check`
+  会用克隆里的 Git 历史验证 revision。
+
 类型映射：
 
 | 图 | 类型 |
