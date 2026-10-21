@@ -139,7 +139,7 @@
         "op_transpose.json"
       ],
       "owner": "",
-      "notes": "C 侧返回 MLC_UNIMPLEMENTED（诚实边界）；Python 参考实现已通过"
+      "notes": "已真实现 2-D f64 转置（mlc_op_transpose）；`x'` 与 `x.'` 在实数下等价，两种写法都收"
     },
     {
       "id": "m2c.op_matmul",
@@ -153,7 +153,21 @@
         "op_matmul_2x2.json"
       ],
       "owner": "",
-      "notes": "C 侧返回 MLC_UNIMPLEMENTED（诚实边界）；Python 参考实现已通过"
+      "notes": "已真实现 2-D f64 矩阵乘；内维不匹配在生成时拒绝，不留给运行时"
+    },
+    {
+      "id": "m2c.op_slice",
+      "matlab": "catalog:OP-SLICE",
+      "c": "c_runtime/src/mlc_ops.c",
+      "status": "verified",
+      "operators": [
+        "OP-SLICE"
+      ],
+      "golden": [
+        "op_slice_1d.json"
+      ],
+      "owner": "",
+      "notes": "已真实现 1-D 闭区间切片；2-D 的 x(1:2) 是线性索引，语义不同，明确拒绝"
     }
   ]
 }

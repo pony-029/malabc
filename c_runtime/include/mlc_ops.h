@@ -30,6 +30,12 @@ mlc_status mlc_op_mean(const mlc_array *a, mlc_array *out);
 mlc_status mlc_op_max(const mlc_array *a, mlc_array *out);
 mlc_status mlc_op_min(const mlc_array *a, mlc_array *out);
 
+/* 切片 `x(from:to)`：1-based **闭区间**，仅 1-D。
+   二维的 `x(1:2)` 在 MATLAB 里是**线性索引**（列优先），语义不同，
+   所以这里明确拒绝 2-D —— 不猜。 */
+mlc_status mlc_op_slice(const mlc_array *a, int64_t from, int64_t to,
+                        mlc_array *out);
+
 mlc_status mlc_op_index(const mlc_array *a, int64_t matlab_index,
                         mlc_array *out);
 mlc_status mlc_op_transpose(const mlc_array *a, mlc_array *out);

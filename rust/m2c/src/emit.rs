@@ -11,7 +11,7 @@ use crate::mir::{walk_stmts, Cond, Func, Op, Stmt};
 /// 已经有 C 落点的算子（与 `translate/operators.py` 的 `C_IMPLEMENTED` 对齐）。
 pub const C_IMPLEMENTED: &[&str] = &[
     "OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-SUM", "OP-MEAN", "OP-MAX",
-    "OP-MIN", "OP-INDEX", "OP-MATMUL", "OP-TRANSPOSE",
+    "OP-MIN", "OP-INDEX", "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE",
 ];
 
 /// 已知但 C 落点仍未实现的算子（诚实边界）。
@@ -130,6 +130,19 @@ fn out_shape(f: &Func, op: &Op) -> Option<Vec<i64>> {
     if REDUCTIONS.contains(&op.id.as_str()) || op.id == "OP-INDEX" {
         return Some(vec![1]);
     }
+    // 切片：1-D，长度 = to - from + 1（边界是字面量才算得出）
+    if op.id == "OP-SLICE" && op.args.len() == 3 {
+        let sa = f.var_shape(&op.args[0])?;
+        if sa.len() != 1 {
+            return None;
+        }
+        let from: i64 = op.args[1].parse().ok()?;
+        let to: i64 = op.args[2].parse().ok()?;
+        if from < 1 || to < from || to > sa[0] {
+            return None;
+        }
+        return Some(vec![to - from + 1]);
+    }
     // 转置：形状是 [n, m]
     if op.id == "OP-TRANSPOSE" && op.args.len() == 1 {
         let s = f.var_shape(&op.args[0])?;
@@ -212,6 +225,28 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
         }
     }
 
+    // 切片的约束在生成时校验：越界不截断（截断会让错误静默通过）
+    if op.id == "OP-SLICE" && op.args.len() == 3 {
+        let shape = f.var_shape(&op.args[0]);
+        let from: Option<i64> = op.args[1].parse().ok();
+        let to: Option<i64> = op.args[2].parse().ok();
+        let bad = match (shape, from, to) {
+            (Some(sh), Some(a), Some(b)) => {
+                sh.len() != 1 || a < 1 || b < a || b > sh[0]
+            }
+            _ => false, // 形状/边界不全是字面量：交给 out_shape 发 TODO
+        };
+        if bad {
+            out.push(format!(
+                "    /* TODO(OP-SLICE): 边界 {}:{} 与形状 {:?} 不匹配 */",
+                op.args[1], op.args[2],
+                f.var_shape(&op.args[0]).unwrap_or_default()
+            ));
+            out.push("    return MLC_UNIMPLEMENTED;".to_string());
+            return out;
+        }
+    }
+
     if !is_implemented(&op.id) {
         let why = if C_UNIMPLEMENTED.contains(&op.id.as_str()) {
             "C 落点未实现（诚实边界）"
@@ -226,7 +261,10 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
     for a in &op.args {
         let declared = f.declared().iter().any(|d| d == a);
         let lit = is_int_literal(a);
-        if !declared && !(lit && op.id == "OP-INDEX") {
+        // 立即数不是"名字"，不该受作用域检查约束（OP-INDEX 的下标、
+        // OP-SLICE 的边界都是数字）。只对**未知名字**报错。
+        let lit_ok = lit && (op.id == "OP-INDEX" || op.id == "OP-SLICE");
+        if !declared && !lit_ok {
             out.push(format!(
                 "{}/* TODO(arg): {} 不在作用域内（参数/返回值/已映射输出里都没有）*/",
                 pad,
@@ -266,6 +304,18 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
         out.push(format!("{}st = mlc_op_index({}, {}, {});", pad, arg0, idx_c, dst));
     } else if op.args.len() == 1 {
         out.push(format!("{}st = mlc_op_{}({}, {});", pad, op_c_name(&op.id), arg0, dst));
+    } else if op.id == "OP-SLICE" && op.args.len() == 3 {
+        let from = &op.args[1];
+        let to = &op.args[2];
+        let ok_bounds = from.parse::<i64>().is_ok() && to.parse::<i64>().is_ok();
+        if !ok_bounds {
+            out.push(format!("{}/* TODO(OP-SLICE): 边界必须是整数字面量 */", pad));
+            out.push(format!("{}return MLC_UNIMPLEMENTED;", pad));
+            return out;
+        }
+        out.push(format!(
+            "{}st = mlc_op_slice({}, {}, {}, {});",
+            pad, arg0, from, to, dst));
     } else if op.args.len() == 2 {
         let arg1 = arg_ref(f, &op.args[1]);
         out.push(format!(

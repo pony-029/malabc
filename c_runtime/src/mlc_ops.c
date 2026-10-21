@@ -289,6 +289,47 @@ mlc_status mlc_op_index(const mlc_array *a, int64_t matlab_index,
  *
  * 只做 2-D：`out` 由调用方按 [n, m] 初始化（mlc.h 的约定）。
  */
+/*
+ * 切片 `x(from:to)`：1-based 闭区间，仅 1-D。
+ *
+ * 为什么只做 1-D：二维的 `x(1:2)` 在 MATLAB 里是**线性索引**（列优先展开），
+ * 而不是"取前两行"。两者语义不同，混着做最容易生成"能跑但算错"的代码。
+ */
+mlc_status mlc_op_slice(const mlc_array *a, int64_t from, int64_t to,
+                        mlc_array *out)
+{
+    int64_t n, len, i;
+    const double *pa;
+    double *po;
+
+    if (a == NULL || out == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64 || out->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    if (a->ndim != 1 || out->ndim != 1) {
+        return MLC_ERR;              /* 2-D 的线性索引语义不同：拒绝 */
+    }
+    n = a->shape[0];
+    if (from < 1 || to < from || to > n) {
+        return MLC_ERR;              /* 越界不截断：截断会让错误静默通过 */
+    }
+    len = to - from + 1;
+    if (out->shape[0] != len) {
+        return MLC_ERR;
+    }
+    pa = (const double *)a->data;
+    po = (double *)out->data;
+    if (pa == NULL || po == NULL) {
+        return MLC_ERR;
+    }
+    for (i = 0; i < len; ++i) {
+        po[i * out->strides[0]] = pa[(from - 1 + i) * a->strides[0]];
+    }
+    return MLC_OK;
+}
+
 mlc_status mlc_op_transpose(const mlc_array *a, mlc_array *out)
 {
     int64_t m, n, i, j;

@@ -406,6 +406,11 @@ pub fn emit_project(funcs: &[Func], name: &str, cases: &[Case],
         ("CMakeLists.txt".to_string(), cmake.join("\n") + "\n"),
         ("README.md".to_string(), gen_readme(name)),
         ("fixture.example.txt".to_string(), gen_fixture_example(funcs)),
+        // 用户很可能把生成工程直接提交：默认就把构建产物挡在外面
+        (".gitignore".to_string(),
+         concat!("build/\n", "*.exe\n", "*.o\n", "*.obj\n", "*.a\n",
+                "*.lib\n", "CMakeCache.txt\n", "CMakeFiles/\n")
+             .to_string()),
     ])
 }
 

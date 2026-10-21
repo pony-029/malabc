@@ -161,6 +161,22 @@ def _run_index(case):
     return _expect([1], [x[idx0]])
 
 
+def _run_slice(case):
+    """1-D 闭区间切片（1-based，与 mlc_op_slice 同语义）。"""
+    X = case["inputs"]["x"]
+    sh = list(X.get("shape") or [])
+    if len(sh) != 1:
+        raise ValueError("slice: 只支持 1-D")
+    n = sh[0]
+    spec = case.get("slice") or {}
+    lo = int(spec.get("from", 1))
+    hi = int(spec.get("to", n))
+    if lo < 1 or hi < lo or hi > n:
+        raise ValueError("slice: 越界 %r（长度 %d）" % ((lo, hi), n))
+    flat = _flat(X["data"])
+    return _expect([hi - lo + 1], flat[lo - 1:hi])
+
+
 def _run_transpose(case):
     """2-D 转置。与其它算子一样用 **shape + 扁平 data** ——
     早先这里假设 data 是嵌套列表；matmul 有同一个毛病，一并修掉了。
@@ -213,6 +229,7 @@ _RUNNERS = {
     "OP-MAX": _run_max,
     "OP-MIN": _run_min,
     "OP-INDEX": _run_index,
+    "OP-SLICE": _run_slice,
     "OP-TRANSPOSE": _run_transpose,
     "OP-MATMUL": _run_matmul,
 }
@@ -400,6 +417,24 @@ def emit_c_program(case):
             "    mlc_status st;",
             _c_array_decl("o", osh, [0.0] * no)[1],
             "    st = mlc_op_matmul(&A, &B, &o);",
+            '    if (st != MLC_OK) { printf("ERR %d\\n", (int)st); return 1; }',
+            '    for (int i=0;i<{0};i++) printf("%.17g\\n", od[i]);'.format(no),
+            "    return 0;", "}"]
+        return "\n".join(lines) + "\n"
+    if op == "OP-SLICE":
+        X = case["inputs"]["x"]
+        sh = list(X.get("shape") or [])
+        spec = case.get("slice") or {}
+        lo = int(spec.get("from", 1))
+        hi = int(spec.get("to", sh[0]))
+        osh = [hi - lo + 1]
+        lines = head + _c_array_lines("x", X)
+        no = osh[0]
+        lines += [
+            "    double od[{0}] = {{0}};".format(no),
+            "    mlc_status st;",
+            _c_array_decl("o", osh, [0.0] * no)[1],
+            "    st = mlc_op_slice(&x, {0}, {1}, &o);".format(lo, hi),
             '    if (st != MLC_OK) { printf("ERR %d\\n", (int)st); return 1; }',
             '    for (int i=0;i<{0};i++) printf("%.17g\\n", od[i]);'.format(no),
             "    return 0;", "}"]

@@ -92,6 +92,16 @@ function C = mm(A, B)
 C = A * B;
 end
 
+function [P, Q] = pair(A, B)
+% @m2c shape A 2,3
+% @m2c shape B 3,2
+% @m2c shape P 2,2
+% @m2c shape Q 2,3
+% 两个数组入参 + 两个返回值，且两个返回形状不同
+P = A * B;
+Q = A + A;
+end
+
 function y = repeater(x)
 % @m2c shape x 3
 % @m2c shape y 3
@@ -111,6 +121,13 @@ end
 function y = slicer(x)
 % @m2c shape x 3
 % @m2c shape y 2
-% 负面夹具：切片 x(1:2) 尚未支持 -> 必须返回 unimplemented（不能返回垃圾值）
+% 切片：1-based 闭区间（仅 1-D —— 2-D 的 x(1:2) 是线性索引，语义不同）
 y = x(1:2);
+end
+
+function y = masked(x)
+% @m2c shape x 3
+% @m2c shape y 3
+% 负面夹具：**逻辑索引** x(x > 1) 尚未支持 -> 必须返回 unimplemented
+y = x(x > 1);
 end

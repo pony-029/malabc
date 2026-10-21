@@ -9,6 +9,8 @@ accumlast: 8
 scale: 2 4 6
 zerosum: 6
 mm: 22 28 49 64
+pair: 22 28 49 64 | 2 4 6 8 10 12
 repeater: 2 4 6
 fancy: 1 2 3
-slicer: unimplemented
+slicer: 1 2
+masked: unimplemented

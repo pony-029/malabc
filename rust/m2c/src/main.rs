@@ -391,6 +391,23 @@ fn selftest() -> ExitCode {
     let code_bad = emit::emit_func(&bad_mm[0], &[] as &[mir::Func]).unwrap_or_default();
     chk(code_bad.contains("TODO"), "内维不匹配的 matmul 被拒绝");
 
+    // 切片：1-D 闭区间，长度 = to - from + 1
+    let sl = mir::parse(
+        "version 3\nfunc:sl\narg:x:f64:5\nret:y:f64:3\nop:OP-SLICE:y:x:2:4\nend\n",
+    )
+    .unwrap_or_default();
+    let code_sl = emit::emit_func(&sl[0], &[] as &[mir::Func]).unwrap_or_default();
+    chk(code_sl.contains("mlc_array_init(y, MLC_F64, 1, (int64_t[]){3})"),
+        "切片输出长度 = to-from+1");
+    chk(code_sl.contains("mlc_op_slice(&x, 2, 4, y)"), "切片发射正确");
+
+    let sl_bad = mir::parse(
+        "version 3\nfunc:slb\narg:x:f64:5\nret:y:f64:9\nop:OP-SLICE:y:x:2:9\nend\n",
+    )
+    .unwrap_or_default();
+    let code_slb = emit::emit_func(&sl_bad[0], &[] as &[mir::Func]).unwrap_or_default();
+    chk(code_slb.contains("TODO"), "越界的切片被拒绝");
+
     // 确定性
     let a = emit::emit_func(&funcs[0], &[] as &[mir::Func]).unwrap_or_default();
     let b = emit::emit_func(&funcs[0], &[] as &[mir::Func]).unwrap_or_default();

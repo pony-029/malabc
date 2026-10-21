@@ -228,6 +228,10 @@ def _lower_binary(lhs, left, op, right, fnames, emit, counter):
     return True
 
 
+def oid0_is_slice(oid):
+    return oid == "OP-SLICE"
+
+
 def to_mir(source):
     """返回 (mir_text, stats)。
 
@@ -352,6 +356,14 @@ def to_mir(source):
                 n_unmapped += 1
                 continue
             args = [x.strip() for x in use["args"]]
+            if oid0_is_slice(use["operator"]) and "end" in args:
+                # `end` 必须由**已声明**的形状解析；没有形状就如实放弃
+                shp = (f.get("shapes") or {}).get(args[0])
+                if not shp:
+                    out.append("unmapped:%s" % code)
+                    n_unmapped += 1
+                    continue
+                args = [str(shp[0]) if a == "end" else a for a in args]
             oid = use["operator"]
             # MATLAB 的 `*` 是**矩阵乘**，`.*` 才是元素级。文本层两者都映射到
             # OP-MUL（因为不认识形状），这里在**知道形状之后**才升级：

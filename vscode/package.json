@@ -2,7 +2,7 @@
   "name": "matlabc",
   "displayName": "matlabc",
   "description": "MATLAB 工程的代码理解工具：结构感知的诊断、跨文件导航、调用链分析与影响面评估。",
-  "version": "1.6.3",
+  "version": "1.6.4",
   "publisher": "冯磊",
   "engines": {
     "vscode": "^1.80.0"

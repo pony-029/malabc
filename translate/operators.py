@@ -56,6 +56,10 @@ OPERATORS = (
      "kind": "index", "rules": ("IDX-1", "ORDER-1"),
      "sample": "y = x(2);",
      "verified_by": "op_index_shift.json"},
+    {"id": "OP-SLICE", "matlab": "x(a:b)", "c": "mlc_op_slice",
+     "kind": "slice", "rules": ("IDX-1", "ORDER-1"),
+     "sample": "y = x(1:2);",
+     "verified_by": "op_slice_1d.json"},
     {"id": "OP-TRANSPOSE", "matlab": "x.'", "c": "mlc_op_transpose",
      "kind": "layout", "rules": ("ORDER-1",),
      "sample": "y = x.';",
@@ -72,7 +76,7 @@ OPERATORS = (
 #: 由 translate/mir.py 在知道 shape 之后决定是否升级成 OP-MATMUL。
 C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV",
                  "OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN", "OP-INDEX",
-                 "OP-MATMUL", "OP-TRANSPOSE")
+                 "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE")
 
 _ASSIGN_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*(.+?)\s*;\s*$")
 _BIN_RE = re.compile(r"^([A-Za-z_]\w*)\s*(\.\*|\./|\+|-|\*)\s*([A-Za-z_]\w*)$")
@@ -80,6 +84,9 @@ _CALL_RE = re.compile(r"^(sum|mean|max|min)\s*\(\s*([A-Za-z_]\w*)\s*\)$")
 # `x'` 是共轭转置，`x.'` 是普通转置。本目录只处理实数 f64，二者等价，
 # 所以两种写法都收 —— 只收 `.'` 会让真实代码里的 `x'` 全部掉进 unmapped。
 _TRANS_RE = re.compile(r"^([A-Za-z_]\w*)\s*\.?'\s*$")
+#: `x(1:2)` / `x(2:end)` —— 1-based 闭区间切片（仅 1-D）
+_SLICE_RE = re.compile(r"^([A-Za-z_]\w*)\s*\(\s*(\d+|end)\s*:\s*"
+                       r"(\d+|end)\s*\)$")
 _INDEX_RE = re.compile(r"^([A-Za-z_]\w*)\s*\(\s*(\d+|[A-Za-z_]\w*)\s*\)$")
 
 _CALL_OPS = {"sum": "OP-SUM", "mean": "OP-MEAN",
@@ -119,6 +126,12 @@ def parse_line(line):
     if tm:
         return {"operator": "OP-TRANSPOSE",
                 "lhs": lhs, "args": [tm.group(1)], "raw": line.rstrip("\n")}
+
+    slm = _SLICE_RE.match(rhs)
+    if slm:
+        return {"operator": "OP-SLICE",
+                "lhs": lhs, "args": [slm.group(1), slm.group(2), slm.group(3)],
+                "raw": line.rstrip("\n")}
 
     im = _INDEX_RE.match(rhs)
     if im:
