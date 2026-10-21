@@ -78,9 +78,10 @@
 
 新图/改图如果改变了架构取舍，写一条 `decisions/ADR-<n>-<slug>.md`
 （`# ADR-...` + `Status` + `Diagrams` + `Context` / `Decision` / `Consequences`），
-并把路径挂到 `FLOW_INDEX` 的 `adr` 列表。AD11 会检查文件存在、结构齐全、
-`Status` 合法、`Diagrams` 与索引双向、无孤儿；`Superseded` 必须与
-`Supersedes`/`Superseded by` 互指。
+并把路径挂到 `FLOW_INDEX` 的 `adr` 列表，同时在 `decisions/README.md` 登记。
+AD11 会检查文件存在、结构齐全、`Status` 合法、`Diagrams` 与索引双向、
+ADR 索引全登记、无孤儿；`Superseded` 必须与 `Supersedes`/`Superseded by` 互指
+（格式见 `decisions/examples/`）。
 
 ## 发布前
 

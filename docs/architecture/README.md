@@ -42,7 +42,7 @@
 **术语表**：[`GLOSSARY.md`](GLOSSARY.md)（AD9 的中英规范译法 + 机器块）；
 **快照/版本**：[`SNAPSHOTS.json`](SNAPSHOTS.json) · [`VERSIONS.md`](VERSIONS.md)；
 **PNG**：[`png/`](png/)（14 张，汇报/幻灯片用）；
-**决策记录**：[`decisions/`](decisions/)（8 条 ADR：单文件内核 / 统一 IR / 验证门控闭环 / 轻薄编辑器 / 确定性移植 / 登记制门禁 / 二进制只读 / 评审记录）。
+**决策记录**：[`decisions/`](decisions/) · [索引](decisions/README.md)（8 条 ADR：单文件内核 / 统一 IR / 验证门控闭环 / 轻薄编辑器 / 确定性移植 / 登记制门禁 / 二进制只读 / 评审记录；另有 1 对替代链示例）。
 **评审记录**：[`REVIEWS.md`](REVIEWS.md)（版本 / 日期 / 变更图 / 复核人 / 结论）。
 
 ---
@@ -267,7 +267,8 @@ python tools/release_arch_check.py --check
 | 图片路径（AD3） | 根 README 的本地图片全部存在；总框架中文/英文各嵌各的图 |
 | 陈旧门 | `python tools/export_arch_svg.py --check` → **OK（14 条清单与 candidate/html/svg 一致）** |
 | 快跑 CI | `.github/workflows/arch-docs.yml`（AD1–AD11 + 清单 + 英文 SVG + 模块图 + 归属表 + 快照 + 版本记录 + PNG + 评审记录 + 源码证据 + README 对等 + 行尾）；YAML 可解析：1 job / 14 steps |
-| ADR（AD11） | **8 条**（含 ADR-008 评审记录）；14 张图挂 `adr`；`Status`/`Diagrams` 双向；无孤儿 |
+| ADR（AD11） | **8 条**（含 ADR-008 评审记录）；14 张图挂 `adr`；`Status`/`Diagrams` 双向；`decisions/README.md` 全登记；无孤儿 |
+| 替代链示例（R39） | `decisions/examples/`：ADR-100 Superseded ⇄ ADR-101 Accepted，**双向互指** |
 | 发布总闸（R32） | `release_arch_check.py --check` → 快照/版本/PNG/评审 **4/4 OK** |
 | PNG 阈值（R33） | 同尺寸改 0.04% 像素：`--max-ratio 0.0001` → **exit 1**；`0.5` → **exit 0** |
 | 源码批量校验（R34/R37） | **1 次全局** `git cat-file --batch-check`，**0.75 s** 覆盖 137 条 sources（原 14 次 8.3 s） |

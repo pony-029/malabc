@@ -428,6 +428,14 @@ def _adr_problems(items, arch_dir):
         for fn in sorted(os.listdir(adr_dir)):
             if fn.startswith("ADR-") and fn.endswith(".md") and fn not in refs:
                 probs.append("AD11 ADR 未被任何图引用：%s" % fn)
+        idx = os.path.join(adr_dir, "README.md")
+        if not os.path.isfile(idx):
+            probs.append("AD11 缺 decisions/README.md 索引")
+        else:
+            itxt = _read(idx)
+            for fn in sorted(refs):
+                if fn not in itxt:
+                    probs.append("AD11 decisions/README.md 未登记 %s" % fn)
     return probs
 
 
@@ -738,6 +746,8 @@ def _selftest():
         _write(adr, "# ADR-001: x\n- Status: Accepted\n"
                     "- Diagrams: 00-overall\n## Context\nc\n"
                     "## Decision\nd\n## Consequences\ne\n")
+        _write(os.path.join(arch, "decisions", "README.md"),
+               "| [ADR-001](ADR-001-x.md) |\n")
         index_html = os.path.join(arch, "index.html")
         _write(index_html,
                '<input id="q"><button data-filter="all"></button>\n'
@@ -909,18 +919,24 @@ def _selftest():
         _write(adr, "# ADR-001: x\n- Status: Accepted\n"
                     "- Diagrams: 00-overall\n## Context\nc\n"
                     "## Decision\nd\n## Consequences\ne\n")
+        _write(os.path.join(arch, "decisions", "README.md"),
+               "| [ADR-001](ADR-001-x.md) |\n")
         orphan = os.path.join(arch, "decisions", "ADR-999-orphan.md")
         _write(orphan, "# ADR-999: x\n- Status: Accepted\n## Context\nc\n"
                        "## Decision\nd\n## Consequences\ne\n")
         chk(bool(check(*args, **kw)), "AD11 孤儿 ADR 未判红")
         os.remove(orphan)
-        chk(not check(*args, **kw), "恢复后仍误伤")
+        idx = os.path.join(arch, "decisions", "README.md")
+        os.remove(idx)
+        chk(bool(check(*args, **kw)), "缺 decisions/README.md 未判红")
+        _write(idx, "| [ADR-001](ADR-001-x.md) |\n")
+        chk(not check(*args, **kw), "恢复索引后仍误伤")
     finally:
         import shutil
         shutil.rmtree(tmp, ignore_errors=True)
 
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad[0], good[0]))
-    return 0 if (bad[0] == 0 and good[0] >= 26) else 1
+    return 0 if (bad[0] == 0 and good[0] >= 27) else 1
 
 
 def main(argv=None):
