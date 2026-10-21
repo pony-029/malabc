@@ -1,0 +1,7 @@
+# 按**参数名**给值（不再靠位置约定）
+# addone / add_and_sum / repeater / fancy 的参数叫 x
+x = 10 20 30
+# pick / sumall / pickbig 的参数叫 v
+v = 10 20 30
+# 下标（走 if 的 then 分支）
+i = 3

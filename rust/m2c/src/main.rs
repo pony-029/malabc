@@ -207,9 +207,25 @@ fn selftest() -> ExitCode {
         "version 2\nfunc:q\narg:v:f64:3\nret:s:f64:1\nfor:i:1:3\nop:OP-SUM:s:v\nend\nend\n",
     )
     .unwrap_or_default();
-    chk(!lp.is_empty() && lp[0].loops.len() == 1, "for 循环被解析");
+    let has_for = lp
+        .first()
+        .map(|f| f.body.iter().any(|s| matches!(s, mir::Stmt::For { .. })))
+        .unwrap_or(false);
+    chk(has_for, "for 循环被解析成语句");
     let code6 = emit::emit_func(&lp[0]).unwrap_or_default();
     chk(code6.contains("for (int64_t i = 1; i <= 3; ++i)"), "for 发射成 C 循环");
+
+    // while + 嵌套 if（分支里再套分支）
+    let nest = mir::parse(
+        "version 3\nfunc:n\narg:v:f64:3\narg:i:i64\nret:r:f64:1\n\
+         while:i:lt:3\nif:i:gt:1\nop:OP-INDEX:r:v:i\nelse\nop:OP-SUM:r:v\n\
+         end\nop:OP-ADD:r:r:r\nend\nend\n",
+    )
+    .unwrap_or_default();
+    let code7 = emit::emit_func(&nest[0]).unwrap_or_default();
+    chk(code7.contains("while (i < 3)"), "while 发射成 C 循环");
+    chk(code7.contains("if (i > 1)") && code7.contains("} else {"),
+        "嵌套 if/else 发射正确");
 
     // 广播：与 C / Python 同规则
     let bc = mir::parse(
@@ -221,6 +237,8 @@ fn selftest() -> ExitCode {
         "2x3 + 3 广播成 2x3");
     chk(emit::bcast_shape(&[3, 1], &[1, 4]) == Some(vec![3, 4]), "3x1 与 1x4 广播成 3x4");
     chk(emit::bcast_shape(&[2], &[3]).is_none(), "2 与 3 不可广播（必须拒绝）");
+    chk(emit::bcast_shape(&[2, 1, 3], &[1, 4, 1]) == Some(vec![2, 4, 3]),
+        "3D：2x1x3 与 1x4x1 广播成 2x4x3");
 
     // 确定性
     let a = emit::emit_func(&funcs[0]).unwrap_or_default();

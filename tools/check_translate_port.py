@@ -288,6 +288,8 @@ M2C_DIR = os.path.join(ROOT, "rust", "m2c")
 M2C_BIN = os.path.join(M2C_DIR, "target", "release",
                        "m2c.exe" if os.name == "nt" else "m2c")
 MIR_EXAMPLE = os.path.join(ROOT, "translate", "examples", "demo_port.m")
+#: 样例的确定性覆盖率下界（只许升）。它挡住"多写 unmapped 让它变绿"这条路。
+MIN_M2C_COVERAGE = 0.8
 
 
 def _run(cmd, cwd=None, timeout=300):
@@ -400,16 +402,22 @@ def check_m2c(require_c=False):
             else:
                 # **两组输入**：默认（a[i]=i+1）与 argv（10 20 30 3）。
                 # 只跑默认值的话，"输入从哪来"这条链路根本没被验证过。
-                # 第三组故意让 i=1，覆盖 `if i > 1` 的 **else** 分支 ——
-                # 两组都走 then 的话，else 里那几行等于没被测过。
+                # 输入走**夹具文件**（按参数名给值）：argv 只能表达"一串数"，
+                # 说不清哪个数属于哪个参数；而 x / v / i 是三个不同的名字。
+                # 第三组让 i=1，覆盖 `if i > 1` 的 **else** 分支。
+                ex_dir = os.path.join(ROOT, "translate", "examples")
                 cases = [
                     ([], "demo_port.expected"),
-                    (["10", "20", "30", "3"], "demo_port.expected.args"),
-                    (["1", "2", "3", "1"], "demo_port.expected.else"),
+                    ([os.path.join(ex_dir, "demo_port.fixture")],
+                     "demo_port.expected.args"),
+                    ([os.path.join(ex_dir, "demo_port.fixture.else")],
+                     "demo_port.expected.else"),
                 ]
                 for extra, exp_name in cases:
-                    rc, out = _run([exe] + extra)
-                    tag = "默认" if not extra else "argv %s" % " ".join(extra)
+                    # 60s 上限：生成物万一有死循环（例如 while 的循环变量没变），
+                    # 门要**判红**，而不是陪着它一起等。
+                    rc, out = _run([exe] + extra, timeout=60)
+                    tag = "默认" if not extra else os.path.basename(extra[0])
                     if rc != 0:
                         probs.append("TP5 生成程序退出码 %s（%s）：%s"
                                      % (rc, tag, out.strip().splitlines()[:2]))
@@ -431,8 +439,19 @@ def check_m2c(require_c=False):
         print(u"  [TP5] 没有 C 编译器：只验了「可发射 + 确定性」，"
               u"没验「可编译」")
 
+    total = st["ops"] + st["unmapped"]
+    cov = (float(st["ops"]) / total) if total else 0.0
+    if cov < MIN_M2C_COVERAGE:
+        probs.append(
+            "TP5 确定性覆盖率 %.1f%% 低于下界 %.0f%%（%d 条映射 / %d 条未映射）"
+            % (cov * 100.0, MIN_M2C_COVERAGE * 100.0, st["ops"], st["unmapped"]))
+    else:
+        print("  [TP5] 覆盖：%d/%d = %.1f%%（未映射 %d）"
+              % (st["ops"], total, cov * 100.0, st["unmapped"]))
+
     return probs, {"available": True, "why": why, "functions": st["functions"],
                    "ops": st["ops"], "unmapped": st["unmapped"],
+                   "coverage": round(cov, 4),
                    "compiled": bool(cc)}
 
 

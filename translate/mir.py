@@ -47,6 +47,13 @@ _ANNO_RE = re.compile(r"^\s*%\s*@m2c\s+(?P<type>i64|f64)\s+(?P<names>[A-Za-z_][\
 #: `if i > 1` —— 只认「标量与整数字面量/变量」的六种比较；其余进 unmapped。
 _IF_RE = re.compile(r"^if\s+(?P<var>[A-Za-z_]\w*)\s*"
                     r"(?P<cmp>==|~=|<=|>=|<|>)\s*(?P<rhs>[A-Za-z_\w]+)$")
+#: `while i < 3` —— 与 if 同一套条件语法。
+#:
+#: ⚠ 本版**没有标量赋值语句**，所以 while 的循环变量无法在体内改变：
+#: 真实 .m 里的 while 多半会变成死循环。因此样例故意不含 while，
+#: 它只在 MIR 层被支持并自证（见 rust/m2c --selftest）。
+_WHILE_RE = re.compile(r"^while\s+(?P<var>[A-Za-z_]\w*)\s*"
+                       r"(?P<cmp>==|~=|<=|>=|<|>)\s*(?P<rhs>[A-Za-z_\w]+)$")
 _CMP = {"==": "eq", "~=": "ne", "<": "lt", "<=": "le", ">": "gt", ">=": "ge"}
 
 #: `for i = 1:3` —— 只认整数边界（变量名或字面量），复杂形式进 unmapped。
@@ -169,6 +176,13 @@ def to_mir(source):
                                             _CMP[im.group("cmp")],
                                             im.group("rhs")))
                 blocks.append("if")
+                continue
+            wm = _WHILE_RE.match(code)
+            if wm:
+                out.append("while:%s:%s:%s" % (wm.group("var"),
+                                               _CMP[wm.group("cmp")],
+                                               wm.group("rhs")))
+                blocks.append("while")
                 continue
             use = operators.parse_line(code)
             if use is None:
