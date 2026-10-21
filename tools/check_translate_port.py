@@ -293,6 +293,9 @@ M2C_BIN = os.path.join(M2C_DIR, "target", "release",
 MIR_EXAMPLE = os.path.join(ROOT, "translate", "examples", "demo_port.m")
 #: 样例的确定性覆盖率下界（只许升）。它挡住"多写 unmapped 让它变绿"这条路。
 #: 已经到 90.9%，下界跟上（棘轮：只许升）
+#: 声明本工具自带自证，check_tool_selftests 会在发版时真跑
+SELFTEST = True
+
 MIN_M2C_COVERAGE = 0.9
 
 #: 快检：跳过一切"真编译/真运行"（发版快筛用；CI 永远跑全量）。
@@ -327,6 +330,24 @@ def build_m2c():
     if rc != 0:
         return False, "cargo build 失败：%s" % out.strip().splitlines()[-1:]
     return True, "刚编译"
+
+
+def compare_outputs(got, exp_path, tag):
+    """把"程序输出"与"期望文件"逐行比对；一致返回 None，否则返回问题串。
+
+    抽成函数是为了能**两向自证**：只验证"一致时通过"是不够的 ——
+    如果比对逻辑永远返回 None，门会永远绿，而它看起来完全正常。
+    """
+    try:
+        exp = [ln.strip() for ln in
+               io.open(exp_path, encoding="utf-8").read().splitlines()
+               if ln.strip()]
+    except (IOError, OSError) as exc:
+        return "TP5 读不到期望文件 %s：%s" % (exp_path, exc)
+    if got != exp:
+        return ("TP5 输出与期望不符（%s）：\n  期望 %r\n  实得 %r"
+                % (tag, exp, got))
+    return None
 
 
 def check_m2c(require_c=False, fast=None):
@@ -460,16 +481,12 @@ def check_m2c(require_c=False, fast=None):
                     got = [ln.strip() for ln in out.strip().splitlines()]
                     exp_path = os.path.join(ROOT, "translate", "examples",
                                             exp_name)
-                    exp = [ln.strip() for ln in
-                           io.open(exp_path, encoding="utf-8").read()
-                           .splitlines() if ln.strip()]
-                    if got != exp:
-                        probs.append(
-                            "TP5 输出与期望不符（%s）：\n  期望 %r\n  实得 %r"
-                            % (tag, exp, got))
+                    bad = compare_outputs(got, exp_path, tag)
+                    if bad:
+                        probs.append(bad)
                     else:
                         print("  [TP5] %s 输入：%d 行与期望一致"
-                              % (tag, len(exp)))
+                              % (tag, len(got)))
 
                 # 生成物**自带**自测（src/selftest.c）：拿这个工程单独走的人，
                 # 不装 Python 也能回答"这堆生成代码算得对不对"。
@@ -695,6 +712,33 @@ def _dump_stats(stats):
             json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
     except (IOError, OSError):
         pass
+
+
+def _selftest():
+    """两向自证：一致必须过、不一致必须红、缺文件必须红。"""
+    import tempfile
+    good = 0
+    bad = 0
+
+    def chk(cond, name):
+        nonlocal good, bad
+        if cond:
+            good += 1
+        else:
+            bad += 1
+            print("  [FAIL] %s" % name)
+
+    d = tempfile.mkdtemp(prefix="tp5_st_")
+    exp = os.path.join(d, "e.txt")
+    io.open(exp, "w", encoding="utf-8", newline="").write("a: 1\nb: 2\n")
+    chk(compare_outputs(["a: 1", "b: 2"], exp, "t") is None, "一致时应通过")
+    chk(compare_outputs(["a: 1", "b: 3"], exp, "t") is not None, "不一致时必须红")
+    chk(compare_outputs(["a: 1"], exp, "t") is not None, "少一行必须红")
+    chk(compare_outputs([], exp, "t") is not None, "空输出必须红")
+    chk(compare_outputs(["a: 1"], os.path.join(d, "nope.txt"), "t") is not None,
+        "缺期望文件必须红")
+    print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
+    return 1 if bad else 0
 
 
 def main(argv=None):

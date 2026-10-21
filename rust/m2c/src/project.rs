@@ -40,11 +40,13 @@ fn c_dtype_name(dt: &str) -> Option<&'static str> {
 fn drivable(f: &Func) -> bool {
     let arrays: Vec<_> = f.args.iter().filter(|a| a.dtype == "f64").collect();
     let scalars: Vec<_> = f.args.iter().filter(|a| a.dtype == "i64").collect();
-    arrays.len() == 1
-        && scalars.len() == f.args.len() - 1
+    // 数组入参可以是多个（矩阵乘需要 A、B）；每个都必须有形状 ——
+    // 没形状就不知道该分配多大，那是"猜"，不是"生成"。
+    !arrays.is_empty()
+        && arrays.iter().all(|a| !a.shape.is_empty())
+        && scalars.len() == f.args.len() - arrays.len()
         && !f.rets.is_empty()
         && f.rets.iter().all(|r| r.dtype == "f64" && !r.shape.is_empty())
-        && !arrays[0].shape.is_empty()
 }
 
 /// 夹具解析器（纯 C，固定容量，避免在生成物里引入 malloc）。
@@ -134,7 +136,9 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
             ));
             continue;
         }
-        let arr = f.args.iter().find(|a| a.dtype == "f64").unwrap();
+        let arrays: Vec<&crate::mir::Var> =
+            f.args.iter().filter(|a| a.dtype == "f64").collect();
+        let arr = arrays[0];
         let dims: Vec<String> = arr.shape.iter().map(|d| d.to_string()).collect();
         let dt = c_dtype_name(&arr.dtype).unwrap_or("MLC_F64");
         let shape_lit = format!("(int64_t[]){{{}}}", dims.join(", "));
@@ -172,6 +176,25 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
                 sn, sn
             ));
         }
+        // 其余数组入参：夹具里给了值就用，否则 a[i] = i+1
+        for extra in arrays.iter().skip(1) {
+            let en = ident(&extra.name);
+            let edims: Vec<String> =
+                extra.shape.iter().map(|d| d.to_string()).collect();
+            out.push(format!("        mlc_array {};", en));
+            out.push(format!(
+                "        if (mlc_array_init(&{}, {}, {}, (int64_t[]){{{}}}) != MLC_OK) {{ return 1; }}",
+                en, dt, extra.shape.len(), edims.join(", ")));
+            out.push(format!(
+                "        int got_{0} = m2c_get(\"{1}\", vals, M2C_MAX_VALS);",
+                en, extra.name));
+            out.push(format!(
+                "        for (int64_t i = 0; i < mlc_array_numel(&{}); ++i) {{", en));
+            out.push(format!(
+                "            ((double *){}.data)[i] = (i < got_{}) ? vals[i] : (double)(i + 1);",
+                en, en));
+            out.push("        }".to_string());
+        }
         let mut ret_names: Vec<String> = Vec::new();
         for r in &f.rets {
             let rn = ident(&r.name);
@@ -206,7 +229,9 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
         }
         out.push("            printf(\"\\n\");".to_string());
         out.push("        }".to_string());
-        out.push(format!("        mlc_array_free(&{});", an));
+        for a2 in &arrays {
+            out.push(format!("        mlc_array_free(&{});", ident(&a2.name)));
+        }
         for rn in &ret_names {
             out.push(format!("        mlc_array_free(&{});", rn));
         }
@@ -226,11 +251,21 @@ fn gen_readme(name: &str) -> String {
     out.push("## 构建与自测".to_string());
     out.push(String::new());
     out.push("```bash".to_string());
-    out.push("# mlc 运行时（本仓库的 c_runtime/）；不传会自动按 ../.. 猜".to_string());
+    out.push("# mlc 运行时：不传会自动按 ../../c_runtime 等位置猜".to_string());
     out.push("cmake -S . -B build -DMLC_RUNTIME=<path-to>/c_runtime".to_string());
     out.push("cmake --build build".to_string());
     out.push("ctest --test-dir build --output-on-failure".to_string());
     out.push("```".to_string());
+    out.push(String::new());
+    out.push("### 找不到 c_runtime 时".to_string());
+    out.push(String::new());
+    out.push("```bash".to_string());
+    out.push("# 在 matlabc 仓库里找它的位置".to_string());
+    out.push("find .. -maxdepth 4 -name c_runtime -type d 2>/dev/null | head -1".to_string());
+    out.push("# Windows PowerShell: Get-ChildItem -Recurse -Directory -Filter c_runtime".to_string());
+    out.push("```".to_string());
+    out.push(String::new());
+    out.push("也可以用环境变量：`MLC_RUNTIME=/path/to/c_runtime cmake -S . -B build`".to_string());
     out.push(String::new());
     out.push("## 跑一遍看数值".to_string());
     out.push(String::new());
@@ -386,7 +421,9 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
             if !drivable(f) {
                 continue;
             }
-            let arr = f.args.iter().find(|a| a.dtype == "f64").unwrap();
+            let arrays: Vec<&crate::mir::Var> =
+                f.args.iter().filter(|a| a.dtype == "f64").collect();
+            let arr = arrays[0];
             let dims: Vec<String> = arr.shape.iter().map(|d| d.to_string()).collect();
             let shape_lit = format!("(int64_t[]){{{}}}", dims.join(", "));
             let an = ident(&arr.name);
@@ -421,6 +458,33 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
                     .map(|x| format!("{}", x as i64))
                     .unwrap_or_else(|| "2".to_string());
                 out.push(format!("        int64_t {} = {};", ident(&sc.name), v));
+            }
+            // 其余数组入参（矩阵乘等）：给值就用，否则 i+1
+            for extra in arrays.iter().skip(1) {
+                let en = ident(&extra.name);
+                let edims: Vec<String> =
+                    extra.shape.iter().map(|d| d.to_string()).collect();
+                let enumer: i64 = extra.shape.iter().product();
+                out.push(format!("        mlc_array {};", en));
+                out.push(format!(
+                    "        if (mlc_array_init(&{}, MLC_F64, {}, (int64_t[]){{{}}}) != MLC_OK) return 2;",
+                    en, extra.shape.len(), edims.join(", ")));
+                match case.args.get(&extra.name) {
+                    Some(vals) if vals.len() >= enumer as usize => {
+                        let lits: Vec<String> =
+                            vals.iter().map(|v| format!("{:.17}", v)).collect();
+                        out.push(format!("        double {}v[] = {{{}}};",
+                                         en, lits.join(", ")));
+                        out.push(format!(
+                            "        for (int64_t i = 0; i < mlc_array_numel(&{}); ++i) {{ ((double *){}.data)[i] = {}v[i]; }}",
+                            en, en, en));
+                    }
+                    _ => {
+                        out.push(format!(
+                            "        for (int64_t i = 0; i < mlc_array_numel(&{}); ++i) {{ ((double *){}.data)[i] = (double)(i + 1); }}",
+                            en, en));
+                    }
+                }
             }
             let mut rets: Vec<String> = Vec::new();
             for r in &f.rets {

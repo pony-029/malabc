@@ -84,6 +84,14 @@ z = zeros(1,3);
 r = sum(z) + sum(v);
 end
 
+function C = mm(A, B)
+% @m2c shape A 2,3
+% @m2c shape B 3,2
+% @m2c shape C 2,2
+% 矩阵乘：MATLAB 的 `*` 不是元素级（`.*` 才是）
+C = A * B;
+end
+
 function y = repeater(x)
 % @m2c shape x 3
 % @m2c shape y 3

@@ -8,5 +8,6 @@ viasum: 6
 accumlast: 8
 scale: 2 4 6
 zerosum: 6
+mm: 22 28 49 64
 repeater: 2 4 6
 fancy: unimplemented
