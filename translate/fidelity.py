@@ -175,6 +175,24 @@ def _run_flatten(case):
     return _expect([m * n], out)
 
 
+def _run_find(case):
+    """`find(x > k)`：返回 **1-based** 下标（长度数据相关）。"""
+    X = case["inputs"]["x"]
+    sh = list(X.get("shape") or [])
+    spec = case.get("mask") or {}
+    cmp = int(spec.get("cmp", 0))
+    k = float(spec.get("k", 0))
+    ops = {0: lambda v: v > k, 1: lambda v: v >= k, 2: lambda v: v < k,
+           3: lambda v: v <= k, 4: lambda v: v == k, 5: lambda v: v != k}
+    if cmp not in ops:
+        raise ValueError("find: 未知比较码 %r" % (cmp,))
+    if len(sh) != 1:
+        raise ValueError("find: 只支持 1-D")
+    flat = _flat(X["data"])
+    out = [float(i + 1) for i, v in enumerate(flat) if ops[cmp](v)]
+    return _expect([len(out)], out)
+
+
 def _run_mask(case):
     """`x(x > k)`：取出满足条件的元素并压实（长度数据相关）。"""
     X = case["inputs"]["x"]
@@ -264,6 +282,7 @@ _RUNNERS = {
     "OP-SLICE": _run_slice,
     "OP-FLATTEN": _run_flatten,
     "OP-MASK": _run_mask,
+    "OP-FIND": _run_find,
     "OP-TRANSPOSE": _run_transpose,
     "OP-MATMUL": _run_matmul,
 }
@@ -453,6 +472,24 @@ def emit_c_program(case):
             "    st = mlc_op_matmul(&A, &B, &o);",
             '    if (st != MLC_OK) { printf("ERR %d\\n", (int)st); return 1; }',
             '    for (int i=0;i<{0};i++) printf("%.17g\\n", od[i]);'.format(no),
+            "    return 0;", "}"]
+        return "\n".join(lines) + "\n"
+    if op == "OP-FIND":
+        X = case["inputs"]["x"]
+        spec = case.get("mask") or {}
+        cmp_v = int(spec.get("cmp", 0))
+        k = float(spec.get("k", 0))
+        exp = case["expected"]
+        no = exp["shape"][0] if exp.get("shape") else 1
+        lines = head + _c_array_lines("x", X)
+        lines += [
+            "    mlc_array o = {0};",
+            "    mlc_status st;",
+            "    st = mlc_op_find_alloc(&x, {0}, {1:.17g}, &o);".format(cmp_v, k),
+            '    if (st != MLC_OK) { printf("ERR %d\\n", (int)st); return 1; }',
+            "    for (int64_t i=0;i<mlc_array_numel(&o);i++)",
+            '        printf("%.17g\\n", ((double*)o.data)[i]);',
+            "    mlc_array_free(&o);",
             "    return 0;", "}"]
         return "\n".join(lines) + "\n"
     if op == "OP-FLATTEN":

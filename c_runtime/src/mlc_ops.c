@@ -488,6 +488,53 @@ mlc_status mlc_op_mask_alloc(const mlc_array *a, int cmp, double k,
     return MLC_OK;
 }
 
+/*
+ * `find(x >k)`：返回 1-based 下标，长度由命中数决定。
+ *
+ * 下标**从 1 开始**：这是 MATLAB 的约定，也是 IDX-1 规则唯一该露出来的地方
+ * （其它算子一律 0-based）。写在这里比写在注释里可靠。
+ */
+mlc_status mlc_op_find_alloc(const mlc_array *a, int cmp, double k,
+                             mlc_array *out)
+{
+    int64_t n, i, hit;
+    int64_t shape1[1];
+    const double *pa;
+    double *po;
+    mlc_status st;
+
+    if (a == NULL || out == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    n = mlc_array_numel(a);
+    pa = (const double *)a->data;
+    if (pa == NULL) {
+        return MLC_ERR;
+    }
+    hit = 0;
+    for (i = 0; i < n; ++i) {
+        if (mlc_mask_test(pa[i], cmp, k)) {
+            ++hit;
+        }
+    }
+    shape1[0] = hit;
+    st = mlc_array_init(out, MLC_F64, 1, shape1);
+    if (st != MLC_OK) {
+        return st;
+    }
+    po = (double *)out->data;
+    hit = 0;
+    for (i = 0; i < n; ++i) {
+        if (mlc_mask_test(pa[i], cmp, k)) {
+            po[hit++] = (double)(i + 1);   /* 1-based */
+        }
+    }
+    return MLC_OK;
+}
+
 mlc_status mlc_op_transpose(const mlc_array *a, mlc_array *out)
 {
     int64_t m, n, i, j;

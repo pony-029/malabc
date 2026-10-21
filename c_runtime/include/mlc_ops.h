@@ -53,6 +53,11 @@ mlc_status mlc_op_mask(const mlc_array *a, int cmp, double k,
 mlc_status mlc_op_mask_alloc(const mlc_array *a, int cmp, double k,
                              mlc_array *out);
 
+/* `find(x >k)`：返回满足条件的**1-based 下标**（长度数据相关 -> 由本函数分配）。
+   与 mlc_op_mask 一样是 ABI 的分配例外；所有权转交调用方。 */
+mlc_status mlc_op_find_alloc(const mlc_array *a, int cmp, double k,
+                             mlc_array *out);
+
 mlc_status mlc_op_index(const mlc_array *a, int64_t matlab_index,
                         mlc_array *out);
 mlc_status mlc_op_transpose(const mlc_array *a, mlc_array *out);

@@ -196,6 +196,20 @@
       ],
       "owner": "",
       "notes": "x(x>k) 只认 1-D 且对自身比较；长度数据相关，C 侧校验命中数 == out 长度，不符返回 MLC_ERR"
+    },
+    {
+      "id": "m2c.op_find",
+      "matlab": "catalog:OP-FIND",
+      "c": "c_runtime/src/mlc_ops.c",
+      "status": "verified",
+      "operators": [
+        "OP-FIND"
+      ],
+      "golden": [
+        "op_find_gt.json"
+      ],
+      "owner": "",
+      "notes": "find(x>k) 返回 1-based 下标，长度动态（mlc_op_find_alloc 分配）；空输入返回 MLC_ERR，零命中返回长度 0 的数组"
     }
   ]
 }

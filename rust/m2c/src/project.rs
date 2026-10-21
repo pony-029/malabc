@@ -454,7 +454,16 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
     out.push("static int m2c_fail = 0;".to_string());
     out.push(String::new());
     out.push("static void m2c_check(const char *cname, const char *fname,".to_string());
-    out.push("                      const mlc_array *a, const char *want) {".to_string());
+    out.push("                      const mlc_array *a, const char *want,".to_string());
+    out.push("                      int64_t want_n) {".to_string());
+    out.push("    /* 先比长度：动态形状下「长度对但内容错」与「长度就错」要分开报 */".to_string());
+    out.push("    if (mlc_array_numel(a) != want_n) {".to_string());
+    out.push("        printf(\"FAIL [%s] %s: 元素个数 %lld，期望 %lld\\n\",".to_string());
+    out.push("               cname, fname, (long long)mlc_array_numel(a),".to_string());
+    out.push("               (long long)want_n);".to_string());
+    out.push("        m2c_fail = 1;".to_string());
+    out.push("        return;".to_string());
+    out.push("    }".to_string());
     out.push("    char got[512];".to_string());
     out.push("    size_t off = 0;".to_string());
     out.push("    int64_t n = mlc_array_numel(a);".to_string());
@@ -611,9 +620,10 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
             } else if parts.len() == rets.len() && !want.is_empty() {
                 for (k, rn) in rets.iter().enumerate() {
                     out.push(format!(
-                        "        if (st_{} == MLC_OK) m2c_check(\"{}\", \"{}.{}\", &{}, \"{}\");",
+                        "        if (st_{} == MLC_OK) m2c_check(\"{}\", \"{}.{}\", &{}, \"{}\", {});",
                         ident(&f.name), cname, f.name, f.rets[k].name, rn,
-                        parts[k].replace('\\', "\\\\").replace('"', "\\\"")));
+                        parts[k].replace('\\', "\\\\").replace('"', "\\\""),
+                        parts[k].split_whitespace().count() as i64));
                 }
             } else {
                 out.push(format!("        /* {} 在这组夹具里没有期望值，跳过比较 */",

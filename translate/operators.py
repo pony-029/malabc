@@ -56,6 +56,10 @@ OPERATORS = (
      "kind": "index", "rules": ("IDX-1", "ORDER-1"),
      "sample": "y = x(2);",
      "verified_by": "op_index_shift.json"},
+    {"id": "OP-FIND", "matlab": "find(x > k)", "c": "mlc_op_find_alloc",
+     "kind": "select", "rules": ("IDX-1",),
+     "sample": "i = find(x > 1);",
+     "verified_by": "op_find_gt.json"},
     {"id": "OP-FLATTEN", "matlab": "A(:)", "c": "mlc_op_flatten",
      "kind": "layout", "rules": ("ORDER-1",),
      "sample": "y = A(:);",
@@ -85,7 +89,7 @@ OPERATORS = (
 C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV",
                  "OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN", "OP-INDEX",
                  "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE",
-                 "OP-FLATTEN", "OP-MASK")
+                 "OP-FLATTEN", "OP-MASK", "OP-FIND")
 
 _ASSIGN_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*(.+?)\s*;\s*$")
 _BIN_RE = re.compile(r"^([A-Za-z_]\w*)\s*(\.\*|\./|\+|-|\*)\s*([A-Za-z_]\w*)$")
@@ -93,6 +97,10 @@ _CALL_RE = re.compile(r"^(sum|mean|max|min)\s*\(\s*([A-Za-z_]\w*)\s*\)$")
 # `x'` 是共轭转置，`x.'` 是普通转置。本目录只处理实数 f64，二者等价，
 # 所以两种写法都收 —— 只收 `.'` 会让真实代码里的 `x'` 全部掉进 unmapped。
 _TRANS_RE = re.compile(r"^([A-Za-z_]\w*)\s*\.?'\s*$")
+#: `find(x > 1)` —— 返回 1-based 下标（长度数据相关）
+_FIND_RE = re.compile(r"^find\s*\(\s*([A-Za-z_]\w*)\s*"
+                      r"(>=|<=|==|~=|>|<)\s*(-?\d+(?:\.\d+)?)\s*\)$")
+
 #: `A(:)` —— 列优先展平
 _FLAT_RE = re.compile(r"^([A-Za-z_]\w*)\s*\(\s*:\s*\)$")
 #: `x(x > 1)` —— 逻辑索引（只认"对自身按常量比较"，这是最常见也最可判定的形态）
@@ -133,6 +141,14 @@ def parse_line(line):
     if not m:
         return None
     lhs, rhs = m.group(1), m.group(2).strip()
+
+    fdm = _FIND_RE.match(rhs)
+    if fdm:
+        return {"operator": "OP-FIND",
+                "lhs": lhs,
+                "args": [fdm.group(1), str(_MASK_CMP[fdm.group(2)]),
+                         fdm.group(3)],
+                "raw": line.rstrip("\n")}
 
     cm = _CALL_RE.match(rhs)
     if cm:

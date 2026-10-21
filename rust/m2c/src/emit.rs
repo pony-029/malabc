@@ -12,7 +12,7 @@ use crate::mir::{walk_stmts, Cond, Func, Op, Stmt};
 pub const C_IMPLEMENTED: &[&str] = &[
     "OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-SUM", "OP-MEAN", "OP-MAX",
     "OP-MIN", "OP-INDEX", "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE",
-    "OP-FLATTEN", "OP-MASK",
+    "OP-FLATTEN", "OP-MASK", "OP-FIND",
 ];
 
 /// 已知但 C 落点仍未实现的算子（诚实边界）。
@@ -46,7 +46,7 @@ pub fn ident(name: &str) -> String {
 
 /// 输出长度**数据相关**的算子：不能由调用方预先 init，
 /// 必须由算子自己分配（`*_alloc` 变体），调用方负责 free。
-pub const DYNAMIC_OPS: &[&str] = &["OP-MASK"];
+pub const DYNAMIC_OPS: &[&str] = &["OP-MASK", "OP-FIND"];
 
 pub fn op_is_dynamic(id: &str) -> bool {
     DYNAMIC_OPS.contains(&id)
@@ -160,8 +160,8 @@ fn out_shape(f: &Func, op: &Op) -> Option<Vec<i64>> {
     }
     // x(x>k)：命中数是**数据相关**的，生成期算不出来 —— 用声明形状，
     // 由 C 侧在运行时校验"命中数 == out 长度"，不符就 MLC_ERR。
-    if op.id == "OP-MASK" {
-        return None;
+    if op.id == "OP-MASK" || op.id == "OP-FIND" {
+        return None;   /* 长度数据相关：由算子分配，运行时才知道 */
     }
     // 切片：1-D，长度 = to - from + 1（边界是字面量才算得出）
     if op.id == "OP-SLICE" && op.args.len() == 3 {
@@ -348,6 +348,17 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
         }
         // 动态长度：调用 _alloc 变体，dst 直接是 out（由算子分配）
         out.push(format!("{}st = mlc_op_mask_alloc({}, {}, {}, {});",
+                         pad, arg0, cmp, k, dst));
+    } else if op.id == "OP-FIND" && op.args.len() == 3 {
+        let cmp = &op.args[1];
+        let k = &op.args[2];
+        let ok = cmp.parse::<i64>().is_ok() && k.parse::<f64>().is_ok();
+        if !ok {
+            out.push(format!("{}/* TODO(OP-FIND): 比较码/阈值必须是字面量 */", pad));
+            out.push(format!("{}return MLC_UNIMPLEMENTED;", pad));
+            return out;
+        }
+        out.push(format!("{}st = mlc_op_find_alloc({}, {}, {}, {});",
                          pad, arg0, cmp, k, dst));
     } else if op.id == "OP-SLICE" && op.args.len() == 3 {
         let from = &op.args[1];

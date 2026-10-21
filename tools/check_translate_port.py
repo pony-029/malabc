@@ -36,7 +36,7 @@ import sys
 import tempfile
 
 #: P5 的对手方：本门在 README 质量门表那一行里声明的判据族。
-ROW_SIGNATURE = "TP1–TP5"
+ROW_SIGNATURE = "TP1–TP6"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -178,6 +178,102 @@ def check_operators():
         if "TODO" in src:
             probs.append("TP3 %s 的 C 发射留下 TODO" % op["id"])
     return probs
+
+
+#: TP6 的 C 源：分配型算子的所有权与错误路径。
+#: 为什么单独测：golden 只比数值，而这些是"不崩、不漏、不静默"的约束。
+_OWNERSHIP_C = r"""
+#include <stdio.h>
+#include <string.h>
+#include "mlc.h"
+#include "mlc_ops.h"
+
+static int fails = 0;
+#define CHECK(cond, msg) do { \
+    if (!(cond)) { printf("FAIL %s\\n", msg); fails = 1; } \
+} while (0)
+
+int main(void) {
+    double buf[4] = {1.0, 2.0, 3.0, 4.0};
+    int64_t sh[1] = {4};
+    mlc_array x;
+    mlc_array out;
+    mlc_status st;
+
+    if (mlc_array_init(&x, MLC_F64, 1, sh) != MLC_OK) return 1;
+    memcpy(x.data, buf, sizeof(buf));
+
+    /* 1) 空输入：必须 MLC_ERR，不能崩 */
+    st = mlc_op_mask_alloc(NULL, 0, 2.0, &out);
+    CHECK(st == MLC_ERR, "mask_alloc(NULL) 应返回 MLC_ERR");
+
+    /* 2) 零命中：长度 0，仍然由算子分配，可正常 free */
+    memset(&out, 0, sizeof(out));
+    st = mlc_op_mask_alloc(&x, 0, 100.0, &out);
+    CHECK(st == MLC_OK, "零命中应成功");
+    CHECK(mlc_array_numel(&out) == 0, "零命中长度应为 0");
+    CHECK(out.owns_data != 0, "分配型输出必须 owns_data");
+    mlc_array_free(&out);
+    CHECK(out.data == NULL, "free 后 data 必须置空");
+
+    /* 3) 非分配版本：out 长度不符 -> MLC_ERR，且不改数据 */
+    {
+        int64_t bad_sh[1] = {3};
+        double before[3] = {-1.0, -1.0, -1.0};
+        mlc_array bad;
+        if (mlc_array_init(&bad, MLC_F64, 1, bad_sh) != MLC_OK) return 1;
+        memcpy(bad.data, before, sizeof(before));
+        st = mlc_op_mask(&x, 0, 2.0, &bad);   /* 命中 2 个，out 是 3 */
+        CHECK(st == MLC_ERR, "长度不符必须 MLC_ERR");
+        CHECK(((double *)bad.data)[0] == -1.0, "失败时不得写入 out");
+        mlc_array_free(&bad);
+    }
+
+    /* 4) find：1-based 下标 */
+    memset(&out, 0, sizeof(out));
+    st = mlc_op_find_alloc(&x, 0, 2.0, &out);
+    CHECK(st == MLC_OK, "find_alloc 应成功");
+    CHECK(mlc_array_numel(&out) == 2, "find 命中数应为 2");
+    if (mlc_array_numel(&out) == 2) {
+        CHECK(((double *)out.data)[0] == 3.0, "find 首个下标应为 3（1-based）");
+        CHECK(((double *)out.data)[1] == 4.0, "find 次个下标应为 4");
+    }
+    mlc_array_free(&out);
+
+    mlc_array_free(&x);
+    if (fails) { printf("OWNERSHIP FAILED\\n"); return 1; }
+    printf("ownership ok\\n");
+    return 0;
+}
+"""
+
+
+def check_ownership(fast=None):
+    """TP6：真编译真跑所有权/错误路径测试。"""
+    fast = FAST if fast is None else fast
+    if fast:
+        return []
+    cc = fidelity.find_c_compiler()
+    if not cc:
+        return []
+    d = tempfile.mkdtemp(prefix="m2c_own_")
+    src = os.path.join(d, "own.c")
+    exe = os.path.join(d, "own.exe" if os.name == "nt" else "own")
+    io.open(src, "w", encoding="utf-8", newline="").write(_OWNERSHIP_C)
+    rt = os.path.join(ROOT, "c_runtime")
+    cmd = list(cc) + ["-std=c99", "-O1", "-I", os.path.join(rt, "include"),
+                      src,
+                      os.path.join(rt, "src", "mlc_runtime.c"),
+                      os.path.join(rt, "src", "mlc_ops.c"), "-o", exe]
+    rc, out = _run(cmd)
+    if rc != 0:
+        return ["TP6 所有权测试编译失败：%s" % (out.strip().splitlines()[:2],)]
+    rc, out = _run([exe], timeout=60)
+    if rc != 0:
+        bad = [ln for ln in out.splitlines() if ln.startswith("FAIL")]
+        return ["TP6 所有权测试未通过：%s" % (bad[:3] or out.strip()[:120],)]
+    print("  [TP6] 所有权/错误路径：通过（空输入、零命中、长度不符、find 1-based）")
+    return []
 
 
 def check_ledger_stale(path=None):
@@ -511,6 +607,30 @@ def check_m2c(require_c=False, fast=None):
                         print("  [TP5] %s 输入：%d 行与期望一致"
                               % (tag, len(got)))
 
+                # 批量：两个夹具一次跑完，输出用 `=== 路径` 分隔。
+                # 这条只在本地手验过 —— 手验的东西没人守，迟早会坏。
+                fx1 = os.path.join(ex_dir, "demo_port.fixture")
+                fx2 = os.path.join(ex_dir, "demo_port.fixture.else")
+                rc, out = _run([exe, fx1, fx2], timeout=60)
+                if rc != 0:
+                    probs.append("TP5 批量夹具退出码 %s" % (rc,))
+                else:
+                    got = [ln.strip() for ln in out.strip().splitlines()]
+                    want = ["=== %s" % fx1]
+                    for nm in ("demo_port.expected.args",
+                               "demo_port.expected.else"):
+                        want += [ln.strip() for ln in
+                                 io.open(os.path.join(ex_dir, nm),
+                                         encoding="utf-8").read().splitlines()
+                                 if ln.strip()]
+                        if nm == "demo_port.expected.args":
+                            want.append("=== %s" % fx2)
+                    if got != want:
+                        probs.append("TP5 批量夹具输出不符：\n  期望 %r\n  实得 %r"
+                                     % (want[:4], got[:4]))
+                    else:
+                        print("  [TP5] 批量夹具：%d 行与期望一致" % len(got))
+
                 # 生成物**自带**自测（src/selftest.c）：拿这个工程单独走的人，
                 # 不装 Python 也能回答"这堆生成代码算得对不对"。
                 st_src = os.path.join(d, "src", "selftest.c")
@@ -570,6 +690,7 @@ def run_checks(require_c=False):
     fp, rep = check_fidelity(require_c=require_c, fast=FAST)
     probs.extend(fp)
     probs.extend(check_ledger_stale())
+    probs.extend(check_ownership())
     m2c_probs, m2c_stats = check_m2c(require_c=require_c, fast=FAST)
     probs.extend(m2c_probs)
     probs.extend(check_ledger())

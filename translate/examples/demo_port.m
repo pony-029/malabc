@@ -132,6 +132,12 @@ function y = masked(x)
 y = x(x > 1);
 end
 
+function i = wheregt(x)
+% @m2c shape x 3
+% find 返回 **1-based 下标**（IDX-1），长度数据相关 -> 动态形状
+i = find(x > 1);
+end
+
 function y = flatit(A)
 % @m2c shape A 2,3
 % @m2c shape y 6
