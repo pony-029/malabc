@@ -232,7 +232,7 @@ def oid0_is_slice(oid):
     return oid == "OP-SLICE"
 
 
-def to_mir(source, extra_names=None, header=True):
+def to_mir(source, extra_names=None, header=True, skip_names=None):
     """返回 (mir_text, stats)。
 
     stats: {functions, ops, unmapped, per_op} —— 门与报告都用它，
@@ -242,6 +242,8 @@ def to_mir(source, extra_names=None, header=True):
     否则跨文件调用会被当成"未知名字"而拒绝，而单文件视角看不出这是错的。
     """
     funcs = split_functions(source)
+    if skip_names:
+        funcs = [f for f in funcs if f["name"] not in skip_names]
     fnames = set(f["name"] for f in funcs)
     if extra_names:
         fnames |= set(extra_names)
@@ -404,6 +406,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="MATLAB → MIR")
     ap.add_argument("source")
     ap.add_argument("-o", "--out", default=None)
+    ap.add_argument("--recursive", action="store_true",
+                    help="目录模式下递归子目录（真实工程必需）")
     args = ap.parse_args(argv)
 
     import os
@@ -411,38 +415,68 @@ def main(argv=None):
     if os.path.isdir(args.source):
         # **目录级转换**：真实 MATLAB 工程是一堆 .m 互相调用；
         # 单文件视角会把跨文件调用当成未知名字。
-        names, files = set(), []
-        for fn in sorted(os.listdir(args.source)):
-            if not fn.lower().endswith(".m"):
-                continue
-            p = os.path.join(args.source, fn)
-            if not os.path.isfile(p):
-                continue
+        files = []
+        if args.recursive:
+            for dp, dn, fn in os.walk(args.source):
+                dn[:] = sorted(d for d in dn if not d.startswith("."))
+                for f in sorted(fn):
+                    if f.lower().endswith(".m"):
+                        files.append(os.path.join(dp, f))
+        else:
+            for fn in sorted(os.listdir(args.source)):
+                p = os.path.join(args.source, fn)
+                if fn.lower().endswith(".m") and os.path.isfile(p):
+                    files.append(p)
+
+        names, kept, skipped = set(), [], []
+        for p in files:
             try:
                 src0 = io.open(p, encoding="utf-8", errors="replace").read()
             except (IOError, OSError) as exc:
                 print("读不了 %s：%s" % (p, exc))
                 return 2
-            files.append(fn)
-            for f in split_functions(src0):
+            fs = split_functions(src0)
+            dup = [f["name"] for f in fs if f["name"] in names]
+            if dup and len(dup) == len(fs):
+                # 整个文件的函数都重名：跳过，别用后一份覆盖前一份
+                skipped.append((p, dup[0]))
+                continue
+            kept.append(p)
+            for f in fs:
                 names.add(f["name"])
+        if skipped:
+            print("[warn] 跳过 %d 个重名文件（MATLAB 允许多目录同名，C 里不行）："
+                  % len(skipped))
+            for p, nm in skipped[:5]:
+                print("        %s -> %s" % (p, nm))
+        files = kept
         if not files:
             print("目录里没有 .m 文件：%s" % args.source)
             return 1
         total = {"functions": 0, "ops": 0, "unmapped": 0, "per_op": {},
                  "calls": 0}
         body = None
-        for fn in files:
-            p = os.path.join(args.source, fn)
+        emitted = set()
+        dropped = 0
+        for p in files:
             src = io.open(p, encoding="utf-8", errors="replace").read()
-            t, st = to_mir(src, extra_names=names, header=(body is None))
+            fs = split_functions(src)
+            skip = {f["name"] for f in fs if f["name"] in emitted}
+            if skip:
+                dropped += len(skip)
+            t, st = to_mir(src, extra_names=names, header=(body is None),
+                           skip_names=skip)
             body = t if body is None else body + t
+            emitted |= {f["name"] for f in fs if f["name"] not in skip} \
+                if skip else emitted | {f["name"] for f in fs}
             for k in ("functions", "ops", "unmapped", "calls"):
                 total[k] += st[k]
             for k, v in st["per_op"].items():
                 total["per_op"][k] = total["per_op"].get(k, 0) + v
         text, stats = body, total
         stats["files"] = len(files)
+        if dropped:
+            print("[warn] 同名函数已丢弃 %d 个（只保留第一次出现）" % dropped)
         if args.out:
             io.open(args.out, "w", encoding="utf-8", newline="").write(text)
             print("[ok] %s（%d 个 .m / 函数 %d / 算子 %d / 未映射 %d）"

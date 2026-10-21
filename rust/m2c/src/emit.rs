@@ -26,6 +26,39 @@ pub fn is_implemented(id: &str) -> bool {
     C_IMPLEMENTED.contains(&id)
 }
 
+/// C89/C99 关键字：MATLAB 里 `auto`、`int`、`register` 都是合法变量名。
+const C_KEYWORDS: &[&str] = &[
+    "auto", "break", "case", "char", "const", "continue", "default", "do",
+    "double", "else", "enum", "extern", "float", "for", "goto", "if", "inline",
+    "int", "long", "register", "restrict", "return", "short", "signed",
+    "sizeof", "static", "struct", "switch", "typedef", "union", "unsigned",
+    "void", "volatile", "while", "bool", "true", "false",
+];
+
+/// 返回值的 C 名字：与任一参数重名时加 `_out` 后缀。
+/// MATLAB 允许 `function x = f(x)`（原地变换），C 里参数不能同名。
+pub fn ret_cname(f: &Func, name: &str) -> String {
+    let base = ident(name);
+    let mut cand = base.clone();
+    let mut n = 0;
+    loop {
+        let clash_arg = f.args.iter().any(|a| ident(&a.name) == cand);
+        let clash_ret = f
+            .rets
+            .iter()
+            .any(|r| r.name != name && ident(&r.name) == cand);
+        if !clash_arg && !clash_ret {
+            return cand;
+        }
+        n += 1;
+        cand = if n == 1 {
+            format!("{}_out", base)
+        } else {
+            format!("{}_out{}", base, n)
+        };
+    }
+}
+
 /// C 标识符清洗。
 pub fn ident(name: &str) -> String {
     let mut out = String::new();
@@ -38,10 +71,12 @@ pub fn ident(name: &str) -> String {
         out.push(c2);
     }
     if out.is_empty() {
-        "_".to_string()
-    } else {
-        out
+        return "_".to_string();
     }
+    if C_KEYWORDS.contains(&out.as_str()) {
+        out.push('_');            /* `auto` -> `auto_` */
+    }
+    out
 }
 
 /// 输出长度**数据相关**的算子：不能由调用方预先 init，
@@ -119,10 +154,11 @@ pub fn proto(f: &Func) -> String {
         }
     }
     for r in &f.rets {
+        let rn = ret_cname(f, &r.name);
         if is_scalar_dt(&r.dtype) {
-            params.push(format!("int64_t *{}", ident(&r.name)));
+            params.push(format!("int64_t *{}", rn));
         } else {
-            params.push(format!("mlc_array *{}", ident(&r.name)));
+            params.push(format!("mlc_array *{}", rn));
         }
     }
     if params.is_empty() {
@@ -225,7 +261,7 @@ fn arg_ref(f: &Func, name: &str) -> String {
         return ident(name);
     }
     if f.rets.iter().any(|r| r.name == name) {
-        return ident(name);
+        return ret_cname(f, name);
     }
     format!("&{}", ident(name))
 }
@@ -569,7 +605,7 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                         Some(dt) if !is_scalar_dt(&dt)
                             && f.rets.iter().any(|r| &r.name == a) =>
                         {
-                            call_args.push(format!("*{}", ident(a)))
+                            call_args.push(format!("*{}", ret_cname(f, a)))
                         }
                         Some(_) => call_args.push(ident(a)),
                         None => {
@@ -651,7 +687,15 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
 /// 一个函数的 C 定义（支持多返回值与嵌套块）。
 pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
     if f.rets.is_empty() {
-        return Err(format!("函数 {} 没有 ret（本版只支持有返回值的函数）", f.name));
+        // 真实工程里到处是"过程"（无返回值）。整体失败会让整个工程生成不出来，
+        // 所以生成一个**明确的桩**：能编译、调用会返回 UNIMPLEMENTED，不假装成功。
+        let mut out: Vec<String> = Vec::new();
+        out.push(format!("/* 由 m2c 从 MIR 生成 —— 来源函数：{} */", f.name));
+        out.push(proto(f).replace(';', " {"));
+        out.push("    /* TODO(void): 无返回值的函数本版不生成实现 */".to_string());
+        out.push("    return MLC_UNIMPLEMENTED;".to_string());
+        out.push("}".to_string());
+        return Ok(out.join("\n"));
     }
 
     let mut out: Vec<String> = Vec::new();
@@ -664,7 +708,7 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
         if is_scalar_dt(&ret.dtype) {
             continue;
         }
-        let name = ident(&ret.name);
+        let name = ret_cname(f, &ret.name);
         if ret_is_dynamic(f, &ret.name) {
             // 长度数据相关：由算子分配（`*_alloc`）。
             // 注意返回值是**形参指针**（`mlc_array *y`），不能在这里再声明一个同名局部；
@@ -736,19 +780,25 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
         _ => {}
     });
     walk_stmts(&f.body, &mut |s| {
-        if let Stmt::Op(op) = s {
-            let is_arg = f.args.iter().any(|x| x.name == op.lhs);
-            let is_ret = f.rets.iter().any(|x| x.name == op.lhs);
-            if is_arg || is_ret {
-                return;
-            }
-            let t = ident(&op.lhs);
-            if need_free.contains(&t) {
-                return;
-            }
-            need_free.push(t.clone());
-            temps.push((t, out_shape(f, op).unwrap_or_else(|| vec![1])));
+        // **算子的输出**和**函数调用的输出**都可能是局部数组 ——
+        // 只收集前者会让后者的名字从未声明，生成的 C 直接编不过
+        // （真实工程里 "B = getbase(Y)" 这种中间变量到处都是）。
+        let (lhs, shape) = match s {
+            Stmt::Op(op) => (op.lhs.clone(), out_shape(f, op).unwrap_or_else(|| vec![1])),
+            Stmt::Call { lhs, .. } => (lhs.clone(), vec![1]),
+            _ => return,
+        };
+        let is_arg = f.args.iter().any(|x| x.name == lhs);
+        let is_ret = f.rets.iter().any(|x| x.name == lhs);
+        if is_arg || is_ret {
+            return;
         }
+        let t = ident(&lhs);
+        if need_free.contains(&t) {
+            return;
+        }
+        need_free.push(t.clone());
+        temps.push((t, shape));
     });
     for (t, shape) in &temps {
         out.push(format!("    mlc_array {};", t));

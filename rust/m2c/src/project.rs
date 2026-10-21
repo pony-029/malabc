@@ -58,11 +58,11 @@ fn drivable(f: &Func) -> bool {
 const FIXTURE_C: &str = r#"/* 夹具：按**参数名**给值，例如  x = 10 20 30  */
 #define M2C_MAX_NAMES 8
 #define M2C_MAX_VALS 32
-typedef struct { char name[64]; double vals[M2C_MAX_VALS]; int n; } m2c_fix;
-static m2c_fix m2c_fx[M2C_MAX_NAMES];
-static int m2c_nfx = 0;
+typedef struct { char name[64]; double vals[M2C_MAX_VALS]; int n; } m2c_rt_fix;
+static m2c_rt_fix m2c_rt_fx[M2C_MAX_NAMES];
+static int m2c_rt_nfx = 0;
 
-static void m2c_load(const char *path) {
+static void m2c_rt_load(const char *path) {
     FILE *fp = fopen(path, "r");
     char line[1024];
     if (fp == NULL) {
@@ -75,13 +75,13 @@ static void m2c_load(const char *path) {
         int k = 0;
         while (*p == ' ' || *p == '\t') ++p;
         if (*p == '#' || *p == '\0' || *p == '\r' || *p == '\n') continue;
-        if (m2c_nfx >= M2C_MAX_NAMES) break;
-        nm = m2c_fx[m2c_nfx].name;
+        if (m2c_rt_nfx >= M2C_MAX_NAMES) break;
+        nm = m2c_rt_fx[m2c_rt_nfx].name;
         while (*p && *p != '=' && *p != ':' && k < 63) nm[k++] = *p++;
         while (k > 0 && (nm[k - 1] == ' ' || nm[k - 1] == '\t')) --k;
         nm[k] = '\0';
         if (*p == '=' || *p == ':') ++p;
-        m2c_fx[m2c_nfx].n = 0;
+        m2c_rt_fx[m2c_rt_nfx].n = 0;
         for (;;) {
             char *end = NULL;
             double v;
@@ -89,22 +89,22 @@ static void m2c_load(const char *path) {
             if (*p == '\0' || *p == '\r' || *p == '\n') break;
             v = strtod(p, &end);
             if (end == p) break;
-            if (m2c_fx[m2c_nfx].n < M2C_MAX_VALS) {
-                m2c_fx[m2c_nfx].vals[m2c_fx[m2c_nfx].n++] = v;
+            if (m2c_rt_fx[m2c_rt_nfx].n < M2C_MAX_VALS) {
+                m2c_rt_fx[m2c_rt_nfx].vals[m2c_rt_fx[m2c_rt_nfx].n++] = v;
             }
             p = end;
         }
-        ++m2c_nfx;
+        ++m2c_rt_nfx;
     }
     fclose(fp);
 }
 
 /* 返回该名字的值个数（0 = 没给）。 */
-static int m2c_get(const char *name, double *out, int max) {
+static int m2c_rt_get(const char *name, double *out, int max) {
     int i, k;
-    for (i = 0; i < m2c_nfx; ++i) {
-        if (strcmp(m2c_fx[i].name, name) == 0) {
-            for (k = 0; k < m2c_fx[i].n && k < max; ++k) out[k] = m2c_fx[i].vals[k];
+    for (i = 0; i < m2c_rt_nfx; ++i) {
+        if (strcmp(m2c_rt_fx[i].name, name) == 0) {
+            for (k = 0; k < m2c_rt_fx[i].n && k < max; ++k) out[k] = m2c_rt_fx[i].vals[k];
             return k;
         }
     }
@@ -122,7 +122,7 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
     out.push("#include <string.h>".to_string());
     out.push(String::new());
     out.push(FIXTURE_C.to_string());
-    out.push("static void m2c_print(const mlc_array *a) {".to_string());
+    out.push("static void m2c_rt_print(const mlc_array *a) {".to_string());
     out.push("    int64_t n = mlc_array_numel(a);".to_string());
     out.push("    for (int64_t i = 0; i < n; ++i) {".to_string());
     out.push("        printf(\" %.10g\", ((const double *)a->data)[i]);".to_string());
@@ -132,7 +132,7 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
     // 逐函数跑 → 抽成函数，main 才能对**多个夹具**各跑一遍
     out.push("static double vals[M2C_MAX_VALS];".to_string());
     out.push(String::new());
-    out.push("static int m2c_run_all(void) {".to_string());
+    out.push("static int m2c_rt_run_all(void) {".to_string());
 
     for f in funcs {
         if !drivable(f) {
@@ -159,7 +159,7 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
             shape_lit
         ));
         out.push(format!(
-            "        int got_{} = m2c_get(\"{}\", vals, M2C_MAX_VALS);",
+            "        int got_{} = m2c_rt_get(\"{}\", vals, M2C_MAX_VALS);",
             an, arr.name
         ));
         out.push(format!(
@@ -174,7 +174,7 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
         for s in f.args.iter().filter(|a| a.dtype == "i64") {
             let sn = ident(&s.name);
             out.push(format!(
-                "        int got_{0} = m2c_get(\"{1}\", vals, M2C_MAX_VALS);",
+                "        int got_{0} = m2c_rt_get(\"{1}\", vals, M2C_MAX_VALS);",
                 sn, s.name
             ));
             out.push(format!(
@@ -192,7 +192,7 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
                 "        if (mlc_array_init(&{}, {}, {}, (int64_t[]){{{}}}) != MLC_OK) {{ return 1; }}",
                 en, dt, extra.shape.len(), edims.join(", ")));
             out.push(format!(
-                "        int got_{0} = m2c_get(\"{1}\", vals, M2C_MAX_VALS);",
+                "        int got_{0} = m2c_rt_get(\"{1}\", vals, M2C_MAX_VALS);",
                 en, extra.name));
             out.push(format!(
                 "        for (int64_t i = 0; i < mlc_array_numel(&{}); ++i) {{", en));
@@ -203,7 +203,7 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
         }
         let mut ret_names: Vec<String> = Vec::new();
         for r in &f.rets {
-            let rn = ident(&r.name);
+            let rn = crate::emit::ret_cname(f, &r.name);
             if crate::emit::ret_is_dynamic(f, &r.name) {
                 // 长度数据相关：算子自己分配；零初始化以保证 free 安全
                 out.push(format!("        mlc_array {} = {{0}};", rn));
@@ -236,7 +236,7 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
             if k > 0 {
                 out.push("            printf(\" |\");".to_string());
             }
-            out.push(format!("            m2c_print(&{});", rn));
+            out.push(format!("            m2c_rt_print(&{});", rn));
         }
         out.push("            printf(\"\\n\");".to_string());
         out.push("        }".to_string());
@@ -253,13 +253,13 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
     out.push(String::new());
     out.push("int main(int argc, char **argv) {".to_string());
     out.push("    if (argc <= 1) {".to_string());
-    out.push("        return m2c_run_all();   /* 无夹具：默认输入 a[i]=i+1 */".to_string());
+    out.push("        return m2c_rt_run_all();   /* 无夹具：默认输入 a[i]=i+1 */".to_string());
     out.push("    }".to_string());
     out.push("    for (int fi = 1; fi < argc; ++fi) {".to_string());
     out.push("        if (argc > 2) printf(\"=== %s\\n\", argv[fi]);".to_string());
-    out.push("        m2c_nfx = 0;            /* 每个夹具重新开始 */".to_string());
-    out.push("        m2c_load(argv[fi]);".to_string());
-    out.push("        int rc = m2c_run_all();".to_string());
+    out.push("        m2c_rt_nfx = 0;            /* 每个夹具重新开始 */".to_string());
+    out.push("        m2c_rt_load(argv[fi]);".to_string());
+    out.push("        int rc = m2c_rt_run_all();".to_string());
     out.push("        if (rc != 0) return rc;".to_string());
     out.push("    }".to_string());
     out.push("    return 0;".to_string());
@@ -451,9 +451,9 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
     out.push("#include <stdio.h>".to_string());
     out.push("#include <string.h>".to_string());
     out.push(String::new());
-    out.push("static int m2c_fail = 0;".to_string());
+    out.push("static int m2c_rt_fail = 0;".to_string());
     out.push(String::new());
-    out.push("static void m2c_check(const char *cname, const char *fname,".to_string());
+    out.push("static void m2c_rt_check(const char *cname, const char *fname,".to_string());
     out.push("                      const mlc_array *a, const char *want,".to_string());
     out.push("                      int64_t want_n) {".to_string());
     out.push("    /* 先比长度：动态形状下「长度对但内容错」与「长度就错」要分开报 */".to_string());
@@ -461,7 +461,7 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
     out.push("        printf(\"FAIL [%s] %s: 元素个数 %lld，期望 %lld\\n\",".to_string());
     out.push("               cname, fname, (long long)mlc_array_numel(a),".to_string());
     out.push("               (long long)want_n);".to_string());
-    out.push("        m2c_fail = 1;".to_string());
+    out.push("        m2c_rt_fail = 1;".to_string());
     out.push("        return;".to_string());
     out.push("    }".to_string());
     out.push("    char got[512];".to_string());
@@ -478,7 +478,7 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
     out.push("    if (strcmp(trimmed, want) != 0) {".to_string());
     out.push("        printf(\"FAIL [%s] %s: got[%s] want[%s]\\n\",".to_string());
     out.push("               cname, fname, trimmed, want);".to_string());
-    out.push("        m2c_fail = 1;".to_string());
+    out.push("        m2c_rt_fail = 1;".to_string());
     out.push("    } else {".to_string());
     out.push("        printf(\"ok   [%s] %s:%s\\n\", cname, fname, trimmed);".to_string());
     out.push("    }".to_string());
@@ -564,7 +564,7 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
             }
             let mut rets: Vec<String> = Vec::new();
             for r in &f.rets {
-                let rn = ident(&r.name);
+                let rn = crate::emit::ret_cname(f, &r.name);
                 if crate::emit::ret_is_dynamic(f, &r.name) {
                     out.push(format!("        mlc_array {} = {{0}};", rn));
                 } else {
@@ -586,7 +586,7 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
             // 被静默跳过 —— 负面判据从没被执行过。
             let fname_c = ident(&f.name);
             let stv = format!("st_{}", fname_c);
-            // C 侧 main 里没有 `cname` 变量（它只是 m2c_check 的形参），
+            // C 侧 main 里没有 `cname` 变量（它只是 m2c_rt_check 的形参），
             // 这里要写**字符串字面量**。
             let clit = format!("\"{}\"", cname);
             let status_checks: Option<Vec<String>> = if want == "unimplemented" {
@@ -595,7 +595,7 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
                     format!("            printf(\"FAIL [%s] {0}: 期望 unimplemented，实得 %d\\n\",",
                             f.name),
                     format!("                   {1}, (int){0});", stv, clit),
-                    "            m2c_fail = 1;".to_string(),
+                    "            m2c_rt_fail = 1;".to_string(),
                     "        } else {".to_string(),
                     format!("            printf(\"ok   [%s] {0}: unimplemented\\n\", {1});",
                             f.name, clit),
@@ -606,7 +606,7 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
                     format!("        if ({0} == MLC_OK) {{", stv),
                     format!("            printf(\"FAIL [%s] {0}: 期望失败但成功了\\n\", {1});",
                             f.name, clit),
-                    "            m2c_fail = 1;".to_string(),
+                    "            m2c_rt_fail = 1;".to_string(),
                     "        } else {".to_string(),
                     format!("            printf(\"ok   [%s] {0}: error\\n\", {1});",
                             f.name, clit),
@@ -620,7 +620,7 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
             } else if parts.len() == rets.len() && !want.is_empty() {
                 for (k, rn) in rets.iter().enumerate() {
                     out.push(format!(
-                        "        if (st_{} == MLC_OK) m2c_check(\"{}\", \"{}.{}\", &{}, \"{}\", {});",
+                        "        if (st_{} == MLC_OK) m2c_rt_check(\"{}\", \"{}.{}\", &{}, \"{}\", {});",
                         ident(&f.name), cname, f.name, f.rets[k].name, rn,
                         parts[k].replace('\\', "\\\\").replace('"', "\\\""),
                         parts[k].split_whitespace().count() as i64));
@@ -634,7 +634,7 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
             // 于是"把 unimplemented 写成数字"这种错期望仍然是绿的。
             if want != "unimplemented" && want != "error" && !want.is_empty() {
                 out.push(format!(
-                    "        if (st_{0} != MLC_OK) {{ printf(\"FAIL [%s] {1}: 期望数值，实得状态 %d\\n\", {2}, (int)st_{0}); m2c_fail = 1; }}",
+                    "        if (st_{0} != MLC_OK) {{ printf(\"FAIL [%s] {1}: 期望数值，实得状态 %d\\n\", {2}, (int)st_{0}); m2c_rt_fail = 1; }}",
                     ident(&f.name), f.name, clit));
             }
             out.push(format!("        (void)st_{};", ident(&f.name)));
@@ -645,7 +645,7 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
             out.push("    }".to_string());
         }
     }
-    out.push("    return m2c_fail;".to_string());
+    out.push("    return m2c_rt_fail;".to_string());
     out.push("}".to_string());
     out.join("\n")
 }
