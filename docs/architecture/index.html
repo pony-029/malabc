@@ -15,24 +15,51 @@
   h2 { font-size:18px; margin:32px 0 12px; color:var(--accent); }
   .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; }
   a.card { display:block; padding:16px 18px; background:var(--panel); border:1px solid var(--line);
-           border-radius:12px; text-decoration:none; color:var(--text); transition:border-color .15s, transform .15s; }
+          border-radius:12px; text-decoration:none; color:var(--text); transition:border-color .15s, transform .15s; }
   a.card:hover { border-color:var(--accent); transform:translateY(-1px); }
+  a.card[hidden] { display:none; }
   .tag { display:inline-block; font-size:12px; color:var(--muted); border:1px solid var(--line);
-         border-radius:999px; padding:1px 8px; margin-left:8px; }
+        border-radius:999px; padding:1px 8px; margin-left:8px; }
   .desc { color:var(--muted); font-size:13px; margin-top:6px; }
   footer { max-width:1200px; margin:0 auto; padding:0 24px 48px; color:var(--muted); font-size:13px; }
   code { color:var(--accent); }
+  .toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:18px 0 6px; }
+  #q { flex:1 1 280px; min-width:220px; padding:10px 14px; border-radius:10px; border:1px solid var(--line);
+       background:var(--panel); color:var(--text); font:inherit; outline:none; }
+  #q:focus { border-color:var(--accent); }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chips button { padding:6px 12px; border-radius:999px; border:1px solid var(--line);
+                  background:transparent; color:var(--muted); font:inherit; font-size:13px; cursor:pointer; }
+  .chips button[aria-pressed="true"] { border-color:var(--accent); color:var(--accent); }
+  #count { color:var(--muted); font-size:13px; margin-left:auto; }
+  #none { color:var(--muted); padding:18px 0; }
+  kbd { border:1px solid var(--line); border-bottom-width:2px; border-radius:4px; padding:0 5px; font-size:12px; }
 </style>
 </head>
 <body>
 <header>
   <h1>malabc 架构图</h1>
-  <p class="sub">总框架 + 11 个模块 · 12 张可交互图 · 源文件在 <code>candidates/</code>，产物在 <code>html/</code></p>
+  <p class="sub">总框架 + 11 个模块 + 数据流 + 时序 · 14 张可交互图 · 源文件在 <code>candidates/</code>，产物在 <code>html/</code></p>
 </header>
 <main>
+  <div class="toolbar">
+    <input id="q" type="search" placeholder="搜索图名、类型或说明…（按 / 聚焦，Esc 清空）" aria-label="搜索架构图">
+    <div class="chips" role="group" aria-label="按类型过滤">
+      <button type="button" data-filter="all" aria-pressed="true">全部</button>
+      <button type="button" data-filter="architecture" aria-pressed="false">architecture</button>
+      <button type="button" data-filter="workflow" aria-pressed="false">workflow</button>
+      <button type="button" data-filter="lifecycle" aria-pressed="false">lifecycle</button>
+      <button type="button" data-filter="dataflow" aria-pressed="false">dataflow</button>
+      <button type="button" data-filter="sequence" aria-pressed="false">sequence</button>
+      <button type="button" data-filter="mermaid" aria-pressed="false">mermaid</button>
+    </div>
+    <span id="count" aria-live="polite"></span>
+  </div>
+
   <h2>总框架</h2>
   <div class="grid">
-    <a class="card" href="html/00-overall.html">
+    <a class="card" href="html/00-overall.html" data-type="architecture"
+       data-search="00 总框架 architecture 入口 输入 前端 模型 分析 输出 闭环 移植 二进制 门禁">
       <strong>00 总框架</strong><span class="tag">architecture</span>
       <div class="desc">入口/输入 → 前端/模型 → 分析 → 输出；闭环、移植、二进制、门禁四条支线。</div>
     </a>
@@ -40,21 +67,132 @@
 
   <h2>模块</h2>
   <div class="grid">
-    <a class="card" href="html/01-entry.html"><strong>01 入口与 CLI</strong><span class="tag">workflow</span><div class="desc">一条命令如何走到分析内核；退出码契约。</div></a>
-    <a class="card" href="html/02-matlab-frontend.html"><strong>02 MATLAB 前端</strong><span class="tag">workflow</span><div class="desc">清洗 → 解析 → 模型 → 调用边；unresolved 唯一判定点。</div></a>
-    <a class="card" href="html/03-multilang-ir.html"><strong>03 多语言前端 + IR</strong><span class="tag">workflow</span><div class="desc">C/Py/JS/asm 归因；IR 只保留一个判定点。</div></a>
-    <a class="card" href="html/04-analysis.html"><strong>04 分析引擎</strong><span class="tag">architecture</span><div class="desc">调用图/影响面/依赖/污点/维度/检查共享同一份模型。</div></a>
-    <a class="card" href="html/05-render.html"><strong>05 渲染与输出</strong><span class="tag">workflow</span><div class="desc">一份模型出五种出口：报告/站点/JSON/SARIF/补丁。</div></a>
-    <a class="card" href="html/06-lsp.html"><strong>06 LSP 与 VS Code</strong><span class="tag">architecture</span><div class="desc">扩展 → 零 npm 客户端 → 服务端 → analyzer；大纲兜底。</div></a>
-    <a class="card" href="html/07-ai-mcp.html"><strong>07 AI 与 MCP</strong><span class="tag">architecture</span><div class="desc">MCP 工具、自然语言问答、LLM 修复源、跨运行记忆。</div></a>
-    <a class="card" href="html/08-fix-loop.html"><strong>08 修复闭环</strong><span class="tag">lifecycle</span><div class="desc">验证通过才接受；失败必回退；人工复核门 exit 3。</div></a>
-    <a class="card" href="html/09-gates.html"><strong>09 门禁与 CI</strong><span class="tag">workflow</span><div class="desc">39 道门如何被组织、增量、发版与进 CI。</div></a>
-    <a class="card" href="html/10-porting.html"><strong>10 MATLAB→C 移植</strong><span class="tag">architecture</span><div class="desc">契约/算子/保真/台账；9 个算子 C 真编译 verified。</div></a>
-    <a class="card" href="html/11-binary.html"><strong>11 二进制分析</strong><span class="tag">architecture</span><div class="desc">PE/ELF/Mach-O/GPU 只读元数据，回答“名字归谁”。</div></a>
+    <a class="card" href="html/01-entry.html" data-type="workflow"
+       data-search="01 入口 cli workflow 命令 分析内核 退出码">
+      <strong>01 入口与 CLI</strong><span class="tag">workflow</span>
+      <div class="desc">一条命令如何走到分析内核；退出码契约。</div>
+    </a>
+    <a class="card" href="html/02-matlab-frontend.html" data-type="workflow"
+       data-search="02 matlab 前端 workflow 清洗 解析 模型 调用边 unresolved">
+      <strong>02 MATLAB 前端</strong><span class="tag">workflow</span>
+      <div class="desc">清洗 → 解析 → 模型 → 调用边；unresolved 唯一判定点。</div>
+    </a>
+    <a class="card" href="html/03-multilang-ir.html" data-type="workflow"
+       data-search="03 多语言 ir workflow c py js asm 归因">
+      <strong>03 多语言前端 + IR</strong><span class="tag">workflow</span>
+      <div class="desc">C/Py/JS/asm 归因；IR 只保留一个判定点。</div>
+    </a>
+    <a class="card" href="html/04-analysis.html" data-type="architecture"
+       data-search="04 分析引擎 architecture 调用图 影响面 依赖 污点 维度 检查">
+      <strong>04 分析引擎</strong><span class="tag">architecture</span>
+      <div class="desc">调用图/影响面/依赖/污点/维度/检查共享同一份模型。</div>
+    </a>
+    <a class="card" href="html/05-render.html" data-type="workflow"
+       data-search="05 渲染 输出 workflow 报告 站点 json sarif 补丁">
+      <strong>05 渲染与输出</strong><span class="tag">workflow</span>
+      <div class="desc">一份模型出五种出口：报告/站点/JSON/SARIF/补丁。</div>
+    </a>
+    <a class="card" href="html/06-lsp.html" data-type="architecture"
+       data-search="06 lsp vscode architecture 扩展 客户端 服务端 analyzer 大纲">
+      <strong>06 LSP 与 VS Code</strong><span class="tag">architecture</span>
+      <div class="desc">扩展 → 零 npm 客户端 → 服务端 → analyzer；大纲兜底。</div>
+    </a>
+    <a class="card" href="html/07-ai-mcp.html" data-type="architecture"
+       data-search="07 ai mcp architecture 工具 问答 llm 修复 记忆">
+      <strong>07 AI 与 MCP</strong><span class="tag">architecture</span>
+      <div class="desc">MCP 工具、自然语言问答、LLM 修复源、跨运行记忆。</div>
+    </a>
+    <a class="card" href="html/08-fix-loop.html" data-type="lifecycle"
+       data-search="08 修复闭环 lifecycle 验证 回退 复核 记忆">
+      <strong>08 修复闭环</strong><span class="tag">lifecycle</span>
+      <div class="desc">验证通过才接受；失败必回退；人工复核门 exit 3。</div>
+    </a>
+    <a class="card" href="html/09-gates.html" data-type="workflow"
+       data-search="09 门禁 ci workflow 39 道门 增量 发版">
+      <strong>09 门禁与 CI</strong><span class="tag">workflow</span>
+      <div class="desc">39 道门如何被组织、增量、发版与进 CI。</div>
+    </a>
+    <a class="card" href="html/10-porting.html" data-type="architecture"
+       data-search="10 matlab c 移植 architecture 契约 算子 保真 台账">
+      <strong>10 MATLAB→C 移植</strong><span class="tag">architecture</span>
+      <div class="desc">契约/算子/保真/台账；9 个算子 C 真编译 verified。</div>
+    </a>
+    <a class="card" href="html/11-binary.html" data-type="architecture"
+       data-search="11 二进制 analysis architecture pe elf mach-o gpu 归属">
+      <strong>11 二进制分析</strong><span class="tag">architecture</span>
+      <div class="desc">PE/ELF/Mach-O/GPU 只读元数据，回答“名字归谁”。</div>
+    </a>
   </div>
+
+  <h2>数据流 / 时序 / 模块边界</h2>
+  <div class="grid">
+    <a class="card" href="html/12-dataflow.html" data-type="dataflow"
+       data-search="12 数据流 dataflow 输入 前端 模型 消费 出口">
+      <strong>12 数据流</strong><span class="tag">dataflow</span>
+      <div class="desc">三类输入 → 三列前端 → 模型/图/事实 → 三种消费。</div>
+    </a>
+    <a class="card" href="html/13-sequence.html" data-type="sequence"
+       data-search="13 时序 sequence lsp initialize documentsymbol 大纲 800ms 兜底">
+      <strong>13 一次 LSP 请求</strong><span class="tag">sequence</span>
+      <div class="desc">打开文件 → documentSymbol → 大纲；800ms 超时切本地兜底。</div>
+    </a>
+    <a class="card" href="MODULE_GRAPH.md" data-type="mermaid"
+       data-search="14 模块边界 module graph mermaid import core renderers frontends">
+      <strong>14 模块边界（Mermaid）</strong><span class="tag">mermaid</span>
+      <div class="desc">从 check_import_graph 的模块级边现算：core→renderers 14 条、core→frontends 3 条。</div>
+    </a>
+  </div>
+  <p id="none" hidden>没有匹配的图。清空搜索或点“全部”。</p>
 </main>
 <footer>
   生成：<code>D:\work\rea\archify</code>（validate / render / check）· 说明见 <code>README.md</code>
 </footer>
+<script>
+(function () {
+  var q = document.getElementById('q');
+  var cards = Array.prototype.slice.call(document.querySelectorAll('a.card'));
+  var chips = Array.prototype.slice.call(document.querySelectorAll('button[data-filter]'));
+  var count = document.getElementById('count');
+  var none = document.getElementById('none');
+  var active = 'all';
+  function apply() {
+    var term = (q.value || '').trim().toLowerCase();
+    var shown = 0;
+    cards.forEach(function (c) {
+      var okType = active === 'all' || c.getAttribute('data-type') === active;
+      var hay = (c.getAttribute('data-search') || c.textContent || '').toLowerCase();
+      var ok = okType && (!term || hay.indexOf(term) >= 0);
+      c.hidden = !ok;
+      if (ok) { shown += 1; }
+    });
+    chips.forEach(function (b) {
+      b.setAttribute('aria-pressed',
+        b.getAttribute('data-filter') === active ? 'true' : 'false');
+    });
+    count.textContent = shown + ' / ' + cards.length;
+    none.hidden = shown !== 0;
+  }
+  q.addEventListener('input', apply);
+  chips.forEach(function (b) {
+    b.addEventListener('click', function () {
+      active = b.getAttribute('data-filter');
+      apply();
+    });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === '/' && document.activeElement !== q) {
+      e.preventDefault(); q.focus();
+    }
+    if (e.key === 'Escape') {
+      q.value = ''; active = 'all'; apply(); q.blur();
+    }
+  });
+  var m = /[?&]q=([^&]+)/.exec(location.search);
+  if (m) { q.value = decodeURIComponent(m[1].replace(/\+/g, ' ')); }
+  var t = /[?&]type=([^&]+)/.exec(location.search);
+  if (t) { active = decodeURIComponent(t[1]); }
+  apply();
+})();
+</script>
 </body>
 </html>

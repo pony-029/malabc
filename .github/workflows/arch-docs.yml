@@ -46,6 +46,9 @@ jobs:
       - name: English SVG presence
         run: python tools/build_arch_svg_en.py --check
 
+      - name: Module boundary graph freshness
+        run: python tools/build_module_graph.py --check
+
       - name: README parity (EN/CN)
         run: python tools/check_readme_parity.py
 

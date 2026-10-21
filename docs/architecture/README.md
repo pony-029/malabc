@@ -36,6 +36,10 @@
 **英文版**：`en/svg/<id>.svg`（14 张，英文标签；由 `tools/build_arch_svg_en.py`
 构建，说明见 [`en/README.md`](en/README.md)）；英文 README 使用 `en/svg/00-overall.svg`。
 
+**一页式导览**：[`../ARCHITECTURE_MAP.md`](../ARCHITECTURE_MAP.md)（按模块嵌入 14 张图）；
+**模块边界**：[`MODULE_GRAPH.md`](MODULE_GRAPH.md)（Mermaid，边由 import graph 现算）；
+**评审清单**：[`REVIEW_CHECKLIST.md`](REVIEW_CHECKLIST.md)（新增/修改/删除各要过哪些门）。
+
 ---
 
 ## 2. 逐模块说明
@@ -203,8 +207,8 @@ python tools/build_arch_svg_en.py
 python tools/arch_compare.py --id 00-overall
 ```
 
-> 纯 Python 快跑门在 `.github/workflows/arch-docs.yml`：AD1–AD7、SVG 哈希清单、
-> 英文 SVG 存在性、中英 README 对等、行尾约定；不依赖 archify/Node。
+> 纯 Python 快跑门在 `.github/workflows/arch-docs.yml`：AD1–AD8、SVG 哈希清单、
+> 英文 SVG 存在性、模块边界图新鲜度、中英 README 对等、行尾约定；不依赖 archify/Node。
 
 类型映射：
 
@@ -228,12 +232,14 @@ python tools/arch_compare.py --id 00-overall
 | 独立 SVG（14 个） | **14/14 XML 解析通过**；CSS 裁剪到 **4–5 KB**（丢弃 @font-face，靠系统等宽兜底） |
 | SVG 渲染烟测 | `00-overall` 1444×744 **3585 色 / 40.89% 非白**；`12-dataflow` 980×520 **4430 色 / 57.57%**；`13-sequence` 1020×700 **3752 色 / 63.04%** |
 | SVG 体积 | **3.7 MB → 353 KB**（约 10.5×，单张 17–41 KB） |
-| 架构文档门 | `python tools/check_architecture_docs.py` → **OK（AD1–AD7）** |
+| 架构文档门 | `python tools/check_architecture_docs.py` → **OK（AD1–AD8）** |
 | 离线版式（AD6） | 14/14：viewBox（dataflow/sequence）、id 唯一、连线端点已知、sequence y≥160 且间距≥28、标签长度 |
 | 责任人（AD7） | 13 个关键模块全部有 `.github/CODEOWNERS` 负责人，owner 均为 `@pony-029` |
 | 图片路径（AD3） | 根 README 的本地图片全部存在；总框架中文/英文各嵌各的图 |
 | 陈旧门 | `python tools/export_arch_svg.py --check` → **OK（14 条清单与 candidate/html/svg 一致）** |
-| 快跑 CI | `.github/workflows/arch-docs.yml`（AD1–AD7 + 清单 + 英文 SVG + README 对等 + 行尾）；YAML 可解析：1 job / 7 steps |
+| 快跑 CI | `.github/workflows/arch-docs.yml`（AD1–AD8 + 清单 + 英文 SVG + 模块图 + README 对等 + 行尾）；YAML 可解析：1 job / 8 steps |
+| 模块边界（R16） | `python tools/build_module_graph.py` → 57 个运行时模块 / 20 条跨组边；`--check` 可复现 |
+| 索引搜索（R14） | Chrome `?q=sequence` → 15 卡片中仅 1 张可见；`?q=no-such` → 0 张 + “无结果” |
 | 版式差异（R13） | `python tools/arch_compare.py --id 00-overall --head <changed>` → delta HTML **2,163,473 B** + receipt **2,022 B** |
 | 根 README | 中英两份都链接 `docs/architecture/index.html`；中文用 `svg/00-overall.svg`，英文用 `en/svg/00-overall.svg` |
 | `.html` / `.svg` 行尾 | **LF**（`00-overall.html` CRLF=0；SVG 由导出器按 LF 写） |

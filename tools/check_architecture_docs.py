@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""架构文档一致性门（AD1–AD7）。
+"""架构文档一致性门（AD1–AD8）。
 
 判据族：
     AD1  索引形状：`FLOW_INDEX.json` 的 version/items/id/type/title 齐全且唯一。
@@ -17,13 +17,15 @@
          段/激活区间不越界、标签不过长。
     AD7  责任人：`.github/CODEOWNERS` 必须覆盖架构文档列出的关键模块，
          且每个 owner 都以 `@` 开头。
+    AD8  中英一致：每张图必须有 `en/candidates/<id>.json`；两者的
+         节点 id、连线端点、节点/连线/消息计数必须一致；英文版**不得残留中文**。
 
 为什么需要它：架构图是**生成物**，最容易出现的缺陷不是“画错”，而是
 “改了 candidate 没重渲染 / 渲染了没登记 / 嵌了图但路径写错”——这三种
 在 git diff 里都只是几行，靠人看不住。
 
 退出码：
-    0  = AD1–AD7 全绿
+    0  = AD1–AD8 全绿
     1  = 有架构文档不一致
     2  = 缺输入（找不到 docs/architecture 或根 README）
 """
@@ -38,7 +40,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 #: P5 的对手方：本门在 README 质量门表那一行里声明的判据族。
-ROW_SIGNATURE = "AD1–AD7"
+ROW_SIGNATURE = "AD1–AD8"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -47,6 +49,8 @@ INDEX = os.path.join(ARCH, "FLOW_INDEX.json")
 MANIFEST = os.path.join(ARCH, "svg", "MANIFEST.json")
 ARCH_README = os.path.join(ARCH, "README.md")
 CODEOWNERS = os.path.join(ROOT, ".github", "CODEOWNERS")
+MODULE_DOC = os.path.join(ROOT, "docs", "ARCHITECTURE_MAP.md")
+CHECKLIST = os.path.join(ARCH, "REVIEW_CHECKLIST.md")
 ROOT_READMES = (os.path.join(ROOT, "README.md"),
                 os.path.join(ROOT, "README_CN.md"))
 TYPES = ("architecture", "workflow", "lifecycle", "sequence", "dataflow")
@@ -220,8 +224,75 @@ def _codeowners_problems(path):
     return probs
 
 
+def _structure(cj):
+    nodes = (cj.get("components") or cj.get("nodes")
+             or cj.get("participants") or cj.get("states") or [])
+    edges = (cj.get("connections") or cj.get("edges")
+             or cj.get("transitions") or cj.get("flows") or [])
+    msgs = cj.get("messages") or []
+    pairs = set()
+    for e in edges:
+        pairs.add((e.get("from"), e.get("to")))
+    for m in msgs:
+        pairs.add((m.get("from"), m.get("to")))
+    return {
+        "type": cj.get("diagram_type"),
+        "ids": set(n.get("id") for n in nodes if n.get("id")),
+        "pairs": pairs,
+        "n_nodes": len(nodes),
+        "n_edges": len(edges),
+        "n_msgs": len(msgs),
+    }
+
+
+def _strings(obj, out):
+    if isinstance(obj, dict):
+        for v in obj.values():
+            _strings(v, out)
+    elif isinstance(obj, list):
+        for v in obj:
+            _strings(v, out)
+    elif isinstance(obj, str):
+        out.append(obj)
+
+
+def _label_problems(iid, zh, en):
+    """AD8：英文版与中文版结构一致，且不残留中文。"""
+    probs = []
+    a, b = _structure(zh), _structure(en)
+    if a["type"] != b["type"]:
+        probs.append("AD8 %s 的 diagram_type 不一致：%r != %r"
+                     % (iid, a["type"], b["type"]))
+    if a["ids"] != b["ids"]:
+        probs.append("AD8 %s 节点 id 不一致：zh-en=%r en-zh=%r"
+                     % (iid, sorted(a["ids"] - b["ids"]),
+                        sorted(b["ids"] - a["ids"])))
+    if a["pairs"] != b["pairs"]:
+        probs.append("AD8 %s 连线端点不一致：zh-en=%r en-zh=%r"
+                     % (iid, sorted(a["pairs"] - b["pairs"]),
+                        sorted(b["pairs"] - a["pairs"])))
+    for key, label in (("n_nodes", "节点"), ("n_edges", "连线"),
+                       ("n_msgs", "消息")):
+        if a[key] != b[key]:
+            probs.append("AD8 %s 的%s数不一致：%d != %d"
+                         % (iid, label, a[key], b[key]))
+    strings = []
+    _strings(en, strings)
+    for s in strings:
+        if re.search(r"[\u4e00-\u9fff]", s):
+            probs.append("AD8 %s 英文版仍含中文：%s" % (iid, s[:40]))
+            break
+    for n in (en.get("components") or en.get("nodes")
+              or en.get("participants") or en.get("states") or []):
+        if not (n.get("label") or "").strip():
+            probs.append("AD8 %s 节点 %s 英文 label 为空"
+                         % (iid, n.get("id")))
+    return probs
+
+
 def check(index_path=None, arch_dir=None, arch_readme=None,
-          root_readmes=None, manifest_path=None, codeowners_path=None):
+          root_readmes=None, manifest_path=None, codeowners_path=None,
+          module_doc_path=None, checklist_path=None):
     """纯函数：返回问题列表；空 = 干净。参数可注入（自证用）。"""
     index_path = index_path or INDEX
     arch_dir = arch_dir or ARCH
@@ -230,6 +301,8 @@ def check(index_path=None, arch_dir=None, arch_readme=None,
     manifest_path = manifest_path or os.path.join(
         arch_dir, "svg", "MANIFEST.json")
     codeowners_path = codeowners_path or CODEOWNERS
+    module_doc_path = module_doc_path or MODULE_DOC
+    checklist_path = checklist_path or CHECKLIST
     if not os.path.isfile(index_path):
         return ["AD1 缺索引：%s" % index_path]
     try:
@@ -353,6 +426,17 @@ def check(index_path=None, arch_dir=None, arch_readme=None,
         except ValueError:
             continue
         probs.extend(_layout_problems(iid, typ, cj))
+        en_path = os.path.join(arch_dir, "en", "candidates", iid + ".json")
+        if not os.path.isfile(en_path):
+            probs.append("AD8 %s 缺英文 candidate：%s" % (iid, en_path))
+        else:
+            try:
+                ej = _load_json(en_path)
+            except ValueError as e:
+                probs.append("AD8 %s 的英文 candidate 非法 JSON：%s"
+                             % (iid, e))
+            else:
+                probs.extend(_label_problems(iid, cj, ej))
     # AD7：模块责任人
     probs.extend(_codeowners_problems(codeowners_path))
 
@@ -379,6 +463,38 @@ def check(index_path=None, arch_dir=None, arch_readme=None,
         if need not in txt:
             probs.append("AD3 %s 未嵌入总框架 SVG（%s）" % (rp, need))
         probs.extend(_missing_images(txt, os.path.dirname(rp)))
+
+    if not os.path.isfile(module_doc_path):
+        probs.append("AD3 缺模块图导览：%s" % module_doc_path)
+    else:
+        txt = _read(module_doc_path)
+        for need in ("architecture/svg/00-overall.svg",
+                     "architecture/svg/13-sequence.svg"):
+            if need not in txt:
+                probs.append("AD3 %s 未引用 %s" % (module_doc_path, need))
+        probs.extend(_missing_images(txt, os.path.dirname(module_doc_path)))
+
+    if not os.path.isfile(checklist_path):
+        probs.append("AD3 缺评审清单：%s" % checklist_path)
+    else:
+        txt = _read(checklist_path)
+        for need in ("FLOW_INDEX", "MANIFEST", "CODEOWNERS", "arch_compare"):
+            if need not in txt:
+                probs.append("AD3 评审清单未提到 %s" % need)
+
+    # 索引页与模块边界图：搜索框/过滤片/14 张入口/模块图入口都必须在。
+    for name, needles in (
+            ("index.html", ('id="q"', "data-filter", "MODULE_GRAPH.md",
+                            "html/13-sequence.html")),
+            ("MODULE_GRAPH.md", ("graph LR", "core -->"))):
+        path = os.path.join(arch_dir, name)
+        if not os.path.isfile(path):
+            probs.append("AD3 缺 %s" % path)
+            continue
+        txt = _read(path)
+        for n in needles:
+            if n not in txt:
+                probs.append("AD3 %s 缺 %r" % (path, n))
     return probs
 
 
@@ -422,6 +538,14 @@ def _selftest():
         SVG = ('<?xml version="1.0" encoding="UTF-8"?>\n'
                '<svg xmlns="http://www.w3.org/2000/svg"'
                ' viewBox="0 0 10 10"></svg>\n')
+        EN = json.dumps({
+            "diagram_type": "architecture",
+            "meta": {"title": "x", "viewBox": [800, 600], "locale": "en"},
+            "components": [{"id": "a", "label": "A"},
+                           {"id": "b", "label": "B"}],
+            "connections": [{"id": "ab", "from": "a", "to": "b"}]})
+        encand = os.path.join(arch, "en", "candidates", "00-overall.json")
+        _write(encand, EN)
         _write(cand, CAND)
         _write(html, "<html><body>ok</body></html>\n")
         _write(svg, SVG)
@@ -436,9 +560,24 @@ def _selftest():
         for ip in (os.path.join(tmp, "docs", "architecture", "en", "svg",
                                 "00-overall.svg"),
                    os.path.join(tmp, "docs", "architecture", "svg",
-                                "00-overall.svg")):
+                                "00-overall.svg"),
+                   os.path.join(tmp, "docs", "architecture", "svg",
+                                "13-sequence.svg")):
             _write(ip, '<?xml version="1.0"?>'
                        '<svg xmlns="http://www.w3.org/2000/svg"/>\n')
+        module_doc = os.path.join(tmp, "docs", "ARCHITECTURE_MAP.md")
+        _write(module_doc,
+               "![x](architecture/svg/00-overall.svg)\n"
+               "![y](architecture/svg/13-sequence.svg)\n")
+        checklist = os.path.join(arch, "REVIEW_CHECKLIST.md")
+        _write(checklist,
+               "FLOW_INDEX MANIFEST CODEOWNERS arch_compare\n")
+        index_html = os.path.join(arch, "index.html")
+        _write(index_html,
+               '<input id="q"><button data-filter="all"></button>\n'
+               "[g](MODULE_GRAPH.md)\n[13](html/13-sequence.html)\n")
+        module_graph = os.path.join(arch, "MODULE_GRAPH.md")
+        _write(module_graph, "```mermaid\ngraph LR\n  core -->|1| x\n```\n")
         _write(r_en, "![x](docs/architecture/en/svg/00-overall.svg)\n"
                      "[i](docs/architecture/index.html)\n")
         _write(r_cn, "![x](docs/architecture/svg/00-overall.svg)\n"
@@ -458,8 +597,20 @@ def _selftest():
         write_manifest()
         args = (os.path.join(arch, "FLOW_INDEX.json"), arch,
                 os.path.join(arch, "README.md"), (r_en, r_cn))
-        kw = {"codeowners_path": co}
+        kw = {"codeowners_path": co,
+              "module_doc_path": module_doc,
+              "checklist_path": checklist}
         chk(not check(*args, **kw), "好样本被误伤")
+        # AD8：英文版残留中文 / 缺节点
+        _write(encand, EN.replace('"label": "A"', '"label": "甲"'))
+        chk(bool(check(*args, **kw)), "AD8 英文残留中文未判红")
+        _write(encand, json.dumps({
+            "diagram_type": "architecture",
+            "meta": {"title": "x", "viewBox": [800, 600], "locale": "en"},
+            "components": [{"id": "a", "label": "A"}],
+            "connections": []}))
+        chk(bool(check(*args, **kw)), "AD8 英文缺节点未判红")
+        _write(encand, EN)
         # 坏样本 1：candidate 不存在
         os.remove(cand)
         chk(bool(check(*args, **kw)), "缺 candidate 未判红")
@@ -543,17 +694,33 @@ def _selftest():
         chk(bool(check(*args, **kw)), "AD3 图片 404 未判红")
         _write(r_cn, "![x](docs/architecture/svg/00-overall.svg)\n"
                      "[i](docs/architecture/index.html)\n")
+        # 坏样本 11：缺评审清单
+        os.remove(checklist)
+        chk(bool(check(*args, **kw)), "AD3 缺评审清单未判红")
+        _write(checklist, "FLOW_INDEX MANIFEST CODEOWNERS arch_compare\n")
+        # 坏样本 12：缺模块图导览
+        os.remove(module_doc)
+        chk(bool(check(*args, **kw)), "AD3 缺模块图导览未判红")
+        _write(module_doc,
+               "![x](architecture/svg/00-overall.svg)\n"
+               "![y](architecture/svg/13-sequence.svg)\n")
+        # 坏样本 13：索引页丢了搜索框
+        _write(index_html, "[g](MODULE_GRAPH.md)\n[13](html/13-sequence.html)\n")
+        chk(bool(check(*args, **kw)), "AD3 搜索框缺失未判红")
+        _write(index_html,
+               '<input id="q"><button data-filter="all"></button>\n'
+               "[g](MODULE_GRAPH.md)\n[13](html/13-sequence.html)\n")
         chk(not check(*args, **kw), "恢复后仍误伤")
     finally:
         import shutil
         shutil.rmtree(tmp, ignore_errors=True)
 
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad[0], good[0]))
-    return 0 if (bad[0] == 0 and good[0] >= 13) else 1
+    return 0 if (bad[0] == 0 and good[0] >= 19) else 1
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="架构文档一致性门（AD1–AD7）")
+    ap = argparse.ArgumentParser(description="架构文档一致性门（AD1–AD8）")
     ap.add_argument("--selftest", action="store_true", help="两向自证")
     args = ap.parse_args(argv)
     if args.selftest:
@@ -571,7 +738,7 @@ def main(argv=None):
             print("  - %s" % p)
         print("check_architecture_docs: %d 项不合规" % len(probs))
         return 1
-    print("check_architecture_docs: OK（AD1–AD7 全绿；"
+    print("check_architecture_docs: OK（AD1–AD8 全绿；"
           "索引 %d 条对账 candidate/html/svg；根 README 已嵌图）"
           % len(_load_json(INDEX).get("items") or []))
     return 0
