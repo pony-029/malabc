@@ -224,8 +224,8 @@ python tools/release_arch_check.py --check
 ```
 
 > 纯 Python 快跑门在 `.github/workflows/arch-docs.yml`：AD1–AD11、SVG 哈希清单、
-> 英文 SVG、模块边界图、归属表、版本快照、PNG 存在性、源码证据、中英 README 对等、
-> 行尾约定；不依赖 archify/Node。
+> 英文 SVG、模块边界图、归属表、版本快照、逐图版本、PNG 存在性、源码证据、评审记录、
+> 中英 README 对等、行尾约定；不依赖 archify/Node。
 
 ### 换一台电脑
 
@@ -266,7 +266,7 @@ python tools/release_arch_check.py --check
 | 责任人（AD7） | 13 个关键模块全部有 `.github/CODEOWNERS` 负责人，owner 均为 `@pony-029` |
 | 图片路径（AD3） | 根 README 的本地图片全部存在；总框架中文/英文各嵌各的图 |
 | 陈旧门 | `python tools/export_arch_svg.py --check` → **OK（14 条清单与 candidate/html/svg 一致）** |
-| 快跑 CI | `.github/workflows/arch-docs.yml`（AD1–AD11 + 清单 + 英文 SVG + 模块图 + 归属表 + 快照 + 版本记录 + PNG + 源码证据 + README 对等 + 行尾）；YAML 可解析：1 job / 13 steps |
+| 快跑 CI | `.github/workflows/arch-docs.yml`（AD1–AD11 + 清单 + 英文 SVG + 模块图 + 归属表 + 快照 + 版本记录 + PNG + 评审记录 + 源码证据 + README 对等 + 行尾）；YAML 可解析：1 job / 14 steps |
 | ADR（AD11） | **8 条**（含 ADR-008 评审记录）；14 张图挂 `adr`；`Status`/`Diagrams` 双向；无孤儿 |
 | 发布总闸（R32） | `release_arch_check.py --check` → 快照/版本/PNG/评审 **4/4 OK** |
 | PNG 阈值（R33） | 同尺寸改 0.04% 像素：`--max-ratio 0.0001` → **exit 1**；`0.5` → **exit 0** |
