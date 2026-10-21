@@ -56,6 +56,14 @@ OPERATORS = (
      "kind": "index", "rules": ("IDX-1", "ORDER-1"),
      "sample": "y = x(2);",
      "verified_by": "op_index_shift.json"},
+    {"id": "OP-FLATTEN", "matlab": "A(:)", "c": "mlc_op_flatten",
+     "kind": "layout", "rules": ("ORDER-1",),
+     "sample": "y = A(:);",
+     "verified_by": "op_flatten_2x2.json"},
+    {"id": "OP-MASK", "matlab": "x(x > k)", "c": "mlc_op_mask",
+     "kind": "select", "rules": ("IDX-1",),
+     "sample": "y = x(x > 1);",
+     "verified_by": "op_mask_gt.json"},
     {"id": "OP-SLICE", "matlab": "x(a:b)", "c": "mlc_op_slice",
      "kind": "slice", "rules": ("IDX-1", "ORDER-1"),
      "sample": "y = x(1:2);",
@@ -76,7 +84,8 @@ OPERATORS = (
 #: 由 translate/mir.py 在知道 shape 之后决定是否升级成 OP-MATMUL。
 C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV",
                  "OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN", "OP-INDEX",
-                 "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE")
+                 "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE",
+                 "OP-FLATTEN", "OP-MASK")
 
 _ASSIGN_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*(.+?)\s*;\s*$")
 _BIN_RE = re.compile(r"^([A-Za-z_]\w*)\s*(\.\*|\./|\+|-|\*)\s*([A-Za-z_]\w*)$")
@@ -84,6 +93,14 @@ _CALL_RE = re.compile(r"^(sum|mean|max|min)\s*\(\s*([A-Za-z_]\w*)\s*\)$")
 # `x'` 是共轭转置，`x.'` 是普通转置。本目录只处理实数 f64，二者等价，
 # 所以两种写法都收 —— 只收 `.'` 会让真实代码里的 `x'` 全部掉进 unmapped。
 _TRANS_RE = re.compile(r"^([A-Za-z_]\w*)\s*\.?'\s*$")
+#: `A(:)` —— 列优先展平
+_FLAT_RE = re.compile(r"^([A-Za-z_]\w*)\s*\(\s*:\s*\)$")
+#: `x(x > 1)` —— 逻辑索引（只认"对自身按常量比较"，这是最常见也最可判定的形态）
+_MASK_RE = re.compile(r"^([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*)\s*"
+                      r"(>=|<=|==|~=|>|<)\s*(-?\d+(?:\.\d+)?)\s*\)$")
+#: 比较符 -> 整数码（C 侧 mlc_mask_test 用整数，避免生成侧拼字符串）
+_MASK_CMP = {">": 0, ">=": 1, "<": 2, "<=": 3, "==": 4, "~=": 5}
+
 #: `x(1:2)` / `x(2:end)` —— 1-based 闭区间切片（仅 1-D）
 _SLICE_RE = re.compile(r"^([A-Za-z_]\w*)\s*\(\s*(\d+|end)\s*:\s*"
                        r"(\d+|end)\s*\)$")
@@ -126,6 +143,20 @@ def parse_line(line):
     if tm:
         return {"operator": "OP-TRANSPOSE",
                 "lhs": lhs, "args": [tm.group(1)], "raw": line.rstrip("\n")}
+
+    flm = _FLAT_RE.match(rhs)
+    if flm:
+        return {"operator": "OP-FLATTEN",
+                "lhs": lhs, "args": [flm.group(1)], "raw": line.rstrip("\n")}
+
+    mkm = _MASK_RE.match(rhs)
+    if mkm and mkm.group(1) == mkm.group(2):
+        # 只认"对自身比较"（x(x>1)）。`x(y>1)` 是别的语义（y 是掩码），不做。
+        return {"operator": "OP-MASK",
+                "lhs": lhs,
+                "args": [mkm.group(1), str(_MASK_CMP[mkm.group(3)]),
+                         mkm.group(4)],
+                "raw": line.rstrip("\n")}
 
     slm = _SLICE_RE.match(rhs)
     if slm:

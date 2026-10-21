@@ -131,6 +131,19 @@ static mlc_status mlc_binary_f64(const mlc_array *a, const mlc_array *b,
     return MLC_OK;
 }
 
+/* 掩码比较：cmp 用整数编码，避免生成侧拼字符串。 */
+static int mlc_mask_test(double v, int cmp, double k)
+{
+    switch (cmp) {
+        case 0: return v > k;
+        case 1: return v >= k;
+        case 2: return v < k;
+        case 3: return v <= k;
+        case 4: return v == k;
+        default: return v != k;
+    }
+}
+
 mlc_status mlc_op_add(const mlc_array *a, const mlc_array *b, mlc_array *out)
 {
     return mlc_binary_f64(a, b, out, MLC_BIN_ADD);
@@ -326,6 +339,103 @@ mlc_status mlc_op_slice(const mlc_array *a, int64_t from, int64_t to,
     }
     for (i = 0; i < len; ++i) {
         po[i * out->strides[0]] = pa[(from - 1 + i) * a->strides[0]];
+    }
+    return MLC_OK;
+}
+
+/*
+ * `A(:)`：按列优先展平。
+ *
+ * 为什么不用 memcpy：MATLAB 的顺序是**列优先**，而 mlc_array 是行主序存储。
+ * 直接按内存顺序拷贝在方阵上"看起来对"，非方阵立刻错 —— 这是最典型的静默错误。
+ */
+mlc_status mlc_op_flatten(const mlc_array *a, mlc_array *out)
+{
+    int64_t n, i;
+    const double *pa;
+    double *po;
+
+    if (a == NULL || out == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64 || out->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    if (out->ndim != 1) {
+        return MLC_ERR;
+    }
+    n = mlc_array_numel(a);
+    if (out->shape[0] != n) {
+        return MLC_ERR;
+    }
+    pa = (const double *)a->data;
+    po = (double *)out->data;
+    if (pa == NULL || po == NULL) {
+        return MLC_ERR;
+    }
+    if (a->ndim == 1) {
+        for (i = 0; i < n; ++i) {
+            po[i * out->strides[0]] = pa[i * a->strides[0]];
+        }
+        return MLC_OK;
+    }
+    {
+        /* 2-D：外层走列、内层走行 —— 这才是 MATLAB 的线性索引顺序 */
+        int64_t m = a->shape[0];
+        int64_t cols = a->shape[1];
+        int64_t k = 0;
+        int64_t j;
+        for (j = 0; j < cols; ++j) {
+            for (i = 0; i < m; ++i) {
+                po[k++] = pa[i * a->strides[0] + j * a->strides[1]];
+            }
+        }
+    }
+    return MLC_OK;
+}
+
+/*
+ * `x(x >k)`：取出满足条件的元素并压实。
+ *
+ * 结果长度是数据相关的：这里要求 out 的长度**等于**命中数，
+ * 否则返回 MLC_ERR —— 截断或补零都会让错误静默通过。
+ */
+mlc_status mlc_op_mask(const mlc_array *a, int cmp, double k, mlc_array *out)
+{
+    int64_t n, i, hit;
+    const double *pa;
+    double *po;
+
+    if (a == NULL || out == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64 || out->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    if (out->ndim != 1) {
+        return MLC_ERR;
+    }
+    n = mlc_array_numel(a);
+    hit = 0;
+    pa = (const double *)a->data;
+    po = (double *)out->data;
+    if (pa == NULL || po == NULL) {
+        return MLC_ERR;
+    }
+    for (i = 0; i < n; ++i) {
+        if (mlc_mask_test(pa[i], cmp, k)) {
+            ++hit;
+        }
+    }
+    if (out->shape[0] != hit) {
+        return MLC_ERR;              /* 长度不符：不截断也不补零 */
+    }
+    hit = 0;
+    for (i = 0; i < n; ++i) {
+        if (mlc_mask_test(pa[i], cmp, k)) {
+            po[hit * out->strides[0]] = pa[i];
+            ++hit;
+        }
     }
     return MLC_OK;
 }

@@ -546,8 +546,8 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
             if parts.len() == rets.len() && !want.is_empty() {
                 for (k, rn) in rets.iter().enumerate() {
                     out.push(format!(
-                        "        if (st_{} == MLC_OK) m2c_check(\"{}\", \"{}\", &{}, \"{}\");",
-                        ident(&f.name), cname, f.name, rn,
+                        "        if (st_{} == MLC_OK) m2c_check(\"{}\", \"{}.{}\", &{}, \"{}\");",
+                        ident(&f.name), cname, f.name, f.rets[k].name, rn,
                         parts[k].replace('\\', "\\\\").replace('"', "\\\"")));
                 }
             } else {

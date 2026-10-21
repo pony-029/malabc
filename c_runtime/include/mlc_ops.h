@@ -36,6 +36,16 @@ mlc_status mlc_op_min(const mlc_array *a, mlc_array *out);
 mlc_status mlc_op_slice(const mlc_array *a, int64_t from, int64_t to,
                         mlc_array *out);
 
+/* `A(:)`：按**列优先**展平成 1-D（MATLAB 的线性索引顺序）。
+   与"按内存顺序 memcpy"不同 —— 行主序存储时必须换序。 */
+mlc_status mlc_op_flatten(const mlc_array *a, mlc_array *out);
+
+/* `x(x >k)`：取出满足条件的元素并**压实**。
+   结果长度是**数据相关**的，所以 out 必须由调用方按声明的长度初始化；
+   实际命中数与 out 长度不符时返回 MLC_ERR（不截断、不补零）。 */
+mlc_status mlc_op_mask(const mlc_array *a, int cmp, double k,
+                       mlc_array *out);
+
 mlc_status mlc_op_index(const mlc_array *a, int64_t matlab_index,
                         mlc_array *out);
 mlc_status mlc_op_transpose(const mlc_array *a, mlc_array *out);

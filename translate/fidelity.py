@@ -161,6 +161,38 @@ def _run_index(case):
     return _expect([1], [x[idx0]])
 
 
+def _run_flatten(case):
+    """`A(:)`：按**列优先**展平（与内存顺序不同，方阵上最容易看错）。"""
+    X = case["inputs"]["x"]
+    sh = list(X.get("shape") or [])
+    flat = _flat(X["data"])
+    if len(sh) == 1:
+        return _expect([sh[0]], flat)
+    if len(sh) != 2:
+        raise ValueError("flatten: 只支持 1-D / 2-D")
+    m, n = sh
+    out = [flat[i * n + j] for j in range(n) for i in range(m)]
+    return _expect([m * n], out)
+
+
+def _run_mask(case):
+    """`x(x > k)`：取出满足条件的元素并压实（长度数据相关）。"""
+    X = case["inputs"]["x"]
+    sh = list(X.get("shape") or [])
+    spec = case.get("mask") or {}
+    cmp = int(spec.get("cmp", 0))
+    k = float(spec.get("k", 0))
+    ops = {0: lambda v: v > k, 1: lambda v: v >= k, 2: lambda v: v < k,
+           3: lambda v: v <= k, 4: lambda v: v == k, 5: lambda v: v != k}
+    if cmp not in ops:
+        raise ValueError("mask: 未知比较码 %r" % (cmp,))
+    if len(sh) != 1:
+        raise ValueError("mask: 只支持 1-D")
+    flat = _flat(X["data"])
+    out = [v for v in flat if ops[cmp](v)]
+    return _expect([len(out)], out)
+
+
 def _run_slice(case):
     """1-D 闭区间切片（1-based，与 mlc_op_slice 同语义）。"""
     X = case["inputs"]["x"]
@@ -230,6 +262,8 @@ _RUNNERS = {
     "OP-MIN": _run_min,
     "OP-INDEX": _run_index,
     "OP-SLICE": _run_slice,
+    "OP-FLATTEN": _run_flatten,
+    "OP-MASK": _run_mask,
     "OP-TRANSPOSE": _run_transpose,
     "OP-MATMUL": _run_matmul,
 }
@@ -417,6 +451,39 @@ def emit_c_program(case):
             "    mlc_status st;",
             _c_array_decl("o", osh, [0.0] * no)[1],
             "    st = mlc_op_matmul(&A, &B, &o);",
+            '    if (st != MLC_OK) { printf("ERR %d\\n", (int)st); return 1; }',
+            '    for (int i=0;i<{0};i++) printf("%.17g\\n", od[i]);'.format(no),
+            "    return 0;", "}"]
+        return "\n".join(lines) + "\n"
+    if op == "OP-FLATTEN":
+        X = case["inputs"]["x"]
+        sh = list(X.get("shape") or [])
+        no = 1
+        for d in sh:
+            no *= d
+        lines = head + _c_array_lines("x", X)
+        lines += [
+            "    double od[{0}] = {{0}};".format(no),
+            "    mlc_status st;",
+            _c_array_decl("o", [no], [0.0] * no)[1],
+            "    st = mlc_op_flatten(&x, &o);",
+            '    if (st != MLC_OK) { printf("ERR %d\\n", (int)st); return 1; }',
+            '    for (int i=0;i<{0};i++) printf("%.17g\\n", od[i]);'.format(no),
+            "    return 0;", "}"]
+        return "\n".join(lines) + "\n"
+    if op == "OP-MASK":
+        X = case["inputs"]["x"]
+        spec = case.get("mask") or {}
+        cmp_v = int(spec.get("cmp", 0))
+        k = float(spec.get("k", 0))
+        exp = case["expected"]
+        no = exp["shape"][0] if exp.get("shape") else 1
+        lines = head + _c_array_lines("x", X)
+        lines += [
+            "    double od[{0}] = {{0}};".format(no),
+            "    mlc_status st;",
+            _c_array_decl("o", [no], [0.0] * no)[1],
+            "    st = mlc_op_mask(&x, {0}, {1:.17g}, &o);".format(cmp_v, k),
             '    if (st != MLC_OK) { printf("ERR %d\\n", (int)st); return 1; }',
             '    for (int i=0;i<{0};i++) printf("%.17g\\n", od[i]);'.format(no),
             "    return 0;", "}"]

@@ -180,6 +180,29 @@ def check_operators():
     return probs
 
 
+def check_ledger_stale(path=None):
+    """台账里 status=verified 但备注还写着 UNIMPLEMENTED —— 备注比代码落后。
+
+    这轮是靠人眼发现的（transpose/matmul 早已实现，备注仍写"返回
+    MLC_UNIMPLEMENTED"）。**能让门抓的，就不要靠人眼。**
+    """
+    path = path or LEDGER
+    probs = []
+    if not os.path.isfile(path):
+        return probs
+    try:
+        data = json.loads(io.open(path, encoding="utf-8").read())
+    except (IOError, OSError, ValueError):
+        return probs
+    for e in data.get("entries") or []:
+        status = (e.get("status") or "").lower()
+        note = e.get("notes") or ""
+        if status in ("verified", "done") and "UNIMPLEMENTED" in note.upper():
+            probs.append("TP2 台账陈旧：%s 状态 %s，备注仍称 UNIMPLEMENTED"
+                         % (e.get("id"), status))
+    return probs
+
+
 def check_fidelity(require_c=False, fast=None):
     fast = FAST if fast is None else fast
     """golden 全通过（Python + 可选 C）；`--require-c` 时无编译器判红。"""
@@ -546,6 +569,7 @@ def run_checks(require_c=False):
     probs.extend(check_operators())
     fp, rep = check_fidelity(require_c=require_c, fast=FAST)
     probs.extend(fp)
+    probs.extend(check_ledger_stale())
     m2c_probs, m2c_stats = check_m2c(require_c=require_c, fast=FAST)
     probs.extend(m2c_probs)
     probs.extend(check_ledger())

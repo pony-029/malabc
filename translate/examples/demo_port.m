@@ -127,7 +127,23 @@ end
 
 function y = masked(x)
 % @m2c shape x 3
-% @m2c shape y 3
-% 负面夹具：**逻辑索引** x(x > 1) 尚未支持 -> 必须返回 unimplemented
+% @m2c shape y 2
+% 逻辑索引：x(x > 1)。长度是**数据相关**的，所以形状必须声明；
+% C 侧会校验"命中数 == 声明长度"，不符就 MLC_ERR（不截断、不补零）
 y = x(x > 1);
+end
+
+function y = flatit(A)
+% @m2c shape A 2,3
+% @m2c shape y 6
+% A(:) 是按**列优先**展平 —— 不是内存顺序（方阵上最容易看错）
+y = A(:);
+end
+
+function y = cellish(x)
+% @m2c shape x 3
+% @m2c shape y 1
+% 负面夹具（**稳定的边界**）：cell/struct 是 out of scope，不做
+c = {1, 2};
+y = x(1);
 end

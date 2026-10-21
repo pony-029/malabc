@@ -12,6 +12,7 @@ use crate::mir::{walk_stmts, Cond, Func, Op, Stmt};
 pub const C_IMPLEMENTED: &[&str] = &[
     "OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-SUM", "OP-MEAN", "OP-MAX",
     "OP-MIN", "OP-INDEX", "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE",
+    "OP-FLATTEN", "OP-MASK",
 ];
 
 /// 已知但 C 落点仍未实现的算子（诚实边界）。
@@ -129,6 +130,17 @@ fn init_call(var: &str, dtype: &str, shape: &[i64], is_ptr: bool) -> Option<Stri
 fn out_shape(f: &Func, op: &Op) -> Option<Vec<i64>> {
     if REDUCTIONS.contains(&op.id.as_str()) || op.id == "OP-INDEX" {
         return Some(vec![1]);
+    }
+    // A(:)：展平成 numel，确定
+    if op.id == "OP-FLATTEN" && op.args.len() == 1 {
+        let sa = f.var_shape(&op.args[0])?;
+        let n: i64 = sa.iter().product();
+        return Some(vec![n]);
+    }
+    // x(x>k)：命中数是**数据相关**的，生成期算不出来 —— 用声明形状，
+    // 由 C 侧在运行时校验"命中数 == out 长度"，不符就 MLC_ERR。
+    if op.id == "OP-MASK" {
+        return None;
     }
     // 切片：1-D，长度 = to - from + 1（边界是字面量才算得出）
     if op.id == "OP-SLICE" && op.args.len() == 3 {
@@ -261,10 +273,10 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
     for a in &op.args {
         let declared = f.declared().iter().any(|d| d == a);
         let lit = is_int_literal(a);
-        // 立即数不是"名字"，不该受作用域检查约束（OP-INDEX 的下标、
-        // OP-SLICE 的边界都是数字）。只对**未知名字**报错。
-        let lit_ok = lit && (op.id == "OP-INDEX" || op.id == "OP-SLICE");
-        if !declared && !lit_ok {
+        // 作用域检查针对的是**名字**：数值字面量没有作用域可言，
+        // 任何算子位置都放行。早先按算子白名单（先 OP-INDEX、后补 OP-SLICE），
+        // 每加一个带常量的算子就要再补一次 —— 那是把原则写成了特例。
+        if !declared && !lit {
             out.push(format!(
                 "{}/* TODO(arg): {} 不在作用域内（参数/返回值/已映射输出里都没有）*/",
                 pad,
@@ -304,6 +316,16 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
         out.push(format!("{}st = mlc_op_index({}, {}, {});", pad, arg0, idx_c, dst));
     } else if op.args.len() == 1 {
         out.push(format!("{}st = mlc_op_{}({}, {});", pad, op_c_name(&op.id), arg0, dst));
+    } else if op.id == "OP-MASK" && op.args.len() == 3 {
+        let cmp = &op.args[1];
+        let k = &op.args[2];
+        let ok = cmp.parse::<i64>().is_ok() && k.parse::<f64>().is_ok();
+        if !ok {
+            out.push(format!("{}/* TODO(OP-MASK): 比较码/阈值必须是字面量 */", pad));
+            out.push(format!("{}return MLC_UNIMPLEMENTED;", pad));
+            return out;
+        }
+        out.push(format!("{}st = mlc_op_mask({}, {}, {}, {});", pad, arg0, cmp, k, dst));
     } else if op.id == "OP-SLICE" && op.args.len() == 3 {
         let from = &op.args[1];
         let to = &op.args[2];
