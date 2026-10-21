@@ -271,6 +271,7 @@ python tools/release_arch_check.py --check
 | ADR（AD11） | **8 条**（含 ADR-008 评审记录）；14 张图挂 `adr`；`Status`/`Diagrams` 双向；`decisions/README.md` 全登记；无孤儿 |
 | 替代链示例（R39） | `decisions/examples/`：ADR-100 Superseded ⇄ ADR-101 Accepted，**双向互指** |
 | 发布总闸（R32/R40） | `release_arch_check.py --check` → 快照/版本/PNG/基线/评审 **5/5 OK** |
+| 自动上一版本（R41） | `--diff`（无参）→ 无上一版本时安全跳过；`--selftest` **4/4**；手动 `--diff 1.16.72` → **0 changes** |
 | PNG 基线（R40） | `png_baseline/` 14 张 + `BASELINE.json`（583 KB）；默认 diff **0 changes** |
 | PNG 阈值（R33） | 同尺寸改 0.04% 像素：`--max-ratio 0.0001` → **exit 1**；`0.5` → **exit 0** |
 | 源码批量校验（R34/R37） | **1 次全局** `git cat-file --batch-check`，**0.75 s** 覆盖 137 条 sources（原 14 次 8.3 s） |
