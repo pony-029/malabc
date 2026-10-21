@@ -39,7 +39,7 @@
         ├─▶ check_figure_glyphs.py       示意图的字形：缺字形画成方块 / 等宽行不许中文（契约 FG1..FG4）
         ├─▶ check_release_gates.py        发版门清单：写了没进 GATES 的门 / 陈旧豁免（契约 RG1..RG4）
         ├─▶ check_symbol_ranges.py        符号行号必须在文件内：越界会让大纲永远转圈（契约 SR1..SR3）
-        ├─▶ check_translate_port.py       MATLAB→C 移植链路：ABI/适配器/算子/保真/台账（契约 TP1..TP8）
+        ├─▶ check_translate_port.py       MATLAB→C 移植链路：ABI/适配器/算子/保真/台账（契约 TP1..TP9）
         ├─▶ check_architecture_docs.py    架构文档：三向 + 哈希 + 版式 + CODEOWNERS + 图片 + 中英/术语 + ADR（契约 AD1..AD11）
         ├─▶ check_tool_selftests.py        带自证的工具每次发版都真跑一遍（契约 TS1..TS2）
         ├─▶ check_version_scheme.py       版本号规则：每位 0–9，满 10 进位（契约 VS1..VS2）

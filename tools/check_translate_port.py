@@ -36,7 +36,7 @@ import sys
 import tempfile
 
 #: P5 的对手方：本门在 README 质量门表那一行里声明的判据族。
-ROW_SIGNATURE = "TP1–TP8"
+ROW_SIGNATURE = "TP1–TP9"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -392,6 +392,32 @@ def check_dynamic_consistency():
     if not probs:
         print("  [TP8] 分配型算子三处一致：%s" % "、".join(sorted(mine)))
     return probs
+
+
+def check_parity_demo(fast=None):
+    """TP9：同一份 MIR，Python 解释执行 vs C 编译执行，逐值对拍。
+
+    为什么单列一项：golden 验的是**算子**，自测验的是"我声明的期望值"，
+    都没有验"发射出来的 C 与 MIR 的语义是否一致"。这一项才验那件事。
+    """
+    fast = FAST if fast is None else fast
+    if fast:
+        return []
+    d = tempfile.mkdtemp(prefix="m2c_par_")
+    mir = os.path.join(d, "d.mir")
+    rc, out = _run([sys.executable, os.path.join("translate", "mir.py"),
+                    os.path.join("translate", "examples", "demo_port.m"),
+                    "-o", mir])
+    if rc != 0:
+        return ["TP9 生成 MIR 失败：%s" % (out.strip().splitlines()[:2],)]
+    rc, out = _run([sys.executable, os.path.join("tools", "parity_report.py"),
+                    "--mir", mir])
+    tail = [ln for ln in out.strip().splitlines() if "对拍结果" in ln]
+    if rc != 0:
+        return ["TP9 对拍未通过：%s" % (tail[:1] or out.strip()[-160:],)]
+    if tail:
+        print("  [TP9] " + tail[0].strip())
+    return []
 
 
 def check_ledger_stale(path=None):
@@ -811,6 +837,7 @@ def run_checks(require_c=False):
     probs.extend(check_ownership())
     probs.extend(check_dynamic_consistency())
     probs.extend(check_project_dir())
+    probs.extend(check_parity_demo())
     m2c_probs, m2c_stats = check_m2c(require_c=require_c, fast=FAST)
     probs.extend(m2c_probs)
     probs.extend(check_ledger())
@@ -1065,7 +1092,7 @@ def main(argv=None):
         return 1
     _mm = stats.get("m2c") or {}
     _dump_stats(stats)
-    print("check_translate_port: OK（TP1–TP8 全绿；golden %d/%d；C %s；"
+    print("check_translate_port: OK（TP1–TP9 全绿；golden %d/%d；C %s；"
           "台账 %d 条；MIR 函数 %s / 算子 %s / 未映射 %s / 编译 %s）"
           % (stats["fidelity"]["passed"], stats["fidelity"]["total"],
              ("未跑（快检）" if FAST
