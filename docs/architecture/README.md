@@ -247,7 +247,7 @@ python tools/apply_arch_sources.py --write
 | 责任人（AD7） | 13 个关键模块全部有 `.github/CODEOWNERS` 负责人，owner 均为 `@pony-029` |
 | 图片路径（AD3） | 根 README 的本地图片全部存在；总框架中文/英文各嵌各的图 |
 | 陈旧门 | `python tools/export_arch_svg.py --check` → **OK（14 条清单与 candidate/html/svg 一致）** |
-| 快跑 CI | `.github/workflows/arch-docs.yml`（AD1–AD10 + 清单 + 英文 SVG + 模块图 + 归属表 + 快照 + PNG + 源码证据 + README 对等 + 行尾）；YAML 可解析：1 job / 12 steps |
+| 快跑 CI | `.github/workflows/arch-docs.yml`（AD1–AD10 + 清单 + 英文 SVG + 模块图 + 归属表 + 快照 + 版本记录 + PNG + 源码证据 + README 对等 + 行尾）；YAML 可解析：1 job / 13 steps |
 | 模块边界（R16） | `python tools/build_module_graph.py` → 57 个运行时模块 / 20 条跨组边；`--check` 可复现 |
 | 索引搜索（R14） | Chrome `?q=sequence` → 15 卡片中仅 1 张可见；`?q=no-such` → 0 张 + “无结果” |
 | 版式差异（R13） | `python tools/arch_compare.py --id 00-overall --head <changed>` → delta HTML **2,163,473 B** + receipt **2,022 B** |
