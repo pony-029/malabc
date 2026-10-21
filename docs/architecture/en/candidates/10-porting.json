@@ -1,0 +1,198 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "MATLAB→C porting: contract, operators, fidelity, ledger",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/en/html/10-porting.html"
+  },
+  "components": [
+    {
+      "id": "matlab",
+      "type": "database",
+      "label": "MATLAB reference",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "ops",
+      "type": "backend",
+      "label": "operator catalog",
+      "pos": [
+        400,
+        40
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "adp",
+      "type": "backend",
+      "label": "two-sided adapters",
+      "pos": [
+        760,
+        40
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "abi",
+      "type": "backend",
+      "label": "C ABI contract",
+      "sublabel": "mlc.h（mlc_array/status/ownership）",
+      "pos": [
+        40,
+        160
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "cops",
+      "type": "backend",
+      "label": "C operator impl",
+      "pos": [
+        400,
+        160
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "fid",
+      "type": "backend",
+      "label": "fidelity runner",
+      "sublabel": "fidelity.py + golden 11",
+      "pos": [
+        760,
+        160
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "ledger",
+      "type": "database",
+      "label": "port ledger",
+      "sublabel": "port_ledger.json（verified/not_started）",
+      "pos": [
+        40,
+        280
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "con",
+      "type": "backend",
+      "label": "two-sided constraints",
+      "sublabel": "matlab_c_constraints.json",
+      "pos": [
+        400,
+        280
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "gate",
+      "type": "security",
+      "label": "TP1–TP4 gates",
+      "pos": [
+        760,
+        280
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "rt",
+      "type": "backend",
+      "label": "malabc-rt (future)",
+      "pos": [
+        40,
+        400
+      ],
+      "size": [
+        1020,
+        64
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "m-o",
+      "from": "matlab",
+      "to": "ops"
+    },
+    {
+      "id": "o-a",
+      "from": "ops",
+      "to": "adp"
+    },
+    {
+      "id": "a-c",
+      "from": "adp",
+      "to": "cops"
+    },
+    {
+      "id": "abi-c",
+      "from": "abi",
+      "to": "cops"
+    },
+    {
+      "id": "c-f",
+      "from": "cops",
+      "to": "fid"
+    },
+    {
+      "id": "f-l",
+      "from": "fid",
+      "to": "ledger"
+    },
+    {
+      "id": "con-g",
+      "from": "con",
+      "to": "gate"
+    },
+    {
+      "id": "f-g",
+      "from": "fid",
+      "to": "gate"
+    },
+    {
+      "id": "l-g",
+      "from": "ledger",
+      "to": "gate"
+    },
+    {
+      "id": "rt-c",
+      "from": "rt",
+      "to": "cops"
+    }
+  ]
+}

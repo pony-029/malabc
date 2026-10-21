@@ -1,0 +1,118 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "MATLAB frontend: from source to functions and call edges",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/en/html/02-matlab-frontend.html"
+  },
+  "lanes": [
+    {
+      "id": "read",
+      "label": "read"
+    },
+    {
+      "id": "lex",
+      "label": "scrub"
+    },
+    {
+      "id": "parse",
+      "label": "parse"
+    },
+    {
+      "id": "model",
+      "label": "model"
+    },
+    {
+      "id": "calls",
+      "label": "call analysis"
+    }
+  ],
+  "mainPath": [
+    "readf",
+    "scrub",
+    "logical",
+    "parsef",
+    "modelf",
+    "callsf"
+  ],
+  "nodes": [
+    {
+      "id": "readf",
+      "lane": "read",
+      "col": 0,
+      "type": "database",
+      "label": "read .m",
+      "width": 150
+    },
+    {
+      "id": "scrub",
+      "lane": "lex",
+      "col": 1,
+      "type": "backend",
+      "label": "scrub_source",
+      "width": 200
+    },
+    {
+      "id": "logical",
+      "lane": "lex",
+      "col": 2,
+      "type": "backend",
+      "label": "_logical_statements",
+      "width": 210
+    },
+    {
+      "id": "parsef",
+      "lane": "parse",
+      "col": 3,
+      "type": "backend",
+      "label": "parse_file",
+      "width": 210
+    },
+    {
+      "id": "modelf",
+      "lane": "model",
+      "col": 4,
+      "type": "backend",
+      "label": "MatlabFile/Function/Class",
+      "sublabel": "body_end/header/source_lines",
+      "width": 240
+    },
+    {
+      "id": "callsf",
+      "lane": "calls",
+      "col": 5,
+      "type": "backend",
+      "label": "analyze_calls / resolve_call",
+      "width": 240
+    }
+  ],
+  "edges": [
+    {
+      "id": "r-s",
+      "from": "readf",
+      "to": "scrub"
+    },
+    {
+      "id": "s-l",
+      "from": "scrub",
+      "to": "logical"
+    },
+    {
+      "id": "l-p",
+      "from": "logical",
+      "to": "parsef"
+    },
+    {
+      "id": "p-m",
+      "from": "parsef",
+      "to": "modelf"
+    },
+    {
+      "id": "m-c",
+      "from": "modelf",
+      "to": "callsf"
+    }
+  ]
+}

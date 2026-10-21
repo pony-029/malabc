@@ -1,0 +1,320 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "malabc overall: read → understand → output → gates",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/en/html/00-overall.html"
+  },
+  "components": [
+    {
+      "id": "entry",
+      "type": "frontend",
+      "label": "entry & CLI",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "src",
+      "type": "database",
+      "label": "input",
+      "pos": [
+        380,
+        40
+      ],
+      "size": [
+        340,
+        64
+      ]
+    },
+    {
+      "id": "matlab",
+      "type": "backend",
+      "label": "MATLAB frontend",
+      "sublabel": "scrub_source / parse_file / analyze_calls",
+      "pos": [
+        40,
+        160
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "multi",
+      "type": "backend",
+      "label": "multi-lang frontends + IR",
+      "sublabel": "C/Py/JS/asm · frontends/ir.py",
+      "pos": [
+        380,
+        160
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "model",
+      "type": "backend",
+      "label": "model / unified graph",
+      "sublabel": "entity_model · unified_graph · facts",
+      "pos": [
+        740,
+        160
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "analysis",
+      "type": "backend",
+      "label": "analysis engine",
+      "pos": [
+        40,
+        280
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "render",
+      "type": "backend",
+      "label": "render & output",
+      "sublabel": "renderers/ · --html/--browse/json/sarif",
+      "pos": [
+        380,
+        280
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "lsp",
+      "type": "backend",
+      "label": "LSP + VS Code",
+      "sublabel": "matlabc_lsp.py · vscode/",
+      "pos": [
+        720,
+        280
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "mcp",
+      "type": "backend",
+      "label": "AI / MCP",
+      "sublabel": "matlabc_mcp.py · matlabc_ask.py · ai_cli.py",
+      "pos": [
+        1060,
+        280
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "flow",
+      "type": "backend",
+      "label": "fix loop + memory",
+      "sublabel": "matlabc_flow.py · agent_loop.py · analyzer_memory",
+      "pos": [
+        40,
+        400
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "port",
+      "type": "backend",
+      "label": "MATLAB→C port",
+      "sublabel": "translate/ · c_runtime/ · port_ledger.json",
+      "pos": [
+        380,
+        400
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "bin",
+      "type": "backend",
+      "label": "binary analysis",
+      "sublabel": "binfmt/ PE/ELF/Mach-O/GPU",
+      "pos": [
+        740,
+        400
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "gates",
+      "type": "security",
+      "label": "gates / CI",
+      "sublabel": "tools/check_*.py · check_all.py",
+      "pos": [
+        1080,
+        400
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "out",
+      "type": "cloud",
+      "label": "output layer",
+      "pos": [
+        40,
+        520
+      ],
+      "size": [
+        1340,
+        64
+      ]
+    },
+    {
+      "id": "ci",
+      "type": "security",
+      "label": "CI exit code",
+      "sublabel": "0=ok / 1=error / 2=unimplemented",
+      "pos": [
+        1140,
+        620
+      ],
+      "size": [
+        240,
+        56
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "e-m",
+      "from": "entry",
+      "to": "matlab"
+    },
+    {
+      "id": "e-x",
+      "from": "entry",
+      "to": "multi"
+    },
+    {
+      "id": "s-m",
+      "from": "src",
+      "to": "matlab"
+    },
+    {
+      "id": "s-x",
+      "from": "src",
+      "to": "multi"
+    },
+    {
+      "id": "m-model",
+      "from": "matlab",
+      "to": "model"
+    },
+    {
+      "id": "x-model",
+      "from": "multi",
+      "to": "model"
+    },
+    {
+      "id": "model-a",
+      "from": "model",
+      "to": "analysis"
+    },
+    {
+      "id": "a-r",
+      "from": "analysis",
+      "to": "render"
+    },
+    {
+      "id": "a-l",
+      "from": "analysis",
+      "to": "lsp"
+    },
+    {
+      "id": "a-mcp",
+      "from": "analysis",
+      "to": "mcp"
+    },
+    {
+      "id": "a-f",
+      "from": "analysis",
+      "to": "flow"
+    },
+    {
+      "id": "a-p",
+      "from": "analysis",
+      "to": "port"
+    },
+    {
+      "id": "b-x",
+      "from": "bin",
+      "to": "multi"
+    },
+    {
+      "id": "r-o",
+      "from": "render",
+      "to": "out"
+    },
+    {
+      "id": "l-o",
+      "from": "lsp",
+      "to": "out"
+    },
+    {
+      "id": "m-o",
+      "from": "mcp",
+      "to": "out"
+    },
+    {
+      "id": "f-o",
+      "from": "flow",
+      "to": "out"
+    },
+    {
+      "id": "p-o",
+      "from": "port",
+      "to": "out"
+    },
+    {
+      "id": "a-g",
+      "from": "analysis",
+      "to": "gates"
+    },
+    {
+      "id": "g-ci",
+      "from": "gates",
+      "to": "ci"
+    }
+  ]
+}

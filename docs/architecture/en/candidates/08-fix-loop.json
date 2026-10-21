@@ -1,0 +1,206 @@
+{
+  "schema_version": 2,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Fix loop: accept only when verified, always revert on failure",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/en/html/08-fix-loop.html"
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "main loop"
+    },
+    {
+      "id": "apply",
+      "label": "apply gate"
+    },
+    {
+      "id": "recovery",
+      "label": "revert + feedback"
+    },
+    {
+      "id": "exits",
+      "label": "outputs"
+    }
+  ],
+  "states": [
+    {
+      "id": "s",
+      "type": "start",
+      "label": "baseline analysis",
+      "sublabel": "analyze()",
+      "lane": "main",
+      "col": 0,
+      "step": "01"
+    },
+    {
+      "id": "q",
+      "type": "decision",
+      "label": "total == 0 ?",
+      "lane": "main",
+      "col": 1,
+      "step": "02"
+    },
+    {
+      "id": "l",
+      "type": "active",
+      "label": "attempt loop",
+      "sublabel": "for attempt in range(max_turns)",
+      "lane": "main",
+      "col": 2,
+      "step": "03"
+    },
+    {
+      "id": "fx",
+      "type": "active",
+      "label": "fix_source()",
+      "lane": "main",
+      "col": 3,
+      "step": "04"
+    },
+    {
+      "id": "v",
+      "type": "decision",
+      "label": "re-scan verify",
+      "sublabel": "no_new_alerts && progress",
+      "lane": "main",
+      "col": 4,
+      "step": "05"
+    },
+    {
+      "id": "ap",
+      "type": "decision",
+      "label": "git apply --check",
+      "lane": "apply",
+      "col": 3,
+      "tag": "dry run"
+    },
+    {
+      "id": "fb",
+      "type": "waiting",
+      "label": "structured feedback",
+      "lane": "recovery",
+      "col": 2,
+      "width": 190
+    },
+    {
+      "id": "rv",
+      "type": "active",
+      "label": "revert",
+      "lane": "recovery",
+      "col": 3
+    },
+    {
+      "id": "clean",
+      "type": "success",
+      "label": "already_clean",
+      "sublabel": "tier 0",
+      "lane": "exits",
+      "col": 0
+    },
+    {
+      "id": "t2",
+      "type": "failure",
+      "label": "turns exhausted",
+      "lane": "exits",
+      "col": 1
+    },
+    {
+      "id": "ok",
+      "type": "success",
+      "label": "accept",
+      "lane": "exits",
+      "col": 2
+    },
+    {
+      "id": "rg",
+      "type": "failure",
+      "label": "review_gate",
+      "lane": "exits",
+      "col": 3,
+      "width": 170
+    }
+  ],
+  "transitions": [
+    {
+      "from": "s",
+      "to": "q"
+    },
+    {
+      "from": "q",
+      "to": "clean",
+      "label": "no findings",
+      "variant": "emphasis",
+      "labelDy": -31
+    },
+    {
+      "from": "q",
+      "to": "l",
+      "label": "findings",
+      "labelDy": -31
+    },
+    {
+      "from": "l",
+      "to": "fx"
+    },
+    {
+      "from": "l",
+      "to": "t2",
+      "label": "turns exhausted",
+      "variant": "security"
+    },
+    {
+      "from": "fx",
+      "to": "t2",
+      "label": "no patch",
+      "variant": "security"
+    },
+    {
+      "from": "fx",
+      "to": "ap",
+      "label": "patch"
+    },
+    {
+      "from": "ap",
+      "to": "fb",
+      "label": "verify fail",
+      "variant": "security"
+    },
+    {
+      "from": "ap",
+      "to": "v",
+      "label": "verify pass"
+    },
+    {
+      "from": "v",
+      "to": "ok",
+      "label": "verified",
+      "variant": "emphasis"
+    },
+    {
+      "from": "v",
+      "to": "rv",
+      "label": "regression",
+      "variant": "security"
+    },
+    {
+      "from": "fb",
+      "to": "l",
+      "label": "retry"
+    },
+    {
+      "from": "rv",
+      "to": "l",
+      "label": "retry"
+    },
+    {
+      "from": "ok",
+      "to": "rg",
+      "label": "review_gate",
+      "variant": "security",
+      "labelDy": 57
+    }
+  ]
+}

@@ -1,0 +1,226 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "One LSP outline request: initialize → documentSymbol → timeout fallback",
+    "output": "docs/architecture/en/html/13-sequence.html",
+    "viewBox": [
+      1020,
+      700
+    ],
+    "column_fit": "spread",
+    "animation": "trace",
+    "quality_profile": "standard",
+    "locale": "en"
+  },
+  "participants": [
+    {
+      "id": "editor",
+      "type": "external",
+      "label": "VS Code"
+    },
+    {
+      "id": "client",
+      "type": "frontend",
+      "label": "LSP client",
+      "sublabel": "extension.js"
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "LSP server",
+      "sublabel": "matlabc_lsp.py"
+    },
+    {
+      "id": "analyzer",
+      "type": "backend",
+      "label": "analysis core",
+      "sublabel": "run_pipeline"
+    },
+    {
+      "id": "cache",
+      "type": "database",
+      "label": "parse cache",
+      "sublabel": "_load_cache"
+    },
+    {
+      "id": "fallback",
+      "type": "security",
+      "label": "local fallback"
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 330,
+      "label": "init"
+    },
+    {
+      "from": 340,
+      "to": 455,
+      "label": "outline"
+    },
+    {
+      "from": 465,
+      "to": 520,
+      "label": "diagnostics"
+    },
+    {
+      "from": 530,
+      "to": 590,
+      "label": "timeout fallback"
+    }
+  ],
+  "messages": [
+    {
+      "id": "open",
+      "from": "editor",
+      "to": "client",
+      "y": 165,
+      "label": "open .m",
+      "variant": "default"
+    },
+    {
+      "id": "init",
+      "from": "client",
+      "to": "server",
+      "y": 195,
+      "label": "initialize",
+      "variant": "emphasis"
+    },
+    {
+      "id": "pipeline",
+      "from": "server",
+      "to": "analyzer",
+      "y": 225,
+      "label": "run_pipeline",
+      "variant": "emphasis"
+    },
+    {
+      "id": "load-cache",
+      "from": "analyzer",
+      "to": "cache",
+      "y": 255,
+      "label": "load_cache",
+      "variant": "default"
+    },
+    {
+      "id": "cache-result",
+      "from": "cache",
+      "to": "analyzer",
+      "y": 285,
+      "label": "hit / miss",
+      "variant": "return"
+    },
+    {
+      "id": "facts",
+      "from": "analyzer",
+      "to": "server",
+      "y": 315,
+      "label": "facts / model",
+      "variant": "return"
+    },
+    {
+      "id": "symbols-req",
+      "from": "client",
+      "to": "server",
+      "y": 345,
+      "label": "documentSymbol（800ms）",
+      "variant": "emphasis"
+    },
+    {
+      "id": "cache-hit",
+      "from": "cache",
+      "to": "server",
+      "y": 375,
+      "label": "hit",
+      "variant": "return"
+    },
+    {
+      "id": "symbols-res",
+      "from": "server",
+      "to": "client",
+      "y": 405,
+      "label": "DocumentSymbol[]",
+      "variant": "return"
+    },
+    {
+      "id": "outline",
+      "from": "client",
+      "to": "editor",
+      "y": 435,
+      "label": "outline",
+      "variant": "return"
+    },
+    {
+      "id": "diag",
+      "from": "server",
+      "to": "client",
+      "y": 475,
+      "label": "publishDiagnostics",
+      "variant": "dashed"
+    },
+    {
+      "id": "squiggles",
+      "from": "client",
+      "to": "editor",
+      "y": 505,
+      "label": "squiggles",
+      "variant": "return"
+    },
+    {
+      "id": "timeout",
+      "from": "client",
+      "to": "fallback",
+      "y": 545,
+      "label": "timeout → local scan",
+      "variant": "dashed"
+    },
+    {
+      "id": "fallback-result",
+      "from": "fallback",
+      "to": "client",
+      "y": 575,
+      "label": "%% sections / filename",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "editor",
+      "from": 155,
+      "to": 505,
+      "type": "external"
+    },
+    {
+      "participant": "client",
+      "from": 160,
+      "to": 585,
+      "type": "frontend"
+    },
+    {
+      "participant": "server",
+      "from": 180,
+      "to": 505,
+      "type": "backend"
+    },
+    {
+      "participant": "analyzer",
+      "from": 205,
+      "to": 325,
+      "type": "backend"
+    },
+    {
+      "participant": "cache",
+      "from": 230,
+      "to": 390,
+      "type": "database"
+    },
+    {
+      "participant": "fallback",
+      "from": 540,
+      "to": 580,
+      "type": "security"
+    }
+  ]
+}

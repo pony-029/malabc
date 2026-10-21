@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""架构文档一致性门（AD1–AD4）。
+"""架构文档一致性门（AD1–AD5）。
 
 判据族：
     AD1  索引形状：`FLOW_INDEX.json` 的 version/items/id/type/title 齐全且唯一。
@@ -9,17 +9,20 @@
     AD3  文档可发现：`docs/architecture/README.md` 必须引用每个 HTML；
          两份根 README 必须链接架构索引并嵌入总框架 SVG。
     AD4  候选自述：`meta.output` 必须指向自己的 HTML（防止复制模板忘改）。
+    AD5  陈旧：`svg/MANIFEST.json` 记录 candidate/html/svg 的 sha256；
+         三者任一变了而 SVG/清单没重导 ⇒ 红。
 
 为什么需要它：架构图是**生成物**，最容易出现的缺陷不是“画错”，而是
 “改了 candidate 没重渲染 / 渲染了没登记 / 嵌了图但路径写错”——这三种
 在 git diff 里都只是几行，靠人看不住。
 
 退出码：
-    0  = AD1–AD4 全绿
+    0  = AD1–AD5 全绿
     1  = 有架构文档不一致
     2  = 缺输入（找不到 docs/architecture 或根 README）
 """
 import argparse
+import hashlib
 import io
 import json
 import os
@@ -28,12 +31,13 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 #: P5 的对手方：本门在 README 质量门表那一行里声明的判据族。
-ROW_SIGNATURE = "AD1–AD4"
+ROW_SIGNATURE = "AD1–AD5"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 ARCH = os.path.join(ROOT, "docs", "architecture")
 INDEX = os.path.join(ARCH, "FLOW_INDEX.json")
+MANIFEST = os.path.join(ARCH, "svg", "MANIFEST.json")
 ARCH_README = os.path.join(ARCH, "README.md")
 ROOT_READMES = (os.path.join(ROOT, "README.md"),
                 os.path.join(ROOT, "README_CN.md"))
@@ -50,13 +54,26 @@ def _read(path):
         return fh.read()
 
 
+def _sha256(path):
+    h = hashlib.sha256()
+    with io.open(path, "rb") as fh:
+        while True:
+            b = fh.read(65536)
+            if not b:
+                break
+            h.update(b)
+    return h.hexdigest()
+
+
 def check(index_path=None, arch_dir=None, arch_readme=None,
-          root_readmes=None):
+          root_readmes=None, manifest_path=None):
     """纯函数：返回问题列表；空 = 干净。参数可注入（自证用）。"""
     index_path = index_path or INDEX
     arch_dir = arch_dir or ARCH
     arch_readme = arch_readme or ARCH_README
     root_readmes = tuple(root_readmes or ROOT_READMES)
+    manifest_path = manifest_path or os.path.join(
+        arch_dir, "svg", "MANIFEST.json")
     if not os.path.isfile(index_path):
         return ["AD1 缺索引：%s" % index_path]
     try:
@@ -135,6 +152,39 @@ def check(index_path=None, arch_dir=None, arch_readme=None,
             if os.path.splitext(fn)[0] not in seen:
                 probs.append("AD2 %s/%s 未登记进 FLOW_INDEX" % (sub, fn))
 
+    # AD5：candidate / HTML / SVG 的 sha256 必须与 MANIFEST 一致。
+    if not os.path.isfile(manifest_path):
+        probs.append("AD5 缺哈希清单：%s" % manifest_path)
+    else:
+        try:
+            man = _load_json(manifest_path)
+        except ValueError as e:
+            probs.append("AD5 清单不是合法 JSON：%s" % e)
+            man = {}
+        mrec = man.get("items") or {}
+        for it in items:
+            iid = it.get("id")
+            if not iid:
+                continue
+            rec = mrec.get(iid)
+            if not rec:
+                probs.append("AD5 %s 未登记哈希" % iid)
+                continue
+            for label, path, key in (
+                    ("candidate",
+                     os.path.join(arch_dir, it.get("candidate") or ""),
+                     "candidate_sha256"),
+                    ("html", os.path.join(arch_dir, it.get("html") or ""),
+                     "html_sha256"),
+                    ("svg", os.path.join(arch_dir, "svg", iid + ".svg"),
+                     "svg_sha256")):
+                if os.path.isfile(path) and _sha256(path) != rec.get(key):
+                    probs.append("AD5 %s 的 %s 已变，SVG 清单陈旧"
+                                 % (iid, label))
+        for iid in mrec:
+            if iid not in seen:
+                probs.append("AD5 清单多出未登记条目：%s" % iid)
+
     if not os.path.isfile(arch_readme):
         probs.append("AD3 缺架构说明：%s" % arch_readme)
     else:
@@ -150,8 +200,12 @@ def check(index_path=None, arch_dir=None, arch_readme=None,
         txt = _read(rp)
         if "docs/architecture/index.html" not in txt:
             probs.append("AD3 %s 未链接架构索引" % rp)
-        if "docs/architecture/svg/00-overall.svg" not in txt:
-            probs.append("AD3 %s 未嵌入总框架 SVG" % rp)
+        base = os.path.basename(rp).lower()
+        need = ("docs/architecture/en/svg/00-overall.svg"
+                if base == "readme.md"
+                else "docs/architecture/svg/00-overall.svg")
+        if need not in txt:
+            probs.append("AD3 %s 未嵌入总框架 SVG（%s）" % (rp, need))
     return probs
 
 
@@ -177,16 +231,21 @@ def _selftest():
     tmp = tempfile.mkdtemp(prefix="mlc_ad_")
     try:
         arch = os.path.join(tmp, "arch")
-        _write(os.path.join(arch, "candidates", "00-overall.json"),
-               json.dumps({"diagram_type": "architecture",
+        cand = os.path.join(arch, "candidates", "00-overall.json")
+        html = os.path.join(arch, "html", "00-overall.html")
+        svg = os.path.join(arch, "svg", "00-overall.svg")
+        man = os.path.join(arch, "svg", "MANIFEST.json")
+        r_en = os.path.join(tmp, "README.md")
+        r_cn = os.path.join(tmp, "README_CN.md")
+        CAND = json.dumps({"diagram_type": "architecture",
                            "meta": {"title": "x",
-                                    "output": "html/00-overall.html"}}))
-        _write(os.path.join(arch, "html", "00-overall.html"),
-               "<html><body>ok</body></html>\n")
-        _write(os.path.join(arch, "svg", "00-overall.svg"),
-               '<?xml version="1.0" encoding="UTF-8"?>\n'
+                                    "output": "html/00-overall.html"}})
+        SVG = ('<?xml version="1.0" encoding="UTF-8"?>\n'
                '<svg xmlns="http://www.w3.org/2000/svg"'
                ' viewBox="0 0 10 10"></svg>\n')
+        _write(cand, CAND)
+        _write(html, "<html><body>ok</body></html>\n")
+        _write(svg, SVG)
         _write(os.path.join(arch, "README.md"),
                "[html/00-overall.html](html/00-overall.html)\n")
         _write(os.path.join(arch, "FLOW_INDEX.json"), json.dumps({
@@ -195,60 +254,70 @@ def _selftest():
                        "candidate": "candidates/00-overall.json",
                        "html": "html/00-overall.html",
                        "title": "x"}]}))
-        r_en = os.path.join(tmp, "README.md")
-        r_cn = os.path.join(tmp, "README_CN.md")
-        for rp in (r_en, r_cn):
-            _write(rp, "![x](docs/architecture/svg/00-overall.svg)\n"
-                       "[i](docs/architecture/index.html)\n")
+        _write(r_en, "![x](docs/architecture/en/svg/00-overall.svg)\n"
+                     "[i](docs/architecture/index.html)\n")
+        _write(r_cn, "![x](docs/architecture/svg/00-overall.svg)\n"
+                     "[i](docs/architecture/index.html)\n")
 
+        def write_manifest():
+            _write(man, json.dumps({"version": 1, "items": {"00-overall": {
+                "candidate_sha256": _sha256(cand),
+                "html_sha256": _sha256(html),
+                "svg_sha256": _sha256(svg)}}}))
+
+        write_manifest()
         args = (os.path.join(arch, "FLOW_INDEX.json"), arch,
                 os.path.join(arch, "README.md"), (r_en, r_cn))
         chk(not check(*args), "好样本被误伤")
         # 坏样本 1：candidate 不存在
-        os.remove(os.path.join(arch, "candidates", "00-overall.json"))
+        os.remove(cand)
         chk(bool(check(*args)), "缺 candidate 未判红")
-        _write(os.path.join(arch, "candidates", "00-overall.json"),
-               json.dumps({"diagram_type": "architecture",
-                           "meta": {"title": "x",
-                                    "output": "html/00-overall.html"}}))
+        _write(cand, CAND)
+        write_manifest()
         # 坏样本 2：diagram_type 不一致
-        _write(os.path.join(arch, "candidates", "00-overall.json"),
-               json.dumps({"diagram_type": "workflow",
-                           "meta": {"title": "x",
-                                    "output": "html/00-overall.html"}}))
+        _write(cand, json.dumps({"diagram_type": "workflow",
+                                 "meta": {"title": "x",
+                                          "output": "html/00-overall.html"}}))
         chk(bool(check(*args)), "type 不一致未判红")
-        _write(os.path.join(arch, "candidates", "00-overall.json"),
-               json.dumps({"diagram_type": "architecture",
-                           "meta": {"title": "x",
-                                    "output": "html/00-overall.html"}}))
+        _write(cand, CAND)
+        write_manifest()
         # 坏样本 3：SVG 不是 XML
-        _write(os.path.join(arch, "svg", "00-overall.svg"), "not xml\n")
+        _write(svg, "not xml\n")
         chk(bool(check(*args)), "坏 SVG 未判红")
-        _write(os.path.join(arch, "svg", "00-overall.svg"),
-               '<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"'
-               ' viewBox="0 0 10 10"></svg>\n')
+        _write(svg, SVG)
+        write_manifest()
         # 坏样本 4：根 README 没嵌图
         _write(r_en, "[i](docs/architecture/index.html)\n")
         chk(bool(check(*args)), "根 README 缺图未判红")
-        _write(r_en, "![x](docs/architecture/svg/00-overall.svg)\n"
+        _write(r_en, "![x](docs/architecture/en/svg/00-overall.svg)\n"
                      "[i](docs/architecture/index.html)\n")
         # 坏样本 5：多出未登记文件
-        _write(os.path.join(arch, "svg", "99-extra.svg"),
-               '<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"'
-               ' viewBox="0 0 10 10"></svg>\n')
+        _write(os.path.join(arch, "svg", "99-extra.svg"), SVG)
         chk(bool(check(*args)), "未登记 SVG 未判红")
         os.remove(os.path.join(arch, "svg", "99-extra.svg"))
+        write_manifest()
+        # 坏样本 6：candidate 变了但清单没重导（AD5）
+        _write(cand, json.dumps({"diagram_type": "architecture",
+                                 "meta": {"title": "changed",
+                                          "output": "html/00-overall.html"}}))
+        chk(bool(check(*args)), "candidate 变了清单未判红")
+        _write(cand, CAND)
+        write_manifest()
+        # 坏样本 7：清单缺失
+        os.remove(man)
+        chk(bool(check(*args)), "缺清单未判红")
+        write_manifest()
         chk(not check(*args), "恢复后仍误伤")
     finally:
         import shutil
         shutil.rmtree(tmp, ignore_errors=True)
 
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad[0], good[0]))
-    return 0 if (bad[0] == 0 and good[0] >= 7) else 1
+    return 0 if (bad[0] == 0 and good[0] >= 9) else 1
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="架构文档一致性门（AD1–AD4）")
+    ap = argparse.ArgumentParser(description="架构文档一致性门（AD1–AD5）")
     ap.add_argument("--selftest", action="store_true", help="两向自证")
     args = ap.parse_args(argv)
     if args.selftest:
@@ -266,7 +335,7 @@ def main(argv=None):
             print("  - %s" % p)
         print("check_architecture_docs: %d 项不合规" % len(probs))
         return 1
-    print("check_architecture_docs: OK（AD1–AD4 全绿；"
+    print("check_architecture_docs: OK（AD1–AD5 全绿；"
           "索引 %d 条对账 candidate/html/svg；根 README 已嵌图）"
           % len(_load_json(INDEX).get("items") or []))
     return 0

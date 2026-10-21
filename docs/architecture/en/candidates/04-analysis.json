@@ -1,0 +1,209 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Analysis engine: call graph → impact → deps/taint/dimensions/checks",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/en/html/04-analysis.html"
+  },
+  "components": [
+    {
+      "id": "cg",
+      "type": "backend",
+      "label": "call graph",
+      "sublabel": "build_call_graph · callers_of/calls_of",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "impact",
+      "type": "backend",
+      "label": "impact",
+      "pos": [
+        380,
+        40
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "deps",
+      "type": "backend",
+      "label": "dependencies",
+      "pos": [
+        720,
+        40
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "taint",
+      "type": "backend",
+      "label": "taint flow",
+      "pos": [
+        40,
+        160
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "dims",
+      "type": "backend",
+      "label": "dimension engine",
+      "pos": [
+        380,
+        160
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "checks",
+      "type": "backend",
+      "label": "static checks",
+      "pos": [
+        720,
+        160
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "complex",
+      "type": "backend",
+      "label": "complexity / hotspots",
+      "pos": [
+        40,
+        280
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "dups",
+      "type": "backend",
+      "label": "duplicate fingerprint",
+      "pos": [
+        380,
+        280
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "facts",
+      "type": "backend",
+      "label": "facts.py",
+      "pos": [
+        720,
+        280
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "entity",
+      "type": "backend",
+      "label": "entity model",
+      "sublabel": "entity_model.py",
+      "pos": [
+        40,
+        400
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "unified",
+      "type": "backend",
+      "label": "unified graph",
+      "pos": [
+        380,
+        400
+      ],
+      "size": [
+        300,
+        64
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "cg-i",
+      "from": "cg",
+      "to": "impact"
+    },
+    {
+      "id": "cg-d",
+      "from": "cg",
+      "to": "deps"
+    },
+    {
+      "id": "cg-t",
+      "from": "cg",
+      "to": "taint"
+    },
+    {
+      "id": "d-c",
+      "from": "dims",
+      "to": "checks"
+    },
+    {
+      "id": "t-f",
+      "from": "taint",
+      "to": "facts"
+    },
+    {
+      "id": "c-f",
+      "from": "checks",
+      "to": "facts"
+    },
+    {
+      "id": "cx-f",
+      "from": "complex",
+      "to": "facts"
+    },
+    {
+      "id": "du-f",
+      "from": "dups",
+      "to": "facts"
+    },
+    {
+      "id": "e-u",
+      "from": "entity",
+      "to": "unified"
+    },
+    {
+      "id": "i-u",
+      "from": "impact",
+      "to": "unified"
+    }
+  ]
+}

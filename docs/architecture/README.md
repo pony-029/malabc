@@ -1,14 +1,15 @@
 # malabc 架构图（archify）
 
-> 本目录用 **archify** 画出 malabc 的**总框架 + 11 个模块**。每张图都是
-> `candidate.json`（可编辑源）+ `.html`（可交互产物），不是截图。
+> 本目录用 **archify** 画出 malabc 的**总框架 + 11 个模块 + 数据流 + 时序**（14 张）。
+> 每张图都是 `candidate.json`（可编辑源）+ `.html`（可交互产物）+ `.svg`（独立矢量），不是截图。
 >
 > 生成器：`D:\work\rea\archify`（`archify render / validate / check`）。
-> 图型：`architecture`（组件/连线）、`workflow`（工序/分支）、`lifecycle`（状态机）。
+> 图型：`architecture`（组件/连线）、`workflow`（工序/分支）、`lifecycle`（状态机）、
+> `dataflow`（数据管线）、`sequence`（调用时序）。
 
 ---
 
-## 1. 一眼看懂：12 张图
+## 1. 一眼看懂：14 张图
 
 | # | 图 | 类型 | 文件 | 它回答的问题 |
 | --- | --- | --- | --- | --- |
@@ -24,11 +25,16 @@
 | 09 | 门禁与 CI | workflow | [html/09-gates.html](html/09-gates.html) | 39 道门如何被组织、增量、发版与进 CI？ |
 | 10 | MATLAB→C 移植 | architecture | [html/10-porting.html](html/10-porting.html) | 契约/算子/保真/台账如何把 MATLAB 落到 C？ |
 | 11 | 二进制分析 | architecture | [html/11-binary.html](html/11-binary.html) | PE/ELF/Mach-O/GPU 如何回答“这个名字归谁”？ |
+| 12 | **数据流** | dataflow | [html/12-dataflow.html](html/12-dataflow.html) | 三类输入如何汇成一份模型，再被多种出口消费？ |
+| 13 | **一次 LSP 请求** | sequence | [html/13-sequence.html](html/13-sequence.html) | 打开文件到大纲/诊断，800ms 超时后怎么兜底？ |
 
 索引页：[`index.html`](index.html)。
 
-**独立 SVG**：每张图的矢量版在 `svg/<id>.svg`（12 个，样式已内联，可直接嵌入 Markdown）；
-总框架 `svg/00-overall.svg` 已嵌入根 `README.md` / `README_CN.md`。
+**独立 SVG**：每张图的矢量版在 `svg/<id>.svg`（14 个，样式已裁剪为 ~4–5 KB，
+可直接嵌入 Markdown）；总框架 `svg/00-overall.svg` 已嵌入根 `README_CN.md`。
+
+**英文版**：`en/svg/<id>.svg`（14 张，英文标签；由 `tools/build_arch_svg_en.py`
+构建，说明见 [`en/README.md`](en/README.md)）；英文 README 使用 `en/svg/00-overall.svg`。
 
 ---
 
@@ -131,6 +137,20 @@
 - `--binary-attach`：把二进制读数接到源码分析；输出三态 `library / gpu_kernel / missing`。
 - 纪律：**不执行、不反汇编**；不可解析是一等状态。
 
+### 12 数据流
+
+- 三类输入：工程源码（`.m/.c/.py/.js`）、配置/快照、二进制元数据。
+- 三列前端：MATLAB `parse_file`、多语言 `frontends/ir.py`、`binfmt`（只读依赖/导出表）。
+- 三列模型：`entity_model` / `unified_graph` / `facts`；分析侧共享 `build_analysis_model`。
+- 消费侧：报告/站点、JSON/SARIF、LSP/MCP——新增出口只写渲染器，不改分析内核。
+
+### 13 一次 LSP 请求
+
+- 正常路径：打开文件 → `initialize` → `run_pipeline` → `documentSymbol` → 大纲。
+- 缓存：`_load_cache` 命中时不必重新解析；诊断与大纲共享同一份模型。
+- 800ms：客户端超时不是“工具坏了”，而是切到本地兜底；兜底按 `%%` 分节，
+  无分节时显示文件名，绝不返回空白大纲。
+
 ---
 
 ## 2.5 模块归属（主文件 / 最近提交）
@@ -180,6 +200,8 @@ node D:/work/rea/archify/archify/bin/archify.mjs check \
 | 00 / 04 / 06 / 07 / 10 / 11 | `architecture` |
 | 01 / 02 / 03 / 05 / 09 | `workflow` |
 | 08 | `lifecycle` |
+| 12 | `dataflow` |
+| 13 | `sequence` |
 
 ---
 
@@ -187,15 +209,17 @@ node D:/work/rea/archify/archify/bin/archify.mjs check \
 
 | 检查 | 结果 |
 | --- | --- |
-| `archify validate`（12 个 candidate） | **12/12 ok**（composition showcase: 0 errors, 0 warnings） |
-| `archify render`（12 张） | **12/12 成功** |
-| `archify check`（12 个 HTML） | **12/12 通过** |
-| 独立 SVG（12 个） | **12/12 XML 解析通过**；样式已内联（CSS 286 KB） |
-| SVG 渲染烟测 | Chrome headless `1444×744`，**3591 色 / 40.9% 非白**（不是空白图） |
-| 架构文档门 | `python tools/check_architecture_docs.py` → **OK（AD1–AD4）** |
+| `archify validate`（14 个 candidate） | **14/14 ok**（12 张 architecture/workflow/lifecycle 走 showcase；dataflow/sequence 走 standard，0 errors） |
+| `archify render`（14 张） | **14/14 成功** |
+| `archify check`（14 个 HTML） | **14/14 通过** |
+| 独立 SVG（14 个） | **14/14 XML 解析通过**；CSS 裁剪到 **4–5 KB**（丢弃 @font-face，靠系统等宽兜底） |
+| SVG 渲染烟测 | `00-overall` 1444×744 **3585 色 / 40.89% 非白**；`12-dataflow` 980×520 **4430 色 / 57.57%**；`13-sequence` 1020×700 **3752 色 / 63.04%** |
+| SVG 体积 | **3.7 MB → 353 KB**（约 10.5×，单张 17–41 KB） |
+| 架构文档门 | `python tools/check_architecture_docs.py` → **OK（AD1–AD5）** |
+| 陈旧门 | `python tools/export_arch_svg.py --check` → **OK（14 条清单与 candidate/html/svg 一致）** |
 | 根 README | 中英两份都链接 `docs/architecture/index.html` 并嵌入 `svg/00-overall.svg` |
 | `.html` / `.svg` 行尾 | **LF**（`00-overall.html` CRLF=0；SVG 由导出器按 LF 写） |
-| 产物体积 | HTML 约 **9.1 MB** + SVG 约 **3.7 MB** |
+| 产物体积 | HTML 约 **10.1 MB**（14 张） + SVG 约 **344 KB** |
 
 > 说明：这是**架构/流程图**，回答“模块怎么组织、数据怎么流”；不是函数级调用图。
 > 函数级调用图请用 `python matlabc.py <dir> --browse <out>` 或 `--callgraph`。

@@ -14,6 +14,8 @@
     {"id": "08-fix-loop", "type": "lifecycle", "candidate": "candidates/08-fix-loop.json", "html": "html/08-fix-loop.html", "svg": "svg/08-fix-loop.svg", "title": "修复闭环"},
     {"id": "09-gates", "type": "workflow", "candidate": "candidates/09-gates.json", "html": "html/09-gates.html", "svg": "svg/09-gates.svg", "title": "门禁与 CI"},
     {"id": "10-porting", "type": "architecture", "candidate": "candidates/10-porting.json", "html": "html/10-porting.html", "svg": "svg/10-porting.svg", "title": "MATLAB→C 移植"},
-    {"id": "11-binary", "type": "architecture", "candidate": "candidates/11-binary.json", "html": "html/11-binary.html", "svg": "svg/11-binary.svg", "title": "二进制分析"}
+    {"id": "11-binary", "type": "architecture", "candidate": "candidates/11-binary.json", "html": "html/11-binary.html", "svg": "svg/11-binary.svg", "title": "二进制分析"},
+    {"id": "12-dataflow", "type": "dataflow", "candidate": "candidates/12-dataflow.json", "html": "html/12-dataflow.html", "svg": "svg/12-dataflow.svg", "title": "数据流"},
+    {"id": "13-sequence", "type": "sequence", "candidate": "candidates/13-sequence.json", "html": "html/13-sequence.html", "svg": "svg/13-sequence.svg", "title": "LSP 时序"}
   ]
 }

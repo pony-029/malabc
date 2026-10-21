@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "一次 LSP 大纲请求：initialize → documentSymbol → 超时兜底",
+    "output": "docs/architecture/html/13-sequence.html",
+    "viewBox": [1020, 700],
+    "column_fit": "spread",
+    "animation": "trace",
+    "quality_profile": "standard"
+  },
+  "participants": [
+    { "id": "editor", "type": "external", "label": "VS Code", "sublabel": "编辑器" },
+    { "id": "client", "type": "frontend", "label": "LSP 客户端", "sublabel": "extension.js" },
+    { "id": "server", "type": "backend", "label": "LSP 服务端", "sublabel": "matlabc_lsp.py" },
+    { "id": "analyzer", "type": "backend", "label": "分析内核", "sublabel": "run_pipeline" },
+    { "id": "cache", "type": "database", "label": "解析缓存", "sublabel": "_load_cache" },
+    { "id": "fallback", "type": "security", "label": "本地兜底", "sublabel": "800ms 后扫描" }
+  ],
+  "segments": [
+    { "from": 150, "to": 330, "label": "初始化" },
+    { "from": 340, "to": 455, "label": "大纲" },
+    { "from": 465, "to": 520, "label": "诊断" },
+    { "from": 530, "to": 590, "label": "超时兜底" }
+  ],
+  "messages": [
+    { "id": "open", "from": "editor", "to": "client", "y": 165, "label": "打开 .m", "variant": "default" },
+    { "id": "init", "from": "client", "to": "server", "y": 195, "label": "initialize", "variant": "emphasis" },
+    { "id": "pipeline", "from": "server", "to": "analyzer", "y": 225, "label": "run_pipeline", "variant": "emphasis" },
+    { "id": "load-cache", "from": "analyzer", "to": "cache", "y": 255, "label": "load_cache", "variant": "default" },
+    { "id": "cache-result", "from": "cache", "to": "analyzer", "y": 285, "label": "命中 / 未命中", "variant": "return" },
+    { "id": "facts", "from": "analyzer", "to": "server", "y": 315, "label": "facts / model", "variant": "return" },
+    { "id": "symbols-req", "from": "client", "to": "server", "y": 345, "label": "documentSymbol（800ms）", "variant": "emphasis" },
+    { "id": "cache-hit", "from": "cache", "to": "server", "y": 375, "label": "hit", "variant": "return" },
+    { "id": "symbols-res", "from": "server", "to": "client", "y": 405, "label": "DocumentSymbol[]", "variant": "return" },
+    { "id": "outline", "from": "client", "to": "editor", "y": 435, "label": "大纲", "variant": "return" },
+    { "id": "diag", "from": "server", "to": "client", "y": 475, "label": "publishDiagnostics", "variant": "dashed" },
+    { "id": "squiggles", "from": "client", "to": "editor", "y": 505, "label": "波浪线", "variant": "return" },
+    { "id": "timeout", "from": "client", "to": "fallback", "y": 545, "label": "超时 → 本地扫描", "variant": "dashed" },
+    { "id": "fallback-result", "from": "fallback", "to": "client", "y": 575, "label": "%% 分节 / 文件名", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "editor", "from": 155, "to": 505, "type": "external" },
+    { "participant": "client", "from": 160, "to": 585, "type": "frontend" },
+    { "participant": "server", "from": 180, "to": 505, "type": "backend" },
+    { "participant": "analyzer", "from": 205, "to": 325, "type": "backend" },
+    { "participant": "cache", "from": 230, "to": 390, "type": "database" },
+    { "participant": "fallback", "from": 540, "to": 580, "type": "security" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "正常路径",
+      "items": [
+        "打开文件 → initialize → run_pipeline → documentSymbol → 大纲",
+        "服务端一次解析，诊断与大纲共享同一份模型",
+        "缓存命中时 documentSymbol 不必重新解析"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "800ms 的边界",
+      "items": [
+        "客户端对 documentSymbol 设 800ms 超时，不让编辑器无限转圈",
+        "超时不是“工具坏了”，而是切到本地兜底路径",
+        "兜底结果同样按 %% 分节，形态与服务端一致"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "兜底的诚实",
+      "items": [
+        "脚本无 function 时按 %% 分节列出",
+        "无分节时显示文件名本身，副标题写明原因",
+        "绝不返回空白大纲——空白无法与“工具坏了”区分"
+      ]
+    }
+  ]
+}

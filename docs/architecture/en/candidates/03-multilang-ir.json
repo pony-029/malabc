@@ -1,0 +1,127 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Multi-language frontends + unified IR: attribution for C / Py / JS / asm",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/en/html/03-multilang-ir.html"
+  },
+  "lanes": [
+    {
+      "id": "dispatch",
+      "label": "dispatch"
+    },
+    {
+      "id": "c",
+      "label": "C/C++"
+    },
+    {
+      "id": "py",
+      "label": "Python"
+    },
+    {
+      "id": "js",
+      "label": "JavaScript"
+    },
+    {
+      "id": "ir",
+      "label": "unified IR"
+    }
+  ],
+  "mainPath": [
+    "reg",
+    "cf",
+    "irn",
+    "attr"
+  ],
+  "nodes": [
+    {
+      "id": "reg",
+      "lane": "dispatch",
+      "col": 0,
+      "type": "frontend",
+      "label": "FRONTEND_REGISTRY",
+      "width": 190
+    },
+    {
+      "id": "cf",
+      "lane": "c",
+      "col": 1,
+      "type": "backend",
+      "label": "C/C++ frontend",
+      "sublabel": "_parse_c_source / build_c_model",
+      "width": 210
+    },
+    {
+      "id": "pf",
+      "lane": "py",
+      "col": 1,
+      "type": "backend",
+      "label": "Python frontend",
+      "width": 190
+    },
+    {
+      "id": "jf",
+      "lane": "js",
+      "col": 1,
+      "type": "backend",
+      "label": "JS frontend",
+      "width": 180
+    },
+    {
+      "id": "irn",
+      "lane": "ir",
+      "col": 2,
+      "type": "backend",
+      "label": "frontends/ir.py",
+      "width": 220
+    },
+    {
+      "id": "attr",
+      "lane": "ir",
+      "col": 3,
+      "type": "security",
+      "label": "IR_LANG_OWNERS",
+      "width": 200
+    }
+  ],
+  "edges": [
+    {
+      "id": "r-c",
+      "from": "reg",
+      "to": "cf"
+    },
+    {
+      "id": "r-p",
+      "from": "reg",
+      "to": "pf"
+    },
+    {
+      "id": "r-j",
+      "from": "reg",
+      "to": "jf"
+    },
+    {
+      "id": "c-i",
+      "from": "cf",
+      "to": "irn"
+    },
+    {
+      "id": "p-i",
+      "from": "pf",
+      "to": "irn"
+    },
+    {
+      "id": "j-i",
+      "from": "jf",
+      "to": "irn"
+    },
+    {
+      "id": "i-a",
+      "from": "irn",
+      "to": "attr",
+      "variant": "emphasis"
+    }
+  ]
+}

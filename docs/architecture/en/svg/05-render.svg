@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1066 652" data-layout-contract="readable-v2" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="showcase"><style type="text/css"><![CDATA[
+:root,
+    [data-theme="dark"]{
+      --bg: #020617;
+      --grid: #1e293b;
+      --canvas-dot: rgba(148, 163, 184, 0.16);
+      --text: #ffffff;
+      --text-muted: #94a3b8;
+      --text-dim: #475569;
+      
+      --text-faint: #7d8da1;
+
+      --panel: rgba(15, 23, 42, 0.5);
+      --panel-border: #1e293b;
+      --lane-fill: rgba(15, 23, 42, 0.22);
+      --lane-stroke: #334155;
+
+      --arrow: #64748b;
+      --arrow-emphasis: #34d399;
+
+      
+      --mask: #0f172a;
+
+      --frontend-fill:    rgba(8, 51, 68, 0.4);
+      --frontend-stroke:  #22d3ee;
+      --backend-fill:     rgba(6, 78, 59, 0.4);
+      --backend-stroke:   #34d399;
+      --database-fill:    rgba(76, 29, 149, 0.4);
+      --database-stroke:  #a78bfa;
+      --cloud-fill:       rgba(120, 53, 15, 0.3);
+      --cloud-stroke:     #fbbf24;
+      --security-fill:    rgba(136, 19, 55, 0.4);
+      --security-stroke:  #fb7185;
+      --messagebus-fill:  rgba(251, 146, 60, 0.3);
+      --messagebus-stroke:#fb923c;
+      --external-fill:    rgba(30, 41, 59, 0.5);
+      --external-stroke:  #94a3b8;
+
+      --toolbar-bg:       rgba(15, 23, 42, 0.8);
+      --toolbar-border:   #334155;
+      --toolbar-text:     #e2e8f0;
+      --toolbar-hover:    rgba(15, 23, 42, 0.95);
+      --toolbar-menu-bg:  #0f172a;
+    }
+body{
+      --archify-page-top: 2rem;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      background: var(--bg);
+      min-height: 100vh;
+      padding: var(--archify-page-top) 2rem 2rem;
+      color: var(--text);
+      
+    }
+svg{
+      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', 'Noto Sans Mono CJK SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', monospace;
+      width: 100%;
+      min-width: min(900px, 100%);
+      display: block;
+      transform-origin: 0 0;
+      transition: transform 0.18s ease;
+    }
+.c-grid{ stroke: var(--grid); fill: none; }
+.c-mask{ fill: var(--mask); stroke: none; }
+.c-lane-rule{ stroke: var(--lane-stroke); fill: none; opacity: 0.7; }
+.c-lane-wash{ fill: var(--lane-fill); stroke: none; }
+.c-backend{ fill: var(--backend-fill);    stroke: var(--backend-stroke); }
+.c-security{ fill: var(--security-fill);   stroke: var(--security-stroke); }
+.t-primary{ fill: var(--text); }
+.t-muted{ fill: var(--text-muted); }
+.t-dim{ fill: var(--text-dim); }
+html[data-preset="classic"] .diagram-container > svg .c-grid{ stroke: transparent; }
+html[data-preset="classic"][data-theme="light"] .diagram-container > svg [data-node-id] > rect:not(.c-mask){
+      filter: drop-shadow(0 1px 1px rgba(17, 24, 39, 0.05)) drop-shadow(0 6px 12px rgba(17, 24, 39, 0.06));
+    }
+html[data-preset="classic"][data-theme="dark"] .diagram-container > svg [data-node-id] > rect:not(.c-mask){
+      filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.35));
+    }
+html[data-preset="classic"] .diagram-container > svg .c-lane-wash{ fill: color-mix(in srgb, var(--text) 2.6%, transparent); }
+html[data-preset="classic"] .diagram-container > svg .c-lane-rule{ stroke: var(--panel-border); opacity: 1; }
+html[data-preset="classic"][data-theme="dark"] .diagram-container > svg .c-lane-rule{ stroke: rgba(148, 163, 184, 0.16); }
+svg .semantic-sigil{
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.35;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: 0.76;
+      pointer-events: none;
+    }
+svg .semantic-sigil > *{ vector-effect: non-scaling-stroke; }
+svg .semantic-sigil .sigil-fill{ fill: currentColor; stroke: none; }
+svg .s-backend{ color: var(--backend-stroke); }
+svg .s-security{ color: var(--security-stroke); }
+.a-default{ stroke: var(--arrow); fill: none; }
+.m-default{ fill: var(--arrow); }
+.m-emphasis{ fill: var(--arrow-emphasis); }
+.m-security{ fill: var(--security-stroke); }
+.m-dashed{ fill: var(--database-stroke); }
+svg [data-node-id] > .c-mask{ fill-opacity: 1; }
+svg[data-preset="editorial"] .c-grid{
+      stroke-dasharray: 1 4;
+      opacity: 0.48;
+    }
+svg[data-preset="blueprint"] .c-grid{
+      stroke-dasharray: 1 3;
+      opacity: 0.78;
+    }
+svg[data-preset="blueprint"] .c-security-group,
+    svg[data-preset="blueprint"] .c-lane{ stroke-dasharray: 7 3; }
+.c-security-group{ fill: transparent; stroke: var(--security-stroke); stroke-dasharray: 4,4; }
+.c-lane{ fill: var(--lane-fill); stroke: var(--lane-stroke); stroke-dasharray: 6,6; }
+]]></style>
+        <title id="archify-diagram-title">Render &amp; output: one model, five exits</title>
+        <desc id="archify-diagram-description">A workflow diagram generated by Archify.</desc>
+        <!-- Definitions -->
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-default" />
+          </marker>
+          <marker id="arrowhead-emphasis" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-emphasis" />
+          </marker>
+          <marker id="arrowhead-security" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-security" />
+          </marker>
+          <marker id="arrowhead-dashed" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-dashed" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" class="c-grid" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <!-- Background Grid -->
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- Swimlanes -->
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-0" x="40" y="52" width="1010" height="104" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="74" class="t-dim" font-size="10" font-weight="600">01 / model</text>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-1" x="40" y="176" width="1010" height="104" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="198" class="t-dim" font-size="10" font-weight="600">02 / single page</text>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-2" x="40" y="300" width="1010" height="104" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="322" class="t-dim" font-size="10" font-weight="600">03 / site</text>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-3" x="40" y="424" width="1010" height="104" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="446" class="t-dim" font-size="10" font-weight="600">04 / machine data</text>
+
+        <!-- Phase headers -->
+
+
+        <!-- Workflow groups -->
+
+
+        <!-- Edge paths -->
+        <path data-edge-from="bm" data-edge-to="browse" data-edge-key="0" data-edge-id="b-b" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="48,119;32,119;32,420;263,420;263,393" d="M 48 119 L 32 119 L 32 420 L 263 420 L 263 393" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="bm" data-edge-to="json" data-edge-key="1" data-edge-id="b-j" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="48,119;20,119;20,491;178,491" d="M 48 119 L 20 119 L 20 491 L 178 491" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="bm" data-edge-to="md" data-edge-key="2" data-edge-id="b-md" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="238,119;263,119;263,217" d="M 238 119 L 263 119 L 263 217" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="dox" data-edge-to="patch" data-edge-key="3" data-edge-id="d-p" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="754,491;782,491" d="M 754 491 L 782 491" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="json" data-edge-to="sarif" data-edge-key="4" data-edge-id="j-s" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="348,491;386,491" d="M 348 491 L 386 491" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="md" data-edge-to="html" data-edge-key="5" data-edge-id="md-h" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="333,243;361,243" d="M 333 243 L 361 243" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="sarif" data-edge-to="dox" data-edge-key="6" data-edge-id="s-d" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="546,491;574,491" d="M 546 491 L 574 491" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+
+        <!-- Nodes -->
+        <g id="node-bm" data-node-id="bm" data-node-label="build_analysis_model" tabindex="0" role="button" aria-label="Focus build_analysis_model, model" aria-pressed="false" data-node-kind="backend" data-node-context="model">
+          <title>build_analysis_model · model</title>
+          <rect x="48" y="93" width="190" height="52" rx="6" class="c-mask"/>
+          <rect x="48" y="93" width="190" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(54 99) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="143" y="114" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">build_analysis_model</text>
+        </g>
+
+        <g id="node-md" data-node-id="md" data-node-label="Markdown" tabindex="0" role="button" aria-label="Focus Markdown, single page" aria-pressed="false" data-node-kind="backend" data-node-context="single page">
+          <title>Markdown · single page</title>
+          <rect x="193" y="217" width="140" height="52" rx="6" class="c-mask"/>
+          <rect x="193" y="217" width="140" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(199 223) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="263" y="238" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Markdown</text>
+        </g>
+
+        <g id="node-html" data-node-id="html" data-node-label="--html report" tabindex="0" role="button" aria-label="Focus --html report, single page" aria-pressed="false" data-node-kind="backend" data-node-context="single page">
+          <title>--html report · single page</title>
+          <rect x="361" y="217" width="210" height="52" rx="6" class="c-mask"/>
+          <rect x="361" y="217" width="210" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(367 223) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="466" y="238" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">--html report</text>
+        </g>
+
+        <g id="node-browse" data-node-id="browse" data-node-label="--browse site" tabindex="0" role="button" aria-label="Focus --browse site, index/src/funcs/deps/dir/rule, site" aria-pressed="false" data-node-kind="backend" data-node-sublabel="index/src/funcs/deps/dir/rule" data-node-context="site">
+          <title>--browse site · index/src/funcs/deps/dir/rule · site</title>
+          <rect x="148" y="341" width="230" height="52" rx="6" class="c-mask"/>
+          <rect x="148" y="341" width="230" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(154 347) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="263" y="362" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">--browse site</text>
+          <text data-detail="context" x="263" y="379" class="t-muted" font-size="8" text-anchor="middle">index/src/funcs/deps/dir/rule</text>
+        </g>
+
+        <g id="node-json" data-node-id="json" data-node-label="--json" tabindex="0" role="button" aria-label="Focus --json, full / summary / compact, machine data" aria-pressed="false" data-node-kind="backend" data-node-sublabel="full / summary / compact" data-node-context="machine data">
+          <title>--json · full / summary / compact · machine data</title>
+          <rect x="178" y="465" width="170" height="52" rx="6" class="c-mask"/>
+          <rect x="178" y="465" width="170" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(184 471) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="263" y="486" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">--json</text>
+          <text data-detail="context" x="263" y="503" class="t-muted" font-size="8" text-anchor="middle">full / summary / compact</text>
+        </g>
+
+        <g id="node-sarif" data-node-id="sarif" data-node-label="SARIF 2.1.0" tabindex="0" role="button" aria-label="Focus SARIF 2.1.0, machine data" aria-pressed="false" data-node-kind="security" data-node-context="machine data">
+          <title>SARIF 2.1.0 · machine data</title>
+          <rect x="386" y="465" width="160" height="52" rx="6" class="c-mask"/>
+          <rect x="386" y="465" width="160" height="52" rx="6" class="c-security" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(392 471) scale(0.6875)">
+            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
+            <path d="m5.8 8 1.5 1.5 3-3"/>
+          </g>
+          <text data-node-label="" x="466" y="486" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">SARIF 2.1.0</text>
+        </g>
+
+        <g id="node-dox" data-node-id="dox" data-node-label="Doxygen XML" tabindex="0" role="button" aria-label="Focus Doxygen XML, --export-doxygen-xml, machine data" aria-pressed="false" data-node-kind="backend" data-node-sublabel="--export-doxygen-xml" data-node-context="machine data">
+          <title>Doxygen XML · --export-doxygen-xml · machine data</title>
+          <rect x="574" y="465" width="180" height="52" rx="6" class="c-mask"/>
+          <rect x="574" y="465" width="180" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(580 471) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="664" y="486" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Doxygen XML</text>
+          <text data-detail="context" x="664" y="503" class="t-muted" font-size="8" text-anchor="middle">--export-doxygen-xml</text>
+        </g>
+
+        <g id="node-patch" data-node-id="patch" data-node-label="patch / test skeleton" tabindex="0" role="button" aria-label="Focus patch / test skeleton, machine data" aria-pressed="false" data-node-kind="backend" data-node-context="machine data">
+          <title>patch / test skeleton · machine data</title>
+          <rect x="782" y="465" width="180" height="52" rx="6" class="c-mask"/>
+          <rect x="782" y="465" width="180" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(788 471) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="872" y="486" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">patch / test skeleton</text>
+        </g>
+
+        <!-- Edge labels -->
+
+
+
+
+
+
+
+
+        <!-- Legend -->
+        <g data-legend="" data-legend-bridge="">
+          <text x="20" y="552" class="t-primary" font-size="12" font-weight="650">Legend</text>
+          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="Agent logic" data-legend-x="20" data-legend-baseline="572" data-legend-width="91">
+            <rect x="20" y="564" width="14" height="9" rx="2" class="c-backend" stroke-width="1"/>
+            <text x="42" y="572" class="t-muted" font-size="7.5" font-weight="500">Agent logic</text>
+          </g>
+          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="Policy" data-legend-x="118" data-legend-baseline="572" data-legend-width="70">
+            <rect x="118" y="564" width="14" height="9" rx="2" class="c-security" stroke-width="1"/>
+            <text x="140" y="572" class="t-muted" font-size="7.5" font-weight="500">Policy</text>
+          </g>
+        </g>
+      </svg>

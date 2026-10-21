@@ -1,0 +1,220 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "malabc dataflow: three inputs → one model → many consumers",
+    "output": "docs/architecture/en/html/12-dataflow.html",
+    "viewBox": [
+      980,
+      520
+    ],
+    "animation": "trace",
+    "quality_profile": "standard",
+    "locale": "en"
+  },
+  "stages": [
+    {
+      "label": "input"
+    },
+    {
+      "label": "frontend"
+    },
+    {
+      "label": "model"
+    },
+    {
+      "label": "consume"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "cfg",
+      "type": "database",
+      "label": "config",
+      "sublabel": "analyzer_config",
+      "stage": 0,
+      "row": 0,
+      "tag": "settings"
+    },
+    {
+      "id": "src",
+      "type": "frontend",
+      "label": "source",
+      "sublabel": ".m / .c / .py / .js",
+      "stage": 0,
+      "row": 1,
+      "tag": "text"
+    },
+    {
+      "id": "bin",
+      "type": "cloud",
+      "label": "binaries",
+      "sublabel": "PE / ELF / Mach-O",
+      "stage": 0,
+      "row": 2,
+      "tag": "metadata"
+    },
+    {
+      "id": "matlab",
+      "type": "backend",
+      "label": "MATLAB",
+      "sublabel": "parse_file",
+      "stage": 1,
+      "row": 0,
+      "tag": "AST"
+    },
+    {
+      "id": "multi",
+      "type": "backend",
+      "label": "multi-language",
+      "sublabel": "frontends/ir.py",
+      "stage": 1,
+      "row": 1,
+      "tag": "IR"
+    },
+    {
+      "id": "binfmt",
+      "type": "backend",
+      "label": "binfmt",
+      "stage": 1,
+      "row": 2,
+      "tag": "binfmt"
+    },
+    {
+      "id": "model",
+      "type": "database",
+      "label": "entities",
+      "sublabel": "entity_model",
+      "stage": 2,
+      "row": 0,
+      "tag": "entities"
+    },
+    {
+      "id": "graph",
+      "type": "database",
+      "label": "graph",
+      "sublabel": "unified_graph",
+      "stage": 2,
+      "row": 1,
+      "tag": "graph"
+    },
+    {
+      "id": "facts",
+      "type": "database",
+      "label": "facts",
+      "sublabel": "facts.py",
+      "stage": 2,
+      "row": 2,
+      "tag": "facts"
+    },
+    {
+      "id": "report",
+      "type": "cloud",
+      "label": "report",
+      "sublabel": "--html / --browse",
+      "stage": 3,
+      "row": 0,
+      "tag": "HTML"
+    },
+    {
+      "id": "json",
+      "type": "cloud",
+      "label": "JSON",
+      "sublabel": "SARIF",
+      "stage": 3,
+      "row": 1,
+      "tag": "JSON"
+    },
+    {
+      "id": "lsp",
+      "type": "cloud",
+      "label": "LSP/MCP",
+      "stage": 3,
+      "row": 2,
+      "tag": "interactive"
+    }
+  ],
+  "flows": [
+    {
+      "id": "cfg-matlab",
+      "from": "cfg",
+      "to": "matlab",
+      "label": "config",
+      "classification": "settings",
+      "variant": "default",
+      "route": "straight"
+    },
+    {
+      "id": "src-multi",
+      "from": "src",
+      "to": "multi",
+      "label": "source",
+      "classification": "text",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "id": "bin-binfmt",
+      "from": "bin",
+      "to": "binfmt",
+      "label": "metadata",
+      "classification": "no execute",
+      "variant": "default",
+      "route": "straight"
+    },
+    {
+      "id": "matlab-model",
+      "from": "matlab",
+      "to": "model",
+      "label": "functions/edges",
+      "classification": "AST",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "id": "multi-graph",
+      "from": "multi",
+      "to": "graph",
+      "label": "IR",
+      "classification": "IR",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "id": "binfmt-facts",
+      "from": "binfmt",
+      "to": "facts",
+      "label": "dependencies",
+      "classification": "binfmt",
+      "variant": "default",
+      "route": "straight"
+    },
+    {
+      "id": "model-report",
+      "from": "model",
+      "to": "report",
+      "label": "entities",
+      "classification": "HTML",
+      "variant": "default",
+      "route": "straight"
+    },
+    {
+      "id": "graph-json",
+      "from": "graph",
+      "to": "json",
+      "label": "graph",
+      "classification": "JSON",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "id": "facts-lsp",
+      "from": "facts",
+      "to": "lsp",
+      "label": "facts",
+      "classification": "interactive",
+      "variant": "default",
+      "route": "straight"
+    }
+  ]
+}

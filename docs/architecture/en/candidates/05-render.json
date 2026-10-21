@@ -1,0 +1,139 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Render & output: one model, five exits",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/en/html/05-render.html"
+  },
+  "lanes": [
+    {
+      "id": "model",
+      "label": "model"
+    },
+    {
+      "id": "single",
+      "label": "single page"
+    },
+    {
+      "id": "site",
+      "label": "site"
+    },
+    {
+      "id": "machine",
+      "label": "machine data"
+    }
+  ],
+  "mainPath": [
+    "bm",
+    "md",
+    "html"
+  ],
+  "nodes": [
+    {
+      "id": "bm",
+      "lane": "model",
+      "col": 0,
+      "type": "backend",
+      "label": "build_analysis_model",
+      "width": 190
+    },
+    {
+      "id": "md",
+      "lane": "single",
+      "col": 1,
+      "type": "backend",
+      "label": "Markdown",
+      "width": 140
+    },
+    {
+      "id": "html",
+      "lane": "single",
+      "col": 2,
+      "type": "backend",
+      "label": "--html report",
+      "width": 210
+    },
+    {
+      "id": "browse",
+      "lane": "site",
+      "col": 1,
+      "type": "backend",
+      "label": "--browse site",
+      "sublabel": "index/src/funcs/deps/dir/rule",
+      "width": 230
+    },
+    {
+      "id": "json",
+      "lane": "machine",
+      "col": 1,
+      "type": "backend",
+      "label": "--json",
+      "sublabel": "full / summary / compact",
+      "width": 170
+    },
+    {
+      "id": "sarif",
+      "lane": "machine",
+      "col": 2,
+      "type": "security",
+      "label": "SARIF 2.1.0",
+      "width": 160
+    },
+    {
+      "id": "dox",
+      "lane": "machine",
+      "col": 3,
+      "type": "backend",
+      "label": "Doxygen XML",
+      "sublabel": "--export-doxygen-xml",
+      "width": 180
+    },
+    {
+      "id": "patch",
+      "lane": "machine",
+      "col": 4,
+      "type": "backend",
+      "label": "patch / test skeleton",
+      "width": 180
+    }
+  ],
+  "edges": [
+    {
+      "id": "b-md",
+      "from": "bm",
+      "to": "md"
+    },
+    {
+      "id": "md-h",
+      "from": "md",
+      "to": "html"
+    },
+    {
+      "id": "b-b",
+      "from": "bm",
+      "to": "browse"
+    },
+    {
+      "id": "b-j",
+      "from": "bm",
+      "to": "json"
+    },
+    {
+      "id": "j-s",
+      "from": "json",
+      "to": "sarif"
+    },
+    {
+      "id": "s-d",
+      "from": "sarif",
+      "to": "dox"
+    },
+    {
+      "id": "d-p",
+      "from": "dox",
+      "to": "patch"
+    }
+  ]
+}

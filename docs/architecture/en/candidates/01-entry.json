@@ -1,0 +1,137 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Entry & CLI: how one command reaches the analysis core",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/en/html/01-entry.html"
+  },
+  "lanes": [
+    {
+      "id": "boot",
+      "label": "entry routing"
+    },
+    {
+      "id": "cli",
+      "label": "CLI main flow"
+    },
+    {
+      "id": "modes",
+      "label": "other entries"
+    },
+    {
+      "id": "exit",
+      "label": "exit"
+    }
+  ],
+  "mainPath": [
+    "bootn",
+    "parse",
+    "dispatch",
+    "analyze",
+    "output",
+    "exitn"
+  ],
+  "nodes": [
+    {
+      "id": "bootn",
+      "lane": "boot",
+      "col": 0,
+      "type": "frontend",
+      "label": "matlabc_boot.py",
+      "width": 170
+    },
+    {
+      "id": "parse",
+      "lane": "cli",
+      "col": 1,
+      "type": "backend",
+      "label": "args + config",
+      "width": 190
+    },
+    {
+      "id": "dispatch",
+      "lane": "cli",
+      "col": 2,
+      "type": "backend",
+      "label": "dispatch",
+      "sublabel": "analyze/html/browse/json/sarif/patch",
+      "width": 210
+    },
+    {
+      "id": "analyze",
+      "lane": "cli",
+      "col": 3,
+      "type": "backend",
+      "label": "analyze()",
+      "width": 190
+    },
+    {
+      "id": "output",
+      "lane": "cli",
+      "col": 4,
+      "type": "backend",
+      "label": "output",
+      "width": 170
+    },
+    {
+      "id": "other",
+      "lane": "modes",
+      "col": 2,
+      "type": "backend",
+      "label": "other entries",
+      "sublabel": "lsp / mcp / flow / gui",
+      "width": 160
+    },
+    {
+      "id": "exitn",
+      "lane": "exit",
+      "col": 5,
+      "type": "security",
+      "label": "exit code",
+      "sublabel": "0=ok / 1=error / 2=unimplemented",
+      "width": 200
+    }
+  ],
+  "edges": [
+    {
+      "id": "b-p",
+      "from": "bootn",
+      "to": "parse"
+    },
+    {
+      "id": "p-d",
+      "from": "parse",
+      "to": "dispatch"
+    },
+    {
+      "id": "d-a",
+      "from": "dispatch",
+      "to": "analyze",
+      "variant": "emphasis"
+    },
+    {
+      "id": "a-o",
+      "from": "analyze",
+      "to": "output"
+    },
+    {
+      "id": "o-e",
+      "from": "output",
+      "to": "exitn"
+    },
+    {
+      "id": "d-x",
+      "from": "dispatch",
+      "to": "other",
+      "variant": "dashed",
+      "label": "other modes"
+    },
+    {
+      "id": "x-e",
+      "from": "other",
+      "to": "exitn"
+    }
+  ]
+}

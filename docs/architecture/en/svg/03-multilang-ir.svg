@@ -1,0 +1,264 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 935 776" data-layout-contract="readable-v2" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="showcase"><style type="text/css"><![CDATA[
+:root,
+    [data-theme="dark"]{
+      --bg: #020617;
+      --grid: #1e293b;
+      --canvas-dot: rgba(148, 163, 184, 0.16);
+      --text: #ffffff;
+      --text-muted: #94a3b8;
+      --text-dim: #475569;
+      
+      --text-faint: #7d8da1;
+
+      --panel: rgba(15, 23, 42, 0.5);
+      --panel-border: #1e293b;
+      --lane-fill: rgba(15, 23, 42, 0.22);
+      --lane-stroke: #334155;
+
+      --arrow: #64748b;
+      --arrow-emphasis: #34d399;
+
+      
+      --mask: #0f172a;
+
+      --frontend-fill:    rgba(8, 51, 68, 0.4);
+      --frontend-stroke:  #22d3ee;
+      --backend-fill:     rgba(6, 78, 59, 0.4);
+      --backend-stroke:   #34d399;
+      --database-fill:    rgba(76, 29, 149, 0.4);
+      --database-stroke:  #a78bfa;
+      --cloud-fill:       rgba(120, 53, 15, 0.3);
+      --cloud-stroke:     #fbbf24;
+      --security-fill:    rgba(136, 19, 55, 0.4);
+      --security-stroke:  #fb7185;
+      --messagebus-fill:  rgba(251, 146, 60, 0.3);
+      --messagebus-stroke:#fb923c;
+      --external-fill:    rgba(30, 41, 59, 0.5);
+      --external-stroke:  #94a3b8;
+
+      --toolbar-bg:       rgba(15, 23, 42, 0.8);
+      --toolbar-border:   #334155;
+      --toolbar-text:     #e2e8f0;
+      --toolbar-hover:    rgba(15, 23, 42, 0.95);
+      --toolbar-menu-bg:  #0f172a;
+    }
+body{
+      --archify-page-top: 2rem;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      background: var(--bg);
+      min-height: 100vh;
+      padding: var(--archify-page-top) 2rem 2rem;
+      color: var(--text);
+      
+    }
+svg{
+      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', 'Noto Sans Mono CJK SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', monospace;
+      width: 100%;
+      min-width: min(900px, 100%);
+      display: block;
+      transform-origin: 0 0;
+      transition: transform 0.18s ease;
+    }
+.c-grid{ stroke: var(--grid); fill: none; }
+.c-mask{ fill: var(--mask); stroke: none; }
+.c-lane-rule{ stroke: var(--lane-stroke); fill: none; opacity: 0.7; }
+.c-lane-wash{ fill: var(--lane-fill); stroke: none; }
+.c-frontend{ fill: var(--frontend-fill);   stroke: var(--frontend-stroke); }
+.c-backend{ fill: var(--backend-fill);    stroke: var(--backend-stroke); }
+.c-security{ fill: var(--security-fill);   stroke: var(--security-stroke); }
+.t-primary{ fill: var(--text); }
+.t-muted{ fill: var(--text-muted); }
+.t-dim{ fill: var(--text-dim); }
+html[data-preset="classic"] .diagram-container > svg .c-grid{ stroke: transparent; }
+html[data-preset="classic"][data-theme="light"] .diagram-container > svg [data-node-id] > rect:not(.c-mask){
+      filter: drop-shadow(0 1px 1px rgba(17, 24, 39, 0.05)) drop-shadow(0 6px 12px rgba(17, 24, 39, 0.06));
+    }
+html[data-preset="classic"][data-theme="dark"] .diagram-container > svg [data-node-id] > rect:not(.c-mask){
+      filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.35));
+    }
+html[data-preset="classic"] .diagram-container > svg .c-lane-wash{ fill: color-mix(in srgb, var(--text) 2.6%, transparent); }
+html[data-preset="classic"] .diagram-container > svg .c-lane-rule{ stroke: var(--panel-border); opacity: 1; }
+html[data-preset="classic"][data-theme="dark"] .diagram-container > svg .c-lane-rule{ stroke: rgba(148, 163, 184, 0.16); }
+svg .semantic-sigil{
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.35;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: 0.76;
+      pointer-events: none;
+    }
+svg .semantic-sigil > *{ vector-effect: non-scaling-stroke; }
+svg .semantic-sigil .sigil-fill{ fill: currentColor; stroke: none; }
+svg .s-frontend{ color: var(--frontend-stroke); }
+svg .s-backend{ color: var(--backend-stroke); }
+svg .s-security{ color: var(--security-stroke); }
+.a-default{ stroke: var(--arrow); fill: none; }
+.a-emphasis{ stroke: var(--arrow-emphasis); fill: none; }
+.m-default{ fill: var(--arrow); }
+.m-emphasis{ fill: var(--arrow-emphasis); }
+.m-security{ fill: var(--security-stroke); }
+.m-dashed{ fill: var(--database-stroke); }
+svg [data-node-id] > .c-mask{ fill-opacity: 1; }
+svg[data-preset="editorial"] .c-grid{
+      stroke-dasharray: 1 4;
+      opacity: 0.48;
+    }
+svg[data-preset="blueprint"] .c-grid{
+      stroke-dasharray: 1 3;
+      opacity: 0.78;
+    }
+svg[data-preset="blueprint"] .c-security-group,
+    svg[data-preset="blueprint"] .c-lane{ stroke-dasharray: 7 3; }
+.c-security-group{ fill: transparent; stroke: var(--security-stroke); stroke-dasharray: 4,4; }
+.c-lane{ fill: var(--lane-fill); stroke: var(--lane-stroke); stroke-dasharray: 6,6; }
+]]></style>
+        <title id="archify-diagram-title">Multi-language frontends + unified IR: attribution for C / Py / JS / asm</title>
+        <desc id="archify-diagram-description">A workflow diagram generated by Archify.</desc>
+        <!-- Definitions -->
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-default" />
+          </marker>
+          <marker id="arrowhead-emphasis" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-emphasis" />
+          </marker>
+          <marker id="arrowhead-security" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-security" />
+          </marker>
+          <marker id="arrowhead-dashed" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-dashed" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" class="c-grid" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <!-- Background Grid -->
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- Swimlanes -->
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-0" x="40" y="52" width="879" height="104" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="74" class="t-dim" font-size="10" font-weight="600">01 / dispatch</text>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-1" x="40" y="176" width="879" height="104" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="198" class="t-dim" font-size="10" font-weight="600">02 / C/C++</text>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-2" x="40" y="300" width="879" height="104" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="322" class="t-dim" font-size="10" font-weight="600">03 / Python</text>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-3" x="40" y="424" width="879" height="104" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="446" class="t-dim" font-size="10" font-weight="600">04 / JavaScript</text>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-4" x="40" y="548" width="879" height="104" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="570" class="t-dim" font-size="10" font-weight="600">05 / unified IR</text>
+
+        <!-- Phase headers -->
+
+
+        <!-- Workflow groups -->
+
+
+        <!-- Edge paths -->
+        <path data-edge-from="cf" data-edge-to="irn" data-edge-key="0" data-edge-id="c-i" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="368,243;376,243;376,589" d="M 368 243 L 376 243 L 376 589" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="irn" data-edge-to="attr" data-edge-key="1" data-edge-id="i-a" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="493,615;521,615" d="M 493 615 L 521 615" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="jf" data-edge-to="irn" data-edge-key="2" data-edge-id="j-i" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="263,517;263,615;273,615" d="M 263 517 L 263 615 L 273 615" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="pf" data-edge-to="irn" data-edge-key="3" data-edge-id="p-i" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="263,341;263,284;359,284;359,589" d="M 263 341 L 263 284 L 359 284 L 359 589" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="reg" data-edge-to="cf" data-edge-key="4" data-edge-id="r-c" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="238,119;263,119;263,217" d="M 238 119 L 263 119 L 263 217" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="reg" data-edge-to="jf" data-edge-key="5" data-edge-id="r-j" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="48,119;32,119;32,544;251,544;251,517" d="M 48 119 L 32 119 L 32 544 L 251 544 L 251 517" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="reg" data-edge-to="pf" data-edge-key="6" data-edge-id="r-p" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="143,145;143,420;263,420;263,393" d="M 143 145 L 143 420 L 263 420 L 263 393" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+
+        <!-- Nodes -->
+        <g id="node-reg" data-node-id="reg" data-node-label="FRONTEND_REGISTRY" tabindex="0" role="button" aria-label="Focus FRONTEND_REGISTRY, dispatch" aria-pressed="false" data-node-kind="frontend" data-node-context="dispatch">
+          <title>FRONTEND_REGISTRY · dispatch</title>
+          <rect x="48" y="93" width="190" height="52" rx="6" class="c-mask"/>
+          <rect x="48" y="93" width="190" height="52" rx="6" class="c-frontend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(54 99) scale(0.6875)">
+            <rect x="2" y="3" width="12" height="10" rx="2"/>
+            <path d="M2 6.5h12"/>
+            <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
+            <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
+          </g>
+          <text data-node-label="" x="143" y="114" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">FRONTEND_REGISTRY</text>
+        </g>
+
+        <g id="node-cf" data-node-id="cf" data-node-label="C/C++ frontend" tabindex="0" role="button" aria-label="Focus C/C++ frontend, _parse_c_source / build_c_model, C/C++" aria-pressed="false" data-node-kind="backend" data-node-sublabel="_parse_c_source / build_c_model" data-node-context="C/C++">
+          <title>C/C++ frontend · _parse_c_source / build_c_model · C/C++</title>
+          <rect x="158" y="217" width="210" height="52" rx="6" class="c-mask"/>
+          <rect x="158" y="217" width="210" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(164 223) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="263" y="238" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">C/C++ frontend</text>
+          <text data-detail="context" x="263" y="255" class="t-muted" font-size="8" text-anchor="middle">_parse_c_source / build_c_model</text>
+        </g>
+
+        <g id="node-pf" data-node-id="pf" data-node-label="Python frontend" tabindex="0" role="button" aria-label="Focus Python frontend, Python" aria-pressed="false" data-node-kind="backend" data-node-context="Python">
+          <title>Python frontend · Python</title>
+          <rect x="168" y="341" width="190" height="52" rx="6" class="c-mask"/>
+          <rect x="168" y="341" width="190" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(174 347) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="263" y="362" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Python frontend</text>
+        </g>
+
+        <g id="node-jf" data-node-id="jf" data-node-label="JS frontend" tabindex="0" role="button" aria-label="Focus JS frontend, JavaScript" aria-pressed="false" data-node-kind="backend" data-node-context="JavaScript">
+          <title>JS frontend · JavaScript</title>
+          <rect x="173" y="465" width="180" height="52" rx="6" class="c-mask"/>
+          <rect x="173" y="465" width="180" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(179 471) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="263" y="486" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">JS frontend</text>
+        </g>
+
+        <g id="node-irn" data-node-id="irn" data-node-label="frontends/ir.py" tabindex="0" role="button" aria-label="Focus frontends/ir.py, unified IR" aria-pressed="false" data-node-kind="backend" data-node-context="unified IR">
+          <title>frontends/ir.py · unified IR</title>
+          <rect x="273" y="589" width="220" height="52" rx="6" class="c-mask"/>
+          <rect x="273" y="589" width="220" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(279 595) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="383" y="610" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">frontends/ir.py</text>
+        </g>
+
+        <g id="node-attr" data-node-id="attr" data-node-label="IR_LANG_OWNERS" tabindex="0" role="button" aria-label="Focus IR_LANG_OWNERS, unified IR" aria-pressed="false" data-node-kind="security" data-node-context="unified IR">
+          <title>IR_LANG_OWNERS · unified IR</title>
+          <rect x="521" y="589" width="200" height="52" rx="6" class="c-mask"/>
+          <rect x="521" y="589" width="200" height="52" rx="6" class="c-security" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(527 595) scale(0.6875)">
+            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
+            <path d="m5.8 8 1.5 1.5 3-3"/>
+          </g>
+          <text data-node-label="" x="621" y="610" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">IR_LANG_OWNERS</text>
+        </g>
+
+        <!-- Edge labels -->
+
+
+
+
+
+
+
+
+        <!-- Legend -->
+        <g data-legend="" data-legend-bridge="">
+          <text x="20" y="676" class="t-primary" font-size="12" font-weight="650">Legend</text>
+          <g data-legend-semantic-kind="frontend" data-legend-kind="frontend" data-legend-label="User UI" data-legend-x="20" data-legend-baseline="696" data-legend-width="74">
+            <rect x="20" y="688" width="14" height="9" rx="2" class="c-frontend" stroke-width="1"/>
+            <text x="42" y="696" class="t-muted" font-size="7.5" font-weight="500">User UI</text>
+          </g>
+          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="Agent logic" data-legend-x="101" data-legend-baseline="696" data-legend-width="91">
+            <rect x="101" y="688" width="14" height="9" rx="2" class="c-backend" stroke-width="1"/>
+            <text x="123" y="696" class="t-muted" font-size="7.5" font-weight="500">Agent logic</text>
+          </g>
+          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="Policy" data-legend-x="199" data-legend-baseline="696" data-legend-width="70">
+            <rect x="199" y="688" width="14" height="9" rx="2" class="c-security" stroke-width="1"/>
+            <text x="221" y="696" class="t-muted" font-size="7.5" font-weight="500">Policy</text>
+          </g>
+        </g>
+      </svg>

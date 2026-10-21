@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 776" data-layout-contract="readable-v2" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="showcase"><style type="text/css"><![CDATA[
+:root,
+    [data-theme="dark"]{
+      --bg: #020617;
+      --grid: #1e293b;
+      --canvas-dot: rgba(148, 163, 184, 0.16);
+      --text: #ffffff;
+      --text-muted: #94a3b8;
+      --text-dim: #475569;
+      
+      --text-faint: #7d8da1;
+
+      --panel: rgba(15, 23, 42, 0.5);
+      --panel-border: #1e293b;
+      --lane-fill: rgba(15, 23, 42, 0.22);
+      --lane-stroke: #334155;
+
+      --arrow: #64748b;
+      --arrow-emphasis: #34d399;
+
+      
+      --mask: #0f172a;
+
+      --frontend-fill:    rgba(8, 51, 68, 0.4);
+      --frontend-stroke:  #22d3ee;
+      --backend-fill:     rgba(6, 78, 59, 0.4);
+      --backend-stroke:   #34d399;
+      --database-fill:    rgba(76, 29, 149, 0.4);
+      --database-stroke:  #a78bfa;
+      --cloud-fill:       rgba(120, 53, 15, 0.3);
+      --cloud-stroke:     #fbbf24;
+      --security-fill:    rgba(136, 19, 55, 0.4);
+      --security-stroke:  #fb7185;
+      --messagebus-fill:  rgba(251, 146, 60, 0.3);
+      --messagebus-stroke:#fb923c;
+      --external-fill:    rgba(30, 41, 59, 0.5);
+      --external-stroke:  #94a3b8;
+
+      --toolbar-bg:       rgba(15, 23, 42, 0.8);
+      --toolbar-border:   #334155;
+      --toolbar-text:     #e2e8f0;
+      --toolbar-hover:    rgba(15, 23, 42, 0.95);
+      --toolbar-menu-bg:  #0f172a;
+    }
+body{
+      --archify-page-top: 2rem;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      background: var(--bg);
+      min-height: 100vh;
+      padding: var(--archify-page-top) 2rem 2rem;
+      color: var(--text);
+      
+    }
+svg{
+      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', 'Noto Sans Mono CJK SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', monospace;
+      width: 100%;
+      min-width: min(900px, 100%);
+      display: block;
+      transform-origin: 0 0;
+      transition: transform 0.18s ease;
+    }
+.c-grid{ stroke: var(--grid); fill: none; }
+.c-mask{ fill: var(--mask); stroke: none; }
+.c-lane-rule{ stroke: var(--lane-stroke); fill: none; opacity: 0.7; }
+.c-lane-wash{ fill: var(--lane-fill); stroke: none; }
+.c-backend{ fill: var(--backend-fill);    stroke: var(--backend-stroke); }
+.c-database{ fill: var(--database-fill);   stroke: var(--database-stroke); }
+.t-primary{ fill: var(--text); }
+.t-muted{ fill: var(--text-muted); }
+.t-dim{ fill: var(--text-dim); }
+html[data-preset="classic"] .diagram-container > svg .c-grid{ stroke: transparent; }
+html[data-preset="classic"][data-theme="light"] .diagram-container > svg [data-node-id] > rect:not(.c-mask){
+      filter: drop-shadow(0 1px 1px rgba(17, 24, 39, 0.05)) drop-shadow(0 6px 12px rgba(17, 24, 39, 0.06));
+    }
+html[data-preset="classic"][data-theme="dark"] .diagram-container > svg [data-node-id] > rect:not(.c-mask){
+      filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.35));
+    }
+html[data-preset="classic"] .diagram-container > svg .c-lane-wash{ fill: color-mix(in srgb, var(--text) 2.6%, transparent); }
+html[data-preset="classic"] .diagram-container > svg .c-lane-rule{ stroke: var(--panel-border); opacity: 1; }
+html[data-preset="classic"][data-theme="dark"] .diagram-container > svg .c-lane-rule{ stroke: rgba(148, 163, 184, 0.16); }
+svg .semantic-sigil{
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.35;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: 0.76;
+      pointer-events: none;
+    }
+svg .semantic-sigil > *{ vector-effect: non-scaling-stroke; }
+svg .semantic-sigil .sigil-fill{ fill: currentColor; stroke: none; }
+svg .s-backend{ color: var(--backend-stroke); }
+svg .s-database{ color: var(--database-stroke); }
+.a-default{ stroke: var(--arrow); fill: none; }
+.m-default{ fill: var(--arrow); }
+.m-emphasis{ fill: var(--arrow-emphasis); }
+.m-security{ fill: var(--security-stroke); }
+.m-dashed{ fill: var(--database-stroke); }
+svg [data-node-id] > .c-mask{ fill-opacity: 1; }
+svg[data-preset="editorial"] .c-grid{
+      stroke-dasharray: 1 4;
+      opacity: 0.48;
+    }
+svg[data-preset="blueprint"] .c-grid{
+      stroke-dasharray: 1 3;
+      opacity: 0.78;
+    }
+svg[data-preset="blueprint"] .c-security-group,
+    svg[data-preset="blueprint"] .c-lane{ stroke-dasharray: 7 3; }
+.c-lane{ fill: var(--lane-fill); stroke: var(--lane-stroke); stroke-dasharray: 6,6; }
+]]></style>
+        <title id="archify-diagram-title">MATLAB frontend: from source to functions and call edges</title>
+        <desc id="archify-diagram-description">A workflow diagram generated by Archify.</desc>
+        <!-- Definitions -->
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-default" />
+          </marker>
+          <marker id="arrowhead-emphasis" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-emphasis" />
+          </marker>
+          <marker id="arrowhead-security" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-security" />
+          </marker>
+          <marker id="arrowhead-dashed" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-dashed" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" class="c-grid" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <!-- Background Grid -->
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- Swimlanes -->
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-0" x="40" y="52" width="924" height="104" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="74" class="t-dim" font-size="10" font-weight="600">01 / read</text>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-1" x="40" y="176" width="924" height="104" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="198" class="t-dim" font-size="10" font-weight="600">02 / scrub</text>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-2" x="40" y="300" width="924" height="104" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="322" class="t-dim" font-size="10" font-weight="600">03 / parse</text>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-3" x="40" y="424" width="924" height="104" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="446" class="t-dim" font-size="10" font-weight="600">04 / model</text>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-4" x="40" y="548" width="924" height="104" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="570" class="t-dim" font-size="10" font-weight="600">05 / call analysis</text>
+
+        <!-- Phase headers -->
+
+
+        <!-- Workflow groups -->
+
+
+        <!-- Edge paths -->
+        <path data-edge-from="logical" data-edge-to="parsef" data-edge-key="0" data-edge-id="l-p" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="476,269;476,367;491,367" d="M 476 269 L 476 367 L 491 367" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="modelf" data-edge-to="callsf" data-edge-key="1" data-edge-id="m-c" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="716,517;716,538;836,538;836,589" d="M 716 517 L 716 538 L 836 538 L 836 589" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="parsef" data-edge-to="modelf" data-edge-key="2" data-edge-id="p-m" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="701,367;716,367;716,465" d="M 701 367 L 716 367 L 716 465" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="readf" data-edge-to="scrub" data-edge-key="3" data-edge-id="r-s" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="123,145;123,243;143,243" d="M 123 145 L 123 243 L 143 243" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="scrub" data-edge-to="logical" data-edge-key="4" data-edge-id="s-l" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="343,243;371,243" d="M 343 243 L 371 243" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+
+        <!-- Nodes -->
+        <g id="node-readf" data-node-id="readf" data-node-label="read .m" tabindex="0" role="button" aria-label="Focus read .m, read" aria-pressed="false" data-node-kind="database" data-node-context="read">
+          <title>read .m · read</title>
+          <rect x="48" y="93" width="150" height="52" rx="6" class="c-mask"/>
+          <rect x="48" y="93" width="150" height="52" rx="6" class="c-database" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(54 99) scale(0.6875)">
+            <ellipse cx="8" cy="4" rx="5" ry="2"/>
+            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
+          </g>
+          <text data-node-label="" x="123" y="114" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">read .m</text>
+        </g>
+
+        <g id="node-scrub" data-node-id="scrub" data-node-label="scrub_source" tabindex="0" role="button" aria-label="Focus scrub_source, scrub" aria-pressed="false" data-node-kind="backend" data-node-context="scrub">
+          <title>scrub_source · scrub</title>
+          <rect x="143" y="217" width="200" height="52" rx="6" class="c-mask"/>
+          <rect x="143" y="217" width="200" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(149 223) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="243" y="238" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">scrub_source</text>
+        </g>
+
+        <g id="node-logical" data-node-id="logical" data-node-label="_logical_statements" tabindex="0" role="button" aria-label="Focus _logical_statements, scrub" aria-pressed="false" data-node-kind="backend" data-node-context="scrub">
+          <title>_logical_statements · scrub</title>
+          <rect x="371" y="217" width="210" height="52" rx="6" class="c-mask"/>
+          <rect x="371" y="217" width="210" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(377 223) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="476" y="238" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">_logical_statements</text>
+        </g>
+
+        <g id="node-parsef" data-node-id="parsef" data-node-label="parse_file" tabindex="0" role="button" aria-label="Focus parse_file, parse" aria-pressed="false" data-node-kind="backend" data-node-context="parse">
+          <title>parse_file · parse</title>
+          <rect x="491" y="341" width="210" height="52" rx="6" class="c-mask"/>
+          <rect x="491" y="341" width="210" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(497 347) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="596" y="362" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">parse_file</text>
+        </g>
+
+        <g id="node-modelf" data-node-id="modelf" data-node-label="MatlabFile/Function/Class" tabindex="0" role="button" aria-label="Focus MatlabFile/Function/Class, body_end/header/source_lines, model" aria-pressed="false" data-node-kind="backend" data-node-sublabel="body_end/header/source_lines" data-node-context="model">
+          <title>MatlabFile/Function/Class · body_end/header/source_lines · model</title>
+          <rect x="596" y="465" width="240" height="52" rx="6" class="c-mask"/>
+          <rect x="596" y="465" width="240" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(602 471) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="716" y="486" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">MatlabFile/Function/Class</text>
+          <text data-detail="context" x="716" y="503" class="t-muted" font-size="8" text-anchor="middle">body_end/header/source_lines</text>
+        </g>
+
+        <g id="node-callsf" data-node-id="callsf" data-node-label="analyze_calls / resolve_call" tabindex="0" role="button" aria-label="Focus analyze_calls / resolve_call, call analysis" aria-pressed="false" data-node-kind="backend" data-node-context="call analysis">
+          <title>analyze_calls / resolve_call · call analysis</title>
+          <rect x="716" y="589" width="240" height="52" rx="6" class="c-mask"/>
+          <rect x="716" y="589" width="240" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(722 595) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="836" y="610" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">analyze_calls / resolve_call</text>
+        </g>
+
+        <!-- Edge labels -->
+
+
+
+
+
+
+        <!-- Legend -->
+        <g data-legend="" data-legend-bridge="">
+          <text x="20" y="676" class="t-primary" font-size="12" font-weight="650">Legend</text>
+          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="Agent logic" data-legend-x="20" data-legend-baseline="696" data-legend-width="91">
+            <rect x="20" y="688" width="14" height="9" rx="2" class="c-backend" stroke-width="1"/>
+            <text x="42" y="696" class="t-muted" font-size="7.5" font-weight="500">Agent logic</text>
+          </g>
+          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="Context / trace" data-legend-x="118" data-legend-baseline="696" data-legend-width="109">
+            <rect x="118" y="688" width="14" height="9" rx="2" class="c-database" stroke-width="1"/>
+            <text x="140" y="696" class="t-muted" font-size="7.5" font-weight="500">Context / trace</text>
+          </g>
+        </g>
+      </svg>

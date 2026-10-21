@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "AI & MCP: exposing project understanding to external agents",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/en/html/07-ai-mcp.html"
+  },
+  "components": [
+    {
+      "id": "mcp",
+      "type": "frontend",
+      "label": "MCP Server",
+      "sublabel": "matlabc_mcp.py（stdio JSON-RPC）",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "tools",
+      "type": "backend",
+      "label": "toolchain",
+      "sublabel": "stats/outline/search/explain/impact/gen_patch",
+      "pos": [
+        400,
+        40
+      ],
+      "size": [
+        340,
+        64
+      ]
+    },
+    {
+      "id": "ask",
+      "type": "backend",
+      "label": "matlabc_ask.py",
+      "pos": [
+        780,
+        40
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "ai",
+      "type": "cloud",
+      "label": "AI provider",
+      "sublabel": "deepseek/qwen/zhipu/moonshot/...",
+      "pos": [
+        40,
+        160
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "flow",
+      "type": "backend",
+      "label": "matlabc_flow.py",
+      "pos": [
+        400,
+        160
+      ],
+      "size": [
+        340,
+        64
+      ]
+    },
+    {
+      "id": "memory",
+      "type": "database",
+      "label": "analyzer_memory",
+      "sublabel": "known-false-positive + learned_fixes",
+      "pos": [
+        780,
+        160
+      ],
+      "size": [
+        300,
+        64
+      ]
+    },
+    {
+      "id": "core",
+      "type": "backend",
+      "label": "matlabc.py core",
+      "pos": [
+        40,
+        280
+      ],
+      "size": [
+        1040,
+        64
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "m-t",
+      "from": "mcp",
+      "to": "tools"
+    },
+    {
+      "id": "t-c",
+      "from": "tools",
+      "to": "core"
+    },
+    {
+      "id": "a-ai",
+      "from": "ask",
+      "to": "ai"
+    },
+    {
+      "id": "a-c",
+      "from": "ask",
+      "to": "core"
+    },
+    {
+      "id": "f-ai",
+      "from": "flow",
+      "to": "ai"
+    },
+    {
+      "id": "f-c",
+      "from": "flow",
+      "to": "core"
+    },
+    {
+      "id": "f-m",
+      "from": "flow",
+      "to": "memory"
+    },
+    {
+      "id": "m-c",
+      "from": "mcp",
+      "to": "core"
+    }
+  ]
+}

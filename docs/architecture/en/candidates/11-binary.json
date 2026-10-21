@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Binary analysis: read-only metadata, who owns this name?",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/en/html/11-binary.html"
+  },
+  "components": [
+    {
+      "id": "attach",
+      "type": "frontend",
+      "label": "--binary-attach",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "pe",
+      "type": "backend",
+      "label": "PE",
+      "sublabel": "binfmt/pe.py",
+      "pos": [
+        400,
+        40
+      ],
+      "size": [
+        220,
+        64
+      ]
+    },
+    {
+      "id": "elf",
+      "type": "backend",
+      "label": "ELF",
+      "sublabel": "binfmt/elf.py",
+      "pos": [
+        650,
+        40
+      ],
+      "size": [
+        220,
+        64
+      ]
+    },
+    {
+      "id": "macho",
+      "type": "backend",
+      "label": "Mach-O",
+      "sublabel": "binfmt/macho.py",
+      "pos": [
+        900,
+        40
+      ],
+      "size": [
+        220,
+        64
+      ]
+    },
+    {
+      "id": "gpu",
+      "type": "backend",
+      "label": "GPU container",
+      "sublabel": "fatbin/cubin/HSA/SPIR-V",
+      "pos": [
+        40,
+        160
+      ],
+      "size": [
+        320,
+        64
+      ]
+    },
+    {
+      "id": "resolve",
+      "type": "backend",
+      "label": "exports / attribution",
+      "sublabel": "attribute.py · resolve.py",
+      "pos": [
+        400,
+        160
+      ],
+      "size": [
+        340,
+        64
+      ]
+    },
+    {
+      "id": "hops",
+      "type": "backend",
+      "label": "jumps/calls",
+      "sublabel": "binhops.py · callrel.py",
+      "pos": [
+        780,
+        160
+      ],
+      "size": [
+        340,
+        64
+      ]
+    },
+    {
+      "id": "out",
+      "type": "cloud",
+      "label": "three-state output",
+      "sublabel": "library / gpu_kernel / missing",
+      "pos": [
+        40,
+        280
+      ],
+      "size": [
+        1080,
+        64
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "a-p",
+      "from": "attach",
+      "to": "pe"
+    },
+    {
+      "id": "a-e",
+      "from": "attach",
+      "to": "elf"
+    },
+    {
+      "id": "a-m",
+      "from": "attach",
+      "to": "macho"
+    },
+    {
+      "id": "a-g",
+      "from": "attach",
+      "to": "gpu"
+    },
+    {
+      "id": "p-r",
+      "from": "pe",
+      "to": "resolve"
+    },
+    {
+      "id": "e-r",
+      "from": "elf",
+      "to": "resolve"
+    },
+    {
+      "id": "m-r",
+      "from": "macho",
+      "to": "resolve"
+    },
+    {
+      "id": "g-r",
+      "from": "gpu",
+      "to": "resolve"
+    },
+    {
+      "id": "r-h",
+      "from": "resolve",
+      "to": "hops"
+    },
+    {
+      "id": "r-o",
+      "from": "resolve",
+      "to": "out"
+    },
+    {
+      "id": "h-o",
+      "from": "hops",
+      "to": "out"
+    }
+  ]
+}
