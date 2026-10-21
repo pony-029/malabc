@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-21
+- Diagrams: 06-lsp, 07-ai-mcp, 13-sequence
 
 ## Context
 

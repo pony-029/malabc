@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-21
+- Diagrams: 02-matlab-frontend, 03-multilang-ir, 04-analysis, 05-render, 12-dataflow
 
 ## Context
 

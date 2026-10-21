@@ -355,9 +355,19 @@ def _glossary_coverage(cj, terms):
     return covered, total, misses
 
 
+def _adr_field(txt, name):
+    m = re.search(r"(?mi)^\s*[-*]?\s*%s:\s*(.+)$" % re.escape(name), txt)
+    return m.group(1).strip() if m else ""
+
+
+ADR_STATUS = ("Proposed", "Accepted", "Superseded", "Deprecated")
+
+
 def _adr_problems(items, arch_dir):
     probs = []
     refs = set()
+    by_id = dict((it.get("id"), it) for it in items)
+    texts = {}
     for it in items:
         iid = it.get("id")
         adr = it.get("adr")
@@ -370,11 +380,49 @@ def _adr_problems(items, arch_dir):
                 probs.append("AD11 %s 引用的 ADR 不存在：%s" % (iid, rel))
                 continue
             txt = _read(path)
+            texts[os.path.basename(rel)] = txt
             for need in ("# ADR", "Status", "## Context", "## Decision",
                          "## Consequences"):
                 if need not in txt:
                     probs.append("AD11 %s 缺 %r" % (rel, need))
             refs.add(os.path.basename(rel))
+    for fn, txt in texts.items():
+        status = _adr_field(txt, "Status")
+        if status not in ADR_STATUS:
+            probs.append("AD11 %s 的 Status 非法：%r" % (fn, status))
+        diagrams = [x.strip() for x in
+                    _adr_field(txt, "Diagrams").split(",") if x.strip()]
+        if not diagrams:
+            probs.append("AD11 %s 缺 Diagrams" % fn)
+        for did in diagrams:
+            if did not in by_id:
+                probs.append("AD11 %s 引用的图不存在：%s" % (fn, did))
+                continue
+            names = [os.path.basename(x)
+                     for x in (by_id[did].get("adr") or [])]
+            if fn not in names:
+                probs.append("AD11 %s 与图 %s 的 adr 不是双向"
+                             % (fn, did))
+        sup_by = _adr_field(txt, "Superseded by")
+        sup = _adr_field(txt, "Supersedes")
+        if status == "Superseded" and not sup_by:
+            probs.append("AD11 %s 是 Superseded 但缺 Superseded by" % fn)
+        if sup_by:
+            tgt = os.path.basename(sup_by)
+            if tgt not in texts:
+                probs.append("AD11 %s 的 Superseded by 目标不存在：%s"
+                             % (fn, sup_by))
+            elif fn not in _adr_field(texts[tgt], "Supersedes"):
+                probs.append("AD11 %s 与 %s 的 Superseded/Supersedes 不互指"
+                             % (fn, tgt))
+        if sup:
+            tgt = os.path.basename(sup)
+            if tgt not in texts:
+                probs.append("AD11 %s 的 Supersedes 目标不存在：%s"
+                             % (fn, sup))
+            elif fn not in _adr_field(texts[tgt], "Superseded by"):
+                probs.append("AD11 %s 与 %s 的 Supersedes/Superseded 不互指"
+                             % (fn, tgt))
     adr_dir = os.path.join(arch_dir, "decisions")
     if os.path.isdir(adr_dir):
         for fn in sorted(os.listdir(adr_dir)):
@@ -687,7 +735,8 @@ def _selftest():
         _write(glossary,
                '<!-- GLOSSARY v1\n{"入口": ["entry"]}\n-->\n')
         adr = os.path.join(arch, "decisions", "ADR-001-x.md")
-        _write(adr, "# ADR-001: x\n- Status: Accepted\n## Context\nc\n"
+        _write(adr, "# ADR-001: x\n- Status: Accepted\n"
+                    "- Diagrams: 00-overall\n## Context\nc\n"
                     "## Decision\nd\n## Consequences\ne\n")
         index_html = os.path.join(arch, "index.html")
         _write(index_html,
@@ -850,7 +899,15 @@ def _selftest():
         # AD11：缺 ADR / 孤儿 ADR
         os.remove(adr)
         chk(bool(check(*args, **kw)), "AD11 缺 ADR 未判红")
-        _write(adr, "# ADR-001: x\n- Status: Accepted\n## Context\nc\n"
+        _write(adr, "# ADR-001: x\n- Status: Accepted\n"
+                    "- Diagrams: 00-overall\n## Context\nc\n"
+                    "## Decision\nd\n## Consequences\ne\n")
+        _write(adr, "# ADR-001: x\n- Status: Accepted\n"
+                    "- Diagrams: 99-missing\n## Context\nc\n"
+                    "## Decision\nd\n## Consequences\ne\n")
+        chk(bool(check(*args, **kw)), "AD11 Diagrams 引用未知图未判红")
+        _write(adr, "# ADR-001: x\n- Status: Accepted\n"
+                    "- Diagrams: 00-overall\n## Context\nc\n"
                     "## Decision\nd\n## Consequences\ne\n")
         orphan = os.path.join(arch, "decisions", "ADR-999-orphan.md")
         _write(orphan, "# ADR-999: x\n- Status: Accepted\n## Context\nc\n"
@@ -863,7 +920,7 @@ def _selftest():
         shutil.rmtree(tmp, ignore_errors=True)
 
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad[0], good[0]))
-    return 0 if (bad[0] == 0 and good[0] >= 25) else 1
+    return 0 if (bad[0] == 0 and good[0] >= 26) else 1
 
 
 def main(argv=None):

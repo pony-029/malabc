@@ -77,8 +77,10 @@
 ## 决策记录
 
 新图/改图如果改变了架构取舍，写一条 `decisions/ADR-<n>-<slug>.md`
-（`# ADR-...` + `Status` + `Context` / `Decision` / `Consequences`），
-并把路径挂到 `FLOW_INDEX` 的 `adr` 列表。AD11 会检查文件存在、结构齐全、无孤儿。
+（`# ADR-...` + `Status` + `Diagrams` + `Context` / `Decision` / `Consequences`），
+并把路径挂到 `FLOW_INDEX` 的 `adr` 列表。AD11 会检查文件存在、结构齐全、
+`Status` 合法、`Diagrams` 与索引双向、无孤儿；`Superseded` 必须与
+`Supersedes`/`Superseded by` 互指。
 
 ## 发布前
 
@@ -86,6 +88,9 @@
 python tools/snapshot_arch.py --write        # 冻结本版本 14 张图的三个哈希
 python tools/build_arch_versions.py --write  # 刷新 since/changed_in
 python tools/export_arch_png.py --all        # 汇报用 PNG
+python tools/record_arch_review.py --write --reviewer <name> --result pass
+python tools/release_arch_check.py --check   # 快照/版本/PNG/评审总闸
+python tools/release_arch_check.py --diff <prev> --fail-on-change
 ```
 
 - `SNAPSHOTS.json` 按 `matlabc.py` 的 `VERSION` 归档；同版本重跑覆盖，新版本追加。

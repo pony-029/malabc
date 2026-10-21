@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-21
+- Diagrams: 00-overall, 09-gates
 
 ## Context
 

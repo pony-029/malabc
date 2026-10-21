@@ -18,6 +18,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -133,6 +134,32 @@ def _git_exists(rev, path=None):
     return r.returncode == 0
 
 
+def _git_batch_missing(rev, paths):
+    """一次 git cat-file --batch-check 查 revision + 所有 source 路径。"""
+    specs = [rev] + ["%s:%s" % (rev, p) for p in paths]
+    tmp = tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8")
+    try:
+        tmp.write("\n".join(specs) + "\n")
+        tmp.close()
+        with io.open(tmp.name, "rb") as fh:
+            r = subprocess.run(["git", "cat-file", "--batch-check"],
+                               cwd=ROOT, stdin=fh, stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL, timeout=60)
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
+    if r.returncode != 0:
+        return set(specs)
+    lines = (r.stdout or b"").decode("utf-8", "replace").splitlines()
+    missing = set()
+    for i, line in enumerate(lines):
+        if i < len(specs) and line.endswith(" missing"):
+            missing.add(specs[i])
+    return missing
+
+
 def _nodes(cj):
     return (cj.get("components") or cj.get("nodes")
             or cj.get("participants") or cj.get("states") or [])
@@ -176,17 +203,21 @@ def main(argv=None):
             rev = repo.get("revision") or ""
             if not re.match(r"^[0-9a-fA-F]{40}$", rev):
                 problems.append("%s revision 非法：%r" % (iid, rev))
-            elif not _git_exists(rev):
-                problems.append("%s revision 在 Git 中不存在：%s"
-                                % (iid, rev))
             else:
+                paths = []
                 for n in _nodes(cj):
                     for src in n.get("sources") or []:
                         p = src.get("path")
-                        if not p or not _git_exists(rev, p):
-                            problems.append(
-                                "%s 节点 %s 的 %r 在 %s 不存在"
-                                % (iid, n.get("id"), p, rev[:7]))
+                        if p:
+                            paths.append(p)
+                miss = _git_batch_missing(rev, paths)
+                if rev in miss:
+                    problems.append("%s revision 在 Git 中不存在：%s"
+                                    % (iid, rev))
+                for p in paths:
+                    if "%s:%s" % (rev, p) in miss:
+                        problems.append("%s 的 %r 在 %s 不存在"
+                                        % (iid, p, rev[:7]))
             if iid in SRC and not repo:
                 problems.append("%s 缺 repository" % iid)
             checked += 1

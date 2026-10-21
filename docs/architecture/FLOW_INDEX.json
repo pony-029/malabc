@@ -14,7 +14,8 @@
       "changed_in": "ca1db62 2026-10-21",
       "adr": [
         "decisions/ADR-001-single-file-core.md",
-        "decisions/ADR-006-gates-as-registry.md"
+        "decisions/ADR-006-gates-as-registry.md",
+        "decisions/ADR-008-architecture-review-record.md"
       ]
     },
     {

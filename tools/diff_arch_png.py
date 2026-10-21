@@ -64,6 +64,8 @@ def main(argv=None):
     ap.add_argument("--head", required=True)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--fail-on-change", action="store_true")
+    ap.add_argument("--max-ratio", type=float, default=0.005,
+                    help="同尺寸像素变化比例阈值（默认 0.005）")
     args = ap.parse_args(argv)
     a, b = _files(args.base), _files(args.head)
     added = sorted(set(b) - set(a))
@@ -75,6 +77,7 @@ def main(argv=None):
             info["file"] = fn
             changed.append(info)
     result = {"base": args.base, "head": args.head,
+              "max_ratio": args.max_ratio,
               "added": added, "removed": removed, "changed": changed}
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -90,12 +93,18 @@ def main(argv=None):
                 if x.get("size"):
                     extra = " size %s -> %s" % (x["size"][0], x["size"][1])
                 else:
-                    extra = " bbox=%r ratio=%s" % (x.get("bbox"),
-                                                    x.get("ratio"))
+                    extra = " bbox=%r ratio=%s (max %s)" % (
+                        x.get("bbox"), x.get("ratio"), args.max_ratio)
             print("  ~ %s%s" % (x["file"], extra))
         if not (added or removed or changed):
             print("  0 changes")
-    if args.fail_on_change and (added or removed or changed):
+    bad = bool(added or removed)
+    for x in changed:
+        if not x.get("available") or x.get("size") or x.get("ratio") is None:
+            bad = True
+        elif x["ratio"] > args.max_ratio:
+            bad = True
+    if args.fail_on_change and bad:
         return 1
     return 0
 

@@ -43,7 +43,8 @@
 - 版本快照：[`architecture/SNAPSHOTS.json`](architecture/SNAPSHOTS.json)；
   逐图首次/最近提交：[`architecture/VERSIONS.md`](architecture/VERSIONS.md)。
 - 汇报用 PNG：[`architecture/png/`](architecture/png/)（14 张）。
-- 架构决策记录：[`architecture/decisions/`](architecture/decisions/)（7 条 ADR，
-  AD11 检查每张图都挂了决策、且没有孤儿 ADR）。
+- 架构决策记录：[`architecture/decisions/`](architecture/decisions/)（8 条 ADR，
+  AD11 检查每张图都挂了决策、Status/Diagrams 双向、且没有孤儿 ADR）。
+- 评审记录：[`architecture/REVIEWS.md`](architecture/REVIEWS.md)（版本 / 复核人 / 结论）。
 - 图的可编辑源在 `architecture/candidates/`；不要手改 `html/` 或 `svg/`。
 - 重新生成：`python tools/export_arch_svg.py --all`；英文版：`python tools/build_arch_svg_en.py`。
