@@ -96,17 +96,39 @@ class TestOperators(unittest.TestCase):
         self.assertEqual(res["uses"], [])
         self.assertEqual(len(res["unmapped"]), 1)
 
+    def test_min_is_not_max(self):
+        # 回归：`min(x)` 以前被映射成 OP-MAX（同一归约），会静默算错。
+        u = operators.parse_line("y = min(x);")
+        self.assertEqual(u["operator"], "OP-MIN")
+
+    def test_new_ops_emit(self):
+        cases = (
+            ("y = a - b;", "OP-SUB", "mlc_op_sub"),
+            ("y = a .* b;", "OP-MUL", "mlc_op_mul"),
+            ("y = a ./ b;", "OP-DIV", "mlc_op_div"),
+            ("y = mean(x);", "OP-MEAN", "mlc_op_mean"),
+            ("y = max(x);", "OP-MAX", "mlc_op_max"),
+            ("y = min(x);", "OP-MIN", "mlc_op_min"),
+        )
+        for line, op, cname in cases:
+            u = operators.parse_line(line)
+            self.assertEqual(u["operator"], op)
+            src = operators.emit_c(u)
+            self.assertIn(cname, src)
+            self.assertIn("if (st != MLC_OK)", src)
+
     def test_census(self):
         c = operators.operator_census()
         self.assertEqual(c["total"], len(operators.OPERATORS))
         self.assertEqual(c["verified"] + c["unverified"], c["total"])
+        self.assertGreaterEqual(c["verified"], 9)
 
 
 class TestFidelity(unittest.TestCase):
     def test_golden_all_pass(self):
         ok, rep = fidelity.self_test()
         self.assertTrue(ok, rep.get("failed"))
-        self.assertGreaterEqual(rep["total"], 5)
+        self.assertGreaterEqual(rep["total"], 11)
 
     def test_detects_mismatch(self):
         tmp = tempfile.mkdtemp(prefix="mlc_fid_bad_")

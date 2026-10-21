@@ -27,15 +27,15 @@ OPERATORS = (
     {"id": "OP-SUB", "matlab": "a - b", "c": "mlc_op_sub",
      "kind": "elementwise", "rules": ("EXPAND-1", "INT-1"),
      "sample": "y = a - b;",
-     "verified_by": ""},
+     "verified_by": "op_sub_scalar.json"},
     {"id": "OP-MUL", "matlab": "a .* b", "c": "mlc_op_mul",
      "kind": "elementwise", "rules": ("EXPAND-1", "INT-1"),
      "sample": "y = a .* b;",
-     "verified_by": ""},
+     "verified_by": "op_mul_elementwise.json"},
     {"id": "OP-DIV", "matlab": "a ./ b", "c": "mlc_op_div",
      "kind": "elementwise", "rules": ("EXPAND-1", "INT-1"),
      "sample": "y = a ./ b;",
-     "verified_by": ""},
+     "verified_by": "op_div_elementwise.json"},
     {"id": "OP-SUM", "matlab": "sum(x)", "c": "mlc_op_sum",
      "kind": "reduction", "rules": ("ORDER-1",),
      "sample": "y = sum(x);",
@@ -43,11 +43,15 @@ OPERATORS = (
     {"id": "OP-MEAN", "matlab": "mean(x)", "c": "mlc_op_mean",
      "kind": "reduction", "rules": ("ORDER-1",),
      "sample": "y = mean(x);",
-     "verified_by": ""},
+     "verified_by": "op_mean_vector.json"},
     {"id": "OP-MAX", "matlab": "max(x)", "c": "mlc_op_max",
      "kind": "reduction", "rules": ("ORDER-1",),
      "sample": "y = max(x);",
-     "verified_by": ""},
+     "verified_by": "op_max_vector.json"},
+    {"id": "OP-MIN", "matlab": "min(x)", "c": "mlc_op_min",
+     "kind": "reduction", "rules": ("ORDER-1",),
+     "sample": "y = min(x);",
+     "verified_by": "op_min_vector.json"},
     {"id": "OP-INDEX", "matlab": "x(i)", "c": "mlc_op_index",
      "kind": "index", "rules": ("IDX-1", "ORDER-1"),
      "sample": "y = x(2);",
@@ -63,7 +67,8 @@ OPERATORS = (
 )
 
 #: 已实现 C 落点的算子（其余返回 MLC_UNIMPLEMENTED —— 诚实边界）。
-C_IMPLEMENTED = ("OP-ADD", "OP-SUM", "OP-INDEX")
+C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV",
+                 "OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN", "OP-INDEX")
 
 _ASSIGN_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*(.+?)\s*;\s*$")
 _BIN_RE = re.compile(r"^([A-Za-z_]\w*)\s*(\.\*|\./|\+|-|\*)\s*([A-Za-z_]\w*)$")
@@ -72,7 +77,7 @@ _TRANS_RE = re.compile(r"^([A-Za-z_]\w*)\s*\.'\s*$")
 _INDEX_RE = re.compile(r"^([A-Za-z_]\w*)\s*\(\s*(\d+)\s*\)$")
 
 _CALL_OPS = {"sum": "OP-SUM", "mean": "OP-MEAN",
-             "max": "OP-MAX", "min": "OP-MAX"}
+             "max": "OP-MAX", "min": "OP-MIN"}
 _BIN_OPS = {"+": "OP-ADD", "-": "OP-SUB", ".*": "OP-MUL",
             "./": "OP-DIV", "*": "OP-MATMUL"}
 

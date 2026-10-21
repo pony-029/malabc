@@ -62,24 +62,61 @@ def _expect(shape, data):
     return {"dtype": "f64", "shape": list(shape), "data": _flat(data)}
 
 
-def _run_add(case):
-    a = case["inputs"]["a"]["data"]
-    b = case["inputs"]["b"]["data"]
-    fa, fb = _flat(a), _flat(b)
+def _run_binary(case, fn):
+    """元素级二元运算：同形或标量广播；越界形态直接报错（不猜）。"""
+    fa = _flat(case["inputs"]["a"]["data"])
+    fb = _flat(case["inputs"]["b"]["data"])
     n = max(len(fa), len(fb))
     if len(fa) not in (1, n) or len(fb) not in (1, n):
-        raise ValueError("add: 形状不能广播")
-    out = [(fa[0] if len(fa) == 1 else fa[i]) +
-           (fb[0] if len(fb) == 1 else fb[i]) for i in range(n)]
+        raise ValueError("binary: 形状不能广播")
+    out = [fn(fa[0] if len(fa) == 1 else fa[i],
+              fb[0] if len(fb) == 1 else fb[i]) for i in range(n)]
     shape = case["inputs"]["a"]["shape"]
     if len(fa) == 1:
         shape = case["inputs"]["b"]["shape"]
     return _expect(shape, out)
 
 
+def _run_add(case):
+    return _run_binary(case, lambda x, y: x + y)
+
+
+def _run_sub(case):
+    return _run_binary(case, lambda x, y: x - y)
+
+
+def _run_mul(case):
+    return _run_binary(case, lambda x, y: x * y)
+
+
+def _run_div(case):
+    return _run_binary(case, lambda x, y: x / y)
+
+
 def _run_sum(case):
     x = _flat(case["inputs"]["x"]["data"])
     return _expect([1], [sum(x)])
+
+
+def _run_mean(case):
+    x = _flat(case["inputs"]["x"]["data"])
+    if not x:
+        raise ValueError("mean: 空输入")
+    return _expect([1], [sum(x) / float(len(x))])
+
+
+def _run_max(case):
+    x = _flat(case["inputs"]["x"]["data"])
+    if not x:
+        raise ValueError("max: 空输入")
+    return _expect([1], [max(x)])
+
+
+def _run_min(case):
+    x = _flat(case["inputs"]["x"]["data"])
+    if not x:
+        raise ValueError("min: 空输入")
+    return _expect([1], [min(x)])
 
 
 def _run_index(case):
@@ -110,7 +147,13 @@ def _run_matmul(case):
 
 _RUNNERS = {
     "OP-ADD": _run_add,
+    "OP-SUB": _run_sub,
+    "OP-MUL": _run_mul,
+    "OP-DIV": _run_div,
     "OP-SUM": _run_sum,
+    "OP-MEAN": _run_mean,
+    "OP-MAX": _run_max,
+    "OP-MIN": _run_min,
     "OP-INDEX": _run_index,
     "OP-TRANSPOSE": _run_transpose,
     "OP-MATMUL": _run_matmul,
@@ -153,19 +196,47 @@ def compare(case, got):
     return {"ok": bad is None, "max_abs": max_abs, "detail": bad or ""}
 
 
+def _mingw_candidates():
+    """`MLC_MINGW`（默认 `D:\\work\\MinGW-w64`）下的 gcc。
+
+    目录布局在不同发行包里不一致（bin/ 或 mingw64/bin/），所以既查固定
+    相对路径，也查一层子目录；找不到就返回空，不影响其它来源。
+    """
+    root = os.environ.get("MLC_MINGW", r"D:\work\MinGW-w64")
+    if not os.path.isdir(root):
+        return []
+    out = []
+    for rel in (("bin", "gcc.exe"), ("mingw64", "bin", "gcc.exe"),
+                ("mingw32", "bin", "gcc.exe")):
+        p = os.path.join(root, *rel)
+        if os.path.isfile(p):
+            out.append(p)
+    try:
+        for name in os.listdir(root):
+            p = os.path.join(root, name, "bin", "gcc.exe")
+            if os.path.isfile(p):
+                out.append(p)
+    except OSError:
+        pass
+    return out
+
+
 def find_c_compiler():
     """返回可用的 C 编译命令前缀 list；没有返回 None。
 
-    支持三类：
-      * `CC` 环境变量（可带参数，如 `zig cc`）；
-      * PATH 里的 gcc / clang / cc / cl；
-      * 通过 pip 安装的 `ziglang`（`python -m ziglang cc`）——
-        本机没有系统编译器时，这是唯一能**真编译**的离线路径。
+    优先级（R12 起按用户环境调整）：
+      1. `MLC_CC` / `CC`（显式覆盖，可带参数）；
+      2. `MLC_MINGW`（默认 `D:\\work\\MinGW-w64`）下的 gcc；
+      3. PATH 里的 gcc / clang / cc / cl；
+      4. pip 安装的 `ziglang`（`python -m ziglang cc`）——最后的离线兜底。
     """
     cands = []
-    env_cc = os.environ.get("CC")
-    if env_cc:
-        cands.append(shlex.split(env_cc))
+    for env in ("MLC_CC", "CC"):
+        v = os.environ.get(env)
+        if v:
+            cands.append(shlex.split(v))
+    for p in _mingw_candidates():
+        cands.append([p])
     for name in ("gcc", "clang", "cc", "cl"):
         p = shutil.which(name)
         if p:
@@ -182,66 +253,75 @@ def find_c_compiler():
     return None
 
 
+_BINARY_C = {"OP-ADD": "mlc_op_add", "OP-SUB": "mlc_op_sub",
+             "OP-MUL": "mlc_op_mul", "OP-DIV": "mlc_op_div"}
+_UNARY_C = {"OP-SUM": "mlc_op_sum", "OP-MEAN": "mlc_op_mean",
+            "OP-MAX": "mlc_op_max", "OP-MIN": "mlc_op_min"}
+
+
+def _c_array_lines(name, arr):
+    """生成一个 1D f64 数组的声明与 mlc_array 绑定。"""
+    flat = _flat(arr.get("data"))
+    n = len(flat)
+    vals = ", ".join("%.17g" % v for v in flat)
+    return [
+        "    double {0}d[{1}] = {{{2}}};".format(name, n, vals),
+        ("    mlc_array {0}; {0}.data={0}d; {0}.dtype=MLC_F64; "
+         "{0}.ndim=1; {0}.shape[0]={1}; {0}.strides[0]=1; "
+         "{0}.owns_data=0;").format(name, n),
+    ]
+
+
 def emit_c_program(case):
     """为一个用例生成可独立编译的 C 程序（供有编译器的环境做真比对）。"""
     op = case.get("operator")
-    if op == "OP-ADD":
+    head = ['#include <stdio.h>', '#include "mlc.h"',
+            '#include "mlc_ops.h"', 'int main(void) {']
+    if op in _BINARY_C:
         a, b = case["inputs"]["a"], case["inputs"]["b"]
-        fa, fb = _flat(a["data"]), _flat(b["data"])
-        lines = ['#include <stdio.h>', '#include "mlc.h"',
-                 '#include "mlc_ops.h"', 'int main(void) {',
-                 '    double ad[%d] = {%s};' % (len(fa), ", ".join(
-                     "%.17g" % v for v in fa)),
-                 '    double bd[%d] = {%s};' % (len(fb), ", ".join(
-                     "%.17g" % v for v in fb)),
-                 '    double od[%d] = {0};' % max(len(fa), len(fb)),
-                 '    mlc_array a, b, o; mlc_status st;',
-                 '    a.data=ad; a.dtype=MLC_F64; a.ndim=1; a.shape[0]=%d;'
-                 ' a.strides[0]=1; a.owns_data=0;' % len(fa),
-                 '    b.data=bd; b.dtype=MLC_F64; b.ndim=1; b.shape[0]=%d;'
-                 ' b.strides[0]=1; b.owns_data=0;' % len(fb),
-                 '    o.data=od; o.dtype=MLC_F64; o.ndim=1; o.shape[0]=%d;'
-                 ' o.strides[0]=1; o.owns_data=0;' % max(len(fa), len(fb)),
-                 '    st = mlc_op_add(&a, &b, &o);',
-                 '    if (st != MLC_OK) { printf("ERR %d\\n", (int)st);'
-                 ' return 1; }',
-                 '    for (int i=0;i<{n};i++) printf("%.17g\\n", od[i]);'
-                 .format(n=max(len(fa), len(fb))),
-                 '    return 0;', '}']
+        na = len(_flat(a["data"]))
+        nb = len(_flat(b["data"]))
+        no = max(na, nb)
+        lines = head + _c_array_lines("a", a) + _c_array_lines("b", b)
+        lines += [
+            "    double od[{0}] = {{0}};".format(no),
+            "    mlc_array o; mlc_status st;",
+            ("    o.data=od; o.dtype=MLC_F64; o.ndim=1; o.shape[0]={0}; "
+             "o.strides[0]=1; o.owns_data=0;").format(no),
+            "    st = {0}(&a, &b, &o);".format(_BINARY_C[op]),
+            '    if (st != MLC_OK) { printf("ERR %d\\n", (int)st);'
+            ' return 1; }',
+            '    for (int i=0;i<{0};i++) printf("%.17g\\n", od[i]);'
+            .format(no),
+            "    return 0;", "}"]
         return "\n".join(lines) + "\n"
-    if op == "OP-SUM":
-        x = _flat(case["inputs"]["x"]["data"])
-        return '\n'.join([
-            '#include <stdio.h>', '#include "mlc.h"', '#include "mlc_ops.h"',
-            'int main(void) {',
-            '    double xd[%d] = {%s};' % (len(x), ", ".join(
-                "%.17g" % v for v in x)),
-            '    double od[1] = {0};',
-            '    mlc_array a, o; mlc_status st;',
-            '    a.data=xd; a.dtype=MLC_F64; a.ndim=1; a.shape[0]=%d;'
-            ' a.strides[0]=1; a.owns_data=0;' % len(x),
-            '    o.data=od; o.dtype=MLC_F64; o.ndim=1; o.shape[0]=1;'
-            ' o.strides[0]=1; o.owns_data=0;',
-            '    st = mlc_op_sum(&a, &o);',
-            '    if (st != MLC_OK) return 1;',
-            '    printf("%.17g\\n", od[0]);', '    return 0;', '}'])
+    if op in _UNARY_C:
+        x = case["inputs"]["x"]
+        lines = head + _c_array_lines("x", x)
+        lines += [
+            "    double od[1] = {0};",
+            "    mlc_array o; mlc_status st;",
+            ("    o.data=od; o.dtype=MLC_F64; o.ndim=1; o.shape[0]=1; "
+             "o.strides[0]=1; o.owns_data=0;"),
+            "    st = {0}(&x, &o);".format(_UNARY_C[op]),
+            "    if (st != MLC_OK) return 1;",
+            '    printf("%.17g\\n", od[0]);',
+            "    return 0;", "}"]
+        return "\n".join(lines) + "\n"
     if op == "OP-INDEX":
-        x = _flat(case["inputs"]["x"]["data"])
+        x = case["inputs"]["x"]
         i = int(case["inputs"].get("i", 1))
-        return '\n'.join([
-            '#include <stdio.h>', '#include "mlc.h"', '#include "mlc_ops.h"',
-            'int main(void) {',
-            '    double xd[%d] = {%s};' % (len(x), ", ".join(
-                "%.17g" % v for v in x)),
-            '    double od[1] = {0};',
-            '    mlc_array a, o; mlc_status st;',
-            '    a.data=xd; a.dtype=MLC_F64; a.ndim=1; a.shape[0]=%d;'
-            ' a.strides[0]=1; a.owns_data=0;' % len(x),
-            '    o.data=od; o.dtype=MLC_F64; o.ndim=1; o.shape[0]=1;'
-            ' o.strides[0]=1; o.owns_data=0;',
-            '    st = mlc_op_index(&a, %d, &o);' % i,
-            '    if (st != MLC_OK) return 1;',
-            '    printf("%.17g\\n", od[0]);', '    return 0;', '}'])
+        lines = head + _c_array_lines("x", x)
+        lines += [
+            "    double od[1] = {0};",
+            "    mlc_array o; mlc_status st;",
+            ("    o.data=od; o.dtype=MLC_F64; o.ndim=1; o.shape[0]=1; "
+             "o.strides[0]=1; o.owns_data=0;"),
+            "    st = mlc_op_index(&x, {0}, &o);".format(i),
+            "    if (st != MLC_OK) return 1;",
+            '    printf("%.17g\\n", od[0]);',
+            "    return 0;", "}"]
+        return "\n".join(lines) + "\n"
     return None
 
 

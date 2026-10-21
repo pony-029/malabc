@@ -1,0 +1,10 @@
+{
+  "name": "op_mean_vector",
+  "operator": "OP-MEAN",
+  "rules": ["ORDER-1"],
+  "inputs": {
+    "x": {"dtype": "f64", "shape": [4], "data": [1.0, 2.0, 3.0, 4.0]}
+  },
+  "expected": {"dtype": "f64", "shape": [1], "data": [2.5]},
+  "tol": {"abs": 1e-12, "rel": 1e-9}
+}

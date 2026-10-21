@@ -66,6 +66,9 @@
 | `--sync-ledger --write` | 按 C 结果升级台账 | ✅ add/sum/index → `verified` |
 | CI 编译矩阵 | `.github/workflows/port-ci.yml`（ubuntu + windows） | ✅ |
 | 本轮归档 | 本文件 | ✅ |
+| R12 工具链 | 优先 `D:\work\MinGW-w64`（gcc 16.2.0），`MLC_CC`/`MLC_MINGW` 可覆盖 | ✅ |
+| R12 算子扩充 | `mlc_op_sub/mul/div/mean/max/min` + 6 个 golden | ✅ C 9/9 |
+| R12 台账 | add/sub/mul/div/sum/mean/max/min/index → `verified` | ✅ 9 条 |
 
 **本轮实测读数**
 
@@ -98,6 +101,7 @@ JSON：`translate/contracts/matlab_c_constraints.json`（由 TP1b 与代码双�
 | 空值 | `[]` | `numel==0, data==NULL` |
 | 逻辑索引 | 支持 | 不直接支持（需显式掩码） |
 | 所有权 | copy-on-write | `owns_data` / view 不拥有 |
+| 工具链 | MATLAB 解释器（参考执行） | 优先 `D:\work\MinGW-w64`（gcc）；`MLC_CC`/`MLC_MINGW` 覆盖；zig 兜底 |
 
 规则映射：`IDX-1`、`ORDER-1`、`EXPAND-1`、`INT-1`；适配规则：`ADP-1`、`ADP-2`、`ADP-3`。
 
@@ -138,7 +142,7 @@ MATLAB 参考实现（语义唯一事实源）
 | R9 | 真编译（zig）+ `--require-c` + 台账同步 | C 3/3，台账升级 verified | ✅ |
 | R10 | 双侧约束 JSON + TP1b | 与 `mlc.h`/rules/adapters 双向一致 | ✅ |
 | R11 | CI 编译矩阵（ubuntu/windows） | `--require-c` 两平台绿 | ✅（工作流已落，待远端跑） |
-| R12 | SUB/MUL/DIV/MEAN/MAX 的 C 落点 | 每算子 ≥1 golden | ⏳ |
+| R12 | SUB/MUL/DIV/MEAN/MAX/MIN 的 C 落点 | 每算子 ≥1 golden；C 9/9 | ✅ |
 | R13 | 多维广播（EXPAND-1） | 2D/行/列/标量夹具 | ⏳ |
 | R14 | transpose/matmul C 实现 | 去掉 `MLC_UNIMPLEMENTED` | ⏳ |
 | R15 | 切片 `x(i:j)` / `end` | IDX-1 边界夹具 | ⏳ |
@@ -230,10 +234,11 @@ CI 用 `--require-c` 禁止“没编译器也算绿”。
 
 | 命令 | 读数 |
 | --- | --- |
-| `python tools/check_translate_port.py` | `OK（TP1–TP4 全绿；golden 5/5；C 3/3；台账 5 条）` |
+| `python tools/check_translate_port.py --require-c` | `OK（golden 11/11；C 9/9；台账 11 条）` |
 | `python tools/check_translate_port.py --selftest` | `SELFTEST COUNTS {"bad": 0, "good": 13}` |
-| `python -m pytest tests/test_translate_port.py -q` | `18 passed` |
-| `python tools/check_translate_port.py --sync-ledger --write` | add/sum/index → `verified` |
+| `python -m pytest tests/test_translate_port.py -q` | `20 passed` |
+| `python tools/check_translate_port.py --sync-ledger --write` | add/sub/mul/div/sum/mean/max/min/index → `verified` |
+| C 编译器 | `D:\work\MinGW-w64\bin\gcc.exe`（gcc 16.2.0） |
 | `python tools/check_help_contract.py` | OK |
 | `python tools/check_readme_parity.py` | OK（38 道门表行） |
 | `python tools/check_version_scheme.py` | OK（1.5.2） |

@@ -122,6 +122,10 @@ def check_constraints(path=None):
         if t not in forbidden:
             probs.append("TP1b forbidden_public_types 缺 %s" % t)
 
+    tc = data.get("toolchain") or {}
+    if not tc.get("preferred_windows"):
+        probs.append("TP1b toolchain.preferred_windows 缺失")
+
     rule_ids = [r.get("id") for r in (data.get("rules") or [])]
     if rule_ids != list(rules_mod.rule_ids()):
         probs.append("TP1b rules 与 translate.rules 不一致：%r != %r"

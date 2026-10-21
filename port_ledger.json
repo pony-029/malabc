@@ -13,7 +13,49 @@
         "op_add_broadcast.json"
       ],
       "owner": "",
-      "notes": "C 落点 mlc_op_add 已实现；本机无 C 编译器，待 CI 编译验证后升级为 verified"
+      "notes": "R12：C 落点 mlc_op_add 已实现；由 --sync-ledger 按真编译结果升级"
+    },
+    {
+      "id": "m2c.op_sub",
+      "matlab": "catalog:OP-SUB",
+      "c": "c_runtime/src/mlc_ops.c",
+      "status": "verified",
+      "operators": [
+        "OP-SUB"
+      ],
+      "golden": [
+        "op_sub_scalar.json"
+      ],
+      "owner": "",
+      "notes": "R12：C 落点 mlc_op_sub 已实现；由 --sync-ledger 按真编译结果升级"
+    },
+    {
+      "id": "m2c.op_mul",
+      "matlab": "catalog:OP-MUL",
+      "c": "c_runtime/src/mlc_ops.c",
+      "status": "verified",
+      "operators": [
+        "OP-MUL"
+      ],
+      "golden": [
+        "op_mul_elementwise.json"
+      ],
+      "owner": "",
+      "notes": "R12：C 落点 mlc_op_mul 已实现；由 --sync-ledger 按真编译结果升级"
+    },
+    {
+      "id": "m2c.op_div",
+      "matlab": "catalog:OP-DIV",
+      "c": "c_runtime/src/mlc_ops.c",
+      "status": "verified",
+      "operators": [
+        "OP-DIV"
+      ],
+      "golden": [
+        "op_div_elementwise.json"
+      ],
+      "owner": "",
+      "notes": "R12：C 落点 mlc_op_div 已实现（IEEE 除零语义）；由 --sync-ledger 升级"
     },
     {
       "id": "m2c.op_sum",
@@ -27,7 +69,49 @@
         "op_sum_vector.json"
       ],
       "owner": "",
-      "notes": "C 落点 mlc_op_sum 已实现；待编译验证"
+      "notes": "R12：C 落点 mlc_op_sum 已实现；由 --sync-ledger 按真编译结果升级"
+    },
+    {
+      "id": "m2c.op_mean",
+      "matlab": "catalog:OP-MEAN",
+      "c": "c_runtime/src/mlc_ops.c",
+      "status": "verified",
+      "operators": [
+        "OP-MEAN"
+      ],
+      "golden": [
+        "op_mean_vector.json"
+      ],
+      "owner": "",
+      "notes": "R12：C 落点 mlc_op_mean 已实现；空输入返回 MLC_ERR（不返回 NaN）"
+    },
+    {
+      "id": "m2c.op_max",
+      "matlab": "catalog:OP-MAX",
+      "c": "c_runtime/src/mlc_ops.c",
+      "status": "verified",
+      "operators": [
+        "OP-MAX"
+      ],
+      "golden": [
+        "op_max_vector.json"
+      ],
+      "owner": "",
+      "notes": "R12：C 落点 mlc_op_max 已实现；空输入返回 MLC_ERR"
+    },
+    {
+      "id": "m2c.op_min",
+      "matlab": "catalog:OP-MIN",
+      "c": "c_runtime/src/mlc_ops.c",
+      "status": "verified",
+      "operators": [
+        "OP-MIN"
+      ],
+      "golden": [
+        "op_min_vector.json"
+      ],
+      "owner": "",
+      "notes": "R12：C 落点 mlc_op_min 已实现；空输入返回 MLC_ERR"
     },
     {
       "id": "m2c.op_index",
@@ -41,7 +125,7 @@
         "op_index_shift.json"
       ],
       "owner": "",
-      "notes": "C 落点 mlc_op_index 已实现（唯一允许 -1 的地方）；待编译验证"
+      "notes": "R12：C 落点 mlc_op_index 已实现（唯一允许 -1 的地方）"
     },
     {
       "id": "m2c.op_transpose",

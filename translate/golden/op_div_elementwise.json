@@ -1,0 +1,11 @@
+{
+  "name": "op_div_elementwise",
+  "operator": "OP-DIV",
+  "rules": ["EXPAND-1"],
+  "inputs": {
+    "a": {"dtype": "f64", "shape": [3], "data": [10.0, 20.0, 30.0]},
+    "b": {"dtype": "f64", "shape": [3], "data": [2.0, 4.0, 5.0]}
+  },
+  "expected": {"dtype": "f64", "shape": [3], "data": [5.0, 5.0, 6.0]},
+  "tol": {"abs": 1e-12, "rel": 1e-9}
+}
