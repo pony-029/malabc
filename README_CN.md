@@ -789,7 +789,7 @@ python tools/check_all.py        # 跑完 tools/check_*.py 全部护栏 + 各自
 | `check_release_gates.py` | `RG1–RG4` — 写了却从不参与发布的门，等于给自己看的笔记：每个 `check_*.py` 要么在 `release.py` 的 `GATES` 里，要么**带理由**豁免（陈旧豁免同样算红） |
 | `check_symbol_ranges.py` | `SR1–SR3` — 每个符号的起止行必须落在文件内。越界的 Range 会让编辑器**拒收整批符号**，大纲于是永远停在「正在加载…」 |
 | `check_translate_port.py` | `TP1–TP4` — MATLAB→C 移植链路：ABI 契约（禁止裸指针）/ 双侧适配器（ADP-1..3）/ 算子目录与 C 发射 / golden 保真 + 移植台账。未验证是一等状态，但「已声明」必须能被夹具兑现 |
-| `check_architecture_docs.py` | `AD1–AD5` — 架构文档不许漂移：`FLOW_INDEX.json` ⇄ `candidates/*.json` ⇄ `html/*.html` ⇄ `svg/*.svg` 三向对账；SHA-256 陈旧门（candidate/HTML 变了而 SVG 没重导即红）；两份根 README 必须链接索引并嵌入总框架 SVG |
+| `check_architecture_docs.py` | `AD1–AD7` — 架构文档不许漂移：`FLOW_INDEX.json` ⇄ `candidates/*.json` ⇄ `html/*.html` ⇄ `svg/*.svg` 三向对账；SHA-256 陈旧门；离线版式不变量（id 唯一、连线端点已知、sequence 间距、标签长度）；CODEOWNERS 覆盖；本地图片路径；两份根 README 必须链接索引并嵌入总框架 SVG |
 | `check_tool_selftests.py` | `TS1–TS2` — 凡是声明 `SELFTEST = True` 的工具，发版时都真跑一次。工具的自证和其他门一样：**有人执行它才存在** |
 | `check_portability.py` | `PF1–PF3` —— 运行时不得假设只有 Windows。Windows 绝对路径只有在该行**登记过且有 POSIX 对照**时才允许；Windows 专属 API（`os.startfile` / `winreg` / `msvcrt` / `ctypes.windll`）一律不豁免。注释与文档串被跳过——写成 `C:\Temp\yalmip` 的实测记录是证据，不是平台假设。PF3 抓反方向：登记的锚点文字消失即陈旧 |
 | `check_version_scheme.py` | `VS1–VS2` —— 版本号脱离自己定的规则。每一位都必须留在 `0–9`（`0.7.9` → `0.8.0`，`0.9.9` → `1.0.0`）；这道门之前，`0.6.105` 和 `0.7.0` 在任何地方都看不出区别，于是补丁位一路涨到 `0.6.104`——读起来像日期，也说明不了改了多少。**VS2** 把扩展清单和版本表绑在一起：升了版本却忘了重新生成表，两边就会静静地对不上 |
@@ -1089,7 +1089,7 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 - [docs/matlabc_STRUCTURE.md](docs/matlabc_STRUCTURE.md) — 代码结构总览
 - [docs/matlabc_AI_ROADMAP.md](docs/matlabc_AI_ROADMAP.md) — AI 演进路线图
 - [docs/analysis/](docs/analysis/) — 深度分析报告（六顶思考帽复盘、方案对比）
-- [docs/architecture/](docs/architecture/) — 架构图：总框架 + 11 个模块 + 数据流/时序（14 张，archify HTML/SVG）。用 `python tools/export_arch_svg.py --all` 重新导出瘦身 SVG；英文标签用 `python tools/build_arch_svg_en.py`
+- [docs/architecture/](docs/architecture/) — 架构图：总框架 + 11 个模块 + 数据流/时序（14 张，archify HTML/SVG）。用 `python tools/export_arch_svg.py --all` 重新导出瘦身 SVG；英文标签用 `python tools/build_arch_svg_en.py`；base/head 版式差异用 `python tools/arch_compare.py --id 00-overall`
 - [docs/SUPERPOWER_REVIEW_R31.md](docs/SUPERPOWER_REVIEW_R31.md) — 逐轮复盘：二进制/GPU 接入、子进程卫生、以及那道会挂死的门
 - [docs/SUPERPOWER_REVIEW_R33.md](docs/SUPERPOWER_REVIEW_R33.md) — 逐轮复盘：`--binary-attach`、README 双语对等门、可执行的帮助示例，以及那个抓出自身 bug 的退出码匹配器
 - [docs/KERNEL_RUN.md](docs/KERNEL_RUN.md) — 全树读数（Linux 内核语料）的**唯一事实源**：出处 + **cwd 口径**、三档**并列**分母，以及最近一次跑次与冻结的 R81 基线的逐字段对照

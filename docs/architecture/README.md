@@ -172,13 +172,16 @@
 
 > 最近提交由 `git log -1 --format='%h %ad' --date=short -- <主文件>` 现算；
 > 改动主文件后重跑即可，不要手写提交号。
+>
+> 责任人落点：`.github/CODEOWNERS`。`check_architecture_docs.py` 的 AD7 会逐条
+> 核对关键模块是否都有 owner，且 owner 必须以 `@` 开头。
 
 ---
 
 ## 3. 如何重新生成
 
 ```bash
-# 1) 校验 candidate（12/12 必须 ok）
+# 1) 校验 candidate（14/14 必须 ok）
 node D:/work/rea/archify/archify/bin/archify.mjs validate architecture \
   docs/architecture/candidates/00-overall.json --quality showcase
 
@@ -191,7 +194,17 @@ copy %TEMP%/00-overall.html docs/architecture/html/00-overall.html
 # 3) 产物校验
 node D:/work/rea/archify/archify/bin/archify.mjs check \
   docs/architecture/html/00-overall.html
+
+# 4) 导出瘦身 SVG（中文）与英文标签 SVG
+python tools/export_arch_svg.py --all
+python tools/build_arch_svg_en.py
+
+# 5) 改图后看 base/head 版式差异（delta HTML + receipt）
+python tools/arch_compare.py --id 00-overall
 ```
+
+> 纯 Python 快跑门在 `.github/workflows/arch-docs.yml`：AD1–AD7、SVG 哈希清单、
+> 英文 SVG 存在性、中英 README 对等、行尾约定；不依赖 archify/Node。
 
 类型映射：
 
@@ -215,9 +228,14 @@ node D:/work/rea/archify/archify/bin/archify.mjs check \
 | 独立 SVG（14 个） | **14/14 XML 解析通过**；CSS 裁剪到 **4–5 KB**（丢弃 @font-face，靠系统等宽兜底） |
 | SVG 渲染烟测 | `00-overall` 1444×744 **3585 色 / 40.89% 非白**；`12-dataflow` 980×520 **4430 色 / 57.57%**；`13-sequence` 1020×700 **3752 色 / 63.04%** |
 | SVG 体积 | **3.7 MB → 353 KB**（约 10.5×，单张 17–41 KB） |
-| 架构文档门 | `python tools/check_architecture_docs.py` → **OK（AD1–AD5）** |
+| 架构文档门 | `python tools/check_architecture_docs.py` → **OK（AD1–AD7）** |
+| 离线版式（AD6） | 14/14：viewBox（dataflow/sequence）、id 唯一、连线端点已知、sequence y≥160 且间距≥28、标签长度 |
+| 责任人（AD7） | 13 个关键模块全部有 `.github/CODEOWNERS` 负责人，owner 均为 `@pony-029` |
+| 图片路径（AD3） | 根 README 的本地图片全部存在；总框架中文/英文各嵌各的图 |
 | 陈旧门 | `python tools/export_arch_svg.py --check` → **OK（14 条清单与 candidate/html/svg 一致）** |
-| 根 README | 中英两份都链接 `docs/architecture/index.html` 并嵌入 `svg/00-overall.svg` |
+| 快跑 CI | `.github/workflows/arch-docs.yml`（AD1–AD7 + 清单 + 英文 SVG + README 对等 + 行尾）；YAML 可解析：1 job / 7 steps |
+| 版式差异（R13） | `python tools/arch_compare.py --id 00-overall --head <changed>` → delta HTML **2,163,473 B** + receipt **2,022 B** |
+| 根 README | 中英两份都链接 `docs/architecture/index.html`；中文用 `svg/00-overall.svg`，英文用 `en/svg/00-overall.svg` |
 | `.html` / `.svg` 行尾 | **LF**（`00-overall.html` CRLF=0；SVG 由导出器按 LF 写） |
 | 产物体积 | HTML 约 **10.1 MB**（14 张） + SVG 约 **344 KB** |
 

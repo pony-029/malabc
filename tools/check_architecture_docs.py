@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""架构文档一致性门（AD1–AD5）。
+"""架构文档一致性门（AD1–AD7）。
 
 判据族：
     AD1  索引形状：`FLOW_INDEX.json` 的 version/items/id/type/title 齐全且唯一。
@@ -7,17 +7,23 @@
          候选的 `diagram_type` 必须等于登记的 type；SVG 必须是合法 XML；
          反向：磁盘上多出未登记的 candidate/html/svg 也算红。
     AD3  文档可发现：`docs/architecture/README.md` 必须引用每个 HTML；
-         两份根 README 必须链接架构索引并嵌入总框架 SVG。
+         两份根 README 必须链接架构索引并嵌入总框架 SVG；
+         根 README 里的**本地图片路径**必须真实存在（不是 404）。
     AD4  候选自述：`meta.output` 必须指向自己的 HTML（防止复制模板忘改）。
     AD5  陈旧：`svg/MANIFEST.json` 记录 candidate/html/svg 的 sha256；
          三者任一变了而 SVG/清单没重导 ⇒ 红。
+    AD6  版式不变量（离线，不依赖 archify）：viewBox 为正、节点 id 唯一、
+         连线/消息不引用未知节点、sequence 消息 y ≥ 160 且间距 ≥ 28、
+         段/激活区间不越界、标签不过长。
+    AD7  责任人：`.github/CODEOWNERS` 必须覆盖架构文档列出的关键模块，
+         且每个 owner 都以 `@` 开头。
 
 为什么需要它：架构图是**生成物**，最容易出现的缺陷不是“画错”，而是
 “改了 candidate 没重渲染 / 渲染了没登记 / 嵌了图但路径写错”——这三种
 在 git diff 里都只是几行，靠人看不住。
 
 退出码：
-    0  = AD1–AD5 全绿
+    0  = AD1–AD7 全绿
     1  = 有架构文档不一致
     2  = 缺输入（找不到 docs/architecture 或根 README）
 """
@@ -26,12 +32,13 @@ import hashlib
 import io
 import json
 import os
+import re
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
 
 #: P5 的对手方：本门在 README 质量门表那一行里声明的判据族。
-ROW_SIGNATURE = "AD1–AD5"
+ROW_SIGNATURE = "AD1–AD7"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -39,9 +46,11 @@ ARCH = os.path.join(ROOT, "docs", "architecture")
 INDEX = os.path.join(ARCH, "FLOW_INDEX.json")
 MANIFEST = os.path.join(ARCH, "svg", "MANIFEST.json")
 ARCH_README = os.path.join(ARCH, "README.md")
+CODEOWNERS = os.path.join(ROOT, ".github", "CODEOWNERS")
 ROOT_READMES = (os.path.join(ROOT, "README.md"),
                 os.path.join(ROOT, "README_CN.md"))
 TYPES = ("architecture", "workflow", "lifecycle", "sequence", "dataflow")
+_IMG_RE = re.compile(r"!\[[^\]]*\]\(([^)\s]+)")
 
 
 def _load_json(path):
@@ -65,8 +74,154 @@ def _sha256(path):
     return h.hexdigest()
 
 
+def _missing_images(txt, base_dir):
+    """README 里的本地图片必须存在；http/data/anchor 一律跳过。"""
+    probs = []
+    for raw in _IMG_RE.findall(txt or ""):
+        if raw.startswith(("http://", "https://", "data:", "mailto:", "#")):
+            continue
+        path = raw.strip("<>").split(" ")[0]
+        if not path:
+            continue
+        full = (os.path.join(ROOT, path.lstrip("/"))
+                if path.startswith("/") else os.path.join(base_dir, path))
+        if not os.path.isfile(full):
+            probs.append("AD3 图片不存在：%s" % raw)
+    return probs
+
+
+def _layout_problems(iid, typ, cj):
+    """AD6：离线版式不变量（不依赖 archify，CI 里也能跑）。"""
+    probs = []
+    meta = cj.get("meta") or {}
+    vb = meta.get("viewBox")
+    vb_ok = (isinstance(vb, list) and len(vb) == 2
+             and all(isinstance(x, (int, float)) and x > 0 for x in vb))
+    if typ in ("sequence", "dataflow") and not vb_ok:
+        probs.append("AD6 %s 缺正 viewBox" % iid)
+        vb = None
+    elif vb is not None and not vb_ok:
+        probs.append("AD6 %s 的 viewBox 非法" % iid)
+        vb = None
+    if len(meta.get("title") or "") > 140:
+        probs.append("AD6 %s 标题过长（> 140）" % iid)
+
+    nodes = (cj.get("components") or cj.get("nodes")
+             or cj.get("participants") or cj.get("states") or [])
+    if not nodes:
+        probs.append("AD6 %s 没有节点" % iid)
+    ids = set()
+    for n in nodes:
+        nid = n.get("id")
+        if not nid:
+            probs.append("AD6 %s 节点缺 id" % iid)
+            continue
+        if nid in ids:
+            probs.append("AD6 %s 节点 id 重复：%s" % (iid, nid))
+        ids.add(nid)
+        if len(n.get("label") or "") > 48:
+            probs.append("AD6 %s 节点 %s 标签过长（> 48）" % (iid, nid))
+
+    if typ == "dataflow":
+        stages = cj.get("stages") or []
+        if not stages:
+            probs.append("AD6 %s 缺 stages" % iid)
+        for n in nodes:
+            st = n.get("stage")
+            if not isinstance(st, int) or not (0 <= st < len(stages)):
+                probs.append("AD6 %s 节点 %s 的 stage 越界：%r"
+                             % (iid, n.get("id"), st))
+            if not isinstance(n.get("row"), int) or n["row"] < 0:
+                probs.append("AD6 %s 节点 %s 的 row 非法：%r"
+                             % (iid, n.get("id"), n.get("row")))
+
+    if typ == "sequence":
+        parts = set(x.get("id") for x in nodes)
+        ys = []
+        for m in cj.get("messages") or []:
+            if m.get("from") not in parts or m.get("to") not in parts:
+                probs.append("AD6 %s 消息 %s 引用未知参与者"
+                             % (iid, m.get("id")))
+            y = m.get("y")
+            if not isinstance(y, (int, float)):
+                probs.append("AD6 %s 消息 %s 缺 y" % (iid, m.get("id")))
+            else:
+                ys.append(y)
+            if len(m.get("label") or "") > 36:
+                probs.append("AD6 %s 消息 %s 标签过长" % (iid, m.get("id")))
+        if ys:
+            if min(ys) < 160:
+                probs.append("AD6 %s 消息 y < 160" % iid)
+            for a, b in zip(ys, ys[1:]):
+                if b - a < 28:
+                    probs.append("AD6 %s 消息间距 < 28（%s）" % (iid, b - a))
+                    break
+        limit = (vb[1] - 20) if vb else 10 ** 9
+        for seg in cj.get("segments") or []:
+            if seg.get("from", 0) < 72 or seg.get("to", 0) > limit:
+                probs.append("AD6 %s 段 %s 越界" % (iid, seg.get("label")))
+        for act in cj.get("activations") or []:
+            if act.get("from", 0) > act.get("to", 0):
+                probs.append("AD6 %s 激活区间倒置" % iid)
+    else:
+        edges = (cj.get("connections") or cj.get("edges")
+                 or cj.get("transitions") or cj.get("flows") or [])
+        for e in edges:
+            if e.get("from") not in ids or e.get("to") not in ids:
+                probs.append("AD6 %s 连线 %s 引用未知节点"
+                             % (iid, e.get("id")))
+            if len(e.get("label") or "") > 32:
+                probs.append("AD6 %s 连线 %s 标签过长" % (iid, e.get("id")))
+    return probs
+
+
+def _codeowners_problems(path):
+    """AD7：CODEOWNERS 覆盖关键模块，owner 必须是 @ 开头。"""
+    if not os.path.isfile(path):
+        return ["AD7 缺 CODEOWNERS：%s" % path]
+    probs = []
+    rules = []
+    for line in _read(path).splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            probs.append("AD7 CODEOWNERS 行缺 owner：%s" % line)
+            continue
+        rules.append((parts[0], parts[1:]))
+    if not rules:
+        return probs + ["AD7 CODEOWNERS 没有规则"]
+    key_paths = ("matlabc.py", "matlabc_boot.py", "matlabc_lsp.py",
+                 "matlabc_mcp.py", "matlabc_flow.py", "agent_loop.py",
+                 "frontends", "renderers", "vscode", "tools",
+                 "translate", "c_runtime", "binfmt")
+    for p in key_paths:
+        hit = False
+        for pat, owners in rules:
+            base = pat.rstrip("/")
+            if base.startswith("/"):
+                base = base[1:]
+            if base in ("*", "**"):
+                hit = True
+            elif (p == base or p.startswith(base + "/")
+                  or base.startswith(p + "/")):
+                hit = True
+            if hit and not owners:
+                hit = False
+            if hit:
+                break
+        if not hit:
+            probs.append("AD7 %s 没有 CODEOWNERS 负责人" % p)
+    for pat, owners in rules:
+        for o in owners:
+            if not o.startswith("@"):
+                probs.append("AD7 %s 的 owner 不是 @ 开头：%s" % (pat, o))
+    return probs
+
+
 def check(index_path=None, arch_dir=None, arch_readme=None,
-          root_readmes=None, manifest_path=None):
+          root_readmes=None, manifest_path=None, codeowners_path=None):
     """纯函数：返回问题列表；空 = 干净。参数可注入（自证用）。"""
     index_path = index_path or INDEX
     arch_dir = arch_dir or ARCH
@@ -74,6 +229,7 @@ def check(index_path=None, arch_dir=None, arch_readme=None,
     root_readmes = tuple(root_readmes or ROOT_READMES)
     manifest_path = manifest_path or os.path.join(
         arch_dir, "svg", "MANIFEST.json")
+    codeowners_path = codeowners_path or CODEOWNERS
     if not os.path.isfile(index_path):
         return ["AD1 缺索引：%s" % index_path]
     try:
@@ -185,6 +341,21 @@ def check(index_path=None, arch_dir=None, arch_readme=None,
             if iid not in seen:
                 probs.append("AD5 清单多出未登记条目：%s" % iid)
 
+    # AD6：离线版式不变量
+    for it in items:
+        iid = it.get("id")
+        typ = it.get("type")
+        cand = os.path.join(arch_dir, it.get("candidate") or "")
+        if not iid or typ not in TYPES or not os.path.isfile(cand):
+            continue
+        try:
+            cj = _load_json(cand)
+        except ValueError:
+            continue
+        probs.extend(_layout_problems(iid, typ, cj))
+    # AD7：模块责任人
+    probs.extend(_codeowners_problems(codeowners_path))
+
     if not os.path.isfile(arch_readme):
         probs.append("AD3 缺架构说明：%s" % arch_readme)
     else:
@@ -192,6 +363,7 @@ def check(index_path=None, arch_dir=None, arch_readme=None,
         for it in items:
             if it.get("html") and it["html"] not in txt:
                 probs.append("AD3 架构 README 未引用 %s" % it["html"])
+        probs.extend(_missing_images(txt, os.path.dirname(arch_readme)))
 
     for rp in root_readmes:
         if not os.path.isfile(rp):
@@ -206,6 +378,7 @@ def check(index_path=None, arch_dir=None, arch_readme=None,
                 else "docs/architecture/svg/00-overall.svg")
         if need not in txt:
             probs.append("AD3 %s 未嵌入总框架 SVG（%s）" % (rp, need))
+        probs.extend(_missing_images(txt, os.path.dirname(rp)))
     return probs
 
 
@@ -237,9 +410,15 @@ def _selftest():
         man = os.path.join(arch, "svg", "MANIFEST.json")
         r_en = os.path.join(tmp, "README.md")
         r_cn = os.path.join(tmp, "README_CN.md")
-        CAND = json.dumps({"diagram_type": "architecture",
-                           "meta": {"title": "x",
-                                    "output": "html/00-overall.html"}})
+        co = os.path.join(tmp, ".github", "CODEOWNERS")
+        CAND = json.dumps({
+            "diagram_type": "architecture",
+            "meta": {"title": "x", "output": "html/00-overall.html",
+                     "viewBox": [800, 600]},
+            "components": [
+                {"id": "a", "label": "A", "pos": [0, 0], "size": [10, 10]},
+                {"id": "b", "label": "B", "pos": [100, 0], "size": [10, 10]}],
+            "connections": [{"id": "ab", "from": "a", "to": "b"}]})
         SVG = ('<?xml version="1.0" encoding="UTF-8"?>\n'
                '<svg xmlns="http://www.w3.org/2000/svg"'
                ' viewBox="0 0 10 10"></svg>\n')
@@ -254,10 +433,21 @@ def _selftest():
                        "candidate": "candidates/00-overall.json",
                        "html": "html/00-overall.html",
                        "title": "x"}]}))
+        for ip in (os.path.join(tmp, "docs", "architecture", "en", "svg",
+                                "00-overall.svg"),
+                   os.path.join(tmp, "docs", "architecture", "svg",
+                                "00-overall.svg")):
+            _write(ip, '<?xml version="1.0"?>'
+                       '<svg xmlns="http://www.w3.org/2000/svg"/>\n')
         _write(r_en, "![x](docs/architecture/en/svg/00-overall.svg)\n"
                      "[i](docs/architecture/index.html)\n")
         _write(r_cn, "![x](docs/architecture/svg/00-overall.svg)\n"
                      "[i](docs/architecture/index.html)\n")
+        _write(co, "\n".join("/%s @owner" % x for x in (
+            "matlabc.py", "matlabc_boot.py", "matlabc_lsp.py",
+            "matlabc_mcp.py", "matlabc_flow.py", "agent_loop.py",
+            "frontends/", "renderers/", "vscode/", "tools/",
+            "translate/", "c_runtime/", "binfmt/")) + "\n")
 
         def write_manifest():
             _write(man, json.dumps({"version": 1, "items": {"00-overall": {
@@ -268,56 +458,102 @@ def _selftest():
         write_manifest()
         args = (os.path.join(arch, "FLOW_INDEX.json"), arch,
                 os.path.join(arch, "README.md"), (r_en, r_cn))
-        chk(not check(*args), "好样本被误伤")
+        kw = {"codeowners_path": co}
+        chk(not check(*args, **kw), "好样本被误伤")
         # 坏样本 1：candidate 不存在
         os.remove(cand)
-        chk(bool(check(*args)), "缺 candidate 未判红")
+        chk(bool(check(*args, **kw)), "缺 candidate 未判红")
         _write(cand, CAND)
         write_manifest()
         # 坏样本 2：diagram_type 不一致
         _write(cand, json.dumps({"diagram_type": "workflow",
                                  "meta": {"title": "x",
                                           "output": "html/00-overall.html"}}))
-        chk(bool(check(*args)), "type 不一致未判红")
+        chk(bool(check(*args, **kw)), "type 不一致未判红")
         _write(cand, CAND)
         write_manifest()
         # 坏样本 3：SVG 不是 XML
         _write(svg, "not xml\n")
-        chk(bool(check(*args)), "坏 SVG 未判红")
+        chk(bool(check(*args, **kw)), "坏 SVG 未判红")
         _write(svg, SVG)
         write_manifest()
         # 坏样本 4：根 README 没嵌图
         _write(r_en, "[i](docs/architecture/index.html)\n")
-        chk(bool(check(*args)), "根 README 缺图未判红")
+        chk(bool(check(*args, **kw)), "根 README 缺图未判红")
         _write(r_en, "![x](docs/architecture/en/svg/00-overall.svg)\n"
                      "[i](docs/architecture/index.html)\n")
         # 坏样本 5：多出未登记文件
         _write(os.path.join(arch, "svg", "99-extra.svg"), SVG)
-        chk(bool(check(*args)), "未登记 SVG 未判红")
+        chk(bool(check(*args, **kw)), "未登记 SVG 未判红")
         os.remove(os.path.join(arch, "svg", "99-extra.svg"))
         write_manifest()
         # 坏样本 6：candidate 变了但清单没重导（AD5）
         _write(cand, json.dumps({"diagram_type": "architecture",
                                  "meta": {"title": "changed",
                                           "output": "html/00-overall.html"}}))
-        chk(bool(check(*args)), "candidate 变了清单未判红")
+        chk(bool(check(*args, **kw)), "candidate 变了清单未判红")
         _write(cand, CAND)
         write_manifest()
         # 坏样本 7：清单缺失
         os.remove(man)
-        chk(bool(check(*args)), "缺清单未判红")
+        chk(bool(check(*args, **kw)), "缺清单未判红")
         write_manifest()
-        chk(not check(*args), "恢复后仍误伤")
+        # 坏样本 8：AD6 连线指向未知节点
+        _write(cand, json.dumps({
+            "diagram_type": "architecture",
+            "meta": {"title": "x", "output": "html/00-overall.html",
+                     "viewBox": [800, 600]},
+            "components": [{"id": "a", "label": "A"}],
+            "connections": [{"id": "ab", "from": "a", "to": "missing"}]}))
+        chk(bool(check(*args, **kw)), "AD6 未知连线未判红")
+        _write(cand, CAND)
+        write_manifest()
+        # AD6：sequence 间距与 y 下界
+        bad_seq = {"meta": {"title": "s", "viewBox": [900, 700]},
+                   "participants": [{"id": "a", "label": "A"},
+                                    {"id": "b", "label": "B"}],
+                   "messages": [
+                       {"id": "m1", "from": "a", "to": "b", "y": 165,
+                        "label": "one"},
+                       {"id": "m2", "from": "b", "to": "a", "y": 190,
+                        "label": "two"}]}
+        good_seq = {"meta": {"title": "s", "viewBox": [900, 700]},
+                    "participants": [{"id": "a", "label": "A"},
+                                     {"id": "b", "label": "B"}],
+                    "messages": [
+                        {"id": "m1", "from": "a", "to": "b", "y": 165,
+                         "label": "one"},
+                        {"id": "m2", "from": "b", "to": "a", "y": 195,
+                         "label": "two"}]}
+        chk(bool(_layout_problems("s", "sequence", bad_seq)),
+            "AD6 sequence 间距未判红")
+        chk(not _layout_problems("s", "sequence", good_seq),
+            "AD6 good sequence 被误伤")
+        # 坏样本 9：AD7 缺 CODEOWNERS
+        os.remove(co)
+        chk(bool(check(*args, **kw)), "AD7 缺 CODEOWNERS 未判红")
+        _write(co, "\n".join("/%s @owner" % x for x in (
+            "matlabc.py", "matlabc_boot.py", "matlabc_lsp.py",
+            "matlabc_mcp.py", "matlabc_flow.py", "agent_loop.py",
+            "frontends/", "renderers/", "vscode/", "tools/",
+            "translate/", "c_runtime/", "binfmt/")) + "\n")
+        # 坏样本 10：AD3 本地图片 404
+        _write(r_cn, "![x](docs/architecture/svg/missing.svg)\n"
+                     "[i](docs/architecture/index.html)\n")
+        chk(bool(check(*args, **kw)), "AD3 图片 404 未判红")
+        _write(r_cn, "![x](docs/architecture/svg/00-overall.svg)\n"
+                     "[i](docs/architecture/index.html)\n")
+        chk(not check(*args, **kw), "恢复后仍误伤")
     finally:
         import shutil
         shutil.rmtree(tmp, ignore_errors=True)
 
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad[0], good[0]))
-    return 0 if (bad[0] == 0 and good[0] >= 9) else 1
+    return 0 if (bad[0] == 0 and good[0] >= 13) else 1
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="架构文档一致性门（AD1–AD5）")
+    ap = argparse.ArgumentParser(description="架构文档一致性门（AD1–AD7）")
     ap.add_argument("--selftest", action="store_true", help="两向自证")
     args = ap.parse_args(argv)
     if args.selftest:
@@ -335,7 +571,7 @@ def main(argv=None):
             print("  - %s" % p)
         print("check_architecture_docs: %d 项不合规" % len(probs))
         return 1
-    print("check_architecture_docs: OK（AD1–AD5 全绿；"
+    print("check_architecture_docs: OK（AD1–AD7 全绿；"
           "索引 %d 条对账 candidate/html/svg；根 README 已嵌图）"
           % len(_load_json(INDEX).get("items") or []))
     return 0

@@ -1,0 +1,47 @@
+# =============================================================================
+# malabc 模块责任人（R24）
+# -----------------------------------------------------------------------------
+# 这份文件不是装饰：`tools/check_architecture_docs.py` 的 AD7 会逐条核对
+# 架构文档列出的关键模块是否都有负责人，且 owner 必须以 @ 开头。
+#
+# 维护者目前是仓库所有者；拆分子模块时，把对应行改成真正的团队即可。
+# `docs/architecture/README.md` 的「模块归属」表与这里保持同一组主文件。
+# =============================================================================
+
+# 总框架 / 单文件内核
+/matlabc.py              @pony-029
+/matlabc_boot.py         @pony-029
+/matlabc_help.py         @pony-029
+/gui.py                  @pony-029
+
+# 前端与模型
+/frontends/              @pony-029
+/renderers/              @pony-029
+
+# 编辑器
+/matlabc_lsp.py          @pony-029
+/vscode/                 @pony-029
+
+# AI / MCP
+/matlabc_mcp.py          @pony-029
+/matlabc_ask.py          @pony-029
+/ai_cli.py               @pony-029
+
+# 修复闭环
+/agent_loop.py           @pony-029
+/matlabc_flow.py         @pony-029
+/analyzer_memory.py      @pony-029
+
+# 门禁 / 工具
+/tools/                  @pony-029
+
+# MATLAB→C 移植
+/translate/              @pony-029
+/c_runtime/              @pony-029
+/port_ledger.json        @pony-029
+
+# 二进制
+/binfmt/                 @pony-029
+
+# 架构文档本身
+/docs/architecture/      @pony-029

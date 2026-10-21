@@ -255,8 +255,9 @@ GUARD_CONTRACT = {
         2: "缺输入（找不到 c_runtime / translate / port_ledger.json）",
     },
     "tools/check_architecture_docs.py": {
-        0: "通过（AD1–AD5：索引形状 / candidate-html-svg 三向对账 / "
-           "文档可发现 / meta.output 自述 / SHA-256 陈旧门）",
+        0: "通过（AD1–AD7：索引形状 / candidate-html-svg 三向对账 / "
+           "文档可发现 / meta.output 自述 / SHA-256 陈旧门 / "
+           "离线版式 / CODEOWNERS 责任人）",
         1: "架构文档不一致（未登记、未渲染、SVG 非法或根 README 未嵌图）",
         2: "缺输入（找不到 docs/architecture 或根 README）",
     },

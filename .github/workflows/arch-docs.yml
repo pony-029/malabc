@@ -1,0 +1,53 @@
+# =============================================================================
+# 架构文档快跑门（R12）
+# -----------------------------------------------------------------------------
+# 为什么单独开一条：`ci.yml` 的 `check_all.py` 是 2 分钟级的大跑，架构图
+# 改坏时反馈太慢。这条工作流只做 5 件纯 Python、秒级的事：
+#   AD1–AD7 架构文档门 / AD5 SVG 哈希清单 / 英文 SVG 存在性 /
+#   README 双语对等 / 行尾约定。
+#
+# 它**不需要** archify 或 Node：渲染与英文 SVG 构建在本地完成，
+# CI 只验证已提交的产物与清单一致。这样云端不会因为缺少 D:\work\rea\archify 而红。
+# =============================================================================
+name: arch-docs
+
+on:
+  push:
+    paths:
+      - "docs/architecture/**"
+      - "tools/check_architecture_docs.py"
+      - "tools/export_arch_svg.py"
+      - "tools/build_arch_svg_en.py"
+      - ".github/CODEOWNERS"
+      - "README.md"
+      - "README_CN.md"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  arch-docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Architecture docs gate (AD1–AD7)
+        run: python tools/check_architecture_docs.py
+
+      - name: SVG freshness (AD5 manifest)
+        run: python tools/export_arch_svg.py --check
+
+      - name: English SVG presence
+        run: python tools/build_arch_svg_en.py --check
+
+      - name: README parity (EN/CN)
+        run: python tools/check_readme_parity.py
+
+      - name: EOL convention
+        run: python tools/check_eol_convention.py
