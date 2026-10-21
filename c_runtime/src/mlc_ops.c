@@ -290,11 +290,55 @@ mlc_status mlc_op_transpose(const mlc_array *a, mlc_array *out)
     return MLC_UNIMPLEMENTED;
 }
 
+/*
+ * 矩阵乘（`A * B`，MATLAB 语义：**不是**元素级）。
+ *
+ * 只做 2-D f64：真实工程的矩阵运算绝大多数是二维；ND 泛化留给以后，
+ * 因为"高维怎么对齐"是另一个语义问题，混在一起会让两类错误互相掩盖。
+ * `out` 由调用方按 [m, n] 初始化（mlc.h 的约定）。
+ */
 mlc_status mlc_op_matmul(const mlc_array *a, const mlc_array *b,
                          mlc_array *out)
 {
-    (void)a;
-    (void)b;
-    (void)out;
-    return MLC_UNIMPLEMENTED;
+    int64_t m, k, k2, n, i, j, t;
+    const double *pa;
+    const double *pb;
+    double *po;
+
+    if (a == NULL || b == NULL || out == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64 || b->dtype != MLC_F64 || out->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    if (a->ndim != 2 || b->ndim != 2 || out->ndim != 2) {
+        return MLC_ERR;
+    }
+    m = a->shape[0];
+    k = a->shape[1];
+    k2 = b->shape[0];
+    n = b->shape[1];
+    if (k != k2) {
+        return MLC_ERR;              /* 内维不匹配：不猜截断 */
+    }
+    if (out->shape[0] != m || out->shape[1] != n) {
+        return MLC_ERR;              /* out 形状必须已是 [m, n] */
+    }
+    pa = (const double *)a->data;
+    pb = (const double *)b->data;
+    po = (double *)out->data;
+    if (pa == NULL || pb == NULL || po == NULL) {
+        return MLC_ERR;
+    }
+    for (i = 0; i < m; ++i) {
+        for (j = 0; j < n; ++j) {
+            double acc = 0.0;
+            for (t = 0; t < k; ++t) {
+                acc += pa[i * a->strides[0] + t * a->strides[1]] *
+                       pb[t * b->strides[0] + j * b->strides[1]];
+            }
+            po[i * out->strides[0] + j * out->strides[1]] = acc;
+        }
+    }
+    return MLC_OK;
 }

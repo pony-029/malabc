@@ -9,4 +9,4 @@ accumlast: 8
 scale: 2 4 6
 zerosum: 6
 repeater: 2 4 6
-fancy: skipped (no shape)
+fancy: unimplemented

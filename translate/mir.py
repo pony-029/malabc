@@ -352,8 +352,17 @@ def to_mir(source):
                 n_unmapped += 1
                 continue
             args = [x.strip() for x in use["args"]]
-            out.append("op:%s:%s:%s"
-                       % (use["operator"], use["lhs"], ":".join(args)))
+            oid = use["operator"]
+            # MATLAB 的 `*` 是**矩阵乘**，`.*` 才是元素级。文本层两者都映射到
+            # OP-MUL（因为不认识形状），这里在**知道形状之后**才升级：
+            # 两个操作数都是 2-D 且内维匹配 -> OP-MATMUL；写了 `.*` -> 保持元素级。
+            if oid == "OP-MUL" and len(args) == 2 and ".*" not in code:
+                sa = (f.get("shapes") or {}).get(args[0])
+                sb = (f.get("shapes") or {}).get(args[1])
+                if sa and sb and len(sa) == 2 and len(sb) == 2 \
+                        and sa[1] == sb[0]:
+                    oid = "OP-MATMUL"
+            out.append("op:%s:%s:%s" % (oid, use["lhs"], ":".join(args)))
             n_ops += 1
             per_op[use["operator"]] = per_op.get(use["operator"], 0) + 1
         while blocks:

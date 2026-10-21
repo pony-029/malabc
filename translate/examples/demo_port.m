@@ -95,6 +95,7 @@ end
 
 function y = fancy(x)
 % @m2c shape x 3
-% 故意未映射：转置与矩阵乘仍是诚实边界
+% @m2c shape y 3
+% 负面夹具：函数体没被确定性映射 -> 必须返回 unimplemented（不能返回垃圾值）
 y = x';
 end

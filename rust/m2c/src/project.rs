@@ -217,6 +217,47 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
     out.join("\n")
 }
 
+
+/// 生成物自带的说明：拿到工程的人第一眼就知道该敲什么。
+fn gen_readme(name: &str) -> String {
+    let mut out: Vec<String> = Vec::new();
+    out.push(format!("# {}（由 m2c 生成）", name));
+    out.push(String::new());
+    out.push("## 构建与自测".to_string());
+    out.push(String::new());
+    out.push("```bash".to_string());
+    out.push("# mlc 运行时（本仓库的 c_runtime/）；不传会自动按 ../.. 猜".to_string());
+    out.push("cmake -S . -B build -DMLC_RUNTIME=<path-to>/c_runtime".to_string());
+    out.push("cmake --build build".to_string());
+    out.push("ctest --test-dir build --output-on-failure".to_string());
+    out.push("```".to_string());
+    out.push(String::new());
+    out.push("## 跑一遍看数值".to_string());
+    out.push(String::new());
+    out.push("```bash".to_string());
+    out.push("./build/demo                 # 默认输入（a[i] = i+1）".to_string());
+    out.push("./build/demo fixture.txt     # 夹具输入：按参数名给值".to_string());
+    out.push("```".to_string());
+    out.push(String::new());
+    out.push("夹具格式（每行一个参数）：".to_string());
+    out.push(String::new());
+    out.push("```text".to_string());
+    out.push("x = 10 20 30".to_string());
+    out.push("i = 3".to_string());
+    out.push("```".to_string());
+    out.push(String::new());
+    out.push("## 这些文件是生成的".to_string());
+    out.push(String::new());
+    out.push("| 文件 | 来源 |".to_string());
+    out.push("| --- | --- |".to_string());
+    out.push("| `src/gen.c` / `include/*.h` | MIR 发射 |".to_string());
+    out.push("| `src/main.c` / `src/selftest.c` | 演示入口与自测 |".to_string());
+    out.push("| `CMakeLists.txt` | 构建脚本 |".to_string());
+    out.push(String::new());
+    out.push("**勿手改**：改 `.m` 再重新生成，否则下次生成会覆盖。".to_string());
+    out.join("\n") + "\n"
+}
+
 /// 整个项目：头 + 源 + main + CMakeLists。顺序固定（确定性）。
 pub fn emit_project(funcs: &[Func], name: &str, cases: &[Case],
 ) -> Result<Vec<(String, String)>, String> {
@@ -292,6 +333,7 @@ pub fn emit_project(funcs: &[Func], name: &str, cases: &[Case],
         ("src/main.c".to_string(), emit_main(funcs, name) + "\n"),
         ("src/selftest.c".to_string(), emit_selftest(funcs, name, cases) + "\n"),
         ("CMakeLists.txt".to_string(), cmake.join("\n") + "\n"),
+        ("README.md".to_string(), gen_readme(name)),
     ])
 }
 

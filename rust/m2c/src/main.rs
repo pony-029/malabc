@@ -360,6 +360,26 @@ fn selftest() -> ExitCode {
         chk(false, "调用校验的样本没解析出 4 个函数");
     }
 
+    // 矩阵乘：形状是 [a.m, b.n]，且不能用广播规则
+    let mm = mir::parse(
+        "version 3\nfunc:mm\narg:A:f64:2,3\narg:B:f64:3,2\nret:C:f64:2,2\n\
+         op:OP-MATMUL:C:A:B\nend\n",
+    )
+    .unwrap_or_default();
+    let code_mm = emit::emit_func(&mm[0], &[] as &[mir::Func]).unwrap_or_default();
+    chk(code_mm.contains("mlc_array_init(C, MLC_F64, 2, (int64_t[]){2, 2})"),
+        "matmul 输出形状是 [a.m, b.n]");
+    chk(code_mm.contains("mlc_op_matmul(&A, &B, C)"), "matmul 发射正确");
+
+    // 内维不匹配必须拒绝（不猜截断）
+    let bad_mm = mir::parse(
+        "version 3\nfunc:bad\narg:A:f64:2,3\narg:B:f64:2,2\nret:C:f64:2,2\n\
+         op:OP-MATMUL:C:A:B\nend\n",
+    )
+    .unwrap_or_default();
+    let code_bad = emit::emit_func(&bad_mm[0], &[] as &[mir::Func]).unwrap_or_default();
+    chk(code_bad.contains("TODO"), "内维不匹配的 matmul 被拒绝");
+
     // 确定性
     let a = emit::emit_func(&funcs[0], &[] as &[mir::Func]).unwrap_or_default();
     let b = emit::emit_func(&funcs[0], &[] as &[mir::Func]).unwrap_or_default();

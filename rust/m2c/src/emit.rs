@@ -11,11 +11,11 @@ use crate::mir::{walk_stmts, Cond, Func, Op, Stmt};
 /// 已经有 C 落点的算子（与 `translate/operators.py` 的 `C_IMPLEMENTED` 对齐）。
 pub const C_IMPLEMENTED: &[&str] = &[
     "OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-SUM", "OP-MEAN", "OP-MAX",
-    "OP-MIN", "OP-INDEX",
+    "OP-MIN", "OP-INDEX", "OP-MATMUL",
 ];
 
 /// 已知但 C 落点仍未实现的算子（诚实边界）。
-pub const C_UNIMPLEMENTED: &[&str] = &["OP-TRANSPOSE", "OP-MATMUL"];
+pub const C_UNIMPLEMENTED: &[&str] = &["OP-TRANSPOSE"];
 
 /// 全归约算子：输出形状固定 `[1]`。
 const REDUCTIONS: &[&str] = &["OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN"];
@@ -129,6 +129,15 @@ fn out_shape(f: &Func, op: &Op) -> Option<Vec<i64>> {
     if REDUCTIONS.contains(&op.id.as_str()) || op.id == "OP-INDEX" {
         return Some(vec![1]);
     }
+    // 矩阵乘：形状是 [a.m, b.n]，不是广播结果（广播会把 2x3 与 3x2 判成不可广播）
+    if op.id == "OP-MATMUL" && op.args.len() == 2 {
+        let sa = f.var_shape(&op.args[0])?;
+        let sb = f.var_shape(&op.args[1])?;
+        if sa.len() != 2 || sb.len() != 2 || sa[1] != sb[0] {
+            return None;
+        }
+        return Some(vec![sa[0], sb[1]]);
+    }
     let s0 = f.var_shape(&op.args[0]);
     if op.args.len() == 2 {
         let s1 = f.var_shape(&op.args[1]);
@@ -171,6 +180,28 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
     let pad = indent.to_string();
     let lhs = ident(&op.lhs);
     let dst = if out_is_ptr { lhs.clone() } else { format!("&{}", lhs) };
+
+    // 矩阵乘的约束在**生成时**就校验：留给运行时报错等于把问题推迟到用户那边，
+    // 而这里形状是已知的 —— 已知就该拒绝。
+    if op.id == "OP-MATMUL" {
+        let sa = f.var_shape(&op.args[0]);
+        let sb = f.var_shape(&op.args[1]);
+        let bad = match (&sa, &sb) {
+            (Some(a), Some(b)) => {
+                a.len() != 2 || b.len() != 2 || a[1] != b[0]
+            }
+            _ => false, // 形状未知：交给运行时（out_shape 会发 TODO）
+        };
+        if bad {
+            out.push(format!(
+                "    /* TODO(OP-MATMUL): 形状 {:?} x {:?} 不是可乘的 2-D */",
+                sa.unwrap_or_default(),
+                sb.unwrap_or_default()
+            ));
+            out.push("    return MLC_UNIMPLEMENTED;".to_string());
+            return out;
+        }
+    }
 
     if !is_implemented(&op.id) {
         let why = if C_UNIMPLEMENTED.contains(&op.id.as_str()) {

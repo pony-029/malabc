@@ -67,8 +67,12 @@ OPERATORS = (
 )
 
 #: 已实现 C 落点的算子（其余返回 MLC_UNIMPLEMENTED —— 诚实边界）。
+#: `OP-MATMUL` 已由 mlc_ops.c 真实现（2-D f64）；
+#: 注意 `*` / `.*` 在**文本层**都映射到 OP-MUL —— 二者的区别要看形状，
+#: 由 translate/mir.py 在知道 shape 之后决定是否升级成 OP-MATMUL。
 C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV",
-                 "OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN", "OP-INDEX")
+                 "OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN", "OP-INDEX",
+                 "OP-MATMUL")
 
 _ASSIGN_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*(.+?)\s*;\s*$")
 _BIN_RE = re.compile(r"^([A-Za-z_]\w*)\s*(\.\*|\./|\+|-|\*)\s*([A-Za-z_]\w*)$")

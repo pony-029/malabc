@@ -170,12 +170,29 @@ def _run_transpose(case):
 
 
 def _run_matmul(case):
-    a = case["inputs"]["A"]["data"]
-    b = case["inputs"]["B"]["data"]
-    n, k, m = len(a), len(a[0]), len(b[0])
-    out = [[sum(a[i][t] * b[t][j] for t in range(k)) for j in range(m)]
-           for i in range(n)]
-    return _expect([n, m], out)
+    """2-D 矩阵乘。与其它算子一样用 **shape + 扁平 data** ——
+    早先这里假设 data 是嵌套列表，而夹具早就是扁平的：一旦有 matmul 夹具就会错，
+    只是因为一直没夹具才没暴露。
+    """
+    A = case["inputs"]["A"]
+    B = case["inputs"]["B"]
+    sa = list(A.get("shape") or [])
+    sb = list(B.get("shape") or [])
+    if len(sa) != 2 or len(sb) != 2:
+        raise ValueError("matmul: 只支持 2-D")
+    m, k = sa
+    k2, n = sb
+    if k != k2:
+        raise ValueError("matmul: 内维不匹配 %r x %r" % (sa, sb))
+    fa = _flat(A["data"])
+    fb = _flat(B["data"])
+    if len(fa) != m * k or len(fb) != k * n:
+        raise ValueError("matmul: 数据长度与形状不符")
+    out = []
+    for i in range(m):
+        for j in range(n):
+            out.append(sum(fa[i * k + t] * fb[t * n + j] for t in range(k)))
+    return _expect([m, n], out)
 
 
 _RUNNERS = {
@@ -361,6 +378,22 @@ def emit_c_program(case):
             "    st = {0}(&x, &o);".format(_UNARY_C[op]),
             "    if (st != MLC_OK) return 1;",
             '    printf("%.17g\\n", od[0]);',
+            "    return 0;", "}"]
+        return "\n".join(lines) + "\n"
+    if op == "OP-MATMUL":
+        A, B = case["inputs"]["A"], case["inputs"]["B"]
+        sa = list(A.get("shape") or [])
+        sb = list(B.get("shape") or [])
+        osh = [sa[0], sb[1]]
+        lines = head + _c_array_lines("A", A) + _c_array_lines("B", B)
+        no = osh[0] * osh[1]
+        lines += [
+            "    double od[{0}] = {{0}};".format(no),
+            "    mlc_status st;",
+            _c_array_decl("o", osh, [0.0] * no)[1],
+            "    st = mlc_op_matmul(&A, &B, &o);",
+            '    if (st != MLC_OK) { printf("ERR %d\\n", (int)st); return 1; }',
+            '    for (int i=0;i<{0};i++) printf("%.17g\\n", od[i]);'.format(no),
             "    return 0;", "}"]
         return "\n".join(lines) + "\n"
     if op == "OP-INDEX":
