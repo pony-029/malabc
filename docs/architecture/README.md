@@ -238,7 +238,9 @@ python tools/release_arch_check.py --check
   仓库里的 `D:/work/rea/archify` 只是本机默认值，不是硬依赖。
 - **换机可复现**：克隆后跑 `check_architecture_docs` + `release_arch_check`
   全绿，说明提交的 HTML/SVG/PNG/清单自足；`apply_arch_sources --check`
-  会用克隆里的 Git 历史验证 revision。
+  会用克隆里的 Git 历史验证 revision。CI 另有
+  [`.github/workflows/fresh-clone.yml`](../../.github/workflows/fresh-clone.yml)
+  在全新 checkout 上重复这套门。
 
 类型映射：
 

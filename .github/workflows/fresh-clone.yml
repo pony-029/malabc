@@ -1,0 +1,55 @@
+# =============================================================================
+# 换机可复现门（R42）
+# -----------------------------------------------------------------------------
+# 为什么单独一条：`arch-docs.yml` 验证“已提交产物与清单一致”，但它跑在
+# 开发者的工作流里，仍可能隐式依赖本机文件。这条工作流只做一件事：
+# 在一个全新 checkout 上跑纯 Python 门，证明 `git clone` 后即可复核。
+#
+# 不需要 archify / Node / Chrome：只读已提交的 HTML/SVG/PNG/清单。
+# =============================================================================
+name: fresh-clone
+
+on:
+  push:
+    paths:
+      - "tools/**"
+      - "docs/architecture/**"
+      - ".github/workflows/fresh-clone.yml"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  fresh-clone-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 归属表/逐图版本/源码 revision 需要 git log
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Architecture docs (AD1–AD11)
+        run: python tools/check_architecture_docs.py
+
+      - name: Release gate (snapshot/version/PNG/baseline/review)
+        run: python tools/release_arch_check.py --check
+
+      - name: Source evidence
+        run: python tools/apply_arch_sources.py --check
+
+      - name: Ownership table
+        run: python tools/build_ownership_table.py --check
+
+      - name: Version record
+        run: python tools/build_arch_versions.py --check
+
+      - name: README parity
+        run: python tools/check_readme_parity.py
+
+      - name: EOL convention
+        run: python tools/check_eol_convention.py
