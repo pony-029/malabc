@@ -39,7 +39,9 @@
 **一页式导览**：[`../ARCHITECTURE_MAP.md`](../ARCHITECTURE_MAP.md)（按模块嵌入 14 张图）；
 **模块边界**：[`MODULE_GRAPH.md`](MODULE_GRAPH.md)（Mermaid，边由 import graph 现算）；
 **评审清单**：[`REVIEW_CHECKLIST.md`](REVIEW_CHECKLIST.md)（新增/修改/删除各要过哪些门）；
-**术语表**：[`GLOSSARY.md`](GLOSSARY.md)（AD9 的中英规范译法 + 机器块）。
+**术语表**：[`GLOSSARY.md`](GLOSSARY.md)（AD9 的中英规范译法 + 机器块）；
+**快照/版本**：[`SNAPSHOTS.json`](SNAPSHOTS.json) · [`VERSIONS.md`](VERSIONS.md)；
+**PNG**：[`png/`](png/)（14 张，汇报/幻灯片用）。
 
 ---
 
@@ -206,11 +208,17 @@ python tools/build_arch_svg_en.py
 
 # 5) 改图后看 base/head 版式差异（delta HTML + receipt）
 python tools/arch_compare.py --id 00-overall
+
+# 6) 发布前冻结快照/版本、导出 PNG、补源码证据
+python tools/snapshot_arch.py --write
+python tools/build_arch_versions.py --write
+python tools/export_arch_png.py --all
+python tools/apply_arch_sources.py --write
 ```
 
-> 纯 Python 快跑门在 `.github/workflows/arch-docs.yml`：AD1–AD9、SVG 哈希清单、
-> 英文 SVG 存在性、模块边界图新鲜度、归属表新鲜度、中英 README 对等、行尾约定；
-> 不依赖 archify/Node。
+> 纯 Python 快跑门在 `.github/workflows/arch-docs.yml`：AD1–AD10、SVG 哈希清单、
+> 英文 SVG、模块边界图、归属表、版本快照、PNG 存在性、源码证据、中英 README 对等、
+> 行尾约定；不依赖 archify/Node。
 
 类型映射：
 
@@ -234,12 +242,12 @@ python tools/arch_compare.py --id 00-overall
 | 独立 SVG（14 个） | **14/14 XML 解析通过**；CSS 裁剪到 **4–5 KB**（丢弃 @font-face，靠系统等宽兜底） |
 | SVG 渲染烟测 | `00-overall` 1444×744 **3585 色 / 40.89% 非白**；`12-dataflow` 980×520 **4430 色 / 57.57%**；`13-sequence` 1020×700 **3752 色 / 63.04%** |
 | SVG 体积 | **3.7 MB → 353 KB**（约 10.5×，单张 17–41 KB） |
-| 架构文档门 | `python tools/check_architecture_docs.py` → **OK（AD1–AD9）** |
+| 架构文档门 | `python tools/check_architecture_docs.py` → **OK（AD1–AD10）** |
 | 离线版式（AD6） | 14/14：viewBox（dataflow/sequence）、id 唯一、连线端点已知、sequence y≥160 且间距≥28、标签长度 |
 | 责任人（AD7） | 13 个关键模块全部有 `.github/CODEOWNERS` 负责人，owner 均为 `@pony-029` |
 | 图片路径（AD3） | 根 README 的本地图片全部存在；总框架中文/英文各嵌各的图 |
 | 陈旧门 | `python tools/export_arch_svg.py --check` → **OK（14 条清单与 candidate/html/svg 一致）** |
-| 快跑 CI | `.github/workflows/arch-docs.yml`（AD1–AD9 + 清单 + 英文 SVG + 模块图 + 归属表 + README 对等 + 行尾）；YAML 可解析：1 job / 9 steps |
+| 快跑 CI | `.github/workflows/arch-docs.yml`（AD1–AD10 + 清单 + 英文 SVG + 模块图 + 归属表 + 快照 + PNG + 源码证据 + README 对等 + 行尾）；YAML 可解析：1 job / 12 steps |
 | 模块边界（R16） | `python tools/build_module_graph.py` → 57 个运行时模块 / 20 条跨组边；`--check` 可复现 |
 | 索引搜索（R14） | Chrome `?q=sequence` → 15 卡片中仅 1 张可见；`?q=no-such` → 0 张 + “无结果” |
 | 版式差异（R13） | `python tools/arch_compare.py --id 00-overall --head <changed>` → delta HTML **2,163,473 B** + receipt **2,022 B** |
@@ -250,7 +258,12 @@ python tools/arch_compare.py --id 00-overall
 | 主题/响应式（R19/R20） | `?theme=light` 生效；390×844 单列渲染（1100 色 / 5.79% 非白） |
 | pre-commit（R21） | `.githooks/pre-commit` 跑 5 道快跑门；`install_git_hooks.py --check` 只读 |
 | 归属表（R10） | `build_ownership_table.py --check`：12 个模块的最近提交与 `git log` 一致 |
-| 产物体积 | HTML 约 **10.1 MB**（14 张） + SVG 约 **344 KB** |
+| 快照（R15） | `SNAPSHOTS.json`：1.16.72 / 14 张 / 4.6 KB；`--check` 通过 |
+| 版本记录（R22） | `VERSIONS.md`：14 行 `since`/`changed_in`；`--check` 通过 |
+| PNG（R26） | 14 张，**582 KB**；`--check` 魔数通过 |
+| 源码证据扩展（R17） | 01–13 共 **107 个节点**有 `sources`；00-overall 30 条引用 |
+| 术语覆盖（AD10） | **80/80 = 100%**（阈值 90%） |
+| 产物体积 | HTML 约 **10.1 MB**（14 张） + SVG 约 **344 KB** + PNG **582 KB** |
 
 > 说明：这是**架构/流程图**，回答“模块怎么组织、数据怎么流”；不是函数级调用图。
 > 函数级调用图请用 `python matlabc.py <dir> --browse <out>` 或 `--callgraph`。

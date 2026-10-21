@@ -6,7 +6,13 @@
     "locale": "zh-CN",
     "quality_profile": "showcase",
     "subtitle": "MCP 工具、自然语言问答、LLM 修复源、跨运行记忆共用同一份分析内核",
-    "output": "docs/architecture/html/07-ai-mcp.html"
+    "output": "docs/architecture/html/07-ai-mcp.html",
+    "repository": {
+      "url": "https://github.com/pony-029/malabc",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "ca1db62de70ee622a5784dc4075c8f99d2a7430c"
+    }
   },
   "components": [
     {
@@ -21,6 +27,12 @@
       "size": [
         320,
         64
+      ],
+      "sources": [
+        {
+          "path": "matlabc_mcp.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -35,6 +47,12 @@
       "size": [
         340,
         64
+      ],
+      "sources": [
+        {
+          "path": "matlabc_mcp.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -49,6 +67,12 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "matlabc_ask.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -63,6 +87,12 @@
       "size": [
         320,
         64
+      ],
+      "sources": [
+        {
+          "path": "ai_cli.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -77,6 +107,12 @@
       "size": [
         340,
         64
+      ],
+      "sources": [
+        {
+          "path": "matlabc_flow.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -91,6 +127,12 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "analyzer_memory.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -105,6 +147,12 @@
       "size": [
         1040,
         64
+      ],
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
       ]
     }
   ],

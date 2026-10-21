@@ -6,7 +6,13 @@
     "locale": "zh-CN",
     "quality_profile": "showcase",
     "subtitle": "matlabc_boot.py 负责路由；matlabc.py 负责参数、扫描、分析与输出",
-    "output": "docs/architecture/html/01-entry.html"
+    "output": "docs/architecture/html/01-entry.html",
+    "repository": {
+      "url": "https://github.com/pony-029/malabc",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "ca1db62de70ee622a5784dc4075c8f99d2a7430c"
+    }
   },
   "lanes": [
     {
@@ -42,7 +48,13 @@
       "type": "frontend",
       "label": "matlabc_boot.py",
       "sublabel": "路由 CLI / ask / flow / GUI",
-      "width": 170
+      "width": 170,
+      "sources": [
+        {
+          "path": "matlabc_boot.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "parse",
@@ -51,7 +63,13 @@
       "type": "backend",
       "label": "参数 + 配置",
       "sublabel": "CLI > analyzer_config.json > 默认",
-      "width": 190
+      "width": 190,
+      "sources": [
+        {
+          "path": "matlabc_help.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "dispatch",
@@ -60,7 +78,13 @@
       "type": "backend",
       "label": "dispatch",
       "sublabel": "analyze/html/browse/json/sarif/patch",
-      "width": 210
+      "width": 210,
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "analyze",
@@ -69,7 +93,13 @@
       "type": "backend",
       "label": "analyze()",
       "sublabel": "扫描 → 解析 → 模型 → 分析",
-      "width": 190
+      "width": 190,
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "output",
@@ -78,7 +108,13 @@
       "type": "backend",
       "label": "输出",
       "sublabel": "报告 / 站点 / JSON / SARIF",
-      "width": 170
+      "width": 170,
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "other",
@@ -87,7 +123,13 @@
       "type": "backend",
       "label": "其它入口",
       "sublabel": "lsp / mcp / flow / gui",
-      "width": 160
+      "width": 160,
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "exitn",
@@ -96,7 +138,13 @@
       "type": "security",
       "label": "退出码",
       "sublabel": "0=ok / 1=error / 2=unimplemented",
-      "width": 200
+      "width": 200,
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
+      ]
     }
   ],
   "edges": [

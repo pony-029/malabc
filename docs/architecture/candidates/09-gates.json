@@ -6,7 +6,13 @@
     "locale": "zh-CN",
     "quality_profile": "showcase",
     "subtitle": "check_all.py 发现并运行所有 check_*.py；每道门必须能自证；发版清单独立核对",
-    "output": "docs/architecture/html/09-gates.html"
+    "output": "docs/architecture/html/09-gates.html",
+    "repository": {
+      "url": "https://github.com/pony-029/malabc",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "ca1db62de70ee622a5784dc4075c8f99d2a7430c"
+    }
   },
   "lanes": [
     {
@@ -37,7 +43,13 @@
       "type": "backend",
       "label": "check_all.py",
       "sublabel": "发现 tools/check_*.py",
-      "width": 190
+      "width": 190,
+      "sources": [
+        {
+          "path": "tools/check_all.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "gate",
@@ -46,7 +58,13 @@
       "type": "security",
       "label": "39 道门",
       "sublabel": "各自 --selftest（两向）",
-      "width": 190
+      "width": 190,
+      "sources": [
+        {
+          "path": "tools/check_all.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "cache",
@@ -55,7 +73,13 @@
       "type": "database",
       "label": "gate_cache",
       "sublabel": "指纹命中则复用结论",
-      "width": 180
+      "width": 180,
+      "sources": [
+        {
+          "path": "tools/gate_cache.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "release",
@@ -64,7 +88,13 @@
       "type": "security",
       "label": "release.py GATES",
       "sublabel": "发版清单 + 最慢门",
-      "width": 190
+      "width": 190,
+      "sources": [
+        {
+          "path": "tools/release.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "ciy",
@@ -73,7 +103,13 @@
       "type": "backend",
       "label": "ci.yml / port-ci.yml",
       "sublabel": "Windows + 移植编译矩阵",
-      "width": 220
+      "width": 220,
+      "sources": [
+        {
+          "path": ".github/workflows/ci.yml",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "manual",
@@ -82,7 +118,13 @@
       "type": "backend",
       "label": "手工门",
       "sublabel": "lsp_selftest / sweep_cli",
-      "width": 190
+      "width": 190,
+      "sources": [
+        {
+          "path": "tools/lsp_selftest.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "exitn",
@@ -91,7 +133,13 @@
       "type": "security",
       "label": "退出码",
       "sublabel": "0=全绿 / 1=有红 / 2=缺输入",
-      "width": 200
+      "width": 200,
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
+      ]
     }
   ],
   "edges": [

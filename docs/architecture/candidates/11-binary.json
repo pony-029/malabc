@@ -6,7 +6,13 @@
     "locale": "zh-CN",
     "quality_profile": "showcase",
     "subtitle": "PE/ELF/Mach-O/GPU 容器解析出依赖与导出表；不执行、不反汇编",
-    "output": "docs/architecture/html/11-binary.html"
+    "output": "docs/architecture/html/11-binary.html",
+    "repository": {
+      "url": "https://github.com/pony-029/malabc",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "ca1db62de70ee622a5784dc4075c8f99d2a7430c"
+    }
   },
   "components": [
     {
@@ -21,6 +27,12 @@
       "size": [
         320,
         64
+      ],
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -35,6 +47,12 @@
       "size": [
         220,
         64
+      ],
+      "sources": [
+        {
+          "path": "binfmt/pe.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -49,6 +67,12 @@
       "size": [
         220,
         64
+      ],
+      "sources": [
+        {
+          "path": "binfmt/elf.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -63,6 +87,12 @@
       "size": [
         220,
         64
+      ],
+      "sources": [
+        {
+          "path": "binfmt/macho.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -77,6 +107,12 @@
       "size": [
         320,
         64
+      ],
+      "sources": [
+        {
+          "path": "binfmt/gpu.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -91,6 +127,12 @@
       "size": [
         340,
         64
+      ],
+      "sources": [
+        {
+          "path": "binfmt/resolve.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -105,6 +147,12 @@
       "size": [
         340,
         64
+      ],
+      "sources": [
+        {
+          "path": "binhops.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -119,6 +167,12 @@
       "size": [
         1080,
         64
+      ],
+      "sources": [
+        {
+          "path": "binfmt/attribute.py",
+          "label": "main"
+        }
       ]
     }
   ],

@@ -241,9 +241,9 @@ svg[data-preset="blueprint"] .c-security-group,
             <circle cx="8" cy="8" r="1.2" class="sigil-fill"/>
           </g>
         <text data-detail="fine" x="268" y="70" class="t-database" font-size="8" font-weight="700">02</text>
-          <text data-node-label="" data-detail-anchor="" x="320.2" y="79" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">total == 0 ?</text>
-          <text data-detail="context" x="315" y="96" class="t-muted" font-size="8" text-anchor="middle">无事可做</text>
-        <text data-detail="fine" x="315" y="108" class="t-database" font-size="8" text-anchor="middle">门</text>
+          <text data-node-label="" data-detail-anchor="" x="315" y="88" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">total == 0 ?</text>
+          <text data-detail="context" x="315" y="100.3" class="t-muted" font-size="8" text-anchor="middle">无事可做</text>
+        <text data-detail="fine" x="315" y="111.7" class="t-database" font-size="8" text-anchor="middle">门</text>
         </g>
 
         <g id="node-l" data-node-id="l" data-node-label="尝试循环" tabindex="0" role="button" aria-label="聚焦尝试循环，for attempt in range(max_turns), 主循环" aria-pressed="false" data-node-kind="active" data-node-sublabel="for attempt in range(max_turns)" data-node-tag="有界" data-node-context="主循环">
@@ -267,9 +267,9 @@ svg[data-preset="blueprint"] .c-security-group,
             <path d="M2 8h3l1.5-3.5L9 12l1.6-4H14"/>
           </g>
         <text data-detail="fine" x="705" y="70" class="t-frontend" font-size="8" font-weight="700">04</text>
-          <text data-node-label="" data-detail-anchor="" x="757.2" y="79" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">fix_source()</text>
-          <text data-detail="context" x="752" y="96" class="t-muted" font-size="8" text-anchor="middle">返回 patch | None</text>
-        <text data-detail="fine" x="752" y="108" class="t-frontend" font-size="8" text-anchor="middle">确定性/LLM</text>
+          <text data-node-label="" data-detail-anchor="" x="752" y="88" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">fix_source()</text>
+          <text data-detail="context" x="752" y="100.3" class="t-muted" font-size="8" text-anchor="middle">返回 patch | None</text>
+        <text data-detail="fine" x="752" y="111.7" class="t-frontend" font-size="8" text-anchor="middle">确定性/LLM</text>
         </g>
 
         <g id="node-v" data-node-id="v" data-node-label="重扫验证" tabindex="0" role="button" aria-label="聚焦重扫验证，no_new_alerts &amp;&amp; progress, 主循环" aria-pressed="false" data-node-kind="decision" data-node-sublabel="no_new_alerts &amp;&amp; progress" data-node-tag="自证" data-node-context="主循环">
@@ -294,9 +294,9 @@ svg[data-preset="blueprint"] .c-security-group,
             <rect x="3" y="3" width="10" height="10" rx="2"/>
             <circle cx="8" cy="8" r="1.2" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="757.1" y="263" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">git apply --check</text>
-          <text data-detail="context" x="752" y="280" class="t-muted" font-size="8" text-anchor="middle">或进程内严格校验</text>
-        <text data-detail="fine" x="752" y="292" class="t-database" font-size="8" text-anchor="middle">dry run</text>
+          <text data-node-label="" data-detail-anchor="" x="752" y="272" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">git apply --check</text>
+          <text data-detail="context" x="752" y="284.3" class="t-muted" font-size="8" text-anchor="middle">或进程内严格校验</text>
+        <text data-detail="fine" x="752" y="295.7" class="t-database" font-size="8" text-anchor="middle">dry run</text>
         </g>
 
         <g id="node-fb" data-node-id="fb" data-node-label="结构化反馈" tabindex="0" role="button" aria-label="聚焦结构化反馈，rejected_patch + 原因, 回退 + 反馈" aria-pressed="false" data-node-kind="waiting" data-node-sublabel="rejected_patch + 原因" data-node-tag="下一轮输入" data-node-context="回退 + 反馈">
@@ -332,9 +332,9 @@ svg[data-preset="blueprint"] .c-security-group,
             <circle cx="8" cy="8" r="5.3"/>
             <path d="m5.2 8 1.8 1.8 3.8-4"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="130" y="631" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">already_clean</text>
-          <text data-detail="context" x="130" y="648" class="t-muted" font-size="8" text-anchor="middle">tier 0</text>
-        <text data-detail="fine" x="130" y="660" class="t-backend" font-size="8" text-anchor="middle">无事</text>
+          <text data-node-label="" data-detail-anchor="" x="130" y="640" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">already_clean</text>
+          <text data-detail="context" x="130" y="652.3" class="t-muted" font-size="8" text-anchor="middle">tier 0</text>
+        <text data-detail="fine" x="130" y="663.7" class="t-backend" font-size="8" text-anchor="middle">无事</text>
         </g>
 
         <g id="node-t2" data-node-id="t2" data-node-label="轮次用尽" tabindex="0" role="button" aria-label="聚焦轮次用尽，tier 2 · 检查点 + Draft PR, 出口" aria-pressed="false" data-node-kind="failure" data-node-sublabel="tier 2 · 检查点 + Draft PR" data-node-tag="有界" data-node-context="出口">

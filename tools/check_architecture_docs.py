@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""架构文档一致性门（AD1–AD9）。
+"""架构文档一致性门（AD1–AD10）。
 
 判据族：
     AD1  索引形状：`FLOW_INDEX.json` 的 version/items/id/type/title 齐全且唯一。
@@ -21,13 +21,15 @@
          节点 id、连线端点、节点/连线/消息计数必须一致；英文版**不得残留中文**。
     AD9  术语一致：`GLOSSARY.md` 的机器块给出中文术语 → 可接受英文写法；
          中文节点 label 含某术语时，英文 label 必须命中其中一种写法。
+    AD10 术语覆盖：所有中文节点 label 中，至少 90% 能命中术语表；
+         低于阈值时列出缺口，防止“新图绕开术语表”。
 
 为什么需要它：架构图是**生成物**，最容易出现的缺陷不是“画错”，而是
 “改了 candidate 没重渲染 / 渲染了没登记 / 嵌了图但路径写错”——这三种
 在 git diff 里都只是几行，靠人看不住。
 
 退出码：
-    0  = AD1–AD9 全绿
+    0  = AD1–AD10 全绿
     1  = 有架构文档不一致
     2  = 缺输入（找不到 docs/architecture 或根 README）
 """
@@ -42,7 +44,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 #: P5 的对手方：本门在 README 质量门表那一行里声明的判据族。
-ROW_SIGNATURE = "AD1–AD9"
+ROW_SIGNATURE = "AD1–AD10"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -336,6 +338,20 @@ def _glossary_problems(iid, zh, en, terms):
     return probs
 
 
+def _glossary_coverage(cj, terms):
+    covered = total = 0
+    misses = []
+    for nid, label in _node_labels(cj).items():
+        if not re.search(r"[\u4e00-\u9fff]", label):
+            continue
+        total += 1
+        if any(t in label for t in terms):
+            covered += 1
+        else:
+            misses.append((nid, label))
+    return covered, total, misses
+
+
 def check(index_path=None, arch_dir=None, arch_readme=None,
           root_readmes=None, manifest_path=None, codeowners_path=None,
           module_doc_path=None, checklist_path=None, glossary_path=None):
@@ -464,7 +480,8 @@ def check(index_path=None, arch_dir=None, arch_readme=None,
             if iid not in seen:
                 probs.append("AD5 清单多出未登记条目：%s" % iid)
 
-    # AD6：离线版式不变量
+    # AD6：离线版式不变量；AD8/AD9/AD10：中英与术语
+    cov = [0, 0, []]
     for it in items:
         iid = it.get("id")
         typ = it.get("type")
@@ -489,6 +506,13 @@ def check(index_path=None, arch_dir=None, arch_readme=None,
                 probs.extend(_label_problems(iid, cj, ej))
                 if terms:
                     probs.extend(_glossary_problems(iid, cj, ej, terms))
+        c, t, m = _glossary_coverage(cj, terms or {})
+        cov[0] += c
+        cov[1] += t
+        cov[2].extend(m)
+    if cov[1] and cov[0] * 100 < 90 * cov[1]:
+        probs.append("AD10 术语覆盖率 %.1f%% < 90%%；缺口（前 8 个）：%r"
+                     % (100.0 * cov[0] / cov[1], cov[2][:8]))
     # AD7：模块责任人
     probs.extend(_codeowners_problems(codeowners_path))
 
@@ -530,7 +554,8 @@ def check(index_path=None, arch_dir=None, arch_readme=None,
         probs.append("AD3 缺评审清单：%s" % checklist_path)
     else:
         txt = _read(checklist_path)
-        for need in ("FLOW_INDEX", "MANIFEST", "CODEOWNERS", "arch_compare"):
+        for need in ("FLOW_INDEX", "MANIFEST", "CODEOWNERS", "arch_compare",
+                     "SNAPSHOTS", "VERSIONS"):
             if need not in txt:
                 probs.append("AD3 评审清单未提到 %s" % need)
 
@@ -624,7 +649,7 @@ def _selftest():
                "![y](architecture/svg/13-sequence.svg)\n")
         checklist = os.path.join(arch, "REVIEW_CHECKLIST.md")
         _write(checklist,
-               "FLOW_INDEX MANIFEST CODEOWNERS arch_compare\n")
+               "FLOW_INDEX MANIFEST CODEOWNERS arch_compare SNAPSHOTS VERSIONS\n")
         glossary = os.path.join(arch, "GLOSSARY.md")
         _write(glossary,
                '<!-- GLOSSARY v1\n{"入口": ["entry"]}\n-->\n')
@@ -668,6 +693,12 @@ def _selftest():
             "AD9 good 被误伤")
         chk(bool(_glossary_problems("g", zh_g, en_bad, terms)),
             "AD9 译法不一致未判红")
+        zh_c1 = {"components": [{"id": "a", "label": "入口"}]}
+        zh_c0 = {"components": [{"id": "a", "label": "未覆盖甲"}]}
+        chk(_glossary_coverage(zh_c1, terms)[:2] == (1, 1),
+            "AD10 覆盖计数错")
+        chk(_glossary_coverage(zh_c0, terms)[:2] == (0, 1),
+            "AD10 缺口计数错")
         # AD8：英文版残留中文 / 缺节点
         _write(encand, EN.replace('"label": "A"', '"label": "甲"'))
         chk(bool(check(*args, **kw)), "AD8 英文残留中文未判红")
@@ -764,7 +795,8 @@ def _selftest():
         # 坏样本 11：缺评审清单
         os.remove(checklist)
         chk(bool(check(*args, **kw)), "AD3 缺评审清单未判红")
-        _write(checklist, "FLOW_INDEX MANIFEST CODEOWNERS arch_compare\n")
+        _write(checklist,
+               "FLOW_INDEX MANIFEST CODEOWNERS arch_compare SNAPSHOTS VERSIONS\n")
         # 坏样本 12：缺模块图导览
         os.remove(module_doc)
         chk(bool(check(*args, **kw)), "AD3 缺模块图导览未判红")
@@ -785,11 +817,11 @@ def _selftest():
         shutil.rmtree(tmp, ignore_errors=True)
 
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad[0], good[0]))
-    return 0 if (bad[0] == 0 and good[0] >= 21) else 1
+    return 0 if (bad[0] == 0 and good[0] >= 23) else 1
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="架构文档一致性门（AD1–AD9）")
+    ap = argparse.ArgumentParser(description="架构文档一致性门（AD1–AD10）")
     ap.add_argument("--selftest", action="store_true", help="两向自证")
     args = ap.parse_args(argv)
     if args.selftest:
@@ -807,7 +839,7 @@ def main(argv=None):
             print("  - %s" % p)
         print("check_architecture_docs: %d 项不合规" % len(probs))
         return 1
-    print("check_architecture_docs: OK（AD1–AD9 全绿；"
+    print("check_architecture_docs: OK（AD1–AD10 全绿；"
           "索引 %d 条对账 candidate/html/svg；根 README 已嵌图）"
           % len(_load_json(INDEX).get("items") or []))
     return 0

@@ -6,7 +6,13 @@
     "locale": "zh-CN",
     "quality_profile": "showcase",
     "subtitle": "所有分析共享同一份模型；事实层负责把「结论」与「位置」绑定",
-    "output": "docs/architecture/html/04-analysis.html"
+    "output": "docs/architecture/html/04-analysis.html",
+    "repository": {
+      "url": "https://github.com/pony-029/malabc",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "ca1db62de70ee622a5784dc4075c8f99d2a7430c"
+    }
   },
   "components": [
     {
@@ -21,6 +27,12 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "unified_graph.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -35,6 +47,12 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -49,6 +67,12 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -63,6 +87,12 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -77,6 +107,12 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -91,6 +127,12 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -105,6 +147,12 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -119,6 +167,12 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -133,6 +187,12 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "facts.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -147,6 +207,12 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "entity_model.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -161,6 +227,12 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "unified_graph.py",
+          "label": "main"
+        }
       ]
     }
   ],

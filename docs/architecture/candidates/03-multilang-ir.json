@@ -6,7 +6,13 @@
     "locale": "zh-CN",
     "quality_profile": "showcase",
     "subtitle": "每个语言一个前端；解析不到的调用统一交给 IR 的 resolve_calls 判定",
-    "output": "docs/architecture/html/03-multilang-ir.html"
+    "output": "docs/architecture/html/03-multilang-ir.html",
+    "repository": {
+      "url": "https://github.com/pony-029/malabc",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "ca1db62de70ee622a5784dc4075c8f99d2a7430c"
+    }
   },
   "lanes": [
     {
@@ -44,7 +50,13 @@
       "type": "frontend",
       "label": "FRONTEND_REGISTRY",
       "sublabel": "lang → Frontend 类",
-      "width": 190
+      "width": 190,
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "cf",
@@ -53,7 +65,17 @@
       "type": "backend",
       "label": "C/C++ 前端",
       "sublabel": "_parse_c_source / build_c_model",
-      "width": 210
+      "width": 210,
+      "sources": [
+        {
+          "path": "frontends/ir.py",
+          "label": "main"
+        },
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "pf",
@@ -62,7 +84,13 @@
       "type": "backend",
       "label": "Python 前端",
       "sublabel": "pyast_frontend / 行锚定",
-      "width": 190
+      "width": 190,
+      "sources": [
+        {
+          "path": "frontends/ir.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "jf",
@@ -71,7 +99,13 @@
       "type": "backend",
       "label": "JS 前端",
       "sublabel": "函数/箭头/跨行形态",
-      "width": 180
+      "width": 180,
+      "sources": [
+        {
+          "path": "frontends/ir.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "irn",
@@ -80,7 +114,13 @@
       "type": "backend",
       "label": "frontends/ir.py",
       "sublabel": "resolve_calls：唯一判定点",
-      "width": 220
+      "width": 220,
+      "sources": [
+        {
+          "path": "frontends/ir.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "attr",
@@ -89,7 +129,13 @@
       "type": "security",
       "label": "IR_LANG_OWNERS",
       "sublabel": "每语言谁负责 unresolved",
-      "width": 200
+      "width": 200,
+      "sources": [
+        {
+          "path": "frontends/ir.py",
+          "label": "main"
+        }
+      ]
     }
   ],
   "edges": [

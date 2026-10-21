@@ -6,7 +6,13 @@
     "locale": "zh-CN",
     "quality_profile": "showcase",
     "subtitle": "单页报告、多页站点、机器数据、CI 证据、修复产物都从同一份模型出发",
-    "output": "docs/architecture/html/05-render.html"
+    "output": "docs/architecture/html/05-render.html",
+    "repository": {
+      "url": "https://github.com/pony-029/malabc",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "ca1db62de70ee622a5784dc4075c8f99d2a7430c"
+    }
   },
   "lanes": [
     {
@@ -39,7 +45,13 @@
       "type": "backend",
       "label": "build_analysis_model",
       "sublabel": "统一数据层",
-      "width": 190
+      "width": 190,
+      "sources": [
+        {
+          "path": "renderers/__init__.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "md",
@@ -48,7 +60,13 @@
       "type": "backend",
       "label": "Markdown",
       "sublabel": "结构报告",
-      "width": 140
+      "width": 140,
+      "sources": [
+        {
+          "path": "renderers/report.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "html",
@@ -57,7 +75,13 @@
       "type": "backend",
       "label": "--html 报告",
       "sublabel": "内嵌调用图 + report.css/app.js",
-      "width": 210
+      "width": 210,
+      "sources": [
+        {
+          "path": "renderers/report.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "browse",
@@ -66,7 +90,13 @@
       "type": "backend",
       "label": "--browse 站点",
       "sublabel": "index/src/funcs/deps/dir/rule",
-      "width": 230
+      "width": 230,
+      "sources": [
+        {
+          "path": "renderers/csite.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "json",
@@ -75,7 +105,13 @@
       "type": "backend",
       "label": "--json",
       "sublabel": "full / summary / compact",
-      "width": 170
+      "width": 170,
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "sarif",
@@ -84,7 +120,13 @@
       "type": "security",
       "label": "SARIF 2.1.0",
       "sublabel": "CI 告警证据",
-      "width": 160
+      "width": 160,
+      "sources": [
+        {
+          "path": "renderers/sarif.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "dox",
@@ -93,7 +135,13 @@
       "type": "backend",
       "label": "Doxygen XML",
       "sublabel": "--export-doxygen-xml",
-      "width": 180
+      "width": 180,
+      "sources": [
+        {
+          "path": "renderers/report.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "patch",
@@ -102,7 +150,13 @@
       "type": "backend",
       "label": "patch / 测试骨架",
       "sublabel": "修复产物",
-      "width": 180
+      "width": 180,
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
+      ]
     }
   ],
   "edges": [

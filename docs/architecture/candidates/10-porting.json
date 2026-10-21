@@ -6,7 +6,13 @@
     "locale": "zh-CN",
     "quality_profile": "showcase",
     "subtitle": "MATLAB 是语义参考；C 必须通过 golden + 真编译证明；未验证是一等状态",
-    "output": "docs/architecture/html/10-porting.html"
+    "output": "docs/architecture/html/10-porting.html",
+    "repository": {
+      "url": "https://github.com/pony-029/malabc",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "ca1db62de70ee622a5784dc4075c8f99d2a7430c"
+    }
   },
   "components": [
     {
@@ -21,6 +27,12 @@
       "size": [
         320,
         64
+      ],
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -35,6 +47,12 @@
       "size": [
         320,
         64
+      ],
+      "sources": [
+        {
+          "path": "translate/operators.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -49,6 +67,12 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "translate/adapters.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -63,6 +87,12 @@
       "size": [
         320,
         64
+      ],
+      "sources": [
+        {
+          "path": "c_runtime/include/mlc.h",
+          "label": "main"
+        }
       ]
     },
     {
@@ -77,6 +107,12 @@
       "size": [
         320,
         64
+      ],
+      "sources": [
+        {
+          "path": "c_runtime/src/mlc_ops.c",
+          "label": "main"
+        }
       ]
     },
     {
@@ -91,6 +127,12 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "translate/fidelity.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -105,6 +147,12 @@
       "size": [
         320,
         64
+      ],
+      "sources": [
+        {
+          "path": "port_ledger.json",
+          "label": "main"
+        }
       ]
     },
     {
@@ -119,6 +167,12 @@
       "size": [
         320,
         64
+      ],
+      "sources": [
+        {
+          "path": "translate/contracts/matlab_c_constraints.json",
+          "label": "main"
+        }
       ]
     },
     {
@@ -133,6 +187,12 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "tools/check_translate_port.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -147,6 +207,12 @@
       "size": [
         1020,
         64
+      ],
+      "sources": [
+        {
+          "path": "c_runtime/include/mlc.h",
+          "label": "main"
+        }
       ]
     }
   ],

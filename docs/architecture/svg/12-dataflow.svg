@@ -206,7 +206,7 @@ svg[data-preset="blueprint"] .c-security-group,
           <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(50 362) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="100" y="377" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">二进制</text>
+          <text data-node-label="" data-detail-anchor="" x="96" y="377" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">二进制</text>
           <text data-detail="context" x="100" y="393" class="t-muted" font-size="7" text-anchor="middle">PE / ELF / Mach-O</text>
         <text data-detail="fine" x="100" y="403" class="t-cloud" font-size="7" text-anchor="middle">metadata</text>
         </g>
@@ -218,7 +218,7 @@ svg[data-preset="blueprint"] .c-security-group,
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(265 134) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="315" y="149" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">MATLAB</text>
+          <text data-node-label="" data-detail-anchor="" x="311" y="149" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">MATLAB</text>
           <text data-detail="context" x="315" y="165" class="t-muted" font-size="7" text-anchor="middle">parse_file</text>
         <text data-detail="fine" x="315" y="175" class="t-backend" font-size="7" text-anchor="middle">AST</text>
         </g>
@@ -230,7 +230,7 @@ svg[data-preset="blueprint"] .c-security-group,
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(265 248) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="315" y="263" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">多语言</text>
+          <text data-node-label="" data-detail-anchor="" x="311" y="263" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">多语言</text>
           <text data-detail="context" x="315" y="279" class="t-muted" font-size="7" text-anchor="middle">frontends/ir.py</text>
         <text data-detail="fine" x="315" y="289" class="t-backend" font-size="7" text-anchor="middle">IR</text>
         </g>
@@ -242,7 +242,7 @@ svg[data-preset="blueprint"] .c-security-group,
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(265 362) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="315" y="377" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">binfmt</text>
+          <text data-node-label="" data-detail-anchor="" x="311" y="377" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">binfmt</text>
           <text data-detail="context" x="315" y="393" class="t-muted" font-size="7" text-anchor="middle">依赖 / 导出表</text>
         <text data-detail="fine" x="315" y="403" class="t-backend" font-size="7" text-anchor="middle">binfmt</text>
         </g>
@@ -317,7 +317,7 @@ svg[data-preset="blueprint"] .c-security-group,
           <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(695 362) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="745" y="377" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">LSP/MCP</text>
+          <text data-node-label="" data-detail-anchor="" x="738" y="377" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">LSP/MCP</text>
           <text data-detail="context" x="745" y="393" class="t-muted" font-size="7" text-anchor="middle">编辑器 / Agent</text>
         <text data-detail="fine" x="745" y="403" class="t-cloud" font-size="7" text-anchor="middle">interactive</text>
         </g>

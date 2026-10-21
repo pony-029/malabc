@@ -6,7 +6,13 @@
     "locale": "zh-CN",
     "quality_profile": "showcase",
     "subtitle": "扩展 → 手写 LSP 客户端 → matlabc_lsp.py → analyzer 结果",
-    "output": "docs/architecture/html/06-lsp.html"
+    "output": "docs/architecture/html/06-lsp.html",
+    "repository": {
+      "url": "https://github.com/pony-029/malabc",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "ca1db62de70ee622a5784dc4075c8f99d2a7430c"
+    }
   },
   "components": [
     {
@@ -21,6 +27,12 @@
       "size": [
         320,
         64
+      ],
+      "sources": [
+        {
+          "path": "vscode/extension.js",
+          "label": "main"
+        }
       ]
     },
     {
@@ -35,6 +47,12 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "vscode/lspClient.js",
+          "label": "main"
+        }
       ]
     },
     {
@@ -49,6 +67,12 @@
       "size": [
         320,
         64
+      ],
+      "sources": [
+        {
+          "path": "matlabc_lsp.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -63,6 +87,12 @@
       "size": [
         320,
         64
+      ],
+      "sources": [
+        {
+          "path": "matlabc_lsp.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -77,6 +107,12 @@
       "size": [
         300,
         64
+      ],
+      "sources": [
+        {
+          "path": "analyzer/api.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -91,6 +127,12 @@
       "size": [
         320,
         64
+      ],
+      "sources": [
+        {
+          "path": "matlabc_lsp.py",
+          "label": "main"
+        }
       ]
     },
     {
@@ -105,6 +147,12 @@
       "size": [
         320,
         64
+      ],
+      "sources": [
+        {
+          "path": "vscode/extension.js",
+          "label": "main"
+        }
       ]
     }
   ],

@@ -4,40 +4,297 @@
   "meta": {
     "title": "malabc 数据流：三类输入 → 一份模型 → 多种消费",
     "output": "docs/architecture/html/12-dataflow.html",
-    "viewBox": [980, 520],
+    "viewBox": [
+      980,
+      520
+    ],
     "animation": "trace",
-    "quality_profile": "standard"
+    "quality_profile": "standard",
+    "repository": {
+      "url": "https://github.com/pony-029/malabc",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "ca1db62de70ee622a5784dc4075c8f99d2a7430c"
+    }
   },
   "stages": [
-    { "label": "输入" },
-    { "label": "前端" },
-    { "label": "模型" },
-    { "label": "消费" }
+    {
+      "label": "输入"
+    },
+    {
+      "label": "前端"
+    },
+    {
+      "label": "模型"
+    },
+    {
+      "label": "消费"
+    }
   ],
   "nodes": [
-    { "id": "cfg", "type": "database", "label": "配置", "sublabel": "analyzer_config", "stage": 0, "row": 0, "tag": "settings" },
-    { "id": "src", "type": "frontend", "label": "源码", "sublabel": ".m / .c / .py / .js", "stage": 0, "row": 1, "tag": "text" },
-    { "id": "bin", "type": "cloud", "label": "二进制", "sublabel": "PE / ELF / Mach-O", "stage": 0, "row": 2, "tag": "metadata" },
-    { "id": "matlab", "type": "backend", "label": "MATLAB", "sublabel": "parse_file", "stage": 1, "row": 0, "tag": "AST" },
-    { "id": "multi", "type": "backend", "label": "多语言", "sublabel": "frontends/ir.py", "stage": 1, "row": 1, "tag": "IR" },
-    { "id": "binfmt", "type": "backend", "label": "binfmt", "sublabel": "依赖 / 导出表", "stage": 1, "row": 2, "tag": "binfmt" },
-    { "id": "model", "type": "database", "label": "实体", "sublabel": "entity_model", "stage": 2, "row": 0, "tag": "entities" },
-    { "id": "graph", "type": "database", "label": "图", "sublabel": "unified_graph", "stage": 2, "row": 1, "tag": "graph" },
-    { "id": "facts", "type": "database", "label": "事实", "sublabel": "facts.py", "stage": 2, "row": 2, "tag": "facts" },
-    { "id": "report", "type": "cloud", "label": "报告", "sublabel": "--html / --browse", "stage": 3, "row": 0, "tag": "HTML" },
-    { "id": "json", "type": "cloud", "label": "JSON", "sublabel": "SARIF", "stage": 3, "row": 1, "tag": "JSON" },
-    { "id": "lsp", "type": "cloud", "label": "LSP/MCP", "sublabel": "编辑器 / Agent", "stage": 3, "row": 2, "tag": "interactive" }
+    {
+      "id": "cfg",
+      "type": "database",
+      "label": "配置",
+      "sublabel": "analyzer_config",
+      "stage": 0,
+      "row": 0,
+      "tag": "settings",
+      "sources": [
+        {
+          "path": "docs/matlabc_USAGE.md",
+          "label": "main"
+        }
+      ]
+    },
+    {
+      "id": "src",
+      "type": "frontend",
+      "label": "源码",
+      "sublabel": ".m / .c / .py / .js",
+      "stage": 0,
+      "row": 1,
+      "tag": "text",
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
+      ]
+    },
+    {
+      "id": "bin",
+      "type": "cloud",
+      "label": "二进制",
+      "sublabel": "PE / ELF / Mach-O",
+      "stage": 0,
+      "row": 2,
+      "tag": "metadata",
+      "sources": [
+        {
+          "path": "binfmt/__init__.py",
+          "label": "main"
+        }
+      ]
+    },
+    {
+      "id": "matlab",
+      "type": "backend",
+      "label": "MATLAB",
+      "sublabel": "parse_file",
+      "stage": 1,
+      "row": 0,
+      "tag": "AST",
+      "sources": [
+        {
+          "path": "frontends/matlab.py",
+          "label": "main"
+        }
+      ]
+    },
+    {
+      "id": "multi",
+      "type": "backend",
+      "label": "多语言",
+      "sublabel": "frontends/ir.py",
+      "stage": 1,
+      "row": 1,
+      "tag": "IR",
+      "sources": [
+        {
+          "path": "frontends/ir.py",
+          "label": "main"
+        }
+      ]
+    },
+    {
+      "id": "binfmt",
+      "type": "backend",
+      "label": "binfmt",
+      "sublabel": "依赖 / 导出表",
+      "stage": 1,
+      "row": 2,
+      "tag": "binfmt",
+      "sources": [
+        {
+          "path": "binfmt/__init__.py",
+          "label": "main"
+        }
+      ]
+    },
+    {
+      "id": "model",
+      "type": "database",
+      "label": "实体",
+      "sublabel": "entity_model",
+      "stage": 2,
+      "row": 0,
+      "tag": "entities",
+      "sources": [
+        {
+          "path": "entity_model.py",
+          "label": "main"
+        }
+      ]
+    },
+    {
+      "id": "graph",
+      "type": "database",
+      "label": "图",
+      "sublabel": "unified_graph",
+      "stage": 2,
+      "row": 1,
+      "tag": "graph",
+      "sources": [
+        {
+          "path": "unified_graph.py",
+          "label": "main"
+        }
+      ]
+    },
+    {
+      "id": "facts",
+      "type": "database",
+      "label": "事实",
+      "sublabel": "facts.py",
+      "stage": 2,
+      "row": 2,
+      "tag": "facts",
+      "sources": [
+        {
+          "path": "facts.py",
+          "label": "main"
+        }
+      ]
+    },
+    {
+      "id": "report",
+      "type": "cloud",
+      "label": "报告",
+      "sublabel": "--html / --browse",
+      "stage": 3,
+      "row": 0,
+      "tag": "HTML",
+      "sources": [
+        {
+          "path": "renderers/__init__.py",
+          "label": "main"
+        }
+      ]
+    },
+    {
+      "id": "json",
+      "type": "cloud",
+      "label": "JSON",
+      "sublabel": "SARIF",
+      "stage": 3,
+      "row": 1,
+      "tag": "JSON",
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "label": "main"
+        }
+      ]
+    },
+    {
+      "id": "lsp",
+      "type": "cloud",
+      "label": "LSP/MCP",
+      "sublabel": "编辑器 / Agent",
+      "stage": 3,
+      "row": 2,
+      "tag": "interactive",
+      "sources": [
+        {
+          "path": "matlabc_lsp.py",
+          "label": "main"
+        }
+      ]
+    }
   ],
   "flows": [
-    { "id": "cfg-matlab", "from": "cfg", "to": "matlab", "label": "配置", "classification": "settings", "variant": "default", "route": "straight" },
-    { "id": "src-multi", "from": "src", "to": "multi", "label": "源码", "classification": "text", "variant": "emphasis", "route": "straight" },
-    { "id": "bin-binfmt", "from": "bin", "to": "binfmt", "label": "元数据", "classification": "no execute", "variant": "default", "route": "straight" },
-    { "id": "matlab-model", "from": "matlab", "to": "model", "label": "函数/边", "classification": "AST", "variant": "emphasis", "route": "straight" },
-    { "id": "multi-graph", "from": "multi", "to": "graph", "label": "IR", "classification": "IR", "variant": "emphasis", "route": "straight" },
-    { "id": "binfmt-facts", "from": "binfmt", "to": "facts", "label": "依赖", "classification": "binfmt", "variant": "default", "route": "straight" },
-    { "id": "model-report", "from": "model", "to": "report", "label": "实体", "classification": "HTML", "variant": "default", "route": "straight" },
-    { "id": "graph-json", "from": "graph", "to": "json", "label": "图", "classification": "JSON", "variant": "emphasis", "route": "straight" },
-    { "id": "facts-lsp", "from": "facts", "to": "lsp", "label": "事实", "classification": "interactive", "variant": "default", "route": "straight" }
+    {
+      "id": "cfg-matlab",
+      "from": "cfg",
+      "to": "matlab",
+      "label": "配置",
+      "classification": "settings",
+      "variant": "default",
+      "route": "straight"
+    },
+    {
+      "id": "src-multi",
+      "from": "src",
+      "to": "multi",
+      "label": "源码",
+      "classification": "text",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "id": "bin-binfmt",
+      "from": "bin",
+      "to": "binfmt",
+      "label": "元数据",
+      "classification": "no execute",
+      "variant": "default",
+      "route": "straight"
+    },
+    {
+      "id": "matlab-model",
+      "from": "matlab",
+      "to": "model",
+      "label": "函数/边",
+      "classification": "AST",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "id": "multi-graph",
+      "from": "multi",
+      "to": "graph",
+      "label": "IR",
+      "classification": "IR",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "id": "binfmt-facts",
+      "from": "binfmt",
+      "to": "facts",
+      "label": "依赖",
+      "classification": "binfmt",
+      "variant": "default",
+      "route": "straight"
+    },
+    {
+      "id": "model-report",
+      "from": "model",
+      "to": "report",
+      "label": "实体",
+      "classification": "HTML",
+      "variant": "default",
+      "route": "straight"
+    },
+    {
+      "id": "graph-json",
+      "from": "graph",
+      "to": "json",
+      "label": "图",
+      "classification": "JSON",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "id": "facts-lsp",
+      "from": "facts",
+      "to": "lsp",
+      "label": "事实",
+      "classification": "interactive",
+      "variant": "default",
+      "route": "straight"
+    }
   ],
   "cards": [
     {

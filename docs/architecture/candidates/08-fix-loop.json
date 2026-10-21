@@ -6,7 +6,13 @@
     "locale": "zh-CN",
     "quality_profile": "showcase",
     "subtitle": "agent_loop.py 的受控自校验循环；人工复核门与记忆是两条安全出口",
-    "output": "docs/architecture/html/08-fix-loop.html"
+    "output": "docs/architecture/html/08-fix-loop.html",
+    "repository": {
+      "url": "https://github.com/pony-029/malabc",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "ca1db62de70ee622a5784dc4075c8f99d2a7430c"
+    }
   },
   "lanes": [
     {
@@ -35,7 +41,17 @@
       "lane": "main",
       "col": 0,
       "step": "01",
-      "tag": "告警数"
+      "tag": "告警数",
+      "sources": [
+        {
+          "path": "agent_loop.py",
+          "label": "main"
+        },
+        {
+          "path": "matlabc_flow.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "q",
@@ -45,7 +61,13 @@
       "lane": "main",
       "col": 1,
       "step": "02",
-      "tag": "门"
+      "tag": "门",
+      "sources": [
+        {
+          "path": "agent_loop.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "l",
@@ -55,7 +77,13 @@
       "lane": "main",
       "col": 2,
       "step": "03",
-      "tag": "有界"
+      "tag": "有界",
+      "sources": [
+        {
+          "path": "agent_loop.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "fx",
@@ -65,7 +93,13 @@
       "lane": "main",
       "col": 3,
       "step": "04",
-      "tag": "确定性/LLM"
+      "tag": "确定性/LLM",
+      "sources": [
+        {
+          "path": "matlabc_flow.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "v",
@@ -75,7 +109,13 @@
       "lane": "main",
       "col": 4,
       "step": "05",
-      "tag": "自证"
+      "tag": "自证",
+      "sources": [
+        {
+          "path": "agent_loop.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "ap",
@@ -84,7 +124,13 @@
       "sublabel": "或进程内严格校验",
       "lane": "apply",
       "col": 3,
-      "tag": "dry run"
+      "tag": "dry run",
+      "sources": [
+        {
+          "path": "agent_loop.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "fb",
@@ -94,7 +140,13 @@
       "lane": "recovery",
       "col": 2,
       "tag": "下一轮输入",
-      "width": 190
+      "width": 190,
+      "sources": [
+        {
+          "path": "agent_loop.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "rv",
@@ -103,7 +155,13 @@
       "sublabel": "git apply -R / 快照恢复",
       "lane": "recovery",
       "col": 3,
-      "tag": "无半截状态"
+      "tag": "无半截状态",
+      "sources": [
+        {
+          "path": "agent_loop.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "clean",
@@ -112,7 +170,13 @@
       "sublabel": "tier 0",
       "lane": "exits",
       "col": 0,
-      "tag": "无事"
+      "tag": "无事",
+      "sources": [
+        {
+          "path": "agent_loop.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "t2",
@@ -121,7 +185,13 @@
       "sublabel": "tier 2 · 检查点 + Draft PR",
       "lane": "exits",
       "col": 1,
-      "tag": "有界"
+      "tag": "有界",
+      "sources": [
+        {
+          "path": "agent_loop.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "ok",
@@ -130,7 +200,13 @@
       "sublabel": "tier 0/1 · 记录 learned_fix",
       "lane": "exits",
       "col": 2,
-      "tag": "已验证"
+      "tag": "已验证",
+      "sources": [
+        {
+          "path": "agent_loop.py",
+          "label": "main"
+        }
+      ]
     },
     {
       "id": "rg",
@@ -140,7 +216,13 @@
       "lane": "exits",
       "col": 3,
       "tag": "人工",
-      "width": 170
+      "width": 170,
+      "sources": [
+        {
+          "path": "matlabc_flow.py",
+          "label": "main"
+        }
+      ]
     }
   ],
   "transitions": [

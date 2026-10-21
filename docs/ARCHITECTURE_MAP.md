@@ -40,5 +40,8 @@
 
 - 新增/修改/删除一张图，按 [`architecture/REVIEW_CHECKLIST.md`](architecture/REVIEW_CHECKLIST.md) 走。
 - 中英规范译法见 [`architecture/GLOSSARY.md`](architecture/GLOSSARY.md)（AD9）。
+- 版本快照：[`architecture/SNAPSHOTS.json`](architecture/SNAPSHOTS.json)；
+  逐图首次/最近提交：[`architecture/VERSIONS.md`](architecture/VERSIONS.md)。
+- 汇报用 PNG：[`architecture/png/`](architecture/png/)（14 张）。
 - 图的可编辑源在 `architecture/candidates/`；不要手改 `html/` 或 `svg/`。
 - 重新生成：`python tools/export_arch_svg.py --all`；英文版：`python tools/build_arch_svg_en.py`。

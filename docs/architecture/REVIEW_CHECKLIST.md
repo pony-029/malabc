@@ -73,6 +73,18 @@
 - 模块 owner 见 `.github/CODEOWNERS`；AD7 会核对关键模块是否都有 `@` 开头的 owner。
 - 架构文档本身归 `/docs/architecture/` 的 owner。
 
+## 发布前
+
+```bash
+python tools/snapshot_arch.py --write        # 冻结本版本 14 张图的三个哈希
+python tools/build_arch_versions.py --write  # 刷新 since/changed_in
+python tools/export_arch_png.py --all        # 汇报用 PNG
+```
+
+- `SNAPSHOTS.json` 按 `matlabc.py` 的 `VERSION` 归档；同版本重跑覆盖，新版本追加。
+- `VERSIONS.md` 的 `since`/`changed_in` 来自 `git log`，提交后重跑一次即可。
+- PNG 只验存在与魔数；真正的渲染需要本机 Chrome/Edge。
+
 ## 可选：提交前自动跑
 
 ```bash

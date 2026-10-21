@@ -4,7 +4,8 @@
 > `check_architecture_docs.py` 的 AD9 会逐节点核对：中文 label 里出现某个术语，
 > 英文 label 必须包含对应英文（任一可接受写法）。
 >
-> 机器块在文件末尾；人读表与机器块保持一致。新增术语时两处同改。
+> 机器块在文件末尾；人读表列高频项，完整清单以机器块为准（AD9/AD10 只读机器块）。
+> 新增术语时至少改机器块，并在人读表补一行。
 
 | 中文 | 英文（任一可接受） | 说明 |
 | --- | --- | --- |
@@ -86,6 +87,36 @@
   "参考": ["reference"],
   "供应商": ["provider"],
   "报告": ["report"],
-  "站点": ["site"]
+  "站点": ["site"],
+  "分析": ["analysis", "core"],
+  "读取": ["read"],
+  "复杂度": ["complexity"],
+  "热点": ["hotspots", "hotspot"],
+  "重复": ["duplicate"],
+  "指纹": ["fingerprint"],
+  "测试": ["test"],
+  "骨架": ["skeleton"],
+  "请求": ["request"],
+  "处理": ["handling"],
+  "编辑器": ["editor"],
+  "工具": ["tool"],
+  "尝试": ["attempt"],
+  "循环": ["loop"],
+  "验证": ["verify", "verified"],
+  "反馈": ["feedback"],
+  "结构": ["structured"],
+  "轮次": ["turns", "turn"],
+  "用尽": ["exhausted"],
+  "门": ["gates", "gate"],
+  "未来": ["future"],
+  "容器": ["container"],
+  "导出": ["exports", "export"],
+  "归属": ["attribution"],
+  "多语言": ["multi-language", "multi-lang"],
+  "图": ["graph"],
+  "本地": ["local"],
+  "兜底": ["fallback"],
+  "内核": ["core"],
+  "引擎": ["engine"]
 }
 -->
