@@ -254,6 +254,38 @@ fn out_shape(f: &Func, op: &Op) -> Option<Vec<i64>> {
 }
 
 /// 某个名字的形状：取**最后一条写它**的算子的输出形状（含嵌套块）。
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mir::parse;
+
+    #[test]
+    fn sum_2d_shape_is_row_vector() {
+        let f = &parse(concat!(
+            "version 3\nfunc:f\narg:x:f64:2,3\n",
+            "ret:s:f64:1,3\nop:OP-SUM:s:x\nend\n"))
+            .unwrap()[0];
+        match &f.body[0] {
+            Stmt::Op(op) => assert_eq!(out_shape(f, op), Some(vec![1, 3])),
+            _ => panic!("expected op"),
+        }
+    }
+
+    #[test]
+    fn dynamic_mask_shape_is_unknown() {
+        let f = &parse(concat!(
+            "version 3\nfunc:f\narg:v:f64:3\nret:z:f64:2\n",
+            "op:OP-MASK:z:v:0:1\nend\n"))
+            .unwrap()[0];
+        match &f.body[0] {
+            Stmt::Op(op) => assert_eq!(out_shape(f, op), None),
+            _ => panic!("expected op"),
+        }
+    }
+
+}
+
+
 fn out_shape_for(f: &Func, name: &str) -> Option<Vec<i64>> {
     let mut shape = None;
     walk_stmts(&f.body, &mut |s| {

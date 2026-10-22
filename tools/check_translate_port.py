@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""MATLAB → C 移植链路的总门（TP1–TP4）。
+"""MATLAB → C 移植链路的总门（TP1–TP9）。
 
 判据族：
     TP1  ABI 契约：`c_runtime/include/mlc.h` 必须有状态码/数组结构/所有权函数，
@@ -23,7 +23,7 @@
     python tools/check_translate_port.py --selftest
 
 退出码：
-    0  = TP1–TP4 全部通过
+    0  = TP1–TP9 全部通过
     1  = 有移植链路不合规（ABI/适配器/算子/保真/台账任一红）
     2  = 缺输入（找不到 c_runtime / translate / port_ledger.json）
 """
@@ -628,7 +628,7 @@ def check_m2c(require_c=False, fast=None):
     fast = FAST if fast is None else fast
     """TP5：MIR 生成 → C 发射 → gcc 语法编译 → 两次发射逐字节一致。
 
-    为什么要有它：TP1–TP4 证明的是"算子→C 的调用能编译能跑"，
+    为什么要有它：TP1–TP9 证明的是"算子→C 的调用能编译能跑"，
     但**没有任何东西**证明"整条链路（.m → MIR → C 工程）产出的是合法 C"。
     """
     probs = []
@@ -1045,7 +1045,7 @@ def _selftest():
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="MATLAB→C 移植链路总门（TP1–TP4）")
+    ap = argparse.ArgumentParser(description="MATLAB→C 移植链路总门（TP1–TP9）")
     ap.add_argument("--selftest", action="store_true", help="两向自证")
     ap.add_argument("--fast", action="store_true",
                     help="跳过 C 编译与运行（发版快筛）")

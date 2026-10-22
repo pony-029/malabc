@@ -38,6 +38,9 @@ jobs:
 
       # 生成物自带自测（src/selftest.c）：这里用**真实 cmake + ctest** 跑一遍，
       # 而不是只 `gcc` 编译单文件 —— 用户拿到的就是这个工程。
+      - name: Rust unit tests (m2c)
+        run: cargo test --manifest-path rust/m2c/Cargo.toml
+
       - name: Generated project: cmake + ctest
         shell: bash
         run: |

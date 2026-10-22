@@ -754,6 +754,33 @@ malabc-rt eval "a+1"       # rc=1：unimplemented token 'a'
 
 ---
 
+## MATLAB → MIR → C 对拍（PA1–PA3）
+
+移植链与分析器分开：
+
+```text
+.m --translate/mir.py--> MIR --rust/m2c--> C --cc--> 可执行文件
+                         \--translate/mir_eval.py--> 参考输出
+```
+
+`tools/parity_report.py` 比较 Python 解释器与生成的 C，分三级：
+
+- **PA1 已对拍**——两边都算出且逐值一致；
+- **PA2 未对拍**——某一边放弃（unmapped 语句/形状未知）；**不是通过**；
+- **PA3 不一致**——两边都算出但不同；一定是失败。
+
+`tools/check_translate_port.py` 要求 **PA1 ≥ 1**；全 PA2 不能把 TP9 变绿。
+demo 当前是 **PA1 18 / PA2 1**。2-D 线性索引 `A(2)` 与 `sum(2x3)`
+有专门 golden，并按 MATLAB 列主序语义执行；带 BOM 的 `.m` 已可读取。
+
+```bash
+python translate/mir.py translate/examples/demo_port.m -o /tmp/demo.mir
+python tools/parity_report.py --mir /tmp/demo.mir
+python tools/check_translate_port.py
+```
+
+---
+
 ## 自验证质量门（Quality Gates）
 
 项目对自己能力的每一项宣称，都由**可执行的护栏**兜底。一条命令全跑：

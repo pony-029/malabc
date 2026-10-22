@@ -796,6 +796,36 @@ skeleton, not a runtime, and it says so in its own README.
 
 ---
 
+## MATLAB → MIR → C Parity (PA1–PA3)
+
+The port pipeline is separate from the analyser:
+
+```text
+.m --translate/mir.py--> MIR --rust/m2c--> C --cc--> executable
+                         \--translate/mir_eval.py--> reference output
+```
+
+`tools/parity_report.py` compares the Python interpreter with the generated C
+and reports three levels:
+
+- **PA1 verified** — both sides computed and matched;
+- **PA2 unverified** — one side gave up (unmapped statement / unknown shape);
+  this is **not** a pass;
+- **PA3 mismatch** — both computed but disagreed; always a failure.
+
+`tools/check_translate_port.py` requires **PA1 ≥ 1**; an all-PA2 run cannot
+turn TP9 green. The demo currently reports **PA1 18 / PA2 1**. 2-D linear
+indexing (`A(2)`) and `sum(2x3)` have dedicated golden cases and use MATLAB
+column-major semantics; BOM-prefixed `.m` files are accepted.
+
+```bash
+python translate/mir.py translate/examples/demo_port.m -o /tmp/demo.mir
+python tools/parity_report.py --mir /tmp/demo.mir
+python tools/check_translate_port.py
+```
+
+---
+
 ## Quality Gates (self-verifying)
 
 The project's own claims are enforced by executable gates. One command runs them all:

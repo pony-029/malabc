@@ -3,6 +3,7 @@
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -14,7 +15,7 @@ if ROOT not in sys.path:
 if os.path.join(ROOT, "tools") not in sys.path:
     sys.path.insert(0, os.path.join(ROOT, "tools"))
 
-from translate import adapters, fidelity, operators  # noqa: E402
+from translate import adapters, fidelity, mir, operators  # noqa: E402
 import check_translate_port as gate  # noqa: E402
 
 
@@ -160,6 +161,46 @@ class TestFidelity(unittest.TestCase):
         src = fidelity.emit_c_program(case)
         self.assertIn('#include "mlc.h"', src)
         self.assertEqual(src.count("{"), src.count("}"))
+
+
+class TestSourceHandling(unittest.TestCase):
+    def test_bom_source_is_read(self):
+        tmp = tempfile.mkdtemp(prefix="mlc_bom_")
+        try:
+            src = os.path.join(tmp, "bom.m")
+            out = os.path.join(tmp, "bom.mir")
+            with open(src, "wb") as fh:
+                fh.write(b"\xef\xbb\xbffunction y = bom()\ny = 1;\nend\n")
+            self.assertEqual(mir.main([src, "-o", out]), 0)
+            self.assertIn("func:bom", open(out, encoding="utf-8").read())
+        finally:
+            import shutil
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_dynamic_temp_has_no_preinit(self):
+        exe = os.path.join(ROOT, "rust", "m2c", "target", "release",
+                           "m2c.exe" if os.name == "nt" else "m2c")
+        if not os.path.isfile(exe):
+            self.skipTest("m2c not built")
+        tmp = tempfile.mkdtemp(prefix="mlc_mask_")
+        try:
+            src = os.path.join(tmp, "mask.mir")
+            with open(src, "w", encoding="utf-8", newline="") as fh:
+                fh.write("version 3\nfunc:mask\narg:v:f64:3\nret:s:f64:1\n"
+                         "op:OP-MASK:z:v:0:1\nop:OP-SUM:s:z\nend\n")
+            out = os.path.join(tmp, "out")
+            r = subprocess.run([exe, "build", "--mir", src, "--out", out,
+                                "--name", "mk"], stdin=subprocess.DEVNULL,
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                               timeout=60)
+            self.assertEqual(r.returncode, 0, r.stdout.decode("utf-8", "replace"))
+            c = open(os.path.join(out, "src", "gen.c"), encoding="utf-8").read()
+            self.assertIn("mlc_array z;", c)
+            self.assertNotIn("mlc_array_init(&z", c)
+            self.assertIn("mlc_op_mask_alloc(&v", c)
+        finally:
+            import shutil
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 class TestLedger(unittest.TestCase):

@@ -44,7 +44,7 @@
 
 ## Evidence
 
-- `rust/m2c/` —— `m2c --selftest` 14/14；`cargo build --release` 约 0.8s
+- `rust/m2c/` —— `m2c --selftest` 40/40；`cargo test` 2 条；`cargo build --release` 约 0.8s
 - `translate/mir.py` + `translate/examples/demo_port.m` —— 4 函数 / 3 算子 / 1 未映射
 - `tools/check_translate_port.py` **TP5**：
   `OK（TP1–TP5 全绿；… MIR 函数 4 / 算子 3 / 未映射 1 / 编译 通过）`
