@@ -267,8 +267,14 @@ _KIND_RULES = (
 
 
 def _has_struct_ref(t):
-    """判断是否引用了结构体字段：`a.b` / `a.(e)`，但排除点运算与小数。"""
+    """判断是否引用了结构体字段：`a.b` / `a.(e)`，但排除点运算与小数。
+
+    **注释不算**：`% 见 foo.m` 里的 `foo.m` 长得和字段访问一模一样，
+    但它不是代码 —— 一条注释不该把整个函数判成结构体。
+    """
     import re as _re
+    if (t or "").lstrip().startswith("%"):
+        return False
     cleaned = (t.replace(".*", " ").replace("./", " ")
                 .replace(".\\", " ").replace(".'", " "))
     cleaned = _re.sub(r"\d\.\d", " ", cleaned)          # 3.14 -> 空格
@@ -358,11 +364,18 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
         # 可变参数（cell）无法用固定签名表达：显式拒绝，绝不伪装成一个 f64
         _va = [n for n in list(f["args"]) + list(f["rets"])
                if n in ("varargin", "varargout")]
+        _why = []
         if _va:
-            out.append("reject:%s" % ",".join(_va))
-        elif any(("{" in ln or "}" in ln) for ln in f["lines"]):
-            # cell：C 侧没有对应表示 -> 整函数拒绝（逐行计数会低估这部分）
-            out.append("reject:cell")
+            _why.append(",".join(_va))
+        # @类目录里的 .m 是**方法**，不是自由函数：语义是分派，不是同名运算
+        if srcfile and "@" in srcfile:
+            _why.append("method")
+        if any(("{" in ln or "}" in ln) for ln in f["lines"]):
+            _why.append("cell")
+        if any(_has_struct_ref(ln) for ln in f["lines"]):
+            _why.append("struct")
+        if _why:
+            out.append("reject:%s" % ",".join(_why))
         # 已知标量：i64 参数（下标源），后续的标量赋值/循环变量会继续加入
         _types = f.get("types") or {}
         scalar_names = set(n for n in f["args"]

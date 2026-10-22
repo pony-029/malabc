@@ -2,4 +2,4 @@
 # **只把最新一个入库**：clone 下来就能装，不必先跑构建；
 # 旧版本留在 CHANGELOG 里，需要时 checkout 对应提交重新打包。
 *.vsix
-!matlabc-1.7.5.vsix
+!matlabc-1.7.6.vsix
