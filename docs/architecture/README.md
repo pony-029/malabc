@@ -172,11 +172,11 @@
 | 03 多语言 + IR | `frontends/ir.py` · `matlabc.py` · `pyast_frontend.py` | `eee6968` 2026-10-20 |
 | 04 分析引擎 | `matlabc.py` · `facts.py` · `entity_model.py` · `unified_graph.py` | `eee6968` 2026-10-20 |
 | 05 渲染与输出 | `renderers/` · `matlabc.py` | `eee6968` 2026-10-20 |
-| 06 LSP + VS Code | `matlabc_lsp.py` · `vscode/` | `c71c475` 2026-10-21 |
+| 06 LSP + VS Code | `matlabc_lsp.py` · `vscode/` | `e2db68c` 2026-10-22 |
 | 07 AI / MCP | `matlabc_mcp.py` · `matlabc_ask.py` · `ai_cli.py` | `6a03133` 2026-10-20 |
 | 08 修复闭环 | `agent_loop.py` · `matlabc_flow.py` · `analyzer_memory.py` | `2caf526` 2026-10-10 |
-| 09 门禁 / CI | `tools/` · `.github/workflows/` | `56f7b8a` 2026-10-21 |
-| 10 MATLAB→C 移植 | `translate/` · `c_runtime/` · `port_ledger.json` | `aa595a3` 2026-10-21 |
+| 09 门禁 / CI | `tools/` · `.github/workflows/` | `750f9ee` 2026-10-22 |
+| 10 MATLAB→C 移植 | `translate/` · `c_runtime/` · `port_ledger.json` | `e2db68c` 2026-10-22 |
 | 11 二进制分析 | `binfmt/` · `binhops.py` · `callrel.py` | `6cf824b` 2026-10-13 |
 
 > 最近提交由 `git log -1 --format='%h %ad' --date=short -- <主文件>` 现算；
