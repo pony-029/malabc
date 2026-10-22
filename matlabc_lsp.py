@@ -568,7 +568,7 @@ def _wait_result(timeout=90.0):
 
     `didOpen` 是**异步**的（后台线程跑 `_run_json`），而 F12 可能比它先到。
     原来每个读请求都直接读 `_STATE["result"]`，此时是 None 就直接
-    返回 `[]` —— 在大工作区上（`E:\matlabc`，首次分析 10s+）用户会看到
+    返回 `[]` —— 在大工作区上（`E:/matlabc`，首次分析 10s+）用户会看到
     「未找到定义」，而实际上分析还在跑（R196 日志：F12 在 8 秒后返回 0 个位置）。
 
     改成等待。阻塞的是这一个请求，换回来的是**正确结果**而不是空。
@@ -2945,6 +2945,94 @@ def _workspace_symbols(query="", result=None, limit=200):
     return out[:max(1, int(limit))]
 
 
+def _context_payload(name, result=None):
+    """Context：签名/定义/成员/直接调用者与被调者（不重新解析）。"""
+    result = result if result is not None else _STATE.get("result")
+    if result is None:
+        return {"pending": True}
+    root = _STATE.get("root") or ""
+    for mf in (getattr(result, "files", None) or []):
+        rel = getattr(mf, "rel", "") or ""
+        for fn in (getattr(mf, "functions", None) or []):
+            if (getattr(fn, "name", "") or "") != name:
+                continue
+            params = list(_param_names(fn)[0])
+            if not params:
+                raw = getattr(fn, "inputs", None) or []
+                params = [str(x[0]) if isinstance(x, (list, tuple)) else str(x)
+                          for x in raw]
+            sig = "function %s(%s)" % (name, ", ".join(params))
+            info = _impact(name, down_depth=1)
+            if info and info.get("pending"):
+                return {"pending": True}
+            return {
+                "name": name,
+                "kind": getattr(fn, "kind", "function"),
+                "class_name": getattr(fn, "class_name", None),
+                "signature": sig,
+                "path": os.path.join(root, rel.replace("/", os.sep)),
+                "rel": rel,
+                "line": int(getattr(fn, "line", 1) or 1),
+                "definitions": (info or {}).get("definitions") or [],
+                "callers": (info or {}).get("direct") or [],
+                "callees": (info or {}).get("down") or [],
+            }
+        for cls in (getattr(mf, "classes", None) or []):
+            if (getattr(cls, "name", "") or "") != name:
+                continue
+            members = []
+            for m in (getattr(cls, "methods", None) or []):
+                members.append({"name": getattr(m, "name", str(m)),
+                                "kind": "method"})
+            for p in (getattr(cls, "properties", None) or []):
+                pname = p[0] if isinstance(p, tuple) else getattr(p, "name", "")
+                if pname:
+                    members.append({"name": pname, "kind": "property"})
+            return {
+                "name": name,
+                "kind": "class",
+                "signature": "classdef %s" % name,
+                "bases": [str(x) for x in
+                          (getattr(cls, "superclasses", None) or [])],
+                "path": os.path.join(root, rel.replace("/", os.sep)),
+                "rel": rel,
+                "line": int(getattr(cls, "line", 1) or 1),
+                "members": members,
+                "callers": [],
+                "callees": [],
+            }
+    return None
+
+
+def _relation_payload(name, kind="calls", result=None):
+    """Relation：contains / calls / callers；references 指向项目库/搜索。"""
+    result = result if result is not None else _STATE.get("result")
+    if result is None:
+        return {"pending": True}
+    if kind == "contains":
+        ctx = _context_payload(name, result)
+        if ctx is None:
+            return None
+        return {"target": name, "kind": "contains",
+                "items": ctx.get("members") or []}
+    if kind not in ("calls", "callers", "references"):
+        raise ValueError("未知 relation：%s" % kind)
+    info = _impact(name, down_depth=3)
+    if info is None:
+        return None
+    if info.get("pending"):
+        return {"pending": True}
+    if kind == "calls":
+        items = info.get("down") or []
+    elif kind == "callers":
+        items = info.get("direct") or []
+    else:
+        return {"target": name, "kind": "references", "available": False,
+                "reason": "用 tools/mlc_project.py refs 或工程搜索",
+                "items": []}
+    return {"target": name, "kind": kind, "items": items}
+
+
 # --------------------------------------------------------------------------
 # 协议处理
 # --------------------------------------------------------------------------
@@ -3035,6 +3123,32 @@ def handle(msg, out):
             _log("didOpen %s -> %d 条" % (os.path.basename(uri), len(diags)))
 
         threading.Thread(target=_later, daemon=True).start()
+        return True
+
+    if method == "matlabc/context":
+        params = msg.get("params") or {}
+        name = params.get("name") or ""
+        data = _context_payload(name)
+        _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": data})
+        _log("context %s -> %s" % (name, "none" if data is None
+                                   else data.get("kind")))
+        return True
+
+    if method == "matlabc/relation":
+        params = msg.get("params") or {}
+        name = params.get("name") or ""
+        kind = params.get("kind") or "calls"
+        try:
+            data = _relation_payload(name, kind)
+        except ValueError as exc:
+            _write_message(out, {
+                "jsonrpc": "2.0", "id": mid,
+                "error": {"code": -32602, "message": str(exc)}})
+            return True
+        _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": data})
+        _log("relation %s/%s -> %s" % (
+            name, kind, "none" if data is None
+            else len(data.get("items") or [])))
         return True
 
     if method == "workspace/symbol":

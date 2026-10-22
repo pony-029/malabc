@@ -22,12 +22,12 @@
 | R16 | 置信度模型 | call/method/handle/dynamic 分级 | ✅ |
 | R17 | LSP `workspace/symbol` | VS Code 全局符号 | ✅ |
 | R18 | LSP `didChange` debounce | 编辑期增量，不全量重算 | ✅ |
-| R19 | Context API + 面板 | 签名/帮助头/属性/基类 | ⏳ |
-| R20 | Relation API + 面板 | Contains/Calls/Callers/References | ⏳ |
-| R21 | 工程搜索（regex/多行） | 100k LOC <1s | ⏳ |
-| R22 | 搜索结果 + source link | 点击跳转 | ⏳ |
-| R23 | 名称片段 / FTS5 | `getVal` 命中 `getValue` | ⏳ |
-| R24 | Bookmarks/Snippets | 持久化/项目级 | ⏳ |
+| R19 | Context API + 面板 | 签名/帮助头/属性/基类 | ✅ |
+| R20 | Relation API + 面板 | Contains/Calls/Callers/References | ✅ |
+| R21 | 工程搜索（regex/多行） | 100k LOC <1s | ✅ |
+| R22 | 搜索结果 + source link | 点击跳转 | ✅ |
+| R23 | 名称片段 / FTS5 | `getVal` 命中 `getValue` | ✅（fragment 表；FTS5 可选） |
+| R24 | Bookmarks/Snippets | 持久化/项目级 | ✅（CLI+SQLite；面板后置） |
 | R25 | Outlining/Compare | 折叠范围、文件/目录 diff | ⏳ |
 | R26 | Layouts/Workspaces/Themes | 面板状态可恢复 | ⏳ |
 | R27 | Custom Commands | `%f`、source link 解析 | ⏳ |

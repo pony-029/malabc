@@ -39,7 +39,8 @@
 - `edges` 已接 `matlabc.analyze_calls`，有 `call/builtin/external/dynamic/indirect` 与置信度；
   `eval`/动态字段仍标低置信度。
 - 没有 FTS5/名称片段索引（字段/表已预留）。
-- 没有 UI 面板；P0 只提供 CLI 与可查询的 SQLite。
+- Context/Relation 已有 LSP 方法与 VS Code 面板；书签/片段目前是 CLI+SQLite，
+  还没有 VS Code 面板。
 - LSP 已支持 `workspace/symbol` 与 `didChange` overlay（350ms 防抖）；
   未保存 buffer 走临时文件解析，`didSave` 后回到磁盘。
 - `.siproj`/MFL 只导入文件清单，不导入符号；符号全部重新解析。

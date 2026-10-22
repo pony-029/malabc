@@ -182,6 +182,12 @@ CREATE TABLE IF NOT EXISTS symbols (
 CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
 CREATE INDEX IF NOT EXISTS idx_symbols_dotted ON symbols(dotted_name);
 CREATE INDEX IF NOT EXISTS idx_symbols_kind ON symbols(kind);
+CREATE TABLE IF NOT EXISTS name_fragments (
+  fragment TEXT NOT NULL,
+  symbol_id INTEGER NOT NULL REFERENCES symbols(id) ON DELETE CASCADE,
+  PRIMARY KEY(fragment, symbol_id)
+);
+CREATE INDEX IF NOT EXISTS idx_fragments_fragment ON name_fragments(fragment);
 CREATE TABLE IF NOT EXISTS refs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   symbol_id INTEGER NOT NULL REFERENCES symbols(id) ON DELETE CASCADE,
@@ -408,6 +414,19 @@ def _sig(fn):
                                   ", ".join(str(x) for x in ins))
 
 
+def _fragments(text):
+    """`getValue` -> {getvalue, get, value}；用于 SI 风格名称片段。"""
+    out = set()
+    for part in re.split(r"[^A-Za-z0-9]+", text or ""):
+        if not part:
+            continue
+        out.add(part.lower())
+        for m in re.finditer(
+                r"[A-Z]+(?=[A-Z][a-z]|\d|\b)|[A-Z]?[a-z]+|\d+", part):
+            out.add(m.group(0).lower())
+    return out
+
+
 def _insert_symbol(conn, file_id, name, dotted, kind, line, scope_id=None,
                    signature="", type_name="", flags="", end_line=None,
                    resolution="project"):
@@ -417,12 +436,18 @@ def _insert_symbol(conn, file_id, name, dotted, kind, line, scope_id=None,
         "resolution) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
         (file_id, name, dotted, kind, int(line), 1, end_line, scope_id,
          signature, type_name, flags, resolution))
-    if cur.lastrowid:
-        return cur.lastrowid
-    row = conn.execute(
-        "SELECT id FROM symbols WHERE file_id=? AND kind=? AND dotted_name=? "
-        "AND line=?", (file_id, kind, dotted, int(line))).fetchone()
-    return row["id"] if row else None
+    sid = cur.lastrowid
+    if not sid:
+        row = conn.execute(
+            "SELECT id FROM symbols WHERE file_id=? AND kind=? AND "
+            "dotted_name=? AND line=?",
+            (file_id, kind, dotted, int(line))).fetchone()
+        sid = row["id"] if row else None
+    if sid:
+        for frag in _fragments(name) | _fragments(dotted):
+            conn.execute("INSERT OR IGNORE INTO name_fragments(fragment, "
+                         "symbol_id) VALUES(?,?)", (frag, sid))
+    return sid
 
 
 def _insert_file_symbols(conn, file_id, rel, mf):
@@ -436,10 +461,13 @@ def _insert_file_symbols(conn, file_id, rel, mf):
         if not cname:
             continue
         cd = _dotted(pkg, cname)
+        sup = [str(x) for x in (getattr(cls, "superclasses", None) or [])]
+        sig = "classdef %s" % cname
+        if sup:
+            sig += " < " + ", ".join(sup)
         cid = _insert_symbol(conn, file_id, cname, cd, "class",
                              getattr(cls, "line", 1) or 1,
-                             signature="classdef %s" % cname,
-                             type_name="class")
+                             signature=sig, type_name="class")
         class_ids[cname] = cid
         for prop in getattr(cls, "properties", None) or []:
             pname, pline = (prop if isinstance(prop, tuple)
@@ -766,8 +794,8 @@ def query_symbols(cfg, query="", kind="", file_like="", limit=200):
     conn = _connect(cfg["_db"])
     try:
         init_db(conn)
-        sql = ("SELECT s.name, s.dotted_name, s.kind, s.line, s.signature, "
-               "s.resolution, f.path FROM symbols s "
+        sql = ("SELECT s.id, s.name, s.dotted_name, s.kind, s.line, "
+               "s.signature, s.resolution, f.path FROM symbols s "
                "JOIN files f ON s.file_id=f.id ")
         where, args = [], []
         if query:
@@ -834,6 +862,313 @@ def query_edges(cfg, name="", kind="", limit=200):
         sql += "ORDER BY f.path, e.line LIMIT ?"
         args.append(int(limit))
         return [dict(r) for r in conn.execute(sql, args).fetchall()]
+    finally:
+        conn.close()
+
+
+def _project_id(conn, cfg):
+    row = conn.execute("SELECT id FROM projects WHERE name=?",
+                       (cfg["name"],)).fetchone()
+    return row["id"] if row else None
+
+
+def _source_link(path, line, col=1):
+    return "%s:%d:%d" % (path, int(line), int(col))
+
+
+def _symbol_row(conn, project_id, name):
+    q = "%%%s%%" % (name or "").lower()
+    rows = conn.execute(
+        "SELECT s.*, f.path FROM symbols s JOIN files f ON s.file_id=f.id "
+        "WHERE f.project_id=? AND (lower(s.name)=? OR "
+        "lower(s.dotted_name)=? OR lower(s.name) LIKE ? OR "
+        "lower(s.dotted_name) LIKE ?) "
+        "ORDER BY CASE WHEN lower(s.name)=? OR lower(s.dotted_name)=? "
+        "THEN 0 ELSE 1 END, f.path, s.line LIMIT 20",
+        (project_id, (name or "").lower(), (name or "").lower(), q, q,
+         (name or "").lower(), (name or "").lower())).fetchall()
+    return rows[0] if rows else None
+
+
+def _members(conn, row):
+    return [dict(r) for r in conn.execute(
+        "SELECT id, name, dotted_name, kind, line, signature, type_name "
+        "FROM symbols WHERE scope_id=? OR (dotted_name LIKE ? AND id<>?) "
+        "ORDER BY line, name",
+        (row["id"], row["dotted_name"] + ".%", row["id"])).fetchall()]
+
+
+def _edge_rows(conn, project_id, symbol_id, direction):
+    if direction == "callees":
+        sql = ("SELECT e.kind AS edge_kind, e.confidence, e.line AS call_line, "
+               "e.callee_name, dst.name AS name, dst.dotted_name, "
+               "dst.kind, f.path FROM edges e "
+               "LEFT JOIN symbols dst ON e.dst_symbol_id=dst.id "
+               "JOIN files f ON e.file_id=f.id "
+               "WHERE e.src_symbol_id=? AND f.project_id=? "
+               "ORDER BY e.line LIMIT 200")
+    else:
+        sql = ("SELECT e.kind AS edge_kind, e.confidence, e.line AS call_line, "
+               "src.name AS name, src.dotted_name, src.kind, "
+               "f.path FROM edges e JOIN symbols src ON e.src_symbol_id=src.id "
+               "JOIN files f ON e.file_id=f.id "
+               "WHERE e.dst_symbol_id=? AND f.project_id=? "
+               "ORDER BY e.line LIMIT 200")
+    return [dict(r) for r in conn.execute(sql, (symbol_id, project_id))]
+
+
+def context_symbol(cfg, name):
+    """Context：签名/声明/成员/引用数/直接调用者与被调者。"""
+    conn = _connect(cfg["_db"])
+    try:
+        init_db(conn)
+        pid = _project_id(conn, cfg)
+        row = _symbol_row(conn, pid, name)
+        if row is None:
+            return None
+        d = dict(row)
+        d["members"] = _members(conn, row)
+        d["references"] = conn.execute(
+            "SELECT COUNT(*) AS n FROM refs WHERE symbol_id=?",
+            (row["id"],)).fetchone()["n"]
+        d["callers"] = _edge_rows(conn, pid, row["id"], "callers")
+        d["callees"] = _edge_rows(conn, pid, row["id"], "callees")
+        d["source_link"] = _source_link(row["path"], row["line"])
+        return d
+    finally:
+        conn.close()
+
+
+def relation(cfg, name, kind="calls"):
+    """Relation：contains / calls / callers / references。"""
+    conn = _connect(cfg["_db"])
+    try:
+        init_db(conn)
+        pid = _project_id(conn, cfg)
+        row = _symbol_row(conn, pid, name)
+        if row is None:
+            return None
+        if kind == "contains":
+            items = _members(conn, row)
+        elif kind == "calls":
+            items = _edge_rows(conn, pid, row["id"], "callees")
+        elif kind == "callers":
+            items = _edge_rows(conn, pid, row["id"], "callers")
+        elif kind == "references":
+            items = [dict(r) for r in conn.execute(
+                "SELECT r.line, r.col, r.kind, r.confidence, r.context, "
+                "f.path FROM refs r JOIN files f ON r.file_id=f.id "
+                "WHERE r.symbol_id=? ORDER BY f.path, r.line, r.col LIMIT 200",
+                (row["id"],)).fetchall()]
+        else:
+            raise ValueError("未知 relation：%s（contains/calls/callers/references）"
+                             % kind)
+        for it in items:
+            if it.get("path") and it.get("line"):
+                it["source_link"] = _source_link(it["path"], it["line"])
+        return {"name": row["name"], "dotted_name": row["dotted_name"],
+                "kind": row["kind"], "relation": kind, "items": items}
+    finally:
+        conn.close()
+
+
+def _query_fragments(text):
+    out = set()
+    for part in re.split(r"[^A-Za-z0-9]+", text or ""):
+        if not part:
+            continue
+        for m in re.finditer(
+                r"[A-Z]+(?=[A-Z][a-z]|\d|\b)|[A-Z]?[a-z]+|\d+", part):
+            out.add(m.group(0).lower())
+    return out
+
+
+def find_by_fragments(cfg, query, limit=200):
+    tokens = sorted(_query_fragments(query))
+    if not tokens:
+        return []
+    conn = _connect(cfg["_db"])
+    try:
+        init_db(conn)
+        pid = _project_id(conn, cfg)
+        sets = []
+        for tok in tokens:
+            ids = set(r["symbol_id"] for r in conn.execute(
+                "SELECT DISTINCT symbol_id FROM name_fragments "
+                "WHERE fragment LIKE ?", (tok + "%",)))
+            if not ids:
+                return []
+            sets.append(ids)
+        ids = set.intersection(*sets) if sets else set()
+        if not ids:
+            return []
+        placeholders = ",".join("?" for _ in ids)
+        sql = ("SELECT s.id, s.name, s.dotted_name, s.kind, s.line, "
+               "s.signature, f.path FROM symbols s JOIN files f "
+               "ON s.file_id=f.id WHERE f.project_id=? AND s.id IN (%s) "
+               "ORDER BY s.name, f.path, s.line LIMIT ?" % placeholders)
+        args = [pid] + sorted(ids) + [int(limit)]
+        return [dict(r) for r in conn.execute(sql, args).fetchall()]
+    finally:
+        conn.close()
+
+
+def search_project(cfg, pattern, regex=False, multiline=False,
+                   case_sensitive=False, file_like="", limit=500):
+    """工程搜索；返回带 `source_link`（path:line:col）的结果。"""
+    if not pattern:
+        return []
+    flags = 0 if case_sensitive else re.I
+    try:
+        rx = re.compile(pattern, flags) if regex else None
+    except re.error as exc:
+        raise ValueError("正则错误：%s" % exc)
+    conn = _connect(cfg["_db"])
+    try:
+        init_db(conn)
+        pid = _project_id(conn, cfg)
+        sql = ("SELECT f.path FROM files f WHERE f.project_id=?")
+        args = [pid]
+        if file_like:
+            sql += " AND lower(f.path) LIKE ?"
+            args.append("%%%s%%" % file_like.lower())
+        sql += " ORDER BY f.path"
+        out = []
+        for row in conn.execute(sql, args):
+            rel = row["path"]
+            full = os.path.join(cfg["_root"], rel.replace("/", os.sep))
+            try:
+                text = _decode_text(full)
+            except (OSError, ValueError):
+                continue
+            if multiline:
+                if regex:
+                    iterable = [(m.start(), m.group(0))
+                                for m in rx.finditer(text)]
+                else:
+                    needle = pattern if case_sensitive else pattern.lower()
+                    hay = text if case_sensitive else text.lower()
+                    iterable = []
+                    pos = hay.find(needle)
+                    while pos >= 0:
+                        iterable.append((pos, text[pos:pos + len(pattern)]))
+                        pos = hay.find(needle, pos + max(1, len(pattern)))
+                for start, matched in iterable:
+                    line = text.count("\n", 0, start) + 1
+                    line_start = text.rfind("\n", 0, start) + 1
+                    col = start - line_start + 1
+                    line_text = text[line_start:].split("\n", 1)[0]
+                    out.append({"path": rel, "line": line, "col": col,
+                                "match": matched, "text": line_text[:240],
+                                "source_link": _source_link(rel, line, col)})
+                    if len(out) >= limit:
+                        return out
+            else:
+                for lineno, line in enumerate(text.splitlines(), start=1):
+                    if regex:
+                        hits = [(m.start(), m.group(0))
+                                for m in rx.finditer(line)]
+                    else:
+                        needle = pattern if case_sensitive else pattern.lower()
+                        hay = line if case_sensitive else line.lower()
+                        hits = []
+                        pos = hay.find(needle)
+                        while pos >= 0:
+                            hits.append((pos, line[pos:pos + len(pattern)]))
+                            pos = hay.find(needle, pos + max(1, len(pattern)))
+                    for col0, matched in hits:
+                        out.append({"path": rel, "line": lineno,
+                                    "col": col0 + 1, "match": matched,
+                                    "text": line[:240],
+                                    "source_link": _source_link(
+                                        rel, lineno, col0 + 1)})
+                        if len(out) >= limit:
+                            return out
+        return out
+    finally:
+        conn.close()
+
+
+def add_bookmark(cfg, file, line, col=1, note=""):
+    conn = _connect(cfg["_db"])
+    try:
+        init_db(conn)
+        pid = _project_id(conn, cfg)
+        row = conn.execute("SELECT id FROM files WHERE project_id=? AND path=?",
+                           (pid, file)).fetchone()
+        fid = row["id"] if row else None
+        cur = conn.execute("INSERT INTO bookmarks(project_id, file_id, line, "
+                           "col, note) VALUES(?,?,?,?,?)",
+                           (pid, fid, int(line), int(col), note or ""))
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def list_bookmarks(cfg, limit=200):
+    conn = _connect(cfg["_db"])
+    try:
+        init_db(conn)
+        pid = _project_id(conn, cfg)
+        return [dict(r) for r in conn.execute(
+            "SELECT b.id, b.line, b.col, b.note, f.path FROM bookmarks b "
+            "LEFT JOIN files f ON b.file_id=f.id WHERE b.project_id=? "
+            "ORDER BY f.path, b.line LIMIT ?", (pid, int(limit)))]
+    finally:
+        conn.close()
+
+
+def remove_bookmark(cfg, bid):
+    conn = _connect(cfg["_db"])
+    try:
+        init_db(conn)
+        cur = conn.execute("DELETE FROM bookmarks WHERE id=? AND project_id=?",
+                           (int(bid), _project_id(conn, cfg)))
+        conn.commit()
+        return cur.rowcount
+    finally:
+        conn.close()
+
+
+def add_snippet(cfg, name, body, lang=""):
+    conn = _connect(cfg["_db"])
+    try:
+        init_db(conn)
+        pid = _project_id(conn, cfg)
+        conn.execute("INSERT OR REPLACE INTO snippets(project_id, name, "
+                     "lang, body) VALUES(?,?,?,?)",
+                     (pid, name, lang or "", body or ""))
+        conn.commit()
+        return name
+    finally:
+        conn.close()
+
+
+def list_snippets(cfg, lang=""):
+    conn = _connect(cfg["_db"])
+    try:
+        init_db(conn)
+        pid = _project_id(conn, cfg)
+        sql = "SELECT id, name, lang, body FROM snippets WHERE project_id=?"
+        args = [pid]
+        if lang:
+            sql += " AND lang=?"
+            args.append(lang)
+        sql += " ORDER BY name"
+        return [dict(r) for r in conn.execute(sql, args)]
+    finally:
+        conn.close()
+
+
+def remove_snippet(cfg, name):
+    conn = _connect(cfg["_db"])
+    try:
+        init_db(conn)
+        cur = conn.execute("DELETE FROM snippets WHERE project_id=? AND name=?",
+                           (_project_id(conn, cfg), name))
+        conn.commit()
+        return cur.rowcount
     finally:
         conn.close()
 
@@ -1007,6 +1342,55 @@ def main(argv=None):
     p.add_argument("--limit", type=int, default=200)
     p.add_argument("--json", action="store_true")
 
+    p = sub.add_parser("context", help="Context：签名/成员/调用者")
+    p.add_argument("--root", default=".")
+    p.add_argument("--name", required=True)
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("relation", help="Relation：contains/calls/callers/refs")
+    p.add_argument("--root", default=".")
+    p.add_argument("--name", required=True)
+    p.add_argument("--kind", default="calls",
+                   choices=("contains", "calls", "callers", "references"))
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("search", help="工程搜索（regex/多行）")
+    p.add_argument("--root", default=".")
+    p.add_argument("--pattern", required=True)
+    p.add_argument("--regex", action="store_true")
+    p.add_argument("--multiline", action="store_true")
+    p.add_argument("--case-sensitive", action="store_true")
+    p.add_argument("--file", dest="file_like", default="")
+    p.add_argument("--limit", type=int, default=500)
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("fragments", help="名称片段匹配")
+    p.add_argument("--root", default=".")
+    p.add_argument("--query", required=True)
+    p.add_argument("--limit", type=int, default=200)
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("bookmark", help="书签 add/list/remove")
+    p.add_argument("--root", default=".")
+    p.add_argument("--add", action="store_true")
+    p.add_argument("--file", default="")
+    p.add_argument("--line", type=int, default=0)
+    p.add_argument("--col", type=int, default=1)
+    p.add_argument("--note", default="")
+    p.add_argument("--list", action="store_true")
+    p.add_argument("--remove", type=int, default=0)
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("snippet", help="片段 add/list/remove")
+    p.add_argument("--root", default=".")
+    p.add_argument("--add", action="store_true")
+    p.add_argument("--name", default="")
+    p.add_argument("--body", default="")
+    p.add_argument("--lang", default="")
+    p.add_argument("--list", action="store_true")
+    p.add_argument("--remove", default="")
+    p.add_argument("--json", action="store_true")
+
     p = sub.add_parser("import", help="导入 .siproj / Master File List")
     p.add_argument("--from", dest="source", required=True)
     p.add_argument("--root", default=".")
@@ -1088,6 +1472,95 @@ def main(argv=None):
                     print("%-42s %-14s %s:%d  %s"
                           % (r["dotted_name"], r["kind"], r["path"],
                              r["line"], r["signature"]))
+            return 0
+        if args.cmd == "context":
+            data = context_symbol(cfg, args.name)
+            if data is None:
+                print("not found: %s" % args.name)
+                return 1
+            if args.json:
+                print(json.dumps(data, ensure_ascii=False, indent=2))
+            else:
+                print("%s  %s  %s" % (data["dotted_name"], data["kind"],
+                                      data["source_link"]))
+                if data.get("signature"):
+                    print("  %s" % data["signature"])
+                print("  members=%d references=%d callers=%d callees=%d"
+                      % (len(data["members"]), data["references"],
+                         len(data["callers"]), len(data["callees"])))
+            return 0
+        if args.cmd == "relation":
+            data = relation(cfg, args.name, args.kind)
+            if data is None:
+                print("not found: %s" % args.name)
+                return 1
+            if args.json:
+                print(json.dumps(data, ensure_ascii=False, indent=2))
+            else:
+                print("%s %s:" % (data["dotted_name"], data["relation"]))
+                for it in data["items"]:
+                    print("  %-24s %-10s %s"
+                          % (it.get("dotted_name") or it.get("name") or "",
+                             it.get("kind") or it.get("edge_kind") or "",
+                             it.get("source_link", "")))
+            return 0
+        if args.cmd == "search":
+            rows = search_project(cfg, args.pattern, regex=args.regex,
+                                  multiline=args.multiline,
+                                  case_sensitive=args.case_sensitive,
+                                  file_like=args.file_like, limit=args.limit)
+            if args.json:
+                print(json.dumps(rows, ensure_ascii=False, indent=2))
+            else:
+                for r in rows:
+                    print("%s  %s" % (r["source_link"], r["text"].strip()))
+            return 0
+        if args.cmd == "fragments":
+            rows = find_by_fragments(cfg, args.query, limit=args.limit)
+            if args.json:
+                print(json.dumps(rows, ensure_ascii=False, indent=2))
+            else:
+                for r in rows:
+                    print("%-42s %-14s %s:%d"
+                          % (r["dotted_name"], r["kind"], r["path"],
+                             r["line"]))
+            return 0
+        if args.cmd == "bookmark":
+            if args.add:
+                if not args.file or not args.line:
+                    print("bookmark --add 需要 --file 与 --line")
+                    return 2
+                bid = add_bookmark(cfg, args.file, args.line, args.col,
+                                   args.note)
+                print("bookmark id=%s" % bid)
+            elif args.remove:
+                print("removed=%d" % remove_bookmark(cfg, args.remove))
+            else:
+                rows = list_bookmarks(cfg)
+                if args.json:
+                    print(json.dumps(rows, ensure_ascii=False, indent=2))
+                else:
+                    for r in rows:
+                        print("%s:%s:%s  %s" % (r["path"], r["line"],
+                                                r["col"], r["note"]))
+            return 0
+        if args.cmd == "snippet":
+            if args.add:
+                if not args.name or not args.body:
+                    print("snippet --add 需要 --name 与 --body")
+                    return 2
+                add_snippet(cfg, args.name, args.body, args.lang)
+                print("snippet %s" % args.name)
+            elif args.remove:
+                print("removed=%d" % remove_snippet(cfg, args.remove))
+            else:
+                rows = list_snippets(cfg, args.lang)
+                if args.json:
+                    print(json.dumps(rows, ensure_ascii=False, indent=2))
+                else:
+                    for r in rows:
+                        print("%-24s %-10s %s" % (r["name"], r["lang"],
+                                                  r["body"][:60]))
             return 0
     except (ValueError, OSError, sqlite3.DatabaseError) as exc:
         print("mlc_project: %s" % exc)

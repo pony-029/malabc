@@ -16,6 +16,7 @@
 | `textDocument/references` | 查找引用 | `Shift+F12` |
 | `textDocument/hover` | 悬停说明 | 鼠标停在标识符上 |
 | `textDocument/codeLens` | 调用规模标注 | 函数定义行上方的调用者/被调用数量 |
+| `workspace/symbol` | 全项目符号 | `Ctrl+T` 按名字跳函数/类/属性 |
 
 ## 自定义方法
 
@@ -25,6 +26,8 @@
 | `matlabc/heat` | 返回按「复杂度 × 调用者数」排序的热点函数列表 |
 | `matlabc/field` | 结构体字段的跨文件读写位置（按基名归类） |
 | `matlabc/cbridge` | 跨语言桥接：MATLAB 未解析调用在 C 源里的定义位置 |
+| `matlabc/context` | 符号上下文：签名/定义/成员/直接调用者与被调者 |
+| `matlabc/relation` | 符号关系：`calls` / `callers` / `contains` / `references` |
 
 ## 与编辑器侧的分工
 

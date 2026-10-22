@@ -24,7 +24,7 @@
 | F16 | 定义解析顺序 | 55 | P0 | 🟡 | P0 项目内；MATLAB path 待补 |
 | F17 | 条件解析/Inactive Code | 60–63 | P1 | 🟡 | C 仅 `#if 0`；MATLAB 版本门后置 |
 | F18 | Token Macros | 64–65 | P2 | ❌ | C 预处理器深水区 |
-| F19 | 名称片段索引 | 66–67 | P1 | ❌ | camelCase 很适配 MATLAB |
+| F19 | 名称片段索引 | 66–67 | P1 | 🟡 | fragment 表已落；FTS5 可选 |
 | F20 | 增量符号同步 | 48 | P0 | ✅ | per-file mtime+size+sha256 |
 | F21 | 引用索引 | 40,75 | P0 | ❌ | `refs` 表已建，未填 |
 | F22 | Jump to Definition | 74 | P0 | ✅ | LSP definition |
@@ -32,20 +32,20 @@
 | F24 | Browser Mode | 74 | P1 | ❌ | 可映射 VS Code |
 | F25 | Project Symbol List | 75 | P0 | 🟡 | P0 CLI；UI 后置 |
 | F26 | 调用树/引用树 | 75 | P0 | 🟡 | `unified_graph`/`callrel` |
-| F27 | Context Window | 75,90–92 | P0 | ❌ | 高价值，P1 |
-| F28 | Relation Window（Outline/Graph） | 93–97 | P0 | 🟡 | VS Code/HTML 雏形 |
+| F27 | Context Window | 75,90–92 | P0 | 🟡 | LSP + VS Code 面板已有 |
+| F28 | Relation Window（Outline/Graph） | 93–97 | P0 | 🟡 | LSP + VS Code 面板已有 |
 | F29 | 关系规则/调用图过滤/多窗口 | 96–97 | P1 | ❌ | P1 |
 | F30 | 引用高亮 | 76 | P1 | ❌ | 语义 token 可扩展 |
 | F31 | Project Report | 76 | P1 | 🟡 | `csite`/报告 |
 | F32 | Smart Rename | 76 | P1 | ❌ | 需作用域判断 |
 | F33 | 文件/目录比较 | 77,112–113 | P1 | 🟡 | 任务 diff |
-| F34 | 当前文件/多文件/项目搜索 | 104–105 | P0 | ❌ | 最大缺口之一 |
-| F35 | Search Results/source link | 106–108 | P0 | ❌ | 结果模型 |
+| F34 | 当前文件/多文件/项目搜索 | 104–105 | P0 | 🟡 | CLI 工程搜索已落 |
+| F35 | Search Results/source link | 106–108 | P0 | 🟡 | CLI source_link 已落 |
 | F36 | 正则/多行 | 109–111 | P0 | 🟡 | Python `re` 可复用 |
 | F37 | 替换/重命名 | 105–106 | P1 | ❌ | 与 Smart Rename 合并 |
-| F38 | Snippets | 98–100 | P1 | ❌ | 语言特定模板 |
+| F38 | Snippets | 98–100 | P1 | 🟡 | SQLite+CLI 已落；面板后置 |
 | F39 | Clips | 101 | P1 | ❌ | 文本片段库 |
-| F40 | Bookmarks | 102–103 | P1 | ❌ | schema 已有 |
+| F40 | Bookmarks | 102–103 | P1 | 🟡 | SQLite+CLI 已落；面板后置 |
 | F41 | 选择历史前进/后退 | 114 | P1 | ❌ | UI/栈 |
 | F42 | Outlining/折叠 | 121–123 | P1 | 🟡 | LSP documentSymbol |
 | F43 | Code Beautifier | 123 | P2 | ❌ | 可接 formatter |

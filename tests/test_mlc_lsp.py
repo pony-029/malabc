@@ -48,6 +48,51 @@ class TestWorkspaceSymbols(unittest.TestCase):
             shutil.rmtree(root, ignore_errors=True)
 
 
+class TestContextRelation(unittest.TestCase):
+    def test_context_function(self):
+        root = tempfile.mkdtemp(prefix="lsp_ctx_")
+        old = dict(matlabc_lsp._STATE)
+        try:
+            fn = SimpleNamespace(name="main", kind="main", line=1,
+                                 qualified="main", class_name=None,
+                                 inputs=["x"], body_start=2, body_end=3)
+            mf = SimpleNamespace(rel="a.m", path=os.path.join(root, "a.m"),
+                                 functions=[fn], classes=[])
+            res = SimpleNamespace(files=[mf], edges=[])
+            matlabc_lsp._STATE.update({"root": root, "result": res,
+                                       "payload": {"heuristics": []}})
+            ctx = matlabc_lsp._context_payload("main", res)
+            self.assertEqual(ctx["name"], "main")
+            self.assertIn("function main(x)", ctx["signature"])
+            self.assertTrue(ctx["path"].endswith("a.m"))
+        finally:
+            matlabc_lsp._STATE.clear()
+            matlabc_lsp._STATE.update(old)
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_relation_contains_class(self):
+        root = tempfile.mkdtemp(prefix="lsp_rel_")
+        old = dict(matlabc_lsp._STATE)
+        try:
+            cls = SimpleNamespace(name="Cls", line=1,
+                                  methods=[SimpleNamespace(name="getValue")],
+                                  properties=[("value", 3)],
+                                  superclasses=["handle"])
+            mf = SimpleNamespace(rel="a.m", path=os.path.join(root, "a.m"),
+                                 functions=[], classes=[cls])
+            res = SimpleNamespace(files=[mf], edges=[])
+            matlabc_lsp._STATE.update({"root": root, "result": res,
+                                       "payload": {"heuristics": []}})
+            data = matlabc_lsp._relation_payload("Cls", "contains", res)
+            names = set(x["name"] for x in data["items"])
+            self.assertIn("getValue", names)
+            self.assertIn("value", names)
+        finally:
+            matlabc_lsp._STATE.clear()
+            matlabc_lsp._STATE.update(old)
+            shutil.rmtree(root, ignore_errors=True)
+
+
 class TestOverlay(unittest.TestCase):
     def test_unsaved_buffer_changes_symbols(self):
         root = tempfile.mkdtemp(prefix="lsp_overlay_")

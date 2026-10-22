@@ -128,6 +128,16 @@
         "category": "matlabc"
       },
       {
+        "command": "matlabc.showContext",
+        "title": "matlabc: 查看符号上下文（Context）",
+        "category": "matlabc"
+      },
+      {
+        "command": "matlabc.showRelation",
+        "title": "matlabc: 查看符号关系（Relation）",
+        "category": "matlabc"
+      },
+      {
         "command": "matlabc.generateReport",
         "title": "matlabc: 生成 HTML 分析报告",
         "category": "matlabc"

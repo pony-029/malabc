@@ -1398,6 +1398,145 @@ function activate(context) {
     })
   );
 
+  // ---- Context / Relation 面板（R19/R20）-----------------------------
+  function currentSymbolName() {
+    const ed = vscode.window.activeTextEditor;
+    if (!ed) return '';
+    const sel = ed.document.getText(ed.selection).trim();
+    if (sel) return sel;
+    const r = ed.document.getWordRangeAtPosition(
+      ed.selection.active, /[A-Za-z_][\w.]*/);
+    return r ? ed.document.getText(r) : '';
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'
+    }[c]));
+  }
+
+  function panelCss() {
+    return [
+      'body{font-family:var(--vscode-editor-font-family,monospace);',
+      'padding:14px;color:var(--vscode-editor-foreground);',
+      'background:var(--vscode-editor-background);}',
+      'h2{margin:0 0 6px;font-size:15px;}',
+      '.sig{font-size:13px;color:var(--vscode-textLink-foreground);',
+      'margin:4px 0 8px;}',
+      '.meta{opacity:.6;font-size:12px;margin:2px 0 12px;}',
+      '.sec{margin:14px 0 4px;opacity:.7;font-size:12px;',
+      'border-bottom:1px solid var(--vscode-editorWidget-border);',
+      'padding-bottom:3px;}',
+      '.item{font-size:12.5px;line-height:1.7;}',
+      '.empty{opacity:.4;font-size:12px;font-style:italic;}',
+    ].join('');
+  }
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.showContext', async (arg) => {
+      const name = (typeof arg === 'string' && arg) || currentSymbolName();
+      if (!name) {
+        vscode.window.showWarningMessage('matlabc: 请把光标放在函数/类名上');
+        return;
+      }
+      try {
+        const r = await withTimeout(
+          client.request('matlabc/context', { name: name }), 2500);
+        const d = r.result;
+        if (!d) {
+          vscode.window.showWarningMessage('matlabc: 找不到 ' + name);
+          return;
+        }
+        if (d.pending) {
+          vscode.window.showInformationMessage(
+            'matlabc: 正在建全库索引，请稍后再试');
+          return;
+        }
+        const panel = vscode.window.createWebviewPanel(
+          'matlabcContext', 'Context：' + name,
+          { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
+          { enableScripts: false });
+        const lines = [];
+        lines.push('<h2>' + escapeHtml(d.name) + ' <span class="meta">' +
+          escapeHtml(d.kind) + '</span></h2>');
+        if (d.signature) {
+          lines.push('<div class="sig">' + escapeHtml(d.signature) + '</div>');
+        }
+        lines.push('<div class="meta">' + escapeHtml(d.path || '') +
+          ':' + escapeHtml(d.line) + '</div>');
+        const sec = (title, arr, fmt) => {
+          lines.push('<div class="sec">' + title + '</div>');
+          if (!arr || !arr.length) {
+            lines.push('<div class="empty">none</div>');
+            return;
+          }
+          arr.forEach((x) => lines.push('<div class="item">' +
+            escapeHtml(fmt(x)) + '</div>'));
+        };
+        sec('Members', d.members, (x) => (x.name || '') + '  ' + (x.kind || ''));
+        sec('Callers', d.callers, (x) => (x.name || '') + '  line ' +
+          (x.call_line || x.line || ''));
+        sec('Callees', d.callees, (x) => (x.name || '') + '  line ' +
+          (x.call_line || x.line || ''));
+        panel.webview.html = '<!doctype html><meta charset="utf-8"><body>' +
+          lines.join('') + '<style>' + panelCss() + '</style></body>';
+      } catch (e) {
+        vscode.window.showErrorMessage('matlabc: ' + (e && e.message));
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.showRelation', async (arg) => {
+      const name = (typeof arg === 'string' && arg) || currentSymbolName();
+      if (!name) {
+        vscode.window.showWarningMessage('matlabc: 请把光标放在函数/类名上');
+        return;
+      }
+      const kind = await vscode.window.showQuickPick(
+        ['calls', 'callers', 'contains', 'references'],
+        { placeHolder: '选择关系类型' });
+      if (!kind) return;
+      try {
+        const r = await withTimeout(
+          client.request('matlabc/relation', { name: name, kind: kind }), 2500);
+        const d = r.result;
+        if (!d) {
+          vscode.window.showWarningMessage('matlabc: 找不到 ' + name);
+          return;
+        }
+        if (d.pending) {
+          vscode.window.showInformationMessage(
+            'matlabc: 正在建全库索引，请稍后再试');
+          return;
+        }
+        const panel = vscode.window.createWebviewPanel(
+          'matlabcRelation', 'Relation：' + name + ' / ' + kind,
+          { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
+          { enableScripts: false });
+        const lines = ['<h2>' + escapeHtml(name) + ' / ' +
+          escapeHtml(kind) + '</h2>'];
+        if (d.available === false) {
+          lines.push('<div class="empty">' + escapeHtml(d.reason || 'unavailable') +
+            '</div>');
+        } else if (!d.items || !d.items.length) {
+          lines.push('<div class="empty">none</div>');
+        } else {
+          d.items.forEach((x) => {
+            lines.push('<div class="item">' + escapeHtml(
+              x.dotted_name || x.name || '') + '  ' +
+              escapeHtml(x.kind || x.edge_kind || '') + '  line ' +
+              escapeHtml(x.call_line || x.line || '') + '</div>');
+          });
+        }
+        panel.webview.html = '<!doctype html><meta charset="utf-8"><body>' +
+          lines.join('') + '<style>' + panelCss() + '</style></body>';
+      } catch (e) {
+        vscode.window.showErrorMessage('matlabc: ' + (e && e.message));
+      }
+    })
+  );
+
   // ---- 打开使用导览（R350）--------------------------------------------
   // 导览的**源文件只有一份**，在 `releases/demo/matlabc-tour.html`；
   // 打包时映射进包内 `media/tour.html`。两个位置都试：

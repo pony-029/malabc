@@ -94,7 +94,29 @@ SELECT callee_name, COUNT(*) FROM edges
 WHERE dst_symbol_id IS NULL GROUP BY callee_name;
 ```
 
-## 7. 为什么不用 SI 的符号文件
+## 7. Context / Relation / 搜索 / 片段
+
+- `context_symbol(cfg, name)`：返回签名、定义、成员、引用数、直接调用者/被调者。
+- `relation(cfg, name, kind)`：`contains/calls/callers/references`。
+- `search_project(...)`：支持 regex/多行/大小写/文件过滤；每条带
+  `source_link = path:line:col`。
+- `find_by_fragments(cfg, "getVal")`：camelCase 片段表；`getVal` 命中 `getValue`。
+- `bookmarks` / `snippets`：项目级 SQLite 持久化，CLI 可增删查。
+
+```bash
+python tools/mlc_project.py context --root . --name pkg.Cls.getValue
+python tools/mlc_project.py relation --root . --name main --kind calls
+python tools/mlc_project.py search --root . --pattern "helper" --regex
+python tools/mlc_project.py fragments --root . --query getVal
+python tools/mlc_project.py bookmark --root . --add --file a.m --line 2
+python tools/mlc_project.py snippet --root . --add --name loop \
+  --body "for i=1:n" --lang matlab
+```
+
+LSP 侧对应 `matlabc/context`、`matlabc/relation`；VS Code 命令
+`matlabc.showContext`、`matlabc.showRelation` 打开面板。
+
+## 8. 为什么不用 SI 的符号文件
 
 - 无公开 schema，无法保证跨版本。
 - 二进制格式不可 diff、不可 code review。

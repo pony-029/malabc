@@ -226,6 +226,52 @@ end
         for row in mlc_project.query_symbols(self.cfg):
             self.assertEqual(row["resolution"], "project")
 
+    def test_context_and_relation(self):
+        mlc_project.sync_project(self.cfg)
+        ctx = mlc_project.context_symbol(self.cfg, "main")
+        self.assertIsNotNone(ctx)
+        self.assertEqual(ctx["name"], "main")
+        self.assertGreaterEqual(ctx["references"], 1)
+        self.assertTrue(any(x["name"] == "helper" for x in ctx["callees"]))
+        cls = mlc_project.context_symbol(self.cfg, "pkg.Cls")
+        self.assertIn("classdef Cls < handle", cls["signature"])
+        self.assertTrue(any(m["name"] == "getValue" for m in cls["members"]))
+        rel = mlc_project.relation(self.cfg, "pkg.Cls", "contains")
+        self.assertTrue(any(x["name"] == "value" for x in rel["items"]))
+
+    def test_search_with_source_link(self):
+        mlc_project.sync_project(self.cfg)
+        rows = mlc_project.search_project(self.cfg, "helper")
+        self.assertTrue(rows)
+        self.assertTrue(any(r["line"] == 2 for r in rows))
+        self.assertRegex(rows[0]["source_link"], r"a\.m:\d+:\d+")
+        rx = mlc_project.search_project(self.cfg, r"hel\w+", regex=True)
+        self.assertTrue(rx)
+        multi = mlc_project.search_project(
+            self.cfg, "function y = main", multiline=True)
+        self.assertTrue(multi)
+
+    def test_name_fragments(self):
+        mlc_project.sync_project(self.cfg)
+        rows = mlc_project.find_by_fragments(self.cfg, "getVal")
+        self.assertTrue(any(r["name"] == "getValue" for r in rows))
+        rows2 = mlc_project.find_by_fragments(self.cfg, "main.help")
+        self.assertTrue(any(r["name"] == "helper" for r in rows2))
+
+    def test_bookmarks_and_snippets(self):
+        mlc_project.sync_project(self.cfg)
+        bid = mlc_project.add_bookmark(self.cfg, "a.m", 2, 5, "call site")
+        self.assertTrue(bid)
+        rows = mlc_project.list_bookmarks(self.cfg)
+        self.assertTrue(any(r["note"] == "call site" for r in rows))
+        self.assertEqual(mlc_project.remove_bookmark(self.cfg, bid), 1)
+
+        mlc_project.add_snippet(self.cfg, "loop", "for i=1:n\nend\n",
+                                "matlab")
+        self.assertTrue(any(r["name"] == "loop"
+                            for r in mlc_project.list_snippets(self.cfg)))
+        self.assertEqual(mlc_project.remove_snippet(self.cfg, "loop"), 1)
+
     def test_status_reports_stale(self):
         mlc_project.sync_project(self.cfg)
         _write(self.root, "a.m", """function y = main(x)
