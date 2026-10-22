@@ -271,6 +271,11 @@ def to_mir(source, extra_names=None, header=True, skip_names=None):
     for f in funcs:
         out.append("# source_sha256:%s" % src_hash)
         out.append("func:%s" % f["name"])
+        # 可变参数（cell）无法用固定签名表达：显式拒绝，绝不伪装成一个 f64
+        _va = [n for n in list(f["args"]) + list(f["rets"])
+               if n in ("varargin", "varargout")]
+        if _va:
+            out.append("reject:%s" % ",".join(_va))
         # 已知标量：i64 参数（下标源），后续的标量赋值/循环变量会继续加入
         _types = f.get("types") or {}
         scalar_names = set(n for n in f["args"]
@@ -439,13 +444,55 @@ def to_mir(source, extra_names=None, header=True, skip_names=None):
     return "\n".join(out) + "\n", stats
 
 
+SELFTEST = True
+
+
+def _selftest(argv=None):
+    """自证：`name(x)` 到底是**下标**还是**不支持的函数调用**。
+
+    两者词法上不可区分，只能靠"x 是不是已知标量"来判。判错的后果不是报错，
+    而是**静默变义**：`sqrt(x)` 会被当成索引，MIR、统计、对拍全跟着错。
+    """
+    good = 0
+    bad = 0
+
+    def chk(cond, name):
+        nonlocal good, bad
+        if cond:
+            good += 1
+        else:
+            bad += 1
+            print("  [FAIL] %s" % name)
+
+    t1, _ = to_mir("function y = f(v)\n% @m2c shape v 3\n% @m2c shape y 1\n"
+                   "y = v(2);\nend\n")
+    chk("op:OP-INDEX:y:v:2" in t1, "立即数下标应识别为 OP-INDEX")
+
+    t2, _ = to_mir("function y = f(v, i)\n% @m2c shape v 3\n"
+                   "% @m2c i64 i\n% @m2c shape y 1\ny = v(i);\nend\n")
+    chk("op:OP-INDEX:y:v:i" in t2, "标量变量下标应识别为 OP-INDEX")
+
+    t3, _ = to_mir("function y = f(x)\n% @m2c shape x 3\n% @m2c shape y 3\n"
+                   "y = sqrt(x);\nend\n")
+    chk("OP-INDEX" not in t3, "sqrt(x) 不得被识别成 OP-INDEX")
+    chk("unmapped:y = sqrt(x);" in t3, "sqrt(x) 应如实进 unmapped")
+
+    print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
+    return 1 if bad else 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="MATLAB → MIR")
-    ap.add_argument("source")
+    ap.add_argument("source", nargs="?")
     ap.add_argument("-o", "--out", default=None)
+    ap.add_argument("--selftest", action="store_true",
+                    help="自证：下标 vs 未知函数调用")
     ap.add_argument("--recursive", action="store_true",
                     help="目录模式下递归子目录（真实工程必需）")
     args = ap.parse_args(argv)
+
+    if args.selftest:
+        return _selftest()
 
     import os
 

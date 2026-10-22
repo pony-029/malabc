@@ -92,6 +92,9 @@ pub struct Func {
     pub unmapped: Vec<String>,
     /// 原始 `.m` 内容的 sha256；空 = 没提供（不伪造）。
     pub source_hash: String,
+    /// 显式拒绝的原因（如 `varargin`）：签名本身无法用 C 表达。
+    /// 有值时**不生成实现**，只留桩 —— 而不是按 f64 硬套。
+    pub reject: Option<String>,
 }
 
 impl Func {
@@ -280,6 +283,18 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
             seen_version = true;
             continue;
         }
+        if let Some(rsn) = line.strip_prefix("reject:") {
+            match cur.as_mut() {
+                Some(f) => {
+                    f.reject = Some(rsn.trim().to_string());
+                    continue;
+                }
+                None => {
+                    return Err(format!(
+                        "第 {} 行：reject 出现在 func 之前", lineno + 1))
+                }
+            }
+        }
         if let Some(name) = line.strip_prefix("func:") {
             if cur.is_some() {
                 return Err(format!("第 {} 行：func 未以 end 收束", lineno + 1));
@@ -292,6 +307,7 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
                 body: Vec::new(),
                 unmapped: Vec::new(),
                 source_hash: pending_hash.clone(),
+                reject: None,
             });
             continue;
         }

@@ -42,6 +42,9 @@ fn drivable(f: &Func) -> bool {
     let scalars: Vec<_> = f.args.iter().filter(|a| a.dtype == "i64").collect();
     // 数组入参可以是多个（矩阵乘需要 A、B）；每个都必须有形状 ——
     // 没形状就不知道该分配多大，那是"猜"，不是"生成"。
+    if f.reject.is_some() {
+        return false;      // 可变参数：签名无法表达，不参与驱动
+    }
     !arrays.is_empty()
         && arrays.iter().all(|a| !a.shape.is_empty())
         && scalars.len() == f.args.len() - arrays.len()

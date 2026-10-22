@@ -354,19 +354,57 @@ def check_octave(mir_path, src_path):
 
     text = io.open(mir_path, encoding="utf-8").read()
     funcs = mir_eval.parse(text)
-    src = io.open(src_path, encoding="utf-8", errors="replace").read()
     from translate.mir import split_functions
-    blocks = split_functions(src)
 
+    # **单文件**与**目录**两种源：真实工程是一堆 .m 互相调用
+    if os.path.isdir(src_path):
+        files = []
+        for dp, dn, fn in os.walk(src_path):
+            dn[:] = sorted(x for x in dn if not x.startswith("."))
+            for f in sorted(fn):
+                if f.lower().endswith(".m"):
+                    files.append(os.path.join(dp, f))
+    else:
+        files = [src_path]
+
+    # 只取"驱动会调用"的函数：无 unmapped 且有入参/返回值
+    need = set(f.name for f in funcs
+               if f.args and f.rets and not f.unmapped)
     d = tempfile.mkdtemp(prefix="m2c_l4_")
-    src_lines = src.splitlines()
-    for b in blocks:
-        # split_functions 给的是行号与正文行，没有整段原文：按行号切片还原
-        start = max(0, b["line0"] - 1)
-        stop = max(b["line_nos"]) if b["line_nos"] else start
-        body = "\n".join(src_lines[start:stop])
-        io.open(os.path.join(d, b["name"] + ".m"), "w",
-                encoding="utf-8", newline="").write(body + "\nend\n")
+
+    # 撞名检测：一次 Octave 调用问清 exist()。
+    # 为什么必须排除：YALMIP 自带 isnan.m / length.m，一旦进 addpath 就把
+    # Octave 自己的库遮蔽掉，连 fileparts/strchr 都会挂 —— 那时测的不是我们的代码。
+    collide = set()
+    if need:
+        probe = ";".join("printf('%%s %%d\\n','%s',exist('%s'))"
+                         % (n, n) for n in sorted(need))
+        rc0, out0 = _run([cli, "--no-gui", "--quiet", "--eval", probe],
+                         cwd=tempfile.gettempdir(), timeout=300)
+        if rc0 == 0:
+            for ln in out0.splitlines():
+                parts = ln.split()
+                if len(parts) == 2 and parts[1] not in ("0",):
+                    collide.add(parts[0])
+    need -= collide
+
+    written = set()
+    for path in files:
+        try:
+            src = io.open(path, encoding="utf-8", errors="replace").read()
+        except (IOError, OSError):
+            continue
+        src_lines = src.splitlines()
+        for b in split_functions(src):
+            if b["name"] in written or b["name"] not in need:
+                continue
+            written.add(b["name"])
+            start = max(0, b["line0"] - 1)
+            stop = max(b["line_nos"]) if b["line_nos"] else start
+            body = "\n".join(src_lines[start:stop])
+            io.open(os.path.join(d, b["name"] + ".m"), "w",
+                    encoding="utf-8", newline="").write(body + "\nend\n")
+
     drv = os.path.join(d, "driver.m")
     io.open(drv, "w", encoding="utf-8", newline="").write(_driver(funcs))
 
@@ -375,7 +413,9 @@ def check_octave(mir_path, src_path):
         cmd = [cli, "-batch", "run('%s')" % drv.replace("\\", "/")]
     rc, out = _run(cmd, cwd=d, timeout=600)
     if rc != 0:
-        print("PA4 失败（参考实现退出码 %s）：%s" % (rc, out.strip()[:160]))
+        tail = [ln for ln in out.strip().splitlines()
+                if ln.strip() and "shadows" not in ln][-4:]
+        print("PA4 失败（参考实现退出码 %s）：%s" % (rc, " / ".join(tail)))
         return ["L4 参考实现运行失败：%s" % out.strip().splitlines()[:2]], {"ran": False}
 
     ref = _c_lines(out)
@@ -386,6 +426,9 @@ def check_octave(mir_path, src_path):
     for f in funcs:
         r = ref.get(f.name)
         i = interp.get(f.name)
+        if f.name in collide:
+            u += 1
+            continue
         if r is None or i is None or "ERROR" in (r or ""):
             u += 1
             continue
@@ -422,7 +465,8 @@ def main(argv=None):
     ap.add_argument("--src", default=None,
                     help="原始 .m（--octave 时用来跑参考实现）")
     ap.add_argument("--octave", action="store_true",
-                    help="L4：用 Octave/MATLAB 跑真值并三方对照")
+                    help="L4：用 Octave/MATLAB 跑真值并三方对照"
+                         "（--src 可给单文件或目录）")
     ap.add_argument("--golden", default=None,
                     help="golden 夹具目录（解释器 ⇄ 夹具期望）")
     ap.add_argument("--show-unverified", type=int, default=5,

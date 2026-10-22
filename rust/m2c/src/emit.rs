@@ -786,6 +786,17 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
 
 /// 一个函数的 C 定义（支持多返回值与嵌套块）。
 pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
+    if let Some(reason) = &f.reject {
+        // 签名本身无法用 C 表达（varargin/varargout 是 cell、个数可变）。
+        // 按 f64 硬套是**静默变义** —— 宁可只给桩，并写清原因。
+        let mut out: Vec<String> = Vec::new();
+        out.push(format!("/* 由 m2c 从 MIR 生成 —— 来源函数：{} */", f.name));
+        out.push(proto(f).replace(';', " {"));
+        out.push(format!("    /* TODO(reject): {} 无法用固定签名表达 */", reason));
+        out.push("    return MLC_UNIMPLEMENTED;".to_string());
+        out.push("}".to_string());
+        return Ok(out.join("\n"));
+    }
     if f.rets.is_empty() {
         // 真实工程里到处是"过程"（无返回值）。整体失败会让整个工程生成不出来，
         // 所以生成一个**明确的桩**：能编译、调用会返回 UNIMPLEMENTED，不假装成功。

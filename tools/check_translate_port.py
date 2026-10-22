@@ -480,6 +480,19 @@ def check_reference_parity(fast=None):
     return []
 
 
+def check_mir_selftest():
+    """MIR 层的自证（下标 vs 未知函数调用）——快检也跑，成本 ~50ms。
+
+    为什么不放 check_tool_selftests：那只扫 `tools/`，而 mir.py 在 `translate/`。
+    """
+    rc, out = _run([sys.executable, os.path.join("translate", "mir.py"),
+                    "--selftest"])
+    if rc != 0:
+        bad = [ln.strip() for ln in out.splitlines() if "FAIL" in ln]
+        return ["TP5 MIR 自证未通过：%s" % (bad[:2] or out.strip()[-120:],)]
+    return []
+
+
 def check_ledger_stale(path=None):
     """台账里 status=verified 但备注还写着 UNIMPLEMENTED —— 备注比代码落后。
 
@@ -902,6 +915,7 @@ def run_checks(require_c=False):
     probs.extend(check_operators())
     fp, rep = check_fidelity(require_c=require_c, fast=FAST)
     probs.extend(fp)
+    probs.extend(check_mir_selftest())
     probs.extend(check_ledger_stale())
     probs.extend(check_ownership())
     probs.extend(check_dynamic_consistency())

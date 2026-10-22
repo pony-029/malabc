@@ -1498,67 +1498,6 @@ def _r5c_verdict(script, canon_bytes, canon_snapshot):
                canon_bytes - canon_snapshot, script, canon_bytes))
 
 
-#: `--help` 输出的落盘缓存。
-#:
-#: v1 的教训：输出是 **bytes**，直接 json.dump 会抛 TypeError，而异常路径把文件
-#: 截成了 0 字节 —— 一个会损坏门状态的缓存，比没有缓存更糟。v2 三条约束：
-#:   1. bytes 一律 base64 存；
-#:   2. **原子写**（写临时文件再 replace），失败不会留下半截；
-#:   3. 读写都吞掉所有异常 —— 缓存坏了只该"没命中"，不该让门崩。
-_HELP_CACHE_FILE = "releases/.help-output-cache.json"
-#: 缓存条目上限：6 个入口 × 2 种口径 = 12，留一倍余量。
-#: 派生产物要有生命周期 —— 只增不减的缓存会变成"永久垃圾"。
-_HELP_CACHE_MAX = 24
-
-
-def _help_fingerprint(root, script):
-    h = hashlib.sha256()
-    for rel in (script, "matlabc.py"):
-        p = os.path.join(root, rel)
-        try:
-            h.update(io.open(p, "rb").read())
-        except (IOError, OSError):
-            h.update(b"-")
-        h.update(b"|")
-    return h.hexdigest()[:16]
-
-
-def _prune_help_cache(data):
-    """超过上限就按 `at` 从旧到新丢弃（原地修改）。"""
-    if len(data) <= _HELP_CACHE_MAX:
-        return
-    def _at(kv):
-        v = kv[1]
-        return v.get("at", "") if isinstance(v, dict) else ""
-
-    for k, _ in sorted(data.items(), key=_at)[:len(data) - _HELP_CACHE_MAX]:
-        data.pop(k, None)
-
-
-def _load_help_cache(root):
-    try:
-        raw = io.open(os.path.join(root, _HELP_CACHE_FILE),
-                      encoding="utf-8").read()
-        data = json.loads(raw)
-        return data if isinstance(data, dict) else {}
-    except Exception:        # noqa: BLE001 - 缓存坏了就当没有
-        return {}
-
-
-def _save_help_cache(root, data):
-    p = os.path.join(root, _HELP_CACHE_FILE)
-    try:
-        d = os.path.dirname(p)
-        if d and not os.path.isdir(d):
-            os.makedirs(d)
-        tmp = p + ".tmp"
-        io.open(tmp, "w", encoding="utf-8", newline="").write(
-            json.dumps(data, ensure_ascii=False, sort_keys=True))
-        os.replace(tmp, p)
-    except Exception:        # noqa: BLE001 - 写不进去就退化为不缓存
-        pass
-
-
 def _prefetch_help(root, cache):
     """把每个入口的 `--help`（两种测量口径）**并发**跑掉。
 
@@ -1569,8 +1508,6 @@ def _prefetch_help(root, cache):
     只预取**已知会被用到**的键，主循环里的缓存判断保持原样 ——
     这样即使某天口径变了，也只会退回串行，不会算错。
     """
-    stored = _load_help_cache(root)
-    fps = dict((sc, _help_fingerprint(root, sc)) for sc in ENTRY_SCRIPTS)
     jobs = []
     # 两种测量口径：`HELP_MEASURE_COLUMNS`（终端里真读得到）与
     # `HELP_CANON_COLUMNS`（宽到不折行，只剩内容）。键必须与主循环一致。
@@ -1587,15 +1524,6 @@ def _prefetch_help(root, cache):
             hk = "%s::--help@C%d" % (script, cols)
             if hk in cache:
                 continue
-            ent = stored.get(hk)
-            if isinstance(ent, dict) and ent.get("fp") == fps[script]:
-                try:
-                    rc0 = int(ent["rc"])
-                    out0 = base64.b64decode(ent["out_b64"].encode("ascii"))
-                    cache[hk] = (rc0, out0)
-                    continue
-                except Exception:      # noqa: BLE001 - 坏条目就当没命中
-                    pass
             jobs.append((hk, script, cols))
     if not jobs:
         return
@@ -1605,26 +1533,11 @@ def _prefetch_help(root, cache):
         futs = {pool.submit(_run_safe_example, root, sc, ["--help"],
                             env_extra={"COLUMNS": str(cols)}): (hk, sc, cols)
                 for hk, sc, cols in jobs}
-        dirty = False
         for fut, (hk, sc, cols) in futs.items():
             try:
-                res = fut.result()
+                cache[hk] = fut.result()
             except Exception:      # 预取失败就不写缓存，让主循环自己跑一次
                 continue
-            cache[hk] = res
-            try:
-                stored[hk] = {
-                    "fp": fps[sc],
-                    "rc": int(res[0]),
-                    "out_b64": base64.b64encode(res[1]).decode("ascii"),
-                    "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                }
-                dirty = True
-            except Exception:      # noqa: BLE001
-                pass
-        if dirty:
-            _prune_help_cache(stored)
-            _save_help_cache(root, stored)
 
 
 def audit(root, on_problem, cache=None):
