@@ -282,6 +282,14 @@ chk(t.matlabFunctionLine && t.matlabFunctionLine(mtext, 'bar') === 4,
   'MATLAB 函数行号');
 chk(t.cFunctionLine && t.cFunctionLine(ctext, 'm2c_foo') === 2,
   'C 函数行号');
+chk(t.matlabFunctionRange && t.matlabFunctionRange(mtext, 'foo').end === 3,
+  'MATLAB 函数范围到下一个 function 前');
+chk(t.cFunctionRange && t.cFunctionRange(ctext, 'm2c_foo').end === 5,
+  'C 函数范围到匹配的右花括号');
+chk(t.mapLine && t.mapLine(2, 1, 3, 10, 12) === 11,
+  '行级映射取函数体内相对位置');
+chk(t.mapLine && t.mapLine(99, 1, 3, 10, 12) === 12,
+  '行级映射越界时钳到目标函数末尾');
 chk(ctx.subscriptions.length >= 5,
   'subscriptions 应至少 5 项（definition + references + hover + symbol + 诊断集合），实际 '
   + ctx.subscriptions.length);

@@ -175,7 +175,7 @@ code --install-extension matlabc-<版本>.vsix
 ### 2.3.1 C / MATLAB 双栏对照
 
 在 MATLAB 函数里右键 → **`matlabc: 打开 C/MATLAB 对照（侧边）`**：
-左栏 MATLAB、右栏 C，光标在同一个函数内移动时，另一栏自动滚到对应函数。
+左栏 MATLAB、右栏 C，光标在同一个函数内移动时，另一栏按行位置跟随。
 从 C 侧也能反向发起：光标放在 `m2c_foo` / `foo` 上，会找调用它的 MATLAB 函数。
 同步可用 **`matlabc: 开关 C/MATLAB 对照同步`** 临时关闭。
 
@@ -213,7 +213,7 @@ code --install-extension matlabc-<版本>.vsix
 | --- | --- |
 | `matlabc: 打开使用说明` | 就是本文（随扩展一起分发，离线可看） |
 | `matlabc: 打开使用说明（PDF）` | 本文的 PDF 版：四张示意图直接印在页面上，也适合转发 |
-| `matlabc: 打开 C/MATLAB 对照（侧边）` | 左 MATLAB、右 C，函数级同步滚动；C 侧也可反向发起 |
+| `matlabc: 打开 C/MATLAB 对照（侧边）` | 左 MATLAB、右 C，函数内行级跟随；C 侧也可反向发起 |
 | `matlabc: 开关 C/MATLAB 对照同步` | 临时开/关另一栏的自动跟随 |
 | `matlabc: 选择 Python 解释器` | 挑一个 Python 并验证能启动，写进设置 —— **启动失败时最先试它** |
 | `matlabc: 重新启动服务` | 索引卡住、刚改过设置时用 —— 只重启分析服务，不重开窗口 |

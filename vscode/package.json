@@ -85,6 +85,19 @@
           "default": true,
           "description": "C/MATLAB 对照打开后，光标在同一个函数内移动时自动把另一栏滚到对应函数。可在命令面板用「开关 C/MATLAB 对照同步」临时切换。"
         },
+        "matlabc.counterpartSyncMode": {
+          "type": "string",
+          "enum": [
+            "line",
+            "function"
+          ],
+          "enumDescriptions": [
+            "按函数体内相对位置跟随（默认；没有 source map 时可解释的近似）",
+            "只在进入另一个函数时跳到该函数定义"
+          ],
+          "default": "line",
+          "description": "对照同步粒度：line = 行级近似；function = 仅函数级跳转。"
+        },
         "matlabc.undoDiffLimit": {
           "type": "integer",
           "default": 8,

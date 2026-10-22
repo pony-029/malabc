@@ -178,6 +178,53 @@ function _cFunctionLine(text, name) {
   return m ? _lineOfOffset(text, m.index) : 0;
 }
 
+function _matlabFunctionRange(text, name) {
+  var start = _matlabFunctionLine(text, name);
+  if (!start) return { start: 0, end: 0 };
+  var re = /^[ \t]*function\b[^\n]*$/gm;
+  var m;
+  var next = 0;
+  while ((m = re.exec(text)) !== null) {
+    var line = _lineOfOffset(text, m.index);
+    if (line > start) { next = line; break; }
+  }
+  var end = next ? next - 1 : text.split(/\r?\n/).length;
+  return { start: start, end: Math.max(start, end) };
+}
+
+function _cFunctionRange(text, name) {
+  var start = _cFunctionLine(text, name);
+  if (!start) return { start: 0, end: 0 };
+  var lines = text.split(/\r?\n/);
+  var depth = 0;
+  var seen = false;
+  var i;
+  for (i = start - 1; i < lines.length; i++) {
+    var s = lines[i];
+    var j;
+    for (j = 0; j < s.length; j++) {
+      if (s[j] === '{') { depth++; seen = true; }
+      else if (s[j] === '}') {
+        depth--;
+        if (seen && depth <= 0) {
+          return { start: start, end: i + 1 };
+        }
+      }
+    }
+  }
+  return { start: start, end: lines.length };
+}
+
+// 行级同步：同一函数体内的相对位置。没有 source map 时，这是可解释的
+// 近似；不是把 MATLAB 第 N 行硬说成 C 第 N 行。
+function _mapLine(line, srcFrom, srcTo, dstFrom, dstTo) {
+  if (!(srcTo > srcFrom) || !(dstTo > dstFrom)) return dstFrom;
+  var r = (line - srcFrom) / (srcTo - srcFrom);
+  if (r < 0) r = 0;
+  if (r > 1) r = 1;
+  return Math.round(dstFrom + r * (dstTo - dstFrom));
+}
+
 function _rootUri() {
   var folders = vscode.workspace.workspaceFolders;
   return folders && folders.length ? folders[0].uri : null;
@@ -324,7 +371,7 @@ async function _openCounterpart(editor) {
         var ml = _matlabFunctionLine(mText, mn) || (target ? target.line : 1);
         pairs.push({ mName: mn, mLine: ml, cName: rawName,
                      cLine: fn ? fn.line : 1, cRel: doc.uri.fsPath,
-                     mUri: mUri });
+                     mUri: mUri, mRel: c.mfile || '' });
       });
       if (!target) target = { uri: mUri, line: pairs[0].mLine };
     }
@@ -336,6 +383,28 @@ async function _openCounterpart(editor) {
       '请确认工程内包含对应源码，或先运行 MIR/生成 C');
     return;
   }
+
+  // 一个 MATLAB 函数可能桥接多个 C 函数：默认取第一个会隐藏信息，
+  // 多结果时让用户选，和 Source Insight 的「Symbol Window」一致。
+  if (pairs.length > 1) {
+    var picks = pairs.map(function (p) {
+      return {
+        label: '$(symbol-function) ' + (isM ? p.cName : p.mName),
+        description: (isM ? p.cRel : p.mRel || '') + ':' +
+                     (isM ? p.cLine : p.mLine),
+        pair: p,
+      };
+    });
+    var chosen = await vscode.window.showQuickPick(picks, {
+      placeHolder: rawName + ' 有 ' + pairs.length + ' 个对照，选一个打开',
+    });
+    if (!chosen) return;
+    pairs = [chosen.pair];
+    target = isM
+      ? { uri: _uriFromRel(chosen.pair.cRel), line: chosen.pair.cLine }
+      : { uri: chosen.pair.mUri, line: chosen.pair.mLine };
+  }
+  if (!target || !target.uri) return;
 
   var targetEd;
   try {
@@ -354,12 +423,24 @@ async function _openCounterpart(editor) {
 
   var mUri = isM ? doc.uri : target.uri;
   var cUri = isM ? target.uri : doc.uri;
+  var mText = isM ? doc.getText() : targetEd.document.getText();
+  var cText = isM ? targetEd.document.getText() : doc.getText();
+  pairs.forEach(function (p) {
+    var mr = _matlabFunctionRange(mText, p.mName);
+    var cr = _cFunctionRange(cText, p.cName);
+    p.mStart = mr.start;
+    p.mEnd = mr.end;
+    p.cStart = cr.start;
+    p.cEnd = cr.end;
+  });
   counterpart = {
     mUri: mUri,
     cUri: cUri,
     pairs: pairs,
     sync: vscode.workspace.getConfiguration('matlabc')
       .get('counterpartSync', true),
+    syncMode: vscode.workspace.getConfiguration('matlabc')
+      .get('counterpartSyncMode', 'line'),
   };
   vscode.window.setStatusBarMessage(
     'matlabc: C/MATLAB 对照已打开（' + pairs.length + ' 对，' +
@@ -385,7 +466,20 @@ function _syncCounterpart(editor) {
   });
   if (!pair) return;
   var targetUri = isM ? counterpart.cUri : counterpart.mUri;
-  var targetLine = Math.max(0, (isM ? pair.cLine : pair.mLine) - 1);
+  var targetLine;
+  if (counterpart.syncMode === 'line' && pair.mStart && pair.cStart) {
+    var cur = editor.selection.active.line + 1;
+    if (isM) {
+      targetLine = _mapLine(cur, pair.mStart, pair.mEnd,
+                            pair.cStart, pair.cEnd) - 1;
+    } else {
+      targetLine = _mapLine(cur, pair.cStart, pair.cEnd,
+                            pair.mStart, pair.mEnd) - 1;
+    }
+  } else {
+    targetLine = (isM ? pair.cLine : pair.mLine) - 1;
+  }
+  targetLine = Math.max(0, targetLine);
   var te = _editorForUri(targetUri);
   if (!te) return;
   if (te.selection.active.line === targetLine) return;
@@ -4040,5 +4134,8 @@ module.exports = {
     cFunctionAt: _cFunctionAt,
     matlabFunctionLine: _matlabFunctionLine,
     cFunctionLine: _cFunctionLine,
+    matlabFunctionRange: _matlabFunctionRange,
+    cFunctionRange: _cFunctionRange,
+    mapLine: _mapLine,
   },
 };
