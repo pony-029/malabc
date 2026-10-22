@@ -3,6 +3,7 @@
 > 分析对象：`docs/SourceInsight4UserGuide4092.pdf`（Source Insight 4.0 User Guide，2018-03-19，436 页，1007 条书签）。
 > 目标：把 Source Insight 的**项目模型 + 符号数据库 + 上下文/关系视图**移植到本项目，而不是照搬一个 Windows 编辑器外壳。
 > 结论先行：**可移植的是“行为与数据模型”，不可直接移植的是“Windows UI、专有二进制格式、完整宏方言”**。
+> P0 产物：规格见 [`docs/si/`](si/)，原型见 `tools/mlc_project.py`。
 
 ---
 
@@ -240,7 +241,8 @@ collect_files → file_type → parse (frontends/ir) → symbols/refs/edges
 | `docs/si/09-performance.md` | 基准、索引预算、缓存、百万行验收 | P2 |
 | `docs/si/10-traceability.md` | SI 章节/命令 → 功能 ID → 代码 → 测试 | 持续 |
 
-> 本文件是总纲；第一批只写 `00/01/02/03`，避免文档先行、实现落后。
+> 本文件是总纲；P0 已落 `00`–`05`（总览/功能清单/项目模型/符号库/MATLAB 适配/30 轮路线），
+> 并用 `tools/mlc_project.py` + `tests/test_mlc_project.py` 兑现了最小原型。
 
 ---
 
