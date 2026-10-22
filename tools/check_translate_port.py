@@ -684,6 +684,15 @@ def check_m2c(require_c=False, fast=None):
     if outs[0] != outs[1]:
         probs.append("TP5 两次发射结果不一致（不满足确定性）")
 
+    # 源码行映射是双栏对照的依据：MIR 有 `# src` 时，生成的 C 必须把它
+    # 带到 `@m2c src` 注释里；否则扩展只能退回比例近似。
+    gen_text = outs[0].decode("utf-8", "replace")
+    src_marks = gen_text.count("@m2c src:")
+    if "# src:" in mir_text and src_marks == 0:
+        probs.append("TP5 MIR 有 # src 但生成的 C 没有任何 @m2c src")
+    if src_marks:
+        print("  [TP5] source map：%d 条源码行注释" % src_marks)
+
     if fast:
         print("  [TP5] 快检：跳过 C 编译与运行（发版快筛；CI 跑全量）")
         total = st["ops"] + st["unmapped"]

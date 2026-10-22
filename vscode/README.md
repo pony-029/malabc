@@ -86,7 +86,8 @@ MATLAB 工程的代码理解工具。
 - 也支持从 C 侧发起：光标放在 `m2c_foo` / `foo` 上，反查调用它的 MATLAB 函数；
 - 映射来自分析器的 `matlabc/cbridge`，扩展不自己解析 C。
 
-对照同步可用 **`matlabc: 开关 C/MATLAB 对照同步`** 临时关闭。
+对照同步可用 **`matlabc: 开关 C/MATLAB 对照同步`** 临时关闭。  
+如果 `.m` 比 C 新，状态栏会提示 **C 可能过期**，避免 source map 精确地跳到旧行。
 
 ### 命令面板里的命令
 

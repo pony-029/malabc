@@ -226,6 +226,14 @@ function _mapLine(line, srcFrom, srcTo, dstFrom, dstTo) {
   return Math.round(dstFrom + r * (dstTo - dstFrom));
 }
 
+function _isStale(mPath, cPath) {
+  try {
+    return fs.statSync(mPath).mtimeMs > fs.statSync(cPath).mtimeMs;
+  } catch (e) {
+    return false;
+  }
+}
+
 function _parseSourceMap(text) {
   var lines = String(text || '').split(/\r?\n/);
   var out = [];
@@ -470,6 +478,7 @@ async function _openCounterpart(editor) {
     syncMode: vscode.workspace.getConfiguration('matlabc')
       .get('counterpartSyncMode', 'line'),
     cMap: _parseSourceMap(cText),
+    stale: _isStale(mUri.fsPath, cUri.fsPath),
   };
   if (extensionContext && extensionContext.workspaceState) {
     try {
@@ -481,7 +490,8 @@ async function _openCounterpart(editor) {
   }
   vscode.window.setStatusBarMessage(
     'matlabc: C/MATLAB 对照已打开（' + pairs.length + ' 对，' +
-    (counterpart.sync ? '同步开' : '同步关') + '）', 5000);
+    (counterpart.sync ? '同步开' : '同步关') +
+    (counterpart.stale ? '；C 可能过期，请重新生成' : '') + '）', 5000);
   log('counterpart ' + rawName + ' -> ' + target.uri.fsPath +
       ':' + target.line + '（' + pairs.length + ' 对）');
   _syncCounterpart(editor);
@@ -526,6 +536,7 @@ async function _reopenCounterpart() {
       syncMode: vscode.workspace.getConfiguration('matlabc')
         .get('counterpartSyncMode', 'line'),
       cMap: _parseSourceMap(cDoc.getText()),
+      stale: _isStale(mUri.fsPath, cUri.fsPath),
     };
     _syncCounterpart(mEd);
     vscode.window.setStatusBarMessage('matlabc: 已恢复 C/MATLAB 对照', 4000);
