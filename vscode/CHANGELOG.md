@@ -2,6 +2,17 @@
 
 ---
 
+## 1.7.9
+
+- **`y(i) = v` 数组元素赋值**（`OP-SETIDX`）：C 侧 `mlc_op_setidx`（1-based、就地写、
+  越界 `MLC_ERR`）、发射器特例（目标数组就是 dst，不新分配）、MIR 降级
+  （右值 `x(j)` 先取临时量、字面量转 `const`）
+- **循环变量即为 i64**：`for i = 1:4  y(i) = x(i)  end` 此前被判成
+  "索引 i 不是 i64 标量" → 整函数 unimplemented；现在放行
+- 数值语料 **12/12 全部映射、未映射 0**，`cumsum_loop` 实测 `1 2 3 4`，
+  期望由 `tools/numeric_expected.py --update` 用 **Octave 真值**写回
+- `operators.parse_line` 认识 `y(i) = v`，算子表因此自洽（每个算子都有可解析 sample）
+
 ## 1.7.8
 
 - **二维列切片 `A(:,j)`**：降成「`A(:)` 列优先展平 + 切片」，**不需要新算子**

@@ -309,6 +309,28 @@ mlc_status mlc_op_min(const mlc_array *a, mlc_array *out)
     return MLC_OK;
 }
 
+mlc_status mlc_op_setidx(mlc_array *a, const mlc_array *v, int64_t i)
+{
+    int64_t n;
+
+    if (a == NULL || v == NULL || a->data == NULL || v->data == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64 || v->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    if (mlc_array_numel(v) != 1) {
+        return MLC_ERR;          /* 右值必须是标量（1x1） */
+    }
+    n = mlc_array_numel(a);
+    /* IDX-1：唯一允许 -1 的地方；越界一律 MLC_ERR，不静默截断 */
+    if (i < 1 || i > n) {
+        return MLC_ERR;
+    }
+    ((double *)a->data)[i - 1] = ((const double *)v->data)[0];
+    return MLC_OK;
+}
+
 mlc_status mlc_op_index(const mlc_array *a, int64_t matlab_index,
                         mlc_array *out)
 {

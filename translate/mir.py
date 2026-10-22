@@ -391,6 +391,36 @@ def _lower_col_slice(out, code, shapes, counter, known_ops):
     return True
 
 
+#: `y(i) = <右值>`（右值可以是数字、名字、或 name(idx)）
+_SETIDX_RE = re.compile(r"^([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*|\d+)\s*\)"
+                        r"\s*=\s*(.+?)\s*;?\s*$")
+_RHS_CALL = re.compile(r"^([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*|\d+)\s*\)$")
+
+
+def _lower_setidx(out, code, counter, known_ops):
+    """`y(i) = v` -> OP-SETIDX；右值是 `x(j)` 时先取出来放临时量。"""
+    if "OP-SETIDX" not in known_ops:
+        return False
+    m = _SETIDX_RE.match(code)
+    if not m:
+        return False
+    lhs, idx, rhs = m.group(1), m.group(2), m.group(3).strip()
+    if "OP-INDEX" in known_ops:
+        mc = _RHS_CALL.match(rhs)
+        if mc:
+            counter[0] += 1
+            tmp = "__s%d" % counter[0]
+            out.append("op:OP-INDEX:%s:%s:%s" % (tmp, mc.group(1), mc.group(2)))
+            rhs = tmp
+        elif re.match(r"^-?\d+(\.\d+)?$", rhs):
+            counter[0] += 1
+            tmp = "__k%d" % counter[0]
+            out.append("const:%s:%s" % (tmp, rhs))
+            rhs = tmp
+    out.append("op:OP-SETIDX:%s:%s:%s" % (lhs, rhs, idx))
+    return True
+
+
 def to_mir(source, extra_names=None, header=True, skip_names=None,
            srcfile=None):
     """返回 (mir_text, stats)。
@@ -511,6 +541,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                 continue
             if _lower_col_slice(out, code, f.get("shapes") or {}, idx_counter,
                                 known_ops):
+                continue
+            if _lower_setidx(out, code, idx_counter, known_ops):
                 continue
             _m2 = _IDX2_RE.match(code)
             if _m2:

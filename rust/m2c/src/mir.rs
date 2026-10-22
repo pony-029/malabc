@@ -102,6 +102,22 @@ pub struct Func {
 
 impl Func {
     /// 作用域内已声明的名字（参数 + 返回值 + 所有算子输出 + 循环变量）。
+    /// 是否是 `for` 的循环变量 —— 它在 C 里天然就是 int64_t。
+    ///
+    /// 没有它的话，`y(i) = x(i)` 里的 i 会被判成"非 i64 标量"，
+    /// 而真实代码里用循环变量取下标的写法到处都是。
+    pub fn is_loop_var(&self, name: &str) -> bool {
+        let mut hit = false;
+        walk_stmts(&self.body, &mut |s| {
+            if let Stmt::For { var, .. } = s {
+                if var == name {
+                    hit = true;
+                }
+            }
+        });
+        hit
+    }
+
     pub fn declared(&self) -> Vec<String> {
         let mut v: Vec<String> = Vec::new();
         for a in &self.args {

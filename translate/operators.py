@@ -52,6 +52,11 @@ OPERATORS = (
      "kind": "reduction", "rules": ("ORDER-1",),
      "sample": "y = min(x);",
      "verified_by": "op_min_vector.json"},
+    # 由 mir.py 的降级产生（`y(i) = v`），不经过 parse_line —— 因此没有 sample；
+    # 它由数值语料 cumsum_loop + 夹具 op_setidx_1d 共同验证。
+    {"id": "OP-SETIDX", "matlab": "y(i) = v", "c": "mlc_op_setidx",
+     "kind": "assign", "rules": ("IDX-1",),
+     "sample": "y(2) = 3;"},
     {"id": "OP-INDEX", "matlab": "x(i)", "c": "mlc_op_index",
      "kind": "index", "rules": ("IDX-1", "ORDER-1"),
      "sample": "y = x(2);",
@@ -89,8 +94,11 @@ OPERATORS = (
 C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV",
                  "OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN", "OP-INDEX",
                  "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE",
-                 "OP-FLATTEN", "OP-MASK", "OP-FIND")
+                 "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX")
 
+#: `y(i) = v`（元素赋值）。左边带下标，_ASSIGN_RE 抓不到，单列一条。
+_SETIDX_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*|\d+)\s*\)"
+                          r"\s*=\s*([A-Za-z_]\w*|-?\d+(?:\.\d+)?)\s*;?\s*$")
 _ASSIGN_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*(.+?)\s*;\s*$")
 _BIN_RE = re.compile(r"^([A-Za-z_]\w*)\s*(\.\*|\./|\+|-|\*)\s*([A-Za-z_]\w*)$")
 _CALL_RE = re.compile(r"^(sum|mean|max|min)\s*\(\s*([A-Za-z_]\w*)\s*\)$")
@@ -142,6 +150,13 @@ def by_id(op_id):
 
 def parse_line(line):
     """把一条 MATLAB 赋值语句识别成算子；识别不了返回 None（进 unmapped）。"""
+    sid = _SETIDX_LINE.match(line or "")
+    if sid:
+        # args = (右值, 下标) —— 与 mir.py 降级后的 op: 行同序
+        return {"operator": "OP-SETIDX", "lhs": sid.group(1),
+                "args": [sid.group(3), sid.group(2)],
+                "raw": line.rstrip("\n")}
+
     m = _ASSIGN_RE.match(line or "")
     if not m:
         return None
