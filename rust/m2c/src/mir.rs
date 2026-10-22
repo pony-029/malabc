@@ -31,6 +31,8 @@ pub struct Op {
     pub id: String,
     pub lhs: String,
     pub args: Vec<String>,
+    /// 原始 MATLAB 行号；0 = 未知（不伪造映射）。
+    pub src: i64,
 }
 
 /// 变量声明：名字 / dtype / 形状（形状为空 = 未知）。
@@ -172,7 +174,7 @@ fn parse_var(spec: &str) -> Result<Var, String> {
     Ok(Var { name: parts[0].to_string(), dtype: parts[1].to_string(), shape })
 }
 
-fn parse_op(rest: &str) -> Result<Op, String> {
+fn parse_op(rest: &str, src: i64) -> Result<Op, String> {
     let parts: Vec<&str> = rest.split(':').map(|x| x.trim()).collect();
     if parts.len() < 3 {
         return Err(format!("op 至少要有 id/lhs/一个参数：{}", rest));
@@ -185,7 +187,8 @@ fn parse_op(rest: &str) -> Result<Op, String> {
     if args.is_empty() {
         return Err(format!("op 参数为空：{}", rest));
     }
-    Ok(Op { id: parts[0].to_string(), lhs: parts[1].to_string(), args })
+    Ok(Op { id: parts[0].to_string(), lhs: parts[1].to_string(),
+            args, src })
 }
 
 fn parse_cond(rest: &str, kw: &str) -> Result<Cond, String> {
@@ -232,6 +235,7 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
     let mut cur: Option<Func> = None;
     let mut stack: Vec<Frame> = Vec::new();
     let mut seen_version = false;
+    let mut pending_src: i64 = 0;
 
     macro_rules! push_stmt {
         ($st:expr) => {{
@@ -248,6 +252,10 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
 
     for (lineno, raw) in text.lines().enumerate() {
         let line = raw.trim();
+        if let Some(rest) = line.strip_prefix("# src:") {
+            pending_src = rest.trim().parse().unwrap_or(0);
+            continue;
+        }
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
@@ -332,7 +340,8 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
                 in_else: false,
             });
         } else if let Some(rest) = line.strip_prefix("op:") {
-            let op = parse_op(rest)?;
+            let op = parse_op(rest, pending_src)?;
+            pending_src = 0;
             push_stmt!(Stmt::Op(op));
         } else if let Some(rest) = line.strip_prefix("var:") {
             let v = parse_var(rest)?;

@@ -225,6 +225,33 @@ function _mapLine(line, srcFrom, srcTo, dstFrom, dstTo) {
   return Math.round(dstFrom + r * (dstTo - dstFrom));
 }
 
+function _parseSourceMap(text) {
+  var lines = String(text || '').split(/\r?\n/);
+  var out = [];
+  var re = /\/\*\s*@m2c src:(\d+)\s*\*\//;
+  for (var i = 0; i < lines.length; i++) {
+    var m = re.exec(lines[i]);
+    if (m) out.push({ cLine: i + 1, src: parseInt(m[1], 10) });
+  }
+  return out;
+}
+
+function _srcToCLine(map, src) {
+  for (var i = 0; i < map.length; i++) {
+    if (map[i].src >= src) return map[i].cLine;
+  }
+  return map.length ? map[map.length - 1].cLine : 0;
+}
+
+function _cToSrc(map, cLine) {
+  var hit = 0;
+  for (var i = 0; i < map.length; i++) {
+    if (map[i].cLine <= cLine) hit = map[i].src;
+    else break;
+  }
+  return hit;
+}
+
 function _rootUri() {
   var folders = vscode.workspace.workspaceFolders;
   return folders && folders.length ? folders[0].uri : null;
@@ -441,6 +468,7 @@ async function _openCounterpart(editor) {
       .get('counterpartSync', true),
     syncMode: vscode.workspace.getConfiguration('matlabc')
       .get('counterpartSyncMode', 'line'),
+    cMap: _parseSourceMap(cText),
   };
   vscode.window.setStatusBarMessage(
     'matlabc: C/MATLAB 对照已打开（' + pairs.length + ' 对，' +
@@ -469,12 +497,23 @@ function _syncCounterpart(editor) {
   var targetLine;
   if (counterpart.syncMode === 'line' && pair.mStart && pair.cStart) {
     var cur = editor.selection.active.line + 1;
-    if (isM) {
-      targetLine = _mapLine(cur, pair.mStart, pair.mEnd,
-                            pair.cStart, pair.cEnd) - 1;
-    } else {
-      targetLine = _mapLine(cur, pair.cStart, pair.cEnd,
-                            pair.mStart, pair.mEnd) - 1;
+    var cMap = counterpart.cMap || [];
+    var mapped = 0;
+    if (isM && cMap.length) {
+      mapped = _srcToCLine(cMap, cur);
+      if (mapped) targetLine = mapped - 1;
+    } else if (isC && cMap.length) {
+      mapped = _cToSrc(cMap, cur);
+      if (mapped) targetLine = mapped - 1;
+    }
+    if (!mapped) {
+      if (isM) {
+        targetLine = _mapLine(cur, pair.mStart, pair.mEnd,
+                              pair.cStart, pair.cEnd) - 1;
+      } else {
+        targetLine = _mapLine(cur, pair.cStart, pair.cEnd,
+                              pair.mStart, pair.mEnd) - 1;
+      }
     }
   } else {
     targetLine = (isM ? pair.cLine : pair.mLine) - 1;
@@ -4137,5 +4176,8 @@ module.exports = {
     matlabFunctionRange: _matlabFunctionRange,
     cFunctionRange: _cFunctionRange,
     mapLine: _mapLine,
+    parseSourceMap: _parseSourceMap,
+    srcToCLine: _srcToCLine,
+    cToSrc: _cToSrc,
   },
 };

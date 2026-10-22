@@ -164,6 +164,13 @@ class TestFidelity(unittest.TestCase):
 
 
 class TestSourceHandling(unittest.TestCase):
+    def test_mir_keeps_source_line(self):
+        text = mir.to_mir(
+            "function y = f(x)\n% @m2c shape x 3\n"
+            "% @m2c shape y 3\ny = x + x;\nend\n")[0]
+        self.assertIn("# src:4", text)
+        self.assertIn("op:OP-ADD:y:x:x", text)
+
     def test_bom_source_is_read(self):
         tmp = tempfile.mkdtemp(prefix="mlc_bom_")
         try:

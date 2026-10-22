@@ -272,6 +272,22 @@ mod tests {
     }
 
     #[test]
+    fn op_keeps_source_line() {
+        let f = &parse(concat!(
+            "version 3\nfunc:f\narg:a:f64:2\n",
+            "# src:42\nop:OP-ADD:a:a:a\n# src:55\nop:OP-SUM:a:a\nend\n"))
+            .unwrap()[0];
+        match &f.body[0] {
+            Stmt::Op(op) => assert_eq!(op.src, 42),
+            _ => panic!("expected op"),
+        }
+        match &f.body[1] {
+            Stmt::Op(op) => assert_eq!(op.src, 55),
+            _ => panic!("expected op"),
+        }
+    }
+
+    #[test]
     fn dynamic_mask_shape_is_unknown() {
         let f = &parse(concat!(
             "version 3\nfunc:f\narg:v:f64:3\nret:z:f64:2\n",
@@ -315,6 +331,10 @@ fn arg_ref(f: &Func, name: &str) -> String {
 fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
     let mut out = Vec::new();
     let pad = indent.to_string();
+    // 给扩展/调试器留可读的源码行号；没有行号就不写，绝不伪造。
+    if op.src > 0 {
+        out.push(format!("{}/* @m2c src:{} */", pad, op.src));
+    }
     let lhs = ident(&op.lhs);
     let dst = if out_is_ptr { lhs.clone() } else { format!("&{}", lhs) };
 

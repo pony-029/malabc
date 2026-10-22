@@ -99,7 +99,7 @@ def split_functions(source):
     funcs = []
     cur = None
     depth = 0
-    for raw in (source or "").splitlines():
+    for raw_no, raw in enumerate((source or "").splitlines(), 1):
         m = _FUNC_RE.match(raw)
         if m and depth == 0:
             outs = m.group("outs")
@@ -112,8 +112,8 @@ def split_functions(source):
             args = [x.strip() for x in (m.group("args") or "").split(",")
                     if x.strip()]
             cur = {"name": m.group("name"), "args": args, "rets": rets,
-                   "lines": [], "types": {}, "shapes": {},
-                   "locals": []}
+                   "lines": [], "line_nos": [], "line0": raw_no,
+                   "types": {}, "shapes": {}, "locals": []}
             funcs.append(cur)
             depth = 1
             continue
@@ -126,6 +126,7 @@ def split_functions(source):
                 code.startswith("if "):
             depth += 1
             cur["lines"].append(raw)
+            cur["line_nos"].append(raw_no)
             continue
         if code == "end" or code.startswith("end "):
             depth -= 1
@@ -134,6 +135,7 @@ def split_functions(source):
                 cur = None
             else:
                 cur["lines"].append(raw)
+                cur["line_nos"].append(raw_no)
             continue
         lm = _LOCAL_RE.match(raw)
         if lm:
@@ -151,6 +153,7 @@ def split_functions(source):
                     cur["types"][n] = am.group("type")
             continue
         cur["lines"].append(raw)
+        cur["line_nos"].append(raw_no)
     return funcs
 
 
@@ -268,7 +271,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None):
             if _t == "i64":
                 scalars.add(_n)
         blocks = []                    # 块栈："for" / "if"
-        for line in f["lines"]:
+        for line_i, line in enumerate(f["lines"]):
+            src_line = (f.get("line_nos") or [0] * len(f["lines"]))[line_i]
             code = _clean(line).strip()
             if not code:
                 continue
@@ -381,6 +385,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None):
                 if sa and sb and len(sa) == 2 and len(sb) == 2 \
                         and sa[1] == sb[0]:
                     oid = "OP-MATMUL"
+            if src_line:
+                out.append("# src:%d" % src_line)
             out.append("op:%s:%s:%s" % (oid, use["lhs"], ":".join(args)))
             n_ops += 1
             per_op[use["operator"]] = per_op.get(use["operator"], 0) + 1

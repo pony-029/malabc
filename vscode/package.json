@@ -96,7 +96,7 @@
             "只在进入另一个函数时跳到该函数定义"
           ],
           "default": "line",
-          "description": "对照同步粒度：line = 行级近似；function = 仅函数级跳转。"
+          "description": "对照同步粒度：line = 优先用 m2c 的 @m2c src 行号，缺失时按函数体比例；function = 仅函数级跳转。"
         },
         "matlabc.undoDiffLimit": {
           "type": "integer",

@@ -290,6 +290,23 @@ chk(t.mapLine && t.mapLine(2, 1, 3, 10, 12) === 11,
   '行级映射取函数体内相对位置');
 chk(t.mapLine && t.mapLine(99, 1, 3, 10, 12) === 12,
   '行级映射越界时钳到目标函数末尾');
+
+// source map 注释：MATLAB 行号写在 C 语句前
+const cmapText = [
+  'void f(void) {',
+  '    /* @m2c src:12 */',
+  '    a = b;',
+  '    /* @m2c src:20 */',
+  '    c = d;',
+  '}',
+].join('\n');
+const cmap = t.parseSourceMap ? t.parseSourceMap(cmapText) : [];
+chk(cmap.length === 2 && cmap[0].cLine === 2 && cmap[0].src === 12,
+  'source map 能解析 C 行 -> MATLAB 行');
+chk(t.srcToCLine && t.srcToCLine(cmap, 13) === 4,
+  'MATLAB 行 13 映射到下一个 C 语句');
+chk(t.cToSrc && t.cToSrc(cmap, 5) === 20,
+  'C 行 5 映射回 MATLAB 行 20');
 chk(ctx.subscriptions.length >= 5,
   'subscriptions 应至少 5 项（definition + references + hover + symbol + 诊断集合），实际 '
   + ctx.subscriptions.length);

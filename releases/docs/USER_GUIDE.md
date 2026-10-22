@@ -175,7 +175,7 @@ code --install-extension matlabc-<版本>.vsix
 ### 2.3.1 C / MATLAB 双栏对照
 
 在 MATLAB 函数里右键 → **`matlabc: 打开 C/MATLAB 对照（侧边）`**：
-左栏 MATLAB、右栏 C，光标在同一个函数内移动时，另一栏按行位置跟随。
+左栏 MATLAB、右栏 C，光标在同一个函数内移动时，另一栏按行位置跟随：优先读 C 里的 `/* @m2c src:N */`，没有映射时按函数体比例。
 从 C 侧也能反向发起：光标放在 `m2c_foo` / `foo` 上，会找调用它的 MATLAB 函数。
 同步可用 **`matlabc: 开关 C/MATLAB 对照同步`** 临时关闭。
 
