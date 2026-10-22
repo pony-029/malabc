@@ -2,6 +2,23 @@
 
 ---
 
+## 1.8.0
+
+- **TP8 扩到全量已实现清单**：`operators.C_IMPLEMENTED` ⇄ `emit.rs::C_IMPLEMENTED`
+  交叉核对（16 个算子在册）。上轮正是漏改一份导致 `OP-SETIDX: 未知算子`，
+  而当时没有门看得见。两向验证：删掉 Rust 侧一项 →
+  `TP8 已实现算子清单不一致：只在算子表 ['OP-SETIDX'] ／ 只在 Rust 无`
+- **TP7 增加"期望是否仍是真值"核对**：跑 `numeric_expected.py`，期望过期即判红 ——
+  否则"C 与期望一致"可能只是两者一起错
+- 归约内运算扩到 `+ - .* ./ *`（`max(x + 1)` 这类归一化开端），
+  立即数自动转 `const` 临时量
+- 数值语料扩到 **15 个函数**：新增 `for_acc`（for 累积）、`shiftmax`（立即数+归约），
+  均通过 Octave 真值核对（`for_acc: 10`、`shiftmax: 5`）
+- 修 `y = 0` 当 y 是**数组**时被当成非法标量赋值 → 现在发 `const`
+- **已知缺口（未修，如实记）**：`while` 循环里的标量计数器 `i = 1` 会被声明成
+  `mlc_array i;` 而触发 `TODO(set)` —— `while_acc` 因此从语料中移除；
+  `sum(A(:,2))`（归约里套列切片）同样未支持
+
 ## 1.7.9
 
 - **`y(i) = v` 数组元素赋值**（`OP-SETIDX`）：C 侧 `mlc_op_setidx`（1-based、就地写、

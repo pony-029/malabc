@@ -47,7 +47,7 @@
 
 | 版本 | 日期 | 大小 | 主要变化 | 文件 |
 | --- | --- | --- | --- | --- |
-| 1.7.9（当前） | 2026-10-22 | 2454 KB | **`y(i) = v` 数组元素赋值**（`OP-SETIDX`）：C 侧 `mlc_op_setidx`（1-based、就地写… | `vsix/matlabc-1.7.9.vsix` |
+| 1.8.0（当前） | 2026-10-22 | 2455 KB | **TP8 扩到全量已实现清单**：`operators.C_IMPLEMENTED` ⇄ `emit.rs::C_IMPLEMEN… | `vsix/matlabc-1.8.0.vsix` |
 
 ## 归档约定
 

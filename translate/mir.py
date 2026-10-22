@@ -331,7 +331,12 @@ def _lower_index2(out, lhs, arr, ia, ib, m, counter, unmapped_kinds, code):
 #: `y = sum(a .* b)` / `mean` / `max` / `min`
 _REDUCE_ELEMWISE = re.compile(
     r"^([A-Za-z_]\w*)\s*=\s*(sum|mean|max|min)\s*\(\s*"
-    r"([A-Za-z_]\w*)\s*(?:\.\*|\*)\s*([A-Za-z_]\w*)\s*\)\s*;?\s*$")
+    r"([A-Za-z_]\w*|-?\d+(?:\.\d+)?)\s*"
+    r"(\.\*|\./|\+|-|\*)\s*"
+    r"([A-Za-z_]\w*|-?\d+(?:\.\d+)?)\s*\)\s*;?\s*$")
+
+_BIN_OP_OF = {".*": "OP-MUL", "*": "OP-MUL", "./": "OP-DIV",
+              "+": "OP-ADD", "-": "OP-SUB"}
 
 _OP_OF = {"sum": "OP-SUM", "mean": "OP-MEAN", "max": "OP-MAX", "min": "OP-MIN"}
 
@@ -341,13 +346,26 @@ def _lower_reduce_elementwise(out, code, counter, unmapped_kinds, op_ids):
     m = _REDUCE_ELEMWISE.match(code)
     if not m:
         return False
-    lhs, fn, a, b = m.group(1), m.group(2), m.group(3), m.group(4)
+    lhs, fn = m.group(1), m.group(2)
+    a, bop, b = m.group(3), m.group(4), m.group(5)
     op = _OP_OF.get(fn)
-    if op is None or op not in op_ids:
+    bop_id = _BIN_OP_OF.get(bop)
+    if op is None or bop_id is None or op not in op_ids \
+            or bop_id not in op_ids:
         return False
+    # 立即数先转成 [1] 的数组：算子只认 mlc_array
+    args = []
+    for side in (a, b):
+        if re.match(r"^-?\d+(\.\d+)?$", side):
+            counter[0] += 1
+            k = "__k%d" % counter[0]
+            out.append("const:%s:%s" % (k, side))
+            args.append(k)
+        else:
+            args.append(side)
     counter[0] += 1
     tmp = "__m%d" % counter[0]
-    out.append("op:OP-MUL:%s:%s:%s" % (tmp, a, b))
+    out.append("op:%s:%s:%s:%s" % (bop_id, tmp, args[0], args[1]))
     out.append("op:%s:%s:%s" % (op, lhs, tmp))
     return True
 
@@ -567,8 +585,13 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                     lhs = am.group(1)
                     rhs = am.group(2).strip().rstrip(";").strip()
                     if _ATOM.match(rhs):
-                        scalar_names.add(lhs)
-                        out.append("set:%s:%s" % (lhs, rhs))
+                        if (f.get("shapes") or {}).get(lhs):
+                            # 左值是**数组**（有 shape 注解）：标量赋值语义是
+                            # "把 1x1 数组整体写成这个值" -> const
+                            out.append("const:%s:%s" % (lhs, rhs))
+                        else:
+                            scalar_names.add(lhs)
+                            out.append("set:%s:%s" % (lhs, rhs))
                         continue
                     fm0 = _FILL_RE.match(rhs)
                     if fm0:

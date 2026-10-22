@@ -405,6 +405,26 @@ def check_dynamic_consistency():
                      % (sorted(mine), sorted(from_c)))
     if not probs:
         print("  [TP8] 分配型算子三处一致：%s" % "、".join(sorted(mine)))
+
+    # ---- 全量已实现清单：同样有两份副本，必须交叉核对 ----
+    mine_all = set(getattr(operators, "C_IMPLEMENTED", ()))
+    rust_all = set()
+    if os.path.isfile(rs):
+        txt = io.open(rs, encoding="utf-8").read()
+        m = re.search(r"C_IMPLEMENTED:\s*&\[&str\]\s*=\s*&\[(.*?)\]",
+                      txt, re.S)
+        if m:
+            rust_all = set(re.findall(r'"(OP-[A-Z0-9]+)"', m.group(1)))
+        else:
+            probs.append("TP8 在 emit.rs 里找不到 C_IMPLEMENTED 清单")
+    if mine_all != rust_all:
+        only_py = sorted(mine_all - rust_all)
+        only_rs = sorted(rust_all - mine_all)
+        probs.append(
+            "TP8 已实现算子清单不一致：只在算子表 %s ／ 只在 Rust %s"
+            % (only_py or "无", only_rs or "无"))
+    elif mine_all:
+        print("  [TP8] 已实现算子清单一致：%d 个" % len(mine_all))
     return probs
 
 
@@ -504,6 +524,7 @@ def check_numeric_corpus(fast=None):
     fast = FAST if fast is None else fast
     if fast:
         return []
+    probs = []
     src = os.path.join(ROOT, "translate", "examples", "numeric")
     exp = os.path.join(ROOT, "translate", "examples", "numeric.expected")
     if not os.path.isdir(src) or not os.path.isfile(exp):
@@ -547,7 +568,16 @@ def check_numeric_corpus(fast=None):
         diff = [(a, b) for a, b in zip(want, got) if a != b][:2]
         return ["TP7 数值语料与 Octave 真值不符：%s" % (diff or (want, got),)]
     print("  [TP7] 数值语料：%d 个函数与 Octave 真值一致" % len(want))
-    return []
+
+    # 期望本身是否仍是真值？（改了 .m 忘了改期望时，C 会"一致"地错）
+    rc, out = _run([sys.executable,
+                    os.path.join("tools", "numeric_expected.py")], timeout=600)
+    if rc == 1:
+        tail = [ln.strip() for ln in out.splitlines() if "期望" in ln][:1]
+        probs.append("TP7 期望已过期（不是真值了）：%s" % (tail or "见 --update"))
+    elif rc == 2:
+        print("  [TP7] 真值核对未跑（缺 Octave/MATLAB）")
+    return probs
 
 
 def check_mir_selftest():
