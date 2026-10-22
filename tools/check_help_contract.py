@@ -1009,7 +1009,10 @@ def help_body_leaked(src):
     正在被探针测 sha 的文件，那会作废一趟 19 分钟的测量。
     """
     try:
-        doc = ast.get_docstring(_parse(src), clean=False) or ""
+        tree = _parse(src)
+        if tree is None:          # 空/缺输入：没有正文可泄漏
+            return False
+        doc = ast.get_docstring(tree, clean=False) or ""
     except SyntaxError:
         return False
     return "诚实的边界" in doc
