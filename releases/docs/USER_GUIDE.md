@@ -178,7 +178,7 @@ code --install-extension matlabc-<版本>.vsix
 左栏 MATLAB、右栏 C，光标在同一个函数内移动时，另一栏按行位置跟随：优先读 C 里的 `/* @m2c src:N */`，没有映射时按函数体比例。
 从 C 侧也能反向发起：光标放在 `m2c_foo` / `foo` 上，会找调用它的 MATLAB 函数。
 同步可用 **`matlabc: 开关 C/MATLAB 对照同步`** 临时关闭。  
-如果 `.m` 比 C 新，状态栏会提示 **C 可能过期**，避免 source map 精确地跳到旧行。
+如果 `.m` 内容哈希与 C 里的 `@m2c source_sha256` 不一致，状态栏会提示 **C 可能过期**，避免 source map 精确地跳到旧行。
 
 ### 2.4 改代码前先看影响面
 

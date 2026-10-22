@@ -171,6 +171,11 @@ class TestSourceHandling(unittest.TestCase):
         self.assertIn("# src:4", text)
         self.assertIn("op:OP-ADD:y:x:x", text)
 
+    def test_mir_has_source_hash(self):
+        a = mir.to_mir("function y = f()\ny = 1;\nend\n")[0]
+        self.assertIn("# source_sha256:", a)
+        self.assertEqual(a, mir.to_mir("function y = f()\r\ny = 1;\r\nend\r\n")[0])
+
     def test_lowered_binary_keeps_line_per_op(self):
         text = mir.to_mir(
             "function r = f(v)\n% @m2c shape v 3\n"

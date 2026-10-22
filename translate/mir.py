@@ -26,6 +26,7 @@ MIR 只被这台机器的两个程序读写，行式格式足够，而且 diff �
 from __future__ import absolute_import
 
 import argparse
+import hashlib
 import io
 import os
 import re
@@ -252,6 +253,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None):
     `extra_names`：**整个工程**的函数名。目录转换时传入 ——
     否则跨文件调用会被当成"未知名字"而拒绝，而单文件视角看不出这是错的。
     """
+    src_norm = (source or "").replace("\r\n", "\n").replace("\r", "\n")
+    src_hash = hashlib.sha256(src_norm.encode("utf-8")).hexdigest()
     funcs = split_functions(source)
     if skip_names:
         funcs = [f for f in funcs if f["name"] not in skip_names]
@@ -266,6 +269,7 @@ def to_mir(source, extra_names=None, header=True, skip_names=None):
     n_unmapped = 0
     per_op = {}
     for f in funcs:
+        out.append("# source_sha256:%s" % src_hash)
         out.append("func:%s" % f["name"])
         for a in f["args"]:
             out.append(_var_line("arg", a, f))

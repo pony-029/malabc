@@ -90,6 +90,8 @@ pub struct Func {
     pub locals: Vec<Var>,
     pub body: Vec<Stmt>,
     pub unmapped: Vec<String>,
+    /// 原始 `.m` 内容的 sha256；空 = 没提供（不伪造）。
+    pub source_hash: String,
 }
 
 impl Func {
@@ -239,6 +241,7 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
     let mut stack: Vec<Frame> = Vec::new();
     let mut seen_version = false;
     let mut pending_src: i64 = 0;
+    let mut pending_hash = String::new();
 
     macro_rules! push_stmt {
         ($st:expr) => {{
@@ -255,6 +258,10 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
 
     for (lineno, raw) in text.lines().enumerate() {
         let line = raw.trim();
+        if let Some(rest) = line.strip_prefix("# source_sha256:") {
+            pending_hash = rest.trim().to_string();
+            continue;
+        }
         if let Some(rest) = line.strip_prefix("# src:") {
             pending_src = rest.trim().parse().unwrap_or(0);
             continue;
@@ -284,6 +291,7 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
                 locals: Vec::new(),
                 body: Vec::new(),
                 unmapped: Vec::new(),
+                source_hash: pending_hash.clone(),
             });
             continue;
         }

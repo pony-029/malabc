@@ -791,6 +791,9 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
         // 所以生成一个**明确的桩**：能编译、调用会返回 UNIMPLEMENTED，不假装成功。
         let mut out: Vec<String> = Vec::new();
         out.push(format!("/* 由 m2c 从 MIR 生成 —— 来源函数：{} */", f.name));
+        if !f.source_hash.is_empty() {
+            out.push(format!("/* @m2c source_sha256:{} */", f.source_hash));
+        }
         out.push(proto(f).replace(';', " {"));
         out.push("    /* TODO(void): 无返回值的函数本版不生成实现 */".to_string());
         out.push("    return MLC_UNIMPLEMENTED;".to_string());
@@ -800,6 +803,9 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
 
     let mut out: Vec<String> = Vec::new();
     out.push(format!("/* 由 m2c 从 MIR 生成 —— 勿手改；来源函数：{} */", f.name));
+    if !f.source_hash.is_empty() {
+        out.push(format!("/* @m2c source_sha256:{} */", f.source_hash));
+    }
     out.push(proto(f).replace(';', " {"));
     out.push("    mlc_status st = MLC_OK;".to_string());
     out.push("    (void)st;".to_string());

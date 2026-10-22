@@ -309,6 +309,20 @@ chk(t.srcToCLine && t.srcToCLine(cmap, 13) === 4,
   'MATLAB 行 13 映射到下一个 C 语句');
 chk(t.cToSrc && t.cToSrc(cmap, 5) === 20,
   'C 行 5 映射回 MATLAB 行 20');
+const shash = 'a'.repeat(64);
+chk(t.parseSourceHash &&
+  t.parseSourceHash('/* @m2c source_sha256:' + shash + ' */') === shash,
+  'source hash 能从 C 注释解析');
+chk(t.parseSourceHash && t.parseSourceHash('no hash') === '',
+  '没有 source hash 时返回空，不用假值');
+const goodHash = require('crypto').createHash('sha256')
+  .update('abc', 'utf8').digest('hex');
+chk(t.isStale && t.isStale('abc',
+  '/* @m2c source_sha256:' + goodHash + ' */', '', '') === false,
+  '内容哈希一致时不算陈旧');
+chk(t.isStale && t.isStale('abcd',
+  '/* @m2c source_sha256:' + goodHash + ' */', '', '') === true,
+  '内容哈希不一致时判陈旧');
 chk(ctx.subscriptions.length >= 5,
   'subscriptions 应至少 5 项（definition + references + hover + symbol + 诊断集合），实际 '
   + ctx.subscriptions.length);

@@ -7,6 +7,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const vscode = require('vscode');
 const os = require('os');
 const { LspClient } = require('./lspClient');
@@ -226,7 +227,19 @@ function _mapLine(line, srcFrom, srcTo, dstFrom, dstTo) {
   return Math.round(dstFrom + r * (dstTo - dstFrom));
 }
 
-function _isStale(mPath, cPath) {
+function _parseSourceHash(text) {
+  var m = /@m2c source_sha256:([0-9a-fA-F]{64})/.exec(String(text || ''));
+  return m ? m[1].toLowerCase() : '';
+}
+
+function _isStale(mText, cText, mPath, cPath) {
+  var ch = _parseSourceHash(cText);
+  if (ch) {
+    var mh = crypto.createHash('sha256')
+      .update(String(mText || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n'),
+              'utf8').digest('hex');
+    return mh !== ch;
+  }
   try {
     return fs.statSync(mPath).mtimeMs > fs.statSync(cPath).mtimeMs;
   } catch (e) {
@@ -478,7 +491,7 @@ async function _openCounterpart(editor) {
     syncMode: vscode.workspace.getConfiguration('matlabc')
       .get('counterpartSyncMode', 'line'),
     cMap: _parseSourceMap(cText),
-    stale: _isStale(mUri.fsPath, cUri.fsPath),
+    stale: _isStale(mText, cText, mUri.fsPath, cUri.fsPath),
   };
   if (extensionContext && extensionContext.workspaceState) {
     try {
@@ -536,7 +549,8 @@ async function _reopenCounterpart() {
       syncMode: vscode.workspace.getConfiguration('matlabc')
         .get('counterpartSyncMode', 'line'),
       cMap: _parseSourceMap(cDoc.getText()),
-      stale: _isStale(mUri.fsPath, cUri.fsPath),
+      stale: _isStale(mDoc.getText(), cDoc.getText(),
+                      mUri.fsPath, cUri.fsPath),
     };
     _syncCounterpart(mEd);
     vscode.window.setStatusBarMessage('matlabc: 已恢复 C/MATLAB 对照', 4000);
@@ -4250,6 +4264,8 @@ module.exports = {
     cFunctionRange: _cFunctionRange,
     mapLine: _mapLine,
     parseSourceMap: _parseSourceMap,
+    parseSourceHash: _parseSourceHash,
+    isStale: _isStale,
     srcToCLine: _srcToCLine,
     cToSrc: _cToSrc,
   },
