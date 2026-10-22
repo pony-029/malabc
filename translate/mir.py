@@ -276,6 +276,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None):
             code = _clean(line).strip()
             if not code:
                 continue
+            if src_line:
+                out.append("# src:%d" % src_line)
             if code == "else":
                 if blocks and blocks[-1] == "if":
                     out.append("else")
@@ -385,8 +387,6 @@ def to_mir(source, extra_names=None, header=True, skip_names=None):
                 if sa and sb and len(sa) == 2 and len(sb) == 2 \
                         and sa[1] == sb[0]:
                     oid = "OP-MATMUL"
-            if src_line:
-                out.append("# src:%d" % src_line)
             out.append("op:%s:%s:%s" % (oid, use["lhs"], ":".join(args)))
             n_ops += 1
             per_op[use["operator"]] = per_op.get(use["operator"], 0) + 1

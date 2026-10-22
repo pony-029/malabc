@@ -14,7 +14,8 @@
   "activationEvents": [
     "onLanguage:matlab",
     "onCommand:matlabc.openCounterpart",
-    "onCommand:matlabc.toggleCounterpartSync"
+    "onCommand:matlabc.toggleCounterpartSync",
+    "onCommand:matlabc.reopenCounterpart"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -280,6 +281,11 @@
       {
         "command": "matlabc.toggleCounterpartSync",
         "title": "matlabc: 开关 C/MATLAB 对照同步",
+        "category": "matlabc"
+      },
+      {
+        "command": "matlabc.reopenCounterpart",
+        "title": "matlabc: 恢复上一次 C/MATLAB 对照",
         "category": "matlabc"
       }
     ],

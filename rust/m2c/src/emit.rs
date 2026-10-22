@@ -288,6 +288,22 @@ mod tests {
     }
 
     #[test]
+    fn non_op_stmt_keeps_source_line() {
+        let f = &parse(concat!(
+            "version 3\nfunc:f\narg:a:f64:2\n",
+            "# src:7\nset:i:1\n# src:9\ncall:a:a\nend\n"))
+            .unwrap()[0];
+        match &f.body[0] {
+            Stmt::Set { src, .. } => assert_eq!(*src, 7),
+            _ => panic!("expected set"),
+        }
+        match &f.body[1] {
+            Stmt::Call { src, .. } => assert_eq!(*src, 9),
+            _ => panic!("expected call"),
+        }
+    }
+
+    #[test]
     fn dynamic_mask_shape_is_unknown() {
         let f = &parse(concat!(
             "version 3\nfunc:f\narg:v:f64:3\nret:z:f64:2\n",
@@ -540,6 +556,14 @@ fn c_bin(op: &str) -> &'static str {
     }
 }
 
+fn src_comment(src: i64, indent: &str) -> Option<String> {
+    if src > 0 {
+        Some(format!("{}/* @m2c src:{} */", indent, src))
+    } else {
+        None
+    }
+}
+
 /// 递归发射一段语句。返回 (行列表, 是否已终止)。
 fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
               known: &[Func]) -> (Vec<String>, bool) {
@@ -556,7 +580,8 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                 terminated = block.iter().any(|l| l.trim().starts_with("return "));
                 out.extend(block);
             }
-            Stmt::For { var, from, to, body } => {
+            Stmt::For { var, from, to, body, src } => {
+                if let Some(c) = src_comment(*src, indent) { out.push(c); }
                 let bound = |x: &str| -> Option<String> {
                     if is_int_literal(x) {
                         return Some(x.to_string());
@@ -586,7 +611,8 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
             }
             // const / fill 的值在函数开头就填好了，这里不再产出语句
             Stmt::Const { .. } | Stmt::Fill { .. } => {}
-            Stmt::Set { lhs, value } => {
+            Stmt::Set { lhs, value, src } => {
+                if let Some(c) = src_comment(*src, indent) { out.push(c); }
                 let ok_lhs = f
                     .var_dtype(lhs)
                     .map(|d| is_scalar_dt(&d))
@@ -608,7 +634,8 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                     }
                 }
             }
-            Stmt::SetBin { lhs, op, a, b } => {
+            Stmt::SetBin { lhs, op, a, b, src } => {
+                if let Some(c) = src_comment(*src, indent) { out.push(c); }
                 match (scalar_expr(f, a), scalar_expr(f, b)) {
                     (Some(x), Some(y)) => out.push(format!(
                         "{}{} = {} {} {};",
@@ -629,7 +656,8 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                     }
                 }
             }
-            Stmt::Call { lhs, func, args } => {
+            Stmt::Call { lhs, func, args, src } => {
+                if let Some(c) = src_comment(*src, indent) { out.push(c); }
                 // 只调用**同文件内**的生成函数，并且要**签名对得上**：
                 // 名字存在但参数个数/类型不符，是比"名字不存在"更隐蔽的错 ——
                 // C 编译器会替你挡一部分，但 mlc_array 与 int64_t 的混用它也可能只是警告。
@@ -708,7 +736,9 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                     terminated = true;
                 }
             }
-            Stmt::While { cond, body } => match cond_expr(f, cond) {
+            Stmt::While { cond, body, src } => {
+                if let Some(c) = src_comment(*src, indent) { out.push(c); }
+                match cond_expr(f, cond) {
                 Some(expr) => {
                     out.push(format!("{}while ({}) {{", indent, expr));
                     let (inner, t) = emit_block(f, body, &format!("{}    ", indent), known);
@@ -722,8 +752,11 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                     out.push(format!("{}return MLC_UNIMPLEMENTED;", indent));
                     terminated = true;
                 }
+                }
             },
-            Stmt::If { cond, then_body, else_body } => match cond_expr(f, cond) {
+            Stmt::If { cond, then_body, else_body, src } => {
+                if let Some(c) = src_comment(*src, indent) { out.push(c); }
+                match cond_expr(f, cond) {
                 Some(expr) => {
                     out.push(format!("{}if ({}) {{", indent, expr));
                     let (a, t1) = emit_block(f, then_body, &format!("{}    ", indent), known);
@@ -743,6 +776,7 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                                      indent));
                     out.push(format!("{}return MLC_UNIMPLEMENTED;", indent));
                     terminated = true;
+                }
                 }
             },
         }
@@ -831,13 +865,13 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
     // 多维常量：(名字, 形状, 值)
     let mut fills: Vec<(String, Vec<i64>, String)> = Vec::new();
     walk_stmts(&f.body, &mut |s| match s {
-        Stmt::Const { name, value } => {
+        Stmt::Const { name, value, .. } => {
             let n = ident(name);
             if !consts.iter().any(|(x, _)| x == &n) {
                 consts.push((n, value.clone()));
             }
         }
-        Stmt::Fill { name, dims, value } => {
+        Stmt::Fill { name, dims, value, .. } => {
             let n = ident(name);
             if !fills.iter().any(|(x, _, _)| x == &n) {
                 fills.push((n, dims.clone(), value.clone()));

@@ -111,6 +111,7 @@ function sendOpen(doc) {
 // 映射只用 LSP 的 `matlabc/cbridge`，扩展里不重复解析 C —— 否则就是第二本账。
 let counterpart = null;
 let counterpartBusy = false;
+let extensionContext = null;
 
 function _isMatlabDoc(doc) {
   return !!doc && (doc.languageId === 'matlab' ||
@@ -470,12 +471,68 @@ async function _openCounterpart(editor) {
       .get('counterpartSyncMode', 'line'),
     cMap: _parseSourceMap(cText),
   };
+  if (extensionContext && extensionContext.workspaceState) {
+    try {
+      extensionContext.workspaceState.update('matlabc.counterpart', {
+        m: mUri.toString(), c: cUri.toString(),
+        mLine: pairs[0].mLine || 1, cLine: pairs[0].cLine || 1,
+      });
+    } catch (e) { /* 持久化失败不影响当前对照 */ }
+  }
   vscode.window.setStatusBarMessage(
     'matlabc: C/MATLAB 对照已打开（' + pairs.length + ' 对，' +
     (counterpart.sync ? '同步开' : '同步关') + '）', 5000);
   log('counterpart ' + rawName + ' -> ' + target.uri.fsPath +
       ':' + target.line + '（' + pairs.length + ' 对）');
   _syncCounterpart(editor);
+}
+
+async function _reopenCounterpart() {
+  if (!extensionContext || !extensionContext.workspaceState) return;
+  var saved = extensionContext.workspaceState.get('matlabc.counterpart');
+  if (!saved || !saved.m || !saved.c) {
+    vscode.window.showInformationMessage('matlabc: 还没有保存过 C/MATLAB 对照');
+    return;
+  }
+  try {
+    var mUri = vscode.Uri.parse(saved.m);
+    var cUri = vscode.Uri.parse(saved.c);
+    var mDoc = await vscode.workspace.openTextDocument(mUri);
+    var cDoc = await vscode.workspace.openTextDocument(cUri);
+    var mEd = await vscode.window.showTextDocument(mDoc, {
+      viewColumn: vscode.ViewColumn.One, preview: false,
+    });
+    await vscode.window.showTextDocument(cDoc, {
+      viewColumn: vscode.ViewColumn.Beside, preserveFocus: true,
+    });
+    var mPos = new vscode.Position(Math.max(0, (saved.mLine || 1) - 1), 0);
+    var cPos = new vscode.Position(Math.max(0, (saved.cLine || 1) - 1), 0);
+    var mFn = _matlabFunctionAt(mDoc, mPos);
+    var cFn = _cFunctionAt(cDoc, cPos);
+    if (!mFn || !cFn) {
+      vscode.window.showWarningMessage('matlabc: 保存的对照位置已失效，请重新打开对照');
+      return;
+    }
+    var mr = _matlabFunctionRange(mDoc.getText(), mFn.name);
+    var cr = _cFunctionRange(cDoc.getText(), cFn.name);
+    counterpart = {
+      mUri: mUri, cUri: cUri,
+      pairs: [{
+        mName: mFn.name, mLine: mFn.line, mStart: mr.start, mEnd: mr.end,
+        cName: cFn.name, cLine: cFn.line, cStart: cr.start, cEnd: cr.end,
+      }],
+      sync: vscode.workspace.getConfiguration('matlabc')
+        .get('counterpartSync', true),
+      syncMode: vscode.workspace.getConfiguration('matlabc')
+        .get('counterpartSyncMode', 'line'),
+      cMap: _parseSourceMap(cDoc.getText()),
+    };
+    _syncCounterpart(mEd);
+    vscode.window.setStatusBarMessage('matlabc: 已恢复 C/MATLAB 对照', 4000);
+  } catch (e) {
+    log('恢复对照失败：' + (e && e.message));
+    vscode.window.showErrorMessage('matlabc: 恢复对照失败 —— ' + (e && e.message));
+  }
 }
 
 function _syncCounterpart(editor) {
@@ -829,6 +886,7 @@ async function pickPython(lspPath, context) {
 }
 
 function activate(context) {
+  extensionContext = context;
   log('activate() 进入，扩展已加载');
   const cfg = vscode.workspace.getConfiguration('matlabc');
   if (!cfg.get('enabled', true)) {
@@ -1671,6 +1729,10 @@ function activate(context) {
     vscode.commands.registerCommand('matlabc.openCounterpart', async () => {
       await _openCounterpart(vscode.window.activeTextEditor);
     })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.reopenCounterpart',
+                                    () => _reopenCounterpart())
   );
   context.subscriptions.push(
     vscode.commands.registerCommand('matlabc.toggleCounterpartSync', () => {

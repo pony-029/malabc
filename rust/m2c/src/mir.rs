@@ -56,28 +56,28 @@ pub struct Cond {
 pub enum Stmt {
     Op(Op),
     /// `for:<var>:<起>:<止>` —— 整数步长
-    For { var: String, from: String, to: String, body: Vec<Stmt> },
+    For { var: String, from: String, to: String, body: Vec<Stmt>, src: i64 },
     /// `if:<var>:<cmp>:<rhs>` … [`else`]
-    If { cond: Cond, then_body: Vec<Stmt>, else_body: Vec<Stmt> },
+    If { cond: Cond, then_body: Vec<Stmt>, else_body: Vec<Stmt>, src: i64 },
     /// `while:<var>:<cmp>:<rhs>`
-    While { cond: Cond, body: Vec<Stmt> },
+    While { cond: Cond, body: Vec<Stmt>, src: i64 },
     /// `set:<lhs>:<值>` —— 标量赋值（值：整数字面量，或已声明的 i64 标量名）
-    Set { lhs: String, value: String },
+    Set { lhs: String, value: String, src: i64 },
     /// `setb:<lhs>:<op>:<a>:<b>` —— 标量二元运算（+ - * /），int64
-    SetBin { lhs: String, op: String, a: String, b: String },
+    SetBin { lhs: String, op: String, a: String, b: String, src: i64 },
     /// `call:<lhs>:<函数名>:<实参...>` —— 调用同文件内的另一个生成函数
-    Call { lhs: String, func: String, args: Vec<String> },
+    Call { lhs: String, func: String, args: Vec<String>, src: i64 },
     /// `fill:<名字>:<d1,d2,...>:<值>` —— 多维常量（`zeros(3)` / `ones(2,3)`）
     ///
     /// 与 `const` 的区别：`const` 是**标量**（1×1），`fill` 带真实形状。
     /// 真实工程的初值多是矩阵，只有标量常量的话，"给矩阵赋初值"这一步就没法表达。
-    Fill { name: String, dims: Vec<i64>, value: String },
+    Fill { name: String, dims: Vec<i64>, value: String, src: i64 },
     /// `const:<名字>:<数值>` —— 立即数变成形状 `[1]` 的数组
     ///
     /// 为什么需要它：算子签名全是 `mlc_array`，没有标量版本。
     /// `r = r * 2` 要么被拒绝（现状），要么给它造一个 1×1 的数组 ——
     /// 后者是 MATLAB 的真实语义（标量就是 1×1）。
-    Const { name: String, value: String },
+    Const { name: String, value: String, src: i64 },
 }
 
 /// 一个 MATLAB 函数。
@@ -204,9 +204,10 @@ fn parse_cond(rest: &str, kw: &str) -> Result<Cond, String> {
 }
 
 enum Frame {
-    For { var: String, from: String, to: String, body: Vec<Stmt> },
-    If { cond: Cond, then_body: Vec<Stmt>, else_body: Vec<Stmt>, in_else: bool },
-    While { cond: Cond, body: Vec<Stmt> },
+    For { var: String, from: String, to: String, body: Vec<Stmt>, src: i64 },
+    If { cond: Cond, then_body: Vec<Stmt>, else_body: Vec<Stmt>, in_else: bool,
+         src: i64 },
+    While { cond: Cond, body: Vec<Stmt>, src: i64 },
 }
 
 fn frame_stmts(f: &mut Frame) -> &mut Vec<Stmt> {
@@ -221,11 +222,13 @@ fn frame_stmts(f: &mut Frame) -> &mut Vec<Stmt> {
 
 fn finish_frame(f: Frame) -> Stmt {
     match f {
-        Frame::For { var, from, to, body } => Stmt::For { var, from, to, body },
-        Frame::If { cond, then_body, else_body, .. } => {
-            Stmt::If { cond, then_body, else_body }
+        Frame::For { var, from, to, body, src } => {
+            Stmt::For { var, from, to, body, src }
         }
-        Frame::While { cond, body } => Stmt::While { cond, body },
+        Frame::If { cond, then_body, else_body, src, .. } => {
+            Stmt::If { cond, then_body, else_body, src }
+        }
+        Frame::While { cond, body, src } => Stmt::While { cond, body, src },
     }
 }
 
@@ -289,11 +292,13 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
                 Some(Frame::If { in_else, .. }) => *in_else = true,
                 _ => return Err(format!("第 {} 行：多余的 else", lineno + 1)),
             }
+            pending_src = 0;
             continue;
         }
         if line == "end" {
             if let Some(fr) = stack.pop() {
                 push_stmt!(finish_frame(fr));
+                pending_src = 0;
                 continue;
             }
             match cur.take() {
@@ -327,10 +332,13 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
                 from: parts[1].to_string(),
                 to: parts[2].to_string(),
                 body: Vec::new(),
+                src: pending_src,
             });
+            pending_src = 0;
         } else if let Some(rest) = line.strip_prefix("while:") {
             let cond = parse_cond(rest, "while")?;
-            stack.push(Frame::While { cond, body: Vec::new() });
+            stack.push(Frame::While { cond, body: Vec::new(), src: pending_src });
+            pending_src = 0;
         } else if let Some(rest) = line.strip_prefix("if:") {
             let cond = parse_cond(rest, "if")?;
             stack.push(Frame::If {
@@ -338,7 +346,9 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
                 then_body: Vec::new(),
                 else_body: Vec::new(),
                 in_else: false,
+                src: pending_src,
             });
+            pending_src = 0;
         } else if let Some(rest) = line.strip_prefix("op:") {
             let op = parse_op(rest, pending_src)?;
             pending_src = 0;
@@ -356,7 +366,9 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
             push_stmt!(Stmt::Set {
                 lhs: parts[0].to_string(),
                 value: parts[1].to_string(),
+                src: pending_src,
             });
+            pending_src = 0;
         } else if let Some(rest) = line.strip_prefix("setb:") {
             let parts: Vec<&str> = rest.split(':').map(|x| x.trim()).collect();
             if parts.len() != 4 {
@@ -370,7 +382,9 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
                 op: parts[1].to_string(),
                 a: parts[2].to_string(),
                 b: parts[3].to_string(),
+                src: pending_src,
             });
+            pending_src = 0;
         } else if let Some(rest) = line.strip_prefix("call:") {
             let parts: Vec<&str> = rest.split(':').map(|x| x.trim()).collect();
             if parts.len() < 2 {
@@ -385,7 +399,9 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
                 lhs: parts[0].to_string(),
                 func: parts[1].to_string(),
                 args,
+                src: pending_src,
             });
+            pending_src = 0;
         } else if let Some(rest) = line.strip_prefix("fill:") {
             let parts: Vec<&str> = rest.split(':').map(|x| x.trim()).collect();
             if parts.len() != 3 {
@@ -412,7 +428,9 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
                 name: parts[0].to_string(),
                 dims,
                 value: parts[2].to_string(),
+                src: pending_src,
             });
+            pending_src = 0;
         } else if let Some(rest) = line.strip_prefix("const:") {
             let parts: Vec<&str> = rest.split(':').map(|x| x.trim()).collect();
             if parts.len() != 2 {
@@ -424,11 +442,14 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
             push_stmt!(Stmt::Const {
                 name: parts[0].to_string(),
                 value: parts[1].to_string(),
+                src: pending_src,
             });
+            pending_src = 0;
         } else if let Some(rest) = line.strip_prefix("unmapped:") {
             if let Some(f) = cur.as_mut() {
                 f.unmapped.push(rest.to_string());
             }
+            pending_src = 0;
         } else {
             return Err(format!("第 {} 行：不认识的构造：{}", lineno + 1, line));
         }

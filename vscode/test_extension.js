@@ -254,6 +254,8 @@ chk(registered.indexOf('cmd:matlabc.openCounterpart') >= 0,
   '应注册 C/MATLAB 对照命令（matlabc.openCounterpart）');
 chk(registered.indexOf('cmd:matlabc.toggleCounterpartSync') >= 0,
   '应注册对照同步开关（matlabc.toggleCounterpartSync）');
+chk(registered.indexOf('cmd:matlabc.reopenCounterpart') >= 0,
+  '应注册恢复对照命令（matlabc.reopenCounterpart）');
 
 // C/MATLAB 对照的纯函数：不启动 LSP 也要能定位「光标属于哪个函数」。
 const t = ext._test || {};
