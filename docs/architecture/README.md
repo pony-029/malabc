@@ -175,7 +175,7 @@
 | 06 LSP + VS Code | `matlabc_lsp.py` · `vscode/` | `df7b480` 2026-10-22 |
 | 07 AI / MCP | `matlabc_mcp.py` · `matlabc_ask.py` · `ai_cli.py` | `6a03133` 2026-10-20 |
 | 08 修复闭环 | `agent_loop.py` · `matlabc_flow.py` · `analyzer_memory.py` | `2caf526` 2026-10-10 |
-| 09 门禁 / CI | `tools/` · `.github/workflows/` | `fab2782` 2026-10-22 |
+| 09 门禁 / CI | `tools/` · `.github/workflows/` | `174aa34` 2026-10-22 |
 | 10 MATLAB→C 移植 | `translate/` · `c_runtime/` · `port_ledger.json` | `f4f23bd` 2026-10-22 |
 | 11 二进制分析 | `binfmt/` · `binhops.py` · `callrel.py` | `6cf824b` 2026-10-13 |
 
