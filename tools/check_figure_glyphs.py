@@ -272,13 +272,15 @@ def selftest():
         chk(u"\u4e2d" in tc, "FG3 能取出正文里的中文")
         chk(u"\u25be" not in tc, "FG3 不会把 <script> 里的内容算进正文")
 
-        # FG4：一份临时手册 —— 含中文（有字形）、⇢（缺字形）、以及已登记的 ✓
+        # FG4：一份临时手册 —— 含中文（有字形）、U+FFFF（必定缺字形）、以及已登记的 ✓
+        # 这里用 U+FFFF 而不是 ⇢：⇢ 已在 MD_ALLOW 里登记为「讨论字符本身」，
+        # 再拿它当必红样本会让自测与真实策略互相矛盾。
         m = os.path.join(d, "fake.md")
         io.open(m, "w", encoding="utf-8", newline="").write(
-            u"中文 \u21e2 \u2713\n")
+            u"中文 \uFFFF \u2713\n")
         miss, stale = scan_md([m])
         miss_chars = [ch for _, ch in miss]
-        chk(u"\u21e2" in miss_chars, "FG4 会报缺字形字符")
+        chk(u"\uFFFF" in miss_chars, "FG4 会报缺字形字符")
         chk(u"\u2713" not in miss_chars, "FG4 不报已登记的例外")
         chk(len(stale) >= 1, "FG4 会报文件里已不存在的例外登记")
     finally:
