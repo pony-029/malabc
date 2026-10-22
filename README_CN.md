@@ -968,6 +968,7 @@ python tools/check_help_contract.py --list-prefixes    # 前缀 -> 主人；加�
 | `patch_text.py` | 带**语法自检**的锚点替换：改完立刻 py_compile / `node --check`，不通过就回滚。原文与新文都从**文件**读，shell 没有机会篡改引号与反斜杠 |
 | `parity_report.py` | 解释器 ⇄ C 对拍报告（手工跑，适合大工程） |
 | `shape_suggest.py` | 从 `zeros/ones/字面量` 建议 `% @m2c shape`（出的是工作清单，不是猜） |
+| `numeric_expected.py` | 用 Octave 真值生成/核对 `numeric.expected`（`--update` 写回） |
 | `release.py` | 发布一条命令：版本号 +1 → 打包 `.vsix` → 重建版本表 → 跑关键门，任一步失败就停下。原本是五步手工，漏一步（比如忘了安装）要到最后才看得出来 |
 | `ci_local.py` | 在 `E:\ci\matlabc` 的**干净克隆**里跑与 `ci.yml` 相同的流水线——工作流在本地唯一没法回答的问题，就是「这个仓库从零开始还能不能跑起来」。它测的按定义是**已提交**的代码，所以先提交再跑 |
 | `audit_coverage.py` | 按**真实调用点**统计每个 MCP 工具被覆盖情况（判据里的 `_MCP.t_x(`、场景里的 `_call(sess, "matlabc_x")`），而不是搜名字。按名字搜时它报 19/19 全覆盖，而 `matlabc_definition` 与 `matlabc_references` 从未被调用过 |

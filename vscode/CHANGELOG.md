@@ -2,6 +2,18 @@
 
 ---
 
+## 1.7.8
+
+- **二维列切片 `A(:,j)`**：降成「`A(:)` 列优先展平 + 切片」，**不需要新算子**
+  （FLATTEN 与 SLICE 各自已有 golden 锁着）。语料里 `colmean` 从
+  `unimplemented` 变成 `1 3 5`，且 **Octave 与 C 双方确认**
+- 新增工具 **`tools/numeric_expected.py`**：`numeric.expected` 由 **Octave 真值**
+  生成/核对（`--update` 写回）。手抄期望迟早漂移，而"真值"不该由人抄 ——
+  它一上线就发现 `colmean` 那条期望已过期
+- 语料 L4 保持 **12/12 与 Octave 一致**（本轮新增了列切片这条路径）
+- **未完成**（如实记）：`y(i) = ...` 数组元素赋值仍需新算子 + 发射器特殊形状，
+  本轮时间不足，未动；语料也未扩到 25–30
+
 ## 1.7.7
 
 - 新增**纯数值语料** `translate/examples/numeric/`（12 个函数）：reduction、

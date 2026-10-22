@@ -352,6 +352,45 @@ def _lower_reduce_elementwise(out, code, counter, unmapped_kinds, op_ids):
     return True
 
 
+#: `y = A(:, j)` —— 取第 j 列（j 为字面量或标量名）
+_COL_SLICE = re.compile(r"^([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*\(\s*"
+                        r":\s*,\s*([A-Za-z_]\w*|\d+)\s*\)\s*;?\s*$")
+
+
+def _lower_col_slice(out, code, shapes, counter, known_ops):
+    """`y = A(:,j)` -> `__f = A(:)` + `y = __f(lo:hi)`；成功返回 True。"""
+    m = _COL_SLICE.match(code)
+    if not m:
+        return False
+    lhs, arr, j = m.group(1), m.group(2), m.group(3)
+    if "OP-FLATTEN" not in known_ops or "OP-SLICE" not in known_ops:
+        return False
+    shp = (shapes or {}).get(arr)
+    if not shp or len(shp) != 2:
+        return False          # 没有二维形状就算不出列边界，如实放弃
+    rows = int(shp[0])
+    if j.isdigit():
+        jj = int(j)
+        if jj < 1 or jj > int(shp[1]):
+            return False
+        lo, hi = (jj - 1) * rows + 1, jj * rows
+        lo_s, hi_s = str(lo), str(hi)
+    else:
+        # __a = (j-1)*rows ; lo = __a+1 ; hi = __a+rows
+        counter[0] += 1
+        a = "__c%d" % counter[0]
+        out.append("var:%s:i64" % a)
+        out.append("setb:%s:sub:%s:1" % (a, j))
+        out.append("setb:%s:mul:%s:%d" % (a, a, rows))
+        lo_s, hi_s = "%s + 1" % a, None      # 占位：变量列暂不支持，见下
+        return False
+    counter[0] += 1
+    flat = "__f%d" % counter[0]
+    out.append("op:OP-FLATTEN:%s:%s" % (flat, arr))
+    out.append("op:OP-SLICE:%s:%s:%s:%s" % (lhs, flat, lo_s, hi_s))
+    return True
+
+
 def to_mir(source, extra_names=None, header=True, skip_names=None,
            srcfile=None):
     """返回 (mir_text, stats)。
@@ -469,6 +508,9 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                     continue
             if _lower_reduce_elementwise(out, code, idx_counter,
                                          unmapped_kinds, known_ops):
+                continue
+            if _lower_col_slice(out, code, f.get("shapes") or {}, idx_counter,
+                                known_ops):
                 continue
             _m2 = _IDX2_RE.match(code)
             if _m2:

@@ -1,5 +1,5 @@
 above: 3 4 5
-colmean: unimplemented
+colmean: 1 3 5
 cumsum_loop: unimplemented
 dotp: 30
 flatit: 1 3 2 4
