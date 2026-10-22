@@ -47,7 +47,7 @@
 
 | 版本 | 日期 | 大小 | 主要变化 | 文件 |
 | --- | --- | --- | --- | --- |
-| 1.8.0（当前） | 2026-10-22 | 2455 KB | **TP8 扩到全量已实现清单**：`operators.C_IMPLEMENTED` ⇄ `emit.rs::C_IMPLEMEN… | `vsix/matlabc-1.8.0.vsix` |
+| 1.8.1（当前） | 2026-10-22 | 2455 KB | **`while` 累积终于可转**（`while_acc: 10`）。 | `vsix/matlabc-1.8.1.vsix` |
 
 ## 归档约定
 

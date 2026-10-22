@@ -175,6 +175,14 @@ fn shape_literal(shape: &[i64]) -> String {
 /// 若名字其实是**返回值**或**入参**，返回 (实际 C 标识符, 是否指针)。
 ///
 /// 指针 = 返回值（`mlc_array *y`）；非指针 = 入参（`mlc_array x`，按值）。
+/// 返回值是否已在**函数入口**初始化过（有声明形状的 ret 会被预先 init）。
+///
+/// 是的话，`y = 0` / `y = zeros(...)` 只需**填值**，不能再 init ——
+/// 否则第一次分配的内存没人释放（值是对的，所有权是错的）。
+fn pre_inited(f: &Func, name: &str) -> bool {
+    f.rets.iter().any(|r| ident(&r.name) == name && !r.shape.is_empty())
+}
+
 fn bind_target(f: &Func, name: &str) -> Option<(String, bool)> {
     if let Some(r) = f.rets.iter().find(|r| ident(&r.name) == name) {
         return Some((ret_cname(f, &r.name), true));
@@ -195,6 +203,30 @@ fn init_call(var: &str, dtype: &str, shape: &[i64], is_ptr: bool) -> Option<Stri
         shape.len(),
         shape_literal(shape)
     ))
+}
+
+/// 解析名字的形状：先看声明，再看"写它的那条算子"（限一层，足够覆盖
+/// `__f = A(:)` 这种临时量的链式降级）。
+fn resolved_shape(f: &Func, name: &str) -> Option<Vec<i64>> {
+    if let Some(s) = f.var_shape(name) {
+        return Some(s);
+    }
+    // 只解一层 FLATTEN（`__f = A(:)`）—— 泛化递归可能在自引用上打转
+    let mut found: Option<Vec<i64>> = None;
+    walk_stmts(&f.body, &mut |st| {
+        if found.is_some() {
+            return;
+        }
+        if let Stmt::Op(op) = st {
+            if op.lhs == name && op.id == "OP-FLATTEN" && op.args.len() == 1 {
+                if let Some(src) = f.var_shape(&op.args[0]) {
+                    let n: i64 = src.iter().product();
+                    found = Some(vec![n]);
+                }
+            }
+        }
+    });
+    found
 }
 
 fn out_shape(f: &Func, op: &Op) -> Option<Vec<i64>> {
@@ -222,7 +254,7 @@ fn out_shape(f: &Func, op: &Op) -> Option<Vec<i64>> {
     }
     // A(:)：展平成 numel，确定
     if op.id == "OP-FLATTEN" && op.args.len() == 1 {
-        let sa = f.var_shape(&op.args[0])?;
+        let sa = resolved_shape(f, &op.args[0])?;
         let n: i64 = sa.iter().product();
         return Some(vec![n]);
     }
@@ -976,8 +1008,10 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
         if bound.is_none() {
             out.push(format!("    mlc_array {};", n));
         }
-        if let Some(l) = init_call(&nm, "f64", &[1], ptr) {
-            out.push(l);
+        if !(ptr && pre_inited(f, n)) {
+            if let Some(l) = init_call(&nm, "f64", &[1], ptr) {
+                out.push(l);
+            }
         }
         if ptr {
             out.push(format!("    ((double *){}->data)[0] = {};", nm, v));
@@ -995,8 +1029,10 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
         if bound.is_none() {
             out.push(format!("    mlc_array {};", n));
         }
-        if let Some(l) = init_call(&nm, "f64", dims, ptr) {
-            out.push(l);
+        if !(ptr && pre_inited(f, n)) {
+            if let Some(l) = init_call(&nm, "f64", dims, ptr) {
+                out.push(l);
+            }
         }
         let access = if ptr { format!("{}->data", nm) }
                      else { format!("{}.data", nm) };

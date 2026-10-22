@@ -439,6 +439,36 @@ def _lower_setidx(out, code, counter, known_ops):
     return True
 
 
+#: `y = sum(A(:,j))`
+_REDUCE_COL = re.compile(
+    r"^([A-Za-z_]\w*)\s*=\s*(sum|mean|max|min)\s*\(\s*"
+    r"([A-Za-z_]\w*)\s*\(\s*:\s*,\s*(\d+)\s*\)\s*\)\s*;?\s*$")
+
+
+def _lower_reduce_col(out, code, shapes, counter, known_ops):
+    """`sum(A(:,j))` -> FLATTEN + SLICE + 归约；成功返回 True。"""
+    m = _REDUCE_COL.match(code)
+    if not m:
+        return False
+    lhs, fn, arr, j = m.group(1), m.group(2), m.group(3), int(m.group(4))
+    need = ("OP-FLATTEN", "OP-SLICE", _OP_OF.get(fn))
+    if any(x is None or x not in known_ops for x in need):
+        return False
+    shp = (shapes or {}).get(arr)
+    if not shp or len(shp) != 2 or j < 1 or j > int(shp[1]):
+        return False
+    rows = int(shp[0])
+    counter[0] += 1
+    flat = "__f%d" % counter[0]
+    counter[0] += 1
+    col = "__c%d" % counter[0]
+    out.append("op:OP-FLATTEN:%s:%s" % (flat, arr))
+    out.append("op:OP-SLICE:%s:%s:%d:%d"
+               % (col, flat, (j - 1) * rows + 1, j * rows))
+    out.append("op:%s:%s:%s" % (_OP_OF[fn], lhs, col))
+    return True
+
+
 def to_mir(source, extra_names=None, header=True, skip_names=None,
            srcfile=None):
     """返回 (mir_text, stats)。
@@ -488,8 +518,10 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             _why.append("struct")
         if _why:
             out.append("reject:%s" % ",".join(_why))
-        # 已知标量：i64 参数（下标源），后续的标量赋值/循环变量会继续加入
         _types = f.get("types") or {}
+        # **一个**标量集合：i64 标注过 + 局部标量 + 后续标量赋值/循环变量。
+        # 早先有两份（scalar_names 与 scalars），加一处漏一处 ——
+        # 结果 `i = i + 1` 里的 i 被当成数组。
         scalar_names = set(n for n in f["args"]
                            if (_types.get(n) or "") == "i64")
         for a in f["args"]:
@@ -499,10 +531,12 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
         for l in f.get("locals") or []:
             out.append("var:%s:i64" % l)
         # 标量名 = i64 标注过 + 局部标量；其余都是数组（mlc_array）
-        scalars = set(f.get("locals") or [])
+        for _l in (f.get("locals") or []):
+            scalar_names.add(_l)
         for _n, _t in list(f["types"].items()):
             if _t == "i64":
-                scalars.add(_n)
+                scalar_names.add(_n)
+        scalars = scalar_names        # 同一个集合的别名，不再维护两份
         blocks = []                    # 块栈："for" / "if"
         for line_i, line in enumerate(f["lines"]):
             src_line = (f.get("line_nos") or [0] * len(f["lines"]))[line_i]
@@ -560,6 +594,9 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             if _lower_col_slice(out, code, f.get("shapes") or {}, idx_counter,
                                 known_ops):
                 continue
+            if _lower_reduce_col(out, code, f.get("shapes") or {},
+                                 idx_counter, known_ops):
+                continue
             if _lower_setidx(out, code, idx_counter, known_ops):
                 continue
             _m2 = _IDX2_RE.match(code)
@@ -590,6 +627,10 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                             # "把 1x1 数组整体写成这个值" -> const
                             out.append("const:%s:%s" % (lhs, rhs))
                         else:
+                            if lhs not in scalar_names:
+                                # 首次出现的标量：声明必须先于赋值，
+                                # 否则发射器不知道它是 int64_t 还是 mlc_array
+                                out.append("var:%s:i64" % lhs)
                             scalar_names.add(lhs)
                             out.append("set:%s:%s" % (lhs, rhs))
                         continue

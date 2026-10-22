@@ -2,6 +2,20 @@
 
 ---
 
+## 1.8.1
+
+- **`while` 累积终于可转**（`while_acc: 10`）。根因是**两个"标量集合"**：
+  `i = 1` 只加进 `scalar_names`，而 `i = i + 1` 的判定看的是 `scalars` ——
+  于是 `i` 被当成数组，整函数不可转。两份合为一个集合
+- **标量声明与赋值成对**：`set:i:1` 首次出现时补发 `var:i:i64`，
+  否则发射器不知道它是 `int64_t` 还是 `mlc_array`
+- **修 `y = 0` 重复 init**：返回值在函数入口已 init，const/fill 若再 init
+  会把第一次分配丢掉（值对、所有权错）。现在只填值不重分配
+- 数值语料 15 个函数，`while_acc` 重新纳入并核对通过
+- **未打通（如实记）**：`sum(A(:,2))` 的降级 MIR 正确（FLATTEN+SLICE+SUM），
+  但**临时量的形状推断**没接通 —— `__c2` 仍被 init 成 `{1}`，
+  `mlc_op_slice` 长度校验失败。`col2sum` 因此仍不在语料内
+
 ## 1.8.0
 
 - **TP8 扩到全量已实现清单**：`operators.C_IMPLEMENTED` ⇄ `emit.rs::C_IMPLEMENTED`
