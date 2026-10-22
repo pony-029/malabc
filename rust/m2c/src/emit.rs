@@ -867,20 +867,20 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
     let mut need_free: Vec<String> = Vec::new();
     let mut temps: Vec<(String, Option<Vec<i64>>)> = Vec::new();
     // 立即数也要有实体：算子签名只认 mlc_array
-    let mut consts: Vec<(String, String)> = Vec::new();
-    // 多维常量：(名字, 形状, 值)
-    let mut fills: Vec<(String, Vec<i64>, String)> = Vec::new();
+    let mut consts: Vec<(String, String, i64)> = Vec::new();
+    // 多维常量：(名字, 形状, 值, 源行)
+    let mut fills: Vec<(String, Vec<i64>, String, i64)> = Vec::new();
     walk_stmts(&f.body, &mut |s| match s {
-        Stmt::Const { name, value, .. } => {
+        Stmt::Const { name, value, src } => {
             let n = ident(name);
-            if !consts.iter().any(|(x, _)| x == &n) {
-                consts.push((n, value.clone()));
+            if !consts.iter().any(|(x, _, _)| x == &n) {
+                consts.push((n, value.clone(), *src));
             }
         }
-        Stmt::Fill { name, dims, value, .. } => {
+        Stmt::Fill { name, dims, value, src } => {
             let n = ident(name);
-            if !fills.iter().any(|(x, _, _)| x == &n) {
-                fills.push((n, dims.clone(), value.clone()));
+            if !fills.iter().any(|(x, _, _, _)| x == &n) {
+                fills.push((n, dims.clone(), value.clone(), *src));
             }
         }
         _ => {}
@@ -924,7 +924,8 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
             }
         }
     }
-    for (n, v) in &consts {
+    for (n, v, src) in &consts {
+        if let Some(c) = src_comment(*src, "    ") { out.push(c); }
         out.push(format!("    mlc_array {};", n));
         if let Some(l) = init_call(n, "f64", &[1], false) {
             out.push(l);
@@ -932,7 +933,8 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
         out.push(format!("    ((double *){}.data)[0] = {};", n, v));
         need_free.push(n.clone());
     }
-    for (n, dims, v) in &fills {
+    for (n, dims, v, src) in &fills {
+        if let Some(c) = src_comment(*src, "    ") { out.push(c); }
         out.push(format!("    mlc_array {};", n));
         if let Some(l) = init_call(n, "f64", dims, false) {
             out.push(l);

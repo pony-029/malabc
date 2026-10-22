@@ -323,6 +323,13 @@ chk(t.isStale && t.isStale('abc',
 chk(t.isStale && t.isStale('abcd',
   '/* @m2c source_sha256:' + goodHash + ' */', '', '') === true,
   '内容哈希不一致时判陈旧');
+const h2 = 'b'.repeat(64);
+const twoHash = '/* @m2c source_sha256:' + goodHash + ' */\n' +
+  'void a(void) {}\n/* @m2c source_sha256:' + h2 + ' */\nvoid b(void) {}\n';
+chk(t.parseSourceHashAt && t.parseSourceHashAt(twoHash, 2) === goodHash,
+  '多文件哈希：取当前 C 行之前最近的一份');
+chk(t.parseSourceHashAt && t.parseSourceHashAt(twoHash, 4) === h2,
+  '多文件哈希：跨过函数边界后切换');
 chk(ctx.subscriptions.length >= 5,
   'subscriptions 应至少 5 项（definition + references + hover + symbol + 诊断集合），实际 '
   + ctx.subscriptions.length);

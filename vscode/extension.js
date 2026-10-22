@@ -232,8 +232,20 @@ function _parseSourceHash(text) {
   return m ? m[1].toLowerCase() : '';
 }
 
-function _isStale(mText, cText, mPath, cPath) {
-  var ch = _parseSourceHash(cText);
+// 多文件 gen.c：每个函数前各有一份 hash；取当前 C 行之前最近的一份。
+function _parseSourceHashAt(text, cLine) {
+  var lines = String(text || '').split(/\r?\n/);
+  var hit = '';
+  var limit = Math.max(1, Math.min(lines.length, cLine || 1));
+  for (var i = 0; i < limit; i++) {
+    var m = /@m2c source_sha256:([0-9a-fA-F]{64})/.exec(lines[i]);
+    if (m) hit = m[1].toLowerCase();
+  }
+  return hit || _parseSourceHash(text);
+}
+
+function _isStale(mText, cText, mPath, cPath, cLine) {
+  var ch = _parseSourceHashAt(cText, cLine);
   if (ch) {
     var mh = crypto.createHash('sha256')
       .update(String(mText || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n'),
@@ -491,7 +503,8 @@ async function _openCounterpart(editor) {
     syncMode: vscode.workspace.getConfiguration('matlabc')
       .get('counterpartSyncMode', 'line'),
     cMap: _parseSourceMap(cText),
-    stale: _isStale(mText, cText, mUri.fsPath, cUri.fsPath),
+    stale: _isStale(mText, cText, mUri.fsPath, cUri.fsPath,
+                    target.line || 1),
   };
   if (extensionContext && extensionContext.workspaceState) {
     try {
@@ -550,7 +563,7 @@ async function _reopenCounterpart() {
         .get('counterpartSyncMode', 'line'),
       cMap: _parseSourceMap(cDoc.getText()),
       stale: _isStale(mDoc.getText(), cDoc.getText(),
-                      mUri.fsPath, cUri.fsPath),
+                      mUri.fsPath, cUri.fsPath, saved.cLine || 1),
     };
     _syncCounterpart(mEd);
     vscode.window.setStatusBarMessage('matlabc: 已恢复 C/MATLAB 对照', 4000);
@@ -4265,6 +4278,7 @@ module.exports = {
     mapLine: _mapLine,
     parseSourceMap: _parseSourceMap,
     parseSourceHash: _parseSourceHash,
+    parseSourceHashAt: _parseSourceHashAt,
     isStale: _isStale,
     srcToCLine: _srcToCLine,
     cToSrc: _cToSrc,
