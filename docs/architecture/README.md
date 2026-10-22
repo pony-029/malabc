@@ -172,7 +172,7 @@
 | 03 多语言 + IR | `frontends/ir.py` · `matlabc.py` · `pyast_frontend.py` | `5ffcc7e` 2026-10-22 |
 | 04 分析引擎 | `matlabc.py` · `facts.py` · `entity_model.py` · `unified_graph.py` | `5ffcc7e` 2026-10-22 |
 | 05 渲染与输出 | `renderers/` · `matlabc.py` | `5ffcc7e` 2026-10-22 |
-| 06 LSP + VS Code | `matlabc_lsp.py` · `vscode/` | `4e60f0a` 2026-10-22 |
+| 06 LSP + VS Code | `matlabc_lsp.py` · `vscode/` | `efd5c03` 2026-10-22 |
 | 07 AI / MCP | `matlabc_mcp.py` · `matlabc_ask.py` · `ai_cli.py` | `6a03133` 2026-10-20 |
 | 08 修复闭环 | `agent_loop.py` · `matlabc_flow.py` · `analyzer_memory.py` | `2caf526` 2026-10-10 |
 | 09 门禁 / CI | `tools/` · `.github/workflows/` | `a05134a` 2026-10-22 |
