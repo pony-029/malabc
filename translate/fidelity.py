@@ -127,8 +127,19 @@ def _run_div(case):
 
 
 def _run_sum(case):
-    x = _flat(case["inputs"]["x"]["data"])
-    return _expect([1], [sum(x)])
+    X = case["inputs"]["x"]
+    sh = list(X.get("shape") or [])
+    x = _flat(X["data"])
+    if len(sh) == 1:
+        return _expect([1], [sum(x)])
+    if len(sh) == 2:
+        rows, cols = sh
+        if rows > 1:
+            return _expect([1, cols],
+                           [sum(x[i * cols + j] for i in range(rows))
+                            for j in range(cols)])
+        return _expect([1], [sum(x)])
+    raise ValueError("sum: 只支持 1-D / 2-D")
 
 
 def _run_mean(case):
@@ -153,12 +164,22 @@ def _run_min(case):
 
 
 def _run_index(case):
-    x = _flat(case["inputs"]["x"]["data"])
+    X = case["inputs"]["x"]
+    sh = list(X.get("shape") or [])
+    x = _flat(X["data"])
     i = int(case["inputs"].get("i", 1))
     idx0 = i - 1  # IDX-1
     if idx0 < 0 or idx0 >= len(x):
         raise ValueError("index 越界")
-    return _expect([1], [x[idx0]])
+    if len(sh) <= 1:
+        return _expect([1], [x[idx0]])
+    rem = idx0
+    off = 0
+    st = _strides(sh)
+    for d, dim in enumerate(sh):
+        off += (rem % dim) * st[d]
+        rem //= dim
+    return _expect([1], [x[off]])
 
 
 def _run_flatten(case):
@@ -445,6 +466,24 @@ def emit_c_program(case):
             .format(no),
             "    return 0;", "}"]
         return "\n".join(lines) + "\n"
+    if op == "OP-SUM":
+        X = case["inputs"]["x"]
+        sh = list(X.get("shape") or [])
+        if len(sh) == 2 and sh[0] > 1:
+            osh = [1, sh[1]]
+            no = sh[1]
+            lines = head + _c_array_lines("x", X)
+            lines += [
+                "    double od[{0}] = {{0}};".format(no),
+                "    mlc_status st;",
+                _c_array_decl("o", osh, [0.0] * no)[1],
+                "    st = mlc_op_sum(&x, &o);",
+                '    if (st != MLC_OK) { printf("ERR %d\\n", (int)st);'
+                ' return 1; }',
+                '    for (int i=0;i<{0};i++) printf("%.17g\\n", od[i]);'
+                .format(no),
+                "    return 0;", "}"]
+            return "\n".join(lines) + "\n"
     if op in _UNARY_C:
         x = case["inputs"]["x"]
         lines = head + _c_array_lines("x", x)

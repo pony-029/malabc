@@ -86,6 +86,18 @@ _CMP = {0: lambda v, k: v > k, 1: lambda v, k: v >= k, 2: lambda v, k: v < k,
         3: lambda v, k: v <= k, 4: lambda v, k: v == k, 5: lambda v, k: v != k}
 
 
+def _linear_offset(shape, idx0):
+    """MATLAB 列主序线性下标 -> 行主序扁平 offset。"""
+    if idx0 < 0 or idx0 >= numel(shape):
+        return None
+    st = _strides(shape)
+    off = 0
+    for d, dim in enumerate(shape):
+        off += (idx0 % dim) * st[d]
+        idx0 //= dim
+    return off
+
+
 def _i(x):
     """取整数（标量数组或数字都接受）。"""
     return int(x.data[0]) if isinstance(x, Arr) else int(x)
@@ -111,10 +123,21 @@ def _apply_op(oid, args):
               "OP-MUL": lambda x, y: x * y,
               "OP-DIV": lambda x, y: (x / y) if y else float("inf")}[oid]
         return _binop(args[0], args[1], fn)
-    if oid in ("OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN"):
-        d = args[0].data
-        if oid == "OP-SUM":
+    if oid == "OP-SUM":
+        a = args[0]
+        d = a.data
+        if len(a.shape) == 1:
             return Arr([sum(d)], [1])
+        if len(a.shape) == 2:
+            rows, cols = a.shape
+            if rows > 1:
+                # MATLAB 默认沿第一个非单例维：2x3 -> 1x3
+                return Arr([sum(d[i * cols + j] for i in range(rows))
+                            for j in range(cols)], [1, cols])
+            return Arr([sum(d)], [1])
+        return None
+    if oid in ("OP-MEAN", "OP-MAX", "OP-MIN"):
+        d = args[0].data
         if oid == "OP-MEAN":
             return Arr([sum(d) / len(d) if d else 0.0], [1])
         if oid == "OP-MAX":
@@ -124,7 +147,10 @@ def _apply_op(oid, args):
         a, i = args[0], _i(args[1])
         if i < 1 or i > len(a.data):
             return None
-        return Arr([a.data[i - 1]], [1])
+        off = _linear_offset(a.shape, i - 1)
+        if off is None:
+            return None
+        return Arr([a.data[off]], [1])
     if oid == "OP-SLICE":
         a, lo, hi = args[0], _i(args[1]), _i(args[2])
         if len(a.shape) != 1 or lo < 1 or hi < lo or hi > a.shape[0]:
@@ -134,11 +160,11 @@ def _apply_op(oid, args):
         a = args[0]
         if len(a.shape) == 1:
             return Arr(a.data, [a.shape[0]])
-        if len(a.shape) != 2:
+        if len(a.shape) < 2:
             return None
-        m, n = a.shape
-        return Arr([a.data[i * n + j] for j in range(n) for i in range(m)],
-                   [m * n])
+        n = numel(a.shape)
+        return Arr([a.data[_linear_offset(a.shape, k)] for k in range(n)],
+                   [n])
     if oid in ("OP-MASK", "OP-FIND"):
         a, cmp_v, k = args[0], _i(args[1]), _f(args[2])
         if len(a.shape) != 1:

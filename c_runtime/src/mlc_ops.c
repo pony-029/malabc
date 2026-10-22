@@ -191,19 +191,65 @@ static mlc_status mlc_reduce_prepare(const mlc_array *a, mlc_array *out,
 
 mlc_status mlc_op_sum(const mlc_array *a, mlc_array *out)
 {
-    int64_t n, i;
+    int64_t n, i, j;
     const double *pa;
     double *po;
-    double acc = 0.0;
 
-    if (mlc_reduce_prepare(a, out, &n, &pa, &po) != MLC_OK) {
+    if (a == NULL || out == NULL || a->dtype != MLC_F64
+            || out->dtype != MLC_F64) {
         return MLC_ERR;
     }
-    for (i = 0; i < n; ++i) {
-        acc += pa[i];
+    pa = (const double *)a->data;
+    po = (double *)out->data;
+    if (pa == NULL || po == NULL) {
+        return MLC_ERR;
     }
-    po[0] = acc;
-    return MLC_OK;
+    if (a->ndim == 1) {
+        double acc = 0.0;
+        n = mlc_array_numel(a);
+        if (n <= 0 || mlc_array_numel(out) != 1) {
+            return MLC_ERR;
+        }
+        for (i = 0; i < n; ++i) {
+            acc += pa[i];
+        }
+        po[0] = acc;
+        return MLC_OK;
+    }
+    if (a->ndim == 2) {
+        int64_t rows = a->shape[0], cols = a->shape[1];
+        if (rows <= 0 || cols <= 0) {
+            return MLC_ERR;
+        }
+        if (rows > 1) {
+            /* MATLAB 默认沿第一个非单例维：2x3 -> 1x3。 */
+            if (out->ndim != 2 || out->shape[0] != 1
+                    || out->shape[1] != cols) {
+                return MLC_ERR;
+            }
+            for (j = 0; j < cols; ++j) {
+                double acc = 0.0;
+                for (i = 0; i < rows; ++i) {
+                    acc += pa[i * cols + j];
+                }
+                po[j] = acc;
+            }
+            return MLC_OK;
+        }
+        {
+            double acc = 0.0;
+            n = rows * cols;
+            if (mlc_array_numel(out) != 1) {
+                return MLC_ERR;
+            }
+            for (i = 0; i < n; ++i) {
+                acc += pa[i];
+            }
+            po[0] = acc;
+            return MLC_OK;
+        }
+    }
+    return MLC_ERR; /* 3-D+ 暂不静默猜维度 */
 }
 
 mlc_status mlc_op_mean(const mlc_array *a, mlc_array *out)
@@ -292,7 +338,26 @@ mlc_status mlc_op_index(const mlc_array *a, int64_t matlab_index,
     if (pa == NULL || po == NULL) {
         return MLC_ERR;
     }
-    po[0] = pa[idx0];
+    if (a->ndim == 1) {
+        po[0] = pa[idx0];
+    } else if (a->ndim >= 2 && a->ndim <= MLC_MAX_DIMS) {
+        /* ORDER-1：MATLAB 线性下标是列主序；内存是行主序，必须换算。 */
+        int64_t rem = idx0, off = 0;
+        int32_t d;
+        for (d = 0; d < a->ndim; ++d) {
+            int64_t dim = a->shape[d];
+            int64_t coord;
+            if (dim <= 0) {
+                return MLC_ERR;
+            }
+            coord = rem % dim;
+            rem /= dim;
+            off += coord * a->strides[d];
+        }
+        po[0] = pa[off];
+    } else {
+        return MLC_ERR;
+    }
     return MLC_OK;
 }
 

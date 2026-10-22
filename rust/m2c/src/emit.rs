@@ -185,6 +185,20 @@ fn init_call(var: &str, dtype: &str, shape: &[i64], is_ptr: bool) -> Option<Stri
 }
 
 fn out_shape(f: &Func, op: &Op) -> Option<Vec<i64>> {
+    if op.id == "OP-SUM" && op.args.len() == 1 {
+        // MATLAB 的 sum 默认沿**第一个非单例维**；2-D 的 2x3 -> 1x3。
+        let s = f.var_shape(&op.args[0])?;
+        if s.len() == 1 {
+            return Some(vec![1]);
+        }
+        if s.len() == 2 {
+            if s[0] > 1 {
+                return Some(vec![1, s[1]]);
+            }
+            return Some(vec![1]);
+        }
+        return None; // 3-D+ 暂不推断，避免猜错
+    }
     if REDUCTIONS.contains(&op.id.as_str()) || op.id == "OP-INDEX" {
         return Some(vec![1]);
     }
@@ -759,7 +773,7 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
 
     // 局部临时：所有"既不是参数也不是返回值"的算子输出
     let mut need_free: Vec<String> = Vec::new();
-    let mut temps: Vec<(String, Vec<i64>)> = Vec::new();
+    let mut temps: Vec<(String, Option<Vec<i64>>)> = Vec::new();
     // 立即数也要有实体：算子签名只认 mlc_array
     let mut consts: Vec<(String, String)> = Vec::new();
     // 多维常量：(名字, 形状, 值)
@@ -784,8 +798,18 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
         // 只收集前者会让后者的名字从未声明，生成的 C 直接编不过
         // （真实工程里 "B = getbase(Y)" 这种中间变量到处都是）。
         let (lhs, shape) = match s {
-            Stmt::Op(op) => (op.lhs.clone(), out_shape(f, op).unwrap_or_else(|| vec![1])),
-            Stmt::Call { lhs, .. } => (lhs.clone(), vec![1]),
+            Stmt::Op(op) => {
+                let sh = out_shape(f, op);
+                // 动态分配型算子由 *_alloc 负责 init；先 init 会泄漏旧 buffer。
+                let dynamic = op.id == "OP-MASK" || op.id == "OP-FIND";
+                let sh = if sh.is_none() && dynamic {
+                    None
+                } else {
+                    Some(sh.unwrap_or_else(|| vec![1]))
+                };
+                (op.lhs.clone(), sh)
+            }
+            Stmt::Call { lhs, .. } => (lhs.clone(), Some(vec![1])),
             _ => return,
         };
         let is_arg = f.args.iter().any(|x| x.name == lhs);
@@ -802,8 +826,10 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
     });
     for (t, shape) in &temps {
         out.push(format!("    mlc_array {};", t));
-        if let Some(l) = init_call(t, "f64", shape, false) {
-            out.push(l);
+        if let Some(sh) = shape {
+            if let Some(l) = init_call(t, "f64", sh, false) {
+                out.push(l);
+            }
         }
     }
     for (n, v) in &consts {

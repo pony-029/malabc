@@ -487,7 +487,8 @@ def main(argv=None):
         return 0
 
     try:
-        src = io.open(args.source, encoding="utf-8", errors="replace").read()
+        src = io.open(args.source, encoding="utf-8-sig",
+                      errors="replace").read()
     except (IOError, OSError) as exc:
         print("读不了 %s：%s" % (args.source, exc))
         return 2
