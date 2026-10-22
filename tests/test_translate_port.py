@@ -171,6 +171,14 @@ class TestSourceHandling(unittest.TestCase):
         self.assertIn("# src:4", text)
         self.assertIn("op:OP-ADD:y:x:x", text)
 
+    def test_lowered_binary_keeps_line_per_op(self):
+        text = mir.to_mir(
+            "function r = f(v)\n% @m2c shape v 3\n"
+            "% @m2c shape r 3\nr = v + v(1);\nend\n")[0]
+        self.assertEqual(text.count("# src:4"), 2)
+        self.assertIn("op:OP-INDEX:", text)
+        self.assertIn("op:OP-ADD:", text)
+
     def test_bom_source_is_read(self):
         tmp = tempfile.mkdtemp(prefix="mlc_bom_")
         try:

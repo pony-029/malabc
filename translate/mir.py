@@ -185,13 +185,21 @@ def _side_atom(text):
     return None
 
 
-def _lower_binary(lhs, left, op, right, fnames, emit, counter):
+def _lower_binary(lhs, left, op, right, fnames, emit, counter, src_line=0):
     """把 `lhs = left op right` 降级；两侧都可以是 调用/下标。
 
     为什么要降级：MIR 是**语句级**的，没有嵌套表达式。真实代码里
     `r = r + v(1)`、`s = sum(v) + w` 到处都是 —— 直接在 MIR 里塞表达式，
     等于把"求值顺序"这个语义问题藏进发射器。拆成两条语句，顺序就写明了。
+
+    `src_line` 会写到**每一条**派生语句前：同一条 MATLAB 语句拆成三条 C
+    语句时，三条都应能回到同一行，不能只有第一条有映射。
     """
+    def _emit(line):
+        if src_line:
+            emit("# src:%d" % src_line)
+        emit(line)
+
     sides = []
     for text in (left, right):
         side = _side_atom(text)
@@ -206,28 +214,28 @@ def _lower_binary(lhs, left, op, right, fnames, emit, counter):
             counter[0] += 1
             tmp = "__t%d" % counter[0]
             if fname in fnames:
-                emit("call:%s:%s:%s" % (tmp, fname, arg))
+                _emit("call:%s:%s:%s" % (tmp, fname, arg))
             else:
                 # 先问算子目录：`sum(z)` 是归约，不是"对 z 取名为 sum 的下标"
                 use = operators.parse_line("%s = %s(%s);" % (tmp, fname, arg))
                 if use is not None and use["operator"] != "OP-INDEX":
-                    emit("op:%s:%s:%s"
-                         % (use["operator"], tmp, ":".join(use["args"])))
+                    _emit("op:%s:%s:%s"
+                          % (use["operator"], tmp, ":".join(use["args"])))
                 else:
-                    emit("op:OP-INDEX:%s:%s:%s" % (tmp, fname, arg))
+                    _emit("op:OP-INDEX:%s:%s:%s" % (tmp, fname, arg))
             operands.append(tmp)
         elif side[0] == "num":
             # 立即数 → 形状 [1] 的 mlc_array（MATLAB 里标量就是 1×1）
             counter[0] += 1
             tmp = "__k%d" % counter[0]
-            emit("const:%s:%s" % (tmp, side[1]))
+            _emit("const:%s:%s" % (tmp, side[1]))
             operands.append(tmp)
         else:
             operands.append(side[1])
 
     # 算子 ID 是 `OP-ADD`（与 operators.py 的目录一致），不是 C 函数名的 `add`
-    emit("op:OP-%s:%s:%s:%s"
-         % (_BIN_OP[op].upper(), lhs, operands[0], operands[1]))
+    _emit("op:OP-%s:%s:%s:%s"
+          % (_BIN_OP[op].upper(), lhs, operands[0], operands[1]))
     return True
 
 
@@ -354,7 +362,7 @@ def to_mir(source, extra_names=None, header=True, skip_names=None):
                     em = _EXPR_BIN.match(rhs)
                     if em and _lower_binary(lhs, em.group(1), em.group(2),
                                             em.group(3), fnames, out.append,
-                                            n_tmp):
+                                            n_tmp, src_line):
                         n_ops_delta[0] += 1
                         continue
                     cm = _CALL.match(rhs)
@@ -394,6 +402,14 @@ def to_mir(source, extra_names=None, header=True, skip_names=None):
             out.append("end")              # 容错：没写 end 的块也收束
             blocks.pop()
         out.append("end")
+    # 同一条 MATLAB 语句可能被降级成多条语句；连续重复的 `# src` 只保留一条，
+    # 否则 MIR 会看起来像“同一行写了两遍”。
+    dedup = []
+    for x in out:
+        if x.startswith("# src:") and dedup and dedup[-1] == x:
+            continue
+        dedup.append(x)
+    out = dedup
     # **统计以 MIR 文本为准**：降级/展开会追加语句，用计数器容易漏计
     # （实测 `zerosum` 生成了 3 条算子语句，计数器仍显示 10）。
     ops_lines = [x for x in out if x.startswith("op:")]
