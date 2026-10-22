@@ -102,6 +102,22 @@ P = A * B;
 Q = A + A;
 end
 
+function y = pick2(A)
+% @m2c shape A 2,3
+% @m2c shape y 1
+% 2-D 下标：A(2,2) == 列优先线性下标 2+(2-1)*2 = 4（生成期算成常量）
+y = A(2,2);
+end
+
+function y = pick2v(A, i, j)
+% @m2c shape A 2,3
+% @m2c i64 i
+% @m2c i64 j
+% @m2c shape y 1
+% 2-D 下标（变量）：运行时算 __li = i + (j-1)*m 再走 OP-INDEX
+y = A(i,j);
+end
+
 function y = repeater(x)
 % @m2c shape x 3
 % @m2c shape y 3

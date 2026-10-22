@@ -10,10 +10,12 @@ scale: 2 4 6
 zerosum: 6
 mm: 22 28 49 64
 pair: 22 28 49 64 | 2 4 6 8 10 12
+pick2: 5
+pick2v: 5
 repeater: 2 4 6
 fancy: 1 2 3
 slicer: 1 2
 masked: 2 3
 wheregt: 2 3
 flatit: 1 4 2 5 3 6
-cellish: unimplemented
+cellish: skipped (reject:cell)

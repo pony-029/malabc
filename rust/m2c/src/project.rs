@@ -139,10 +139,16 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
 
     for f in funcs {
         if !drivable(f) {
-            out.push(format!(
-                "    printf(\"{}: skipped (no shape)\\n\");",
-                ident(&f.name)
-            ));
+            // 被 reject 的（cell / varargin）与"缺形状"是两件事：
+            // 前者永远转不了，后者补注解就行 —— 输出里必须分开，否则读者会去补注解。
+            match &f.reject {
+                Some(reason) => out.push(format!(
+                    "    printf(\"{}: skipped (reject:{})\\n\");",
+                    ident(&f.name), reason)),
+                None => out.push(format!(
+                    "    printf(\"{}: skipped (no shape)\\n\");",
+                    ident(&f.name))),
+            }
             continue;
         }
         let arrays: Vec<&crate::mir::Var> =

@@ -11,7 +11,7 @@ R413 把"新增一道门要同时改的六处"写进了 CONTRIBUTING，其中第
 要么在 `EXEMPT` 里**写明理由**。两向都查 —— 陈旧豁免（登记了却已经在
 `GATES` 里）同样算缺陷。
 
-判据族 **RG1–RG3**。
+判据族 **RG1–RG5**。
 
     RG4  某道门比**它自己的历史中位数**慢 `SLOW_RATIO` 倍以上时点名提示
          （不判负）—— 单次数字看不出退化，趋势能。
@@ -34,7 +34,10 @@ import os
 import re
 import sys
 
-ROW_SIGNATURE = "RG1–RG4"
+ROW_SIGNATURE = "RG1–RG5"
+
+#: 发版墙钟预算（毫秒）。超过就判红 —— 它保护的是"发版前真的全跑一遍"这个习惯。
+BUDGET_MS = 5000
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -163,6 +166,21 @@ def check():
 
     stats = {"gates": len(gates), "files": len(files),
              "exempt": len(EXEMPT)}
+    # RG5：最近一次发版的墙钟预算
+    hist = os.path.join(HERE, "..", "releases", "gates-history.jsonl")
+    try:
+        rows = [json.loads(x) for x in
+                io.open(hist, encoding="utf-8").read().splitlines() if x.strip()]
+        last = rows[-1] if rows else {}
+    except (IOError, OSError, ValueError):
+        last = {}
+    total = int(last.get("total_ms") or 0)
+    if total > BUDGET_MS:
+        problems.append(u"RG5 上次发版墙钟 %d ms > 预算 %d ms —— 超出后"
+                        u"\"跑一遍全量\"这个习惯会先崩" % (total, BUDGET_MS))
+    stats["budget_ms"] = BUDGET_MS
+    stats["last_total_ms"] = total
+
     return problems, stats
 
 
@@ -184,7 +202,7 @@ def main(argv=None):
         print("check_release_gates: %d 项不合规" % len(problems))
         return 1
 
-    print("check_release_gates: OK（RG1–RG4 全绿；%d 道门在发版清单里，"
+    print("check_release_gates: OK（RG1–RG5 全绿；%d 道门在发版清单里，"
           "%d 个豁免带理由，%d 个 check 脚本）"
           % (stats["gates"], stats["exempt"], stats["files"]))
     return 0

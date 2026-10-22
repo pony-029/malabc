@@ -813,7 +813,7 @@ python tools/check_all.py        # 跑完 tools/check_*.py 全部护栏 + 各自
 | `check_tool_discoverability.py` | `TD1–TD4` — `tools/` 下每个非护栏脚本都必须在**两侧** README 里被提到。护栏有两个对手方（树 + 这张表），而普通工具**一个都没有**——`sweep_cli.py` 因此长到 118 条判据却从未进 README，`lsp_selftest.py` 因此红了六轮没人知道。 **TD4**：用户手册必须能从扩展页点开 —— 手册与 4 张示意图原先都在包里，而 `README.md` 一处都没引用，文件存在却没人找得到。 |
 | `check_tour.py` | `TR1–TR3` —— 导览页**静静变差**的三种方式：某一帧引用了图上已不存在的模块（那一步什么都不高亮，页面照样打开）；连线端点留在自己框内（线压在标题上，看起来就是「箭头指过了头」）；页面残留模板转义 `%%` 或 CRLF。三者都不报错，而且破掉的那一帧和正常的一帧，截图上看不出区别 |
 | `check_figure_glyphs.py` | 守示意图（FG1–FG4）：图上要画的字必须在字体里有字形—— 缺了就是空心方块，而方块看起来像打码；等宽字体那几行也不许出现非 ASCII |
-| `check_release_gates.py` | `RG1–RG4` — 写了却从不参与发布的门，等于给自己看的笔记：每个 `check_*.py` 要么在 `release.py` 的 `GATES` 里，要么**带理由**豁免（陈旧豁免同样算红） |
+| `check_release_gates.py` | `RG1–RG5` — 写了却从不参与发布的门，等于给自己看的笔记：每个 `check_*.py` 要么在 `release.py` 的 `GATES` 里，要么**带理由**豁免（陈旧豁免同样算红） |
 | `check_symbol_ranges.py` | `SR1–SR3` — 每个符号的起止行必须落在文件内。越界的 Range 会让编辑器**拒收整批符号**，大纲于是永远停在「正在加载…」 |
 | `check_translate_port.py` | `TP1–TP11` — MATLAB→C 移植链路：ABI 契约（禁止裸指针）/ 双侧适配器（ADP-1..3）/ 算子目录与 C 发射 / golden 保真 + 移植台账。未验证是一等状态，但「已声明」必须能被夹具兑现 |
 | `check_architecture_docs.py` | `AD1–AD11` — 架构文档不许漂移：`FLOW_INDEX.json` ⇄ `candidates/*.json` ⇄ `html/*.html` ⇄ `svg/*.svg` 三向对账；SHA-256 陈旧门；离线版式不变量；CODEOWNERS 覆盖；本地图片路径；中英标签一致；术语表一致（AD9）；术语覆盖率 = 100%（AD10）；ADR 覆盖（AD11）；两份根 README 必须链接索引并嵌入总框架 SVG |

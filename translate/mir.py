@@ -247,9 +247,10 @@ def oid0_is_slice(oid):
 #: unmapped 的原因分类（顺序即优先级：先判更"硬"的语义）。
 _KIND_RULES = (
     ("cell", lambda t: "{" in t or "}" in t),
-    ("struct", lambda t: ".(" in t.replace(" ", "") or
-                         ("." in t and "(" in t and ")" in t
-                          and not t.startswith("function"))),
+    # 结构体：`a.b` / `a.(e)`；排除 `.*` `./` `.\\` `.'` 与小数（它们也带点）
+    ("struct", lambda t: _has_struct_ref(t)),
+    # 字符串字面量：MATLAB 用单引号，C 里没有对应语义（且易与转置混淆）
+    ("strlit", lambda t: "'" in t),
     ("control", lambda t: t.startswith(("switch", "case", "try", "catch",
                                         "break", "continue", "return"))),
     # 块标记：上一层的 if 没被识别时，else/otherwise 会落到这里
@@ -259,9 +260,19 @@ _KIND_RULES = (
         "clc", "clear", "clear all", "close all", "more on", "more off",
         "disp", "display", "fprintf", "printf", "error", "warning", "assert",
         "tic", "toc", "drawnow", "pause")),
+    ("cond", lambda t: t.startswith(("if ", "if(", "while ", "while("))),
     ("slice2d", lambda t: "(" in t and ("," in t or ":" in t)),
     ("nested", lambda t: t.count("(") >= 2),
 )
+
+
+def _has_struct_ref(t):
+    """判断是否引用了结构体字段：`a.b` / `a.(e)`，但排除点运算与小数。"""
+    import re as _re
+    cleaned = (t.replace(".*", " ").replace("./", " ")
+                .replace(".\\", " ").replace(".'", " "))
+    cleaned = _re.sub(r"\d\.\d", " ", cleaned)          # 3.14 -> 空格
+    return _re.search(r"[A-Za-z_]\w*\s*\.\s*(\w|\()", cleaned) is not None
 
 
 def _unmapped_kind(text):
@@ -282,6 +293,33 @@ def _emit_unmapped(out, kinds, text):
     out.append("# why:%s" % kind)
     kinds[kind] = kinds.get(kind, 0) + 1
     out.append("unmapped:%s" % text)
+
+
+#: `A(i,j)`：两维下标（i/j 为字面量或标量名）
+_IDX2_RE = re.compile(r"^([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*"
+                      r"\(\s*([^,()]+?)\s*,\s*([^,()]+?)\s*\)\s*;?\s*$")
+
+
+def _lower_index2(out, lhs, arr, ia, ib, m, counter, unmapped_kinds, code):
+    """把 `A(i,j)` 降成线性下标；返回 True 表示已处理。"""
+    if ia.isdigit() and ib.isdigit():
+        lin = str(int(ia) + (int(ib) - 1) * int(m))
+        out.append("op:OP-INDEX:%s:%s:%s" % (lhs, arr, lin))
+        return True
+    # 运行时算：__li = ia + (ib-1)*m
+    for nm in (ia, ib):
+        if not re.match(r"^[A-Za-z_]\w*$", nm):
+            return False
+    counter[0] += 1
+    t1 = "__j%d" % counter[0]
+    t2 = "__l%d" % counter[0]
+    out.append("var:%s:i64" % t1)
+    out.append("var:%s:i64" % t2)
+    out.append("setb:%s:sub:%s:1" % (t1, ib))
+    out.append("setb:%s:mul:%s:%d" % (t2, t1, int(m)))
+    out.append("setb:%s:add:%s:%s" % (t1, ia, t2))
+    out.append("op:OP-INDEX:%s:%s:%s" % (lhs, arr, t1))
+    return True
 
 
 def to_mir(source, extra_names=None, header=True, skip_names=None):
@@ -309,6 +347,7 @@ def to_mir(source, extra_names=None, header=True, skip_names=None):
     n_unmapped = 0
     per_op = {}
     unmapped_kinds = {}
+    idx_counter = [0]          # 2-D 下标降级用的临时名序号
     for f in funcs:
         out.append("# source_sha256:%s" % src_hash)
         out.append("func:%s" % f["name"])
@@ -317,6 +356,9 @@ def to_mir(source, extra_names=None, header=True, skip_names=None):
                if n in ("varargin", "varargout")]
         if _va:
             out.append("reject:%s" % ",".join(_va))
+        elif any(("{" in ln or "}" in ln) for ln in f["lines"]):
+            # cell：C 侧没有对应表示 -> 整函数拒绝（逐行计数会低估这部分）
+            out.append("reject:cell")
         # 已知标量：i64 参数（下标源），后续的标量赋值/循环变量会继续加入
         _types = f.get("types") or {}
         scalar_names = set(n for n in f["args"]
@@ -383,6 +425,15 @@ def to_mir(source, extra_names=None, header=True, skip_names=None):
                                % (am0.group(1), cm0.group(1), ":".join(args)))
                     n_calls[0] += 1
                     continue
+            _m2 = _IDX2_RE.match(code)
+            if _m2:
+                _shp = (f.get("shapes") or {}).get(_m2.group(2))
+                if _shp and len(_shp) == 2:
+                    if _lower_index2(out, _m2.group(1), _m2.group(2),
+                                     _m2.group(3).strip(),
+                                     _m2.group(4).strip(), _shp[0], idx_counter,
+                                     unmapped_kinds, code):
+                        continue
             use = operators.parse_line(code)
             if use is not None and use["operator"] == "OP-INDEX":
                 idx = use["args"][1] if len(use["args"]) > 1 else ""
