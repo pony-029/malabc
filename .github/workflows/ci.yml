@@ -47,6 +47,14 @@ jobs:
       - name: Static gates (33, each self-proving)
         run: python tools/check_all.py --quiet
 
+      - name: VS Code extension tests
+        # 双栏对照的命令注册与函数定位纯函数；不需要真的开 VS Code 窗口。
+        run: node vscode/test_extension.js
+
+      - name: C/MATLAB bridge contract
+        # 扩展只消费 matlabc/cbridge，这里用真实 LSP 钉住正反向字段。
+        run: python -m unittest discover -s tests -p "test_lsp_cbridge.py"
+
       - name: Behavioural judgements (LSP / MCP)
         run: python tools/lsp_selftest.py --all
 
