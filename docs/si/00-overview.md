@@ -40,7 +40,9 @@
   `eval`/动态字段仍标低置信度。
 - 没有 FTS5/名称片段索引（字段/表已预留）。
 - 没有 UI 面板；P0 只提供 CLI 与可查询的 SQLite。
-- 没有 `.siproj` 导入器；P0 先定义自己的 `.mlcproj`。
+- LSP 已支持 `workspace/symbol` 与 `didChange` overlay（350ms 防抖）；
+  未保存 buffer 走临时文件解析，`didSave` 后回到磁盘。
+- `.siproj`/MFL 只导入文件清单，不导入符号；符号全部重新解析。
 
 ## 5. 关键决策
 

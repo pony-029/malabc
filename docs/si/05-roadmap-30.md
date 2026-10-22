@@ -20,8 +20,8 @@
 | R14 | `refs` 表填充 | 标识符引用可查 | ✅ |
 | R15 | 调用边（AST） | `calls` 填 `edges`，跨文件解析 | ✅ |
 | R16 | 置信度模型 | call/method/handle/dynamic 分级 | ✅ |
-| R17 | LSP `workspace/symbol` | VS Code 全局符号 | ⏳ |
-| R18 | LSP `didChange` debounce | 编辑期增量，不全量重算 | ⏳ |
+| R17 | LSP `workspace/symbol` | VS Code 全局符号 | ✅ |
+| R18 | LSP `didChange` debounce | 编辑期增量，不全量重算 | ✅ |
 | R19 | Context API + 面板 | 签名/帮助头/属性/基类 | ⏳ |
 | R20 | Relation API + 面板 | Contains/Calls/Callers/References | ⏳ |
 | R21 | 工程搜索（regex/多行） | 100k LOC <1s | ⏳ |

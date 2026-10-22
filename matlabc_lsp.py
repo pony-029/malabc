@@ -40,12 +40,25 @@ MATLABC = os.path.join(HERE, "matlabc.py")
 SEVERITY = {"error": 1, "warning": 2, "note": 3, "info": 3, "hint": 4}
 
 _STATE = {"root": None, "payload": None, "result": None,
-          "lock": threading.Lock()}
+          "lock": threading.Lock(),
+          "overlay": {}, "docs": {}, "change_seq": 0, "change_timer": None}
 
 
 def _log(msg):
     sys.stderr.write("[matlabc] %s\n" % msg)
     sys.stderr.flush()
+
+
+def _cancel_change_timer():
+    """取消待执行的 didChange 重算，并让已在跑的 timer 结果作废。"""
+    timer = _STATE.get("change_timer")
+    if timer is not None:
+        try:
+            timer.cancel()
+        except Exception:
+            pass
+    _STATE["change_timer"] = None
+    _STATE["change_seq"] = int(_STATE.get("change_seq", 0)) + 1
 
 
 # --------------------------------------------------------------------------
@@ -411,7 +424,7 @@ def _is_live_result(res):
     return False
 
 
-def _run_json(root, prev=None, changed=None):
+def _run_json(root, prev=None, changed=None, overlay=None):
     """**进程内**跑分析，返回与 `--json` 同形的 `{"heuristics": [...]}`。
 
     为什么不再起子进程：CLI 全流程实测 **5.92s**（1300 个 .m），而
@@ -425,7 +438,7 @@ def _run_json(root, prev=None, changed=None):
     # 但**给了 `prev` 就不读缓存** —— 那是增量路径，复用的是内存里的活对象，
     # 混进磁盘替身会把两条路径的语义搅在一起（`_is_live_result` 守的就是这件事）。
     # `stamp` 校验保证「改过任何一个 .m 就作废」，所以命中时结果与重算一致。
-    if prev is None:
+    if prev is None and not overlay:
         hit = _load_cache(root)
         if hit is not None:
             result0, payload0 = hit
@@ -446,9 +459,10 @@ def _run_json(root, prev=None, changed=None):
             # 增量：只重解析 `changed` 里的文件，其余沿用活对象。
             # 一致性由第 30 道门守着（`check_incremental_parity`：
             # 逐文件各测一次，files 与 edges 必须与全量逐项相同）。
-            result = analyze(root, prev=prev, changed=changed)
+            result = analyze(root, prev=prev, changed=changed,
+                             overlay=overlay)
         else:
-            result = analyze(root)
+            result = analyze(root, overlay=overlay)
     except Exception as exc:                  # 分析失败不能让服务挂掉
         _log("analyze 失败：%r" % (exc,))
         return None
@@ -2688,6 +2702,9 @@ _SYMBOL_MODULE = 2
 _SYMBOL_FUNCTION = 12
 #: LSP `SymbolKind.Class` = 5
 _SYMBOL_CLASS = 5
+#: LSP `SymbolKind.Method` = 6 / `Property` = 7
+_SYMBOL_METHOD = 6
+_SYMBOL_PROPERTY = 7
 
 
 def _script_symbols(rel, source_lines, file_lines, path=None):
@@ -2852,6 +2869,82 @@ def _document_symbols(uri):
         return []
 
 
+def _path_to_uri(path):
+    """绝对路径 -> file URI（空格等转义，保留 / 与 :）。"""
+    p = os.path.abspath(str(path)).replace("\\", "/")
+    if not p.startswith("/"):
+        p = "/" + p
+    try:
+        from urllib.parse import quote
+        return "file://" + quote(p, safe="/:")
+    except ImportError:
+        return "file://" + p
+
+
+def _workspace_symbols(query="", result=None, limit=200):
+    """`workspace/symbol`：全项目符号查询。
+
+    数据来自当前 `_STATE["result"]`，不重新解析；类/方法/属性/函数/局部函数
+    都返回。查询为空时返回前 `limit` 个（按名字排序）。
+    """
+    result = result if result is not None else _STATE.get("result")
+    if result is None:
+        return []
+    q = (query or "").strip().lower()
+    root = _STATE.get("root") or ""
+    out = []
+    seen = set()
+
+    def add(name, kind, rel, line, container=""):
+        if not name:
+            return
+        line0 = max(0, int(line or 1) - 1)
+        key = (kind, name, rel, line0)
+        if key in seen:
+            return
+        seen.add(key)
+        path = os.path.join(root, rel.replace("/", os.sep)) if root else rel
+        out.append({
+            "name": name,
+            "kind": kind,
+            "location": {
+                "uri": _path_to_uri(path),
+                "range": {
+                    "start": {"line": line0, "character": 0},
+                    "end": {"line": line0, "character": len(name)},
+                },
+            },
+            "containerName": container or os.path.dirname(rel).replace("/", "."),
+        })
+
+    for mf in (getattr(result, "files", None) or []):
+        rel = getattr(mf, "rel", "") or ""
+        for cls in (getattr(mf, "classes", None) or []):
+            name = getattr(cls, "name", "") or ""
+            if q and q not in name.lower():
+                continue
+            add(name, _SYMBOL_CLASS, rel, getattr(cls, "line", 1))
+            for prop in (getattr(cls, "properties", None) or []):
+                pname, pline = (prop if isinstance(prop, tuple)
+                                else (getattr(prop, "name", ""),
+                                      getattr(prop, "line", 1)))
+                if not q or q in pname.lower():
+                    add(pname, _SYMBOL_PROPERTY, rel, pline, name)
+        for fn in (getattr(mf, "functions", None) or []):
+            name = getattr(fn, "name", "") or ""
+            qual = getattr(fn, "qualified", "") or ""
+            if q and q not in name.lower() and q not in qual.lower():
+                continue
+            kind = (getattr(fn, "kind", "") or "")
+            sk = (_SYMBOL_METHOD if kind in ("method", "constructor")
+                  else _SYMBOL_FUNCTION)
+            add(name, sk, rel, getattr(fn, "line", 1),
+                getattr(fn, "class_name", "") or "")
+    out.sort(key=lambda x: (x["name"].lower(), x["location"]["uri"],
+                            x["location"]["range"]["start"]["line"]))
+    return out[:max(1, int(limit))]
+
+
 # --------------------------------------------------------------------------
 # 协议处理
 # --------------------------------------------------------------------------
@@ -2882,6 +2975,7 @@ def handle(msg, out):
                     # 手写客户端不会自动转 provider，这里声明只是让协议
                     # 自洽；`vscode/extension.js` 里仍需自己 register。
                     "documentSymbolProvider": True,
+                    "workspaceSymbolProvider": True,
                     # R218：语义高亮。**legend 的顺序就是 tokenType 的编号**，
                     # 扩展侧必须用同一份数组构造 `SemanticTokensLegend`，
                     # 否则颜色会整体错位（而且不会报错，只会「颜色莫名其妙」）。
@@ -2903,6 +2997,7 @@ def handle(msg, out):
         return True
 
     if method == "shutdown":
+        _cancel_change_timer()
         _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": None})
         return True
 
@@ -2910,7 +3005,10 @@ def handle(msg, out):
         return False
 
     if method == "textDocument/didOpen":
-        uri = ((msg.get("params") or {}).get("textDocument") or {}).get("uri", "")
+        _td = (msg.get("params") or {}).get("textDocument") or {}
+        uri = _td.get("uri", "")
+        if _td.get("text") is not None:
+            _STATE.setdefault("docs", {})[uri] = _td.get("text")
         # **先返回空诊断**，证明协议循环没被分析阻塞
         _write_message(out, {
             "jsonrpc": "2.0",
@@ -2937,6 +3035,13 @@ def handle(msg, out):
             _log("didOpen %s -> %d 条" % (os.path.basename(uri), len(diags)))
 
         threading.Thread(target=_later, daemon=True).start()
+        return True
+
+    if method == "workspace/symbol":
+        params = msg.get("params") or {}
+        syms = _workspace_symbols(params.get("query") or "")
+        _write_message(out, {"jsonrpc": "2.0", "id": mid, "result": syms})
+        _log("workspace/symbol %r -> %d" % (params.get("query"), len(syms)))
         return True
 
     if method == "textDocument/definition":
@@ -3054,12 +3159,74 @@ def handle(msg, out):
              % (os.path.basename(_uri_to_path(uri)), len(lenses)))
         return True
 
+    if method == "textDocument/didChange":
+        # full sync（textDocumentSync=1）：contentChanges[-1].text 是整篇文本。
+        params = msg.get("params") or {}
+        td = params.get("textDocument") or {}
+        uri = td.get("uri", "")
+        text = None
+        for ch in (params.get("contentChanges") or []):
+            if "text" in ch:
+                text = ch.get("text")
+        if text is None:
+            return True
+        _STATE.setdefault("overlay", {})[uri] = text
+        _STATE.setdefault("docs", {})[uri] = text
+        _cancel_change_timer()
+        seq = int(_STATE.get("change_seq", 0))
+
+        def _later():
+            if seq != _STATE.get("change_seq"):
+                return
+            root = _STATE.get("root")
+            if not root:
+                return
+            try:
+                rel = os.path.relpath(_uri_to_path(uri), root).replace("\\", "/")
+            except Exception:
+                return
+            old = _STATE.get("result")
+            prev_files = None
+            changed = None
+            if old is not None and _is_live_result(old):
+                prev_files = getattr(old, "files", None)
+                changed = {rel}
+            try:
+                if prev_files is not None:
+                    payload = _run_json(root, prev=prev_files, changed=changed,
+                                        overlay={rel: text})
+                else:
+                    payload = _run_json(root, overlay={rel: text})
+            except Exception as exc:
+                _log("didChange 重算失败：%r" % (exc,))
+                return
+            if seq != _STATE.get("change_seq"):
+                return
+            with _STATE["lock"]:
+                _STATE["payload"] = payload
+            diags = _diagnostics_for(uri)
+            _write_message(out, {
+                "jsonrpc": "2.0",
+                "method": "textDocument/publishDiagnostics",
+                "params": {"uri": uri, "diagnostics": diags},
+            })
+            _log("didChange %s -> %d 条（debounce）"
+                 % (os.path.basename(_uri_to_path(uri)), len(diags)))
+
+        timer = threading.Timer(0.35, _later)
+        timer.daemon = True
+        _STATE["change_timer"] = timer
+        timer.start()
+        return True
+
     if method == "textDocument/didSave":
         # R153：`didOpen` 只在 `payload is None` 时算一次，所以保存之后
         # 必须**显式作废**缓存，否则诊断永远是打开那一刻的旧结果。
         # 这是 LSP 从"能看"到"能用"的分界：慢是等一会儿，旧是错。
         params = msg.get("params") or {}
         uri = (params.get("textDocument") or {}).get("uri", "")
+        _cancel_change_timer()
+        _STATE.setdefault("overlay", {}).pop(uri, None)
         root = _STATE.get("root")
         # 保存的是哪个文件 —— 增量重算需要它。取不到就退回全量。
         rel = None
@@ -3106,6 +3273,11 @@ def handle(msg, out):
         return True
 
     if method == "textDocument/didClose":
+        params = msg.get("params") or {}
+        uri = (params.get("textDocument") or {}).get("uri", "")
+        _cancel_change_timer()
+        _STATE.setdefault("overlay", {}).pop(uri, None)
+        _STATE.setdefault("docs", {}).pop(uri, None)
         return True
 
     if mid is not None:

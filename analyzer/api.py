@@ -53,6 +53,7 @@ def analyze(root, **kw):
     # 在 13 个文件上反而慢 10 倍）。
     prev = kw.pop("prev", None)
     changed = kw.pop("changed", None)
+    overlay = kw.pop("overlay", None)
     import matlabc as M
     ns = _namespace(**kw)
     root_p = Path(str(root))
@@ -60,7 +61,8 @@ def analyze(root, **kw):
         raise ValueError("目录不存在：%s" % root_p)
     paths = M.collect_files(root_p, recursive=not ns.no_recursive,
                             exclude=list(ns.exclude or ()))
-    return M.run_pipeline(ns, root_p, paths, prev=prev, changed=changed)
+    return M.run_pipeline(ns, root_p, paths, prev=prev, changed=changed,
+                          overlay=overlay)
 
 
 def counts(result):

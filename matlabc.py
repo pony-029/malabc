@@ -32260,7 +32260,7 @@ PipelineResult = namedtuple(
     "files index edges stats model c_model checks_for_sarif early_exit facts")
 
 
-def run_pipeline(args, root, paths, prev=None, changed=None):
+def run_pipeline(args, root, paths, prev=None, changed=None, overlay=None):
     """收集 → 解析 → 建模。**纯分析**：不 print、不写盘、不 sys.exit。
 
     返回 `PipelineResult`；`early_exit` 非 None 表示「单次任务已经处理完，
@@ -32310,6 +32310,24 @@ def run_pipeline(args, root, paths, prev=None, changed=None):
         rel = p.relative_to(root).as_posix()
         if prev is not None and rel in _by_rel and rel not in changed:
             files.append(_by_rel[rel])
+            continue
+        # LSP didChange：未保存 buffer 用临时文件喂给同一个 parse_file，
+        # 下游仍看到原始 rel/path；临时文件解析后立即删除。
+        ov = (overlay or {}).get(rel)
+        if ov is not None:
+            fd, tmp = tempfile.mkstemp(suffix=".m")
+            try:
+                with io.open(fd, "w", encoding="utf-8", newline="") as fh:
+                    fh.write(ov)
+                mf = MatlabFile(Path(tmp), rel)
+                parse_file(mf, forced_encoding="utf-8")
+                mf.path = p
+            finally:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+            files.append(mf)
             continue
         mf = MatlabFile(p, rel)
         if inc_cache is not None:
