@@ -172,6 +172,19 @@ fn shape_literal(shape: &[i64]) -> String {
     format!("(int64_t[]){{{}}}", dims.join(", "))
 }
 
+/// 若名字其实是**返回值**或**入参**，返回 (实际 C 标识符, 是否指针)。
+///
+/// 指针 = 返回值（`mlc_array *y`）；非指针 = 入参（`mlc_array x`，按值）。
+fn bind_target(f: &Func, name: &str) -> Option<(String, bool)> {
+    if let Some(r) = f.rets.iter().find(|r| ident(&r.name) == name) {
+        return Some((ret_cname(f, &r.name), true));
+    }
+    if let Some(a) = f.args.iter().find(|a| ident(&a.name) == name) {
+        return Some((ident(&a.name), false));
+    }
+    None
+}
+
 fn init_call(var: &str, dtype: &str, shape: &[i64], is_ptr: bool) -> Option<String> {
     let dt = c_dtype(dtype)?;
     let target = if is_ptr { var.to_string() } else { format!("&{}", var) };
@@ -935,25 +948,48 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
             }
         }
     }
+    // `y = zeros(...)` 里 y 可能是**返回值**或**入参**（它们已经是形参）。
+    // 再 `mlc_array y;` 是与形参重定义 —— gcc 直接报 redeclared。
+    // 对这两种：不声明、直接往既有对象里 init + 填值。
     for (n, v, src) in &consts {
         if let Some(c) = src_comment(*src, "    ") { out.push(c); }
-        out.push(format!("    mlc_array {};", n));
-        if let Some(l) = init_call(n, "f64", &[1], false) {
+        let bound = bind_target(f, n);
+        let ptr = bound.as_ref().map(|(_, p)| *p).unwrap_or(false);
+        let nm = bound.as_ref().map(|(t, _)| t.clone())
+            .unwrap_or_else(|| n.clone());
+        if bound.is_none() {
+            out.push(format!("    mlc_array {};", n));
+        }
+        if let Some(l) = init_call(&nm, "f64", &[1], ptr) {
             out.push(l);
         }
-        out.push(format!("    ((double *){}.data)[0] = {};", n, v));
-        need_free.push(n.clone());
+        if ptr {
+            out.push(format!("    ((double *){}->data)[0] = {};", nm, v));
+        } else {
+            out.push(format!("    ((double *){}.data)[0] = {};", nm, v));
+        }
+        if bound.is_none() { need_free.push(n.clone()); }
     }
     for (n, dims, v, src) in &fills {
         if let Some(c) = src_comment(*src, "    ") { out.push(c); }
-        out.push(format!("    mlc_array {};", n));
-        if let Some(l) = init_call(n, "f64", dims, false) {
+        let bound = bind_target(f, n);
+        let ptr = bound.as_ref().map(|(_, p)| *p).unwrap_or(false);
+        let nm = bound.as_ref().map(|(t, _)| t.clone())
+            .unwrap_or_else(|| n.clone());
+        if bound.is_none() {
+            out.push(format!("    mlc_array {};", n));
+        }
+        if let Some(l) = init_call(&nm, "f64", dims, ptr) {
             out.push(l);
         }
+        let access = if ptr { format!("{}->data", nm) }
+                     else { format!("{}.data", nm) };
+        let numel = if ptr { format!("mlc_array_numel({})", nm) }
+                    else { format!("mlc_array_numel(&{})", nm) };
         out.push(format!(
-            "    for (int64_t i = 0; i < mlc_array_numel(&{}); ++i) {{ ((double *){}.data)[i] = {}; }}",
-            n, n, v));
-        need_free.push(n.clone());
+            "    for (int64_t i = 0; i < {}; ++i) {{ ((double *){})[i] = {}; }}",
+            numel, access, v));
+        if bound.is_none() { need_free.push(n.clone()); }
     }
 
     for l in &f.locals {

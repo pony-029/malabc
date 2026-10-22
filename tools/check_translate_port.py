@@ -494,6 +494,62 @@ def check_reference_parity(fast=None):
     return []
 
 
+def check_numeric_corpus(fast=None):
+    """TP7b：纯数值语料 —— Octave 真值 ⇄ 生成的 C。
+
+    覆盖 reduction（sum/max）、动态长度（mask/find）、切片、转置、矩阵乘、
+    列优先展平。两个函数（colmean/cumsum_loop）**故意**保留为未映射，
+    用来锁住"不支持就如实 unimplemented"。
+    """
+    fast = FAST if fast is None else fast
+    if fast:
+        return []
+    src = os.path.join(ROOT, "translate", "examples", "numeric")
+    exp = os.path.join(ROOT, "translate", "examples", "numeric.expected")
+    if not os.path.isdir(src) or not os.path.isfile(exp):
+        return ["TP7 缺数值语料（translate/examples/numeric）"]
+
+    d = tempfile.mkdtemp(prefix="m2c_num_")
+    mir = os.path.join(d, "num.mir")
+    rc, out = _run([sys.executable, os.path.join("translate", "mir.py"),
+                    src, "-o", mir])
+    if rc != 0:
+        return ["TP7 数值语料转换失败：%s" % (out.strip().splitlines()[:2],)]
+
+    gen = os.path.join(d, "gen")
+    rc, out = _run([M2C_BIN, "build", "--mir", mir, "--out", gen,
+                    "--name", "numeric"])
+    if rc != 0:
+        return ["TP7 数值语料生成失败：%s" % (out.strip().splitlines()[:2],)]
+
+    cc = fidelity.find_c_compiler()
+    if not cc:
+        return []
+    if isinstance(cc, (list, tuple)):
+        cc = cc[0]          # 该函数返回候选列表
+    exe = os.path.join(gen, "num.exe")
+    rc, out = _run([cc, "-std=c99", "-O1",
+                    "-I", os.path.join(gen, "include"),
+                    "-I", os.path.join(ROOT, "c_runtime", "include"),
+                    os.path.join(gen, "src", "gen.c"),
+                    os.path.join(gen, "src", "main.c"),
+                    os.path.join(ROOT, "c_runtime", "src", "mlc_runtime.c"),
+                    os.path.join(ROOT, "c_runtime", "src", "mlc_ops.c"),
+                    "-o", exe], timeout=600)
+    if rc != 0:
+        return ["TP7 数值语料编译失败：%s" % (out.strip().splitlines()[:3],)]
+
+    rc, out = _run([exe], timeout=120)
+    got = sorted(ln.strip() for ln in out.splitlines() if ": " in ln)
+    want = sorted(ln.strip() for ln in
+                  io.open(exp, encoding="utf-8").read().splitlines() if ln.strip())
+    if got != want:
+        diff = [(a, b) for a, b in zip(want, got) if a != b][:2]
+        return ["TP7 数值语料与 Octave 真值不符：%s" % (diff or (want, got),)]
+    print("  [TP7] 数值语料：%d 个函数与 Octave 真值一致" % len(want))
+    return []
+
+
 def check_mir_selftest():
     """MIR 层的自证（下标 vs 未知函数调用）——快检也跑，成本 ~50ms。
 
@@ -939,6 +995,7 @@ def run_checks(require_c=False):
     probs.extend(check_ownership())
     probs.extend(check_dynamic_consistency())
     probs.extend(check_project_dir())
+    probs.extend(check_numeric_corpus())
     probs.extend(check_parity_demo())
     probs.extend(check_golden_parity())
     probs.extend(check_reference_parity())

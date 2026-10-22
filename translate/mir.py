@@ -328,6 +328,30 @@ def _lower_index2(out, lhs, arr, ia, ib, m, counter, unmapped_kinds, code):
     return True
 
 
+#: `y = sum(a .* b)` / `mean` / `max` / `min`
+_REDUCE_ELEMWISE = re.compile(
+    r"^([A-Za-z_]\w*)\s*=\s*(sum|mean|max|min)\s*\(\s*"
+    r"([A-Za-z_]\w*)\s*(?:\.\*|\*)\s*([A-Za-z_]\w*)\s*\)\s*;?\s*$")
+
+_OP_OF = {"sum": "OP-SUM", "mean": "OP-MEAN", "max": "OP-MAX", "min": "OP-MIN"}
+
+
+def _lower_reduce_elementwise(out, code, counter, unmapped_kinds, op_ids):
+    """`sum(a.*b)` -> 两条语句；成功返回 True。"""
+    m = _REDUCE_ELEMWISE.match(code)
+    if not m:
+        return False
+    lhs, fn, a, b = m.group(1), m.group(2), m.group(3), m.group(4)
+    op = _OP_OF.get(fn)
+    if op is None or op not in op_ids:
+        return False
+    counter[0] += 1
+    tmp = "__m%d" % counter[0]
+    out.append("op:OP-MUL:%s:%s:%s" % (tmp, a, b))
+    out.append("op:%s:%s:%s" % (op, lhs, tmp))
+    return True
+
+
 def to_mir(source, extra_names=None, header=True, skip_names=None,
            srcfile=None):
     """返回 (mir_text, stats)。
@@ -355,6 +379,7 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
     per_op = {}
     unmapped_kinds = {}
     idx_counter = [0]          # 2-D 下标降级用的临时名序号
+    known_ops = set(o["id"] for o in operators.OPERATORS)
     for f in funcs:
         out.append("# source_sha256:%s" % src_hash)
         if srcfile:
@@ -442,6 +467,9 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                                % (am0.group(1), cm0.group(1), ":".join(args)))
                     n_calls[0] += 1
                     continue
+            if _lower_reduce_elementwise(out, code, idx_counter,
+                                         unmapped_kinds, known_ops):
+                continue
             _m2 = _IDX2_RE.match(code)
             if _m2:
                 _shp = (f.get("shapes") or {}).get(_m2.group(2))

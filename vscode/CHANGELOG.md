@@ -2,6 +2,20 @@
 
 ---
 
+## 1.7.7
+
+- 新增**纯数值语料** `translate/examples/numeric/`（12 个函数）：reduction、
+  动态长度（mask/find）、切片、转置、矩阵乘、列优先展平 —— 期望值由 **Octave 真值**
+  生成（`numeric.expected`），不是由 C 跑出来的
+- **首次拿到函数级 L4**：12 个函数 C 输出与 Octave 完全一致；
+  两个函数（`colmean`/`cumsum_loop`）故意保留为 `unimplemented`，锁住"不支持就如实说"
+- 修一个高频语法缺口：**`sum(a.*b)` 这类"归约套元素级"** 现在降级为两条语句
+  （`__m = a.*b` 然后 `sum(__m)`）。内积/最小二乘/加权和全是这个形态
+- 修一个**会产出非法 C** 的 bug：`y = zeros(1,4)` 当 `y` 是返回值时，
+  原来会再声明一个同名局部变量（`gcc: 'y' redeclared`），并且把它塞进 free 列表
+- TP7 增加数值语料场景（`[TP7] 数值语料：12 个函数与 Octave 真值一致`），
+  两向验证：改错期望 → `TP7 数值语料与 Octave 真值不符：[('dotp: 31', 'dotp: 30')]`
+
 ## 1.7.6
 
 - **`@类` 目录里的方法显式拒绝**（`reject:method`）：`@sdpvar/sort.m` 定义的是
