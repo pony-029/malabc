@@ -367,9 +367,10 @@ def check_octave(mir_path, src_path):
     else:
         files = [src_path]
 
-    # 只取"驱动会调用"的函数：无 unmapped 且有入参/返回值
-    need = set(f.name for f in funcs
-               if f.args and f.rets and not f.unmapped)
+    # "可对拍" = **解释器能算出结果**的那些。
+    # 只看"有没有 unmapped"不够：形状推不出、算子不支持，同样算不出来。
+    ref = _interp_lines(funcs)
+    need = set(n for n, v in ref.items() if v is not None)
     d = tempfile.mkdtemp(prefix="m2c_l4_")
 
     # 撞名检测：一次 Octave 调用问清 exist()。
@@ -387,6 +388,13 @@ def check_octave(mir_path, src_path):
                 if len(parts) == 2 and parts[1] not in ("0",):
                     collide.add(parts[0])
     need -= collide
+
+    if not need:
+        # 一个都不可对拍时启动 Octave 毫无意义：**如实说"没有对象"**，
+        # 而不是让它跑 11 秒再报 0。
+        print("PA4 未跑（没有可对拍的函数：全部含 unmapped 或撞内置名）")
+        shutil.rmtree(d, ignore_errors=True)
+        return [], {"ran": False}
 
     written = set()
     for path in files:

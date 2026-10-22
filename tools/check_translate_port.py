@@ -896,6 +896,11 @@ def check_m2c(require_c=False, fast=None):
         per = st.get("per_op") or {}
         if per:
             top = sorted(per.items(), key=lambda kv: (-kv[1], kv[0]))
+            _kinds = (st.get("unmapped_kinds") or {}) if isinstance(st, dict) else {}
+            if _kinds:
+                _top = sorted(_kinds.items(), key=lambda kv: -kv[1])[:4]
+                print("  [TP5] 未映射归因：%s"
+                      % "、".join("%s×%d" % (k, v) for k, v in _top))
             print("  [TP5] 算子分布：%s"
                   % "、".join("%s×%d" % (k, v) for k, v in top[:6]))
         if st.get("calls"):

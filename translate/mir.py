@@ -244,6 +244,46 @@ def oid0_is_slice(oid):
     return oid == "OP-SLICE"
 
 
+#: unmapped 的原因分类（顺序即优先级：先判更"硬"的语义）。
+_KIND_RULES = (
+    ("cell", lambda t: "{" in t or "}" in t),
+    ("struct", lambda t: ".(" in t.replace(" ", "") or
+                         ("." in t and "(" in t and ")" in t
+                          and not t.startswith("function"))),
+    ("control", lambda t: t.startswith(("switch", "case", "try", "catch",
+                                        "break", "continue", "return"))),
+    # 块标记：上一层的 if 没被识别时，else/otherwise 会落到这里
+    ("blockmarker", lambda t: t.strip() in ("else", "end", "otherwise")),
+    # 纯副作用调用：不产生数据，移植时可安全降级为注释
+    ("sideeffect", lambda t: t.split("(")[0].strip() in (
+        "clc", "clear", "clear all", "close all", "more on", "more off",
+        "disp", "display", "fprintf", "printf", "error", "warning", "assert",
+        "tic", "toc", "drawnow", "pause")),
+    ("slice2d", lambda t: "(" in t and ("," in t or ":" in t)),
+    ("nested", lambda t: t.count("(") >= 2),
+)
+
+
+def _unmapped_kind(text):
+    """给一条未映射语句归因；判不出来就老实写 other。"""
+    t = (text or "").strip()
+    for name, pred in _KIND_RULES:
+        try:
+            if pred(t):
+                return name
+        except Exception:      # noqa: BLE001 - 归因失败不该影响转换
+            continue
+    return "other"
+
+
+def _emit_unmapped(out, kinds, text):
+    """写一条 unmapped，并记下它的原因（分类只影响报告，不影响语义）。"""
+    kind = _unmapped_kind(text)
+    out.append("# why:%s" % kind)
+    kinds[kind] = kinds.get(kind, 0) + 1
+    out.append("unmapped:%s" % text)
+
+
 def to_mir(source, extra_names=None, header=True, skip_names=None):
     """返回 (mir_text, stats)。
 
@@ -268,6 +308,7 @@ def to_mir(source, extra_names=None, header=True, skip_names=None):
     n_ops = 0
     n_unmapped = 0
     per_op = {}
+    unmapped_kinds = {}
     for f in funcs:
         out.append("# source_sha256:%s" % src_hash)
         out.append("func:%s" % f["name"])
@@ -303,7 +344,7 @@ def to_mir(source, extra_names=None, header=True, skip_names=None):
                 if blocks and blocks[-1] == "if":
                     out.append("else")
                 else:
-                    out.append("unmapped:%s" % code)
+                    _emit_unmapped(out, unmapped_kinds, code)
                 continue
             if code == "end" or code.startswith("end "):
                 if blocks:
@@ -393,7 +434,7 @@ def to_mir(source, extra_names=None, header=True, skip_names=None):
                                    % (lhs, cm.group(1), ":".join(args)))
                         n_calls[0] += 1
                         continue
-                out.append("unmapped:%s" % code)
+                _emit_unmapped(out, unmapped_kinds, code)
                 n_unmapped += 1
                 continue
             args = [x.strip() for x in use["args"]]
@@ -401,7 +442,7 @@ def to_mir(source, extra_names=None, header=True, skip_names=None):
                 # `end` 必须由**已声明**的形状解析；没有形状就如实放弃
                 shp = (f.get("shapes") or {}).get(args[0])
                 if not shp:
-                    out.append("unmapped:%s" % code)
+                    _emit_unmapped(out, unmapped_kinds, code)
                     n_unmapped += 1
                     continue
                 args = [str(shp[0]) if a == "end" else a for a in args]
@@ -440,6 +481,7 @@ def to_mir(source, extra_names=None, header=True, skip_names=None):
         per_op_final[oid] = per_op_final.get(oid, 0) + 1
     stats = {"functions": len(funcs), "ops": len(ops_lines),
              "unmapped": len(unmapped_lines), "per_op": per_op_final,
+             "unmapped_kinds": unmapped_kinds,
              "calls": sum(1 for x in out if x.startswith("call:"))}
     return "\n".join(out) + "\n", stats
 

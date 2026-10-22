@@ -288,6 +288,21 @@ chk(t.matlabFunctionRange && t.matlabFunctionRange(mtext, 'foo').end === 3,
   'MATLAB 函数范围到下一个 function 前');
 chk(t.cFunctionRange && t.cFunctionRange(ctext, 'm2c_foo').end === 5,
   'C 函数范围到匹配的右花括号');
+
+// 行级同步的**诚实度**：有 @m2c src 才叫精确映射；没有就必须自报"按比例估算"。
+// 静默降级会让用户把估算行号当成生成结果来读 —— 这比"不支持"更坏。
+const pair = { mStart: 1, mEnd: 3, cStart: 2, cEnd: 5,
+               mLine: 1, cLine: 2 };
+const withMap = [{ cLine: 2, src: 1 }, { cLine: 4, src: 2 }];
+const r1 = t.resolveSyncTarget
+  ? t.resolveSyncTarget(true, 2, pair, withMap) : null;
+chk(r1 && r1.degraded === false, '有 source map 时不应标记降级');
+chk(r1 && r1.line === 3, '有 source map 时应跳到映射行（src:2 -> cLine:4）');
+const r2 = t.resolveSyncTarget
+  ? t.resolveSyncTarget(true, 2, pair, []) : null;
+chk(r2 && r2.degraded === true, '没有 source map 时必须标记降级');
+chk(r2 && Number.isFinite(r2.line) && r2.line >= 0,
+  '降级时仍应给出一个可用的估算行');
 chk(t.mapLine && t.mapLine(2, 1, 3, 10, 12) === 11,
   '行级映射取函数体内相对位置');
 chk(t.mapLine && t.mapLine(99, 1, 3, 10, 12) === 12,

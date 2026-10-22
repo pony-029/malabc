@@ -573,6 +573,32 @@ async function _reopenCounterpart() {
   }
 }
 
+// 解析"该跳到哪一行"，并如实报告**是否降级**。
+//
+// 为什么单独抽出来：没有 `@m2c src` 时会退回"按函数体比例"估算 ——
+// 这是个可解释的近似，但它**不是**精确映射。静默降级比功能缺失更糟：
+// 用户会拿着一个估算出来的行号当"生成结果"读。
+function _resolveSyncTarget(isM, cur, pair, cMap) {
+  if (cMap && cMap.length) {
+    var mapped = isM ? _srcToCLine(cMap, cur) : _cToSrc(cMap, cur);
+    if (mapped) return { line: Math.max(0, mapped - 1), degraded: false };
+  }
+  var approx = isM
+    ? _mapLine(cur, pair.mStart, pair.mEnd, pair.cStart, pair.cEnd)
+    : _mapLine(cur, pair.cStart, pair.cEnd, pair.mStart, pair.mEnd);
+  return { line: Math.max(0, approx - 1), degraded: true };
+}
+
+// 降级时给用户一句人话（3 秒后消失）。宿主没有状态栏也不该崩。
+function _hintDegraded() {
+  try {
+    if (vscode.window && typeof vscode.window.setStatusBarMessage === 'function') {
+      vscode.window.setStatusBarMessage(
+        '$(warning) 按函数体比例估算（C 里没有 @m2c src 映射）', 3000);
+    }
+  } catch (e) { /* 提示失败不影响同步 */ }
+}
+
 function _syncCounterpart(editor) {
   if (!counterpart || !counterpart.sync || counterpartBusy || !editor) return;
   var doc = editor.document;
@@ -592,24 +618,9 @@ function _syncCounterpart(editor) {
   var targetLine;
   if (counterpart.syncMode === 'line' && pair.mStart && pair.cStart) {
     var cur = editor.selection.active.line + 1;
-    var cMap = counterpart.cMap || [];
-    var mapped = 0;
-    if (isM && cMap.length) {
-      mapped = _srcToCLine(cMap, cur);
-      if (mapped) targetLine = mapped - 1;
-    } else if (isC && cMap.length) {
-      mapped = _cToSrc(cMap, cur);
-      if (mapped) targetLine = mapped - 1;
-    }
-    if (!mapped) {
-      if (isM) {
-        targetLine = _mapLine(cur, pair.mStart, pair.mEnd,
-                              pair.cStart, pair.cEnd) - 1;
-      } else {
-        targetLine = _mapLine(cur, pair.cStart, pair.cEnd,
-                              pair.mStart, pair.mEnd) - 1;
-      }
-    }
+    var res = _resolveSyncTarget(isM, cur, pair, counterpart.cMap || []);
+    targetLine = res.line;
+    if (res.degraded) _hintDegraded();
   } else {
     targetLine = (isM ? pair.cLine : pair.mLine) - 1;
   }
@@ -4282,5 +4293,6 @@ module.exports = {
     isStale: _isStale,
     srcToCLine: _srcToCLine,
     cToSrc: _cToSrc,
+    resolveSyncTarget: _resolveSyncTarget,
   },
 };
