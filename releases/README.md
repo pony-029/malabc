@@ -47,7 +47,7 @@
 
 | 版本 | 日期 | 大小 | 主要变化 | 文件 |
 | --- | --- | --- | --- | --- |
-| 1.7.0（当前） | 2026-10-22 | 2435 KB | 新增 **MIR 参考解释器**（`translate/mir_eval.py`）：同一份 MIR 用 Python 解释执行，与"… | `vsix/matlabc-1.7.0.vsix` |
+| 1.7.1（当前） | 2026-10-22 | 2447 KB | **L4 真值第一次跑起来**：装上 Octave 11.3 后，`parity_report --octave` 把**Octav… | `vsix/matlabc-1.7.1.vsix` |
 
 ## 归档约定
 

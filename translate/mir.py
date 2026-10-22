@@ -271,6 +271,10 @@ def to_mir(source, extra_names=None, header=True, skip_names=None):
     for f in funcs:
         out.append("# source_sha256:%s" % src_hash)
         out.append("func:%s" % f["name"])
+        # 已知标量：i64 参数（下标源），后续的标量赋值/循环变量会继续加入
+        _types = f.get("types") or {}
+        scalar_names = set(n for n in f["args"]
+                           if (_types.get(n) or "") == "i64")
         for a in f["args"]:
             out.append(_var_line("arg", a, f))
         for r in f["rets"]:
@@ -334,6 +338,12 @@ def to_mir(source, extra_names=None, header=True, skip_names=None):
                     n_calls[0] += 1
                     continue
             use = operators.parse_line(code)
+            if use is not None and use["operator"] == "OP-INDEX":
+                idx = use["args"][1] if len(use["args"]) > 1 else ""
+                if not idx.isdigit() and idx not in scalar_names:
+                    # `sqrt(x)` / `foo(x)` 这类：x 不是已知标量，
+                    # 那它不是"取下标"，而是我们**不支持**的函数调用
+                    use = None
             if use is None:
                 # 不是算子：可能是**标量赋值**或**同文件函数调用**（都不是猜）
                 am = _ASSIGN_SPLIT.match(code)
@@ -341,6 +351,7 @@ def to_mir(source, extra_names=None, header=True, skip_names=None):
                     lhs = am.group(1)
                     rhs = am.group(2).strip().rstrip(";").strip()
                     if _ATOM.match(rhs):
+                        scalar_names.add(lhs)
                         out.append("set:%s:%s" % (lhs, rhs))
                         continue
                     fm0 = _FILL_RE.match(rhs)

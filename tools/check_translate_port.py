@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""MATLAB → C 移植链路的总门（TP1–TP9）。
+"""MATLAB → C 移植链路的总门（TP1–TP11）。
 
 判据族：
     TP1  ABI 契约：`c_runtime/include/mlc.h` 必须有状态码/数组结构/所有权函数，
@@ -23,7 +23,7 @@
     python tools/check_translate_port.py --selftest
 
 退出码：
-    0  = TP1–TP9 全部通过
+    0  = TP1–TP11 全部通过
     1  = 有移植链路不合规（ABI/适配器/算子/保真/台账任一红）
     2  = 缺输入（找不到 c_runtime / translate / port_ledger.json）
 """
@@ -36,7 +36,7 @@ import sys
 import tempfile
 
 #: P5 的对手方：本门在 README 质量门表那一行里声明的判据族。
-ROW_SIGNATURE = "TP1–TP9"
+ROW_SIGNATURE = "TP1–TP11"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -431,6 +431,55 @@ def check_parity_demo(fast=None):
     return []
 
 
+def check_golden_parity():
+    """TP10：解释器独立复算每个夹具的期望值。
+
+    为什么单列：golden 之前只被 **C** 验证（TP4）。如果算子加了、解释器
+    没跟上，两边就会各说各话，而对拍（TP9）只覆盖 demo 工程，看不见。
+    """
+    gdir = os.path.join(ROOT, "translate", "golden")
+    if not os.path.isdir(gdir):
+        return ["TP10 缺 translate/golden"]
+    rc, out = _run([sys.executable, os.path.join("tools", "parity_report.py"),
+                    "--golden", gdir])
+    tail = [ln.strip() for ln in out.splitlines() if ln.startswith("PA1")]
+    bad = [ln.strip() for ln in out.splitlines() if ln.startswith("GOLDEN")]
+    if rc != 0:
+        return ["TP10 夹具被解释器复算不一致：%s" % (bad[:2] or out.strip()[-160:],)]
+    if tail:
+        print("  [TP10] %s" % tail[0])
+    return []
+
+
+def check_reference_parity(fast=None):
+    """TP11：有 Octave/MATLAB 就跑 L4（真值 ⇄ 解释器）；没有则**如实报未跑**。
+
+    为什么必须允许"未跑"：没有参考实现的机器上，把它判红等于要求人人都装
+    Octave；判绿则是在撒谎。所以留**第三种状态**，打印出来、不混进通过。
+    """
+    fast = FAST if fast is None else fast
+    if fast:
+        return []
+    d = tempfile.mkdtemp(prefix="m2c_l4g_")
+    mir = os.path.join(d, "d.mir")
+    rc, out = _run([sys.executable, os.path.join("translate", "mir.py"),
+                    os.path.join("translate", "examples", "demo_port.m"),
+                    "-o", mir])
+    if rc != 0:
+        return ["TP11 生成 MIR 失败：%s" % (out.strip().splitlines()[:2],)]
+    rc, out = _run([sys.executable, os.path.join("tools", "parity_report.py"),
+                    "--mir", mir,
+                    "--src", os.path.join("translate", "examples",
+                                          "demo_port.m"),
+                    "--octave"])
+    for ln in out.splitlines():
+        if ln.startswith("PA4"):
+            print("  [TP11] " + ln.strip())
+    if rc != 0:
+        return ["TP11 L4 对拍失败：%s" % (out.strip().splitlines()[-2:],)]
+    return []
+
+
 def check_ledger_stale(path=None):
     """台账里 status=verified 但备注还写着 UNIMPLEMENTED —— 备注比代码落后。
 
@@ -628,7 +677,7 @@ def check_m2c(require_c=False, fast=None):
     fast = FAST if fast is None else fast
     """TP5：MIR 生成 → C 发射 → gcc 语法编译 → 两次发射逐字节一致。
 
-    为什么要有它：TP1–TP9 证明的是"算子→C 的调用能编译能跑"，
+    为什么要有它：TP1–TP11 证明的是"算子→C 的调用能编译能跑"，
     但**没有任何东西**证明"整条链路（.m → MIR → C 工程）产出的是合法 C"。
     """
     probs = []
@@ -858,6 +907,8 @@ def run_checks(require_c=False):
     probs.extend(check_dynamic_consistency())
     probs.extend(check_project_dir())
     probs.extend(check_parity_demo())
+    probs.extend(check_golden_parity())
+    probs.extend(check_reference_parity())
     m2c_probs, m2c_stats = check_m2c(require_c=require_c, fast=FAST)
     probs.extend(m2c_probs)
     probs.extend(check_ledger())
@@ -1054,7 +1105,7 @@ def _selftest():
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="MATLAB→C 移植链路总门（TP1–TP9）")
+    ap = argparse.ArgumentParser(description="MATLAB→C 移植链路总门（TP1–TP11）")
     ap.add_argument("--selftest", action="store_true", help="两向自证")
     ap.add_argument("--fast", action="store_true",
                     help="跳过 C 编译与运行（发版快筛）")
@@ -1112,7 +1163,7 @@ def main(argv=None):
         return 1
     _mm = stats.get("m2c") or {}
     _dump_stats(stats)
-    print("check_translate_port: OK（TP1–TP9 全绿；golden %d/%d；C %s；"
+    print("check_translate_port: OK（TP1–TP11 全绿；golden %d/%d；C %s；"
           "台账 %d 条；MIR 函数 %s / 算子 %s / 未映射 %s / 编译 %s）"
           % (stats["fidelity"]["passed"], stats["fidelity"]["total"],
              ("未跑（快检）" if FAST

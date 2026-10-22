@@ -31,6 +31,8 @@
 
 import argparse
 import io
+import glob
+import json
 import os
 import shutil
 import subprocess
@@ -156,12 +158,297 @@ def check(mir_path, expect_path=None, keep=False):
     return probs, stats
 
 
+def _flat(x):
+    """嵌套列表 -> 扁平（老夹具用 [[1,2],[3,4]]，新的用扁平 + shape）。"""
+    if isinstance(x, (list, tuple)):
+        out = []
+        for v in x:
+            out.extend(_flat(v))
+        return out
+    return [x]
+
+
+def _arr_from(spec):
+    """夹具里的 {"shape":[...], "data":[...]} -> mir_eval.Arr。"""
+    data = _flat(spec.get("data") or [])
+    shape = spec.get("shape")
+    if not shape:
+        shape = [len(data) or 1]
+    return mir_eval.Arr(data, shape)
+
+
+def _golden_args(case):
+    """按算子把夹具输入映射成算子实参；不认识返回 None（= 未对拍）。"""
+    op = case.get("operator")
+    ins = case.get("inputs") or {}
+    keys = list(ins)
+    if op in ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-MATMUL"):
+        if len(keys) < 2:
+            return None
+        return [_arr_from(ins[keys[0]]), _arr_from(ins[keys[1]])]
+    if op in ("OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN",
+              "OP-TRANSPOSE", "OP-FLATTEN"):
+        return [_arr_from(ins[keys[0]])] if keys else None
+    if op == "OP-INDEX":
+        i = ins.get("i")
+        if i is None:
+            return None
+        idx = i.get("data")[0] if isinstance(i, dict) else i
+        return [_arr_from(ins[keys[0]]), idx]
+    if op == "OP-SLICE":
+        spec = case.get("slice") or {}
+        return [_arr_from(ins[keys[0]]), int(spec.get("from", 1)),
+                int(spec.get("to", 1))]
+    if op in ("OP-MASK", "OP-FIND"):
+        spec = case.get("mask") or {}
+        return [_arr_from(ins[keys[0]]), int(spec.get("cmp", 0)),
+                float(spec.get("k", 0))]
+    return None
+
+
+def check_goldens(gdir):
+    """解释器跑每个夹具的算子语义，与 expected 比对。
+
+    返回 (probs, stats)；probs 只装**真不一致**。
+    """
+    probs = []
+    files = sorted(f for f in os.listdir(gdir) if f.endswith(".json"))
+    v = u = x = 0
+    skipped = []
+    for fn in files:
+        try:
+            case = json.loads(io.open(os.path.join(gdir, fn),
+                                      encoding="utf-8").read())
+        except (IOError, OSError, ValueError):
+            u += 1
+            skipped.append(fn)
+            continue
+        op = case.get("operator")
+        args = _golden_args(case)
+        exp = case.get("expected") or {}
+        if args is None or not exp:
+            u += 1
+            skipped.append(fn)
+            continue
+        try:
+            got = mir_eval._apply_op(op, args)
+        except Exception:        # noqa: BLE001 - 参考执行器不该因类型意外崩
+            got = None
+        if got is None:
+            u += 1
+            skipped.append(fn)
+            continue
+        want_shape = list(exp.get("shape") or [])
+        want_data = [float(t) for t in _flat(exp.get("data") or [])]
+        tol = case.get("tol") or {}
+        eps = float(tol.get("abs", 1e-12))
+        ok = (got.shape == want_shape and len(got.data) == len(want_data)
+              and all(abs(a - b) <= eps + 1e-9 * abs(b)
+                      for a, b in zip(got.data, want_data)))
+        if ok:
+            v += 1
+        else:
+            x += 1
+            probs.append("GOLDEN 不一致 %s（%s）：解释器 shape=%r data=%r，"
+                         "期望 shape=%r data=%r"
+                         % (fn, op, got.shape, got.data[:6], want_shape,
+                            want_data[:6]))
+    if skipped:
+        print("  未对拍夹具（%d）：%s" % (len(skipped), "、".join(skipped[:5])))
+    print("PA1 已对拍 %d" % v)
+    print("PA2 未对拍 %d" % u)
+    if x:
+        print("PA3 不一致 %d" % x)
+    return probs, {"verified": v, "unverified": u, "mismatch": x,
+                   "total": len(files)}
+
+
+OCTAVE_CANDIDATES = ["octave-cli", "octave", "matlab"]
+
+
+def _octave_cli():
+    """找参考实现（Octave 优先，MATLAB 次之）。找不到返回 None。"""
+    for name in OCTAVE_CANDIDATES:
+        p = shutil.which(name)
+        if p:
+            return p
+    local = os.environ.get("LOCALAPPDATA") or ""
+    probes = [r"C:\Program Files\GNU Octave\Octave-*\mingw64\bin\octave-cli.exe",
+              r"C:\Program Files\GNU Octave\Octave-*\bin\octave-cli.exe"]
+    if local:
+        # winget 默认装到用户目录下，不在 PATH 里
+        probes.append(os.path.join(
+            local, "Programs", "GNU Octave", "Octave-*", "mingw64", "bin",
+            "octave-cli.exe"))
+    for probe in probes:
+        hits = glob.glob(probe)
+        if hits:
+            return hits[0]
+    return None
+
+
+def _matlab_literal(shape, values):
+    """把"行主序 + 形状"变成 MATLAB 矩阵表达式。
+
+    MATLAB 是列优先，直接写 [1 2 3; 4 5 6] 会把行主序数据放错位置；
+    统一用 reshape(v, c, r).' 还原。
+    """
+    body = " ".join("%.17g" % v for v in values)
+    if len(shape) == 1:
+        return "[%s]" % body
+    if len(shape) == 2:
+        r, c = shape
+        return "reshape([%s], %d, %d).'" % (body, c, r)
+    return None
+
+
+def _driver(funcs):
+    """生成 MATLAB 驱动脚本：构造与 C 完全一致的输入，逐个调用并打印。"""
+    out = ["more off;", "format long g;"]
+    for f in funcs:
+        if not f.args or not f.rets or f.unmapped:
+            continue
+        call_args = []
+        ok = True
+        for name, shape in f.args:
+            if shape:
+                n = 1
+                for d in shape:
+                    n *= d
+                lit = _matlab_literal(shape, [float(i + 1) for i in range(n)])
+                if lit is None:
+                    ok = False
+                    break
+                out.append("%s = %s;" % (name, lit))
+                call_args.append(name)
+            else:
+                out.append("%s = 2;" % name)   # 标量与 main.c 一致
+                call_args.append(name)
+        if not ok:
+            continue
+        lhs = "[%s]" % ", ".join(n for n, _ in f.rets) if len(f.rets) > 1 \
+            else f.rets[0][0]
+        out.append("try")
+        out.append("  %s = %s(%s);" % (lhs, f.name, ", ".join(call_args)))
+        parts = []
+        for n, _ in f.rets:
+            # 行主序输出：转置后按列取，正好等于 C 的行优先展开
+            parts.append("sprintf('%%.17g ', reshape(%s.', 1, []))" % n)
+        out.append("  fprintf('%s: %%s\\n', strjoin({%s}, ' | '));"
+                   % (f.name, ", ".join(parts)))
+        out.append("catch err")
+        out.append("  fprintf('%s: ERROR %%s\\n', err.message);" % f.name)
+        out.append("end")
+    return "\n".join(out) + "\n"
+
+
+def check_octave(mir_path, src_path):
+    """L4：用 Octave/MATLAB 跑原始 .m，与解释器（和 C）三方对照。
+
+    没有参考实现时**如实返回"未跑"**，绝不假装通过。
+    """
+    cli = _octave_cli()
+    if not cli:
+        print("PA4 未跑（缺 Octave / MATLAB —— 没有参考实现就没有 L4）")
+        return [], {"ran": False}
+
+    text = io.open(mir_path, encoding="utf-8").read()
+    funcs = mir_eval.parse(text)
+    src = io.open(src_path, encoding="utf-8", errors="replace").read()
+    from translate.mir import split_functions
+    blocks = split_functions(src)
+
+    d = tempfile.mkdtemp(prefix="m2c_l4_")
+    src_lines = src.splitlines()
+    for b in blocks:
+        # split_functions 给的是行号与正文行，没有整段原文：按行号切片还原
+        start = max(0, b["line0"] - 1)
+        stop = max(b["line_nos"]) if b["line_nos"] else start
+        body = "\n".join(src_lines[start:stop])
+        io.open(os.path.join(d, b["name"] + ".m"), "w",
+                encoding="utf-8", newline="").write(body + "\nend\n")
+    drv = os.path.join(d, "driver.m")
+    io.open(drv, "w", encoding="utf-8", newline="").write(_driver(funcs))
+
+    cmd = [cli, "--no-gui", "--quiet", "--eval", "run('%s')" % drv.replace("\\", "/")]
+    if os.path.basename(cli).lower().startswith("matlab"):
+        cmd = [cli, "-batch", "run('%s')" % drv.replace("\\", "/")]
+    rc, out = _run(cmd, cwd=d, timeout=600)
+    if rc != 0:
+        print("PA4 失败（参考实现退出码 %s）：%s" % (rc, out.strip()[:160]))
+        return ["L4 参考实现运行失败：%s" % out.strip().splitlines()[:2]], {"ran": False}
+
+    ref = _c_lines(out)
+    interp = _interp_lines(funcs)
+
+    v = u = x = 0
+    probs = []
+    for f in funcs:
+        r = ref.get(f.name)
+        i = interp.get(f.name)
+        if r is None or i is None or "ERROR" in (r or ""):
+            u += 1
+            continue
+        # 参考实现的数字格式与解释器一致时才算同义
+        if _same_values(r, i):
+            v += 1
+        else:
+            x += 1
+            probs.append("L4 不一致 %s：Octave[%s] 解释器[%s]"
+                         % (f.name, r[:70], i[:70]))
+    print("PA4 已对拍 %d（Octave ⇄ 解释器）" % v)
+    print("PA4 未对拍 %d" % u)
+    if x:
+        print("PA4 不一致 %d" % x)
+    shutil.rmtree(d, ignore_errors=True)
+    return probs, {"ran": True, "verified": v, "unverified": u, "mismatch": x}
+
+
+def _same_values(a, b):
+    """按数值比较两行（容忍 %g 与 %.17g 的格式差异）。"""
+    try:
+        na = [float(t) for t in a.split(":", 1)[1].replace("|", " ").split()]
+        nb = [float(t) for t in b.split(":", 1)[1].replace("|", " ").split()]
+    except (IndexError, ValueError):
+        return False
+    if len(na) != len(nb):
+        return False
+    return all(abs(x - y) <= 1e-9 + 1e-9 * abs(y) for x, y in zip(na, nb))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="MIR 解释器 ⇄ C 对拍")
-    ap.add_argument("--mir", required=True, help="MIR 文件路径")
+    ap.add_argument("--mir", default=None, help="MIR 文件路径")
+    ap.add_argument("--src", default=None,
+                    help="原始 .m（--octave 时用来跑参考实现）")
+    ap.add_argument("--octave", action="store_true",
+                    help="L4：用 Octave/MATLAB 跑真值并三方对照")
+    ap.add_argument("--golden", default=None,
+                    help="golden 夹具目录（解释器 ⇄ 夹具期望）")
     ap.add_argument("--show-unverified", type=int, default=5,
                     help="打印多少个未对拍的函数名")
     args = ap.parse_args(argv)
+
+    if args.golden:
+        probs, stats = check_goldens(args.golden)
+        for p in probs:
+            print("  - " + p)
+        if probs:
+            return 1
+        return 0
+
+    if args.octave:
+        if not args.mir or not args.src:
+            print("--octave 需要同时给 --mir 与 --src")
+            return 2
+        probs, st = check_octave(args.mir, args.src)
+        for p in probs:
+            print("  - " + p)
+        return 1 if probs else 0
+
+    if not args.mir:
+        print("需要 --mir 或 --golden")
+        return 2
 
     probs, stats = check(args.mir)
     if not stats:

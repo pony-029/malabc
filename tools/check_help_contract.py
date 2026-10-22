@@ -251,7 +251,7 @@ GUARD_CONTRACT = {
         2: "缺输入（找不到 tests/sample_m 或 analyzer 包）",
     },
     "tools/check_translate_port.py": {
-        0: "通过（TP1–TP9：ABI 契约 / 双侧适配器 / 算子目录与 C 发射 / "
+        0: "通过（TP1–TP11：ABI 契约 / 双侧适配器 / 算子目录与 C 发射 / "
            "golden 保真与移植台账 / 分配型算子的所有权与错误路径 / "
            "多文件工程的目录级转换 / 分配型算子三方一致 / "
            "解释器与 C 的逐值对拍）",
