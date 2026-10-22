@@ -74,13 +74,23 @@ python tools/mlc_project.py symbols --root . --kind class --json
 5. 一次事务提交；单文件解析失败只标 `parse_status=error`，不拖垮全项目。
 6. 不写全局 mtime；每个文件独立判定。
 
-## 6. 导入 Source Insight
+## 6. 导入 Source Insight（已实现）
 
-P1 计划两个只读导入器：
+```bash
+# 先看会改什么（不写）
+python tools/mlc_project.py import --root . --from demo.siproj
 
-- `.siproj`：解析其中的文件清单/源目录，生成 `.mlcproj` 的 `source_dirs`。
-- Master File List：一行一个文件/目录，映射为 `source_dirs` 或 `include`。
-- 符号：不导入，全部由本工具重新解析。
+# 写回 .mlcproj
+python tools/mlc_project.py import --root . --from demo.siproj --write
+```
+
+规则：
+
+- `.siproj` / MFL / 文本：按行提取路径；XML 中提取 `path/file/name` 属性。
+- 只导入**文件清单/源目录**，符号全部由本工具重新解析。
+- 目录 → `source_dirs`；文件 → 父目录 + 对应扩展的 `include`。
+- 二进制（含 NUL/UTF-16 无法识别）明确报错，不猜。
+- 跨盘路径明确报错，不静默跳过。
 
 ## 7. P0 限制
 

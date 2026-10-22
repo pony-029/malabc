@@ -23,9 +23,11 @@ import hashlib
 import io
 import json
 import os
+import re
 import sqlite3
 import sys
 import time
+import xml.etree.ElementTree as ET
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -675,6 +677,125 @@ def query_symbols(cfg, query="", kind="", file_like="", limit=200):
         conn.close()
 
 
+def _decode_text(path):
+    raw = open(path, "rb").read()
+    if raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff"):
+        try:
+            return raw.decode("utf-16")
+        except UnicodeDecodeError:
+            pass
+    if raw.startswith(b"\xef\xbb\xbf"):
+        try:
+            return raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            pass
+    if b"\x00" in raw[:4096]:
+        raise ValueError("二进制文件/不支持的 SI 格式：%s" % path)
+    for enc in ("utf-8", "gb18030", "latin-1"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    raise ValueError("无法解码：%s" % path)
+
+
+def _xml_paths(text):
+    if "<" not in text or ">" not in text:
+        return []
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        return []
+    out = []
+    for el in root.iter():
+        for key in ("path", "file", "filename", "name"):
+            val = el.attrib.get(key)
+            if val and (os.sep in val or "/" in val
+                        or os.path.splitext(val)[1]):
+                out.append(val)
+        tag = str(el.tag).lower()
+        if tag in ("file", "path", "folder", "directory") and el.text:
+            val = el.text.strip()
+            if val:
+                out.append(val)
+    return out
+
+
+def _line_paths(text):
+    out = []
+    for line in text.splitlines():
+        ln = line.strip().strip("\ufeff")
+        if not ln or ln.startswith((";", "#", "//")):
+            continue
+        ln = re.sub(r"^(?:file|path|include|folder|directory)\s*=\s*",
+                    "", ln, flags=re.I)
+        ln = ln.strip().strip('"\'')
+        if not ln or "<" in ln or ">" in ln:
+            continue
+        bare = re.match(r"^[A-Za-z0-9_.+@-]+$", ln) is not None
+        if os.path.isabs(ln) or "/" in ln or "\\" in ln or bare:
+            out.append(ln)
+    return out
+
+
+def _rel_safe(root, path):
+    try:
+        rel = os.path.relpath(path, root)
+    except ValueError:
+        raise ValueError("导入路径与 root 不在同一盘：%s" % path)
+    rel = rel.replace(os.sep, "/")
+    while rel.startswith("./"):
+        rel = rel[2:]
+    return rel or "."
+
+
+def import_project(cfg, source, write=False):
+    """导入 `.siproj` / Master File List 的**文件清单**，不导入符号。"""
+    source = os.path.abspath(source)
+    if not os.path.isfile(source):
+        raise ValueError("找不到导入文件：%s" % source)
+    text = _decode_text(source)
+    cands = _xml_paths(text) + _line_paths(text)
+    seen = set()
+    resolved = []
+    base_dirs = (os.path.dirname(source), cfg["_root"])
+    for cand in cands:
+        cand = cand.strip().strip('"\'')
+        if not cand or cand in seen:
+            continue
+        seen.add(cand)
+        for base in base_dirs:
+            p = cand if os.path.isabs(cand) else os.path.join(base, cand)
+            p = os.path.abspath(p)
+            if os.path.exists(p):
+                resolved.append(p)
+                break
+    if not resolved:
+        raise ValueError("没有找到任何存在的路径（候选 %d 条）" % len(seen))
+    source_dirs = list(cfg.get("source_dirs") or ["."])
+    include = list(cfg.get("include") or list(DEFAULT_INCLUDE))
+    ext_map = cfg.get("file_types") or {".m": "matlab"}
+    for p in resolved:
+        if os.path.isdir(p):
+            source_dirs.append(_rel_safe(cfg["_root"], p))
+        else:
+            source_dirs.append(_rel_safe(cfg["_root"], os.path.dirname(p)))
+            ext = os.path.splitext(p)[1].lower()
+            if ext in ext_map:
+                include.append("**/*" + ext)
+    # 去重并保持稳定顺序
+    source_dirs = sorted(set(source_dirs))
+    include = sorted(set(include))
+    cfg["source_dirs"] = source_dirs
+    cfg["include"] = include
+    if write:
+        public = dict((k, v) for k, v in cfg.items() if not k.startswith("_"))
+        _write_json(cfg["_project_path"], public)
+    return {"source": source, "candidates": len(seen),
+            "resolved": len(resolved), "source_dirs": source_dirs,
+            "include": include, "written": bool(write)}
+
+
 def _print_summary(s):
     print("files=%(files)d added=%(added)d changed=%(changed)d "
           "removed=%(removed)d unchanged=%(unchanged)d "
@@ -712,6 +833,12 @@ def main(argv=None):
     p.add_argument("--limit", type=int, default=200)
     p.add_argument("--json", action="store_true")
 
+    p = sub.add_parser("import", help="导入 .siproj / Master File List")
+    p.add_argument("--from", dest="source", required=True)
+    p.add_argument("--root", default=".")
+    p.add_argument("--write", action="store_true")
+    p.add_argument("--json", action="store_true")
+
     args = ap.parse_args(argv)
     if not args.cmd:
         ap.print_help()
@@ -730,6 +857,15 @@ def main(argv=None):
             print("找不到 .mlcproj；先运行 init")
             return 2
         cfg = load_config(project_path)
+        if args.cmd == "import":
+            s = import_project(cfg, args.source, write=args.write)
+            if args.json:
+                print(json.dumps(s, ensure_ascii=False, indent=2))
+            else:
+                print("resolved=%d source_dirs=%s include=%s written=%s"
+                      % (s["resolved"], s["source_dirs"], s["include"],
+                         s["written"]))
+            return 0
         if args.cmd == "sync":
             s = sync_project(cfg, full=args.full, dry_run=args.dry_run)
             if args.json:

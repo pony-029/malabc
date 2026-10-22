@@ -143,6 +143,49 @@ end
         self.assertIn("Widget", names)
         self.assertIn("Widget.get", names)
 
+    def test_import_siproj_text(self):
+        _write(self.root, "src/x.m", """function x = x()
+x = 1;
+end
+""")
+        _write(self.root, "lib/y.m", """function y = y()
+y = 2;
+end
+""")
+        sip = os.path.join(self.root, "demo.siproj")
+        _write(self.root, "demo.siproj", """; Source Insight project
+File=src/x.m
+File=lib
+""")
+        s = mlc_project.import_project(self.cfg, sip, write=True)
+        self.assertGreaterEqual(s["resolved"], 2)
+        cfg = mlc_project.load_config(os.path.join(self.root, ".mlcproj"))
+        self.assertIn("src", cfg["source_dirs"])
+        self.assertIn("lib", cfg["source_dirs"])
+        mlc_project.sync_project(cfg)
+        self.assertIn("x", self._dotted())
+        self.assertIn("y", self._dotted())
+
+    def test_import_master_file_list(self):
+        _write(self.root, "src/x.m", """function x = x()
+x = 1;
+end
+""")
+        mfl = os.path.join(self.root, "files.mfl")
+        _write(self.root, "files.mfl", """# master file list
+src/x.m
+""")
+        s = mlc_project.import_project(self.cfg, mfl, write=False)
+        self.assertFalse(s["written"])
+        self.assertIn("src", s["source_dirs"])
+
+    def test_import_rejects_binary(self):
+        p = os.path.join(self.root, "bad.siproj")
+        with open(p, "wb") as fh:
+            fh.write(b"\x00\x01\x02")
+        with self.assertRaises(ValueError):
+            mlc_project.import_project(self.cfg, p, write=False)
+
     def test_status_reports_stale(self):
         mlc_project.sync_project(self.cfg)
         _write(self.root, "a.m", """function y = main(x)
