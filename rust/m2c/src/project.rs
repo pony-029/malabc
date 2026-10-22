@@ -364,6 +364,27 @@ fn gen_readme(name: &str) -> String {
 }
 
 /// 整个项目：头 + 源 + main + CMakeLists。顺序固定（确定性）。
+/// 把 `@sdpvar/sort.m` 变成可用文件名 `sdpvar_sort`。
+///
+/// 不能直接用原路径：`@` `+` `.` 在构建工具里不友好；保留目录段是为了
+/// 区分 `a/util.m` 与 `b/util.m` 这类同名不同目录。
+fn c_file_stem(srcfile: &str) -> String {
+    let mut out = String::new();
+    for ch in srcfile.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+        } else if !out.ends_with('_') && !out.is_empty() {
+            out.push('_');
+        }
+    }
+    let trimmed = out.trim_matches('_').to_string();
+    if trimmed.is_empty() {
+        "gen_part".to_string()
+    } else {
+        trimmed
+    }
+}
+
 pub fn emit_project(funcs: &[Func], name: &str, cases: &[Case],
 ) -> Result<Vec<(String, String)>, String> {
     let guard = format!("M2C_{}_H", ident(name).to_uppercase());
@@ -382,14 +403,51 @@ pub fn emit_project(funcs: &[Func], name: &str, cases: &[Case],
     h.push(String::new());
     h.push(format!("#endif /* {} */", guard));
 
+    // **按源文件拆分**：真实工程里 2MB 的单文件没法定位编译错误，
+    // 也没法"改一个 .m 只看一个 .c"。没有 srcfile 时保持原来的单文件输出。
+    let split = funcs.iter().any(|f| !f.srcfile.is_empty());
+    let mut parts: Vec<(String, Vec<&Func>)> = Vec::new();
+    if split {
+        for f in funcs {
+            let key = if f.srcfile.is_empty() {
+                "_unknown.m".to_string()
+            } else {
+                f.srcfile.clone()
+            };
+            match parts.iter_mut().find(|(k, _)| *k == key) {
+                Some(slot) => slot.1.push(f),
+                None => parts.push((key, vec![f])),
+            }
+        }
+    }
+
     let mut c = vec![
         format!("/* {} —— 由 m2c 生成，勿手改 */", name),
         format!("#include \"{}.h\"", name),
         String::new(),
     ];
-    for f in funcs {
-        c.push(emit_func(f, funcs)?);
-        c.push(String::new());
+    let mut extra: Vec<(String, String)> = Vec::new();
+    if split {
+        for (srcfile, fs) in &parts {
+            let stem = c_file_stem(srcfile);
+            let mut body = vec![
+                format!("/* {} ← 源文件：{} */", stem, srcfile),
+                format!("#include \"{}.h\"", name),
+                String::new(),
+            ];
+            for f in fs {
+                body.push(emit_func(f, funcs)?);
+                body.push(String::new());
+            }
+            extra.push((format!("src/gen/{}.c", stem), body.join("\n") + "\n"));
+            // 总装文件只做 include：编译单元仍是一个，符号不会重复
+            c.push(format!("#include \"gen/{}.c\"", stem));
+        }
+    } else {
+        for f in funcs {
+            c.push(emit_func(f, funcs)?);
+            c.push(String::new());
+        }
     }
 
     let cmake = vec![
@@ -432,7 +490,7 @@ pub fn emit_project(funcs: &[Func], name: &str, cases: &[Case],
         "add_test(NAME default_case COMMAND m2c_selftest)".to_string(),
     ];
 
-    Ok(vec![
+    let mut files_out = vec![
         (format!("include/{}.h", name), h.join("\n") + "\n"),
         ("src/gen.c".to_string(), c.join("\n") + "\n"),
         ("src/main.c".to_string(), emit_main(funcs, name) + "\n"),
@@ -445,7 +503,9 @@ pub fn emit_project(funcs: &[Func], name: &str, cases: &[Case],
          concat!("build/\n", "*.exe\n", "*.o\n", "*.obj\n", "*.a\n",
                 "*.lib\n", "CMakeCache.txt\n", "CMakeFiles/\n")
              .to_string()),
-    ])
+    ];
+    files_out.extend(extra);
+    Ok(files_out)
 }
 
 /// 自测程序：按**每组夹具**跑每个可驱动函数，与嵌入的期望串逐字比较。

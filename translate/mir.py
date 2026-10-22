@@ -322,7 +322,8 @@ def _lower_index2(out, lhs, arr, ia, ib, m, counter, unmapped_kinds, code):
     return True
 
 
-def to_mir(source, extra_names=None, header=True, skip_names=None):
+def to_mir(source, extra_names=None, header=True, skip_names=None,
+           srcfile=None):
     """返回 (mir_text, stats)。
 
     stats: {functions, ops, unmapped, per_op} —— 门与报告都用它，
@@ -350,6 +351,9 @@ def to_mir(source, extra_names=None, header=True, skip_names=None):
     idx_counter = [0]          # 2-D 下标降级用的临时名序号
     for f in funcs:
         out.append("# source_sha256:%s" % src_hash)
+        if srcfile:
+            # 供 m2c 按源文件拆分输出；路径用相对工程根的写法
+            out.append("# srcfile:%s" % srcfile)
         out.append("func:%s" % f["name"])
         # 可变参数（cell）无法用固定签名表达：显式拒绝，绝不伪装成一个 f64
         _va = [n for n in list(f["args"]) + list(f["rets"])
@@ -641,8 +645,10 @@ def main(argv=None):
             skip = {f["name"] for f in fs if f["name"] in emitted}
             if skip:
                 dropped += len(skip)
+            # 相对工程根的路径：m2c 用它把函数分到各自的 .c
+            rel = os.path.relpath(p, args.source).replace(os.sep, "/")
             t, st = to_mir(src, extra_names=names, header=(body is None),
-                           skip_names=skip)
+                           skip_names=skip, srcfile=rel)
             body = t if body is None else body + t
             emitted |= {f["name"] for f in fs if f["name"] not in skip} \
                 if skip else emitted | {f["name"] for f in fs}

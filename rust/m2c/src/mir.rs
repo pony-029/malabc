@@ -92,6 +92,9 @@ pub struct Func {
     pub unmapped: Vec<String>,
     /// 原始 `.m` 内容的 sha256；空 = 没提供（不伪造）。
     pub source_hash: String,
+    /// 来源 `.m` 的相对路径（空 = 未知/单文件模式）。
+    /// 有了它才能"一个 .m 对应一个 .c"，否则 2MB 的单文件没法定位编译错误。
+    pub srcfile: String,
     /// 显式拒绝的原因（如 `varargin`）：签名本身无法用 C 表达。
     /// 有值时**不生成实现**，只留桩 —— 而不是按 f64 硬套。
     pub reject: Option<String>,
@@ -245,6 +248,7 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
     let mut seen_version = false;
     let mut pending_src: i64 = 0;
     let mut pending_hash = String::new();
+    let mut pending_srcfile = String::new();
 
     macro_rules! push_stmt {
         ($st:expr) => {{
@@ -267,6 +271,10 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
         }
         if let Some(rest) = line.strip_prefix("# src:") {
             pending_src = rest.trim().parse().unwrap_or(0);
+            continue;
+        }
+        if let Some(p) = line.strip_prefix("# srcfile:") {
+            pending_srcfile = p.trim().to_string();
             continue;
         }
         if line.is_empty() || line.starts_with('#') {
@@ -307,6 +315,7 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
                 body: Vec::new(),
                 unmapped: Vec::new(),
                 source_hash: pending_hash.clone(),
+                srcfile: pending_srcfile.clone(),
                 reject: None,
             });
             continue;

@@ -314,6 +314,20 @@ def check_project_dir(fast=None):
         probs.append("TP7 生成工程失败：%s" % (out.strip().splitlines()[:2],))
         return probs
 
+    # 按源文件拆分：3 个 .m 应得到 3 个 .c + 一个只做 include 的 gen.c
+    part_dir = os.path.join(gen, "src", "gen")
+    parts = sorted(os.listdir(part_dir)) if os.path.isdir(part_dir) else []
+    if len(parts) != 3:
+        probs.append("TP7 应按源文件拆成 3 个 .c，实得 %d：%s"
+                     % (len(parts), parts[:3]))
+    gen_c = os.path.join(gen, "src", "gen.c")
+    if os.path.isfile(gen_c):
+        size = os.path.getsize(gen_c)
+        if size > 4096:
+            probs.append("TP7 gen.c 应只是 include 总装（<4KB），实际 %d 字节 —— "
+                         "说明又退回单文件了" % size)
+
+
     cc = fidelity.find_c_compiler()
     if not cc:
         probs.append("TP7 没有可用 C 编译器")
