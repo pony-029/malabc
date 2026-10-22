@@ -105,6 +105,299 @@ function sendOpen(doc) {
   });
 }
 
+// ---- C / MATLAB 对照（Source Insight 式） --------------------------------
+// 目标不是「再画一个代码窗口」，而是让**同一个函数**在两栏之间保持同一位置：
+// 左栏 MATLAB、右栏 C，光标落在 `foo` 或 `m2c_foo` 时，另一栏跟到对应函数。
+// 映射只用 LSP 的 `matlabc/cbridge`，扩展里不重复解析 C —— 否则就是第二本账。
+let counterpart = null;
+let counterpartBusy = false;
+
+function _isMatlabDoc(doc) {
+  return !!doc && (doc.languageId === 'matlab' ||
+                   /\.m$/i.test(doc.fileName || ''));
+}
+
+function _isCDoc(doc) {
+  return !!doc && (doc.languageId === 'c' || doc.languageId === 'cpp' ||
+                   /\.(c|h|cc|cpp|cxx|hpp)$/i.test(doc.fileName || ''));
+}
+
+function _lineOfOffset(text, offset) {
+  return text.slice(0, offset).split(/\r?\n/).length;
+}
+
+function _matlabNameFromRest(rest) {
+  // `function [a,b] = foo(x)` / `function y = foo` / `function foo(x)`
+  var eq = rest.indexOf('=');
+  var sig = eq >= 0 ? rest.slice(eq + 1) : rest;
+  var m = /^\s*([A-Za-z_]\w*)/.exec(sig);
+  return m ? m[1] : '';
+}
+
+function _matlabFunctionAt(doc, pos) {
+  var text = doc.getText();
+  var offset = doc.offsetAt(pos);
+  var head = text.slice(0, offset);
+  var re = /^[ \t]*function\b([^\n]*)$/gm;
+  var last = null;
+  var m;
+  while ((m = re.exec(head)) !== null) {
+    var name = _matlabNameFromRest(m[1]);
+    if (name) last = { name: name, line: _lineOfOffset(text, m.index) };
+  }
+  return last;
+}
+
+function _cFunctionAt(doc, pos) {
+  var text = doc.getText();
+  var offset = doc.offsetAt(pos);
+  var head = text.slice(0, offset);
+  // 覆盖生成器的 `mlc_status m2c_foo(...)` 与普通 C 的 `void foo(...)`。
+  var re = /^[ \t]*(?:static\s+)?(?:mlc_status|void|int|double|float|char|long|short|unsigned|signed|size_t)\b[^;\n]*?\b([A-Za-z_]\w*)\s*\(/gm;
+  var last = null;
+  var m;
+  while ((m = re.exec(head)) !== null) {
+    last = { name: m[1], line: _lineOfOffset(text, m.index) };
+  }
+  return last;
+}
+
+function _matlabFunctionLine(text, name) {
+  var esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  var re = new RegExp('^[ \\t]*function\\b[^\\n]*\\b' + esc +
+                      '\\s*(?:\\(|$)', 'm');
+  var m = re.exec(text);
+  return m ? _lineOfOffset(text, m.index) : 0;
+}
+
+function _cFunctionLine(text, name) {
+  var esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  var re = new RegExp('^[ \\t]*(?:static\\s+)?(?:[A-Za-z_]\\w*\\s+)*' +
+                      esc + '\\s*\\(', 'm');
+  var m = re.exec(text);
+  return m ? _lineOfOffset(text, m.index) : 0;
+}
+
+function _rootUri() {
+  var folders = vscode.workspace.workspaceFolders;
+  return folders && folders.length ? folders[0].uri : null;
+}
+
+function _uriFromRel(rel) {
+  var root = _rootUri();
+  if (!root || !rel) return null;
+  return vscode.Uri.file(path.join(root.fsPath,
+                                   String(rel).replace(/\\/g, path.sep)));
+}
+
+function _editorForUri(uri) {
+  var want = uri.toString();
+  return (vscode.window.visibleTextEditors || []).find(function (ed) {
+    return ed.document.uri.toString() === want;
+  }) || null;
+}
+
+async function _bridge(name) {
+  if (!client || !name) return null;
+  try {
+    var r = await withTimeout(
+      client.request('matlabc/cbridge', { name: name }), 5000);
+    return (r && r.result) || null;
+  } catch (e) {
+    log('cbridge 失败：' + (e && e.message));
+    return null;
+  }
+}
+
+async function _findCounterpartFile(name, kind) {
+  var base = String(name || '').replace(/^m2c_/, '');
+  if (!base) return null;
+  var glob = kind === 'c'
+    ? '**/*.{c,h,cc,cpp,cxx,hpp}' : '**/*.m';
+  var uris = [];
+  try {
+    uris = await vscode.workspace.findFiles(
+      glob, '**/{node_modules,.git,build,out,cmake-build-*}/**', 400);
+  } catch (e) {
+    uris = [];
+  }
+  var want = (kind === 'c' ? base : base) + (kind === 'c' ? '.c' : '.m');
+  var direct = uris.filter(function (u) {
+    return path.basename(u.fsPath).toLowerCase() === want.toLowerCase();
+  });
+  var ordered = direct.concat(uris.filter(function (u) {
+    return direct.indexOf(u) < 0;
+  }));
+  for (var i = 0; i < ordered.length; i++) {
+    var u = ordered[i];
+    var text;
+    try {
+      if (fs.statSync(u.fsPath).size > 2 * 1024 * 1024) continue;
+      text = fs.readFileSync(u.fsPath, 'utf8');
+    } catch (e) { continue; }
+    if (kind === 'c') {
+      var line = _cFunctionLine(text, 'm2c_' + base);
+      if (line) return { uri: u, line: line, name: 'm2c_' + base };
+      line = _cFunctionLine(text, base);
+      if (line) return { uri: u, line: line, name: base };
+    } else {
+      var mline = _matlabFunctionLine(text, base);
+      if (mline) return { uri: u, line: mline, name: base };
+    }
+  }
+  return null;
+}
+
+async function _openCounterpart(editor) {
+  if (!editor) {
+    vscode.window.showWarningMessage('matlabc: 请先打开一个 MATLAB 或 C 文件');
+    return;
+  }
+  var doc = editor.document;
+  var isM = _isMatlabDoc(doc);
+  var isC = _isCDoc(doc);
+  if (!isM && !isC) {
+    vscode.window.showWarningMessage(
+      'matlabc: 对照只支持 MATLAB（.m）与 C/C++（.c/.h/.cpp）');
+    return;
+  }
+
+  var pos = editor.selection.active;
+  var fn = isM ? _matlabFunctionAt(doc, pos) : _cFunctionAt(doc, pos);
+  var rawName = fn && fn.name;
+  if (!rawName) {
+    var wr = doc.getWordRangeAtPosition(pos, /[A-Za-z_]\w*/);
+    rawName = wr ? doc.getText(wr) : '';
+  }
+  if (!rawName) {
+    vscode.window.showWarningMessage(
+      'matlabc: 光标不在函数名/函数体内，找不到对照起点');
+    return;
+  }
+  var base = isC ? rawName.replace(/^m2c_/, '') : rawName;
+  var info = await _bridge(base);
+  var pairs = [];
+  var target = null;
+
+  if (isM) {
+    var items = (info && info.items) || [];
+    items.forEach(function (it) {
+      var cName = it.c_name || ('m2c_' + rawName);
+      var cLine = Number(it.c_line) || 0;
+      if (!it.c_rel || !cLine) return;
+      pairs.push({ mName: rawName, mLine: fn ? fn.line : 0,
+                   cName: cName, cLine: cLine, cRel: it.c_rel });
+    });
+    if (pairs.length) {
+      target = { uri: _uriFromRel(pairs[0].cRel), line: pairs[0].cLine };
+    } else {
+      var hit = await _findCounterpartFile(rawName, 'c');
+      if (hit) {
+        target = hit;
+        pairs.push({ mName: rawName, mLine: fn ? fn.line : 0,
+                     cName: hit.name || ('m2c_' + rawName),
+                     cLine: hit.line, cRel: hit.uri.fsPath });
+      }
+    }
+  } else {
+    var callers = (info && info.matlab_callers) || [];
+    var mUri = null;
+    var mText = '';
+    if (callers.length) {
+      var mfile = callers[0].mfile;
+      mUri = _uriFromRel(mfile);
+      if (mUri) {
+        try { mText = fs.readFileSync(mUri.fsPath, 'utf8'); } catch (e) {}
+      }
+    }
+    if (!mUri) {
+      var mhit = await _findCounterpartFile(base, 'm');
+      if (mhit) { mUri = mhit.uri; target = mhit; }
+    }
+    if (mUri) {
+      if (!mText) {
+        try { mText = fs.readFileSync(mUri.fsPath, 'utf8'); } catch (e) {}
+      }
+      var mNames = callers.length ? callers : [{ matlab: base }];
+      mNames.forEach(function (c) {
+        var mn = c.matlab || base;
+        var ml = _matlabFunctionLine(mText, mn) || (target ? target.line : 1);
+        pairs.push({ mName: mn, mLine: ml, cName: rawName,
+                     cLine: fn ? fn.line : 1, cRel: doc.uri.fsPath,
+                     mUri: mUri });
+      });
+      if (!target) target = { uri: mUri, line: pairs[0].mLine };
+    }
+  }
+
+  if (!target || !target.uri) {
+    vscode.window.showWarningMessage(
+      'matlabc: 没有找到 `' + rawName + '` 的 C/MATLAB 对照；' +
+      '请确认工程内包含对应源码，或先运行 MIR/生成 C');
+    return;
+  }
+
+  var targetEd;
+  try {
+    targetEd = await vscode.window.showTextDocument(
+      target.uri, { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true });
+  } catch (e) {
+    log('打开对照失败：' + (e && e.message));
+    vscode.window.showErrorMessage('matlabc: 打开对照失败 —— ' + (e && e.message));
+    return;
+  }
+  if (!targetEd) return;
+
+  var tline = Math.max(0, (target.line || 1) - 1);
+  var tr = new vscode.Range(tline, 0, tline, 0);
+  targetEd.revealRange(tr, vscode.TextEditorRevealType.InCenter);
+
+  var mUri = isM ? doc.uri : target.uri;
+  var cUri = isM ? target.uri : doc.uri;
+  counterpart = {
+    mUri: mUri,
+    cUri: cUri,
+    pairs: pairs,
+    sync: vscode.workspace.getConfiguration('matlabc')
+      .get('counterpartSync', true),
+  };
+  vscode.window.setStatusBarMessage(
+    'matlabc: C/MATLAB 对照已打开（' + pairs.length + ' 对，' +
+    (counterpart.sync ? '同步开' : '同步关') + '）', 5000);
+  log('counterpart ' + rawName + ' -> ' + target.uri.fsPath +
+      ':' + target.line + '（' + pairs.length + ' 对）');
+  _syncCounterpart(editor);
+}
+
+function _syncCounterpart(editor) {
+  if (!counterpart || !counterpart.sync || counterpartBusy || !editor) return;
+  var doc = editor.document;
+  var uri = doc.uri.toString();
+  var isM = uri === counterpart.mUri.toString();
+  var isC = uri === counterpart.cUri.toString();
+  if (!isM && !isC) return;
+  var fn = isM ? _matlabFunctionAt(doc, editor.selection.active)
+               : _cFunctionAt(doc, editor.selection.active);
+  if (!fn || !fn.name) return;
+  var pair = counterpart.pairs.find(function (p) {
+    if (isM) return p.mName === fn.name;
+    return p.cName === fn.name || p.cName === 'm2c_' + fn.name;
+  });
+  if (!pair) return;
+  var targetUri = isM ? counterpart.cUri : counterpart.mUri;
+  var targetLine = Math.max(0, (isM ? pair.cLine : pair.mLine) - 1);
+  var te = _editorForUri(targetUri);
+  if (!te) return;
+  if (te.selection.active.line === targetLine) return;
+  counterpartBusy = true;
+  try {
+    te.revealRange(new vscode.Range(targetLine, 0, targetLine, 0),
+                   vscode.TextEditorRevealType.InCenter);
+  } finally {
+    counterpartBusy = false;
+  }
+}
+
 
 
 // 自动探测本机的 Python 解释器（R393）。
@@ -1236,6 +1529,37 @@ function activate(context) {
       } catch (e) {
         log('openAt 失败：' + (e && e.message));
       }
+    })
+  );
+
+  // ---- C / MATLAB 对照（Source Insight 式） ----------------------------
+  // 命令只负责「建对照」；同步由上面的 selection 监听完成。
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.openCounterpart', async () => {
+      await _openCounterpart(vscode.window.activeTextEditor);
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('matlabc.toggleCounterpartSync', () => {
+      if (!counterpart) {
+        vscode.window.showInformationMessage(
+          'matlabc: 还没有打开对照；先执行「打开 C/MATLAB 对照」');
+        return;
+      }
+      counterpart.sync = !counterpart.sync;
+      vscode.window.setStatusBarMessage(
+        'matlabc: C/MATLAB 对照同步已' +
+        (counterpart.sync ? '开启' : '关闭'), 4000);
+    })
+  );
+  context.subscriptions.push(
+    vscode.window.onDidChangeTextEditorSelection((e) => {
+      _syncCounterpart(e.textEditor);
+    })
+  );
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor((ed) => {
+      if (ed) _syncCounterpart(ed);
     })
   );
 
@@ -3706,4 +4030,15 @@ function deactivate() {
   }
 }
 
-module.exports = { activate, deactivate };
+module.exports = {
+  activate,
+  deactivate,
+  // 纯函数导出给 `vscode/test_counterpart.js`：不启动 LSP 也能验证函数定位。
+  _test: {
+    matlabNameFromRest: _matlabNameFromRest,
+    matlabFunctionAt: _matlabFunctionAt,
+    cFunctionAt: _cFunctionAt,
+    matlabFunctionLine: _matlabFunctionLine,
+    cFunctionLine: _cFunctionLine,
+  },
+};

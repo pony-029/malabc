@@ -77,13 +77,26 @@ MATLAB 工程的代码理解工具。
 - 光标停在一个**变量或字段**上 → 显示「声明」与「本文出现」的位置
 - 点面板里的任意一行 → 编辑器跳到对应的**调用发生的那一行**
 
-### 命令面板里的二十七个命令
+### C / MATLAB 双栏对照（Source Insight 式）
+
+在 MATLAB 函数里右键 → **`matlabc: 打开 C/MATLAB 对照（侧边）`**：
+
+- 左栏保留当前 MATLAB 文件，右栏打开对应的 C 文件；
+- 光标在同一个函数内移动时，另一栏**自动滚到对应函数**；
+- 也支持从 C 侧发起：光标放在 `m2c_foo` / `foo` 上，反查调用它的 MATLAB 函数；
+- 映射来自分析器的 `matlabc/cbridge`，扩展不自己解析 C。
+
+对照同步可用 **`matlabc: 开关 C/MATLAB 对照同步`** 临时关闭。
+
+### 命令面板里的命令
 
 按 `Ctrl+Shift+P`，输入 `matlabc`：
 
 | 命令 | 作用 |
 | --- | --- |
 | `matlabc: 打开使用说明` | **完整使用手册**（随扩展分发，离线可看）：装完怎么用、每个功能在哪 |
+| `matlabc: 打开 C/MATLAB 对照（侧边）` | 左 MATLAB、右 C，函数级同步滚动；C 侧也可发起 |
+| `matlabc: 开关 C/MATLAB 对照同步` | 临时开/关另一栏的自动跟随 |
 | `matlabc: 打开使用说明（PDF）` | 同一份手册的 PDF：四张示意图直接印在页面上，也方便转发 |
 | `matlabc: 选择 Python 解释器` | 挑一个 Python 并当场验证能启动，再写进设置 |
 | `matlabc: 重新启动服务` | 索引卡住、或刚改过配置时用 —— 不必重开窗口 |
@@ -273,6 +286,7 @@ task_apply  写入 → 重新分析 → 逐条核对 → 不过就回滚
 | --- | --- | --- |
 | `matlabc.pythonPath` | `python` | 系统里装了多个 Python、或 `python` 命令不可用时，填绝对路径 |
 | `matlabc.crossLanguage` | `true` | 是否扫描工程内的 C/C++ 源与 mex/DLL，把解析不到的调用接到实现上；关掉可省 IO |
+| `matlabc.counterpartSync` | `true` | C/MATLAB 对照打开后，光标移动时另一栏是否自动滚到同一函数 |
 | `matlabc.undoDiffLimit` | `8` | 撤销前最多打开几个并排 diff（1–40） |
 | `matlabc.docLang` | `both` | 想让内置函数说明只显示中文或只显示英文时 |
 

@@ -12,7 +12,9 @@
     "Linters"
   ],
   "activationEvents": [
-    "onLanguage:matlab"
+    "onLanguage:matlab",
+    "onCommand:matlabc.openCounterpart",
+    "onCommand:matlabc.toggleCounterpartSync"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -77,6 +79,11 @@
           "type": "boolean",
           "default": true,
           "description": "跨语言分析：扫描工程内的 C/C++ 源与 mex/DLL 导出表，把 MATLAB 里解析不到的调用接到它们的实现上。关闭后不再扫描这些文件（大工程可省 IO）。"
+        },
+        "matlabc.counterpartSync": {
+          "type": "boolean",
+          "default": true,
+          "description": "C/MATLAB 对照打开后，光标在同一个函数内移动时自动把另一栏滚到对应函数。可在命令面板用「开关 C/MATLAB 对照同步」临时切换。"
         },
         "matlabc.undoDiffLimit": {
           "type": "integer",
@@ -251,6 +258,16 @@
         "command": "matlabc.openDefinitionOf",
         "title": "matlabc: 跳到定义处",
         "category": "matlabc"
+      },
+      {
+        "command": "matlabc.openCounterpart",
+        "title": "matlabc: 打开 C/MATLAB 对照（侧边）",
+        "category": "matlabc"
+      },
+      {
+        "command": "matlabc.toggleCounterpartSync",
+        "title": "matlabc: 开关 C/MATLAB 对照同步",
+        "category": "matlabc"
       }
     ],
     "menus": {
@@ -258,6 +275,11 @@
         {
           "command": "matlabc.showRelations",
           "when": "editorLangId == matlab",
+          "group": "navigation"
+        },
+        {
+          "command": "matlabc.openCounterpart",
+          "when": "editorLangId == matlab || editorLangId == c || editorLangId == cpp",
           "group": "navigation"
         }
       ],

@@ -4,6 +4,8 @@
 
 ## 1.7.0
 
+- 新增 **C/MATLAB 双栏对照**：左 MATLAB、右 C，按函数名同步滚动；从 MATLAB 或 C
+  任一侧都能发起，映射复用 `matlabc/cbridge`，扩展不重复解析 C
 - 新增 **MIR 参考解释器**（`translate/mir_eval.py`）：同一份 MIR 用 Python 解释执行，
   与"发射成 C 再编译运行"形成**两个独立执行器**，可以逐值对拍
 - 新增工具 **`tools/parity_report.py`**：给出 `PA1 已对拍 / PA2 未对拍 / PA3 不一致`

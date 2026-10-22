@@ -250,6 +250,38 @@ chk(registered.indexOf('symbol') >= 0, '应注册 documentSymbolProvider');
 // R432：site 级 HTML 文档生成（--browse）必须真的注册进插件。
 chk(registered.indexOf('cmd:matlabc.generateSite') >= 0,
   '应注册 site 级 HTML 文档命令（matlabc.generateSite）');
+chk(registered.indexOf('cmd:matlabc.openCounterpart') >= 0,
+  '应注册 C/MATLAB 对照命令（matlabc.openCounterpart）');
+chk(registered.indexOf('cmd:matlabc.toggleCounterpartSync') >= 0,
+  '应注册对照同步开关（matlabc.toggleCounterpartSync）');
+
+// C/MATLAB 对照的纯函数：不启动 LSP 也要能定位「光标属于哪个函数」。
+const t = ext._test || {};
+const mkDoc = (text) => ({
+  getText: () => text,
+  offsetAt: (p) => {
+    const lines = text.split(/\r?\n/);
+    let n = 0;
+    for (let i = 0; i < p.line; i++) n += lines[i].length + 1;
+    return n + p.character;
+  },
+});
+const mtext = ['function y = foo(x)', 'y = x;', 'end',
+               'function z = bar()', 'z = 1;', 'end'].join('\n');
+const ctext = ['#include "mlc.h"', 'mlc_status m2c_foo(const mlc_array *x)',
+               '{', '    return MLC_OK;', '}', 'void bar(void)', '{', '}'].join('\n');
+chk(t.matlabFunctionAt && t.matlabFunctionAt(mkDoc(mtext),
+  { line: 1, character: 0 }).name === 'foo', 'MATLAB 函数定位 foo');
+chk(t.matlabFunctionAt && t.matlabFunctionAt(mkDoc(mtext),
+  { line: 4, character: 0 }).name === 'bar', 'MATLAB 函数定位 bar');
+chk(t.cFunctionAt && t.cFunctionAt(mkDoc(ctext),
+  { line: 2, character: 0 }).name === 'm2c_foo', 'C 函数定位 m2c_foo');
+chk(t.cFunctionAt && t.cFunctionAt(mkDoc(ctext),
+  { line: 6, character: 0 }).name === 'bar', 'C 函数定位 bar');
+chk(t.matlabFunctionLine && t.matlabFunctionLine(mtext, 'bar') === 4,
+  'MATLAB 函数行号');
+chk(t.cFunctionLine && t.cFunctionLine(ctext, 'm2c_foo') === 2,
+  'C 函数行号');
 chk(ctx.subscriptions.length >= 5,
   'subscriptions 应至少 5 项（definition + references + hover + symbol + 诊断集合），实际 '
   + ctx.subscriptions.length);
