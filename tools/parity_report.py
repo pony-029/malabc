@@ -41,10 +41,17 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 
-from translate import mir_eval  # noqa: E402
+from translate import fidelity, mir_eval  # noqa: E402
 
-M2C = os.path.join(ROOT, "rust", "m2c", "target", "release", "m2c.exe")
-GCC_CANDIDATES = [r"D:\project\MinGW-w64\bin\gcc.exe", "gcc", "cc", "clang"]
+
+def _m2c():
+    """按平台找 m2c；支持 M2C_BIN 覆盖。"""
+    env = os.environ.get("M2C_BIN")
+    if env and os.path.isfile(env):
+        return env
+    exe = "m2c.exe" if os.name == "nt" else "m2c"
+    path = os.path.join(ROOT, "rust", "m2c", "target", "release", exe)
+    return path if os.path.isfile(path) else None
 
 
 def _run(cmd, cwd=None, timeout=900):
@@ -55,10 +62,8 @@ def _run(cmd, cwd=None, timeout=900):
 
 
 def _cc():
-    for c in GCC_CANDIDATES:
-        if os.path.isfile(c) or shutil.which(c):
-            return c
-    return None
+    """复用 fidelity 的编译器探测（含 MLC_CC / MinGW / gcc / clang / zig）。"""
+    return fidelity.find_c_compiler()
 
 
 def _interp_lines(funcs):
@@ -94,8 +99,12 @@ def check(mir_path, expect_path=None, keep=False):
     funcs = mir_eval.parse(text)
     ref = _interp_lines(funcs)
 
+    m2c = _m2c()
+    if not m2c:
+        return ["PARITY 缺 Rust 发射器（先 cargo build --release）"], {}
     d = tempfile.mkdtemp(prefix="m2c_parity_")
-    rc, out = _run([M2C, "build", "--mir", mir_path, "--out", d, "--name", "parity"])
+    rc, out = _run([m2c, "build", "--mir", mir_path, "--out", d,
+                    "--name", "parity"])
     if rc != 0:
         return ["PARITY 生成工程失败：%s" % (out.strip().splitlines()[:2],)], {}
 
@@ -104,12 +113,13 @@ def check(mir_path, expect_path=None, keep=False):
         return ["PARITY 没有可用 C 编译器"], {}
     rt = os.path.join(ROOT, "c_runtime")
     exe = os.path.join(d, "parity.exe" if os.name == "nt" else "parity")
-    rc, out = _run([cc, "-std=c99", "-O1", "-I", os.path.join(d, "include"),
-                    "-I", os.path.join(rt, "include"),
-                    os.path.join(d, "src", "gen.c"),
-                    os.path.join(d, "src", "main.c"),
-                    os.path.join(rt, "src", "mlc_runtime.c"),
-                    os.path.join(rt, "src", "mlc_ops.c"), "-o", exe])
+    cmd = list(cc) + ["-std=c99", "-O1", "-I", os.path.join(d, "include"),
+                      "-I", os.path.join(rt, "include"),
+                      os.path.join(d, "src", "gen.c"),
+                      os.path.join(d, "src", "main.c"),
+                      os.path.join(rt, "src", "mlc_runtime.c"),
+                      os.path.join(rt, "src", "mlc_ops.c"), "-o", exe]
+    rc, out = _run(cmd)
     if rc != 0:
         return ["PARITY 编译失败：%s" % (out.strip().splitlines()[:2],)], {}
 

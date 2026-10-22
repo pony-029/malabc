@@ -394,6 +394,11 @@ def check_dynamic_consistency():
     return probs
 
 
+def _parity_verified(out):
+    m = re.search(r"PA1 已对拍 (\d+)", out or "")
+    return int(m.group(1)) if m else 0
+
+
 def check_parity_demo(fast=None):
     """TP9：同一份 MIR，Python 解释执行 vs C 编译执行，逐值对拍。
 
@@ -412,11 +417,17 @@ def check_parity_demo(fast=None):
         return ["TP9 生成 MIR 失败：%s" % (out.strip().splitlines()[:2],)]
     rc, out = _run([sys.executable, os.path.join("tools", "parity_report.py"),
                     "--mir", mir])
-    tail = [ln for ln in out.strip().splitlines() if "对拍结果" in ln]
+    tail = [ln for ln in out.strip().splitlines()
+            if ln.startswith("PA1 ") or ln.startswith("PA2 ")
+            or ln.startswith("对拍合计")]
     if rc != 0:
         return ["TP9 对拍未通过：%s" % (tail[:1] or out.strip()[-160:],)]
+    verified = _parity_verified(out)
+    if verified < 1:
+        return ["TP9 没有任何函数完成对拍（PA1=0）；"
+                "未对拍不能当通过：%s" % (tail[:2] or out.strip()[-160:],)]
     if tail:
-        print("  [TP9] " + tail[0].strip())
+        print("  [TP9] " + " / ".join(x.strip() for x in tail))
     return []
 
 

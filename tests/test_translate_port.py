@@ -85,11 +85,13 @@ class TestOperators(unittest.TestCase):
         self.assertIn("mlc_op_index(&x, 2, &y)", src)
         self.assertIn("if (st != MLC_OK)", src)
 
-    def test_unimplemented_is_honest(self):
+    def test_mul_and_matmul_are_distinct(self):
         u = operators.parse_line("y = A * B;")
         src = operators.emit_c(u)
-        self.assertIn("MLC_UNIMPLEMENTED", src)
-        self.assertNotIn("TODO", src)
+        self.assertIn("mlc_op_matmul", src)
+        v = operators.parse_line("y = A .* B;")
+        self.assertIn("mlc_op_mul", operators.emit_c(v))
+        self.assertNotIn("mlc_op_matmul", operators.emit_c(v))
 
     def test_unmapped_not_guessed(self):
         res = operators.to_operators("y = foo(a, b, c);\n")
@@ -189,6 +191,10 @@ class TestGate(unittest.TestCase):
 
     def test_selftest_exit_zero(self):
         self.assertEqual(gate._selftest(), 0)
+
+    def test_tp9_zero_pa1_is_not_pass(self):
+        self.assertEqual(gate._parity_verified("PA1 已对拍 0\nPA2 未对拍 5"), 0)
+        self.assertEqual(gate._parity_verified("PA1 已对拍 3\nPA2 未对拍 1"), 3)
 
 
 if __name__ == "__main__":
