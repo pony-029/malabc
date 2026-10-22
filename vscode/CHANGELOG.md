@@ -2,6 +2,20 @@
 
 ---
 
+## 1.8.3
+
+- **发现并修复：`port-ci.yml` 是非法 YAML** —— 步骤名里多了个 `: `
+  (`name: Generated project: cmake + ctest`)，GitHub 会直接判 "Invalid workflow file"。
+  也就是说**这条 CI 从来没有真正跑过**，而本地门一直全绿
+- 五份 workflow 统一在 workflow 级别固定 `PYTHONIOENCODING: utf-8` / `PYTHONUTF8: 1`：
+  编码崩溃不该再伪装成被测失败
+- 新增 `tests/test_workflows_yaml.py`：所有 workflow 必须可解析 + Python 步骤必须固定 UTF-8
+  （两向验证：去掉引号 → 1 failed；还原 → 6 passed）
+- 实测 YALMIP 生成物：1204 函数 / **`TODO(shape)` 0** / `TODO(unmapped)` 1343
+  —— 说明"形状推不出"在真实工程里不是主要缺口，主要缺口仍是被拒函数
+- **未打通（如实记）**：`y = y + A(i,2)`（2-D 下标出现在**表达式**里）尚未降级；
+  目前 2-D 下标只支持"单独赋值"形态。`colmax_loop`/`colsum_loop` 因此未进语料
+
 ## 1.8.2
 
 - **临时量形状可链式解析**：`resolved_shape` 现在能穿透 `fill:`（`z = zeros(1,3)`）、

@@ -24,6 +24,10 @@ name: frontend-gate
 # 三个 job 都是 ubuntu-latest，而维护者手上没有 Linux 环境 —— 云端失败了也无法
 # 本地复现，这种红灯最后一定会被忽略。等有 Linux 环境（或能在 WSL 里复现）时，
 # 把下面两行 push / pull_request 加回来即可，job 本体一个字都不用改。
+env:
+  PYTHONIOENCODING: utf-8
+  PYTHONUTF8: "1"
+
 on:
   workflow_dispatch:
 

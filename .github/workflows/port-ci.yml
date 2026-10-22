@@ -8,6 +8,10 @@ name: matlabc port (MATLAB -> C)
 # 与 ci.yml 分开：这条链路要装编译器 + 编译 3 个 C 用例，
 # 不该把主 CI 的 30 分钟预算再拉长。
 
+env:
+  PYTHONIOENCODING: utf-8
+  PYTHONUTF8: "1"
+
 on:
   push:
     branches: [ main ]
@@ -41,7 +45,7 @@ jobs:
       - name: Rust unit tests (m2c)
         run: cargo test --manifest-path rust/m2c/Cargo.toml
 
-      - name: Generated project: cmake + ctest
+      - name: "Generated project: cmake + ctest"
         shell: bash
         run: |
           set -euo pipefail

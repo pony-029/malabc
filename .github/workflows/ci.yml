@@ -16,6 +16,10 @@ name: matlabc CI
 # **任何平台**都会 ModuleNotFoundError（脚本目录进 sys.path，仓库根没进），
 # 也就是这条 CI 一直在跑一条必然失败的命令。
 # ============================================================================
+env:
+  PYTHONIOENCODING: utf-8
+  PYTHONUTF8: "1"
+
 on:
   push:
     branches: [ main ]
