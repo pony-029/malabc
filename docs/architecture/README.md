@@ -166,16 +166,16 @@
 
 | 模块 | 主文件 | 最近提交 |
 | --- | --- | --- |
-| 00 总框架 | `matlabc.py` · `matlabc_boot.py` | `eee6968` 2026-10-20 |
-| 01 入口与 CLI | `matlabc.py` · `matlabc_boot.py` · `matlabc_help.py` · `gui.py` | `b5856d6` 2026-10-21 |
-| 02 MATLAB 前端 | `matlabc.py` · `frontends/matlab.py` | `eee6968` 2026-10-20 |
-| 03 多语言 + IR | `frontends/ir.py` · `matlabc.py` · `pyast_frontend.py` | `eee6968` 2026-10-20 |
-| 04 分析引擎 | `matlabc.py` · `facts.py` · `entity_model.py` · `unified_graph.py` | `eee6968` 2026-10-20 |
-| 05 渲染与输出 | `renderers/` · `matlabc.py` | `eee6968` 2026-10-20 |
-| 06 LSP + VS Code | `matlabc_lsp.py` · `vscode/` | `e2db68c` 2026-10-22 |
+| 00 总框架 | `matlabc.py` · `matlabc_boot.py` | `5ffcc7e` 2026-10-22 |
+| 01 入口与 CLI | `matlabc.py` · `matlabc_boot.py` · `matlabc_help.py` · `gui.py` | `5ffcc7e` 2026-10-22 |
+| 02 MATLAB 前端 | `matlabc.py` · `frontends/matlab.py` | `5ffcc7e` 2026-10-22 |
+| 03 多语言 + IR | `frontends/ir.py` · `matlabc.py` · `pyast_frontend.py` | `5ffcc7e` 2026-10-22 |
+| 04 分析引擎 | `matlabc.py` · `facts.py` · `entity_model.py` · `unified_graph.py` | `5ffcc7e` 2026-10-22 |
+| 05 渲染与输出 | `renderers/` · `matlabc.py` | `5ffcc7e` 2026-10-22 |
+| 06 LSP + VS Code | `matlabc_lsp.py` · `vscode/` | `5ffcc7e` 2026-10-22 |
 | 07 AI / MCP | `matlabc_mcp.py` · `matlabc_ask.py` · `ai_cli.py` | `6a03133` 2026-10-20 |
 | 08 修复闭环 | `agent_loop.py` · `matlabc_flow.py` · `analyzer_memory.py` | `2caf526` 2026-10-10 |
-| 09 门禁 / CI | `tools/` · `.github/workflows/` | `750f9ee` 2026-10-22 |
+| 09 门禁 / CI | `tools/` · `.github/workflows/` | `32783de` 2026-10-22 |
 | 10 MATLAB→C 移植 | `translate/` · `c_runtime/` · `port_ledger.json` | `e2db68c` 2026-10-22 |
 | 11 二进制分析 | `binfmt/` · `binhops.py` · `callrel.py` | `6cf824b` 2026-10-13 |
 
