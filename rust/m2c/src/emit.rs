@@ -205,24 +205,58 @@ fn init_call(var: &str, dtype: &str, shape: &[i64], is_ptr: bool) -> Option<Stri
     ))
 }
 
-/// 解析名字的形状：先看声明，再看"写它的那条算子"（限一层，足够覆盖
-/// `__f = A(:)` 这种临时量的链式降级）。
+/// 解析名字的形状：先看声明，再看"写它的那条算子"（可链式，带深度上限）。
+///
+/// 为什么需要：`sum(A(:,2))` 会被降成 FLATTEN → SLICE → SUM 三条语句，
+/// 中间量（`__f1` / `__c2`）没有声明形状。用 `var_shape` 只能拿到 None，
+/// 于是 `__c2` 被 init 成 `{1}`，而 slice 要写 3 个元素 —— 运行期 MLC_ERR。
 fn resolved_shape(f: &Func, name: &str) -> Option<Vec<i64>> {
+    resolved_shape_d(f, name, 0)
+}
+
+fn resolved_shape_d(f: &Func, name: &str, depth: u32) -> Option<Vec<i64>> {
     if let Some(s) = f.var_shape(name) {
         return Some(s);
     }
-    // 只解一层 FLATTEN（`__f = A(:)`）—— 泛化递归可能在自引用上打转
+    if depth >= 3 {
+        return None;            // 防自引用/环
+    }
     let mut found: Option<Vec<i64>> = None;
     walk_stmts(&f.body, &mut |st| {
         if found.is_some() {
             return;
         }
+        // `z = zeros(1,3)` 这类局部量的形状来自 fill:
+        if let Stmt::Fill { name: n, dims, .. } = st {
+            if n == name {
+                found = Some(dims.clone());
+            }
+            return;
+        }
         if let Stmt::Op(op) = st {
-            if op.lhs == name && op.id == "OP-FLATTEN" && op.args.len() == 1 {
-                if let Some(src) = f.var_shape(&op.args[0]) {
-                    let n: i64 = src.iter().product();
-                    found = Some(vec![n]);
+            if op.lhs != name {
+                return;
+            }
+            match op.id.as_str() {
+                "OP-FLATTEN" if op.args.len() == 1 => {
+                    if let Some(src) = resolved_shape_d(f, &op.args[0], depth + 1) {
+                        let n: i64 = src.iter().product();
+                        found = Some(vec![n]);
+                    }
                 }
+                "OP-SLICE" if op.args.len() == 3 => {
+                    let from: Option<i64> = op.args[1].parse().ok();
+                    let to: Option<i64> = op.args[2].parse().ok();
+                    if let (Some(a), Some(b)) = (from, to) {
+                        if b >= a && a >= 1 {
+                            found = Some(vec![b - a + 1]);
+                        }
+                    }
+                }
+                "OP-SUM" | "OP-MEAN" | "OP-MAX" | "OP-MIN" | "OP-INDEX" => {
+                    found = Some(vec![1]);
+                }
+                _ => {}
             }
         }
     });
@@ -232,7 +266,7 @@ fn resolved_shape(f: &Func, name: &str) -> Option<Vec<i64>> {
 fn out_shape(f: &Func, op: &Op) -> Option<Vec<i64>> {
     if op.id == "OP-SUM" && op.args.len() == 1 {
         // MATLAB 的 sum 默认沿**第一个非单例维**；2-D 的 2x3 -> 1x3。
-        let s = f.var_shape(&op.args[0])?;
+        let s = resolved_shape(f, &op.args[0])?;
         if s.len() == 1 {
             return Some(vec![1]);
         }
@@ -265,7 +299,7 @@ fn out_shape(f: &Func, op: &Op) -> Option<Vec<i64>> {
     }
     // 切片：1-D，长度 = to - from + 1（边界是字面量才算得出）
     if op.id == "OP-SLICE" && op.args.len() == 3 {
-        let sa = f.var_shape(&op.args[0])?;
+        let sa = resolved_shape(f, &op.args[0])?;
         if sa.len() != 1 {
             return None;
         }
@@ -278,7 +312,7 @@ fn out_shape(f: &Func, op: &Op) -> Option<Vec<i64>> {
     }
     // 转置：形状是 [n, m]
     if op.id == "OP-TRANSPOSE" && op.args.len() == 1 {
-        let s = f.var_shape(&op.args[0])?;
+        let s = resolved_shape(f, &op.args[0])?;
         if s.len() != 2 {
             return None;
         }
@@ -286,8 +320,8 @@ fn out_shape(f: &Func, op: &Op) -> Option<Vec<i64>> {
     }
     // 矩阵乘：形状是 [a.m, b.n]，不是广播结果（广播会把 2x3 与 3x2 判成不可广播）
     if op.id == "OP-MATMUL" && op.args.len() == 2 {
-        let sa = f.var_shape(&op.args[0])?;
-        let sb = f.var_shape(&op.args[1])?;
+        let sa = resolved_shape(f, &op.args[0])?;
+        let sb = resolved_shape(f, &op.args[1])?;
         if sa.len() != 2 || sb.len() != 2 || sa[1] != sb[0] {
             return None;
         }
@@ -937,7 +971,7 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
 
     // 局部临时：所有"既不是参数也不是返回值"的算子输出
     let mut need_free: Vec<String> = Vec::new();
-    let mut temps: Vec<(String, Option<Vec<i64>>)> = Vec::new();
+    let mut temps: Vec<(String, Option<Vec<i64>>, bool)> = Vec::new();
     // 立即数也要有实体：算子签名只认 mlc_array
     let mut consts: Vec<(String, String, i64)> = Vec::new();
     // 多维常量：(名字, 形状, 值, 源行)
@@ -961,7 +995,7 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
         // **算子的输出**和**函数调用的输出**都可能是局部数组 ——
         // 只收集前者会让后者的名字从未声明，生成的 C 直接编不过
         // （真实工程里 "B = getbase(Y)" 这种中间变量到处都是）。
-        let (lhs, shape) = match s {
+        let (lhs, shape, unknown) = match s {
             Stmt::Op(op) => {
                 let sh = out_shape(f, op);
                 // 动态分配型算子由 *_alloc 负责 init；先 init 会泄漏旧 buffer。
@@ -971,9 +1005,11 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
                 } else {
                     Some(sh.unwrap_or_else(|| vec![1]))
                 };
-                (op.lhs.clone(), sh)
+                // 第三态：**既不是动态、又推不出形状** —— 不猜，如实拒绝
+                let unknown = sh.is_some() && out_shape(f, op).is_none();
+                (op.lhs.clone(), sh, unknown)
             }
-            Stmt::Call { lhs, .. } => (lhs.clone(), Some(vec![1])),
+            Stmt::Call { lhs, .. } => (lhs.clone(), Some(vec![1]), false),
             _ => return,
         };
         let is_arg = f.args.iter().any(|x| x.name == lhs);
@@ -986,9 +1022,17 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
             return;
         }
         need_free.push(t.clone());
-        temps.push((t, shape));
+        temps.push((t, shape, unknown));
     });
-    for (t, shape) in &temps {
+    for (t, shape, unknown) in &temps {
+        if *unknown {
+            // 形状推不出来就不猜：猜出来的 {1} 会在运行期变成"写越界"或错值
+            out.push(format!(
+                "    /* TODO(shape): {} 的形状推不出来（不按 1 元素猜） */", t));
+            out.push("    return MLC_UNIMPLEMENTED;".to_string());
+            out.push("}".to_string());        // 早退也要收函数体
+            return Ok(out.join("\n"));
+        }
         out.push(format!("    mlc_array {};", t));
         if let Some(sh) = shape {
             if let Some(l) = init_call(t, "f64", sh, false) {

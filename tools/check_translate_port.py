@@ -481,7 +481,12 @@ def check_golden_parity():
     if rc != 0:
         return ["TP10 夹具被解释器复算不一致：%s" % (bad[:2] or out.strip()[-160:],)]
     if tail:
-        print("  [TP10] %s" % tail[0])
+        # 子进程输出可能是任意字节解码来的；GBK 控制台遇到替换字符会抛
+        # UnicodeEncodeError —— 不该让"打印一行提示"把门弄崩
+        try:
+            print("  [TP10] %s" % tail[0])
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            print("  [TP10] (输出含不可打印字符，已省略)")
     return []
 
 
@@ -508,7 +513,7 @@ def check_reference_parity(fast=None):
                     "--octave"])
     for ln in out.splitlines():
         if ln.startswith("PA4"):
-            print("  [TP11] " + ln.strip())
+            print("  [TP11] " + _safe_text(ln.strip()))
     if rc != 0:
         return ["TP11 L4 对拍失败：%s" % (out.strip().splitlines()[-2:],)]
     return []
@@ -741,8 +746,13 @@ FAST = os.environ.get("MATLABC_GATE_FAST") == "1"
 
 def _run(cmd, cwd=None, timeout=300):
     import subprocess
+    # 子进程统一用 utf-8 输出：GBK 里没有 `⇄` 这类符号，打印会崩，
+    # 而门只会看到"非零退出"，把编码问题误判成对拍失败。
+    env = dict(os.environ)
+    env["PYTHONIOENCODING"] = "utf-8"
     try:
         p = subprocess.run(cmd, cwd=cwd or ROOT, stdin=subprocess.DEVNULL,
+                           env=env,
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                            timeout=timeout)
     except (OSError, subprocess.SubprocessError) as exc:
@@ -1012,6 +1022,20 @@ def check_m2c(require_c=False, fast=None):
                    "compiled": bool(cc)}
 
 
+def _safe_text(msg):
+    """把消息压成当前控制台能编码的形式。
+
+    为什么需要：门的消息里可能嵌着子进程输出（任意字节解码来的 U+FFFD），
+    在 GBK 控制台上 `print` 会抛 UnicodeEncodeError —— 一个"打印提示"的
+    编码问题不该让整道门崩掉。
+    """
+    enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        return msg.encode(enc, "replace").decode(enc, "replace")
+    except (LookupError, UnicodeError):
+        return msg.encode("ascii", "replace").decode("ascii")
+
+
 def run_checks(require_c=False):
     probs = []
     probs.extend(check_abi())
@@ -1278,7 +1302,7 @@ def main(argv=None):
             print("  [台账] 状态已与 C 后端一致")
     if probs:
         for p in probs:
-            print("  - %s" % p)
+            print("  - %s" % _safe_text(p))
         print("check_translate_port: %d 项不合规" % len(probs))
         return 1
     _mm = stats.get("m2c") or {}
