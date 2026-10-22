@@ -636,6 +636,10 @@ fn scalar_expr(f: &Func, tok: &str) -> Option<String> {
     if is_int_literal(tok) {
         return Some(tok.to_string());
     }
+    // 循环变量在 C 里就是 int64_t（`for (int64_t i = ...)`）
+    if f.is_loop_var(tok) {
+        return Some(ident(tok));
+    }
     match f.var_dtype(tok) {
         Some(dt) if is_scalar_dt(&dt) => Some(ident(tok)),
         _ => None,

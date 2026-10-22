@@ -168,8 +168,10 @@ def _var_line(kind, name, f):
 
 
 #: 表达式里的一个"原子"：名字 / 整数 / 调用或下标
-_EXPR_SIDE = re.compile(r"^(?:([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*|\d+)\s*\)"
-                        r"|(\d+)|([A-Za-z_]\w*))$")
+_EXPR_SIDE = re.compile(
+    r"^(?:([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*|\d+)\s*"
+    r"(?:,\s*([A-Za-z_]\w*|\d+)\s*)?\)"
+    r"|(\d+)|([A-Za-z_]\w*))$")
 
 
 def _side_atom(text):
@@ -178,15 +180,17 @@ def _side_atom(text):
     if not m:
         return None
     if m.group(1):
-        return ("call", m.group(1), m.group(2))
-    if m.group(3):
-        return ("num", m.group(3))
+        # 第三组是**第二个下标**（2-D 下标 `A(i,j)`）；没有就是 None
+        return ("call", m.group(1), m.group(2), m.group(3))
     if m.group(4):
-        return ("name", m.group(4))
+        return ("num", m.group(4))
+    if m.group(5):
+        return ("name", m.group(5))
     return None
 
 
-def _lower_binary(lhs, left, op, right, fnames, emit, counter, src_line=0):
+def _lower_binary(lhs, left, op, right, fnames, emit, counter, src_line=0,
+                  shapes=None):
     """把 `lhs = left op right` 降级；两侧都可以是 调用/下标。
 
     为什么要降级：MIR 是**语句级**的，没有嵌套表达式。真实代码里
@@ -211,7 +215,34 @@ def _lower_binary(lhs, left, op, right, fnames, emit, counter, src_line=0):
     operands = []
     for side in sides:
         if side[0] == "call":
-            _, fname, arg = side
+            _, fname, arg, arg2 = side
+            if arg2 is not None:
+                # `A(i,j)` 当操作数：先降成线性下标的临时量
+                shp = (shapes or {}).get(fname)
+                if not shp or len(shp) != 2:
+                    return False       # 没有二维形状就算不出列偏移，如实放弃
+                rows = int(shp[0])
+                if arg.isdigit() and arg2.isdigit():
+                    lin = str(int(arg) + (int(arg2) - 1) * rows)
+                else:
+                    # 两侧都可以是名字或数字（setb 的参数接受字面量）
+                    if not (re.match(r"^[A-Za-z_]\w*$|^\d+$", arg)
+                            and re.match(r"^[A-Za-z_]\w*$|^\d+$", arg2)):
+                        return False
+                    counter[0] += 1
+                    t1 = "__j%d" % counter[0]
+                    t2 = "__l%d" % counter[0]
+                    _emit("var:%s:i64" % t1)
+                    _emit("var:%s:i64" % t2)
+                    _emit("setb:%s:sub:%s:1" % (t1, arg2))
+                    _emit("setb:%s:mul:%s:%d" % (t2, t1, rows))
+                    _emit("setb:%s:add:%s:%s" % (t1, arg, t2))
+                    lin = t1
+                counter[0] += 1
+                tmp = "__t%d" % counter[0]
+                _emit("op:OP-INDEX:%s:%s:%s" % (tmp, fname, lin))
+                operands.append(tmp)
+                continue
             counter[0] += 1
             tmp = "__t%d" % counter[0]
             if fname in fnames:
@@ -657,7 +688,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                     em = _EXPR_BIN.match(rhs)
                     if em and _lower_binary(lhs, em.group(1), em.group(2),
                                             em.group(3), fnames, out.append,
-                                            n_tmp, src_line):
+                                            n_tmp, src_line,
+                                            f.get("shapes") or {}):
                         n_ops_delta[0] += 1
                         continue
                     cm = _CALL.match(rhs)
