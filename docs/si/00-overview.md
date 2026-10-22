@@ -65,4 +65,5 @@ python -m pytest -q tests/test_mlc_project.py
 P0 通过标准：3 文件样例得到 7 个符号；`main.helper`、`pkg.Cls.getValue`
 等点分名正确；第二次 sync 为 0 changed；删除文件后符号消失；dry-run 不写库。
 
-真实样例：`tests/sample_m` 的 13 个 `.m` → 21 个符号，首次 sync **0.08 s**（本机）。
+真实样例：`tests/sample_m` 的 13 个 `.m` → **21 符号 / 21 边 / 43 引用**，
+首次 sync **0.05 s**（本机）。
