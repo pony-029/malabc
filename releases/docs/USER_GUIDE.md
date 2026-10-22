@@ -197,7 +197,7 @@ code --install-extension matlabc-<版本>.vsix
 
 ## 3. 命令清单
 
-按 `Ctrl+Shift+P`，输入 `matlabc`，共 27 条：
+按 `Ctrl+Shift+P`，输入 `matlabc`：
 
 ![命令面板](figures/commands.png)
 
@@ -213,6 +213,8 @@ code --install-extension matlabc-<版本>.vsix
 | --- | --- |
 | `matlabc: 打开使用说明` | 就是本文（随扩展一起分发，离线可看） |
 | `matlabc: 打开使用说明（PDF）` | 本文的 PDF 版：四张示意图直接印在页面上，也适合转发 |
+| `matlabc: 打开 C/MATLAB 对照（侧边）` | 左 MATLAB、右 C，函数级同步滚动；C 侧也可反向发起 |
+| `matlabc: 开关 C/MATLAB 对照同步` | 临时开/关另一栏的自动跟随 |
 | `matlabc: 选择 Python 解释器` | 挑一个 Python 并验证能启动，写进设置 —— **启动失败时最先试它** |
 | `matlabc: 重新启动服务` | 索引卡住、刚改过设置时用 —— 只重启分析服务，不重开窗口 |
 | `matlabc: 生成工程 HTML 报告` | 一条命令出整份报告（调用图内嵌），存到 `.matlabc/report.html`，完成后可直接在浏览器打开 |
