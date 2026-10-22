@@ -176,6 +176,7 @@ CREATE TABLE IF NOT EXISTS symbols (
   signature TEXT NOT NULL DEFAULT '',
   type_name TEXT NOT NULL DEFAULT '',
   flags TEXT NOT NULL DEFAULT '',
+  resolution TEXT NOT NULL DEFAULT 'project',
   UNIQUE(file_id, kind, dotted_name, line)
 );
 CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
@@ -188,7 +189,8 @@ CREATE TABLE IF NOT EXISTS refs (
   line INTEGER NOT NULL,
   col INTEGER NOT NULL DEFAULT 1,
   kind TEXT NOT NULL DEFAULT 'ref',
-  context TEXT NOT NULL DEFAULT ''
+  context TEXT NOT NULL DEFAULT '',
+  confidence REAL NOT NULL DEFAULT 1.0
 );
 CREATE TABLE IF NOT EXISTS edges (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -235,8 +237,20 @@ CREATE TABLE IF NOT EXISTS workspaces (
 """
 
 
+def _ensure_column(conn, table, column, decl):
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(%s)" % table)]
+    if column not in cols:
+        conn.execute("ALTER TABLE %s ADD COLUMN %s %s"
+                     % (table, column, decl))
+
+
 def init_db(conn):
     conn.executescript(SCHEMA)
+    # P0 建的库没有这些列；迁移是幂等 ALTER，不丢数据。
+    _ensure_column(conn, "symbols", "resolution",
+                   "TEXT NOT NULL DEFAULT 'project'")
+    _ensure_column(conn, "refs", "confidence",
+                   "REAL NOT NULL DEFAULT 1.0")
     conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES('schema', ?)",
                  (str(SCHEMA_VERSION),))
     conn.commit()
@@ -395,13 +409,14 @@ def _sig(fn):
 
 
 def _insert_symbol(conn, file_id, name, dotted, kind, line, scope_id=None,
-                   signature="", type_name="", flags="", end_line=None):
+                   signature="", type_name="", flags="", end_line=None,
+                   resolution="project"):
     cur = conn.execute(
         "INSERT OR IGNORE INTO symbols(file_id, name, dotted_name, kind, "
-        "line, col, end_line, scope_id, signature, type_name, flags) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        "line, col, end_line, scope_id, signature, type_name, flags, "
+        "resolution) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
         (file_id, name, dotted, kind, int(line), 1, end_line, scope_id,
-         signature, type_name, flags))
+         signature, type_name, flags, resolution))
     if cur.lastrowid:
         return cur.lastrowid
     row = conn.execute(
@@ -499,47 +514,125 @@ def _insert_file_symbols(conn, file_id, rel, mf):
     return func_rows
 
 
-def _name_index(conn):
+class _TargetFile(object):
+    def __init__(self, rel):
+        self.rel = rel
+
+
+class _CallTarget(object):
+    """给 matlabc.analyze_calls 用的轻量目标（只依赖它读取的属性）。"""
+
+    def __init__(self, symbol_id, name, dotted, class_name, line, rel):
+        self.symbol_id = symbol_id
+        self.name = name
+        self.qualified = dotted
+        self.class_name = class_name
+        self.line = line
+        self.mfile = _TargetFile(rel)
+
+
+def _call_index(conn, project_id):
+    rows = conn.execute(
+        "SELECT s.id, s.name, s.dotted_name, s.kind, s.line, s.scope_id, "
+        "f.path FROM symbols s JOIN files f ON s.file_id=f.id "
+        "WHERE f.project_id=?", (project_id,)).fetchall()
+    class_names = {}
+    for r in rows:
+        if r["kind"] == "class":
+            class_names[r["id"]] = r["dotted_name"].split(".")[-1]
+    short, qualified = {}, {}
+    for r in rows:
+        if r["kind"] not in ("function", "local_function", "method",
+                             "constructor", "script"):
+            continue
+        cname = class_names.get(r["scope_id"], "")
+        t = _CallTarget(r["id"], r["name"], r["dotted_name"], cname,
+                        r["line"], r["path"])
+        short.setdefault(r["name"].lower(), []).append(t)
+        qualified.setdefault(r["dotted_name"].lower(), []).append(t)
+        if cname:
+            qualified.setdefault((cname + "." + r["name"]).lower(),
+                                 []).append(t)
+    return short, qualified
+
+
+def _ref_index(conn, project_id):
     idx = {}
-    for row in conn.execute("SELECT id, name, dotted_name FROM symbols"):
-        idx.setdefault(row["name"].lower(), []).append(row["id"])
-        idx.setdefault(row["dotted_name"].lower(), []).append(row["id"])
+    for r in conn.execute(
+            "SELECT s.id, s.name, s.line FROM symbols s JOIN files f "
+            "ON s.file_id=f.id WHERE f.project_id=?", (project_id,)):
+        idx.setdefault(r["name"].lower(), []).append((r["id"], r["line"]))
     return idx
 
 
-def _insert_edges(conn, file_id, func_rows, name_index):
+def _call_line(fn, target):
+    for site in getattr(fn, "call_sites", None) or ():
+        try:
+            if len(site) >= 4 and site[3] is target:
+                return int(site[0])
+        except (TypeError, ValueError):
+            continue
+    return int(getattr(fn, "line", 1) or 1)
+
+
+def _insert_edges(conn, file_id, func_rows, short_index):
     seen = set()
+
+    def add(sid, callee, kind, confidence, dst=None, line=1, weight=1):
+        key = (sid, callee.lower(), kind, dst)
+        if not callee or key in seen:
+            return
+        seen.add(key)
+        conn.execute(
+            "INSERT INTO edges(src_symbol_id, dst_symbol_id, callee_name, "
+            "kind, line, confidence, weight, file_id) "
+            "VALUES(?,?,?,?,?,?,?,?)",
+            (sid, dst, callee, kind, line, confidence, weight, file_id))
+
     for sid, fn in func_rows:
-        groups = (
-            ("call", 1.0, getattr(fn, "calls", None) or ()),
-            ("call", 1.0, getattr(fn, "calls_qualified", None) or ()),
-            ("external", 0.35,
-             (getattr(fn, "external_calls", None) or {}).keys()),
-            ("dynamic", 0.15,
-             (getattr(fn, "dynamic_calls", None) or {}).keys()),
-            ("indirect", 0.25,
-             (getattr(fn, "indirect_calls", None) or {}).keys()),
-        )
-        for kind, confidence, names in groups:
-            for callee in names:
-                callee = str(callee or "")
-                if not callee:
-                    continue
-                key = (sid, callee.lower(), kind)
-                if key in seen:
-                    continue
-                seen.add(key)
+        # 项目内直接调用：analyze_calls 已解析为具体对象
+        for target in getattr(fn, "calls", None) or ():
+            add(sid, getattr(target, "name", "") or "?",
+                "call", 1.0, getattr(target, "symbol_id", None),
+                _call_line(fn, target))
+        for kind, conf, attr in (
+                ("builtin", 0.90, "builtin_calls"),
+                ("external", 0.35, "external_calls"),
+                ("dynamic", 0.15, "dynamic_calls"),
+                ("indirect", 0.25, "indirect_calls")):
+            counter = getattr(fn, attr, None) or {}
+            for callee, weight in counter.items():
                 dst = None
-                ids = name_index.get(callee.lower()) or []
-                if ids:
-                    dst = ids[0]
-                conn.execute(
-                    "INSERT INTO edges(src_symbol_id, dst_symbol_id, "
-                    "callee_name, kind, line, confidence, weight, file_id) "
-                    "VALUES(?,?,?,?,?,?,?,?)",
-                    (sid, dst, callee, kind,
-                     int(getattr(fn, "line", 1) or 1), confidence, 1,
-                     file_id))
+                # external 名字如果已经在符号库出现，补一个目标，但降置信度
+                cands = short_index.get(str(callee).lower()) or []
+                if kind == "external" and cands:
+                    dst = cands[0].symbol_id
+                    conf = 0.55
+                add(sid, str(callee), kind, conf, dst,
+                    int(getattr(fn, "line", 1) or 1), int(weight or 1))
+
+
+def _insert_refs(conn, file_id, mf, ref_index):
+    lines = getattr(mf, "source_lines", None) or []
+    scrubbed = getattr(mf, "scrubbed_lines", None) or lines
+    local = {}
+    for r in conn.execute("SELECT id, name, line FROM symbols WHERE file_id=?",
+                          (file_id,)):
+        local.setdefault(r["name"].lower(), []).append((r["id"], r["line"]))
+    for lineno, line in enumerate(scrubbed, start=1):
+        for m in re.finditer(r"[A-Za-z_]\w*", line):
+            name = m.group(0)
+            cands = local.get(name.lower()) or ref_index.get(name.lower()) or []
+            if not cands:
+                continue
+            sid, sline = cands[0]
+            kind = "definition" if lineno == sline else "reference"
+            context = (lines[lineno - 1] if lineno <= len(lines) else "")[:200]
+            conn.execute(
+                "INSERT INTO refs(symbol_id, file_id, line, col, kind, "
+                "context, confidence) VALUES(?,?,?,?,?,?,?)",
+                (sid, file_id, lineno, m.start() + 1, kind, context,
+                 1.0 if len(cands) == 1 else 0.8))
 
 
 def _delete_file(conn, file_id):
@@ -593,15 +686,24 @@ def sync_project(cfg, full=False, dry_run=False):
             except Exception as exc:  # noqa: BLE001 - 单文件失败不拖垮全项目
                 conn.execute("UPDATE files SET parse_status='error', "
                              "parse_error=? WHERE id=?", (str(exc), file_id))
-        # 先插符号，再统一建边（跨文件解析需要全量名字表）
+        # 先插符号；再用全库符号做调用解析（含未改文件的目标）
         pending_edges = []
         for file_id, rel, mf in pending:
             func_rows = _insert_file_symbols(conn, file_id, rel, mf)
-            pending_edges.append((file_id, func_rows))
-        idx = _name_index(conn)
-        for file_id, func_rows in pending_edges:
+            pending_edges.append((file_id, mf, func_rows))
+        short, qualified = _call_index(conn, project_id)
+        ref_index = _ref_index(conn, project_id)
+        for file_id, mf, func_rows in pending_edges:
+            try:
+                matlabc.analyze_calls(mf, short, qualified)
+            except Exception as exc:  # noqa: BLE001 - 单文件调用分析失败不拖垮全项目
+                conn.execute("UPDATE files SET parse_status='error', "
+                             "parse_error=? WHERE id=?",
+                             ("call analysis: %s" % exc, file_id))
             conn.execute("DELETE FROM edges WHERE file_id=?", (file_id,))
-            _insert_edges(conn, file_id, func_rows, idx)
+            conn.execute("DELETE FROM refs WHERE file_id=?", (file_id,))
+            _insert_edges(conn, file_id, func_rows, short)
+            _insert_refs(conn, file_id, mf, ref_index)
         for name, value in (cfg.get("conditions") or {}).items():
             conn.execute("INSERT OR REPLACE INTO conditions(project_id, name, "
                          "value) VALUES(?,?,?)",
@@ -616,6 +718,10 @@ def sync_project(cfg, full=False, dry_run=False):
         summary["edges"] = conn.execute(
             "SELECT COUNT(*) AS n FROM edges e JOIN files f "
             "ON e.file_id=f.id WHERE f.project_id=?",
+            (project_id,)).fetchone()["n"]
+        summary["refs"] = conn.execute(
+            "SELECT COUNT(*) AS n FROM refs r JOIN files f "
+            "ON r.file_id=f.id WHERE f.project_id=?",
             (project_id,)).fetchone()["n"]
         return summary
     finally:
@@ -638,13 +744,18 @@ def status_project(cfg):
             "SELECT COUNT(*) AS n FROM edges e JOIN files f "
             "ON e.file_id=f.id WHERE f.project_id=?",
             (project_id,)).fetchone()["n"]
+        refs = conn.execute(
+            "SELECT COUNT(*) AS n FROM refs r JOIN files f "
+            "ON r.file_id=f.id WHERE f.project_id=?",
+            (project_id,)).fetchone()["n"]
         last = conn.execute(
             "SELECT value FROM meta WHERE key='last_sync'").fetchone()
         scanned, added, changed, removed, unchanged = _changes(
             cfg, conn, project_id, full=False)
         return {"project": cfg["name"], "root": cfg["_root"],
                 "db": cfg["_db"], "files": rows, "symbols": syms,
-                "edges": edges, "stale": len(added) + len(changed),
+                "edges": edges, "refs": refs,
+                "stale": len(added) + len(changed),
                 "removed": len(removed),
                 "last_sync": last["value"] if last else ""}
     finally:
@@ -656,7 +767,8 @@ def query_symbols(cfg, query="", kind="", file_like="", limit=200):
     try:
         init_db(conn)
         sql = ("SELECT s.name, s.dotted_name, s.kind, s.line, s.signature, "
-               "f.path FROM symbols s JOIN files f ON s.file_id=f.id ")
+               "s.resolution, f.path FROM symbols s "
+               "JOIN files f ON s.file_id=f.id ")
         where, args = [], []
         if query:
             where.append("(lower(s.name) LIKE ? OR lower(s.dotted_name) LIKE ?)")
@@ -671,6 +783,55 @@ def query_symbols(cfg, query="", kind="", file_like="", limit=200):
         if where:
             sql += "WHERE " + " AND ".join(where) + " "
         sql += "ORDER BY f.path, s.line LIMIT ?"
+        args.append(int(limit))
+        return [dict(r) for r in conn.execute(sql, args).fetchall()]
+    finally:
+        conn.close()
+
+
+def query_refs(cfg, name="", limit=200):
+    conn = _connect(cfg["_db"])
+    try:
+        init_db(conn)
+        sql = ("SELECT s.name, s.dotted_name, r.line, r.col, r.kind, "
+               "r.context, r.confidence, f.path FROM refs r "
+               "JOIN symbols s ON r.symbol_id=s.id "
+               "JOIN files f ON r.file_id=f.id ")
+        where, args = [], []
+        if name:
+            where.append("(lower(s.name) LIKE ? OR lower(s.dotted_name) LIKE ?)")
+            q = "%%%s%%" % name.lower()
+            args.extend([q, q])
+        if where:
+            sql += "WHERE " + " AND ".join(where) + " "
+        sql += "ORDER BY f.path, r.line, r.col LIMIT ?"
+        args.append(int(limit))
+        return [dict(r) for r in conn.execute(sql, args).fetchall()]
+    finally:
+        conn.close()
+
+
+def query_edges(cfg, name="", kind="", limit=200):
+    conn = _connect(cfg["_db"])
+    try:
+        init_db(conn)
+        sql = ("SELECT src.name AS src, dst.name AS dst, e.callee_name, "
+               "e.kind, e.line, e.confidence, e.weight, f.path "
+               "FROM edges e JOIN symbols src ON e.src_symbol_id=src.id "
+               "LEFT JOIN symbols dst ON e.dst_symbol_id=dst.id "
+               "JOIN files f ON e.file_id=f.id ")
+        where, args = [], []
+        if name:
+            where.append("(lower(src.name) LIKE ? OR "
+                         "lower(e.callee_name) LIKE ?)")
+            q = "%%%s%%" % name.lower()
+            args.extend([q, q])
+        if kind:
+            where.append("e.kind=?")
+            args.append(kind)
+        if where:
+            sql += "WHERE " + " AND ".join(where) + " "
+        sql += "ORDER BY f.path, e.line LIMIT ?"
         args.append(int(limit))
         return [dict(r) for r in conn.execute(sql, args).fetchall()]
     finally:
@@ -799,7 +960,7 @@ def import_project(cfg, source, write=False):
 def _print_summary(s):
     print("files=%(files)d added=%(added)d changed=%(changed)d "
           "removed=%(removed)d unchanged=%(unchanged)d "
-          "symbols=%(symbols)d edges=%(edges)d" % s)
+          "symbols=%(symbols)d edges=%(edges)d refs=%(refs)d" % s)
 
 
 def main(argv=None):
@@ -830,6 +991,19 @@ def main(argv=None):
     p.add_argument("--query", default="")
     p.add_argument("--kind", default="")
     p.add_argument("--file", dest="file_like", default="")
+    p.add_argument("--limit", type=int, default=200)
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("edges", help="查询调用/关系边")
+    p.add_argument("--root", default=".")
+    p.add_argument("--name", default="")
+    p.add_argument("--kind", default="")
+    p.add_argument("--limit", type=int, default=200)
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("refs", help="查询符号引用")
+    p.add_argument("--root", default=".")
+    p.add_argument("--name", default="")
     p.add_argument("--limit", type=int, default=200)
     p.add_argument("--json", action="store_true")
 
@@ -873,14 +1047,36 @@ def main(argv=None):
             else:
                 _print_summary(s)
             return 0
+        if args.cmd == "edges":
+            rows = query_edges(cfg, name=args.name, kind=args.kind,
+                               limit=args.limit)
+            if args.json:
+                print(json.dumps(rows, ensure_ascii=False, indent=2))
+            else:
+                for r in rows:
+                    print("%-20s -> %-20s %-9s %.2f %s:%d"
+                          % (r["src"], r["dst"] or r["callee_name"],
+                             r["kind"], r["confidence"], r["path"],
+                             r["line"]))
+            return 0
+        if args.cmd == "refs":
+            rows = query_refs(cfg, name=args.name, limit=args.limit)
+            if args.json:
+                print(json.dumps(rows, ensure_ascii=False, indent=2))
+            else:
+                for r in rows:
+                    print("%-22s %-11s %s:%d:%d  %s"
+                          % (r["name"], r["kind"], r["path"], r["line"],
+                             r["col"], r["context"].strip()))
+            return 0
         if args.cmd == "status":
             s = status_project(cfg)
             if args.json:
                 print(json.dumps(s, ensure_ascii=False, indent=2))
             else:
                 print("project=%(project)s files=%(files)d symbols=%(symbols)d "
-                      "edges=%(edges)d stale=%(stale)d removed=%(removed)d"
-                      % s)
+                      "edges=%(edges)d refs=%(refs)d stale=%(stale)d "
+                      "removed=%(removed)d" % s)
             return 0
         if args.cmd == "symbols":
             rows = query_symbols(cfg, query=args.query, kind=args.kind,

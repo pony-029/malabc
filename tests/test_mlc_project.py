@@ -186,6 +186,46 @@ src/x.m
         with self.assertRaises(ValueError):
             mlc_project.import_project(self.cfg, p, write=False)
 
+    def test_refs_are_indexed(self):
+        mlc_project.sync_project(self.cfg)
+        rows = mlc_project.query_refs(self.cfg, name="helper")
+        self.assertTrue(rows)
+        self.assertTrue(any(r["line"] == 2 for r in rows))
+        self.assertTrue(any(r["kind"] == "reference" for r in rows))
+
+    def test_call_edges_have_target_and_confidence(self):
+        s = mlc_project.sync_project(self.cfg)
+        self.assertGreaterEqual(s["edges"], 1)
+        rows = mlc_project.query_edges(self.cfg, name="main")
+        calls = [r for r in rows if r["kind"] == "call"
+                 and r["dst"] == "helper"]
+        self.assertTrue(calls)
+        self.assertEqual(calls[0]["confidence"], 1.0)
+
+    def test_builtin_and_external_confidence(self):
+        _write(self.root, "a.m", """function y = main(x)
+y = helper(x) + 1;
+disp(y);
+mystery(y);
+end
+
+function z = helper(x)
+z = x * 2;
+end
+""")
+        mlc_project.sync_project(self.cfg)
+        rows = mlc_project.query_edges(self.cfg, name="main")
+        by_kind = dict((r["kind"], r) for r in rows)
+        self.assertIn("builtin", by_kind)
+        self.assertIn("external", by_kind)
+        self.assertGreater(by_kind["builtin"]["confidence"],
+                           by_kind["external"]["confidence"])
+
+    def test_symbols_default_resolution(self):
+        mlc_project.sync_project(self.cfg)
+        for row in mlc_project.query_symbols(self.cfg):
+            self.assertEqual(row["resolution"], "project")
+
     def test_status_reports_stale(self):
         mlc_project.sync_project(self.cfg)
         _write(self.root, "a.m", """function y = main(x)

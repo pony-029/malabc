@@ -35,8 +35,9 @@
 
 ## 4. P0 明确没做
 
-- `refs` 表只建了 schema，尚未填引用。
-- `edges` 表已建，但当前解析阶段 `fn.calls` 为空，边数通常为 0；P1 接入调用分析后填。
+- `refs` 已按词法标识符填充；完整作用域/类型解析仍属 P1。
+- `edges` 已接 `matlabc.analyze_calls`，有 `call/builtin/external/dynamic/indirect` 与置信度；
+  `eval`/动态字段仍标低置信度。
 - 没有 FTS5/名称片段索引（字段/表已预留）。
 - 没有 UI 面板；P0 只提供 CLI 与可查询的 SQLite。
 - 没有 `.siproj` 导入器；P0 先定义自己的 `.mlcproj`。

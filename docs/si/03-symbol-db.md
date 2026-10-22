@@ -48,13 +48,20 @@ workspaces(project_id, name, state_json)
 > `main.helper` 是**文件内作用域**的表达，不代表 MATLAB 全局名。
 > 查询时可用 `name`（`helper`）或 `dotted_name`（`main.helper`）。
 
-## 4. 引用与边
+## 4. 引用与边（R14–R16 已填）
 
-- `refs`：P0 只建表；P1 由调用点/标识符引用填充。
-- `edges`：`kind` 为 `call / external / dynamic / indirect`；
-  `confidence` 表示静态可判定程度；`dst_symbol_id` 为空表示未解析。
-- 当前 `matlabc.parse_file` 只产出函数/类结构，`fn.calls` 在后续分析阶段才填充，
-  所以 P0 的 `edges` 通常为 0；P1 接入 `unified_graph`/调用分析后填。
+- `refs`：按 `scrubbed_lines` 的词法标识符填；同文件优先、全库兜底；
+  `kind=definition/reference`，`confidence` 1.0（唯一候选）或 0.8（多候选）。
+  这是**词法级**引用，不是完整作用域/类型解析；`eval`/动态字段仍不可知。
+- `edges`：用 `matlabc.analyze_calls` 解析项目内调用，`kind` 为
+  `call / builtin / external / dynamic / indirect`；`confidence` 分别约
+  `1.0 / 0.9 / 0.35 / 0.15 / 0.25`；`dst_symbol_id` 为空表示未解析。
+- 查询：
+  ```bash
+  python tools/mlc_project.py refs --root . --name helper
+  python tools/mlc_project.py edges --root . --name main
+  ```
+- `symbols.resolution` 当前项目内符号为 `project`；后续可区分 `path/builtin/dynamic`。
 
 ## 5. 增量生命周期
 

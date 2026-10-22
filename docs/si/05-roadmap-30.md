@@ -17,9 +17,9 @@
 | R11 | `status` / `symbols` | 文件/符号/陈旧数/查询 | ✅ |
 | R12 | 8 个单测 + 门禁 | `pytest` 8/8；py36/行尾/README | ✅ |
 | R13 | `.siproj` / MFL 导入器 | 只导入文件清单，不读符号库 | ✅ |
-| R14 | `refs` 表填充 | 标识符引用可查 | ⏳ |
-| R15 | 调用边（AST） | `calls` 填 `edges`，跨文件解析 | ⏳ |
-| R16 | 置信度模型 | call/method/handle/dynamic 分级 | ⏳ |
+| R14 | `refs` 表填充 | 标识符引用可查 | ✅ |
+| R15 | 调用边（AST） | `calls` 填 `edges`，跨文件解析 | ✅ |
+| R16 | 置信度模型 | call/method/handle/dynamic 分级 | ✅ |
 | R17 | LSP `workspace/symbol` | VS Code 全局符号 | ⏳ |
 | R18 | LSP `didChange` debounce | 编辑期增量，不全量重算 | ⏳ |
 | R19 | Context API + 面板 | 签名/帮助头/属性/基类 | ⏳ |
