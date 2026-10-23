@@ -336,9 +336,9 @@ fn out_shape(f: &Func, op: &Op) -> Option<Vec<i64>> {
         }
         return Some(vec![sa[0], sb[1]]);
     }
-    let s0 = f.var_shape(&op.args[0]);
+    let s0 = resolved_shape(f, &op.args[0]);
     if op.args.len() == 2 {
-        let s1 = f.var_shape(&op.args[1]);
+        let s1 = resolved_shape(f, &op.args[1]);
         if let (Some(a), Some(b)) = (s0.clone(), s1.clone()) {
             return bcast_shape(&a, &b);
         }

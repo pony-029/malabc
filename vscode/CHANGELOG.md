@@ -2,6 +2,20 @@
 
 ---
 
+## 1.9.5
+
+- **发现并修正一个错误的性能结论**：`bench_loop` 的 `y = y + x(i) * x(i);`
+  是**三个操作数的嵌套式**，此前根本没有被降级 —— 生成的是 `return MLC_UNIMPLEMENTED` 桩。
+  也就是说之前报的「C 10 ms vs Octave 157 ms（10–16×）」是拿**空实现**在比，**无效**
+- **bench 增加硬校验**：先跑一遍生成物，若输出含 `unimplemented`/`skipped`
+  就 **拒绝报告**（`PA5 拒绝报告：生成的 C 没有真正计算`）。
+  原则：基准必须先「算得出」，再谈「算得快」
+- **修形状推断**（同一根因的另一处）：通用二元分支（`OP-ADD` 等）仍用 `var_shape`，
+  对临时量返回 None → `TODO(shape)` → 整个函数变 unimplemented。改用 `resolved_shape`
+- 修正后实测（进程内口径）：`bench_loop` **15.65 ms → 12.8×**、
+  `bench_matmul` **6.60 ms → 21.8×**；`bench_sum` 仍是 0.1 ms 级，
+  该口径对它失真（已注明），`bench_vec` 的进程内驱动尚未产出
+
 ## 1.9.4
 
 - **bench 增加「进程内口径」**（`--reps N`）：自己生成 C 驱动，构造一次输入、

@@ -139,6 +139,16 @@ def main(argv=None):
         print("编译失败：%s" % out.strip()[-300:])
         return 2
 
+    # 先验证 C 真的算出了结果（不是 unimplemented 桩），否则数字毫无意义
+    _, rc_chk, out_chk = _run([exe])
+    if "unimplemented" in out_chk or "skipped" in out_chk:
+        line = [ln for ln in out_chk.splitlines()
+                if "unimplemented" in ln or "skipped" in ln][:1]
+        print("PA5 拒绝报告：生成的 C 没有真正计算 —— %s"
+              % (line[0].strip()[:80] if line else "unimplemented"))
+        print("  （基准必须先算得出，再算得快；否则测到的是启动时间）")
+        return 2
+
     t_c = _best(lambda: _run([exe])[0], repeat)
 
     # ---- 进程内计时（首选）：不含启动、不含输入构造 ----
