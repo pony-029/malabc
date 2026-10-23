@@ -823,6 +823,11 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                             # 左值是**数组**（有 shape 注解）：标量赋值语义是
                             # "把 1x1 数组整体写成这个值" -> const
                             out.append("const:%s:%s" % (lhs, rhs))
+                        elif (lhs in (f.get("args") or [])
+                              or lhs in (f.get("rets") or [])) and \
+                                re.match(r"^-?\d+(\.\d+)?$", rhs):
+                            # 入参/返回值是**数组形参**：数字按 const 写值，不声明 i64
+                            out.append("const:%s:%s" % (lhs, rhs))
                         else:
                             if lhs not in scalar_names:
                                 # 首次出现的标量：声明必须先于赋值，
