@@ -35,15 +35,17 @@ def _cc():
 CHECKS = (
     ("GX1", os.path.join("tests", "test_generated_compiles.py"),
      "GX1 示例工程（numeric / proj / demo_port.m）转出的 C 编译不过"),
-    ("GX2", os.path.join("tests", "test_void_call.py"),
-     "GX2 丢弃返回值的调用退回 unmapped，或该工程编译不过"),
+    ("GX2", (os.path.join("tests", "test_void_call.py"),
+             os.path.join("tests", "test_multi_return.py")),
+     "GX2 丢弃返回值的调用退回 unmapped，或多返回值算错/编译不过"),
 )
 
 
 def _run_one(test_file):
-    """跑单个用例文件；返回 (ok, 末行, 输出尾部)。"""
-    cmd = [sys.executable, "-m", "pytest", test_file, "-q", "--tb=line",
-           "-p", "no:cacheprovider"]
+    """跑一个（或一组）用例文件；返回 (ok, 末行, 输出尾部)。"""
+    files = test_file if isinstance(test_file, (list, tuple)) else [test_file]
+    cmd = [sys.executable, "-m", "pytest"] + list(files) + [
+        "-q", "--tb=line", "-p", "no:cacheprovider"]
     env = dict(os.environ)
     env["PYTHONIOENCODING"] = "utf-8"
     p = subprocess.run(cmd, cwd=ROOT, stdin=subprocess.DEVNULL,
@@ -106,7 +108,7 @@ def main(argv=None):
         detail = tail or out.strip().splitlines()[-1:]
         if isinstance(detail, list):
             detail = " ".join(detail)
-        probs.append("%s —— %s（%s）" % (why, detail[:120], test_file))
+        probs.append("%s —— %s" % (why, detail[:120]))
 
     for p in probs:
         print("  - " + p)

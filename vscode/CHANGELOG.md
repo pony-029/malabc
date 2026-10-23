@@ -2,6 +2,20 @@
 
 ---
 
+## 2.1.5
+
+- **多返回的验收数字（如实记，不好看）**：重跑 YALMIP 后
+  未映射语句 **28687 → 28051**（−636）、可做语句 **1161 → 1102**（−59）、
+  **可做函数 141 → 141（0 增长）**。
+  多返回把 59 条语句变成可映射，但没有一个函数因此变绿 —— 用到它的函数都还有别的阻塞。
+- **给多返回补语料与运行判据**：`translate/examples/multi/`（`twoout` 返回 `[lo,hi]`，
+  `userange` 里 `[lo,hi] = twoout(x)` 后算极差）
+  - `tests/test_generated_compiles.py` 增加 `examples/multi`（GX1 覆盖多返回）
+  - 新增 `tests/test_multi_return.py`：跑生成物断言 `twoout: 1 | 4`、`userange: 3`
+    —— 只做 `-fsyntax-only` 证明不了「两个值真的写进两个不同对象」
+  - 并入 GX2，**不新增判据前缀**（避免再动那 7 处登记）
+- 未做：解释器 `mir_eval` 还不解析 `call2:`；`size`/`find`/`unique` 多输出内置
+
 ## 2.1.4
 
 - **多返回调用 `[a,b] = f(x)` 端到端可用**（上一轮第 1 项）：MIR 走 `call2:`
