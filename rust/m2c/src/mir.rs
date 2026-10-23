@@ -72,6 +72,8 @@ pub enum Stmt {
     SetBin { lhs: String, op: String, a: String, b: String, src: i64 },
     /// `call:<lhs>:<函数名>:<实参...>` —— 调用同文件内的另一个生成函数
     Call { lhs: String, func: String, args: Vec<String>, src: i64 },
+    /// `call2:<左值1>,<左值2>:<函数名>:<实参...>` —— 多返回值调用
+    Call2 { lhs: Vec<String>, func: String, args: Vec<String>, src: i64 },
     /// `fill:<名字>:<d1,d2,...>:<值>` —— 多维常量（`zeros(3)` / `ones(2,3)`）
     ///
     /// 与 `const` 的区别：`const` 是**标量**（1×1），`fill` 带真实形状。
@@ -139,6 +141,13 @@ impl Func {
             Stmt::Const { name, .. } => v.push(name.clone()),
             Stmt::Fill { name, .. } => v.push(name.clone()),
             Stmt::For { var, .. } => v.push(var.clone()),
+            // 调用的输出也是名字：单返回 / 多返回都要算进来
+            Stmt::Call { lhs, .. } => v.push(lhs.clone()),
+            Stmt::Call2 { lhs, .. } => {
+                for n in lhs {
+                    v.push(n.clone());
+                }
+            }
             _ => {}
         });
         v.sort();
@@ -171,6 +180,7 @@ pub fn walk_stmts<F: FnMut(&Stmt)>(stmts: &[Stmt], f: &mut F) {
         f(s);
         match s {
             Stmt::Op(_) | Stmt::Set { .. } | Stmt::SetBin { .. } | Stmt::Call { .. }
+            | Stmt::Call2 { .. }
             | Stmt::Const { .. } | Stmt::Fill { .. } | Stmt::Break { .. } => {}
             Stmt::For { body, .. } => walk_stmts(body, f),
             Stmt::If { then_body, else_body, .. } => {
@@ -442,6 +452,32 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
                 op: parts[1].to_string(),
                 a: parts[2].to_string(),
                 b: parts[3].to_string(),
+                src: pending_src,
+            });
+            pending_src = 0;
+        } else if let Some(rest) = line.strip_prefix("call2:") {
+            let parts: Vec<&str> = rest.split(':').map(|x| x.trim()).collect();
+            if parts.len() < 2 {
+                return Err(format!("call2 需要 左值表:函数名：{}", rest));
+            }
+            let lhs: Vec<String> = parts[0]
+                .split(',')
+                .map(|x| x.trim())
+                .filter(|x| !x.is_empty())
+                .map(|x| x.to_string())
+                .collect();
+            if lhs.len() < 2 {
+                return Err(format!("call2 至少要两个左值：{}", rest));
+            }
+            let args: Vec<String> = parts[2..]
+                .iter()
+                .filter(|x| !x.is_empty())
+                .map(|x| x.to_string())
+                .collect();
+            push_stmt!(Stmt::Call2 {
+                lhs,
+                func: parts[1].to_string(),
+                args,
                 src: pending_src,
             });
             pending_src = 0;

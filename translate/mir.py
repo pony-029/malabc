@@ -760,6 +760,17 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                 continue
             # **先判调用**：`f(x)` 与 `v(i)` 在词法上无法区分，
             # 只有"f 是不是本文件里的函数"能决定它是调用还是下标。
+            # 多返回：`[a,b] = f(x)` -> call2
+            mm0 = re.match(
+                r"^\[\s*([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)+)\s*\]\s*=\s*"
+                r"([A-Za-z_]\w*)\s*\(([^()]*)\)\s*;?$", code)
+            if mm0 and mm0.group(2) in fnames:
+                _names = [x.strip() for x in mm0.group(1).split(",") if x.strip()]
+                _args = [x.strip() for x in mm0.group(3).split(",") if x.strip()]
+                out.append("call2:%s:%s:%s"
+                           % (",".join(_names), mm0.group(2), ":".join(_args)))
+                n_calls[0] += 1
+                continue
             am0 = _ASSIGN_SPLIT.match(code)
             if am0:
                 cm0 = _CALL.match(am0.group(2).strip().rstrip(";").strip())

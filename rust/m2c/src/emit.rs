@@ -895,6 +895,50 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                     terminated = true;
                 }
             }
+            Stmt::Call2 { lhs, func, args, src } => {
+                if let Some(c) = src_comment(*src, indent) { out.push(c); }
+                let callee = known.iter().find(|k| k.name == *func);
+                let sig_ok = match callee {
+                    Some(c) => c.rets.len() == lhs.len() && c.args.len() == args.len(),
+                    None => false,
+                };
+                if sig_ok {
+                    let mut call_args: Vec<String> = Vec::new();
+                    for a in args {
+                        match f.var_dtype(a) {
+                            Some(dt) if !is_scalar_dt(&dt)
+                                && f.rets.iter().any(|r| &r.name == a) =>
+                            {
+                                call_args.push(format!("*{}", ret_cname(f, a)))
+                            }
+                            Some(_) => call_args.push(ident(a)),
+                            None => call_args.push(ident(a)),
+                        }
+                    }
+                    for name in lhs {
+                        let is_ret = f.rets.iter().any(|r| &r.name == name);
+                        call_args.push(if is_ret {
+                            ident(name)
+                        } else {
+                            format!("&{}", ident(name))
+                        });
+                    }
+                    out.push(format!(
+                        "{}st = m2c_{}({});",
+                        indent,
+                        ident(func),
+                        call_args.join(", ")
+                    ));
+                    out.push(format!("{}if (st != MLC_OK) {{ return st; }}", indent));
+                } else {
+                    out.push(format!(
+                        "{}/* TODO(call2): {} 的返回值个数与本处左值个数不符，或不是本文件里的函数 */",
+                        indent, func
+                    ));
+                    out.push(format!("{}return MLC_UNIMPLEMENTED;", indent));
+                    terminated = true;
+                }
+            }
             Stmt::While { cond, body, src } => {
                 if let Some(c) = src_comment(*src, indent) { out.push(c); }
                 match cond_expr(f, cond) {
@@ -1073,7 +1117,17 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
                 let unknown = sh.is_some() && out_shape(f, op).is_none();
                 (op.lhs.clone(), sh, unknown)
             }
-            Stmt::Call { lhs, .. } => (lhs.clone(), Some(vec![1]), false),
+            Stmt::Call { lhs, func, .. } => {
+                // 暂存量必须按**被调函数的返回形状**分配：
+                // 原来硬编码 [1]，被调方返回 3 元素时会写越界（静默内存破坏）。
+                let sh = known
+                    .iter()
+                    .find(|k| k.name == *func)
+                    .and_then(|k| k.rets.first())
+                    .map(|r| r.shape.clone())
+                    .filter(|v| !v.is_empty());
+                (lhs.clone(), Some(sh.unwrap_or_else(|| vec![1])), false)
+            }
             _ => return,
         };
         let is_arg = f.args.iter().any(|x| x.name == lhs);
@@ -1087,6 +1141,36 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
         }
         need_free.push(t.clone());
         temps.push((t, shape, unknown));
+    });
+    // 多返回调用：每个左值各一个暂存量，形状取被调函数对应的 ret 形状
+    walk_stmts(&f.body, &mut |s| {
+        let (lhs, func) = match s {
+            Stmt::Call2 { lhs, func, .. } => (lhs, func),
+            _ => return,
+        };
+        let callee = match known.iter().find(|k| k.name == *func) {
+            Some(c) => c,
+            None => return,
+        };
+        for (i, name) in lhs.iter().enumerate() {
+            let is_arg = f.args.iter().any(|x| x.name == *name);
+            let is_ret = f.rets.iter().any(|x| x.name == *name);
+            if is_arg || is_ret {
+                continue;
+            }
+            let t = ident(name);
+            if need_free.contains(&t) {
+                continue;
+            }
+            let sh = callee
+                .rets
+                .get(i)
+                .map(|r| r.shape.clone())
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| vec![1]);
+            need_free.push(t.clone());
+            temps.push((t, Some(sh), false));
+        }
     });
     for (t, shape, unknown) in &temps {
         if *unknown {
