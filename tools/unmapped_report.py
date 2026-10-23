@@ -10,7 +10,10 @@
 
 用法：
     python tools/unmapped_report.py --mir E:\\m2c\\yalmip.mir --top 15
-    python tools/unmapped_report.py --mir x.mir --only-clean   # 只看能被对拍的
+    python tools/unmapped_report.py --mir x.mir --include-rejected  # 连被拒函数一起看
+
+    默认**排除被整函数拒绝的**函数：它们的未映射语句永远不可达，
+    排进榜单会把"该做什么"指向死路（YALMIP 的 dualize 就是这样占榜首八轮的）。
 
 退出码：
     0  正常输出（本工具不判红，只出清单）
@@ -41,9 +44,11 @@ def main(argv=None):
 
     funcs = mir_eval.parse(io.open(path, encoding="utf-8").read())
     rows = []
+    include_rej = "--include-rejected" in argv
     for f in funcs:
-        if getattr(f, "reject", None):
-            continue
+        rejected = getattr(f, "reject", None)
+        if rejected and not include_rej:
+            continue          # 被拒函数：这些语句永远到不了，不该混进"待办"
         if not f.unmapped:
             continue
         rows.append((int(f.unmapped), f.name))   # unmapped 是**计数**
@@ -51,8 +56,11 @@ def main(argv=None):
     rows.sort(key=lambda r: (-r[0], r[1]))
     total_rej = sum(1 for f in funcs if getattr(f, "reject", None))
     total_un = sum(r[0] for r in rows)
-    print("函数 %d ｜ 被整函数拒绝 %d ｜ 有未映射 %d（合计 %d 条）"
+    print("函数 %d ｜ 被整函数拒绝 %d ｜ **可做**（未拒但有未映射）%d（合计 %d 条）"
           % (len(funcs), total_rej, len(rows), total_un))
+    if total_rej:
+        print("  注：被拒函数的未映射语句永远不可达，本表默认不列它们；"
+              "加 --include-rejected 可看全量")
     print("")
     print("%-40s %6s" % ("函数", "未映射条数"))
     for n, name in rows[:top]:

@@ -215,6 +215,7 @@ class Func(object):
         self.locals = []
         self.body = []
         self.unmapped = 0
+        self.reject = None   # 整函数被拒的原因（cell/struct/...）
 
 
 def _var(spec):
@@ -304,6 +305,8 @@ def parse(text):
                           "body": []})
         elif ln == "break":
             emit(("break", None, None))
+        elif ln.startswith("reject:"):
+            cur.reject = ln[7:].strip()
         elif ln.startswith("unmapped:"):
             cur.unmapped += 1
     return funcs
