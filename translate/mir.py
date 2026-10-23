@@ -53,7 +53,7 @@ _IF_RE = re.compile(r"^if\s+(?P<var>[A-Za-z_]\w*\s*(?:\([^()]*\))?)\s*"
 #: ⚠ 本版**没有标量赋值语句**，所以 while 的循环变量无法在体内改变：
 #: 真实 .m 里的 while 多半会变成死循环。因此样例故意不含 while，
 #: 它只在 MIR 层被支持并自证（见 rust/m2c --selftest）。
-_WHILE_RE = re.compile(r"^while\s+(?P<var>[A-Za-z_]\w*)\s*"
+_WHILE_RE = re.compile(r"^while\s+(?P<var>[A-Za-z_]\w*\s*(?:\([^()]*\))?)\s*"
                        r"(?P<cmp>==|~=|<=|>=|<|>)\s*(?P<rhs>[A-Za-z_\w]+)$")
 _CMP = {"==": "eq", "~=": "ne", "<": "lt", "<=": "le", ">": "gt", ">=": "ge"}
 
@@ -223,6 +223,27 @@ def _lin_token(ia, ib, rows, counter, emit):
     emit("setb:%s:mul:%s:%d" % (t2, t1, rows))
     emit("setb:%s:add:%s:%s" % (t1, ia, t2))
     return t1
+
+
+def _emit_cond(kw, m, shapes, counter, out, allow_lower=True):
+    """`if` / `while` 共用的条件发射；降不了返回 False（调用方记 unmapped）。
+
+    唯一入口：条件两侧都走 `_cond_side`（它负责把 `A(i,2)` 降成临时量）。
+
+    `allow_lower=False`（while 用）：降级语句只会被发射到循环**之前**，
+    只求值一次 —— 循环里就是旧值。宁可拒绝，也不静默算错。
+    """
+    if not allow_lower:
+        for side in (m.group("var"), m.group("rhs")):
+            t = (side or "").strip()
+            if "(" in t:
+                return False
+    lhs = _cond_side(m.group("var"), shapes, counter, out)
+    rhs = _cond_side(m.group("rhs"), shapes, counter, out)
+    if lhs is None or rhs is None:
+        return False
+    out.append("%s:%s:%s:%s" % (kw, lhs, _CMP[m.group("cmp")], rhs))
+    return True
 
 
 def _index_operand(name, args, shapes, counter, emit):
@@ -573,7 +594,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
     n_unmapped = 0
     per_op = {}
     unmapped_kinds = {}
-    idx_counter = [0]          # 2-D 下标降级用的临时名序号
+    idx_counter = [0]          # **唯一**的临时名序号（不要另开计数器）
+    n_tmp = idx_counter        # 旧名字的别名：两套计数器会撞名
     known_ops = set(o["id"] for o in operators.OPERATORS)
     for f in funcs:
         out.append("# source_sha256:%s" % src_hash)
@@ -642,24 +664,20 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                 continue
             im = _IF_RE.match(code)
             if im:
-                _cv = _cond_side(im.group("var"), f.get("shapes") or {},
-                                 idx_counter, out)
-                _cr = _cond_side(im.group("rhs"), f.get("shapes") or {},
-                                 idx_counter, out)
-                if _cv is None or _cr is None:
+                if not _emit_cond("if", im, f.get("shapes") or {},
+                                  idx_counter, out):
                     blocks.append("if")
                     _emit_unmapped(out, unmapped_kinds, code)
                     continue
-                out.append("if:%s:%s:%s" % (_cv,
-                                            _CMP[im.group("cmp")],
-                                            _cr))
                 blocks.append("if")
                 continue
             wm = _WHILE_RE.match(code)
             if wm:
-                out.append("while:%s:%s:%s" % (wm.group("var"),
-                                               _CMP[wm.group("cmp")],
-                                               wm.group("rhs")))
+                if not _emit_cond("while", wm, f.get("shapes") or {},
+                                  idx_counter, out):
+                    blocks.append("while")
+                    _emit_unmapped(out, unmapped_kinds, code)
+                    continue
                 blocks.append("while")
                 continue
             # **先判调用**：`f(x)` 与 `v(i)` 在词法上无法区分，
