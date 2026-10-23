@@ -5,6 +5,7 @@ colmean: 1 3 5
 colsum_loop: 12
 cumsum_loop: 1 2 3 4
 dotp: 30
+emptychk: 1
 firstel: 1
 flatit: 1 3 2 4
 for_acc: 10

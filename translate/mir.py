@@ -277,6 +277,10 @@ def _emit_cond(kw, m, shapes, counter, out, allow_lower=True):
     return True
 
 
+#: `A = []` —— 空数组（numel 0）
+_EMPTY_RE = re.compile(r"^([A-Za-z_]\w*)\s*=\s*\[\s*\]\s*;?$")
+
+
 def _index_operand(name, args, shapes, counter, emit):
     """把 `name(a[,b])` 降到临时量，返回临时名；降不了返回 None。
 
@@ -759,6 +763,11 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                 continue
             if _lower_reduce_col(out, code, f.get("shapes") or {},
                                  idx_counter, known_ops):
+                continue
+            me = _EMPTY_RE.match(code)
+            if me:
+                # `A = []` -> fill:A:0:0（0 个元素的 1 维数组）
+                out.append("fill:%s:0:0" % me.group(1))
                 continue
             if _lower_setidx(out, code, idx_counter, known_ops):
                 continue

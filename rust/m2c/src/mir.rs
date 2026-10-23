@@ -194,8 +194,9 @@ fn parse_var(spec: &str) -> Result<Var, String> {
                 .trim()
                 .parse()
                 .map_err(|_| format!("形状不是整数：{}", spec))?;
-            if v <= 0 {
-                return Err(format!("形状必须为正：{}", spec));
+            // 0 是合法维度（`A = []` 就是 numel 0 的空数组）；只有负数才非法
+            if v < 0 {
+                return Err(format!("形状不能为负：{}", spec));
             }
             shape.push(v);
         }
@@ -472,8 +473,9 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
                     .trim()
                     .parse()
                     .map_err(|_| format!("fill 的形状不是整数：{}", rest))?;
-                if v <= 0 {
-                    return Err(format!("fill 的形状必须为正：{}", rest));
+                // 0 合法：`A = []` 就是 numel 0 的空数组；只有负数非法
+                if v < 0 {
+                    return Err(format!("fill 的形状不能为负：{}", rest));
                 }
                 dims.push(v);
             }
