@@ -53,6 +53,15 @@ conclusion into a **CI quality gate**.
 数字来自 `tools/bench.py`（C 与 Octave **同口径进程内计时**、且两侧结果指纹一致才报告）。
 详见 `E:\m2c\REPORT.md` 第九节与 `CONTRIBUTING.md` 的「基准判据」。
 
+**Conversion coverage (measured on a real project)**: of YALMIP's 1204 functions,
+**1043 are rejected wholesale** (struct / cell / varargin — no fixed signature can express them),
+**141 are workable**, and the remaining 1161 unmapped statements are tagged by reason
+(`# why:` in the MIR).
+
+> Why function-level: a function is an AND-gate — 49 of 50 statements mapped still means
+> it cannot be converted. **Statement-level ratios systematically overstate progress.**
+
+
 ## What Problem It Solves
 
 | Scenario | The old way | With `matlabc` |
