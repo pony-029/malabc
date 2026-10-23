@@ -306,6 +306,8 @@ def parse(text):
             stack.append({"kind": "if", "data": (p[0], p[1], p[2]),
                           "then": [], "else": [], "in_else": False,
                           "body": []})
+        elif ln == "break":
+            emit(("break", None, None))
         elif ln.startswith("unmapped:"):
             cur.unmapped += 1
     return funcs
@@ -395,6 +397,8 @@ def exec_block(stmts, env, by_name, depth=0):
             then_b, else_b = body
             if not exec_block(then_b if c else else_b, env, by_name, depth + 1):
                 return False
+        elif kind == "break":
+            env["__break__"] = True
         elif kind == "while":
             for _ in range(100000):
                 c = _cond(env, data["cond"])
@@ -402,10 +406,16 @@ def exec_block(stmts, env, by_name, depth=0):
                     return False
                 if not c:
                     break
+                env.pop("__break__", None)
                 if not exec_block(body, env, by_name, depth + 1):
                     return False
+                if env.pop("__break__", None):
+                    break
             else:
                 return False
+        # break 要立刻停止本轮剩余语句，否则后面的赋值还会执行（差一轮）
+        if env.get("__break__"):
+            return True
     return True
 
 
