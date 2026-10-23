@@ -65,6 +65,31 @@ def _best(fn, n):
     return min(ts)
 
 
+def _inputs_from_source(src):
+    """从 `.m` 的 `% @m2c shape <name> <dims>` 注解生成 Octave 构造语句。
+
+    与生成的 main.c 保持同一规则：行主序、`a[i] = i + 1`。
+    返回 (构造语句列表, 调用实参列表)；没有注解就返回 ([], [])。
+    """
+    import re
+    specs = []
+    for ln in io.open(src, encoding="utf-8", errors="replace").read().splitlines():
+        m = re.match(r"\s*%\s*@m2c\s+shape\s+([A-Za-z_]\w*)\s+([\d,\s]+)",
+                     ln)
+        if m:
+            dims = [int(x) for x in m.group(2).replace(" ", "").split(",") if x]
+            specs.append((m.group(1), dims))
+    lines, names = [], []
+    for name, dims in specs:
+        n = 1
+        for d in dims:
+            n *= d
+        lines.append("%s = reshape(1:%d, [%s]);"
+                     % (name, n, ", ".join(str(d) for d in dims)))
+        names.append(name)
+    return lines, names
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if not argv or argv[0].startswith("-"):
@@ -119,9 +144,13 @@ def main(argv=None):
     # Octave：同一份 .m，输入构造与 main.c 一致（a[i]=i+1）
     drv = os.path.join(d, "drv.m")
     name = os.path.splitext(os.path.basename(src))[0]
+    setup, names = _inputs_from_source(src)
+    if not names:
+        setup, names = ["x = 1:1000;"], ["x"]        # 兜底：单参数一维
+    body = "\n".join(setup) + "\n%s(%s);\n" % (name, ", ".join(names))
     io.open(drv, "w", encoding="utf-8", newline="").write(
-        "addpath('%s');\nmore off;\nx = 1:1000;\n%s(x);\n"
-        % (os.path.dirname(os.path.abspath(src)).replace("\\", "/"), name))
+        "addpath('%s');\nmore off;\n%s"
+        % (os.path.dirname(os.path.abspath(src)).replace("\\", "/"), body))
     t_oct = _best(lambda: _run([oct_cli, "--no-gui", "--quiet", "--eval",
                                 "run('%s')" % drv.replace("\\", "/")], cwd=d)[0],
                   repeat)

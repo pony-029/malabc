@@ -2,6 +2,22 @@
 
 ---
 
+## 1.9.2
+
+- **性能基准扩到四类负载**（`translate/examples/bench/`）：循环热点、向量化、
+  大数组归约、矩阵乘。实测（净算，对照 Octave）：
+  `bench_loop` **10–16×** ｜ `bench_vec` **17×** ｜ `bench_sum` **19×** ｜
+  `bench_matmul` **3.2×**
+- **如实标出短板**：矩阵乘只有 3.2× —— Octave 走 BLAS，我们的 `mlc_op_matmul`
+  是朴素三重循环。补 BLAS 后端之前，矩阵型负载不要指望赢
+- **如实标出噪声**：同一用例重复三次，净算比值在 **9.8×–15.7×** 之间波动
+  （Windows 调度 + Octave 抖动）。报告里给**区间**，不给单点
+- **给出 MATLAB 基线的可复现脚本** `bench/matlab_baseline.m`（含预热、5 次取中位数）：
+  本机没有 MATLAB，所以「相对 MATLAB」的比值**仍未测量**，脚本已备好
+- `tools/bench.py` 支持**多参数 / 2-D 输入**（按 `% @m2c shape` 注解构造，
+  与生成的 `main.c` 同规则：行主序 `a[i]=i+1`）
+- `E:\m2c\REPORT.md` 新增第九节「性能」，把方法、区间、三条限制写死
+
 ## 1.9.1
 
 - **首次给出性能数字**（此前一次也没测过）：新增 `tools/bench.py`，
