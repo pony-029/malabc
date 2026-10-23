@@ -729,16 +729,37 @@ mlc_status mlc_op_matmul(const mlc_array *a, const mlc_array *b,
     if (a->strides[0] == k && a->strides[1] == 1 &&
         b->strides[0] == n && b->strides[1] == 1 &&
         out->strides[0] == n && out->strides[1] == 1) {
+        /* 分块 ikj：把 A 的行块 x B 的列块压进缓存。
+         *
+         * 不分块时 A/B 工作集各 720KB（300x300），超出 L2；
+         * 分块后每轮只碰 BIxBK + BKxBJ，命中率显著提高。
+         * 块大小取经验值：在 300~1000 的规模上都不会明显退化。
+         */
+        const int64_t BI = 64, BJ = 128, BK = 128;
+        int64_t i0, j0, t0, i1, j1, t1;
+
         for (i = 0; i < m; ++i) {
-            double *prow = po + i * n;
             for (j = 0; j < n; ++j) {
-                prow[j] = 0.0;
+                po[i * n + j] = 0.0;
             }
-            for (t = 0; t < k; ++t) {
-                const double av = pa[i * k + t];
-                const double *brow = pb + t * n;
-                for (j = 0; j < n; ++j) {
-                    prow[j] += av * brow[j];
+        }
+        for (i0 = 0; i0 < m; i0 += BI) {
+            i1 = i0 + BI < m ? i0 + BI : m;
+            for (t0 = 0; t0 < k; t0 += BK) {
+                t1 = t0 + BK < k ? t0 + BK : k;
+                for (j0 = 0; j0 < n; j0 += BJ) {
+                    j1 = j0 + BJ < n ? j0 + BJ : n;
+                    for (i = i0; i < i1; ++i) {
+                        double *restrict prow = po + i * n;
+                        const double *restrict arow = pa + i * k;
+                        for (t = t0; t < t1; ++t) {
+                            const double av = arow[t];
+                            const double *restrict brow = pb + t * n;
+                            for (j = j0; j < j1; ++j) {
+                                prow[j] += av * brow[j];
+                            }
+                        }
+                    }
                 }
             }
         }
