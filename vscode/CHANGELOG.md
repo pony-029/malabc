@@ -2,6 +2,18 @@
 
 ---
 
+## 1.9.6
+
+- **基准加「结果正确性」断言**：C 驱动与 Octave 驱动都输出 `VAL <sum(y)>` 指纹，
+  两条路的值必须一致（相对误差 1e-9），否则 **拒绝报告耗时**。
+  只查"有没有 unimplemented"不够 —— 桩可以返回 `MLC_OK`，也可以算错
+- **修一个驱动 bug**：`% @m2c shape y ...` 是**返回值**，此前被当成入参构造并传入，
+  Octave 报 `function called with too many inputs`。现在按 `function` 行区分入参/返回值
+- 实测：`bench_matmul` **结果一致**（`sum(y) = 5.473696433e+16`，C 与 Octave 同一个值），
+  耗时 6.40 ms → **21.8×**
+- **缺口如实保留**：`bench_loop`/`bench_vec`/`bench_sum` 的 Octave 侧进程内驱动
+  仍取不到值（只打印 C 侧指纹，**不做一致性判定**）—— 没有拿"没验证过"的数字当真
+
 ## 1.9.5
 
 - **发现并修正一个错误的性能结论**：`bench_loop` 的 `y = y + x(i) * x(i);`

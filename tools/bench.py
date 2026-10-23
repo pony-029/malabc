@@ -79,6 +79,18 @@ def _inputs_from_source(src):
         if m:
             dims = [int(x) for x in m.group(2).replace(" ", "").split(",") if x]
             specs.append((m.group(1), dims))
+    # 从 `function [r = ]f(a, b)` 里取出入参名；返回值不能当输入
+    import re as _re
+    argnames = None
+    for ln in io.open(src, encoding="utf-8", errors="replace").read().splitlines():
+        m = _re.match(r"\s*function\s+(?:\w+\s*=\s*)?(\w+)\s*\(([^)]*)\)",
+                      ln)
+        if m:
+            argnames = [a.strip() for a in m.group(2).split(",") if a.strip()]
+            break
+    if argnames is not None:
+        specs = [sp for sp in specs if sp[0] in argnames]
+
     lines, names = [], []
     for name, dims in specs:
         n = 1
@@ -154,9 +166,10 @@ def main(argv=None):
     # ---- 进程内计时（首选）：不含启动、不含输入构造 ----
     reps = int(argv[argv.index("--reps") + 1]) if "--reps" in argv else 20
     fn, fn_args, fn_rets = _sig_of(mir)
-    c_in = _inproc_c(gen, fn, fn_args, fn_rets, reps, cc, d,
-                     "bench") if fn else 0.0
-    o_in = _inproc_octave(src, oct_cli, d, reps) if fn else 0.0
+    c_in, c_val = (_inproc_c(gen, fn, fn_args, fn_rets, reps, cc, d, "bench")
+                   if fn else (0.0, None))
+    o_in, o_val = (_inproc_octave(src, oct_cli, d, reps)
+                   if fn else (0.0, None))
 
     # 空载对照：同目录下的 bench_null.m（同输入、只做一次廉价运算）
     t_null = 0.0
@@ -187,6 +200,19 @@ def main(argv=None):
 
     print("用例 %s ｜ 整进程重复 %d 次；进程内 %d 次调用/样本"
           % (os.path.basename(src), repeat, reps))
+    # 先判「算出来的对不对」，再报耗时 —— 顺序不能反
+    if c_val is not None and o_val is not None:
+        tol = 1e-9 * max(1.0, abs(o_val))
+        if abs(c_val - o_val) > tol:
+            print("PA5 拒绝报告：结果不一致 —— C %.17g ／ Octave %.17g"
+                  % (c_val, o_val))
+            print("  （耗时只有在两边算出同一个值时才可比）")
+            return 2
+        print("  结果一致：sum(y) = %.10g" % c_val)
+    elif c_val is not None:
+        print("  结果指纹：sum(y) = %.10g（Octave 侧未取到，未做一致性判定）"
+              % c_val)
+
     if c_in > 0 and o_in > 0:
         print("  【进程内】C %.3f ms ／ Octave %.3f ms：%.1fx"
               % (c_in, o_in, o_in / c_in))
@@ -269,6 +295,11 @@ def _driver_c(name, args, rets, reps, hdr):
     L.append('        if (%s != MLC_OK) return 3;' % call)
     L.append('    }')
     L.append('    t1 = clock();')
+    L.append('    { int64_t i2, n2 = mlc_array_numel(&%s); double acc = 0.0;'
+             % rname)
+    L.append('      for (i2 = 0; i2 < n2; ++i2) acc += ((double *)%s.data)[i2];'
+             % rname)
+    L.append('      printf("VAL %.17g\\n", acc); }')
     L.append('    printf("%.3f\\n", 1000.0 * (double)(t1 - t0) / CLOCKS_PER_SEC);')
     L.append('    return 0;')
     L.append('}')
@@ -293,11 +324,21 @@ def _inproc_c(build_dir, name, args, rets, reps, cc, workdir, hdr):
         return 0.0
     t, rc, out = _run([exe])
     if rc != 0:
-        return 0.0
+        return 0.0, None
+    lines = [ln.strip() for ln in out.strip().splitlines() if ln.strip()]
+    val = None
+    ms = 0.0
+    for ln in lines:
+        if ln.startswith("VAL "):
+            try:
+                val = float(ln[4:])
+            except ValueError:
+                val = None
     try:
-        return float(out.strip().splitlines()[-1]) / max(1, reps)
+        ms = float(lines[-1]) / max(1, reps)
     except (ValueError, IndexError):
-        return 0.0
+        ms = 0.0
+    return ms, val
 
 
 def _inproc_octave(src, oct_cli, workdir, reps):
@@ -307,11 +348,13 @@ def _inproc_octave(src, oct_cli, workdir, reps):
     if not names:
         return 0.0
     call = "%s(%s);" % (name, ", ".join(names))
-    body = "\n".join([""] + setup + [call + "          % 预热",
-                                      "tic;",
-                                      "for kk = 1:%d, %s end" % (reps, call),
-                                      "t = toc * 1000 / %d;" % reps,
-                                      "fprintf('%.3f\\n', t);"])
+    body = "\n".join([""] + setup +
+                      ["vv = %s" % call,            # 预热，同时拿到结果
+                       "fprintf('VAL %.17g\\n', sum(vv(:)));",
+                       "tic;",
+                       "for kk = 1:%d, vv = %s end" % (reps, call),
+                       "t = toc * 1000 / %d;" % reps,
+                       "fprintf('%.3f\\n', t);"])
     drv = os.path.join(workdir, "drvi_%s.m" % name)
     io.open(drv, "w", encoding="utf-8", newline="").write(
         "addpath('%s');\nmore off;%s"
@@ -319,13 +362,23 @@ def _inproc_octave(src, oct_cli, workdir, reps):
     t, rc, out = _run([oct_cli, "--no-gui", "--quiet", "--eval",
                        "run('%s')" % drv.replace("\\", "/")], cwd=workdir)
     if rc != 0:
-        return 0.0
-    for ln in reversed(out.strip().splitlines()):
+        return 0.0, None
+    lines = [ln.strip() for ln in out.strip().splitlines() if ln.strip()]
+    val = None
+    for ln in lines:
+        if ln.startswith("VAL "):
+            try:
+                val = float(ln[4:])
+            except ValueError:
+                val = None
+    ms = 0.0
+    for ln in reversed(lines):
         try:
-            return float(ln.strip())
+            ms = float(ln)
+            break
         except ValueError:
             continue
-    return 0.0
+    return ms, val
 
 
 def _shapes_of(src):
