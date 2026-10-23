@@ -729,36 +729,82 @@ mlc_status mlc_op_matmul(const mlc_array *a, const mlc_array *b,
     if (a->strides[0] == k && a->strides[1] == 1 &&
         b->strides[0] == n && b->strides[1] == 1 &&
         out->strides[0] == n && out->strides[1] == 1) {
-        /* 分块 ikj：把 A 的行块 x B 的列块压进缓存。
+        /* ---- 4x4 微内核 ----
          *
-         * 不分块时 A/B 工作集各 720KB（300x300），超出 L2；
-         * 分块后每轮只碰 BIxBK + BKxBJ，命中率显著提高。
-         * 块大小取经验值：在 300~1000 的规模上都不会明显退化。
+         * 每个内层迭代取 A 的 4 个元素、B 的 4 个元素，做 16 次乘加。
+         * 16 个独立累加器让编译器有机会向量化，且装载开销被摊薄 4 倍。
+         * 尾块（行/列不足 4）退回标量 ikj —— 正确性由移植门与基准指纹共同保证。
          */
-        const int64_t BI = 64, BJ = 128, BK = 128;
-        int64_t i0, j0, t0, i1, j1, t1;
-
         for (i = 0; i < m; ++i) {
             for (j = 0; j < n; ++j) {
                 po[i * n + j] = 0.0;
             }
         }
-        for (i0 = 0; i0 < m; i0 += BI) {
-            i1 = i0 + BI < m ? i0 + BI : m;
-            for (t0 = 0; t0 < k; t0 += BK) {
-                t1 = t0 + BK < k ? t0 + BK : k;
-                for (j0 = 0; j0 < n; j0 += BJ) {
-                    j1 = j0 + BJ < n ? j0 + BJ : n;
-                    for (i = i0; i < i1; ++i) {
-                        double *restrict prow = po + i * n;
-                        const double *restrict arow = pa + i * k;
-                        for (t = t0; t < t1; ++t) {
-                            const double av = arow[t];
-                            const double *restrict brow = pb + t * n;
-                            for (j = j0; j < j1; ++j) {
-                                prow[j] += av * brow[j];
-                            }
-                        }
+        {
+            const int64_t m4 = m - (m % 4);
+            const int64_t n4 = n - (n % 4);
+
+            for (i = 0; i < m4; i += 4) {
+                for (j = 0; j < n4; j += 4) {
+                    double c00 = 0, c01 = 0, c02 = 0, c03 = 0;
+                    double c10 = 0, c11 = 0, c12 = 0, c13 = 0;
+                    double c20 = 0, c21 = 0, c22 = 0, c23 = 0;
+                    double c30 = 0, c31 = 0, c32 = 0, c33 = 0;
+                    for (t = 0; t < k; ++t) {
+                        const double *ar = pa + i * k + t;
+                        const double a0 = ar[0];
+                        const double a1 = ar[k];
+                        const double a2 = ar[2 * k];
+                        const double a3 = ar[3 * k];
+                        const double *br = pb + t * n + j;
+                        const double b0 = br[0], b1 = br[1];
+                        const double b2 = br[2], b3 = br[3];
+                    c00 += a0 * b0;
+                    c01 += a0 * b1;
+                    c02 += a0 * b2;
+                    c03 += a0 * b3;
+                    c10 += a1 * b0;
+                    c11 += a1 * b1;
+                    c12 += a1 * b2;
+                    c13 += a1 * b3;
+                    c20 += a2 * b0;
+                    c21 += a2 * b1;
+                    c22 += a2 * b2;
+                    c23 += a2 * b3;
+                    c30 += a3 * b0;
+                    c31 += a3 * b1;
+                    c32 += a3 * b2;
+                    c33 += a3 * b3;
+                    }
+                    {
+                        double *p0 = po + i * n + j;
+                        double *p1 = p0 + n;
+                        double *p2 = p1 + n;
+                        double *p3 = p2 + n;
+                        p0[0] = c00; p0[1] = c01; p0[2] = c02; p0[3] = c03;
+                        p1[0] = c10; p1[1] = c11; p1[2] = c12; p1[3] = c13;
+                        p2[0] = c20; p2[1] = c21; p2[2] = c22; p2[3] = c23;
+                        p3[0] = c30; p3[1] = c31; p3[2] = c32; p3[3] = c33;
+                    }
+                }
+                /* 右侧尾列 */
+                for (j = n4; j < n; ++j) {
+                    for (t = 0; t < k; ++t) {
+                        const double av = pa[i * k + t];
+                        po[i * n + j] += av * pb[t * n + j];
+                        po[(i + 1) * n + j] += pa[(i + 1) * k + t] * pb[t * n + j];
+                        po[(i + 2) * n + j] += pa[(i + 2) * k + t] * pb[t * n + j];
+                        po[(i + 3) * n + j] += pa[(i + 3) * k + t] * pb[t * n + j];
+                    }
+                }
+            }
+            /* 下方尾行 */
+            for (i = m4; i < m; ++i) {
+                for (t = 0; t < k; ++t) {
+                    const double av = pa[i * k + t];
+                    const double *brow = pb + t * n;
+                    for (j = 0; j < n; ++j) {
+                        po[i * n + j] += av * brow[j];
                     }
                 }
             }
