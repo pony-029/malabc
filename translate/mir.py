@@ -819,8 +819,9 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                     lhs = am.group(1)
                     rhs = am.group(2).strip().rstrip(";").strip()
                     if _ATOM.match(rhs):
-                        if (f.get("shapes") or {}).get(lhs):
-                            # 左值是**数组**（有 shape 注解）：标量赋值语义是
+                        if (f.get("shapes") or {}).get(lhs) and \
+                                re.match(r"^-?\d+(\.\d+)?$", rhs):
+                            # 左值是**数组**（有 shape 注解）且右值是数字：
                             # "把 1x1 数组整体写成这个值" -> const
                             out.append("const:%s:%s" % (lhs, rhs))
                         elif (lhs in (f.get("args") or [])

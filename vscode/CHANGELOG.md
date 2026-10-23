@@ -2,6 +2,18 @@
 
 ---
 
+## 2.0.6
+
+- **新增判据：生成的 C 必须能编译**（`tests/test_generated_compiles.py`）：
+  对 `numeric` / `proj` / `demo_port.m` 三个示例各做一次「转换 → 生成 → `gcc -fsyntax-only`」。
+  上两轮那个 `'d' redeclared` 能一路通过 16 道门（那些门只比数值、不编译整工程），
+  只有人手动跑 gcc 才暴露 —— 现在它自己会红。两向：注入坏返回类型 → 3 failed；还原 → 3 passed
+- **新增判据：丢弃返回值的调用不许退回 unmapped**（`tests/test_void_call.py`），
+  顺带断言整工程可编译
+- **它立刻抓到一个真 bug**：`y = x`（数组别名）在有 shape 注解时生成 `const:y:x` → MIR 非法。
+  `const:` 现在只接受数字，非数字如实落到 unmapped（不猜）
+- 未做：多返回 `[a,b]=f(x)`、README 首屏指标
+
 ## 2.0.5
 
 - **修「形参被当标量」**（上一轮暴露的 `'d' redeclared`）：

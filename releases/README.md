@@ -47,7 +47,7 @@
 
 | 版本 | 日期 | 大小 | 主要变化 | 文件 |
 | --- | --- | --- | --- | --- |
-| 2.0.5（当前） | 2026-10-23 | 2467 KB | **修「形参被当标量」**（上一轮暴露的 `'d' redeclared`）：`function d = gcdfactor(A)`… | `vsix/matlabc-2.0.5.vsix` |
+| 2.0.6（当前） | 2026-10-24 | 2467 KB | **新增判据：生成的 C 必须能编译**（`tests/test_generated_compiles.py`）：对 `numeri… | `vsix/matlabc-2.0.6.vsix` |
 
 ## 归档约定
 
