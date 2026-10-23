@@ -151,25 +151,21 @@ def _apply_op(oid, args):
         if off is None:
             return None
         return Arr([a.data[off]], [1])
+    if oid == "OP-ROW":
+        # A(i,:)：二维，返回第 i 行；越界放弃（不猜）
+        a, row = args[0], _i(args[1])
+        if len(a.shape) != 2:
+            return None
+        rows, cols = a.shape
+        if row < 1 or row > rows:
+            return None
+        base = (row - 1) * cols
+        return Arr(list(a.data[base:base + cols]), [cols])
     if oid == "OP-SLICE":
         a, lo, hi = args[0], _i(args[1]), _i(args[2])
         if len(a.shape) != 1 or lo < 1 or hi < lo or hi > a.shape[0]:
             return None
         return Arr(a.data[lo - 1:hi], [hi - lo + 1])
-    if oid == "OP-SETIDX":
-        # args = (右值, 下标)；目标数组就是 lhs（就地写）
-        val = _num(args[0])
-        idx = int(_num(args[1]))
-        dst = env.get(lhs)
-        if dst is None:
-            return None
-        arr = list(dst)
-        if idx < 1 or idx > len(arr):
-            return None
-        arr[idx - 1] = val
-        env[lhs] = arr
-        return arr
-
     if oid == "OP-FLATTEN":
         a = args[0]
         if len(a.shape) == 1:
@@ -341,6 +337,20 @@ def exec_block(stmts, env, by_name, depth=0):
     for kind, data, body in stmts:
         if kind == "op":
             oid, lhs, args = data
+            if oid == "OP-SETIDX":
+                # args = (右值, 下标)。就地写：只有这里同时有 lhs 与 env
+                v = env.get(args[0]) if args[0] in env else None
+                if v is None:
+                    return False
+                idx = _num(args[1], env)
+                dst = env.get(lhs)
+                if idx is None or dst is None:
+                    return False
+                i0 = int(idx) - 1
+                if i0 < 0 or i0 >= len(dst.data):
+                    return False
+                dst.data[i0] = float(v.data[0])
+                continue
             vals = []
             for a in args:
                 if a in env:

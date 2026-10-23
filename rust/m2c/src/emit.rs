@@ -12,7 +12,7 @@ use crate::mir::{walk_stmts, Cond, Func, Op, Stmt};
 pub const C_IMPLEMENTED: &[&str] = &[
     "OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-SUM", "OP-MEAN", "OP-MAX",
     "OP-MIN", "OP-INDEX", "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE",
-    "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX",
+    "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW",
 ];
 
 /// 已知但 C 落点仍未实现的算子（诚实边界）。
@@ -278,6 +278,15 @@ fn out_shape(f: &Func, op: &Op) -> Option<Vec<i64>> {
         }
         return None; // 3-D+ 暂不推断，避免猜错
     }
+    // A(i,:)：行切片，长度 = 列数
+    if op.id == "OP-ROW" && op.args.len() == 2 {
+        let sa = resolved_shape(f, &op.args[0])?;
+        if sa.len() != 2 {
+            return None;
+        }
+        return Some(vec![sa[1]]);
+    }
+
     // y(i)=v 是**就地写**：形状沿用目标数组，不产生新对象
     if op.id == "OP-SETIDX" {
         return f.var_shape(&op.lhs);
@@ -574,6 +583,14 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
         out.push(format!(
             "{}st = mlc_op_slice({}, {}, {}, {});",
             pad, arg0, from, to, dst));
+    } else if op.id == "OP-ROW" && op.args.len() == 2 {
+        let idx = &op.args[1];
+        let idx_c = if is_int_literal(idx) {
+            format!("(int64_t){}", idx)
+        } else {
+            ident(idx)
+        };
+        out.push(format!("{}st = mlc_op_row({}, {}, {});", pad, arg0, idx_c, dst));
     } else if op.id == "OP-SETIDX" && op.args.len() == 2 {
         // args = (右值, 下标)；目标数组就是 dst（就地写，不分配）
         let val = arg_ref(f, &op.args[0]);

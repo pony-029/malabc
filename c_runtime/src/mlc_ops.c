@@ -331,6 +331,31 @@ mlc_status mlc_op_setidx(mlc_array *a, const mlc_array *v, int64_t i)
     return MLC_OK;
 }
 
+mlc_status mlc_op_row(const mlc_array *a, int64_t row, mlc_array *out)
+{
+    int64_t cols, base, k;
+
+    if (a == NULL || out == NULL || a->data == NULL || out->data == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64 || out->dtype != MLC_F64 || a->ndim != 2) {
+        return MLC_ERR;
+    }
+    cols = a->shape[1];
+    if (mlc_array_numel(out) != cols) {
+        return MLC_ERR;              /* 输出长度必须等于列数 */
+    }
+    if (row < 1 || row > a->shape[0]) {
+        return MLC_ERR;              /* 越界一律报错，不截断 */
+    }
+    base = (row - 1) * a->strides[0];
+    for (k = 0; k < cols; ++k) {
+        ((double *)out->data)[k] =
+            ((const double *)a->data)[base + k * a->strides[1]];
+    }
+    return MLC_OK;
+}
+
 mlc_status mlc_op_index(const mlc_array *a, int64_t matlab_index,
                         mlc_array *out)
 {

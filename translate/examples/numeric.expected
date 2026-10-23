@@ -11,6 +11,7 @@ head2: 1 2
 mmul: 22 28 49 64
 pickmax: 4
 relu: 1 2 3 4 5
+row1: 3 4
 shiftmax: 5
 sumsq: 30
 transit: 1 4 2 5 3 6
