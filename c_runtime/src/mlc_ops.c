@@ -331,6 +331,24 @@ mlc_status mlc_op_setidx(mlc_array *a, const mlc_array *v, int64_t i)
     return MLC_OK;
 }
 
+mlc_status mlc_op_isempty(const mlc_array *a, mlc_array *out)
+{
+    int64_t n;
+
+    if (a == NULL || out == NULL || out->data == NULL) {
+        return MLC_ERR;
+    }
+    if (out->dtype != MLC_F64 || mlc_array_numel(out) != 1) {
+        return MLC_ERR;
+    }
+    n = mlc_array_numel(a);
+    if (n < 0) {
+        return MLC_ERR;
+    }
+    ((double *)out->data)[0] = (n == 0) ? 1.0 : 0.0;
+    return MLC_OK;
+}
+
 mlc_status mlc_op_row(const mlc_array *a, int64_t row, mlc_array *out)
 {
     int64_t cols, base, k;

@@ -65,6 +65,9 @@ mlc_status mlc_op_setidx(mlc_array *a, const mlc_array *v, int64_t i);
 /* y = A(i,:)：取第 i 行（1-based）。按 strides 拷，不假设存储顺序。 */
 mlc_status mlc_op_row(const mlc_array *a, int64_t row, mlc_array *out);
 
+/* isempty(x)：空数组返回 1，否则 0（输出必须是 1x1）。 */
+mlc_status mlc_op_isempty(const mlc_array *a, mlc_array *out);
+
 mlc_status mlc_op_index(const mlc_array *a, int64_t matlab_index,
                         mlc_array *out);
 mlc_status mlc_op_transpose(const mlc_array *a, mlc_array *out);

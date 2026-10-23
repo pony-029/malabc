@@ -151,6 +151,8 @@ def _apply_op(oid, args):
         if off is None:
             return None
         return Arr([a.data[off]], [1])
+    if oid == "OP-ISEMPTY":
+        return Arr([1.0 if len(args[0].data) == 0 else 0.0], [1])
     if oid == "OP-ROW":
         # A(i,:)：二维，返回第 i 行；越界放弃（不猜）
         a, row = args[0], _i(args[1])

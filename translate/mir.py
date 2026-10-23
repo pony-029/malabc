@@ -242,6 +242,20 @@ def _while_with_expr(wm, shapes, counter, out):
     return True
 
 
+#: 裸条件：`if <expr>`（无比较运算符）
+_IF_BARE = re.compile(r"^if\s+(?P<expr>[^()\s]+\s*(?:\([^()]*\))?)\s*$")
+_WHILE_BARE = re.compile(r"^while\s+(?P<expr>[^()\s]+\s*(?:\([^()]*\))?)\s*$")
+
+
+def _emit_bare_cond(kw, m, shapes, counter, out):
+    """`if expr` -> `if:tmp:ne:0`。expr 可以是名字或 `f(x)`。"""
+    tok = _cond_side(m.group("expr"), shapes, counter, out)
+    if tok is None:
+        return False
+    out.append("%s:%s:ne:0" % (kw, tok))
+    return True
+
+
 def _emit_cond(kw, m, shapes, counter, out, allow_lower=True):
     """`if` / `while` 共用的条件发射；降不了返回 False（调用方记 unmapped）。
 
@@ -271,6 +285,12 @@ def _index_operand(name, args, shapes, counter, emit):
     if len(args) == 1:
         counter[0] += 1
         tmp = "__t%d" % counter[0]
+        # 先问算子表：`isempty(x)` / `sum(x)` 是**算子**，不是「对名为 isempty 的数组取下标」
+        use = operators.parse_line("%s = %s(%s);" % (tmp, name, args[0]))
+        if use is not None and use["operator"] != "OP-INDEX":
+            emit("op:%s:%s:%s" % (use["operator"], tmp,
+                                  ":".join(use["args"])))
+            return tmp
         emit("op:OP-INDEX:%s:%s:%s" % (tmp, name, args[0]))
         return tmp
     if len(args) == 2:
@@ -679,6 +699,12 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                                              fm.group("b")))
                 blocks.append("for")
                 continue
+            ib = _IF_BARE.match(code)
+            if ib and not _IF_RE.match(code):
+                if _emit_bare_cond("if", ib, f.get("shapes") or {},
+                                   idx_counter, out):
+                    blocks.append("if")
+                    continue
             im = _IF_RE.match(code)
             if im:
                 if not _emit_cond("if", im, f.get("shapes") or {},
@@ -688,6 +714,12 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                     continue
                 blocks.append("if")
                 continue
+            wb = _WHILE_BARE.match(code)
+            if wb and not _WHILE_RE.match(code):
+                if _emit_bare_cond("while", wb, f.get("shapes") or {},
+                                   idx_counter, out):
+                    blocks.append("while")
+                    continue
             wm = _WHILE_RE.match(code)
             if wm:
                 _need = ("(" in (wm.group("var") or "")
