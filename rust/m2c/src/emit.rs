@@ -617,18 +617,52 @@ fn cmp_c(op: &str) -> &'static str {
 }
 
 /// 条件 → C 表达式；不合法返回 None（调用方发 TODO）。
-fn cond_expr(f: &Func, c: &Cond) -> Option<String> {
-    if !f.var_dtype(&c.var).map(|d| is_scalar_dt(&d)).unwrap_or(false) {
-        return None;
+/// 条件里的一侧 → C 表达式。
+///
+/// 允许三种：字面量、i64 标量（含循环变量）、**f64 的 1×1 数组**。
+/// 第三种是 `if A(i,2) > y` 这类写法的支撑 —— 数组元素参与比较时
+/// 取 `data[0]`（MIR 里没有"标量视图"，在发射层取值是唯一的确定做法）。
+fn value_expr(f: &Func, tok: &str) -> Option<String> {
+    if is_int_literal(tok) {
+        return Some(tok.to_string());
     }
-    let rhs = if is_int_literal(&c.rhs) {
-        c.rhs.clone()
-    } else if f.var_dtype(&c.rhs).map(|d| is_scalar_dt(&d)).unwrap_or(false) {
-        ident(&c.rhs)
-    } else {
-        return None;
-    };
-    Some(format!("{} {} {}", ident(&c.var), cmp_c(&c.cmp), rhs))
+    if f.is_loop_var(tok) {
+        return Some(ident(tok));
+    }
+    match f.var_dtype(tok) {
+        Some(dt) if is_scalar_dt(&dt) => Some(ident(tok)),
+        Some(_) => {
+            // f64 → 可能是 1×1 数组；返回值是指针，入参/局部是值
+            let is_ret = f.rets.iter().any(|r| r.name == tok);
+            let base = if is_ret {
+                format!("{}->data", ret_cname(f, tok))
+            } else {
+                format!("{}.data", ident(tok))
+            };
+            Some(format!("((const double *){})[0]", base))
+        }
+        None => {
+            // 临时量（OP-INDEX 的输出等）没有 dtype 记录，但一定是 mlc_array；
+            // 未声明的名字则如实放弃，不猜。
+            if f.declared().iter().any(|d| d == tok) {
+                let is_ret = f.rets.iter().any(|r| r.name == tok);
+                let base = if is_ret {
+                    format!("{}->data", ret_cname(f, tok))
+                } else {
+                    format!("{}.data", ident(tok))
+                };
+                Some(format!("((const double *){})[0]", base))
+            } else {
+                None
+            }
+        }
+    }
+}
+
+fn cond_expr(f: &Func, c: &Cond) -> Option<String> {
+    let lhs = value_expr(f, &c.var)?;
+    let rhs = value_expr(f, &c.rhs)?;
+    Some(format!("{} {} {}", lhs, cmp_c(&c.cmp), rhs))
 }
 
 /// 标量右值 → C 表达式。只接受整数字面量与已声明的 i64 标量。

@@ -46,7 +46,7 @@ _FUNC_RE = re.compile(
 #: `% @m2c i64 i` —— 显式类型标注
 _ANNO_RE = re.compile(r"^\s*%\s*@m2c\s+(?P<type>i64|f64)\s+(?P<names>[A-Za-z_][\w\s,]*)$")
 #: `if i > 1` —— 只认「标量与整数字面量/变量」的六种比较；其余进 unmapped。
-_IF_RE = re.compile(r"^if\s+(?P<var>[A-Za-z_]\w*)\s*"
+_IF_RE = re.compile(r"^if\s+(?P<var>[A-Za-z_]\w*\s*(?:\([^()]*\))?)\s*"
                     r"(?P<cmp>==|~=|<=|>=|<|>)\s*(?P<rhs>[A-Za-z_\w]+)$")
 #: `while i < 3` —— 与 if 同一套条件语法。
 #:
@@ -186,6 +186,66 @@ def _side_atom(text):
         return ("num", m.group(4))
     if m.group(5):
         return ("name", m.group(5))
+    return None
+
+
+def _cond_side(text, shapes, counter, out):
+    """条件的一侧 → 可直接参与比较的名字/字面量。
+
+    `A(i,2)` 这类先降成临时量；降不了返回 None（调用方如实记 unmapped）。
+    """
+    t = (text or "").strip()
+    m = re.match(r"^([A-Za-z_]\w*)\s*\(\s*([^()]*?)\s*\)$", t)
+    if not m:
+        return t if re.match(r"^[A-Za-z_]\w*$|^-?\d+(\.\d+)?$", t) else None
+    args = [a.strip() for a in m.group(2).split(",") if a.strip()]
+    return _index_operand(m.group(1), args, shapes, counter, out.append)
+
+
+def _lin_token(ia, ib, rows, counter, emit):
+    """`A(ia, ib)` 的**列优先线性下标**：返回可直接用于 OP-INDEX 的 token。
+
+    唯一实现：单独赋值 / 表达式操作数 / 条件 三处都调这里。
+    双字面量在生成期算成常量；含变量则发 setb 链。
+    """
+    if ia.isdigit() and ib.isdigit():
+        return str(int(ia) + (int(ib) - 1) * rows)
+    if not (re.match(r"^[A-Za-z_]\w*$|^\d+$", ia)
+            and re.match(r"^[A-Za-z_]\w*$|^\d+$", ib)):
+        return None
+    counter[0] += 1
+    t1 = "__j%d" % counter[0]
+    counter[0] += 1
+    t2 = "__l%d" % counter[0]
+    emit("var:%s:i64" % t1)
+    emit("var:%s:i64" % t2)
+    emit("setb:%s:sub:%s:1" % (t1, ib))
+    emit("setb:%s:mul:%s:%d" % (t2, t1, rows))
+    emit("setb:%s:add:%s:%s" % (t1, ia, t2))
+    return t1
+
+
+def _index_operand(name, args, shapes, counter, emit):
+    """把 `name(a[,b])` 降到临时量，返回临时名；降不了返回 None。
+
+    **唯一的**下标降级入口：单独赋值 / 表达式操作数 / 条件，三处都走这里。
+    """
+    if len(args) == 1:
+        counter[0] += 1
+        tmp = "__t%d" % counter[0]
+        emit("op:OP-INDEX:%s:%s:%s" % (tmp, name, args[0]))
+        return tmp
+    if len(args) == 2:
+        shp = (shapes or {}).get(name)
+        if not shp or len(shp) != 2:
+            return None
+        lin = _lin_token(args[0], args[1], int(shp[0]), counter, emit)
+        if lin is None:
+            return None
+        counter[0] += 1
+        tmp = "__t%d" % counter[0]
+        emit("op:OP-INDEX:%s:%s:%s" % (tmp, name, lin))
+        return tmp
     return None
 
 
@@ -339,23 +399,10 @@ _IDX2_RE = re.compile(r"^([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*"
 
 def _lower_index2(out, lhs, arr, ia, ib, m, counter, unmapped_kinds, code):
     """把 `A(i,j)` 降成线性下标；返回 True 表示已处理。"""
-    if ia.isdigit() and ib.isdigit():
-        lin = str(int(ia) + (int(ib) - 1) * int(m))
-        out.append("op:OP-INDEX:%s:%s:%s" % (lhs, arr, lin))
-        return True
-    # 运行时算：__li = ia + (ib-1)*m
-    for nm in (ia, ib):
-        if not re.match(r"^[A-Za-z_]\w*$", nm):
-            return False
-    counter[0] += 1
-    t1 = "__j%d" % counter[0]
-    t2 = "__l%d" % counter[0]
-    out.append("var:%s:i64" % t1)
-    out.append("var:%s:i64" % t2)
-    out.append("setb:%s:sub:%s:1" % (t1, ib))
-    out.append("setb:%s:mul:%s:%d" % (t2, t1, int(m)))
-    out.append("setb:%s:add:%s:%s" % (t1, ia, t2))
-    out.append("op:OP-INDEX:%s:%s:%s" % (lhs, arr, t1))
+    lin = _lin_token(ia, ib, int(m), counter, out.append)
+    if lin is None:
+        return False
+    out.append("op:OP-INDEX:%s:%s:%s" % (lhs, arr, lin))
     return True
 
 
@@ -595,9 +642,17 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                 continue
             im = _IF_RE.match(code)
             if im:
-                out.append("if:%s:%s:%s" % (im.group("var"),
+                _cv = _cond_side(im.group("var"), f.get("shapes") or {},
+                                 idx_counter, out)
+                _cr = _cond_side(im.group("rhs"), f.get("shapes") or {},
+                                 idx_counter, out)
+                if _cv is None or _cr is None:
+                    blocks.append("if")
+                    _emit_unmapped(out, unmapped_kinds, code)
+                    continue
+                out.append("if:%s:%s:%s" % (_cv,
                                             _CMP[im.group("cmp")],
-                                            im.group("rhs")))
+                                            _cr))
                 blocks.append("if")
                 continue
             wm = _WHILE_RE.match(code)
