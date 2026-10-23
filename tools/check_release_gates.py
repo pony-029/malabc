@@ -37,7 +37,9 @@ import sys
 ROW_SIGNATURE = "RG1–RG5"
 
 #: 发版墙钟预算（毫秒）。超过就判红 —— 它保护的是"发版前真的全跑一遍"这个习惯。
-BUDGET_MS = 5000
+# 17 道门（含 GX 编译判据，实测约 4.9s）—— 16 道时是 5000ms；
+# 宁可把预算调到 6000 并写清原因，也不把刚建的编译把关挪出清单。
+BUDGET_MS = 6000
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
