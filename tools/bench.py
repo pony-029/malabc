@@ -141,6 +141,13 @@ def main(argv=None):
 
     t_c = _best(lambda: _run([exe])[0], repeat)
 
+    # ---- 进程内计时（首选）：不含启动、不含输入构造 ----
+    reps = int(argv[argv.index("--reps") + 1]) if "--reps" in argv else 20
+    fn, fn_args, fn_rets = _sig_of(mir)
+    c_in = _inproc_c(gen, fn, fn_args, fn_rets, reps, cc, d,
+                     "bench") if fn else 0.0
+    o_in = _inproc_octave(src, oct_cli, d, reps) if fn else 0.0
+
     # 空载对照：同目录下的 bench_null.m（同输入、只做一次廉价运算）
     t_null = 0.0
     null_src = os.path.join(os.path.dirname(os.path.abspath(src)),
@@ -168,7 +175,16 @@ def main(argv=None):
     def ms(x):
         return x * 1000.0
 
-    print("用例 %s ｜ 重复 %d 次取最小" % (os.path.basename(src), repeat))
+    print("用例 %s ｜ 整进程重复 %d 次；进程内 %d 次调用/样本"
+          % (os.path.basename(src), repeat, reps))
+    if c_in > 0 and o_in > 0:
+        print("  【进程内】C %.3f ms ／ Octave %.3f ms：%.1fx"
+              % (c_in, o_in, o_in / c_in))
+    elif c_in > 0:
+        print("  【进程内 C】%.3f ms（Octave 侧进程内不可用，退回其净算口径）"
+              % c_in)
+    else:
+        print("  （进程内计时不可用，退回整进程口径）")
     print("  生成的 C（含启动）：%8.1f ms" % ms(t_c))
     print("  Octave（含启动）  ：%8.1f ms" % ms(t_oct))
     print("  Octave 启动基线    ：%8.1f ms" % ms(t_base))
@@ -178,6 +194,9 @@ def main(argv=None):
     if net_o > 0 and t_c > 0:
         print("  扣除启动（Octave 净算 %.1f ms）：%.1fx"
               % (ms(net_o), net_o / t_c))
+    if c_in > 0 and net_o > 0:
+        print("  【C 进程内 %.3f ms ／ Octave 净算 %.1f ms】：%.1fx"
+              % (c_in, ms(net_o), net_o / (c_in / 1000.0)))
     if t_null > 0:
         # 只扣 C 侧：Octave 的空载测量噪声比被测还大，拿它做减法会得到负数
         net_c = max(0.0, t_c - t_null)
@@ -188,6 +207,115 @@ def main(argv=None):
     if not keep:
         print("  （临时产物在 %s，未清理 —— 需要复现可直接用）" % d)
     return 0
+
+
+def _sig_of(mir_path):
+    """从 MIR 取函数名 / 参数 / 返回值（含形状），用于生成驱动。"""
+    import re
+    name, args, rets = None, [], []
+    for ln in io.open(mir_path, encoding="utf-8", errors="replace").read().splitlines():
+        if ln.startswith("func:") and name is None:
+            name = ln[5:].strip()
+        elif ln.startswith("arg:"):
+            m = re.match(r"arg:(\w+):(\w+):?([\d,]*)", ln)
+            if m:
+                dims = [int(x) for x in m.group(3).split(",") if x]
+                args.append((m.group(1), dims))
+        elif ln.startswith("ret:"):
+            m = re.match(r"ret:(\w+):(\w+):?([\d,]*)", ln)
+            if m:
+                dims = [int(x) for x in m.group(3).split(",") if x]
+                rets.append((m.group(1), dims))
+        elif ln.startswith("# srcfile:"):
+            break
+    return name, args, rets
+
+
+def _driver_c(name, args, rets, reps, hdr):
+    """生成 C 驱动：构造一次 -> 预热 -> 计时 reps 次。"""
+    L = ['#include <stdio.h>', '#include <time.h>', '#include "mlc.h"',
+         '#include "mlc_ops.h"', '#include "%s.h"' % hdr, '',
+         'int main(void)', '{', '    clock_t t0, t1;', '    int k;']
+    for a, dims in args:
+        dims = dims or [1]
+        dim_c = ", ".join(str(d) for d in dims)
+        L.append('    mlc_array %s;' % a)
+        L.append('    if (mlc_array_init(&%s, MLC_F64, %d, '
+                 '(int64_t[]){%s}) != MLC_OK) return 2;' % (a, len(dims), dim_c))
+        L.append('    { int64_t i, n = mlc_array_numel(&%s); '
+                 'for (i = 0; i < n; ++i) ((double *)%s.data)[i] = (double)(i + 1); }'
+                 % (a, a))
+    rname, rdims = (rets[0] if rets else ("y", [1]))
+    rdims = rdims or [1]
+    L.append('    mlc_array %s;' % rname)
+    L.append('    if (mlc_array_init(&%s, MLC_F64, %d, (int64_t[]){%s}) != MLC_OK) '
+             'return 2;' % (rname, len(rdims),
+                            ", ".join(str(d) for d in rdims)))
+    call = "m2c_%s(%s)" % (name, ", ".join(["%s" % a for a, _ in args] +
+                                           ["&%s" % rname]))
+    L.append('    if (%s != MLC_OK) return 3;' % call)      # 预热
+    L.append('    t0 = clock();')
+    L.append('    for (k = 0; k < %d; ++k) {' % reps)
+    L.append('        if (%s != MLC_OK) return 3;' % call)
+    L.append('    }')
+    L.append('    t1 = clock();')
+    L.append('    printf("%.3f\\n", 1000.0 * (double)(t1 - t0) / CLOCKS_PER_SEC);')
+    L.append('    return 0;')
+    L.append('}')
+    return "\n".join(L)
+
+
+def _inproc_c(build_dir, name, args, rets, reps, cc, workdir, hdr):
+    """编译并运行进程内驱动，返回毫秒（每次调用）。失败返回 0。"""
+    src = os.path.join(workdir, "drv_%s.c" % name)
+    exe = os.path.join(workdir, "drv_%s.exe" % name)
+    io.open(src, "w", encoding="utf-8", newline="").write(
+        _driver_c(name, args, rets, reps, hdr))
+    rc = _run([cc, "-std=c99", "-O2",
+               "-I", os.path.join(build_dir, "include"),
+               "-I", os.path.join(ROOT, "c_runtime", "include"),
+               src,
+               os.path.join(build_dir, "src", "gen.c"),
+               os.path.join(ROOT, "c_runtime", "src", "mlc_runtime.c"),
+               os.path.join(ROOT, "c_runtime", "src", "mlc_ops.c"),
+               "-o", exe])[1]
+    if rc != 0:
+        return 0.0
+    t, rc, out = _run([exe])
+    if rc != 0:
+        return 0.0
+    try:
+        return float(out.strip().splitlines()[-1]) / max(1, reps)
+    except (ValueError, IndexError):
+        return 0.0
+
+
+def _inproc_octave(src, oct_cli, workdir, reps):
+    """Octave 侧进程内计时：构造一次、预热、tic/toc 包 N 次。"""
+    name = os.path.splitext(os.path.basename(src))[0]
+    setup, names = _inputs_from_source(src)
+    if not names:
+        return 0.0
+    call = "%s(%s);" % (name, ", ".join(names))
+    body = "\n".join([""] + setup + [call + "          % 预热",
+                                      "tic;",
+                                      "for kk = 1:%d, %s end" % (reps, call),
+                                      "t = toc * 1000 / %d;" % reps,
+                                      "fprintf('%.3f\\n', t);"])
+    drv = os.path.join(workdir, "drvi_%s.m" % name)
+    io.open(drv, "w", encoding="utf-8", newline="").write(
+        "addpath('%s');\nmore off;%s"
+        % (os.path.dirname(os.path.abspath(src)).replace("\\", "/"), body))
+    t, rc, out = _run([oct_cli, "--no-gui", "--quiet", "--eval",
+                       "run('%s')" % drv.replace("\\", "/")], cwd=workdir)
+    if rc != 0:
+        return 0.0
+    for ln in reversed(out.strip().splitlines()):
+        try:
+            return float(ln.strip())
+        except ValueError:
+            continue
+    return 0.0
 
 
 def _shapes_of(src):
