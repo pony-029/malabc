@@ -725,6 +725,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             if im:
                 if not _emit_cond("if", im, f.get("shapes") or {},
                                   idx_counter, out):
+                    # 恒假占位：保住块平衡（否则 else/end 变孤儿，整份 MIR 不可解析）
+                    out.append("if:0:eq:1")
                     blocks.append("if")
                     _emit_unmapped(out, unmapped_kinds, code)
                     continue
@@ -750,6 +752,7 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                     continue
                 if not _emit_cond("while", wm, f.get("shapes") or {},
                                   idx_counter, out):
+                    out.append("while:0:eq:1")
                     blocks.append("while")
                     _emit_unmapped(out, unmapped_kinds, code)
                     continue
@@ -767,6 +770,16 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                                % (am0.group(1), cm0.group(1), ":".join(args)))
                     n_calls[0] += 1
                     continue
+            # 丢弃返回值的调用：`foo(a,b);`（本工程函数）—— 造临时量走 call 通道
+            _vm = re.match(r"^([A-Za-z_]\w*)\s*\(([^()]*)\)\s*;?$", code)
+            if _vm and _vm.group(1) in fnames:
+                _args = [x.strip() for x in _vm.group(2).split(",") if x.strip()]
+                idx_counter[0] += 1
+                _d = "__d%d" % idx_counter[0]
+                out.append("call:%s:%s:%s"
+                           % (_d, _vm.group(1), ":".join(_args)))
+                n_calls[0] += 1
+                continue
             if _lower_reduce_elementwise(out, code, idx_counter,
                                          unmapped_kinds, known_ops):
                 continue
