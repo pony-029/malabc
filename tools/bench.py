@@ -96,8 +96,12 @@ def _inputs_from_source(src):
         n = 1
         for d in dims:
             n *= d
-        lines.append("%s = reshape(1:%d, [%s]);"
-                     % (name, n, ", ".join(str(d) for d in dims)))
+        if len(dims) == 1:
+            # 一维：用列向量（与 C 侧一维数组等价，`x(i)` 语义相同）
+            lines.append("%s = reshape(1:%d, [%d, 1]);" % (name, n, n))
+        else:
+            lines.append("%s = reshape(1:%d, [%s]);"
+                         % (name, n, ", ".join(str(d) for d in dims)))
         names.append(name)
     return lines, names
 
