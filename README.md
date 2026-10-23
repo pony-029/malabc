@@ -1027,6 +1027,7 @@ judgements above:
 | `parity_report.py` | interpreter vs C parity report (manual, large projects) |
 | `shape_suggest.py` | suggest `% @m2c shape` from `zeros/ones/literals` (work-list, not a guess) |
 | `unmapped_report.py` | rank functions by `TODO(unmapped)` count (what to port first) |
+| `bench.py` | measure generated C vs Octave on the same `.m` (the number a porting tool owes you) |
 | `numeric_expected.py` | regenerate/verify `numeric.expected` from Octave truth (`--update`) |
 | `release.py` | one command for a release: bump the version → build the `.vsix` → regenerate the version table → run the key gates, stopping at the first failure. The order used to be five manual steps, and a missed one (forgetting to install) shows up only at the very end |
 | `ci_local.py` | runs the same pipeline as `ci.yml`, but inside a **clean clone** at `E:\ci\matlabc` — the one thing a workflow cannot tell you locally is whether the repository still works from zero. What it tests is *committed* code by definition, so commit before running it |

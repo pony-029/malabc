@@ -2,6 +2,20 @@
 
 ---
 
+## 1.9.1
+
+- **首次给出性能数字**（此前一次也没测过）：新增 `tools/bench.py`，
+  同一份 `.m` 分别用「生成的 C」与「Octave」跑，取多次最小值
+  - `bench_loop`（200×1000 的取元素+乘+累加）：C **11.2 ms** ｜ Octave 净算 **661.8 ms**
+    ｜ **≈59×**（含启动 111×）
+  - `bench_vec`（向量化 `sum(x.*x)`）：**≈21×**（净）
+  - 如实标注：Octave 是解释执行，**MATLAB 的 JIT 会缩小这个差距**；
+    这里量的是「C 相对 Octave」，不是「相对 MATLAB」
+- **异常路径判据**：`tests/test_runtime_bounds.py` —— 直接调 C 运行时，
+  锁住 `mlc_op_index` / `row` / `slice` / `setidx` 的越界语义（必须 `MLC_ERR`，不静默截断）。
+  两向：去掉 index 的越界判定 → 用例失败；还原 → 通过
+- 基准用例放在 `translate/examples/bench/`，**不混进** `numeric/` 的 20 个正确性用例
+
 ## 1.9.0
 
 - **`A(i,:)` 行切片**（新算子 `OP-ROW`）：按 `strides` 拷一行，不假设存储顺序；
