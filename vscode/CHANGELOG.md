@@ -2,6 +2,15 @@
 
 ---
 
+## 2.1.1
+
+- **把「生成物必须能编译」封成护栏并登记进发版**：新增 `tools/check_generated_compiles.py`
+  （GX1–GX2），加入 `release.py` 的 `GATES`。
+  原因：那两条判据此前只活在 pytest 里，而**发版脚本跑的是 GATES 元组，不跑 pytest**
+  —— 等于从未参与把关。现在发版门从 16 道变 **17 道**（墙钟 4.3s，仍在 5s 预算内）
+- 顺带补齐登记联动三处：`GUARD_CONTRACT`（退出码契约）、`README_CN/README` 质量门表、
+  本文件版本节
+
 ## 2.0.6
 
 - **新增判据：生成的 C 必须能编译**（`tests/test_generated_compiles.py`）：

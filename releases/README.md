@@ -47,7 +47,7 @@
 
 | 版本 | 日期 | 大小 | 主要变化 | 文件 |
 | --- | --- | --- | --- | --- |
-| 2.0.6（当前） | 2026-10-24 | 2467 KB | **新增判据：生成的 C 必须能编译**（`tests/test_generated_compiles.py`）：对 `numeri… | `vsix/matlabc-2.0.6.vsix` |
+| 2.1.1（当前） | 2026-10-24 | 2467 KB | **把「生成物必须能编译」封成护栏并登记进发版**：新增 `tools/check_generated_compiles.py`（G… | `vsix/matlabc-2.1.1.vsix` |
 
 ## 归档约定
 
