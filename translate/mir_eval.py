@@ -156,6 +156,20 @@ def _apply_op(oid, args):
         if len(a.shape) != 1 or lo < 1 or hi < lo or hi > a.shape[0]:
             return None
         return Arr(a.data[lo - 1:hi], [hi - lo + 1])
+    if oid == "OP-SETIDX":
+        # args = (右值, 下标)；目标数组就是 lhs（就地写）
+        val = _num(args[0])
+        idx = int(_num(args[1]))
+        dst = env.get(lhs)
+        if dst is None:
+            return None
+        arr = list(dst)
+        if idx < 1 or idx > len(arr):
+            return None
+        arr[idx - 1] = val
+        env[lhs] = arr
+        return arr
+
     if oid == "OP-FLATTEN":
         a = args[0]
         if len(a.shape) == 1:
