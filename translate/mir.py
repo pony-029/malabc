@@ -323,6 +323,57 @@ def _index_operand(name, args, shapes, counter, emit):
     return None
 
 
+def _split_top(expr):
+    """按**优先级**选顶层运算符切分（同级取最右，左结合）。
+
+    返回 (左, 运算符, 右)，找不到返回 None。
+    带 `.` 的运算符（`.*` `.\` `.'`）一律不处理 —— 交给调用方放弃，
+    避免把元素级运算误当成标量运算。
+    """
+    if "." in expr and (".*" in expr or "./" in expr or ".\\" in expr):
+        return None
+    depth = 0
+    best = None          # (优先级, 位置, 运算符)
+    for i, ch in enumerate(expr):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif depth == 0 and ch in "+-*/" and i > 0:
+            prev = expr[i - 1]
+            if prev in "+-*/(":      # 一元 +/- 或紧跟左括号
+                continue
+            prec = 1 if ch in "+-" else 2
+            if best is None or prec <= best[0]:
+                best = (prec, i, ch)
+    if best is None:
+        return None
+    _, i, ch = best
+    return expr[:i].strip(), ch, expr[i + 1:].strip()
+
+
+def _lower_expr(lhs, expr, fnames, emit, counter, src_line, shapes=None):
+    """把任意（不超过两运算符的）表达式降级成若干语句；成功返回 True。"""
+    sp = _split_top(expr)
+    if not sp:
+        return False
+    left, op, right = sp
+    for which in (0, 1):
+        side = left if which == 0 else right
+        if not _split_top(side):
+            continue
+        counter[0] += 1
+        tmp = "__e%d" % counter[0]
+        if not _lower_expr(tmp, side, fnames, emit, counter, src_line, shapes):
+            return False
+        if which == 0:
+            left = tmp
+        else:
+            right = tmp
+    return _lower_binary(lhs, left, op, right, fnames, emit, counter,
+                         src_line, shapes)
+
+
 def _lower_binary(lhs, left, op, right, fnames, emit, counter, src_line=0,
                   shapes=None):
     """把 `lhs = left op right` 降级；两侧都可以是 调用/下标。
@@ -868,11 +919,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                                       bm.group(1), bm.group(3)))
                         continue
                     # 两侧带调用/下标的二元式：降级成多条语句
-                    em = _EXPR_BIN.match(rhs)
-                    if em and _lower_binary(lhs, em.group(1), em.group(2),
-                                            em.group(3), fnames, out.append,
-                                            n_tmp, src_line,
-                                            f.get("shapes") or {}):
+                    if _lower_expr(lhs, rhs, fnames, out.append, n_tmp,
+                                   src_line, f.get("shapes") or {}):
                         n_ops_delta[0] += 1
                         continue
                     cm = _CALL.match(rhs)
