@@ -11,6 +11,7 @@ flatit: 1 3 2 4
 for_acc: 10
 head2: 1 2
 mmul: 22 28 49 64
+notempty: 1
 pickmax: 4
 relu: 1 2 3 4 5
 row1: 3 4

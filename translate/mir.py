@@ -243,16 +243,28 @@ def _while_with_expr(wm, shapes, counter, out):
 
 
 #: 裸条件：`if <expr>`（无比较运算符）
-_IF_BARE = re.compile(r"^if\s+(?P<expr>[^()\s]+\s*(?:\([^()]*\))?)\s*$")
-_WHILE_BARE = re.compile(r"^while\s+(?P<expr>[^()\s]+\s*(?:\([^()]*\))?)\s*$")
+_IF_BARE = re.compile(r"^if\s+(?P<expr>~?\s*[^()\s]+\s*(?:\([^()]*\))?)\s*$")
+_WHILE_BARE = re.compile(r"^while\s+(?P<expr>~?\s*[^()\s]+\s*(?:\([^()]*\))?)\s*$")
 
 
 def _emit_bare_cond(kw, m, shapes, counter, out):
-    """`if expr` -> `if:tmp:ne:0`。expr 可以是名字或 `f(x)`。"""
-    tok = _cond_side(m.group("expr"), shapes, counter, out)
+    """`if expr` -> `if:tmp:ne:0`；`if ~expr` -> `if:tmp:eq:0`。
+
+    expr 可以是名字或 `f(x)`。取反是**必要**的：真实代码里 `~isempty(x)`
+    远比 `isempty(x)` 常见（YALMIP 里 26 处 isempty 全是取反形态）。
+    """
+    expr = m.group("expr").strip()
+    neg = False
+    if expr.startswith("~"):
+        neg = True
+        expr = expr[1:].strip()
+    elif expr.startswith("not "):
+        neg = True
+        expr = expr[4:].strip()
+    tok = _cond_side(expr, shapes, counter, out)
     if tok is None:
         return False
-    out.append("%s:%s:ne:0" % (kw, tok))
+    out.append("%s:%s:%s:0" % (kw, tok, "eq" if neg else "ne"))
     return True
 
 
