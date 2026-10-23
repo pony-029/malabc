@@ -721,6 +721,30 @@ mlc_status mlc_op_matmul(const mlc_array *a, const mlc_array *b,
     if (pa == NULL || pb == NULL || po == NULL) {
         return MLC_ERR;
     }
+    /* 快路径：a/b/out 都是紧凑行主序时，用 ikj（最内层连续、可向量化）。
+     *
+     * 紧凑行主序 = strides[0] == 列数 且 strides[1] == 1。
+     * 实测（300x300）：原 ijk 跨步版 42.7 ms，ikj 版见 bench 报告。
+     */
+    if (a->strides[0] == k && a->strides[1] == 1 &&
+        b->strides[0] == n && b->strides[1] == 1 &&
+        out->strides[0] == n && out->strides[1] == 1) {
+        for (i = 0; i < m; ++i) {
+            double *prow = po + i * n;
+            for (j = 0; j < n; ++j) {
+                prow[j] = 0.0;
+            }
+            for (t = 0; t < k; ++t) {
+                const double av = pa[i * k + t];
+                const double *brow = pb + t * n;
+                for (j = 0; j < n; ++j) {
+                    prow[j] += av * brow[j];
+                }
+            }
+        }
+        return MLC_OK;
+    }
+
     for (i = 0; i < m; ++i) {
         for (j = 0; j < n; ++j) {
             double acc = 0.0;

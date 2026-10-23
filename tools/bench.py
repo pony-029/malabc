@@ -141,6 +141,13 @@ def main(argv=None):
 
     t_c = _best(lambda: _run([exe])[0], repeat)
 
+    # 空载对照：同目录下的 bench_null.m（同输入、只做一次廉价运算）
+    t_null = 0.0
+    null_src = os.path.join(os.path.dirname(os.path.abspath(src)),
+                            "bench_null.m")
+    if os.path.isfile(null_src) and _shapes_of(null_src) == _shapes_of(src):
+        t_null = _build_and_time(null_src, d, "null", repeat) or 0.0
+
     # Octave：同一份 .m，输入构造与 main.c 一致（a[i]=i+1）
     drv = os.path.join(d, "drv.m")
     name = os.path.splitext(os.path.basename(src))[0]
@@ -171,9 +178,70 @@ def main(argv=None):
     if net_o > 0 and t_c > 0:
         print("  扣除启动（Octave 净算 %.1f ms）：%.1fx"
               % (ms(net_o), net_o / t_c))
+    if t_null > 0:
+        # 只扣 C 侧：Octave 的空载测量噪声比被测还大，拿它做减法会得到负数
+        net_c = max(0.0, t_c - t_null)
+        print("  C 侧空载（同输入、只做一次加法）：%.1f ms" % ms(t_null))
+        if net_c > 0 and net_o > 0:
+            print("  只算被测运算（C %.1f ms ／ Octave 净 %.1f ms）：%.1fx"
+                  % (ms(net_c), ms(net_o), net_o / net_c))
     if not keep:
         print("  （临时产物在 %s，未清理 —— 需要复现可直接用）" % d)
     return 0
+
+
+def _shapes_of(src):
+    """取 `.m` 里的 `% @m2c shape` 列表（用于判断两个用例的输入是否可比）。"""
+    import re
+    out = []
+    for ln in io.open(src, encoding="utf-8", errors="replace").read().splitlines():
+        m = re.match(r"\s*%\s*@m2c\s+shape\s+([A-Za-z_]\w*)\s+([\d,\s]+)", ln)
+        if m:
+            dims = tuple(int(x) for x in m.group(2).replace(" ", "").split(",") if x)
+            out.append((m.group(1), dims))
+    return sorted(out)
+
+
+def _build_and_time(src, workdir, tag, repeat):
+    """把某个 .m 生成 C 并计时（用于空载对照）。失败返回 0。"""
+    mir = os.path.join(workdir, "%s.mir" % tag)
+    gen = os.path.join(workdir, "gen_%s" % tag)
+    if _run([sys.executable, os.path.join(ROOT, "translate", "mir.py"),
+             src, "-o", mir])[1] != 0:
+        return 0.0
+    if _run([M2C, "build", "--mir", mir, "--out", gen,
+             "--name", tag])[1] != 0:
+        return 0.0
+    cc = _c_compiler()
+    if not cc:
+        return 0.0
+    exe = os.path.join(gen, "%s.exe" % tag)
+    if _run([cc, "-std=c99", "-O2",
+             "-I", os.path.join(gen, "include"),
+             "-I", os.path.join(ROOT, "c_runtime", "include"),
+             os.path.join(gen, "src", "gen.c"),
+             os.path.join(gen, "src", "main.c"),
+             os.path.join(ROOT, "c_runtime", "src", "mlc_runtime.c"),
+             os.path.join(ROOT, "c_runtime", "src", "mlc_ops.c"),
+             "-o", exe])[1] != 0:
+        return 0.0
+    return _best(lambda: _run([exe])[0], repeat)
+
+
+def _octave_time(src, oct_cli, workdir, repeat):
+    """某个 .m 在 Octave 里的耗时（用于空载对照）。失败返回 0。"""
+    name = os.path.splitext(os.path.basename(src))[0]
+    setup, names = _inputs_from_source(src)
+    if not names:
+        return 0.0
+    drv = os.path.join(workdir, "drv_%s.m" % name)
+    body = "\n".join(setup) + "\n%s(%s);\n" % (name, ", ".join(names))
+    io.open(drv, "w", encoding="utf-8", newline="").write(
+        "addpath('%s');\nmore off;\n%s"
+        % (os.path.dirname(os.path.abspath(src)).replace("\\", "/"), body))
+    return _best(lambda: _run([oct_cli, "--no-gui", "--quiet", "--eval",
+                               "run('%s')" % drv.replace("\\", "/")],
+                              cwd=workdir)[0], repeat)
 
 
 def _c_compiler():
