@@ -225,6 +225,23 @@ def _lin_token(ia, ib, rows, counter, emit):
     return t1
 
 
+#: 条件取反（`while c` → `if (!c) break`）
+_CMP_INV = {"le": "gt", "lt": "ge", "ge": "lt", "gt": "le",
+            "eq": "ne", "ne": "eq"}
+
+
+def _while_with_expr(wm, shapes, counter, out):
+    """把需要降级的 while 条件改写成循环内重算；成功返回 True。"""
+    lhs = _cond_side(wm.group("var"), shapes, counter, out)
+    rhs = _cond_side(wm.group("rhs"), shapes, counter, out)
+    if lhs is None or rhs is None:
+        return False
+    out.append("if:%s:%s:%s" % (lhs, _CMP_INV[_CMP[wm.group("cmp")]], rhs))
+    out.append("break")
+    out.append("end")            # 收束上面这个 if（它不进 blocks，故不 pop）
+    return True
+
+
 def _emit_cond(kw, m, shapes, counter, out, allow_lower=True):
     """`if` / `while` 共用的条件发射；降不了返回 False（调用方记 unmapped）。
 
@@ -673,6 +690,16 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                 continue
             wm = _WHILE_RE.match(code)
             if wm:
+                _need = ("(" in (wm.group("var") or "")
+                         or "(" in (wm.group("rhs") or ""))
+                if _need:
+                    # 条件要降级 -> 只能放进循环体，用 while(1)+break
+                    out.append("while:1:eq:1")
+                    blocks.append("while")
+                    if not _while_with_expr(wm, f.get("shapes") or {},
+                                            idx_counter, out):
+                        _emit_unmapped(out, unmapped_kinds, code)
+                    continue
                 if not _emit_cond("while", wm, f.get("shapes") or {},
                                   idx_counter, out):
                     blocks.append("while")

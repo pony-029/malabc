@@ -15,4 +15,5 @@ shiftmax: 5
 sumsq: 30
 transit: 1 4 2 5 3 6
 wheregt: 3 4 5
+while2d: 6
 while_acc: 10

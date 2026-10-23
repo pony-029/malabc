@@ -61,6 +61,11 @@ pub enum Stmt {
     If { cond: Cond, then_body: Vec<Stmt>, else_body: Vec<Stmt>, src: i64 },
     /// `while:<var>:<cmp>:<rhs>`
     While { cond: Cond, body: Vec<Stmt>, src: i64 },
+    /// `break` —— 提前跳出当前循环。
+    ///
+    /// 为什么需要：`while` 的条件若需要降级（语句只能写在循环体内），
+    /// 就得写成 `while (1) { <降级>; if (!cond) break; ... }`。
+    Break { src: i64 },
     /// `set:<lhs>:<值>` —— 标量赋值（值：整数字面量，或已声明的 i64 标量名）
     Set { lhs: String, value: String, src: i64 },
     /// `setb:<lhs>:<op>:<a>:<b>` —— 标量二元运算（+ - * /），int64
@@ -166,7 +171,7 @@ pub fn walk_stmts<F: FnMut(&Stmt)>(stmts: &[Stmt], f: &mut F) {
         f(s);
         match s {
             Stmt::Op(_) | Stmt::Set { .. } | Stmt::SetBin { .. } | Stmt::Call { .. }
-            | Stmt::Const { .. } | Stmt::Fill { .. } => {}
+            | Stmt::Const { .. } | Stmt::Fill { .. } | Stmt::Break { .. } => {}
             Stmt::For { body, .. } => walk_stmts(body, f),
             Stmt::If { then_body, else_body, .. } => {
                 walk_stmts(then_body, f);
@@ -334,6 +339,11 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
                 srcfile: pending_srcfile.clone(),
                 reject: None,
             });
+            continue;
+        }
+        if line == "break" {
+            push_stmt!(Stmt::Break { src: pending_src });
+            pending_src = 0;
             continue;
         }
         if line == "else" {

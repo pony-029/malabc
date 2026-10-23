@@ -767,6 +767,10 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                     }
                 }
             }
+            Stmt::Break { src } => {
+                if let Some(c) = src_comment(*src, indent) { out.push(c); }
+                out.push(format!("{}break;", indent));
+            }
             Stmt::SetBin { lhs, op, a, b, src } => {
                 if let Some(c) = src_comment(*src, indent) { out.push(c); }
                 match (scalar_expr(f, a), scalar_expr(f, b)) {
