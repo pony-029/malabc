@@ -2,6 +2,19 @@
 
 ---
 
+## 2.1.2
+
+- **把「生成物必须能编译」封成发版门**（上一轮撤回的那项，本轮按清单一次做完）：
+  新增 `tools/check_generated_compiles.py`（**GX1–GX2**），登记进 `release.py` 的 `GATES`
+  —— 发版门 16 道 → **17 道**
+- **注册一条新门要动 7 处**（本轮实测，写清备查）：门本体 / `GATES` / `GUARD_CONTRACT` /
+  两份 README 质量门表（表行须含签名）/ `check_all.py` 的 ASCII 树行
+  （须含「契约 GX1..GX2」）/ 散文里的门数（CONTRIBUTING + 两份 README + `matlabc_help.py`）
+- 两处只有撞到才知道的细节：
+  - **H2b**：签名声明的判据前缀必须出现在**以它开头的字符串字面量**里 ——
+    用 `"%s …" % ("GX1", …)` 这种拼接，静态门看不见，会被判「幽灵声明」
+  - **H2e**：`check_all.py` 文档串里的 ASCII 树必须补一行，否则红
+
 ## 2.1.1
 
 - **把「生成物必须能编译」封成护栏并登记进发版**：新增 `tools/check_generated_compiles.py`

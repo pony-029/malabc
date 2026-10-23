@@ -240,6 +240,12 @@ GUARD_CONTRACT = {
            "「只在 Windows 上能跑」的代码静默通过",
         2: "缺输入（一个运行时文件都没找到）",
     },
+    "tools/check_generated_compiles.py": {
+        0: "通过（GX1–GX2：示例工程转出的 C 通过 -fsyntax-only，"
+           "且丢弃返回值的调用降成 call: 而不是 unmapped:）",
+        1: "有不合规 —— 生成的 C 编译不过，或丢弃调用退回 unmapped",
+        2: "缺依赖（没有 C 编译器 / 没有 pytest）",
+    },
     "tools/check_tool_selftests.py": {
         0: "通过（TS1–TS2：带自证的工具真跑一遍都 rc=0，且至少有一个这样的工具）",
         1: "有工具的自证失败 —— 工具自己会烂，而没人知道",

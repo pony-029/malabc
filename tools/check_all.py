@@ -28,6 +28,7 @@
         ├─▶ check_known_red.py            「永久红」必须两向登记在册，红集只缩不长
         ├─▶ check_legal_parity.py        许可与署名双轨：MIT 正文 ⇄ 版权人 ⇄ 必究 ⇄ 徽章 ⇄ 版本
         ├─▶ check_unified_graph.py       统一图四条恒等式 + T1 图前提（含「注入一条边即破」）
+        ├─▶ check_generated_compiles.py  生成的 C 必须能编译 + 丢弃调用不退回 unmapped（契约 GX1..GX2）
         ├─▶ check_kernel_snapshot.py     全树规模读数 + 分析流程登记（契约 W1..W7）
         ├─▶ check_subprocess_hygiene.py   子进程必须切 stdin 且不会永久挂住
         ├─▶ check_parity_registry.py     能力对等登记表（16 能力 × 4 语言）必须与**实测**一致，两向（E1–E6）

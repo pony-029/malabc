@@ -877,6 +877,7 @@ python tools/check_all.py        # runs every tools/check_*.py AND its --selftes
 | `check_release_gates.py` | `RG1–RG5` — a gate that exists but never runs at release time is a note to yourself. Every `check_*.py` must be in `release.py`'s `GATES`, or be exempted **with a reason** (stale exemptions are red too) |
 | `check_symbol_ranges.py` | `SR1–SR3` — every symbol's start/end line must be inside the file. An out-of-range Range makes the editor drop the **whole** symbol batch, and the outline then sits on "loading" forever |
 | `check_translate_port.py` | `TP1–TP11` — the MATLAB→C porting chain: ABI contract (no naked pointers) / two-sided adapters (ADP-1..3) / operator catalog + C emission / golden fidelity + port ledger. "Unverified" is a first-class state, but every declared claim must be backed by a fixture |
+| `check_generated_compiles.py` | GX1–GX2: generated C must compile (`-fsyntax-only`); discarded calls must not fall back to unmapped |
 | `check_architecture_docs.py` | `AD1–AD11` — architecture docs stay honest: `FLOW_INDEX.json` ⇄ `candidates/*.json` ⇄ `html/*.html` ⇄ `svg/*.svg` three-way, SHA-256 freshness, offline layout invariants, CODEOWNERS coverage, local image paths, bilingual label consistency, glossary term consistency (AD9), glossary coverage = 100% (AD10), ADR coverage (AD11), plus the two root READMEs must link the index and embed the overall SVG |
 | `check_tool_selftests.py` | `TS1–TS2` — every tool that declares `SELFTEST = True` is actually run. A tool's self-test is like any other gate: it only exists if something executes it |
 | `check_portability.py` | `PF1–PF3` — the runtime must not assume Windows is the only platform. A Windows absolute path is only allowed when that very line is registered **and** has a POSIX sibling; Windows-only APIs (`os.startfile` / `winreg` / `msvcrt` / `ctypes.windll`) have no exemption at all. Comments and docstrings are skipped — a measurement written down as `C:\Temp\yalmip` is evidence, not a platform assumption. PF3 catches the stale direction: a registration whose anchor text has disappeared |
@@ -987,7 +988,7 @@ invented call relationships, or the model will repeat them as fact.
 
 ## Full-scenario sweep (hand-run, 118 checks)
 
-The 39 gates above are static and fast. This one is not — it starts subprocesses and LSP
+The 40 gates above are static and fast. This one is not — it starts subprocesses and LSP
 servers, so it stays out of `check_all` and is run by hand:
 
 ```powershell
@@ -1070,7 +1071,7 @@ python matlabc_flow.py --help     # repair loop: five-station pipeline + five re
 python matlabc_ask.py --help      # grounded Q&A: how facts become an answer
 python matlabc_mcp.py --help      # MCP server: the five tools + why stdin must be cut
 python gui.py --help              # GUI: which CLI flag each form field maps to
-python tools/check_all.py --help  # gates: what each of the 39 gates stops
+python tools/check_all.py --help  # gates: what each of the 40 gates stops
 ```
 
 This is not a verbal promise — `check_help_contract.py` and `check_doc_flags.py` watch it, and
