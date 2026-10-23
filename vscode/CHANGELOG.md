@@ -2,6 +2,19 @@
 
 ---
 
+## 2.1.4
+
+- **多返回调用 `[a,b] = f(x)` 端到端可用**（上一轮第 1 项）：MIR 走 `call2:`
+  - `mir.py` 降级 / `mir.rs` 解析与 `Stmt::Call2` / `emit.rs` 发射（校验返回值个数 == 左值个数）
+  - `Func::declared()` 补上 `Call`/`Call2` 的左值 —— 原来只有 Op/Const/Fill/For，
+    调用的输出一旦不是形参或返回值，就被判「不在作用域内」，整函数变 unimplemented
+- **顺手修一个潜在越界**：`collect_temps` 里 `Stmt::Call` 的暂存量被硬编码成 `[1]`，
+  被调函数返回 3 元素时会写越界（静默内存破坏）。现在按 callee 的 ret 形状分配
+- 验证：`twoout` 返回 `[lo,hi]`，`userange` 里 `[lo,hi] = twoout(x)` 后算 `hi-lo`
+  → 实测 `twoout: 1 | 4`、`userange: 3`；17 道门全绿
+- 未做：解释器还没解析 `call2:`（只影响参考实现对拍，当前语料不含多返回）；
+  YALMIP 尚未重跑做函数级验收
+
 ## 2.1.3
 
 - **新增 `docs/GATE_REGISTRATION.md`**：把「新增一条门要动 7 处」的清单写死，
