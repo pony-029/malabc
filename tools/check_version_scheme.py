@@ -88,7 +88,8 @@ def read_first_row(path):
         return ""
     for line in text.splitlines():
         s = line.strip()
-        if s.startswith(u"| 0.") or s.startswith(u"| 1."):
+        # 不能只认 0./1. —— 那样版本一进 2.x，门就永远找不到行（真踩过）
+        if re.match(r"^\|\s*\d+\.", s):
             return s.split(u"|")[1].strip()
     return ""
 

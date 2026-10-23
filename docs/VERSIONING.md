@@ -4,6 +4,7 @@
 
 | 版本 | 位置 | 当前值 | 用途 |
 | --- | --- | --- | --- |
+| 扩展版本 | `vscode/package.json` | `2.0.0` | VSIX 与市场发布 |
 | 引擎 | `matlabc.py` 的 `VERSION` | `1.16.72` | Python 分析器 / CLI / LSP / MCP |
 | VSIX | `vscode/package.json` 的 `version` | `1.7.0` | VS Code 扩展市场包 |
 
