@@ -13,6 +13,13 @@
 - **未修（放行后暴露）**：更多函数真正发射后出现「同名既标量又数组」
   （`x2_list` conflicting types / `sqrList` redeclared），与 R487 的 `'d'` 同类 ——
   因此 YALMIP 全工程 gcc 仍不通过，**不把「TODO 归零」当成功**
+- **声明唯一化**：`f.locals` 里的名字若已是形参/返回值/暂存量/fill 目标，
+  不再生成 `int64_t <name> = 0;`（`mlc_array sqrList` 与 `int64_t sqrList` 冲突）；
+  标量赋值的目标**不能是形参/返回值**（否则 `df = latest_df;` 把 int64_t 赋给
+  `mlc_array *`）—— 改为如实降级成 `TODO(set)` 桩。
+  **YALMIP 全工程 gcc 错误 4 -> 1**
+- 未修：同一个名字被**两次 fill** 时仍声明两次（`redeclaration of 'ia'`，
+  这是最后一个编译错误）
 
 ## 2.2.2
 
