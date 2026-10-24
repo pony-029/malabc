@@ -164,19 +164,19 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
         let dt = c_dtype_name(&arr.dtype).unwrap_or("MLC_F64");
         let shape_lit = format!("(int64_t[]){{{}}}", dims.join(", "));
         let an = ident(&arr.name);
+        out.push("    {".to_string());
+        out.push(format!("        mlc_array {};", an));
         if assumed {
             out.push(format!(
-                "    printf(\"{}: assumed shape [4]\\n\");",
+                "        printf(\"{}: assumed shape [4]\\n\");",
                 arr.name
             ));
         }
-        out.push("    {".to_string());
-        out.push(format!("        mlc_array {};", an));
         out.push(format!(
             "        if (mlc_array_init(&{}, {}, {}, {}) != MLC_OK) {{ return 1; }}",
             an,
             dt,
-            arr.shape.len(),
+            dims.len(),
             shape_lit
         ));
         out.push(format!(
