@@ -478,11 +478,15 @@ def _lower_binary(lhs, left, op, right, fnames, emit, counter, src_line=0,
                 continue
             counter[0] += 1
             tmp = "__t%d" % counter[0]
-            if fname in fnames:
+            # **算子优先**：`sum(z)` / `numel(z)` 是算子，即使工程里有同名 .m
+            _use = operators.parse_line("%s = %s(%s);" % (tmp, fname, arg))
+            if _use is not None and _use["operator"] != "OP-INDEX":
+                _emit("op:%s:%s:%s"
+                      % (_use["operator"], tmp, ":".join(_use["args"])))
+            elif fname in fnames:
                 _emit("call:%s:%s:%s" % (tmp, fname, arg))
             else:
-                # 先问算子目录：`sum(z)` 是归约，不是"对 z 取名为 sum 的下标"
-                use = operators.parse_line("%s = %s(%s);" % (tmp, fname, arg))
+                use = _use
                 if use is not None and use["operator"] != "OP-INDEX":
                     _emit("op:%s:%s:%s"
                           % (use["operator"], tmp, ":".join(use["args"])))
@@ -876,6 +880,16 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                 if cm0 and cm0.group(1) in fnames:
                     args = [x.strip() for x in cm0.group(2).split(",")
                             if x.strip()]
+                    # 算子优先：`sum(A,2)`、`numel(v)` 这类内置不该被同名 .m 抢走
+                    _mu = operators.parse_line(am0.group(1) + " = "
+                                               + cm0.group(1) + "("
+                                               + ", ".join(args) + ");")
+                    if _mu is not None and _mu["operator"] != "OP-INDEX":
+                        out.append("op:%s:%s:%s"
+                                   % (_mu["operator"], am0.group(1),
+                                      ":".join(_mu["args"])))
+                        n_ops_delta[0] += 1
+                        continue
                     out.append("call:%s:%s:%s"
                                % (am0.group(1), cm0.group(1), ":".join(args)))
                     n_calls[0] += 1
