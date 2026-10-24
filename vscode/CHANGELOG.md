@@ -2,6 +2,30 @@
 
 ---
 
+## 2.2.3
+
+- **返回值形状推断**：`out_shape_for` 原来只看 `Stmt::Op`，于是
+  `A = zeros(m,n)` / `A = f(x)` / `A = 3` 这类返回值一律「推断不出形状」。
+  现按来源保守推断（`fill:` 维度确定 / `set:` 标量 1x1 / `call:` 取被调函数已标注的返回形状，
+  没标注仍返回 None 不猜）。YALMIP 生成物 **TODO(ret)：148 → 0**
+- 修重复声明：同一名字既被 Op 当暂存量、又被 `fill:` 当目标 → 声明两次
+  （gcc `redeclaration of 'temp' with no linkage`）；暂存量收集改为跳过 fill 目标
+- **未修（放行后暴露）**：更多函数真正发射后出现「同名既标量又数组」
+  （`x2_list` conflicting types / `sqrList` redeclared），与 R487 的 `'d'` 同类 ——
+  因此 YALMIP 全工程 gcc 仍不通过，**不把「TODO 归零」当成功**
+
+## 2.2.2
+
+- **返回值形状推断**：`out_shape_for` 原来只看 `Stmt::Op`，于是
+  `A = zeros(m,n)` / `A = f(x)` / `A = 3` 这类返回值一律「推断不出形状」。
+  现按来源保守推断（`fill:` 维度确定 / `set:` 标量 1x1 / `call:` 取被调函数已标注的返回形状，
+  没标注仍返回 None 不猜）。YALMIP 生成物 **TODO(ret)：148 → 0**
+- 修重复声明：同一名字既被 Op 当暂存量、又被 `fill:` 当目标 → 声明两次
+  （gcc `redeclaration of 'temp' with no linkage`）；暂存量收集改为跳过 fill 目标
+- **未修（放行后暴露）**：更多函数真正发射后出现「同名既标量又数组」
+  （`x2_list` conflicting types / `sqrList` redeclared），与 R487 的 `'d'` 同类 ——
+  因此 YALMIP 全工程 gcc 仍不通过，**不把「TODO 归零」当成功**
+
 ## 2.2.1
 
 - 修「副作用调用旁注用了 `/* */`」——`/* */` 不是合法 MIR 语句，跨行 `disp('...')`

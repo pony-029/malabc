@@ -416,14 +416,35 @@ mod tests {
 }
 
 
-fn out_shape_for(f: &Func, name: &str) -> Option<Vec<i64>> {
+fn out_shape_for(f: &Func, name: &str, known: &[Func]) -> Option<Vec<i64>> {
     let mut shape = None;
-    walk_stmts(&f.body, &mut |s| {
-        if let Stmt::Op(op) = s {
+    walk_stmts(&f.body, &mut |s| match s {
+        Stmt::Op(op) => {
             if op.lhs == name {
                 shape = out_shape(f, op).or_else(|| shape.clone());
             }
         }
+        // `A = zeros(m,n)` —— 维度写死在 MIR 里，形状**确定**
+        Stmt::Fill { name: n2, dims, .. } if n2 == name => {
+            shape = Some(dims.clone()).or_else(|| shape.clone());
+        }
+        // `A = 3` —— 标量，形状 1x1
+        Stmt::Set { lhs, .. } | Stmt::SetBin { lhs, .. } if lhs == name => {
+            shape = Some(vec![1]).or_else(|| shape.clone());
+        }
+        // `A = f(x)` —— 取被调函数第一个返回值的**已标注**形状；没标注就是 None
+        Stmt::Call { lhs, func, .. } if lhs == name => {
+            let sh = known
+                .iter()
+                .find(|k| k.name == *func)
+                .and_then(|k| k.rets.first())
+                .map(|r| r.shape.clone())
+                .filter(|v| !v.is_empty());
+            if sh.is_some() {
+                shape = sh;
+            }
+        }
+        _ => {}
     });
     shape
 }
@@ -1040,7 +1061,7 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
         // 形状谎言检测：声明与推断都在时，必须一致。
         // 不一致说明"人写的注解"和"代码真实行为"已经分叉 —— 那是最难查的一类错。
         if let (Some(inferred), Some(declared)) =
-            (out_shape_for(f, &ret.name), f.var_shape(&ret.name))
+            (out_shape_for(f, &ret.name, known), f.var_shape(&ret.name))
         {
             if inferred != declared {
                 out.push(format!(
@@ -1051,7 +1072,9 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
                     f.name, ret.name, declared, inferred);
             }
         }
-        let shape = match out_shape_for(f, &ret.name).or_else(|| f.var_shape(&ret.name)) {
+        let shape = match out_shape_for(f, &ret.name, known)
+            .or_else(|| f.var_shape(&ret.name))
+        {
             Some(sh) => sh,
             None => {
                 for u in &f.unmapped {
@@ -1133,6 +1156,11 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
         let is_arg = f.args.iter().any(|x| x.name == lhs);
         let is_ret = f.rets.iter().any(|x| x.name == lhs);
         if is_arg || is_ret {
+            return;
+        }
+        // 已被 `fill:` 声明的名字：再声明一次会 gcc 报
+        // `redeclaration of '...' with no linkage`
+        if fills.iter().any(|(x, _, _, _)| x == &ident(&lhs)) {
             return;
         }
         let t = ident(&lhs);
