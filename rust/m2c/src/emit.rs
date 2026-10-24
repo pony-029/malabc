@@ -102,7 +102,15 @@ pub fn ret_is_dynamic(f: &Func, name: &str) -> bool {
                 if unshaped
                     && matches!(
                         op.id.as_str(),
-                        "OP-ADD" | "OP-SUB" | "OP-MUL" | "OP-DIV"
+                        "OP-ADD"
+                            | "OP-SUB"
+                            | "OP-MUL"
+                            | "OP-DIV"
+                            | "OP-SUM"
+                            | "OP-MAX"
+                            | "OP-MIN"
+                            | "OP-MEAN"
+                            | "OP-TRANSPOSE"
                     )
                 {
                     dyn_out = true;
@@ -1109,7 +1117,15 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
                             if op.lhs == ret.name
                                 && matches!(
                                     op.id.as_str(),
-                                    "OP-ADD" | "OP-SUB" | "OP-MUL" | "OP-DIV"
+                                    "OP-ADD"
+                                        | "OP-SUB"
+                                        | "OP-MUL"
+                                        | "OP-DIV"
+                                        | "OP-SUM"
+                                        | "OP-MAX"
+                                        | "OP-MIN"
+                                        | "OP-MEAN"
+                                        | "OP-TRANSPOSE"
                                 )
                             {
                                 ok = true;

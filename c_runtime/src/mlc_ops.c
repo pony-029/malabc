@@ -181,6 +181,12 @@ static mlc_status mlc_reduce_prepare(const mlc_array *a, mlc_array *out,
     if (a->dtype != MLC_F64 || out->dtype != MLC_F64) {
         return MLC_ERR;
     }
+    /* 输出为空（形状未标注的返回值）：归约结果恒为 1x1，这里补上分配 */
+    if (mlc_array_numel(out) == 0) {
+        if (mlc_array_init(out, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) {
+            return MLC_ERR;
+        }
+    }
     if (mlc_array_numel(out) != 1) {
         return MLC_ERR;
     }
@@ -198,6 +204,13 @@ static mlc_status mlc_reduce_prepare(const mlc_array *a, mlc_array *out,
 
 mlc_status mlc_op_sum(const mlc_array *a, mlc_array *out)
 {
+    if (mlc_array_numel(out) == 0) {
+        /* 形状未标注的返回值：归约结果恒为 1x1，这里补上分配 */
+        if (mlc_array_init(out, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) {
+            return MLC_ERR;
+        }
+    }
+
     int64_t n, i, j;
     const double *pa;
     double *po;
@@ -278,6 +291,13 @@ mlc_status mlc_op_mean(const mlc_array *a, mlc_array *out)
 
 mlc_status mlc_op_max(const mlc_array *a, mlc_array *out)
 {
+    if (mlc_array_numel(out) == 0) {
+        /* 形状未标注的返回值：归约结果恒为 1x1，这里补上分配 */
+        if (mlc_array_init(out, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) {
+            return MLC_ERR;
+        }
+    }
+
     int64_t n, i;
     const double *pa;
     double *po;
@@ -298,6 +318,13 @@ mlc_status mlc_op_max(const mlc_array *a, mlc_array *out)
 
 mlc_status mlc_op_min(const mlc_array *a, mlc_array *out)
 {
+    if (mlc_array_numel(out) == 0) {
+        /* 形状未标注的返回值：归约结果恒为 1x1，这里补上分配 */
+        if (mlc_array_init(out, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) {
+            return MLC_ERR;
+        }
+    }
+
     int64_t n, i;
     const double *pa;
     double *po;
@@ -726,12 +753,18 @@ mlc_status mlc_op_transpose(const mlc_array *a, mlc_array *out)
     if (a->dtype != MLC_F64 || out->dtype != MLC_F64) {
         return MLC_ERR;
     }
-    if (a->ndim != 2 || out->ndim != 2) {
+    if (a->ndim != 2) {
         return MLC_ERR;
     }
     m = a->shape[0];
     n = a->shape[1];
-    if (out->shape[0] != n || out->shape[1] != m) {
+    /* 输出为空（形状未标注的返回值）：按转置形状补分配 */
+    if (mlc_array_numel(out) == 0) {
+        if (mlc_array_init(out, MLC_F64, 2, (int64_t[]){n, m}) != MLC_OK) {
+            return MLC_ERR;
+        }
+    }
+    if (out->ndim != 2 || out->shape[0] != n || out->shape[1] != m) {
         return MLC_ERR;
     }
     pa = (const double *)a->data;
