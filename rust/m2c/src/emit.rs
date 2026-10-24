@@ -1070,16 +1070,45 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
         {
             Some(sh) => sh,
             None => {
-                for u in &f.unmapped {
-                    out.push(format!("    /* TODO(unmapped): {} */", sanitize_comment(u)));
+                // 只有**四则运算**实现了"空输出 -> 按广播结论就地分配"，
+                // 所以只对它们启用运行时定形状；其余仍如实放弃（不放大风险）。
+                let dyn_ok = {
+                    let mut ok = false;
+                    walk_stmts(&f.body, &mut |st| {
+                        if let Stmt::Op(op) = st {
+                            if op.lhs == ret.name
+                                && matches!(
+                                    op.id.as_str(),
+                                    "OP-ADD" | "OP-SUB" | "OP-MUL" | "OP-DIV"
+                                )
+                            {
+                                ok = true;
+                            }
+                        }
+                    });
+                    ok
+                };
+                if dyn_ok {
+                    out.push(format!(
+                        "    /* @m2c dynshape: {} 形状未标注，置空后由算子分配 */",
+                        ret.name
+                    ));
+                    vec![0]
+                } else {
+                    for u in &f.unmapped {
+                        out.push(format!(
+                            "    /* TODO(unmapped): {} */",
+                            sanitize_comment(u)
+                        ));
+                    }
+                    out.push(format!(
+                        "    /* TODO(ret): 推断不出 {} 的形状（需要形状标注）*/",
+                        ret.name
+                    ));
+                    out.push("    return MLC_UNIMPLEMENTED;".to_string());
+                    out.push("}".to_string());
+                    return Ok(out.join("\n"));
                 }
-                out.push(format!(
-                    "    /* TODO(ret): 推断不出 {} 的形状（需要形状标注）*/",
-                    ret.name
-                ));
-                out.push("    return MLC_UNIMPLEMENTED;".to_string());
-                out.push("}".to_string());
-                return Ok(out.join("\n"));
             }
         };
         match init_call(&name, &ret.dtype, &shape, true) {

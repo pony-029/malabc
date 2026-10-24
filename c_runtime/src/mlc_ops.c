@@ -76,7 +76,14 @@ static mlc_status mlc_binary_f64(const mlc_array *a, const mlc_array *b,
     if (!mlc_bcast_shape(a, b, shape, &ndim)) {
         return MLC_ERR;              /* 不可广播：不猜 */
     }
-    /* 输出形状必须与广播结论一致（调用方负责 init） */
+    /* 输出为空（形状未标注的返回值）：按广播结论**就地分配**。
+     * 这是"运行时定形状"的唯一入口：调用方把输出置空，算子自己长出来。 */
+    if (mlc_array_numel(out) == 0) {
+        if (mlc_array_init(out, MLC_F64, ndim, shape) != MLC_OK) {
+            return MLC_ERR;
+        }
+    }
+    /* 其余情况仍要求形状与广播结论一致（调用方负责 init） */
     if (out->ndim != ndim) {
         return MLC_ERR;
     }
