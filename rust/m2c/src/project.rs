@@ -45,8 +45,8 @@ fn drivable(f: &Func) -> bool {
     if f.reject.is_some() {
         return false;      // 可变参数：签名无法表达，不参与驱动
     }
+    // 数组入参**不要求**有形状注解：没有就按默认形状 [4] 驱动（并在输出里写明）
     !arrays.is_empty()
-        && arrays.iter().all(|a| !a.shape.is_empty())
         && scalars.len() == f.args.len() - arrays.len()
         && !f.rets.is_empty()
         && f.rets.iter().all(|r| {
@@ -154,10 +154,22 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
         let arrays: Vec<&crate::mir::Var> =
             f.args.iter().filter(|a| a.dtype == "f64").collect();
         let arr = arrays[0];
-        let dims: Vec<String> = arr.shape.iter().map(|d| d.to_string()).collect();
+        // 没有注解就假设一维 4 元素 —— 显式打印，不当作注解
+        let assumed = arr.shape.is_empty();
+        let dims: Vec<String> = if assumed {
+            vec!["4".to_string()]
+        } else {
+            arr.shape.iter().map(|d| d.to_string()).collect()
+        };
         let dt = c_dtype_name(&arr.dtype).unwrap_or("MLC_F64");
         let shape_lit = format!("(int64_t[]){{{}}}", dims.join(", "));
         let an = ident(&arr.name);
+        if assumed {
+            out.push(format!(
+                "    printf(\"{}: assumed shape [4]\\n\");",
+                arr.name
+            ));
+        }
         out.push("    {".to_string());
         out.push(format!("        mlc_array {};", an));
         out.push(format!(
