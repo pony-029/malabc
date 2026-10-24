@@ -1026,20 +1026,8 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
         out.push("}".to_string());
         return Ok(out.join("\n"));
     }
-    if f.rets.is_empty() {
-        // 真实工程里到处是"过程"（无返回值）。整体失败会让整个工程生成不出来，
-        // 所以生成一个**明确的桩**：能编译、调用会返回 UNIMPLEMENTED，不假装成功。
-        let mut out: Vec<String> = Vec::new();
-        out.push(format!("/* 由 m2c 从 MIR 生成 —— 来源函数：{} */", f.name));
-        if !f.source_hash.is_empty() {
-            out.push(format!("/* @m2c source_sha256:{} */", f.source_hash));
-        }
-        out.push(proto(f).replace(';', " {"));
-        out.push("    /* TODO(void): 无返回值的函数本版不生成实现 */".to_string());
-        out.push("    return MLC_UNIMPLEMENTED;".to_string());
-        out.push("}".to_string());
-        return Ok(out.join("\n"));
-    }
+    // 无返回值（"过程"）走正常路径：没有 ret 就没有输出参数，
+    // 末尾统一 `return MLC_OK;`。此前一律给桩，等于放弃 10 个只差这一条的函数。
 
     let mut out: Vec<String> = Vec::new();
     out.push(format!("/* 由 m2c 从 MIR 生成 —— 勿手改；来源函数：{} */", f.name));
