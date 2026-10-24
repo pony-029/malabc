@@ -323,6 +323,14 @@ def _index_operand(name, args, shapes, counter, emit):
     return None
 
 
+#: 纯输出/计时类调用：不产生数据，丢弃安全（`error` 不在此列 —— 它是控制流）
+_SIDE_EFFECT_OK = frozenset((
+    "disp", "display", "fprintf", "printf", "sprintf", "clc", "clear",
+    "close", "close all", "more", "more on", "more off", "tic", "toc",
+    "drawnow", "pause", "warning", "format", "echo", "beep",
+))
+
+
 def _split_top(expr):
     """按**优先级**选顶层运算符切分（同级取最右，左结合）。
 
@@ -832,6 +840,11 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                                % (am0.group(1), cm0.group(1), ":".join(args)))
                     n_calls[0] += 1
                     continue
+            # 纯输出/计时调用：不产生数据 -> 直接丢弃（保留语义的只有"屏幕没字"）
+            _sm = re.match(r"^([A-Za-z_]\w*)\s*\(([^()]*)\)\s*;?$", code)
+            if _sm and _sm.group(1) in _SIDE_EFFECT_OK:
+                out.append("/* 已丢弃副作用调用：%s */" % code.strip()[:60])
+                continue
             # 丢弃返回值的调用：`foo(a,b);`（本工程函数）—— 造临时量走 call 通道
             _vm = re.match(r"^([A-Za-z_]\w*)\s*\(([^()]*)\)\s*;?$", code)
             if _vm and _vm.group(1) in fnames:

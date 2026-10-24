@@ -41,11 +41,13 @@ CHECKS = (
 )
 
 
-def _run_one(test_file):
-    """跑一个（或一组）用例文件；返回 (ok, 末行, 输出尾部)。"""
-    files = test_file if isinstance(test_file, (list, tuple)) else [test_file]
+def _run_all():
+    """一次跑完全部用例文件；返回 (ok, tail, out)。"""
+    files = []
+    for _, f, _ in CHECKS:
+        files.extend(f if isinstance(f, (list, tuple)) else [f])
     cmd = [sys.executable, "-m", "pytest"] + list(files) + [
-        "-q", "--tb=line", "-p", "no:cacheprovider"]
+        "-q", "--tb=no", "-rf", "-p", "no:cacheprovider"]
     env = dict(os.environ)
     env["PYTHONIOENCODING"] = "utf-8"
     p = subprocess.run(cmd, cwd=ROOT, stdin=subprocess.DEVNULL,
@@ -55,6 +57,26 @@ def _run_one(test_file):
     lines = [ln for ln in out.strip().splitlines() if ln.strip()]
     tail = lines[-1] if lines else ""
     return p.returncode == 0, tail, out
+
+
+def _attribute(out):
+    """从 `FAILED tests/x.py::test_y` 行归因到判据前缀。"""
+    probs = []
+    hit_files = {}
+    for ln in out.splitlines():
+        if not ln.startswith("FAILED "):
+            continue
+        path = ln[7:].split("::")[0].strip().replace("/", os.sep)
+        hit_files[path] = hit_files.get(path, 0) + 1
+    for prefix, f, why in CHECKS:
+        files = f if isinstance(f, (list, tuple)) else [f]
+        n = sum(hit_files.get(x, 0) for x in files)
+        if n:
+            probs.append("%s —— %s（%d 个用例失败）" % (why, "见下", n))
+    if not probs:
+        # 收集期就炸了（不是某个用例失败）：归到第一条判据
+        probs.append("%s —— 用例收集/启动失败，见上方输出" % CHECKS[0][2])
+    return probs
 
 
 def selftest():
@@ -100,19 +122,12 @@ def main(argv=None):
         print("check_generated_compiles: 缺 pytest（GX1/GX2 无法执行）")
         return 2
 
-    probs = []
-    for prefix, test_file, why in CHECKS:
-        ok, tail, out = _run_one(test_file)
-        if ok:
-            continue
-        detail = tail or out.strip().splitlines()[-1:]
-        if isinstance(detail, list):
-            detail = " ".join(detail)
-        probs.append("%s —— %s" % (why, detail[:120]))
-
+    ok, tail, out = _run_all()
+    probs = [] if ok else _attribute(out)
     for p in probs:
         print("  - " + p)
     if probs:
+        print(out[-1200:])
         print("check_generated_compiles: %d 项不合规（%s）"
               % (len(probs), ROW_SIGNATURE))
         return 1
