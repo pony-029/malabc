@@ -54,6 +54,12 @@ OPERATORS = (
      "verified_by": "op_min_vector.json"},
     # 由 mir.py 的降级产生（`y(i) = v`），不经过 parse_line —— 因此没有 sample；
     # 它由数值语料 cumsum_loop + 夹具 op_setidx_1d 共同验证。
+    {"id": "OP-NUMEL", "matlab": "numel(x)", "c": "mlc_op_numel",
+     "kind": "reduction", "rules": ("ORDER-1",),
+     "sample": "y = numel(x);"},
+    {"id": "OP-LENGTH", "matlab": "length(x)", "c": "mlc_op_length",
+     "kind": "reduction", "rules": ("ORDER-1",),
+     "sample": "y = length(x);"},
     {"id": "OP-ISEMPTY", "matlab": "isempty(x)", "c": "mlc_op_isempty",
      "kind": "reduction", "rules": ("ORDER-1",),
      "sample": "y = isempty(x);"},
@@ -100,11 +106,16 @@ OPERATORS = (
 C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV",
                  "OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN", "OP-INDEX",
                  "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE",
-                 "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY")
+                 "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH")
 
 #: `y(i) = v`（元素赋值）。左边带下标，_ASSIGN_RE 抓不到，单列一条。
 _SETIDX_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*|\d+)\s*\)"
                           r"\s*=\s*([A-Za-z_]\w*|-?\d+(?:\.\d+)?)\s*;?\s*$")
+#: `y = numel(x)` / `y = length(x)`
+_NUMEL_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*numel\s*\(\s*"
+                         r"([A-Za-z_]\w*)\s*\)\s*;?\s*$")
+_LENGTH_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*length\s*\(\s*"
+                          r"([A-Za-z_]\w*)\s*\)\s*;?\s*$")
 #: `y = isempty(x)`
 _ISEMPTY_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*isempty\s*\(\s*"
                            r"([A-Za-z_]\w*)\s*\)\s*;?\s*$")
@@ -162,6 +173,15 @@ def by_id(op_id):
 
 def parse_line(line):
     """把一条 MATLAB 赋值语句识别成算子；识别不了返回 None（进 unmapped）。"""
+    nm = _NUMEL_LINE.match(line or "")
+    if nm:
+        return {"operator": "OP-NUMEL", "lhs": nm.group(1),
+                "args": [nm.group(2)], "raw": line.rstrip("\n")}
+    lm2 = _LENGTH_LINE.match(line or "")
+    if lm2:
+        return {"operator": "OP-LENGTH", "lhs": lm2.group(1),
+                "args": [lm2.group(2)], "raw": line.rstrip("\n")}
+
     em = _ISEMPTY_LINE.match(line or "")
     if em:
         return {"operator": "OP-ISEMPTY", "lhs": em.group(1),

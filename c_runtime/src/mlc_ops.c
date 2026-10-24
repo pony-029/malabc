@@ -331,6 +331,48 @@ mlc_status mlc_op_setidx(mlc_array *a, const mlc_array *v, int64_t i)
     return MLC_OK;
 }
 
+mlc_status mlc_op_numel(const mlc_array *a, mlc_array *out)
+{
+    int64_t n;
+
+    if (a == NULL || out == NULL || out->data == NULL) {
+        return MLC_ERR;
+    }
+    if (out->dtype != MLC_F64 || mlc_array_numel(out) != 1) {
+        return MLC_ERR;
+    }
+    n = mlc_array_numel(a);
+    if (n < 0) {
+        return MLC_ERR;
+    }
+    ((double *)out->data)[0] = (double)n;
+    return MLC_OK;
+}
+
+mlc_status mlc_op_length(const mlc_array *a, mlc_array *out)
+{
+    int64_t i, best = 0;
+
+    if (a == NULL || out == NULL || out->data == NULL) {
+        return MLC_ERR;
+    }
+    if (out->dtype != MLC_F64 || mlc_array_numel(out) != 1) {
+        return MLC_ERR;
+    }
+    /* length(X) = max(size(X))；0 维退回 numel */
+    if (a->ndim <= 0) {
+        ((double *)out->data)[0] = (double)mlc_array_numel(a);
+        return MLC_OK;
+    }
+    for (i = 0; i < a->ndim; ++i) {
+        if (a->shape[i] > best) {
+            best = a->shape[i];
+        }
+    }
+    ((double *)out->data)[0] = (double)best;
+    return MLC_OK;
+}
+
 mlc_status mlc_op_isempty(const mlc_array *a, mlc_array *out)
 {
     int64_t n;

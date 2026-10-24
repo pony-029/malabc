@@ -37,6 +37,14 @@
   YALMIP 全工程 `gcc -fsyntax-only` 仍通过
 - 说明：剩下 10 个 void 函数里只有 3 个真正变干净，另外 7 个还有别的阻塞 ——
   **不为凑数把它们算进来**
+- **新增标量算子 `OP-NUMEL` / `OP-LENGTH`**（C / 算子表 / 发射器 / 解释器四层齐）：
+  `if numel(v) < 3` 此前被降成 `op:OP-INDEX:__t1:numel:v` ——
+  即"对名为 `numel` 的数组取第 v 个元素"，**能生成、能编译、结果全错**
+  （与 R483 的 `isempty` 同一类误判）。语料增至 **24 个**（`countel: 4`）
+- **YALMIP 的 `TODO(arg)` 4 → 2**；但干净函数数**仍是 3** ——
+  析出的问题跑到下一层（`TODO(call)` 12 → 15：`numel`/`length` 被同工程同名函数遮蔽），
+  **不拿"某一类 TODO 下降"当进展**
+- YALMIP 全工程 `gcc -fsyntax-only` 仍通过；17 道门全绿
 
 
 ## 2.2.2

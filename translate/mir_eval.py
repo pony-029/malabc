@@ -151,6 +151,11 @@ def _apply_op(oid, args):
         if off is None:
             return None
         return Arr([a.data[off]], [1])
+    if oid == "OP-NUMEL":
+        return Arr([float(len(args[0].data))], [1])
+    if oid == "OP-LENGTH":
+        sh = args[0].shape or [len(args[0].data)]
+        return Arr([float(max(sh))], [1])
     if oid == "OP-ISEMPTY":
         return Arr([1.0 if len(args[0].data) == 0 else 0.0], [1])
     if oid == "OP-ROW":

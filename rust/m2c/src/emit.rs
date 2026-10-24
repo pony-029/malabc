@@ -12,7 +12,7 @@ use crate::mir::{walk_stmts, Cond, Func, Op, Stmt};
 pub const C_IMPLEMENTED: &[&str] = &[
     "OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-SUM", "OP-MEAN", "OP-MAX",
     "OP-MIN", "OP-INDEX", "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE",
-    "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY",
+    "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH",
 ];
 
 /// 已知但 C 落点仍未实现的算子（诚实边界）。
@@ -278,8 +278,8 @@ fn out_shape(f: &Func, op: &Op) -> Option<Vec<i64>> {
         }
         return None; // 3-D+ 暂不推断，避免猜错
     }
-    // isempty(x)：标量 0/1
-    if op.id == "OP-ISEMPTY" {
+    // 标量结果算子
+    if op.id == "OP-ISEMPTY" || op.id == "OP-NUMEL" || op.id == "OP-LENGTH" {
         return Some(vec![1]);
     }
 
