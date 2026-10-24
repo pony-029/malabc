@@ -90,10 +90,23 @@ pub fn op_is_dynamic(id: &str) -> bool {
 /// 这个返回值是不是由动态长度算子产生的。
 pub fn ret_is_dynamic(f: &Func, name: &str) -> bool {
     let mut dyn_out = false;
+    // 没有声明形状的返回值：由算子按结果形状运行时分配
+    let unshaped = f.var_shape(name).is_none();
     walk_stmts(&f.body, &mut |s| {
         if let Stmt::Op(op) = s {
-            if op.lhs == name && op_is_dynamic(&op.id) {
-                dyn_out = true;
+            if op.lhs == name {
+                if op_is_dynamic(&op.id) {
+                    dyn_out = true;
+                }
+                // 四则运算族：输出为空时按广播结论就地分配（见 mlc_binary_f64）
+                if unshaped
+                    && matches!(
+                        op.id.as_str(),
+                        "OP-ADD" | "OP-SUB" | "OP-MUL" | "OP-DIV"
+                    )
+                {
+                    dyn_out = true;
+                }
             }
         }
     });
@@ -1044,9 +1057,26 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
         }
         let name = ret_cname(f, &ret.name);
         if ret_is_dynamic(f, &ret.name) {
-            // 长度数据相关：由算子分配（`*_alloc`）。
-            // 注意返回值是**形参指针**（`mlc_array *y`），不能在这里再声明一个同名局部；
-            // 调用方负责把它初始化为 {0}，否则 free 会碰到野指针。
+            // A) alloc 型（OP-MASK/OP-FIND）：算子里 malloc，**不要**预初始化
+            let alloc_style = {
+                let mut hit = false;
+                walk_stmts(&f.body, &mut |st| {
+                    if let Stmt::Op(op) = st {
+                        if op.lhs == ret.name && op_is_dynamic(&op.id) {
+                            hit = true;
+                        }
+                    }
+                });
+                hit
+            };
+            if alloc_style {
+                continue;
+            }
+            // B) 四则运算型：先置成**空数组**，算子再按广播结论就地分配
+            out.push(format!(
+                "    if (mlc_array_init({}, MLC_F64, 1, (int64_t[]){{0}}) != MLC_OK) {{ return MLC_ERR; }}",
+                name
+            ));
             continue;
         }
         // 形状来源：先看"哪条语句写了它"，否则用 ret 上声明的形状。
