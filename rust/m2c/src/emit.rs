@@ -1246,6 +1246,10 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
         if bound.is_none() { need_free.push(n.clone()); }
     }
     for (n, dims, v, src) in &fills {
+        // 已在暂存量里声明过（并且已清零）：不再声明/初始化，避免 redeclaration
+        if temps.iter().any(|(t, _, _)| t == n) {
+            continue;
+        }
         if let Some(c) = src_comment(*src, "    ") { out.push(c); }
         let bound = bind_target(f, n);
         let ptr = bound.as_ref().map(|(_, p)| *p).unwrap_or(false);

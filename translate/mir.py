@@ -331,6 +331,46 @@ _SIDE_EFFECT_OK = frozenset((
 ))
 
 
+def _fix_scalar_array_conflict(out):
+    """把「同一名字既当数组又当 i64 标量」修正为**只当数组**。
+
+    判据保守：
+      * 数组名 = 出现在 fill: / call: / call2: / op: 的**左值**位置
+      * 对这些名字：删掉 `var:<n>:i64`；把 `set:<n>:<数字>` 改成 `const:<n>:<数字>`
+        （const 的语义正是"把 1x1 的值写进数组"）
+      * `setb:` 涉及表达式，遇到就**保留不动**（宁可让它在那条语句上失败，也不猜）
+    """
+    array_names = set()
+    for ln in out:
+        if ln.startswith("fill:"):
+            array_names.add(ln.split(":")[1])
+        elif ln.startswith("call:"):
+            array_names.add(ln.split(":")[1])
+        elif ln.startswith("call2:"):
+            for n in ln.split(":")[1].split(","):
+                array_names.add(n.strip())
+        elif ln.startswith("op:"):
+            parts = ln.split(":")
+            if len(parts) > 2:
+                array_names.add(parts[2])
+    if not array_names:
+        return
+    fixed = []
+    for ln in out:
+        if ln.startswith("var:"):
+            parts = ln.split(":")
+            if len(parts) >= 3 and parts[1] in array_names and parts[2] == "i64":
+                continue                      # 不再声明成 i64
+        if ln.startswith("set:"):
+            parts = ln.split(":")
+            if len(parts) >= 3 and parts[1] in array_names and re.match(
+                    r"^-?\d+(\.\d+)?$", parts[2]):
+                fixed.append("const:%s:%s" % (parts[1], parts[2]))
+                continue
+        fixed.append(ln)
+    out[:] = fixed
+
+
 def _split_top(expr):
     """按**优先级**选顶层运算符切分（同级取最右，左结合）。
 
