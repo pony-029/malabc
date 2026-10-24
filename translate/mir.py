@@ -843,7 +843,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             # 纯输出/计时调用：不产生数据 -> 直接丢弃（保留语义的只有"屏幕没字"）
             _sm = re.match(r"^([A-Za-z_]\w*)\s*\(([^()]*)\)\s*;?$", code)
             if _sm and _sm.group(1) in _SIDE_EFFECT_OK:
-                out.append("/* 已丢弃副作用调用：%s */" % code.strip()[:60])
+                _snip = " ".join(code.strip().split())[:60].replace("*/", "*_/")
+                out.append("# dropped: %s" % _snip)
                 continue
             # 丢弃返回值的调用：`foo(a,b);`（本工程函数）—— 造临时量走 call 通道
             _vm = re.match(r"^([A-Za-z_]\w*)\s*\(([^()]*)\)\s*;?$", code)
