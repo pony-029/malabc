@@ -789,11 +789,16 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
             Stmt::Const { .. } | Stmt::Fill { .. } => {}
             Stmt::Set { lhs, value, src } => {
                 if let Some(c) = src_comment(*src, indent) { out.push(c); }
-                let ok_lhs = f
-                    .var_dtype(lhs)
-                    .map(|d| is_scalar_dt(&d))
-                    .unwrap_or(false)
-                    || f.locals.iter().any(|v| &v.name == lhs);
+                // 形参/返回值都是 mlc_array（或指针），永远不是 i64 标量 ——
+                // 否则会生成 `df = latest_df;`（int64_t -> mlc_array*）
+                let is_param = f.args.iter().any(|a| &a.name == lhs)
+                    || f.rets.iter().any(|r| &r.name == lhs);
+                let ok_lhs = !is_param
+                    && (f
+                        .var_dtype(lhs)
+                        .map(|d| is_scalar_dt(&d))
+                        .unwrap_or(false)
+                        || f.locals.iter().any(|v| &v.name == lhs));
                 match (ok_lhs, scalar_expr(f, value)) {
                     (true, Some(v)) => {
                         out.push(format!("{}{} = {};", indent, ident(lhs), v))
@@ -1265,7 +1270,17 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
     }
 
     for l in &f.locals {
-        out.push(format!("    int64_t {} = 0;", ident(&l.name)));
+        let n = ident(&l.name);
+        // 已经是形参 / 返回值 / 暂存量 / fill 目标的，不再声明
+        // （否则 gcc: conflicting types / redeclared as different kind of symbol）
+        let dup = f.args.iter().any(|a| a.name == l.name)
+            || f.rets.iter().any(|r| r.name == l.name)
+            || temps.iter().any(|(t, _, _)| t == &n)
+            || fills.iter().any(|(x, _, _, _)| x == &n);
+        if dup {
+            continue;
+        }
+        out.push(format!("    int64_t {} = 0;", n));
     }
     let (body, terminated) = emit_block(f, &f.body, "    ", known);
     out.extend(body);
