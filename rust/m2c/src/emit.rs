@@ -437,7 +437,7 @@ mod tests {
 }
 
 
-fn out_shape_for(f: &Func, name: &str, known: &[Func]) -> Option<Vec<i64>> {
+pub(crate) fn out_shape_for(f: &Func, name: &str, known: &[Func]) -> Option<Vec<i64>> {
     let mut shape = None;
     walk_stmts(&f.body, &mut |s| match s {
         Stmt::Op(op) => {

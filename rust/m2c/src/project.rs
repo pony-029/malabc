@@ -37,7 +37,7 @@ fn c_dtype_name(dt: &str) -> Option<&'static str> {
 }
 
 /// 能否被 demo main 驱动：1 个数组入参 + 任意个 i64 标量 + 至少一个数组返回。
-fn drivable(f: &Func) -> bool {
+fn drivable(f: &Func, known: &[Func]) -> bool {
     let arrays: Vec<_> = f.args.iter().filter(|a| a.dtype == "f64").collect();
     let scalars: Vec<_> = f.args.iter().filter(|a| a.dtype == "i64").collect();
     // 数组入参可以是多个（矩阵乘需要 A、B）；每个都必须有形状 ——
@@ -51,9 +51,13 @@ fn drivable(f: &Func) -> bool {
         && !f.rets.is_empty()
         && f.rets.iter().all(|r| {
             r.dtype == "f64"
-                // 动态长度的返回值没有声明形状，由算子分配 —— 这是合法的
+                // 三种情况都合法：
+                //   1) ret 自己声明了形状
+                //   2) 动态长度：由算子按结果分配
+                //   3) 发射器能从"写它的那条语句"推出形状（fill/call/set）
                 && (!r.shape.is_empty()
-                    || crate::emit::ret_is_dynamic(f, &r.name))
+                    || crate::emit::ret_is_dynamic(f, &r.name)
+                    || crate::emit::out_shape_for(f, &r.name, known).is_some())
         })
 }
 
@@ -138,7 +142,7 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
     out.push("static int m2c_rt_run_all(void) {".to_string());
 
     for f in funcs {
-        if !drivable(f) {
+        if !drivable(f, funcs) {
             // 被 reject 的（cell / varargin）与"缺形状"是两件事：
             // 前者永远转不了，后者补注解就行 —— 输出里必须分开，否则读者会去补注解。
             match &f.reject {
@@ -184,11 +188,11 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
             an, arr.name
         ));
         out.push(format!(
-            "        for (int64_t i = 0; i < mlc_array_numel(&{}); ++i) {{",
+            "        for (int64_t m2c_ii = 0; m2c_ii < mlc_array_numel(&{}); ++m2c_ii) {{",
             an
         ));
         out.push(format!(
-            "            ((double *){}.data)[i] = (i < got_{}) ? vals[i] : (double)(i + 1);",
+            "            ((double *){}.data)[m2c_ii] = (m2c_ii < got_{}) ? vals[m2c_ii] : (double)(m2c_ii + 1);",
             an, an
         ));
         out.push("        }".to_string());
@@ -300,7 +304,7 @@ fn gen_fixture_example(funcs: &[Func]) -> String {
     out.push("# 数组按 numel 给足；标量给一个整数。".to_string());
     let mut seen: Vec<String> = Vec::new();
     for f in funcs {
-        if !drivable(f) {
+        if !drivable(f, funcs) {
             continue;
         }
         for a in &f.args {
@@ -575,7 +579,7 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
         };
         out.push(format!("    /* 夹具：{} */", cname));
         for f in funcs {
-            if !drivable(f) {
+            if !drivable(f, funcs) {
                 continue;
             }
             let arrays: Vec<&crate::mir::Var> =

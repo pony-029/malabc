@@ -144,6 +144,16 @@
   即：下一个可攻的群体是这 **149** 个 —— 它们不是被 struct 挡住，而是"形状"挡住
 - 工具自证 5 项；两处自伤 bug 当场修掉（`--selftest` 被参数校验拦截；
   清理逻辑一度会 `rmtree` **临时根目录**，被沙箱拦住后改为只删本次工作目录）
+- **可执行读数第一次「账平」**：`numeric 3 + unimplemented 37 + error 0 +
+  skipped_shape 121 + skipped_reject 1043 = 1204`（= 函数总数）
+  - 修了两处口径错误：
+    1) `runnable_report` **漏统计 `unimplemented`**（77 行从总数里悄悄消失，
+       导致上一轮"可驱动 1167"这个分母是错的）
+    2) `drivable()` 只看 MIR 里 `ret:` 声明的形状，而发射器**能**从
+       `fill:`/`call:` 推断 —— 两者对齐后 `skipped_shape` 149 → 121
+  - 顺带修驱动撞名：循环变量 `i` 与入参名 `i` 冲突（YALMIP 有 `function ...(i)`），
+    改为 `m2c_ii`
+- 如实记：**numeric 仍是 3** —— 放宽可驱动面没有直接变成"能算的数"
 
 
 ## 2.2.2

@@ -67,6 +67,10 @@ def classify(text):
                 kind = "skipped_shape"
         elif rest == "error":
             kind = "error"
+        elif rest.startswith("unimplemented"):
+            # 跑起来了，但函数体是桩（MLC_UNIMPLEMENTED）—— 与 error 不同：
+            # error 是算子运行期失败，unimplemented 是从未真正实现
+            kind = "unimplemented"
         elif re.match(r"^-?\d", rest):
             kind = "numeric"
         else:
@@ -165,6 +169,7 @@ def main(argv=None):
     total = sum(cnt.values())
     print("用例 %s ｜ 可驱动函数 %d" % (args.src, total))
     print("  numeric（真能算） : %d" % cnt["numeric"])
+    print("  unimplemented     : %d（桩：跑了但没实现）" % cnt["unimplemented"])
     print("  error             : %d" % cnt["error"])
     print("  skipped_reject    : %d" % cnt["skipped_reject"])
     print("  skipped_shape     : %d" % cnt["skipped_shape"])
