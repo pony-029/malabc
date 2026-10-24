@@ -118,6 +118,17 @@
   这也是上一轮"可驱动之后 0 个函数产出数值"的真因 ——
   当时我先怀疑广播，写了微测试才排除，最后定位到驱动这一行。
 - 顺带修：`assumed shape` 的打印被推到了代码块外面（顺序错）
+- **把「零注解」这条链上锁**（上一轮第 1 项）：新增
+  `translate/examples/nouns/scale2x.m`（**不带任何 shape 注解**）与
+  `tests/test_nounshaped.py`：断言驱动打印 `k: assumed shape [4]`，
+  且数值为 `scale2x: 2 4 6 8`
+  - **两向验证**：把驱动里 `dims.len()` 改回 `arr.shape.len()`（上轮的真 bug）
+    → `1 failed`；还原 → `1 passed`
+  - 同时接进 GX1（编译）与 GX2（运行），**发版时会自动跑**
+- **YALMIP 可执行读数（第一次有意义的数字）**：1216 行输出里
+  **有数值 3 个函数**（`leaf_fn` / `helper_one` / `helper_two`），`error` 0 个，
+  其余仍是 `skipped (reject:…)`
+  —— 这才是"真正可用的函数数"，比"干净 7 个"低，但它是**跑出来的**
 
 
 ## 2.2.2

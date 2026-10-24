@@ -36,7 +36,8 @@ CHECKS = (
     ("GX1", os.path.join("tests", "test_generated_compiles.py"),
      "GX1 示例工程（numeric / proj / demo_port.m）转出的 C 编译不过"),
     ("GX2", (os.path.join("tests", "test_void_call.py"),
-             os.path.join("tests", "test_multi_return.py")),
+             os.path.join("tests", "test_multi_return.py"),
+             os.path.join("tests", "test_nounshaped.py")),
      "GX2 丢弃返回值的调用退回 unmapped，或多返回值算错/编译不过"),
 )
 

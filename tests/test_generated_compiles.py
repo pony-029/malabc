@@ -26,6 +26,7 @@ CASES = [
     (os.path.join(EX, "numeric"), True),
     (os.path.join(EX, "proj"), True),
     (os.path.join(EX, "multi"), True),
+    (os.path.join(EX, "nouns"), True),
     (os.path.join(EX, "demo_port.m"), False),
 ]
 
