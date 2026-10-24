@@ -129,6 +129,21 @@
   **有数值 3 个函数**（`leaf_fn` / `helper_one` / `helper_two`），`error` 0 个，
   其余仍是 `skipped (reject:…)`
   —— 这才是"真正可用的函数数"，比"干净 7 个"低，但它是**跑出来的**
+- **新增 `tools/runnable_report.py`**（上一轮第 1 项）：端到端「可执行读数」
+  转换 → 生成 → 编译 → 跑 → 按 **numeric / error / skipped_reject / skipped_shape**
+  分类。此前这个数字靠手敲 PowerShell 过滤，**不可复现**
+- **第一次拿到可复现的 YALMIP 读数**：
+
+  | 类别 | 数量 | 含义 |
+  |---|---|---|
+  | **numeric** | **3** | 真正算出数值（唯一可用） |
+  | error | 0 | 跑起来但失败 |
+  | skipped_reject | 1043 | 整函数被拒（struct/cell/varargin） |
+  | **skipped_shape** | **149** | 可转但不可驱动（返回值形状未知且不可动态推断） |
+
+  即：下一个可攻的群体是这 **149** 个 —— 它们不是被 struct 挡住，而是"形状"挡住
+- 工具自证 5 项；两处自伤 bug 当场修掉（`--selftest` 被参数校验拦截；
+  清理逻辑一度会 `rmtree` **临时根目录**，被沙箱拦住后改为只删本次工作目录）
 
 
 ## 2.2.2
