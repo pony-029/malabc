@@ -224,6 +224,14 @@
   实测 `assertProperty` 的 C 头部直接显示
   `unmapped: properties = setfield(properties,checkfor,default);` —— 真因一目了然。
 - 语料/读数：`numeric 3`、语料 27/27、官方全检 rc=0（本轮不动能力，只修可观测性）
+- **按「真因」重新分类桩（1197 个含 UNIMPLEMENTED，其中非 reject 的 55 个）**：
+  只有 **18 个**带 `unmapped` 记录，其余失败于形状/调用 —— **没有单一可修的大类**。
+  这 18 个的形态是 `isa` / `try` / `for i=1:size(A,2)` / `spalloc` / `[A B]` 拼接，
+  彼此不成簇。
+- **更正上一轮的一个错误结论**：`docs/KNOWN_LIMITS.md` 3.1 原写"无写入 71 处 = 分支赋值"，
+  核对样本后改为：**赋值语句本身未被映射**（`setfield`/`spalloc`/拼接），
+  "形状推不出"只是**症状**。这正是本轮把 `/* unmapped: */` 移到函数头的原因。
+- README 两份补 `OPERATOR_CHECKLIST.md` 链接（`check_readme_parity` OK）
 
 
 ## 2.2.2
