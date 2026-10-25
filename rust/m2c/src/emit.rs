@@ -280,6 +280,16 @@ fn resolved_shape_d(f: &Func, name: &str, depth: u32) -> Option<Vec<i64>> {
                 return;
             }
             match op.id.as_str() {
+                // 逐元素标量函数：形状同输入，顺着链拿（depth + 1 防环）
+                "OP-SQRT" | "OP-ABS" | "OP-EXP" | "OP-LOG" | "OP-SIN" | "OP-COS"
+                | "OP-TAN" | "OP-FLOOR" | "OP-CEIL" | "OP-ROUND" | "OP-LOG2"
+                | "OP-LOG10"
+                    if op.args.len() == 1 =>
+                {
+                    if let Some(src) = resolved_shape_d(f, &op.args[0], depth + 1) {
+                        found = Some(src);
+                    }
+                }
                 "OP-FLATTEN" if op.args.len() == 1 => {
                     if let Some(src) = resolved_shape_d(f, &op.args[0], depth + 1) {
                         let n: i64 = src.iter().product();
