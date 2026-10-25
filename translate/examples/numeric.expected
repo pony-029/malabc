@@ -1,4 +1,5 @@
 above: 3 4 5
+col1: 2 5
 col2sum: 12
 colmax_loop: 6
 colmean: 1 3 5

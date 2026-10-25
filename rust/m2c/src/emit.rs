@@ -12,7 +12,7 @@ use crate::mir::{walk_stmts, Cond, Func, Op, Stmt};
 pub const C_IMPLEMENTED: &[&str] = &[
     "OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-SUM", "OP-MEAN", "OP-MAX",
     "OP-MIN", "OP-INDEX", "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE",
-    "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE",
+    "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE", "OP-COL",
 ];
 
 /// 已知但 C 落点仍未实现的算子（诚实边界）。
@@ -314,6 +314,15 @@ fn out_shape(f: &Func, op: &Op) -> Option<Vec<i64>> {
             return Some(vec![1]);
         }
         return None; // 3-D+ 暂不推断，避免猜错
+    }
+    // 取列：输出一维，长度 = 入参的行数
+    if op.id == "OP-COL" {
+        if let Some(sh) = resolved_shape(f, &op.args[0]) {
+            if !sh.is_empty() {
+                return Some(vec![sh[0]]);
+            }
+        }
+        return None;
     }
     // 标量结果算子
     if op.id == "OP-ISEMPTY"
@@ -618,6 +627,17 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
         out.push(format!("{}st = mlc_op_index({}, {}, {});", pad, arg0, idx_c, dst));
     } else if op.args.len() == 1 {
         out.push(format!("{}st = mlc_op_{}({}, {});", pad, op_c_name(&op.id), arg0, dst));
+    } else if op.id == "OP-COL" && op.args.len() == 2 {
+        let j = &op.args[1];
+        let jc = if is_int_literal(j) {
+            format!("(int64_t){}", j)
+        } else {
+            ident(j)
+        };
+        out.push(format!(
+            "{}st = mlc_op_col({}, {}, {});",
+            pad, arg0, jc, dst
+        ));
     } else if op.id == "OP-SIZE" && op.args.len() == 2 {
         // 第二个参数是**维度字面量**（与 OP-INDEX 的索引同一种处理）
         let dim = &op.args[1];

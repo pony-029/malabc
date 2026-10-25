@@ -151,6 +151,14 @@ def _apply_op(oid, args):
         if off is None:
             return None
         return Arr([a.data[off]], [1])
+    if oid == "OP-COL":
+        a = args[0]
+        j = int(args[1]) if isinstance(args[1], int) else int(args[1].data[0])
+        sh = a.shape or [len(a.data)]
+        if len(sh) < 2 or j < 1 or j > sh[1]:
+            raise ValueError("col 越界")
+        rows = sh[0]
+        return Arr([a.data[i + (j - 1) * rows] for i in range(rows)], [rows])
     if oid == "OP-SIZE":
         dim = int(args[1]) if len(args) > 1 else 1
         sh = args[0].shape or [len(args[0].data)]

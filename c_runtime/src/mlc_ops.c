@@ -365,6 +365,33 @@ mlc_status mlc_op_setidx(mlc_array *a, const mlc_array *v, int64_t i)
     return MLC_OK;
 }
 
+mlc_status mlc_op_col(const mlc_array *a, int64_t j, mlc_array *out)
+{
+    int64_t i, rows;
+
+    if (a == NULL || out == NULL || out->data == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64 || out->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    if (a->ndim != 2) {
+        return MLC_ERR;              /* 只对 2-D 取列 */
+    }
+    rows = a->shape[0];
+    if (j < 1 || j > a->shape[1]) {
+        return MLC_ERR;              /* 越界：不猜 */
+    }
+    if (mlc_array_numel(out) != rows) {
+        return MLC_ERR;
+    }
+    for (i = 0; i < rows; ++i) {
+        ((double *)out->data)[i] =
+            ((const double *)a->data)[i + (j - 1) * a->strides[1]];
+    }
+    return MLC_OK;
+}
+
 mlc_status mlc_op_size_dim(const mlc_array *a, int64_t dim,
                            mlc_array *out)
 {

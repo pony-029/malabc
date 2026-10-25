@@ -54,6 +54,9 @@ OPERATORS = (
      "verified_by": "op_min_vector.json"},
     # 由 mir.py 的降级产生（`y(i) = v`），不经过 parse_line —— 因此没有 sample；
     # 它由数值语料 cumsum_loop + 夹具 op_setidx_1d 共同验证。
+    {"id": "OP-COL", "matlab": "A(:,k)", "c": "mlc_op_col",
+     "kind": "slice", "rules": ("IDX-1",),
+     "sample": "y = A(:,2);"},
     {"id": "OP-SIZE", "matlab": "size(x,dim)", "c": "mlc_op_size_dim",
      "kind": "reduction", "rules": ("ORDER-1",),
      "sample": "y = size(x,2);"},
@@ -109,11 +112,14 @@ OPERATORS = (
 C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV",
                  "OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN", "OP-INDEX",
                  "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE",
-                 "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE")
+                 "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE", "OP-COL")
 
 #: `y(i) = v`（元素赋值）。左边带下标，_ASSIGN_RE 抓不到，单列一条。
 _SETIDX_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*|\d+)\s*\)"
                           r"\s*=\s*([A-Za-z_]\w*|-?\d+(?:\.\d+)?)\s*;?\s*$")
+#: `y = A(:, k)` —— 取单列（k 字面量或变量）
+_COL_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*"
+                       r"\(\s*:\s*,\s*([A-Za-z_]\w*|\d+)\s*\)\s*;?\s*$")
 #: `y = size(x, N)` —— 第二参数必须是**数字字面量**
 _SIZE_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*size\s*\(\s*"
                         r"([A-Za-z_]\w*)\s*,\s*(\d+)\s*\)\s*;?\s*$")
@@ -179,6 +185,12 @@ def by_id(op_id):
 
 def parse_line(line):
     """把一条 MATLAB 赋值语句识别成算子；识别不了返回 None（进 unmapped）。"""
+    cm3 = _COL_LINE.match(line or "")
+    if cm3:
+        return {"operator": "OP-COL", "lhs": cm3.group(1),
+                "args": [cm3.group(2), cm3.group(3)],
+                "raw": line.rstrip("\n")}
+
     sm2 = _SIZE_LINE.match(line or "")
     if sm2:
         return {"operator": "OP-SIZE", "lhs": sm2.group(1),
