@@ -449,8 +449,11 @@ pub(crate) fn out_shape_for(f: &Func, name: &str, known: &[Func]) -> Option<Vec<
         Stmt::Fill { name: n2, dims, .. } if n2 == name => {
             shape = Some(dims.clone()).or_else(|| shape.clone());
         }
-        // `A = 3` —— 标量，形状 1x1
+        // `A = 3` / `A = <数字字面量>` —— 标量，形状 1x1
         Stmt::Set { lhs, .. } | Stmt::SetBin { lhs, .. } if lhs == name => {
+            shape = Some(vec![1]).or_else(|| shape.clone());
+        }
+        Stmt::Const { name: n2, .. } if n2 == name => {
             shape = Some(vec![1]).or_else(|| shape.clone());
         }
         // `A = f(x)` —— 取被调函数第一个返回值的**已标注**形状；没标注就是 None
