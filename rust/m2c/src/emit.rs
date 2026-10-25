@@ -88,17 +88,17 @@ pub fn op_is_dynamic(id: &str) -> bool {
 }
 
 /// 这个返回值是不是由动态长度算子产生的。
-pub fn ret_is_dynamic(f: &Func, name: &str) -> bool {
+pub fn ret_is_dynamic(f: &Func, name: &str, known: &[Func]) -> bool {
     let mut dyn_out = false;
     // 没有声明形状的返回值：由算子按结果形状运行时分配
     let unshaped = f.var_shape(name).is_none();
-    walk_stmts(&f.body, &mut |s| {
-        if let Stmt::Op(op) = s {
+    walk_stmts(&f.body, &mut |s| match s {
+        Stmt::Op(op) => {
             if op.lhs == name {
                 if op_is_dynamic(&op.id) {
                     dyn_out = true;
                 }
-                // 四则运算族：输出为空时按广播结论就地分配（见 mlc_binary_f64）
+                // 四则/归约/转置族：输出为空时按结果形状就地分配
                 if unshaped
                     && matches!(
                         op.id.as_str(),
@@ -117,6 +117,22 @@ pub fn ret_is_dynamic(f: &Func, name: &str) -> bool {
                 }
             }
         }
+        Stmt::Call2 { lhs, func, .. } => {
+            // 传递性：我是第 i 个左值，若被调方第 i 个返回也没形状 -> 它会分配
+            if let Some(i) = lhs.iter().position(|x| x == name) {
+                if let Some(callee) = known.iter().find(|k| k.name == *func) {
+                    if callee
+                        .rets
+                        .get(i)
+                        .map(|r| r.shape.is_empty())
+                        .unwrap_or(false)
+                    {
+                        dyn_out = true;
+                    }
+                }
+            }
+        }
+        _ => {}
     });
     dyn_out
 }
@@ -1083,7 +1099,7 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
             continue;
         }
         let name = ret_cname(f, &ret.name);
-        if ret_is_dynamic(f, &ret.name) {
+        if ret_is_dynamic(f, &ret.name, known) {
             // A) alloc 型（OP-MASK/OP-FIND）：算子里 malloc，**不要**预初始化
             let alloc_style = {
                 let mut hit = false;

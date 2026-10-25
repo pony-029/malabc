@@ -56,7 +56,7 @@ fn drivable(f: &Func, known: &[Func]) -> bool {
                 //   2) 动态长度：由算子按结果分配
                 //   3) 发射器能从"写它的那条语句"推出形状（fill/call/set）
                 && (!r.shape.is_empty()
-                    || crate::emit::ret_is_dynamic(f, &r.name)
+                    || crate::emit::ret_is_dynamic(f, &r.name, known)
                     || crate::emit::out_shape_for(f, &r.name, known).is_some())
         })
 }
@@ -229,7 +229,7 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
         let mut ret_names: Vec<String> = Vec::new();
         for r in &f.rets {
             let rn = crate::emit::ret_cname(f, &r.name);
-            if crate::emit::ret_is_dynamic(f, &r.name) {
+            if crate::emit::ret_is_dynamic(f, &r.name, funcs) {
                 // 长度数据相关：算子自己分配；零初始化以保证 free 安全
                 out.push(format!("        mlc_array {} = {{0}};", rn));
             } else {
@@ -650,7 +650,7 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
             let mut rets: Vec<String> = Vec::new();
             for r in &f.rets {
                 let rn = crate::emit::ret_cname(f, &r.name);
-                if crate::emit::ret_is_dynamic(f, &r.name) {
+                if crate::emit::ret_is_dynamic(f, &r.name, funcs) {
                     out.push(format!("        mlc_array {} = {{0}};", rn));
                 } else {
                     out.push(format!("        mlc_array {};", rn));

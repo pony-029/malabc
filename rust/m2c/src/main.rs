@@ -416,7 +416,7 @@ fn selftest() -> ExitCode {
     let code_dyn = emit::emit_func(&dyn_mir[0], &[] as &[mir::Func]).unwrap_or_default();
     chk(!code_dyn.contains("mlc_array_init(y"), "动态返回值不预先 init");
     chk(code_dyn.contains("mlc_op_mask_alloc(&x, 0, 2, y)"), "动态返回值用 _alloc 变体");
-    chk(emit::ret_is_dynamic(&dyn_mir[0], "y"), "ret_is_dynamic 能识别");
+    chk(emit::ret_is_dynamic(&dyn_mir[0], "y", &dyn_mir), "ret_is_dynamic 能识别");
 
     // 确定性
     let a = emit::emit_func(&funcs[0], &[] as &[mir::Func]).unwrap_or_default();
