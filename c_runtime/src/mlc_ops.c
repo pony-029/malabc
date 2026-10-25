@@ -387,7 +387,8 @@ mlc_status mlc_op_col(const mlc_array *a, int64_t j, mlc_array *out)
     }
     for (i = 0; i < rows; ++i) {
         ((double *)out->data)[i] =
-            ((const double *)a->data)[i + (j - 1) * a->strides[1]];
+            ((const double *)a->data)[i * a->strides[0]
+                                      + (j - 1) * a->strides[1]];
     }
     return MLC_OK;
 }
