@@ -80,6 +80,49 @@ numeric 3 ｜ unimplemented 37 ｜ skipped_shape 121 ｜ skipped_reject 1043 = 1
 
 **粗略估计：v1.0.0 还需 20–25 轮，且 C1 的分母要改成"非 struct 子集"。**
 
+## 七、10 分钟复现（预览版的门槛）
+
+前提：Python 3.10+、`gcc`、Octave（`octave-cli` 在 PATH 或标准安装位置）；
+`rust/m2c` 已 `cargo build --release`。
+
+```bash
+# 1) 闸门（期望：17 道门全绿，约 30 s）
+python tools/check_all.py
+
+# 2) 数值正确性（期望：26 个函数与 Octave 真值一致；PA3 = 0）
+python tools/check_translate_port.py --require-c
+
+# 3) 端到端可执行（期望：26 个全部 numeric，其余为 0）
+python tools/runnable_report.py translate/examples/numeric
+
+# 4) 生成物可编译（期望：GX1–GX2 全绿）
+python tools/check_generated_compiles.py
+```
+
+第 3 条的关键输出（应当逐字一致）：
+
+```
+用例 translate/examples/numeric ｜ 可驱动函数 26
+  numeric（真能算） : 26
+  unimplemented     : 0
+  error             : 0
+  empty             : 0
+  skipped_reject    : 0
+  skipped_shape     : 0
+```
+
+**如果这一条不是 26/26，就不要相信本文其他任何数字。**
+
+外部工程（可选，需要工程路径）：
+
+```bash
+python tools/runnable_report.py <工程目录> --recursive
+# 期望形态：numeric + unimplemented + empty + skipped_shape + skipped_reject == 函数总数
+```
+
+> 最后那条等式是**唯一防止"账不平"的检查**：分类表是人写的，
+> 而"各行之合 == 总数"与写表的人知道多少类无关。
+
 ## 六、不建议做的事（写下来防止反复摇摆）
 
 - **不建议**为了数字好看去支持 `struct`：它是类型系统级改动，等于重写半个前端。

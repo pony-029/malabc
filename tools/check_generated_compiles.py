@@ -92,9 +92,12 @@ def selftest():
             print("  [FAIL] %-42s %s" % (name, detail))
         return bool(cond)
 
-    chk(len(TEST_FILES) == 2, "覆盖两个用例文件")
-    chk(all(os.path.isfile(os.path.join(ROOT, f)) for f in TEST_FILES),
-        "用例文件存在")
+    _files = []
+    for _, f, _ in CHECKS:
+        _files.extend(f if isinstance(f, (list, tuple)) else [f])
+    chk(len(_files) >= 3, "至少覆盖 3 个用例文件", len(_files))
+    chk(all(os.path.isfile(os.path.join(ROOT, f)) for f in _files),
+        "用例文件都存在")
     chk(isinstance(ROW_SIGNATURE, str) and "–" in ROW_SIGNATURE, "签名形如 X1–X2")
     chk([c[0] for c in CHECKS] == ["GX1", "GX2"], "GX1/GX2 都有对应用例")
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
