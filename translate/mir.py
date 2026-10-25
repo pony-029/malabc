@@ -534,6 +534,27 @@ _KIND_RULES = (
 )
 
 
+def reject_reason(f, srcfile=""):
+    """整函数被拒的原因（逗号分隔）；空串表示未拒。
+
+    唯一实现：`translate` 主流程与 `tools/shape_suggest.py` 都调这里，
+    避免"四条规则写两遍、改一处漏一处"。
+    """
+    why = []
+    va = [n for n in list(f["args"]) + list(f["rets"])
+          if n in ("varargin", "varargout")]
+    if va:
+        why.append(",".join(va))
+    # @类目录里的 .m 是**方法**：语义是分派，不是同名运算
+    if srcfile and "@" in srcfile:
+        why.append("method")
+    if any(("{" in ln or "}" in ln) for ln in f["lines"]):
+        why.append("cell")
+    if any(_has_struct_ref(ln) for ln in f["lines"]):
+        why.append("struct")
+    return ",".join(why)
+
+
 def _has_struct_ref(t):
     """判断是否引用了结构体字段：`a.b` / `a.(e)`，但排除点运算与小数。
 
@@ -760,20 +781,9 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             out.append("# srcfile:%s" % srcfile)
         out.append("func:%s" % f["name"])
         # 可变参数（cell）无法用固定签名表达：显式拒绝，绝不伪装成一个 f64
-        _va = [n for n in list(f["args"]) + list(f["rets"])
-               if n in ("varargin", "varargout")]
-        _why = []
-        if _va:
-            _why.append(",".join(_va))
-        # @类目录里的 .m 是**方法**，不是自由函数：语义是分派，不是同名运算
-        if srcfile and "@" in srcfile:
-            _why.append("method")
-        if any(("{" in ln or "}" in ln) for ln in f["lines"]):
-            _why.append("cell")
-        if any(_has_struct_ref(ln) for ln in f["lines"]):
-            _why.append("struct")
-        if _why:
-            out.append("reject:%s" % ",".join(_why))
+        _rej = reject_reason(f, srcfile)
+        if _rej:
+            out.append("reject:%s" % _rej)
         _types = f.get("types") or {}
         # **一个**标量集合：i64 标注过 + 局部标量 + 后续标量赋值/循环变量。
         # 早先有两份（scalar_names 与 scalars），加一处漏一处 ——

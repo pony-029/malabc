@@ -61,10 +61,16 @@ def _guess(body_lines, name):
 
 
 def analyse(path):
-    """返回 [(函数名, [(参数, 建议形状 或 None)])]，只含**没有注解**的参数。"""
+    """返回 [(函数名, [(参数, 建议形状 或 None)])]，只含**没有注解**的参数。
+
+    **被拒函数直接跳过**：它们（varargin/@方法/cell/struct）加注解也没用，
+    留着只会把真正的建议淹掉。判定复用 `mir.reject_reason`，不另写一份。
+    """
     src = io.open(path, encoding="utf-8", errors="replace").read()
     out = []
     for f in M.split_functions(src):
+        if M.reject_reason(f, path):
+            continue
         need = []
         types = f.get("types") or {}
         shapes = f.get("shapes") or {}
