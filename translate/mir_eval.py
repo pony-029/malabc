@@ -151,6 +151,11 @@ def _apply_op(oid, args):
         if off is None:
             return None
         return Arr([a.data[off]], [1])
+    if oid == "OP-SIZE":
+        dim = int(args[1]) if len(args) > 1 else 1
+        sh = args[0].shape or [len(args[0].data)]
+        val = sh[dim - 1] if dim <= len(sh) else (1 if args[0].data else 0)
+        return Arr([float(val)], [1])
     if oid == "OP-NUMEL":
         return Arr([float(len(args[0].data))], [1])
     if oid == "OP-LENGTH":

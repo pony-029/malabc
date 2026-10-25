@@ -365,6 +365,30 @@ mlc_status mlc_op_setidx(mlc_array *a, const mlc_array *v, int64_t i)
     return MLC_OK;
 }
 
+mlc_status mlc_op_size_dim(const mlc_array *a, int64_t dim,
+                           mlc_array *out)
+{
+    int64_t n;
+
+    if (a == NULL || out == NULL || out->data == NULL) {
+        return MLC_ERR;
+    }
+    if (out->dtype != MLC_F64 || mlc_array_numel(out) != 1) {
+        return MLC_ERR;
+    }
+    if (dim < 1) {
+        return MLC_ERR;
+    }
+    /* MATLAB 语义：超出 ndim 的维度，长度对非空数组为 1、对空数组为 0 */
+    if (dim > a->ndim) {
+        n = (mlc_array_numel(a) == 0) ? 0 : 1;
+    } else {
+        n = a->shape[dim - 1];
+    }
+    ((double *)out->data)[0] = (double)n;
+    return MLC_OK;
+}
+
 mlc_status mlc_op_numel(const mlc_array *a, mlc_array *out)
 {
     int64_t n;
