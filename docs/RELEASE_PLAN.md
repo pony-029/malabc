@@ -16,12 +16,18 @@
 
 | # | 判据 | 命令 | 现状 | 结论 |
 |---|---|---|---|---|
-| R1 | 闸门全绿且可复现 | `python tools/check_all.py` | 17 道门全绿，约 30 s | ✅ |
+| R1 | 闸门全绿且可复现 | `python tools/check_all.py` | **官方全检 rc=0**（含每道门的 `--selftest`） | ✅ |
 | R2 | 数值正确性有真值参照 | `python tools/check_translate_port.py --require-c` | 语料 **26/26** 与 Octave 逐一相等 | ✅ |
 | R3 | 生成物能编译 | `python tools/check_generated_compiles.py` | 4 个示例工程 `-fsyntax-only` 通过 | ✅ |
 | R4 | 端到端可执行 | `python tools/runnable_report.py translate/examples/numeric` | **26/26 产出数值** | ✅ |
 | R5 | 性能有可信数字（含短板） | `python tools/bench.py <case> --reps 10` | 循环类 ~90×；矩阵乘 **慢 ~4.5×** | ⚠️ 有数字，含明确短板 |
 | R6 | 真实工程可量化 | `python tools/runnable_report.py <工程> --recursive` | YALMIP：numeric **3** / unimplemented 37 / shape 121 / reject 1043 | ❌ 见第四节 |
+
+
+> **R1 的判据只认 `tools/check_all.py`。**
+> 任何自制的"跑门脚本"都不算 —— 它可能少跑门的 `--selftest` 这一类检查，
+> 于是会长期给出"全绿"的假信号（本项目实际发生过：连续十几轮报 0 失败，
+> 官方全检却一直是 2 项失败）。
 
 **R1–R4 全绿 → 预览版可发。R6 是 v1.0 的硬门槛。**
 
