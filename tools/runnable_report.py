@@ -73,6 +73,9 @@ def classify(text):
             kind = "unimplemented"
         elif re.match(r"^-?\d", rest):
             kind = "numeric"
+        elif rest == "":
+            # 算完了但结果为空（例如空数组）：既不是失败也不是数值
+            kind = "empty"
         else:
             continue
         cnt[kind] += 1
@@ -171,6 +174,7 @@ def main(argv=None):
     print("  numeric（真能算） : %d" % cnt["numeric"])
     print("  unimplemented     : %d（桩：跑了但没实现）" % cnt["unimplemented"])
     print("  error             : %d" % cnt["error"])
+    print("  empty             : %d（算完但结果为空）" % cnt["empty"])
     print("  skipped_reject    : %d" % cnt["skipped_reject"])
     print("  skipped_shape     : %d" % cnt["skipped_shape"])
     if args.top:
