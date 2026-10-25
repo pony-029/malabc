@@ -54,6 +54,18 @@ OPERATORS = (
      "verified_by": "op_min_vector.json"},
     # 由 mir.py 的降级产生（`y(i) = v`），不经过 parse_line —— 因此没有 sample；
     # 它由数值语料 cumsum_loop + 夹具 op_setidx_1d 共同验证。
+    {"id": "OP-SQRT", "matlab": "sqrt(x)", "c": "mlc_op_sqrt",
+     "kind": "elementwise", "rules": ("ORDER-1",),
+     "sample": "y = sqrt(x);"},
+    {"id": "OP-ABS", "matlab": "abs(x)", "c": "mlc_op_abs",
+     "kind": "elementwise", "rules": ("ORDER-1",),
+     "sample": "y = abs(x);"},
+    {"id": "OP-EXP", "matlab": "exp(x)", "c": "mlc_op_exp",
+     "kind": "elementwise", "rules": ("ORDER-1",),
+     "sample": "y = exp(x);"},
+    {"id": "OP-LOG", "matlab": "log(x)", "c": "mlc_op_log",
+     "kind": "elementwise", "rules": ("ORDER-1",),
+     "sample": "y = log(x);"},
     {"id": "OP-COLRANGE", "matlab": "A(:,p:q)", "c": "mlc_op_colrange",
      "kind": "slice", "rules": ("IDX-1",),
      "sample": "y = A(:,2:end);"},
@@ -115,11 +127,18 @@ OPERATORS = (
 C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV",
                  "OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN", "OP-INDEX",
                  "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE",
-                 "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE", "OP-COL", "OP-COLRANGE")
+                 "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE", "OP-COL", "OP-COLRANGE",
+    "OP-SQRT", "OP-ABS", "OP-EXP", "OP-LOG")
 
 #: `y(i) = v`（元素赋值）。左边带下标，_ASSIGN_RE 抓不到，单列一条。
 _SETIDX_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*|\d+)\s*\)"
                           r"\s*=\s*([A-Za-z_]\w*|-?\d+(?:\.\d+)?)\s*;?\s*$")
+#: 逐元素标量函数（sqrt/abs/exp/log）
+_UNARY_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*"
+                         r"(sqrt|abs|exp|log)\s*\(\s*"
+                         r"([A-Za-z_]\w*)\s*\)\s*;?\s*$")
+_UNARY_IDS = {"sqrt": "OP-SQRT", "abs": "OP-ABS",
+              "exp": "OP-EXP", "log": "OP-LOG"}
 #: `y = A(:, lo:hi)` —— hi 可为 `end`
 _COLRANGE_LINE = re.compile(
     r"^\s*([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*"
@@ -192,6 +211,11 @@ def by_id(op_id):
 
 def parse_line(line):
     """把一条 MATLAB 赋值语句识别成算子；识别不了返回 None（进 unmapped）。"""
+    um = _UNARY_LINE.match(line or "")
+    if um is not None:
+        return {"operator": _UNARY_IDS[um.group(2)], "lhs": um.group(1),
+                "args": [um.group(3)], "raw": line.rstrip("\n")}
+
     cr = _COLRANGE_LINE.match(line or "")
     if cr:
         hi = "-1" if cr.group(4) == "end" else cr.group(4)

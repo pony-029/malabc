@@ -1092,7 +1092,8 @@ def _selftest(argv=None):
     t3, _ = to_mir("function y = f(x)\n% @m2c shape x 3\n% @m2c shape y 3\n"
                    "y = sqrt(x);\nend\n")
     chk("OP-INDEX" not in t3, "sqrt(x) 不得被识别成 OP-INDEX")
-    chk("unmapped:y = sqrt(x);" in t3, "sqrt(x) 应如实进 unmapped")
+    chk("op:OP-SQRT:y:x" in t3,
+        "sqrt(x) 应识别成 OP-SQRT（这条自证原先守的是「不许静默当索引」）")
 
     print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
     return 1 if bad else 0

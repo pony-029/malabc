@@ -7,6 +7,8 @@
  */
 #include "mlc_ops.h"
 
+#include <math.h>
+
 #include <stddef.h>
 
 enum {
@@ -363,6 +365,55 @@ mlc_status mlc_op_setidx(mlc_array *a, const mlc_array *v, int64_t i)
     }
     ((double *)a->data)[i - 1] = ((const double *)v->data)[0];
     return MLC_OK;
+}
+
+/* 逐元素标量函数共用实现：形状必须与输入一致（不猜、不广播）。 */
+static mlc_status mlc_unary_f64(const mlc_array *a, mlc_array *out, int code)
+{
+    int64_t i, n;
+
+    if (a == NULL || out == NULL || out->data == NULL || a->data == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64 || out->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    n = mlc_array_numel(a);
+    if (n < 0 || mlc_array_numel(out) != n) {
+        return MLC_ERR;
+    }
+    for (i = 0; i < n; ++i) {
+        double v = ((const double *)a->data)[i];
+        double r;
+        switch (code) {
+        case 0: r = sqrt(v); break;
+        case 1: r = fabs(v); break;
+        case 2: r = exp(v); break;
+        default: r = log(v); break;
+        }
+        ((double *)out->data)[i] = r;
+    }
+    return MLC_OK;
+}
+
+mlc_status mlc_op_sqrt(const mlc_array *a, mlc_array *out)
+{
+    return mlc_unary_f64(a, out, 0);
+}
+
+mlc_status mlc_op_abs(const mlc_array *a, mlc_array *out)
+{
+    return mlc_unary_f64(a, out, 1);
+}
+
+mlc_status mlc_op_exp(const mlc_array *a, mlc_array *out)
+{
+    return mlc_unary_f64(a, out, 2);
+}
+
+mlc_status mlc_op_log(const mlc_array *a, mlc_array *out)
+{
+    return mlc_unary_f64(a, out, 3);
 }
 
 mlc_status mlc_op_colrange(const mlc_array *a, int64_t lo, int64_t hi,

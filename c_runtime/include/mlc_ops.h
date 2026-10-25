@@ -69,6 +69,12 @@ mlc_status mlc_op_row(const mlc_array *a, int64_t row, mlc_array *out);
 mlc_status mlc_op_colrange(const mlc_array *a, int64_t lo,
                            int64_t hi, mlc_array *out);
 
+/* 逐元素标量函数：sqrt/abs/exp/log（输出形状与输入相同）。 */
+mlc_status mlc_op_sqrt(const mlc_array *a, mlc_array *out);
+mlc_status mlc_op_abs(const mlc_array *a, mlc_array *out);
+mlc_status mlc_op_exp(const mlc_array *a, mlc_array *out);
+mlc_status mlc_op_log(const mlc_array *a, mlc_array *out);
+
 /* col(a, j)：取第 j 列（1 起），输出一维、长度 = 行数。 */
 mlc_status mlc_op_col(const mlc_array *a, int64_t j,
                       mlc_array *out);

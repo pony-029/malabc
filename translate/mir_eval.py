@@ -151,6 +151,11 @@ def _apply_op(oid, args):
         if off is None:
             return None
         return Arr([a.data[off]], [1])
+    if oid in ("OP-SQRT", "OP-ABS", "OP-EXP", "OP-LOG"):
+        import math as _m
+        f = {"OP-SQRT": _m.sqrt, "OP-ABS": abs,
+             "OP-EXP": _m.exp, "OP-LOG": _m.log}[oid]
+        return Arr([f(v) for v in args[0].data], list(args[0].shape))
     if oid == "OP-COLRANGE":
         a = args[0]
         lo = int(args[1]); hi = int(args[2])
