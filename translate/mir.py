@@ -953,26 +953,6 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                     # 那它不是"取下标"，而是我们**不支持**的函数调用
                     use = None
             if use is None:
-                # 嵌套实参：`y = f(abs(x) + 1)` —— 内层不是裸名。
-                # 先用 `_lower_binary` 把内层降成临时量，再按单参算子发射。
-                _nm = re.match(r"^\s*([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*"
-                               r"\((.*)\)\s*;?\s*$", code)
-                if _nm is not None:
-                    _lhs, _fn, _inner = (_nm.group(1), _nm.group(2),
-                                         _nm.group(3).strip())
-                    _sp = _split_top(_inner)
-                    if _sp is not None:
-                        idx_counter[0] += 1
-                        _tmp = "__n%d" % idx_counter[0]
-                        if _lower_binary(_tmp, _sp[0], _sp[1], _sp[2],
-                                         fnames, out.append, idx_counter):
-                            _u2 = operators.parse_line(
-                                "%s = %s(%s);" % (_lhs, _fn, _tmp))
-                            if _u2 is not None and _u2["operator"] != "OP-INDEX":
-                                out.append("op:%s:%s:%s"
-                                           % (_u2["operator"], _lhs,
-                                              ":".join(_u2["args"])))
-                                continue
                 # 不是算子：可能是**标量赋值**或**同文件函数调用**（都不是猜）
                 am = _ASSIGN_SPLIT.match(code)
                 if am:
