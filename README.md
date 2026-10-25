@@ -823,6 +823,9 @@ skeleton, not a runtime, and it says so in its own README.
 
 ## MATLAB → MIR → C Parity (PA1–PA3)
 
+> **Scope**: it translates an **annotated, numeric-oriented subset of MATLAB**, one C99 function per MATLAB function, with every case checked against Octave truth values (**27/27** now).
+> It does **not** aim to cover arbitrary MATLAB — see [docs/FEATURE_MATRIX.md](docs/FEATURE_MATRIX.md) and [docs/KNOWN_LIMITS.md](docs/KNOWN_LIMITS.md) for what is and isn't supported.
+
 The port pipeline is separate from the analyser:
 
 ```text

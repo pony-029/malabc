@@ -780,6 +780,9 @@ malabc-rt eval "a+1"       # rc=1：unimplemented token 'a'
 
 ## MATLAB → MIR → C 对拍（PA1–PA3）
 
+> **定位**：它转换「**带形状注解的数值型 MATLAB 子集**」，逐函数对应到 C99，并用 Octave 真值逐例核对（当前 **27/27**）。
+> 它**不**试图覆盖任意 MATLAB —— 支持/不支持逐条列在[docs/FEATURE_MATRIX.md](docs/FEATURE_MATRIX.md) 与 [docs/KNOWN_LIMITS.md](docs/KNOWN_LIMITS.md)。
+
 移植链与分析器分开：
 
 ```text

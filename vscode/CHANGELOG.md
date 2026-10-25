@@ -244,6 +244,16 @@
   **③ 语料/示例自带注解**（已在做：27 个用例全带注解）
   或 **④ 过程间推断**（按调用点汇总实参形状，工程量大）。
 - 官方 check_all rc=0；语料 27/27；`numeric` 不变（本轮不动转换能力）
+- **新增 `docs/FEATURE_MATRIX.md`**（上一轮第 2 项）：**20 条支持 + 10 条不支持**，
+  每一条都挂**语料证据文件**与验证命令。例：
+  `行切片 A(i,:)` → `numeric/row1.m`；`while 条件每轮重算` → `numeric/while2d.m`；
+  `返回值不写形状注解` → `numeric/dynshape.m`。
+  不支持项同时写明**为什么**（struct 需类型系统 / `global` 忽略会静默算错 / 拼接未做）
+- **README 两份补「定位」**（上一轮第 1 项，P0 最后一件）：
+  「转换**带形状注解的数值型 MATLAB 子集**，逐函数对应 C99，Octave 真值逐例核对（27/27）；
+  **不**试图覆盖任意 MATLAB」，并链到 FEATURE_MATRIX / KNOWN_LIMITS。
+  `check_readme_parity` 仍 OK；已核实 `[TP7] 27 个函数与 Octave 一致`
+- 官方 check_all rc=0
 
 
 ## 2.2.2
