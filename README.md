@@ -1212,6 +1212,8 @@ steps are in [`flow/FLOW_REPORT.md`](flow/FLOW_REPORT.md) and [`flow/INDEX.md`](
 - [docs/matlabc_JSON_SCHEMA.md](docs/matlabc_JSON_SCHEMA.md) — JSON output schema
 - [docs/matlabc_DELIVERY_REPORT.md](docs/matlabc_DELIVERY_REPORT.md) — delivery / packaging notes
 - [docs/matlabc_STRUCTURE.md](docs/matlabc_STRUCTURE.md) — code structure overview
+- [docs/RELEASE_PLAN.md](docs/RELEASE_PLAN.md) — **release criteria & roadmap**: six criteria scored, three hard conditions for v1.0, a 10-minute reproduction
+- [docs/KNOWN_LIMITS.md](docs/KNOWN_LIMITS.md) — **known limits**: five reject classes, eight unmapped causes, perf shortfalls, verification boundaries
 - [docs/matlabc_AI_ROADMAP.md](docs/matlabc_AI_ROADMAP.md) — AI roadmap
 - [docs/analysis/](docs/analysis/) — deep-analysis reports (six-hats reviews, design comparisons)
 - [docs/architecture/](docs/architecture/) — architecture diagrams: overall framework + 11 modules + dataflow & sequence (14 diagrams, archify HTML/SVG). Regenerate the slim SVGs with `python tools/export_arch_svg.py --all`; English labels with `python tools/build_arch_svg_en.py`
