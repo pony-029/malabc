@@ -164,6 +164,14 @@
   当前读数仍是 3 / 37 / 0 / 0 / 1043 / 121 = 1204。
   原因：这些暂存量往往要**作为输入**喂给下游算子，置空后下游拿到的是空数组，
   而不是"结果形状"—— dynshape 只对"直接被算子写满的输出"成立。
+- **`v1.0.0-preview` 基线已钉住**（`docs/RELEASE_PLAN.md` 第八节 + 同名 git tag）：
+  基线 commit、日期、R1–R6 现状、四条验证命令，以及一条自检
+  ```bash
+  python tools/check_all.py && python tools/runnable_report.py translate/examples/numeric
+  ```
+  两条都过 = 环境与本文数字可对齐；任一失败 = 先解决环境
+- 明确写出这个预览版**承诺什么 / 不承诺什么**（不承诺：无注解形状推断、
+  struct/cell/varargin、与 MATLAB 逐位一致）
 
 
 ## 2.2.2
