@@ -54,6 +54,30 @@ OPERATORS = (
      "verified_by": "op_min_vector.json"},
     # 由 mir.py 的降级产生（`y(i) = v`），不经过 parse_line —— 因此没有 sample；
     # 它由数值语料 cumsum_loop + 夹具 op_setidx_1d 共同验证。
+    {"id": "OP-SIN", "matlab": "sin(x)", "c": "mlc_op_sin",
+     "kind": "elementwise", "rules": ("ORDER-1",),
+     "sample": "y = sin(x);"},
+    {"id": "OP-COS", "matlab": "cos(x)", "c": "mlc_op_cos",
+     "kind": "elementwise", "rules": ("ORDER-1",),
+     "sample": "y = cos(x);"},
+    {"id": "OP-TAN", "matlab": "tan(x)", "c": "mlc_op_tan",
+     "kind": "elementwise", "rules": ("ORDER-1",),
+     "sample": "y = tan(x);"},
+    {"id": "OP-FLOOR", "matlab": "floor(x)", "c": "mlc_op_floor",
+     "kind": "elementwise", "rules": ("ORDER-1",),
+     "sample": "y = floor(x);"},
+    {"id": "OP-CEIL", "matlab": "ceil(x)", "c": "mlc_op_ceil",
+     "kind": "elementwise", "rules": ("ORDER-1",),
+     "sample": "y = ceil(x);"},
+    {"id": "OP-ROUND", "matlab": "round(x)", "c": "mlc_op_round",
+     "kind": "elementwise", "rules": ("ORDER-1",),
+     "sample": "y = round(x);"},
+    {"id": "OP-LOG2", "matlab": "log2(x)", "c": "mlc_op_log2",
+     "kind": "elementwise", "rules": ("ORDER-1",),
+     "sample": "y = log2(x);"},
+    {"id": "OP-LOG10", "matlab": "log10(x)", "c": "mlc_op_log10",
+     "kind": "elementwise", "rules": ("ORDER-1",),
+     "sample": "y = log10(x);"},
     {"id": "OP-SQRT", "matlab": "sqrt(x)", "c": "mlc_op_sqrt",
      "kind": "elementwise", "rules": ("ORDER-1",),
      "sample": "y = sqrt(x);"},
@@ -128,17 +152,24 @@ C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV",
                  "OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN", "OP-INDEX",
                  "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE",
                  "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE", "OP-COL", "OP-COLRANGE",
-    "OP-SQRT", "OP-ABS", "OP-EXP", "OP-LOG")
+    "OP-SQRT", "OP-ABS", "OP-EXP", "OP-LOG",
+    "OP-SIN", "OP-COS", "OP-TAN", "OP-FLOOR", "OP-CEIL",
+    "OP-ROUND", "OP-LOG2", "OP-LOG10")
 
 #: `y(i) = v`（元素赋值）。左边带下标，_ASSIGN_RE 抓不到，单列一条。
 _SETIDX_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*|\d+)\s*\)"
                           r"\s*=\s*([A-Za-z_]\w*|-?\d+(?:\.\d+)?)\s*;?\s*$")
 #: 逐元素标量函数（sqrt/abs/exp/log）
 _UNARY_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*"
-                         r"(sqrt|abs|exp|log)\s*\(\s*"
+                         r"(sqrt|abs|exp|log|sin|cos|tan|floor|ceil|round|log2|log10)"
+                         r"\s*\(\s*"
                          r"([A-Za-z_]\w*)\s*\)\s*;?\s*$")
 _UNARY_IDS = {"sqrt": "OP-SQRT", "abs": "OP-ABS",
-              "exp": "OP-EXP", "log": "OP-LOG"}
+              "exp": "OP-EXP", "log": "OP-LOG",
+              "sin": "OP-SIN", "cos": "OP-COS", "tan": "OP-TAN",
+              "floor": "OP-FLOOR", "ceil": "OP-CEIL",
+              "round": "OP-ROUND", "log2": "OP-LOG2",
+              "log10": "OP-LOG10"}
 #: `y = A(:, lo:hi)` —— hi 可为 `end`
 _COLRANGE_LINE = re.compile(
     r"^\s*([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*"

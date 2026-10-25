@@ -389,7 +389,15 @@ static mlc_status mlc_unary_f64(const mlc_array *a, mlc_array *out, int code)
         case 0: r = sqrt(v); break;
         case 1: r = fabs(v); break;
         case 2: r = exp(v); break;
-        default: r = log(v); break;
+        case 3: r = log(v); break;
+        case 4: r = sin(v); break;
+        case 5: r = cos(v); break;
+        case 6: r = tan(v); break;
+        case 7: r = floor(v); break;
+        case 8: r = ceil(v); break;
+        case 9: r = round(v); break;
+        case 10: r = log2(v); break;
+        default: r = log10(v); break;
         }
         ((double *)out->data)[i] = r;
     }
@@ -414,6 +422,46 @@ mlc_status mlc_op_exp(const mlc_array *a, mlc_array *out)
 mlc_status mlc_op_log(const mlc_array *a, mlc_array *out)
 {
     return mlc_unary_f64(a, out, 3);
+}
+
+mlc_status mlc_op_sin(const mlc_array *a, mlc_array *out)
+{
+    return mlc_unary_f64(a, out, 4);
+}
+
+mlc_status mlc_op_cos(const mlc_array *a, mlc_array *out)
+{
+    return mlc_unary_f64(a, out, 5);
+}
+
+mlc_status mlc_op_tan(const mlc_array *a, mlc_array *out)
+{
+    return mlc_unary_f64(a, out, 6);
+}
+
+mlc_status mlc_op_floor(const mlc_array *a, mlc_array *out)
+{
+    return mlc_unary_f64(a, out, 7);
+}
+
+mlc_status mlc_op_ceil(const mlc_array *a, mlc_array *out)
+{
+    return mlc_unary_f64(a, out, 8);
+}
+
+mlc_status mlc_op_round(const mlc_array *a, mlc_array *out)
+{
+    return mlc_unary_f64(a, out, 9);
+}
+
+mlc_status mlc_op_log2(const mlc_array *a, mlc_array *out)
+{
+    return mlc_unary_f64(a, out, 10);
+}
+
+mlc_status mlc_op_log10(const mlc_array *a, mlc_array *out)
+{
+    return mlc_unary_f64(a, out, 11);
 }
 
 mlc_status mlc_op_colrange(const mlc_array *a, int64_t lo, int64_t hi,

@@ -151,10 +151,16 @@ def _apply_op(oid, args):
         if off is None:
             return None
         return Arr([a.data[off]], [1])
-    if oid in ("OP-SQRT", "OP-ABS", "OP-EXP", "OP-LOG"):
+    if oid in ("OP-SQRT", "OP-ABS", "OP-EXP", "OP-LOG",
+               "OP-SIN", "OP-COS", "OP-TAN", "OP-FLOOR", "OP-CEIL",
+               "OP-ROUND", "OP-LOG2", "OP-LOG10"):
         import math as _m
         f = {"OP-SQRT": _m.sqrt, "OP-ABS": abs,
-             "OP-EXP": _m.exp, "OP-LOG": _m.log}[oid]
+             "OP-EXP": _m.exp, "OP-LOG": _m.log,
+             "OP-SIN": _m.sin, "OP-COS": _m.cos, "OP-TAN": _m.tan,
+             "OP-FLOOR": _m.floor, "OP-CEIL": _m.ceil,
+             "OP-ROUND": lambda v: float(_m.floor(v + 0.5)),
+             "OP-LOG2": _m.log2, "OP-LOG10": _m.log10}[oid]
         return Arr([f(v) for v in args[0].data], list(args[0].shape))
     if oid == "OP-COLRANGE":
         a = args[0]

@@ -75,6 +75,15 @@ mlc_status mlc_op_abs(const mlc_array *a, mlc_array *out);
 mlc_status mlc_op_exp(const mlc_array *a, mlc_array *out);
 mlc_status mlc_op_log(const mlc_array *a, mlc_array *out);
 
+mlc_status mlc_op_sin(const mlc_array *a, mlc_array *out);
+mlc_status mlc_op_cos(const mlc_array *a, mlc_array *out);
+mlc_status mlc_op_tan(const mlc_array *a, mlc_array *out);
+mlc_status mlc_op_floor(const mlc_array *a, mlc_array *out);
+mlc_status mlc_op_ceil(const mlc_array *a, mlc_array *out);
+mlc_status mlc_op_round(const mlc_array *a, mlc_array *out);
+mlc_status mlc_op_log2(const mlc_array *a, mlc_array *out);
+mlc_status mlc_op_log10(const mlc_array *a, mlc_array *out);
+
 /* col(a, j)：取第 j 列（1 起），输出一维、长度 = 行数。 */
 mlc_status mlc_op_col(const mlc_array *a, int64_t j,
                       mlc_array *out);

@@ -25,6 +25,7 @@ shiftmax: 5
 sumsq: 30
 tailcols: 2 3 5 6
 transit: 1 4 2 5 3 6
+trigfns: unimplemented
 wheregt: 3 4 5
 while2d: 6
 while_acc: 10
