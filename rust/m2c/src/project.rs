@@ -132,7 +132,7 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
     out.push("static void m2c_rt_print(const mlc_array *a) {".to_string());
     out.push("    int64_t n = mlc_array_numel(a);".to_string());
     out.push("    for (int64_t i = 0; i < n; ++i) {".to_string());
-    out.push("        printf(\" %.10g\", ((const double *)a->data)[i]);".to_string());
+    out.push("        printf(\" %.17g\", ((const double *)a->data)[i]);".to_string());
     out.push("    }".to_string());
     out.push("}".to_string());
     out.push(String::new());
@@ -555,7 +555,7 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
     out.push("    got[0] = 0;".to_string());
     out.push("    for (int64_t i = 0; i < n; ++i) {".to_string());
     out.push("        off += (size_t)snprintf(got + off, sizeof(got) - off,".to_string());
-    out.push("                                \" %.10g\", ((const double *)a->data)[i]);".to_string());
+    out.push("                                \" %.17g\", ((const double *)a->data)[i]);".to_string());
     out.push("        if (off >= sizeof(got)) break;".to_string());
     out.push("    }".to_string());
     out.push("    const char *trimmed = got;".to_string());
