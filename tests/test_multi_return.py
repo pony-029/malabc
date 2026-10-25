@@ -57,3 +57,26 @@ def test_multi_return_values():
                          timeout=300).stdout.decode("utf-8", "replace")
     assert "twoout: 1 | 4" in out, out
     assert "userange: 3" in out, out
+
+@pytest.mark.skipif(_cc() is None, reason="没有 C 编译器")
+def test_multi_return_is_parity_checked():
+    """参考实现（解释器）也要能跑多返回 —— 否则它永远只有 C 侧验证。
+
+    这正是 `call2:` 加入 `mir_eval` 的判据：PA1 必须覆盖到，PA2 必须为 0。
+    """
+    d = tempfile.mkdtemp(prefix="m2c_multi_p_")
+    mir = os.path.join(d, "m.mir")
+    r = subprocess.run([sys.executable, os.path.join(ROOT, "translate", "mir.py"),
+                        SRC, "-o", mir],
+                       stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                       stderr=subprocess.STDOUT, timeout=300)
+    assert r.returncode == 0, r.stdout.decode("utf-8", "replace")[-400:]
+
+    r = subprocess.run([sys.executable,
+                        os.path.join(ROOT, "tools", "parity_report.py"),
+                        "--mir", mir],
+                       stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                       stderr=subprocess.STDOUT, timeout=600)
+    out = r.stdout.decode("utf-8", "replace")
+    assert "PA1 已对拍 2" in out, out[-600:]
+    assert "PA2 未对拍 0" in out, out[-600:]

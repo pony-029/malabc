@@ -299,6 +299,10 @@ def parse(text):
         elif ln.startswith("setb:"):
             p = ln[5:].split(":")     # "setb:" 是 5 个字符，少一位会整体错位
             emit(("setb", (p[0], p[1], p[2], p[3]), None))
+        elif ln.startswith("call2:"):
+            p = ln[6:].split(":")
+            names = [x.strip() for x in p[0].split(",") if x.strip()]
+            emit(("call2", (names, p[1], [x for x in p[2:] if x]), None))
         elif ln.startswith("call:"):
             p = ln[5:].split(":")
             emit(("call", (p[0], p[1], [x for x in p[2:] if x]), None))
@@ -395,6 +399,19 @@ def exec_block(stmts, env, by_name, depth=0):
                 return False
             env[name] = {"add": av + bv, "sub": av - bv, "mul": av * bv,
                          "div": (av / bv if bv else float("inf"))}[op]
+        elif kind == "call2":
+            names, fname, args = data
+            callee = by_name.get(fname)
+            if callee is None or len(callee.rets) != len(names):
+                return False
+            avals = [env.get(a) for a in args]
+            if any(v is None for v in avals):
+                return False
+            res = call(callee, avals, by_name, depth + 1)
+            if res is None or len(res) != len(names):
+                return False
+            for n, v in zip(names, res):
+                env[n] = v
         elif kind == "call":
             lhs, fname, args = data
             callee = by_name.get(fname)

@@ -254,6 +254,17 @@
   **不**试图覆盖任意 MATLAB」，并链到 FEATURE_MATRIX / KNOWN_LIMITS。
   `check_readme_parity` 仍 OK；已核实 `[TP7] 27 个函数与 Octave 一致`
 - 官方 check_all rc=0
+- **解释器支持 `call2:`**（上一轮第 2 项）：多返回此前只有 C 侧验证。
+  现在 `examples/multi` 的 **PA1 = 2 / PA2 = 0** —— 参考实现与生成的 C 都算过且一致。
+  并加回归锁 `tests/test_multi_return.py::test_multi_return_is_parity_checked`
+  （断言 `PA1 已对拍 2` 与 `PA2 未对拍 0`），否则这条覆盖会悄悄退化。
+- **拼接 `[a b]` / `[a;b]`：评估后决定不做（架构性原因）**。
+  实测 136 条在 52 个非被拒函数里，量足够大；但**语义依赖行/列方向**：
+  `[a b]` 对行向量是横向拼接、对列向量是纵向，而本项目的 1-D 表示
+  **已经丢掉了行/列区别**（`[n]` 既有可能是 1×n 也可能是 n×1）。
+  在这种情况下实现拼接会**静默算错**，比"不支持"危险 —— 故不做，
+  并记入 `KNOWN_LIMITS`（需要先解决行/列表示，才谈拼接）。
+- 官方 check_all rc=0；语料 27/27
 
 
 ## 2.2.2
