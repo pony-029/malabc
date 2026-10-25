@@ -1087,6 +1087,11 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
 
     let mut out: Vec<String> = Vec::new();
     out.push(format!("/* 由 m2c 从 MIR 生成 —— 勿手改；来源函数：{} */", f.name));
+    // 未映射语句**始终**列在函数头：否则返回值一旦走 dynshape，
+    // 这些注释就会消失，桩函数看起来像"只差一条形状"，掩盖真实原因。
+    for u in &f.unmapped {
+        out.push(format!("/* unmapped: {} */", sanitize_comment(u)));
+    }
     if !f.source_hash.is_empty() {
         out.push(format!("/* @m2c source_sha256:{} */", f.source_hash));
     }
