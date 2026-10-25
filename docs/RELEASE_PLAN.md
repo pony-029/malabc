@@ -134,3 +134,27 @@ python tools/runnable_report.py <工程目录> --recursive
 - **不建议**为了数字好看去支持 `struct`：它是类型系统级改动，等于重写半个前端。
 - **不建议**把 `reject` 计数的下降当成进展：那 1043 个里有 87% 是结构性不可转。
 - **不建议**在没有 MATLAB 真值前宣称"与 MATLAB 一致"：现在只能宣称"与 Octave 一致"。
+
+## 八、预览基线（v1.0.0-preview）
+
+| 项 | 值 |
+|---|---|
+| 基线 commit | `ee8abe6` |
+| 日期 | 2026-10-25 |
+| 版本号 | 2.2.3（VSIX 与 package.json 一致） |
+| 官方全检 | `python tools/check_all.py` → **rc=0** |
+| 语料 | 26/26 与 Octave 真值一致 |
+| 端到端 | `runnable_report` numeric 26/26 |
+
+**一条自检命令**（装完/克隆后先跑这一条）：
+
+```bash
+python tools/check_all.py && python tools/runnable_report.py translate/examples/numeric
+```
+
+两条都通过，说明这台机器上的环境、编译器、运行时与本文数字可对齐；
+任一条失败，先解决环境，再谈功能。
+
+**这个预览版承诺**：上述六条判据里 R1–R4 为真，且全部可复现。
+**这个预览版不承诺**：无注解代码的形状推断、struct/cell/varargin、与 MATLAB（而非 Octave）逐位一致。
+
