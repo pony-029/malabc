@@ -18,6 +18,7 @@ mmul: 22 28 49 64
 ncols: 3
 notempty: 1
 pickmax: 4
+plus1: 2 3 4
 relu: 1 2 3 4 5
 rootabs: 1 1.4142135623730951 1.7320508075688772
 row1: 3 4

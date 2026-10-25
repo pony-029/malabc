@@ -63,6 +63,21 @@ int main(void)
     mlc_array_init(&c, MLC_F64, 1, sh);
     printf("row_rc=%d\n", (int)mlc_op_row(&a, 2, &c));
     show("row2", &c);
+
+    /* 列区间：空输出 -> 算子自行分配 [2,2]；hi = -1 表示 end */
+    {
+        mlc_array r;
+        int64_t sh0[2] = {0, 0};
+        mlc_array_init(&r, MLC_F64, 2, sh0);
+        printf("cr_rc=%d\n", (int)mlc_op_colrange(&a, 2, -1, &r));
+        printf("cr_shape=%lld,%lld\n", (long long)r.shape[0],
+               (long long)r.shape[1]);
+        show("cr", &r);
+
+        /* 越界必须被拒绝（hi > cols） */
+        mlc_array_init(&r, MLC_F64, 2, sh0);
+        printf("cr_bad=%d\n", (int)mlc_op_colrange(&a, 2, 9, &r));
+    }
     return 0;
 }
 """
@@ -99,3 +114,9 @@ def test_col_and_row_on_nonsquare():
     # A(2,:) = [4 5 6]
     assert "row_rc=0" in out, out
     assert "row2 4 5 6" in out, out
+    # A(:,2:3) = [2 3; 5 6]，行主序存储 -> 2 3 5 6；形状 [2,2]
+    assert "cr_rc=0" in out, out
+    assert "cr_shape=2,2" in out, out
+    assert "cr 2 3 5 6" in out, out
+    # 越界：必须报错，而不是截断/猜
+    assert "cr_bad=1" in out, out
