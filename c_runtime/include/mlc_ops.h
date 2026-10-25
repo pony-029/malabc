@@ -65,6 +65,10 @@ mlc_status mlc_op_setidx(mlc_array *a, const mlc_array *v, int64_t i);
 /* y = A(i,:)：取第 i 行（1-based）。按 strides 拷，不假设存储顺序。 */
 mlc_status mlc_op_row(const mlc_array *a, int64_t row, mlc_array *out);
 
+/* colrange(a, lo, hi)：列区间；hi < 0 表示 `end`。 */
+mlc_status mlc_op_colrange(const mlc_array *a, int64_t lo,
+                           int64_t hi, mlc_array *out);
+
 /* col(a, j)：取第 j 列（1 起），输出一维、长度 = 行数。 */
 mlc_status mlc_op_col(const mlc_array *a, int64_t j,
                       mlc_array *out);

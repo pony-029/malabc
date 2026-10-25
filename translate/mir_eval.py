@@ -151,6 +151,21 @@ def _apply_op(oid, args):
         if off is None:
             return None
         return Arr([a.data[off]], [1])
+    if oid == "OP-COLRANGE":
+        a = args[0]
+        lo = int(args[1]); hi = int(args[2])
+        sh = a.shape or [len(a.data)]
+        if len(sh) < 2:
+            raise ValueError("colrange 需要 2-D")
+        rows, cols = sh[0], sh[1]
+        if hi < 0:
+            hi = cols
+        if lo < 1 or hi > cols or hi < lo:
+            raise ValueError("colrange 越界")
+        k = hi - lo + 1
+        d = [a.data[i * cols + (lo - 1 + j)]
+             for j in range(k) for i in range(rows)]
+        return Arr(d, [rows, k])
     if oid == "OP-COL":
         a = args[0]
         j = int(args[1]) if isinstance(args[1], int) else int(args[1].data[0])

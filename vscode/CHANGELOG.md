@@ -291,6 +291,17 @@
   「行主序填充 + 取中间列」的组合，下一轮应补一条**单元级**断言
   （直接调 `mlc_op_col`，不经驱动）。
 - 官方 check_all rc=0
+- **`strides` 全量审查**（上一轮第 3 项）：`mlc_ops.c` 里 18 处 `strides[...]` 用法，
+  只有 `mlc_op_col` 一处是错的；`row`/`slice`/`flatten`/`transpose`/`matmul` 都用了
+  正确的 `i*strides[0] + j*strides[1]`。
+- **新增 `tests/test_op_indexing_unit.py`**（第 1 项）：**单元级**断言，直接调 C 算子、
+  不经驱动、用**行列不相等**的 2×3。判据统计：`col2 2 5`、`row2 4 5 6`。
+  （端到端对拍曾让带 bug 的 `mlc_op_col` 通过 28/28 —— 因为方阵下错公式与对公式同解。）
+- **`OP-COLRANGE` 重做成功**（第 2 项）：`y = A(:,2:end)`
+  上次失败就是抄了错公式；改用 `i*strides[0] + (lo-1+j)*strides[1]` 后
+  实测 **`tailcols: 2 3 5 6`**，与 Octave 完全一致。语料 28 → **29**（`[TP7] 29/29`）。
+  附带：`is_int_literal` 允许前导负号（`-1` 是 `end` 的哨兵）。
+- 官方 check_all rc=0
 
 
 ## 2.2.2

@@ -12,7 +12,7 @@ use crate::mir::{walk_stmts, Cond, Func, Op, Stmt};
 pub const C_IMPLEMENTED: &[&str] = &[
     "OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-SUM", "OP-MEAN", "OP-MAX",
     "OP-MIN", "OP-INDEX", "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE",
-    "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE", "OP-COL",
+    "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE", "OP-COL", "OP-COLRANGE",
 ];
 
 /// 已知但 C 落点仍未实现的算子（诚实边界）。
@@ -111,6 +111,7 @@ pub fn ret_is_dynamic(f: &Func, name: &str, known: &[Func]) -> bool {
                             | "OP-MIN"
                             | "OP-MEAN"
                             | "OP-TRANSPOSE"
+                            | "OP-COLRANGE"
                     )
                 {
                     dyn_out = true;
@@ -162,7 +163,9 @@ pub fn op_c_name(id: &str) -> String {
 }
 
 fn is_int_literal(s: &str) -> bool {
-    !s.is_empty() && s.chars().all(|c| c.is_ascii_digit())
+    // 允许前导负号：`-1` 是 `end` 的哨兵（见 OP-COLRANGE）
+    let body = s.strip_prefix('-').unwrap_or(s);
+    !body.is_empty() && body.chars().all(|c| c.is_ascii_digit())
 }
 
 /// 按尾维对齐的广播；不可广播返回 None。与 `mlc_ops.c` / `fidelity.py` 同规则。
@@ -314,6 +317,19 @@ fn out_shape(f: &Func, op: &Op) -> Option<Vec<i64>> {
             return Some(vec![1]);
         }
         return None; // 3-D+ 暂不推断，避免猜错
+    }
+    // 取列区间：hi == -1（end）时长度只有运行期知道
+    if op.id == "OP-COLRANGE" {
+        if let (Some(sh), Some(lo), Some(hi)) = (
+            resolved_shape(f, &op.args[0]),
+            op.args.get(1).and_then(|x| x.parse::<i64>().ok()),
+            op.args.get(2).and_then(|x| x.parse::<i64>().ok()),
+        ) {
+            if sh.len() >= 2 && hi >= lo {
+                return Some(vec![sh[0], hi - lo + 1]);
+            }
+        }
+        return None;
     }
     // 取列：输出一维，长度 = 入参的行数
     if op.id == "OP-COL" {
@@ -627,6 +643,11 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
         out.push(format!("{}st = mlc_op_index({}, {}, {});", pad, arg0, idx_c, dst));
     } else if op.args.len() == 1 {
         out.push(format!("{}st = mlc_op_{}({}, {});", pad, op_c_name(&op.id), arg0, dst));
+    } else if op.id == "OP-COLRANGE" && op.args.len() == 3 {
+        out.push(format!(
+            "{}st = mlc_op_colrange({}, (int64_t){}, (int64_t){}, {});",
+            pad, arg0, op.args[1], op.args[2], dst
+        ));
     } else if op.id == "OP-COL" && op.args.len() == 2 {
         let j = &op.args[1];
         let jc = if is_int_literal(j) {
@@ -1186,6 +1207,7 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
                                         | "OP-MIN"
                                         | "OP-MEAN"
                                         | "OP-TRANSPOSE"
+                                        | "OP-COLRANGE"
                                 )
                             {
                                 ok = true;

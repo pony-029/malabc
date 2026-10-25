@@ -365,6 +365,51 @@ mlc_status mlc_op_setidx(mlc_array *a, const mlc_array *v, int64_t i)
     return MLC_OK;
 }
 
+mlc_status mlc_op_colrange(const mlc_array *a, int64_t lo, int64_t hi,
+                            mlc_array *out)
+{
+    int64_t rows, cols, k, i, j;
+
+    if (a == NULL || out == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64 || out->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    if (a->ndim != 2) {
+        return MLC_ERR;              /* 只对 2-D 取列区间 */
+    }
+    rows = a->shape[0];
+    cols = a->shape[1];
+    if (hi < 0) {
+        hi = cols;                   /* end */
+    }
+    if (lo < 1 || hi > cols || hi < lo) {
+        return MLC_ERR;
+    }
+    k = hi - lo + 1;
+    if (mlc_array_numel(out) == 0) {
+        int64_t sh[2];
+        sh[0] = rows;
+        sh[1] = k;
+        if (mlc_array_init(out, MLC_F64, 2, sh) != MLC_OK) {
+            return MLC_ERR;
+        }
+    }
+    if (out->ndim != 2 || out->shape[0] != rows || out->shape[1] != k) {
+        return MLC_ERR;
+    }
+    for (j = 0; j < k; ++j) {
+        for (i = 0; i < rows; ++i) {
+            /* 行主序：行步长 strides[0]，列步长 strides[1]（与 mlc_op_col 一致） */
+            ((double *)out->data)[i * out->strides[0] + j * out->strides[1]] =
+                ((const double *)a->data)[i * a->strides[0]
+                                          + (lo - 1 + j) * a->strides[1]];
+        }
+    }
+    return MLC_OK;
+}
+
 mlc_status mlc_op_col(const mlc_array *a, int64_t j, mlc_array *out)
 {
     int64_t i, rows;
