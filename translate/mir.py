@@ -542,6 +542,62 @@ _KIND_RULES = (
 )
 
 
+def _drop_shadowed_indices(lines):
+    """`OP-INDEX` 的目标名若在函数内从未声明 -> 改写为 unmapped。
+
+    为什么必须这么做：真实代码不会对"从未赋值过的数组"取下标；
+    出现这种形态只可能是**内置函数名被当成了数组**（`find(x)`/`any(v)`…）。
+    保留它 = 生成一份能跑但算错的 C。宁可如实报未实现。
+    """
+    out = []
+    declared = set()
+    for ln in lines:
+        if ln.startswith("func:"):
+            declared = set()
+            out.append(ln)
+            continue
+        if ln.startswith(("arg:", "ret:")):
+            parts = ln.split(":")
+            if len(parts) > 1:
+                declared.add(parts[1])
+            out.append(ln)
+            continue
+        if ln.startswith("var:"):
+            declared.add(ln[4:].split(":")[0])
+            out.append(ln)
+            continue
+        if ln.startswith("op:"):
+            parts = ln.split(":")
+            if len(parts) > 3 and parts[1] == "OP-INDEX":
+                arr = parts[3]
+                if arr not in declared:
+                    out.append("# why:shadowed")
+                    out.append("unmapped:%s" % ln)
+                    continue
+                declared.add(parts[2])
+                out.append(ln)
+                continue
+            if len(parts) > 2:
+                declared.add(parts[2])
+            out.append(ln)
+            continue
+        if ln.startswith(("fill:", "set:", "setb:", "const:")):
+            parts = ln.split(":")
+            if len(parts) > 1:
+                declared.add(parts[1])
+            out.append(ln)
+            continue
+        if ln.startswith(("call:", "call2:")):
+            parts = ln.split(":")
+            if len(parts) > 1:
+                for x in parts[1].split(","):
+                    declared.add(x.strip())
+            out.append(ln)
+            continue
+        out.append(ln)
+    return out
+
+
 def reject_reason(f, srcfile=""):
     """整函数被拒的原因（逗号分隔）；空串表示未拒。
 
@@ -1098,6 +1154,7 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             continue
         dedup.append(x)
     out = dedup
+    out = _drop_shadowed_indices(out)
     # **统计以 MIR 文本为准**：降级/展开会追加语句，用计数器容易漏计
     # （实测 `zerosum` 生成了 3 条算子语句，计数器仍显示 10）。
     ops_lines = [x for x in out if x.startswith("op:")]

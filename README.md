@@ -1218,6 +1218,7 @@ steps are in [`flow/FLOW_REPORT.md`](flow/FLOW_REPORT.md) and [`flow/INDEX.md`](
 - [docs/RELEASE_PLAN.md](docs/RELEASE_PLAN.md) — **release criteria & roadmap**: six criteria scored, three hard conditions for v1.0, a 10-minute reproduction
 - [docs/KNOWN_LIMITS.md](docs/KNOWN_LIMITS.md) — **known limits**: five reject classes, eight unmapped causes, perf shortfalls, verification boundaries
 - [docs/OPERATOR_CHECKLIST.md](docs/OPERATOR_CHECKLIST.md) — **five places to touch when adding an operator** (six with literal args)
+- `tools/scan_shadowed_builtins.py` — **finds "builtin name used as an array index"** (e.g. `find(x)`, `any(v)`): compiles, runs, wrong answer; the tell is "the indexed name is never declared in that function"
 - [docs/matlabc_AI_ROADMAP.md](docs/matlabc_AI_ROADMAP.md) — AI roadmap
 - [docs/analysis/](docs/analysis/) — deep-analysis reports (six-hats reviews, design comparisons)
 - [docs/architecture/](docs/architecture/) — architecture diagrams: overall framework + 11 modules + dataflow & sequence (14 diagrams, archify HTML/SVG). Regenerate the slim SVGs with `python tools/export_arch_svg.py --all`; English labels with `python tools/build_arch_svg_en.py`

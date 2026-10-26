@@ -1151,6 +1151,7 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 - [docs/RELEASE_PLAN.md](docs/RELEASE_PLAN.md) — **发布判据与路线**：六条判据的现状打分、v1.0 的三个硬条件、10 分钟复现步骤
 - [docs/KNOWN_LIMITS.md](docs/KNOWN_LIMITS.md) — **已知限制**：五类拒绝原因、八类未映射成因、性能短板、验证边界（每条都给数量与处置）
 - [docs/OPERATOR_CHECKLIST.md](docs/OPERATOR_CHECKLIST.md) — **加一个算子要改五处**（含带字面量参数时的第六处），两次失败换来的清单
+- `tools/scan_shadowed_builtins.py` — **扫出「内置名被当作数组下标」的误判**（`find(x)`/`any(v)`/`isempty(t)` 这类：能编译、能运行、结果全错；判据是「取下标的名字在该函数里从未声明」）
 - [docs/matlabc_AI_ROADMAP.md](docs/matlabc_AI_ROADMAP.md) — AI 演进路线图
 - [docs/analysis/](docs/analysis/) — 深度分析报告（六顶思考帽复盘、方案对比）
 - [docs/architecture/](docs/architecture/) — 架构图：总框架 + 11 个模块 + 数据流/时序（14 张，archify HTML/SVG）。用 `python tools/export_arch_svg.py --all` 重新导出瘦身 SVG；英文标签用 `python tools/build_arch_svg_en.py`
