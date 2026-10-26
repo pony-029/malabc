@@ -961,6 +961,26 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                     _lhs, _fn, _inner = (_nm.group(1), _nm.group(2),
                                          _nm.group(3).strip())
                     _sp = _split_top(_inner)
+                    if _sp is None:
+                        # 内层是**一次调用**：`f(g(x))` —— 先降内层，再走外层
+                        _ic = re.match(r"^([A-Za-z_]\w*)\s*\(\s*"
+                                       r"([A-Za-z_]\w*)\s*\)\s*$", _inner)
+                        if _ic is not None:
+                            _iuse = operators.parse_line(
+                                "__n0 = %s(%s);" % (_ic.group(1), _ic.group(2)))
+                            if _iuse is not None and _iuse["operator"] != "OP-INDEX":
+                                idx_counter[0] += 1
+                                _itmp = "__n%d" % idx_counter[0]
+                                out.append("op:%s:%s:%s"
+                                           % (_iuse["operator"], _itmp,
+                                              ":".join(_iuse["args"])))
+                                _u3 = operators.parse_line(
+                                    "%s = %s(%s);" % (_lhs, _fn, _itmp))
+                                if _u3 is not None and _u3["operator"] != "OP-INDEX":
+                                    out.append("op:%s:%s:%s"
+                                               % (_u3["operator"], _lhs,
+                                                  ":".join(_u3["args"])))
+                                    continue
                     if _sp is not None:
                         idx_counter[0] += 1
                         _tmp = "__n%d" % idx_counter[0]
