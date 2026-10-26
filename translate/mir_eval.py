@@ -185,6 +185,15 @@ def _apply_op(oid, args):
             raise ValueError("col 越界")
         rows = sh[0]
         return Arr([a.data[i + (j - 1) * rows] for i in range(rows)], [rows])
+    if oid in ("OP-ANY", "OP-ALL", "OP-NNZ", "OP-ISREAL", "OP-ISNUMERIC"):
+        d = list(args[0].data)
+        if oid == "OP-ISREAL" or oid == "OP-ISNUMERIC":
+            return Arr([1.0], [1])
+        if oid == "OP-ANY":
+            return Arr([1.0 if any(v != 0 for v in d) else 0.0], [1])
+        if oid == "OP-ALL":
+            return Arr([1.0 if (d and all(v != 0 for v in d)) else 0.0], [1])
+        return Arr([float(sum(1 for v in d if v != 0))], [1])
     if oid == "OP-SIZE":
         dim = int(args[1]) if len(args) > 1 else 1
         sh = args[0].shape or [len(args[0].data)]

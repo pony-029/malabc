@@ -404,6 +404,69 @@ static mlc_status mlc_unary_f64(const mlc_array *a, mlc_array *out, int code)
     return MLC_OK;
 }
 
+/* 1x1 谓词共用实现：code 0=any 1=all 2=nnz 3=isreal 4=isnumeric */
+static mlc_status mlc_pred_f64(const mlc_array *a, mlc_array *out, int code)
+{
+    int64_t i, n, cnt = 0, all_nz = 1;
+
+    if (a == NULL || out == NULL || out->data == NULL || a->data == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64 || out->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    if (mlc_array_numel(out) != 1) {
+        return MLC_ERR;              /* 结果恒 1x1；不符说明调用方算错了形状 */
+    }
+    n = mlc_array_numel(a);
+    if (code == 3 || code == 4) {
+        /* 本运行时的数据只有 f64 实数：isreal / isnumeric 恒真 */
+        ((double *)out->data)[0] = 1.0;
+        return MLC_OK;
+    }
+    for (i = 0; i < n; ++i) {
+        double v = ((const double *)a->data)[i];
+        if (v != 0.0) {
+            cnt += 1;
+        } else {
+            all_nz = 0;
+        }
+    }
+    if (code == 0) {
+        ((double *)out->data)[0] = (cnt > 0) ? 1.0 : 0.0;
+    } else if (code == 1) {
+        ((double *)out->data)[0] = (n > 0 && all_nz) ? 1.0 : 0.0;
+    } else {
+        ((double *)out->data)[0] = (double)cnt;
+    }
+    return MLC_OK;
+}
+
+mlc_status mlc_op_any(const mlc_array *a, mlc_array *out)
+{
+    return mlc_pred_f64(a, out, 0);
+}
+
+mlc_status mlc_op_all(const mlc_array *a, mlc_array *out)
+{
+    return mlc_pred_f64(a, out, 1);
+}
+
+mlc_status mlc_op_nnz(const mlc_array *a, mlc_array *out)
+{
+    return mlc_pred_f64(a, out, 2);
+}
+
+mlc_status mlc_op_isreal(const mlc_array *a, mlc_array *out)
+{
+    return mlc_pred_f64(a, out, 3);
+}
+
+mlc_status mlc_op_isnumeric(const mlc_array *a, mlc_array *out)
+{
+    return mlc_pred_f64(a, out, 4);
+}
+
 mlc_status mlc_op_sqrt(const mlc_array *a, mlc_array *out)
 {
     return mlc_unary_f64(a, out, 0);

@@ -1,4 +1,5 @@
 above: 3 4 5
+anyv: 1
 col1: 2 5
 col2sum: 12
 colmax_loop: 6
@@ -19,6 +20,7 @@ head2: 1 2
 mmul: 22 28 49 64
 ncols: 3
 notempty: 1
+nzcount: 4
 pickmax: 4
 plus1: 2 3 4
 relu: 1 2 3 4 5

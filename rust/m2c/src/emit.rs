@@ -15,6 +15,7 @@ pub const C_IMPLEMENTED: &[&str] = &[
     "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE", "OP-COL", "OP-COLRANGE", "OP-SQRT", "OP-ABS", "OP-EXP", "OP-LOG",
     "OP-SIN", "OP-COS", "OP-TAN", "OP-FLOOR", "OP-CEIL",
     "OP-ROUND", "OP-LOG2", "OP-LOG10",
+    "OP-ANY", "OP-ALL", "OP-NNZ", "OP-ISREAL", "OP-ISNUMERIC",
 ];
 
 /// 已知但 C 落点仍未实现的算子（诚实边界）。
@@ -362,7 +363,12 @@ fn out_shape(f: &Func, op: &Op) -> Option<Vec<i64>> {
         }
         return None;
     }
-    // 标量结果算子
+    // 标量结果算子（含 1x1 谓词）
+    if op.id == "OP-ANY" || op.id == "OP-ALL" || op.id == "OP-NNZ"
+        || op.id == "OP-ISREAL" || op.id == "OP-ISNUMERIC"
+    {
+        return Some(vec![1]);
+    }
     if op.id == "OP-ISEMPTY"
         || op.id == "OP-NUMEL"
         || op.id == "OP-LENGTH"

@@ -69,6 +69,13 @@ mlc_status mlc_op_row(const mlc_array *a, int64_t row, mlc_array *out);
 mlc_status mlc_op_colrange(const mlc_array *a, int64_t lo,
                            int64_t hi, mlc_array *out);
 
+/* 1x1 谓词：any/all/nnz/isreal/isnumeric（结果恒 1x1）。 */
+mlc_status mlc_op_any(const mlc_array *a, mlc_array *out);
+mlc_status mlc_op_all(const mlc_array *a, mlc_array *out);
+mlc_status mlc_op_nnz(const mlc_array *a, mlc_array *out);
+mlc_status mlc_op_isreal(const mlc_array *a, mlc_array *out);
+mlc_status mlc_op_isnumeric(const mlc_array *a, mlc_array *out);
+
 /* 逐元素标量函数：sqrt/abs/exp/log（输出形状与输入相同）。 */
 mlc_status mlc_op_sqrt(const mlc_array *a, mlc_array *out);
 mlc_status mlc_op_abs(const mlc_array *a, mlc_array *out);

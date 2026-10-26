@@ -78,6 +78,21 @@ OPERATORS = (
     {"id": "OP-LOG10", "matlab": "log10(x)", "c": "mlc_op_log10",
      "kind": "elementwise", "rules": ("ORDER-1",),
      "sample": "y = log10(x);"},
+    {"id": "OP-ANY", "matlab": "any(x)", "c": "mlc_op_any",
+     "kind": "reduction", "rules": ("ORDER-1",),
+     "sample": "y = any(x);"},
+    {"id": "OP-ALL", "matlab": "all(x)", "c": "mlc_op_all",
+     "kind": "reduction", "rules": ("ORDER-1",),
+     "sample": "y = all(x);"},
+    {"id": "OP-NNZ", "matlab": "nnz(x)", "c": "mlc_op_nnz",
+     "kind": "reduction", "rules": ("ORDER-1",),
+     "sample": "y = nnz(x);"},
+    {"id": "OP-ISREAL", "matlab": "isreal(x)", "c": "mlc_op_isreal",
+     "kind": "reduction", "rules": ("ORDER-1",),
+     "sample": "y = isreal(x);"},
+    {"id": "OP-ISNUMERIC", "matlab": "isnumeric(x)", "c": "mlc_op_isnumeric",
+     "kind": "reduction", "rules": ("ORDER-1",),
+     "sample": "y = isnumeric(x);"},
     {"id": "OP-SQRT", "matlab": "sqrt(x)", "c": "mlc_op_sqrt",
      "kind": "elementwise", "rules": ("ORDER-1",),
      "sample": "y = sqrt(x);"},
@@ -154,7 +169,8 @@ C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV",
                  "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE", "OP-COL", "OP-COLRANGE",
     "OP-SQRT", "OP-ABS", "OP-EXP", "OP-LOG",
     "OP-SIN", "OP-COS", "OP-TAN", "OP-FLOOR", "OP-CEIL",
-    "OP-ROUND", "OP-LOG2", "OP-LOG10")
+    "OP-ROUND", "OP-LOG2", "OP-LOG10",
+    "OP-ANY", "OP-ALL", "OP-NNZ", "OP-ISREAL", "OP-ISNUMERIC")
 
 #: `y(i) = v`（元素赋值）。左边带下标，_ASSIGN_RE 抓不到，单列一条。
 _SETIDX_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*|\d+)\s*\)"
@@ -163,6 +179,12 @@ _SETIDX_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*|\d+)\s*\)"
 _FIND1_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*find\s*\(\s*"
                          r"([A-Za-z_]\w*)\s*\)\s*;?\s*$")
 
+#: 1x1 谓词（any/all/nnz/isreal/isnumeric）
+_PRED_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*"
+                        r"(any|all|nnz|isreal|isnumeric)\s*\(\s*"
+                        r"([A-Za-z_]\w*)\s*\)\s*;?\s*$")
+_PRED_IDS = {"any": "OP-ANY", "all": "OP-ALL", "nnz": "OP-NNZ",
+             "isreal": "OP-ISREAL", "isnumeric": "OP-ISNUMERIC"}
 #: 逐元素标量函数（sqrt/abs/exp/log）
 _UNARY_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*"
                          r"(sqrt|abs|exp|log|sin|cos|tan|floor|ceil|round|log2|log10)"
@@ -246,6 +268,11 @@ def by_id(op_id):
 
 def parse_line(line):
     """把一条 MATLAB 赋值语句识别成算子；识别不了返回 None（进 unmapped）。"""
+    pd = _PRED_LINE.match(line or "")
+    if pd is not None:
+        return {"operator": _PRED_IDS[pd.group(2)], "lhs": pd.group(1),
+                "args": [pd.group(3)], "raw": line.rstrip("\n")}
+
     f1 = _FIND1_LINE.match(line or "")
     if f1 is not None:
         return {"operator": "OP-FIND", "lhs": f1.group(1),
