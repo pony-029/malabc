@@ -897,6 +897,17 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
               known: &[Func]) -> (Vec<String>, bool) {
     let mut out: Vec<String> = Vec::new();
     let mut terminated = false;
+    // 同名 `const:` 出现多次 = 条件性重新赋值，语句位置必须发射（见下）
+    let mut const_counts: Vec<(String, usize)> = Vec::new();
+    walk_stmts(&f.body, &mut |s| {
+        if let Stmt::Const { name, .. } = s {
+            if let Some(e) = const_counts.iter_mut().find(|(n, _)| n == name) {
+                e.1 += 1;
+            } else {
+                const_counts.push((name.clone(), 1));
+            }
+        }
+    });
     for s in stmts {
         if terminated {
             break;
@@ -937,8 +948,29 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                     }
                 }
             }
-            // const / fill 的值在函数开头就填好了，这里不再产出语句
-            Stmt::Const { .. } | Stmt::Fill { .. } => {}
+            // const / fill 的值在函数开头就填好了；但**同名多次 const** 是
+            // 条件性重新赋值（`if ... y = 1; end`），语句位置必须真的发射，
+            // 否则那一支等于没执行（R547 用手写 MIR 隔离证明过）。
+            Stmt::Const { name, value, src } => {
+                let top_level = std::ptr::eq(stmts, &f.body[..]);
+                if !top_level && const_counts.iter().any(|(n, c)| n == name && *c > 1) {
+                    if let Some(c) = src_comment(*src, indent) { out.push(c); }
+                    let bound = bind_target(f, name);
+                    let ptr = bound.as_ref().map(|(_, p)| *p).unwrap_or(false);
+                    let nm = bound
+                        .as_ref()
+                        .map(|(t, _)| t.clone())
+                        .unwrap_or_else(|| ident(name));
+                    if ptr {
+                        out.push(format!("{}((double *){}->data)[0] = {};",
+                                         indent, nm, value));
+                    } else {
+                        out.push(format!("{}((double *){}.data)[0] = {};",
+                                         indent, nm, value));
+                    }
+                }
+            }
+            Stmt::Fill { .. } => {}
             Stmt::Set { lhs, value, src } => {
                 if let Some(c) = src_comment(*src, indent) { out.push(c); }
                 // 形参/返回值都是 mlc_array（或指针），永远不是 i64 标量 ——

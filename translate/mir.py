@@ -47,7 +47,7 @@ _FUNC_RE = re.compile(
 _ANNO_RE = re.compile(r"^\s*%\s*@m2c\s+(?P<type>i64|f64)\s+(?P<names>[A-Za-z_][\w\s,]*)$")
 #: `if i > 1` —— 只认「标量与整数字面量/变量」的六种比较；其余进 unmapped。
 _IF_RE = re.compile(r"^if\s+(?P<var>[A-Za-z_]\w*\s*(?:\([^()]*\))?)\s*"
-                    r"(?P<cmp>==|~=|<=|>=|<|>)\s*(?P<rhs>[A-Za-z_\w]+)$")
+                    r"(?P<cmp>==|~=|<=|>=|<|>)\s*(?P<rhs>[A-Za-z_\w]+(?:\([^()]*\))?)$")
 #: `while i < 3` —— 与 if 同一套条件语法。
 #:
 #: ⚠ 本版**没有标量赋值语句**，所以 while 的循环变量无法在体内改变：
@@ -199,6 +199,14 @@ def _cond_side(text, shapes, counter, out):
     if not m:
         return t if re.match(r"^[A-Za-z_]\w*$|^-?\d+(\.\d+)?$", t) else None
     args = [a.strip() for a in m.group(2).split(",") if a.strip()]
+    # 先问算子表：`size(A,1)` / `numel(v)` / `length(v)` 是算子，不是取下标
+    counter[0] += 1
+    tmp = "__c%d" % counter[0]
+    use = operators.parse_line("%s = %s(%s);" % (tmp, m.group(1), m.group(2)))
+    if use is not None and use["operator"] != "OP-INDEX":
+        out.append("op:%s:%s:%s" % (use["operator"], tmp, ":".join(use["args"])))
+        return tmp
+    counter[0] -= 1
     return _index_operand(m.group(1), args, shapes, counter, out.append)
 
 

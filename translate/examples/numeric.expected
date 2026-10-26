@@ -4,6 +4,7 @@ col2sum: 12
 colmax_loop: 6
 colmean: 1 3 5
 colsum_loop: 12
+condsize: 1
 countel: 4
 cumsum_loop: 1 2 3 4
 dotp: 30
