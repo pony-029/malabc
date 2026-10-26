@@ -778,6 +778,31 @@ def build_m2c():
     return True, "刚编译"
 
 
+#: `--update`：只在"确认新输出正确"时重录金文本（见文件头说明）
+UPDATE = "--update" in __import__("sys").argv
+
+
+def _write_expected(got, exp_path, tag):
+    """重录一份金文本，并把差异打出来（不静默改写）。"""
+    old = []
+    try:
+        old = [ln.strip() for ln in
+               io.open(exp_path, encoding="utf-8").read().splitlines()
+               if ln.strip()]
+    except (IOError, OSError):
+        pass
+    io.open(exp_path, "w", encoding="utf-8", newline="").write(
+        "\r\n".join(got) + "\r\n")
+    print("  [TP5] %s 金文本已重录：%d 行（原 %d 行）"
+          % (tag, len(got), len(old)))
+    for a, b in zip(old, got):
+        if a != b:
+            print("        期望 %r -> 实得 %r" % (a, b))
+            break
+    if len(old) != len(got):
+        print("        行数 %d -> %d" % (len(old), len(got)))
+
+
 def compare_outputs(got, exp_path, tag):
     """把"程序输出"与"期望文件"逐行比对；一致返回 None，否则返回问题串。
 
@@ -791,6 +816,9 @@ def compare_outputs(got, exp_path, tag):
     except (IOError, OSError) as exc:
         return "TP5 读不到期望文件 %s：%s" % (exp_path, exc)
     if got != exp:
+        if UPDATE:
+            _write_expected(got, exp_path, tag)
+            return None
         return ("TP5 输出与期望不符（%s）：\n  期望 %r\n  实得 %r"
                 % (tag, exp, got))
     return None
@@ -1251,6 +1279,8 @@ def _selftest():
 def main(argv=None):
     ap = argparse.ArgumentParser(description="MATLAB→C 移植链路总门（TP1–TP11）")
     ap.add_argument("--selftest", action="store_true", help="两向自证")
+    ap.add_argument("--update", action="store_true",
+                    help="重录 TP5 金文本（**只在确认新输出正确时**用）")
     ap.add_argument("--fast", action="store_true",
                     help="跳过 C 编译与运行（发版快筛）")
     ap.add_argument("--require-c", action="store_true",
