@@ -445,6 +445,17 @@
   ｜TP5 三组金文本 + 批量夹具全部一致 ｜官方 `check_all` **rc=0**
 - 过程记录：上一轮若不是 `--update` 打出 `pickbig: unimplemented` 这行 diff，
   我会把「放宽正则导致条件解析退化」当成一次成功合入。
+- **`find(x)` 单参落地**（上一轮第 1 项之后的实测选点）：
+  此前 `find(x)` 被判成 **OP-INDEX**（"对名为 `find` 的数组取下标"）——
+  与 `isempty`/`numel`/`sqrt` 同一类**静默误判**。
+  实现：复用既有 `OP-FIND`，`cmp=5`（`mlc_mask_test` 的 default 分支 = `v != k`）、`k=0`，
+  **C 侧零改动**，长度数据相关走已有的 `mlc_op_find_alloc`。
+  语料 34 → **35**（`findnz`，实测 `1 2 3 4`，与 Octave 一致）｜官方 `check_all` **rc=0**
+- YALMIP 读数复核（本轮重跑）：`numeric 3 ｜ 桩 55 ｜ error 0 ｜ 形状 103 ｜ 拒绝 1043`
+  —— `cond` 修复在该工程里**没有直接兑现**（那些函数还有别的阻塞）。
+- 桩的「第一条 TODO」分布（本轮实测，1197 个含 UNIMPLEMENTED）：
+  `reject 1043` ／ **`unmapped 89`** ／ **`call 18`**（绝大多数是 `find` 相关）／
+  `shape 15` ／ `ret 9` ／ `set 9`（全局赋值，不做）／ `call2 6` ／ `if 5`
 
 
 ## 2.2.2

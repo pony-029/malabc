@@ -159,6 +159,10 @@ C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV",
 #: `y(i) = v`（元素赋值）。左边带下标，_ASSIGN_RE 抓不到，单列一条。
 _SETIDX_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*|\d+)\s*\)"
                           r"\s*=\s*([A-Za-z_]\w*|-?\d+(?:\.\d+)?)\s*;?\s*$")
+#: `y = find(x)` —— 非零下标（等价于 `find(x ~= 0)`，复用 OP-FIND 的 cmp=5/k=0）
+_FIND1_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*find\s*\(\s*"
+                         r"([A-Za-z_]\w*)\s*\)\s*;?\s*$")
+
 #: 逐元素标量函数（sqrt/abs/exp/log）
 _UNARY_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*"
                          r"(sqrt|abs|exp|log|sin|cos|tan|floor|ceil|round|log2|log10)"
@@ -242,6 +246,12 @@ def by_id(op_id):
 
 def parse_line(line):
     """把一条 MATLAB 赋值语句识别成算子；识别不了返回 None（进 unmapped）。"""
+    f1 = _FIND1_LINE.match(line or "")
+    if f1 is not None:
+        return {"operator": "OP-FIND", "lhs": f1.group(1),
+                "args": [f1.group(2), "5", "0"],
+                "raw": line.rstrip("\n")}
+
     um = _UNARY_LINE.match(line or "")
     if um is not None:
         return {"operator": _UNARY_IDS[um.group(2)], "lhs": um.group(1),
