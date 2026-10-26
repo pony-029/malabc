@@ -59,6 +59,19 @@ def compute(mir_path):
     return rows
 
 
+
+_STUB_MARKS = ("unimplemented", "error", "skipped")
+
+
+def stub_rows(rows):
+    """返回那些**参考实现没算出数值**的行（桩），它们不得被写成真值。"""
+    out = []
+    for k, v in sorted(rows.items()):
+        if str(v).strip().lower().startswith(_STUB_MARKS):
+            out.append("%s: %s" % (k, v))
+    return out
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     mir = os.path.join(tempfile.gettempdir(), "numeric_expected.mir")
@@ -76,6 +89,13 @@ def main(argv=None):
     if rows is None:
         print("PA4 未跑（缺 Octave/MATLAB 或参考实现出错）")
         return 2
+
+    bad = stub_rows(rows)
+    if bad:
+        print("拒绝写回：以下函数的参考实现没有算出数值（桩不能当真值）：")
+        for b in bad:
+            print("   " + b)
+        return 3
 
     lines = ["%s: %s" % (k, v) for k, v in sorted(rows.items())]
     text = "\r\n".join(lines) + "\r\n"
