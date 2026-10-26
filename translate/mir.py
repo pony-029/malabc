@@ -1071,6 +1071,10 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                 if sa and sb and len(sa) == 2 and len(sb) == 2 \
                         and sa[1] == sb[0]:
                     oid = "OP-MATMUL"
+            # `*` 文本层即 MATMUL；有一侧是标量时必须是元素级（MATLAB 语义）
+            if oid == "OP-MATMUL" and len(args) == 2:
+                if any(a in scalar_names for a in args):
+                    oid = "OP-MUL"
             out.append("op:%s:%s:%s" % (oid, use["lhs"], ":".join(args)))
             n_ops += 1
             per_op[use["operator"]] = per_op.get(use["operator"], 0) + 1

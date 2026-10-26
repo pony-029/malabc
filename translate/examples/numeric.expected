@@ -30,3 +30,4 @@ trigfns: 8 9 1
 wheregt: 3 4 5
 while2d: 6
 while_acc: 10
+whilelt: 6

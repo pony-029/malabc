@@ -748,12 +748,45 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
         out.push(format!(
             "{}st = mlc_op_setidx({}, {}, {});", pad, dst, val, idx_c));
     } else if op.args.len() == 2 {
-        let arg1 = arg_ref(f, &op.args[1]);
+        // 标量变量 -> 1x1 数组的桥（字面量走 const:，变量没有对应 MIR 语句）
+        let mut bridge: Vec<String> = Vec::new();
+        let mut wraps: Vec<Option<String>> = vec![None, None];
+        for (i, a) in op.args.iter().enumerate() {
+            let is_scalar_var = f
+                .var_dtype(a)
+                .map(|d| is_scalar_dt(&d))
+                .unwrap_or(false);
+            if is_scalar_var {
+                let t = format!("__s{}_{}", i, op.src);
+                bridge.push(format!(
+                    "{}mlc_array {};",
+                    pad, t
+                ));
+                bridge.push(format!(
+                    "{}if (mlc_array_init(&{}, MLC_F64, 1, (int64_t[]){{1}}) != MLC_OK) {{ return MLC_ERR; }}",
+                    pad, t
+                ));
+                bridge.push(format!(
+                    "{}((double *){}.data)[0] = (double){};",
+                    pad, t, ident(a)
+                ));
+                wraps[i] = Some(t);
+            }
+        }
+        out.extend(bridge);
+        let a0 = match &wraps[0] {
+            Some(t) => format!("&{}", t),
+            None => arg0.clone(),
+        };
+        let arg1 = match &wraps[1] {
+            Some(t) => format!("&{}", t),
+            None => arg_ref(f, &op.args[1]),
+        };
         out.push(format!(
             "{}st = mlc_op_{}({}, {}, {});",
             pad,
             op_c_name(&op.id),
-            arg0,
+            a0,
             arg1,
             dst
         ));
