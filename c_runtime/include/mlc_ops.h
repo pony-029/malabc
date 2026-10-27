@@ -69,6 +69,10 @@ mlc_status mlc_op_row(const mlc_array *a, int64_t row, mlc_array *out);
 mlc_status mlc_op_colrange(const mlc_array *a, int64_t lo,
                            int64_t hi, mlc_array *out);
 
+/* `find(a cmp b)`：逐元素比较两个等长数组，返回 1-based 命中下标。 */
+mlc_status mlc_op_find_masked(const mlc_array *a, const mlc_array *b,
+                              int cmp, mlc_array *out);
+
 /* 1x1 谓词：any/all/nnz/isreal/isnumeric（结果恒 1x1）。 */
 mlc_status mlc_op_any(const mlc_array *a, mlc_array *out);
 mlc_status mlc_op_all(const mlc_array *a, mlc_array *out);

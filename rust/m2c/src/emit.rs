@@ -16,6 +16,7 @@ pub const C_IMPLEMENTED: &[&str] = &[
     "OP-SIN", "OP-COS", "OP-TAN", "OP-FLOOR", "OP-CEIL",
     "OP-ROUND", "OP-LOG2", "OP-LOG10",
     "OP-ANY", "OP-ALL", "OP-NNZ", "OP-ISREAL", "OP-ISNUMERIC",
+    "OP-FIND2",
 ];
 
 /// 已知但 C 落点仍未实现的算子（诚实边界）。
@@ -711,6 +712,18 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
         // 动态长度：调用 _alloc 变体，dst 直接是 out（由算子分配）
         out.push(format!("{}st = mlc_op_mask_alloc({}, {}, {}, {});",
                          pad, arg0, cmp, k, dst));
+    } else if op.id == "OP-FIND2" && op.args.len() == 3 {
+        let cmp = &op.args[2];
+        if cmp.parse::<i64>().is_err() {
+            out.push(format!("{}/* TODO(OP-FIND2): 比较码必须是字面量 */", pad));
+            out.push(format!("{}return MLC_UNIMPLEMENTED;", pad));
+            return out;
+        }
+        let arg1 = arg_ref(f, &op.args[1]);
+        out.push(format!(
+            "{}if (mlc_op_find_masked({}, {}, {}, {}) != MLC_OK) {{ return MLC_ERR; }}",
+            pad, arg0, arg1, cmp, dst
+        ));
     } else if op.id == "OP-FIND" && op.args.len() == 3 {
         let cmp = &op.args[1];
         let k = &op.args[2];
@@ -1373,7 +1386,8 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
             Stmt::Op(op) => {
                 let sh = out_shape(f, op);
                 // 动态分配型算子由 *_alloc 负责 init；先 init 会泄漏旧 buffer。
-                let dynamic = op.id == "OP-MASK" || op.id == "OP-FIND";
+                let dynamic = op.id == "OP-MASK" || op.id == "OP-FIND"
+            || op.id == "OP-FIND2";
                 let sh = if sh.is_none() && dynamic {
                     None
                 } else {

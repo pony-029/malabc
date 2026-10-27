@@ -959,6 +959,50 @@ mlc_status mlc_op_mask_alloc(const mlc_array *a, int cmp, double k,
  * 下标**从 1 开始**：这是 MATLAB 的约定，也是 IDX-1 规则唯一该露出来的地方
  * （其它算子一律 0-based）。写在这里比写在注释里可靠。
  */
+mlc_status mlc_op_find_masked(const mlc_array *a, const mlc_array *b,
+                              int cmp, mlc_array *out)
+{
+    int64_t n, i, hit;
+    int64_t shape1[1];
+    const double *pa;
+    const double *pb;
+    double *po;
+
+    if (a == NULL || b == NULL || out == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64 || b->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    n = mlc_array_numel(a);
+    if (mlc_array_numel(b) != n) {
+        return MLC_ERR;              /* 逐元素比较要求等长：不符就不猜 */
+    }
+    pa = (const double *)a->data;
+    pb = (const double *)b->data;
+    if (pa == NULL || pb == NULL) {
+        return MLC_ERR;
+    }
+    hit = 0;
+    for (i = 0; i < n; ++i) {
+        if (mlc_mask_test(pa[i], cmp, pb[i])) {
+            ++hit;
+        }
+    }
+    shape1[0] = hit;
+    if (mlc_array_init(out, MLC_F64, 1, shape1) != MLC_OK) {
+        return MLC_ERR;
+    }
+    po = (double *)out->data;
+    hit = 0;
+    for (i = 0; i < n; ++i) {
+        if (mlc_mask_test(pa[i], cmp, pb[i])) {
+            po[hit++] = (double)(i + 1);
+        }
+    }
+    return MLC_OK;
+}
+
 mlc_status mlc_op_find_alloc(const mlc_array *a, int cmp, double k,
                              mlc_array *out)
 {

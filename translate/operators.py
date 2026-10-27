@@ -78,6 +78,9 @@ OPERATORS = (
     {"id": "OP-LOG10", "matlab": "log10(x)", "c": "mlc_op_log10",
      "kind": "elementwise", "rules": ("ORDER-1",),
      "sample": "y = log10(x);"},
+    {"id": "OP-FIND2", "matlab": "find(a cmp b)", "c": "mlc_op_find_masked",
+     "kind": "indexing", "rules": ("IDX-1",),
+     "sample": "y = find(a == b);"},
     {"id": "OP-ANY", "matlab": "any(x)", "c": "mlc_op_any",
      "kind": "reduction", "rules": ("ORDER-1",),
      "sample": "y = any(x);"},
@@ -170,11 +173,19 @@ C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV",
     "OP-SQRT", "OP-ABS", "OP-EXP", "OP-LOG",
     "OP-SIN", "OP-COS", "OP-TAN", "OP-FLOOR", "OP-CEIL",
     "OP-ROUND", "OP-LOG2", "OP-LOG10",
-    "OP-ANY", "OP-ALL", "OP-NNZ", "OP-ISREAL", "OP-ISNUMERIC")
+    "OP-ANY", "OP-ALL", "OP-NNZ", "OP-ISREAL", "OP-ISNUMERIC",
+    "OP-FIND2")
 
 #: `y(i) = v`（元素赋值）。左边带下标，_ASSIGN_RE 抓不到，单列一条。
 _SETIDX_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*|\d+)\s*\)"
                           r"\s*=\s*([A-Za-z_]\w*|-?\d+(?:\.\d+)?)\s*;?\s*$")
+#: `find(a == b)` —— 逐元素比较两个**数组**（右侧是名字，不是阈值）
+_FIND2_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*find\s*\(\s*"
+                         r"([A-Za-z_]\w*)\s*(>=|<=|==|~=|>|<)\s*"
+                         r"([A-Za-z_]\w*)\s*\)\s*;?\s*$")
+_FIND2_CMP = {"==": "4", "~=": "5", ">": "0", ">=": "1",
+              "<": "2", "<=": "3"}
+
 #: `y = find(x)` —— 非零下标（等价于 `find(x ~= 0)`，复用 OP-FIND 的 cmp=5/k=0）
 _FIND1_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*find\s*\(\s*"
                          r"([A-Za-z_]\w*)\s*\)\s*;?\s*$")
@@ -272,6 +283,13 @@ def parse_line(line):
     if pd is not None:
         return {"operator": _PRED_IDS[pd.group(2)], "lhs": pd.group(1),
                 "args": [pd.group(3)], "raw": line.rstrip("\n")}
+
+    f2 = _FIND2_LINE.match(line or "")
+    if f2 is not None:
+        return {"operator": "OP-FIND2", "lhs": f2.group(1),
+                "args": [f2.group(2), f2.group(4),
+                         _FIND2_CMP[f2.group(3)]],
+                "raw": line.rstrip("\n")}
 
     f1 = _FIND1_LINE.match(line or "")
     if f1 is not None:
