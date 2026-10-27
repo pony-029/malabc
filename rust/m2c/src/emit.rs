@@ -85,7 +85,7 @@ pub fn ident(name: &str) -> String {
 
 /// 输出长度**数据相关**的算子：不能由调用方预先 init，
 /// 必须由算子自己分配（`*_alloc` 变体），调用方负责 free。
-pub const DYNAMIC_OPS: &[&str] = &["OP-MASK", "OP-FIND", "OP-FIND2"];
+pub const DYNAMIC_OPS: &[&str] = &["OP-MASK", "OP-FIND"];
 
 pub fn op_is_dynamic(id: &str) -> bool {
     DYNAMIC_OPS.contains(&id)
