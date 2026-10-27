@@ -961,7 +961,24 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                     }
                     match f.var_dtype(x) {
                         Some(dt) if is_scalar_dt(&dt) => Some(ident(x)),
-                        _ => None,
+                        _ => {
+                            // 已声明的名字 -> 1x1 数组（`length(F)` 降级后的临时量）
+                            // 取值转 int64_t：循环上界只可能是整数语义
+                            if f.declared().iter().any(|d| d == x) {
+                                let is_ret = f.rets.iter().any(|r| &r.name == x);
+                                let base = if is_ret {
+                                    format!("{}->data", ret_cname(f, x))
+                                } else {
+                                    format!("{}.data", ident(x))
+                                };
+                                Some(format!(
+                                    "(int64_t)(((const double *){})[0])",
+                                    base
+                                ))
+                            } else {
+                                None
+                            }
+                        }
                     }
                 };
                 match (bound(from), bound(to)) {

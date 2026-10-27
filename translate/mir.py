@@ -892,6 +892,23 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                                              fm.group("b")))
                 blocks.append("for")
                 continue
+            if fm is None:
+                # `for i = 1:length(F)` —— 上界是调用：先降成临时量再发射
+                fb = re.match(r"^for\s+([A-Za-z_]\w*)\s*=\s*(\d+|[A-Za-z_]\w*)\s*"
+                              r":\s*([A-Za-z_]\w*)\s*\(([^()]*)\)\s*$", code)
+                if fb is not None:
+                    idx_counter[0] += 1
+                    _ftmp = "__f%d" % idx_counter[0]
+                    _fuse = operators.parse_line("%s = %s(%s);"
+                                                 % (_ftmp, fb.group(3), fb.group(4)))
+                    if _fuse is not None and _fuse["operator"] != "OP-INDEX":
+                        out.append("op:%s:%s:%s"
+                                   % (_fuse["operator"], _ftmp,
+                                      ":".join(_fuse["args"])))
+                        out.append("for:%s:%s:%s" % (fb.group(1), fb.group(2), _ftmp))
+                        blocks.append("for")
+                        continue
+                    idx_counter[0] -= 1
             ib = _IF_BARE.match(code)
             if ib and not _IF_RE.match(code):
                 if _emit_bare_cond("if", ib, f.get("shapes") or {},
