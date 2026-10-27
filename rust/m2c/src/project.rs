@@ -210,12 +210,23 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
         // 其余数组入参：夹具里给了值就用，否则 a[i] = i+1
         for extra in arrays.iter().skip(1) {
             let en = ident(&extra.name);
-            let edims: Vec<String> =
-                extra.shape.iter().map(|d| d.to_string()).collect();
+            // 无注解同样假设一维 4 元素（与第一个数组入参一致，且显式打印）
+            let e_assumed = extra.shape.is_empty();
+            let edims: Vec<String> = if e_assumed {
+                vec!["4".to_string()]
+            } else {
+                extra.shape.iter().map(|d| d.to_string()).collect()
+            };
             out.push(format!("        mlc_array {};", en));
+            if e_assumed {
+                out.push(format!(
+                    "        printf(\"{}: assumed shape [4]\\n\");",
+                    extra.name
+                ));
+            }
             out.push(format!(
                 "        if (mlc_array_init(&{}, {}, {}, (int64_t[]){{{}}}) != MLC_OK) {{ return 1; }}",
-                en, dt, extra.shape.len(), edims.join(", ")));
+                en, dt, edims.len(), edims.join(", ")));
             out.push(format!(
                 "        int got_{0} = m2c_rt_get(\"{1}\", vals, M2C_MAX_VALS);",
                 en, extra.name));
