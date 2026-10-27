@@ -16,7 +16,7 @@ pub const C_IMPLEMENTED: &[&str] = &[
     "OP-SIN", "OP-COS", "OP-TAN", "OP-FLOOR", "OP-CEIL",
     "OP-ROUND", "OP-LOG2", "OP-LOG10",
     "OP-ANY", "OP-ALL", "OP-NNZ", "OP-ISREAL", "OP-ISNUMERIC",
-    "OP-FIND2",
+    "OP-FIND2", "OP-FIND3",
 ];
 
 /// 已知但 C 落点仍未实现的算子（诚实边界）。
@@ -712,6 +712,21 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
         // 动态长度：调用 _alloc 变体，dst 直接是 out（由算子分配）
         out.push(format!("{}st = mlc_op_mask_alloc({}, {}, {}, {});",
                          pad, arg0, cmp, k, dst));
+    } else if op.id == "OP-FIND3" && op.args.len() == 4 {
+        let cmp = &op.args[1];
+        let k = &op.args[2];
+        let n = &op.args[3];
+        let ok = cmp.parse::<i64>().is_ok() && k.parse::<f64>().is_ok()
+            && n.parse::<i64>().is_ok();
+        if !ok {
+            out.push(format!("{}/* TODO(OP-FIND3): 比较码/阈值/个数必须是字面量 */", pad));
+            out.push(format!("{}return MLC_UNIMPLEMENTED;", pad));
+            return out;
+        }
+        out.push(format!(
+            "{}if (mlc_op_find_n({}, {}, {}, (int64_t){}, {}) != MLC_OK) {{ return MLC_ERR; }}",
+            pad, arg0, cmp, k, n, dst
+        ));
     } else if op.id == "OP-FIND2" && op.args.len() == 3 {
         let cmp = &op.args[2];
         if cmp.parse::<i64>().is_err() {

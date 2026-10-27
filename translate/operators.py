@@ -78,6 +78,9 @@ OPERATORS = (
     {"id": "OP-LOG10", "matlab": "log10(x)", "c": "mlc_op_log10",
      "kind": "elementwise", "rules": ("ORDER-1",),
      "sample": "y = log10(x);"},
+    {"id": "OP-FIND3", "matlab": "find(x,n)", "c": "mlc_op_find_n",
+     "kind": "indexing", "rules": ("IDX-1",),
+     "sample": "y = find(x, 2);"},
     {"id": "OP-FIND2", "matlab": "find(a cmp b)", "c": "mlc_op_find_masked",
      "kind": "indexing", "rules": ("IDX-1",),
      "sample": "y = find(a == b);"},
@@ -174,7 +177,7 @@ C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV",
     "OP-SIN", "OP-COS", "OP-TAN", "OP-FLOOR", "OP-CEIL",
     "OP-ROUND", "OP-LOG2", "OP-LOG10",
     "OP-ANY", "OP-ALL", "OP-NNZ", "OP-ISREAL", "OP-ISNUMERIC",
-    "OP-FIND2")
+    "OP-FIND2", "OP-FIND3")
 
 #: `y(i) = v`（元素赋值）。左边带下标，_ASSIGN_RE 抓不到，单列一条。
 _SETIDX_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*|\d+)\s*\)"
@@ -186,6 +189,9 @@ _FIND2_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*find\s*\(\s*"
 _FIND2_CMP = {"==": "4", "~=": "5", ">": "0", ">=": "1",
               "<": "2", "<=": "3"}
 
+#: `find(x, n)` —— 非零下标的前 n 个
+_FINDN_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*find\s*\(\s*"
+                         r"([A-Za-z_]\w*)\s*,\s*(\d+)\s*\)\s*;?\s*$")
 #: `y = find(x)` —— 非零下标（等价于 `find(x ~= 0)`，复用 OP-FIND 的 cmp=5/k=0）
 _FIND1_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*find\s*\(\s*"
                          r"([A-Za-z_]\w*)\s*\)\s*;?\s*$")
@@ -283,6 +289,12 @@ def parse_line(line):
     if pd is not None:
         return {"operator": _PRED_IDS[pd.group(2)], "lhs": pd.group(1),
                 "args": [pd.group(3)], "raw": line.rstrip("\n")}
+
+    fn_ = _FINDN_LINE.match(line or "")
+    if fn_ is not None:
+        return {"operator": "OP-FIND3", "lhs": fn_.group(1),
+                "args": [fn_.group(2), "5", "0", fn_.group(3)],
+                "raw": line.rstrip("\n")}
 
     f2 = _FIND2_LINE.match(line or "")
     if f2 is not None:

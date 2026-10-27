@@ -13,6 +13,7 @@ dynshape: 2 4 6
 dynsum: 10
 emptychk: 1
 findeq: 1 2 3 4
+findfirst: 1 2
 findnz: 1 2 3 4
 firstel: 1
 flatit: 1 3 2 4

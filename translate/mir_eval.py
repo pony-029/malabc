@@ -185,6 +185,16 @@ def _apply_op(oid, args):
             raise ValueError("col 越界")
         rows = sh[0]
         return Arr([a.data[i + (j - 1) * rows] for i in range(rows)], [rows])
+    if oid == "OP-FIND3":
+        a = args[0]
+        cmp = int(args[1]); k = float(args[2]); n = int(args[3])
+        f = {0: lambda x: x > k, 1: lambda x: x >= k,
+             2: lambda x: x < k, 3: lambda x: x <= k,
+             4: lambda x: x == k, 5: lambda x: x != k}[cmp]
+        idx = [float(i + 1) for i in range(len(a.data)) if f(a.data[i])]
+        if n > 0:
+            idx = idx[:n]
+        return Arr(idx, [len(idx)])
     if oid == "OP-FIND2":
         a, b = args[0], args[1]
         cmp = int(args[2])
