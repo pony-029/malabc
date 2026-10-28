@@ -642,6 +642,24 @@
   —— 而它们分属三个不同的文件。
 - 过程记录：我在本轮开头先**确认基线**（`git status` 干净、MIR 已正确），
   避免了第四次重放已合入的补丁 —— 前两轮各有一次"重放已完成改动"的空转。
+- **新发现（P0，已定位未修）：YALMIP 现在编译不过**
+  ```
+  extras_monpowers_m.c:39: error: incompatible types when assigning to type
+  'int64_t' from type 'mlc_array'
+      temp = last_monoms;
+  ```
+  MIR 证据（`extras/monpowers.m`）：
+  ```
+  var:last_monoms:i64          ← 被分类成 **i64 标量**
+  set:last_monoms:all_monoms   ← 但 all_monoms 是 f64 数组（ret）
+  ```
+  `last_monoms` 后来又被 `temp = last_monoms`（同为 i64 局部）接手，
+  而 C 侧 `last_monoms` 实际是 `mlc_array` → 类型冲突。
+  ⇒ **标量分类把"接受数组赋值的名字"判成了 i64**，产出不可编译的 C。
+  这比"不支持"严重：它在生成期没有报错，而是在编译期炸在别处。
+- 说明：本轮加入 `condsize` 后语料 40/40、`check_all` rc=0；
+  但 YALMIP 的 `runnable_report` 因上述编译失败**跑不出读数**（与 R560 的 `numeric 4 / error 0` 相比是回归）。
+  下一轮第一件事：修标量分类（凡被数组赋值的名字不得判 i64），恢复 YALMIP 可编译。
 
 
 ## 2.2.2
