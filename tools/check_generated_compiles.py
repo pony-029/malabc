@@ -41,7 +41,8 @@ CHECKS = (
              os.path.join("tests", "test_numeric_expected_guard.py"),
              os.path.join("tests", "test_op_error_paths.py"),
              os.path.join("tests", "test_plan_tracker.py"),
-             os.path.join("tests", "test_rt_balance.py")),
+             os.path.join("tests", "test_rt_balance.py"),
+             os.path.join("tests", "test_mir_semantics.py")),
      "GX2 丢弃返回值的调用退回 unmapped，或多返回值算错/编译不过"),
 )
 
