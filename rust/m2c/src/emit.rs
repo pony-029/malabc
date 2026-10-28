@@ -1489,6 +1489,9 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
             temps.push((t, Some(sh), false));
         }
     });
+    // 序言去重：三个声明循环（temps/consts/fills）共享这一份
+    let mut declared: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
     for (t, shape, unknown) in &temps {
         if *unknown {
             // 形状推不出来就不猜：猜出来的 {1} 会在运行期变成"写越界"或错值
@@ -1498,10 +1501,13 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
             out.push("}".to_string());        // 早退也要收函数体
             return Ok(out.join("\n"));
         }
-        out.push(format!("    mlc_array {};", t));
-        if let Some(sh) = shape {
-            if let Some(l) = init_call(t, "f64", sh, false) {
-                out.push(l);
+        // 去重：同名只声明一次（三个循环共享 declared）
+        if declared.insert(t.clone()) {
+            out.push(format!("    mlc_array {};", t));
+            if let Some(sh) = shape {
+                if let Some(l) = init_call(t, "f64", sh, false) {
+                    out.push(l);
+                }
             }
         }
     }
@@ -1514,24 +1520,26 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
         let ptr = bound.as_ref().map(|(_, p)| *p).unwrap_or(false);
         let nm = bound.as_ref().map(|(t, _)| t.clone())
             .unwrap_or_else(|| n.clone());
-        if bound.is_none() {
+        let fresh = !declared.contains(n);
+        if bound.is_none() && fresh {
             out.push(format!("    mlc_array {};", n));
         }
-        if !(ptr && pre_inited(f, n)) {
+        if fresh && !(ptr && pre_inited(f, n)) {
             if let Some(l) = init_call(&nm, "f64", &[1], ptr) {
                 out.push(l);
             }
         }
+        declared.insert(n.clone());
         if ptr {
             out.push(format!("    ((double *){}->data)[0] = {};", nm, v));
         } else {
             out.push(format!("    ((double *){}.data)[0] = {};", nm, v));
         }
-        if bound.is_none() { need_free.push(n.clone()); }
+        if bound.is_none() && fresh { need_free.push(n.clone()); }
     }
     for (n, dims, v, src) in &fills {
-        // 已在暂存量里声明过（并且已清零）：不再声明/初始化，避免 redeclaration
-        if temps.iter().any(|(t, _, _)| t == n) {
+        // 已在前面某个循环里声明过（或已被 temps 覆盖）：不再声明/初始化
+        if declared.contains(n) || temps.iter().any(|(t, _, _)| t == n) {
             continue;
         }
         if let Some(c) = src_comment(*src, "    ") { out.push(c); }
@@ -1542,6 +1550,7 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
         if bound.is_none() {
             out.push(format!("    mlc_array {};", n));
         }
+        declared.insert(n.clone());
         if !(ptr && pre_inited(f, n)) {
             if let Some(l) = init_call(&nm, "f64", dims, ptr) {
                 out.push(l);
