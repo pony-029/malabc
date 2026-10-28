@@ -660,6 +660,23 @@
 - 说明：本轮加入 `condsize` 后语料 40/40、`check_all` rc=0；
   但 YALMIP 的 `runnable_report` 因上述编译失败**跑不出读数**（与 R560 的 `numeric 4 / error 0` 相比是回归）。
   下一轮第一件事：修标量分类（凡被数组赋值的名字不得判 i64），恢复 YALMIP 可编译。
+- **P0 修复第一步：`_fix_scalar_array_conflict` 原本是死代码**
+  实测：该函数在 `mir.py` 里**只出现一次（def 那一行），没有任何调用点** ——
+  所以「同一名字既当数组又当 i64 标量」的冲突从未被修正，
+  `var:last_monoms:i64` 一直留着 → `int64_t temp = last_monoms;` → YALMIP 编译失败。
+  * 新增 `_fix_scalar_conflicts_per_func`：按 `func:` 分块调用（名字是函数作用域，跨函数合并会误伤）
+  * 另一处加固：`arg:` / `ret:` 加入数组名集合（形参与返回值永远是 `mlc_array`）
+  * 结果：`monpowers` 的 MIR 里 `var:last_monoms:i64` / `var:temp:i64` **消失**，
+    那条编译错误**不再出现**
+- **但它只是把错误往前推了一格**：YALMIP 仍编译不过，新错误是
+  ```
+  extras_setdiff1d_m.c:39: error: redeclaration of 'ia' with no linkage
+      36 |     mlc_array ia;
+      39 |     mlc_array ia;      ← 同一声明出现两次
+  ```
+  即**序言对同一名字声明了两次**（`ia` 同时出现在两类声明集合里）。
+  下一轮：给序言加"已声明就跳过"的守卫。
+- 语料 40/40 ｜ 官方 `check_all` rc=0（本轮改动无回归）
 
 
 ## 2.2.2

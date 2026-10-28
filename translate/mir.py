@@ -361,6 +361,31 @@ def _fix_scalar_array_conflict(out):
             parts = ln.split(":")
             if len(parts) > 2:
                 array_names.add(parts[2])
+        elif ln.startswith(("arg:", "ret:")):
+            # 形参 / 返回值永远是 mlc_array（不是 i64 标量）
+            parts = ln.split(":")
+            if len(parts) > 1:
+                array_names.add(parts[1])
+    # **传递闭包**：`set:X:Y`（Y 是数组）=> X 也是数组。
+    # 缺这一条时，`last_monoms = all_monoms` 会被留成 i64，
+    # 生成的 C 是 `int64_t x = <mlc_array>` —— 编译期才炸（YALMIP 实测）。
+    changed = True
+    while changed:
+        changed = False
+        for ln in out:
+            if not ln.startswith("set:"):
+                continue
+            parts = ln.split(":")
+            if len(parts) < 3:
+                continue
+            lhs, rhs = parts[1], parts[2]
+            if lhs in array_names:
+                continue
+            if re.match(r"^-?\d+(\.\d+)?$", rhs):
+                continue                      # 字面量：仍是标量
+            if rhs in array_names or rhs in ("true", "false"):
+                array_names.add(lhs)
+                changed = True
     if not array_names:
         return
     fixed = []
@@ -541,6 +566,26 @@ _KIND_RULES = (
     ("nested", lambda t: t.count("(") >= 2),
 )
 
+
+
+def _fix_scalar_conflicts_per_func(lines):
+    """按 `func:` 分块应用 `_fix_scalar_array_conflict`（名字是函数作用域）。"""
+    res = []
+    cur = []
+
+    def flush():
+        if cur:
+            _fix_scalar_array_conflict(cur)
+            res.extend(cur)
+
+    for ln in lines:
+        if ln.startswith("func:"):
+            flush()
+            cur = [ln]
+        else:
+            cur.append(ln)
+    flush()
+    return res
 
 def _drop_shadowed_indices(lines):
     """`OP-INDEX` 的目标名若在函数内从未声明 -> 改写为 unmapped。
@@ -1172,6 +1217,7 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
         dedup.append(x)
     out = dedup
     out = _drop_shadowed_indices(out)
+    out = _fix_scalar_conflicts_per_func(out)
     # **统计以 MIR 文本为准**：降级/展开会追加语句，用计数器容易漏计
     # （实测 `zerosum` 生成了 3 条算子语句，计数器仍显示 10）。
     ops_lines = [x for x in out if x.startswith("op:")]
