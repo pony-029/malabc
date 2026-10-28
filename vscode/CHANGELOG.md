@@ -611,7 +611,7 @@
   * 试过并验证有效的部分：加 `magic` 字段 + 分配/释放计数后，探针实测
     ```
     修复前思路（仅计数）：alloc=0 free=1      ← 计数没生效，泄漏被掩盖
-    修复后（magic + init 先 free）：alloc=1 free=1 balance=0   ✅
+    修复后（magic + init 先 free）：alloc=1 free=1 balance=0   [OK]
     ```
   * **但整体回退**：`init` 语义变更（"重复 init 会释放旧缓冲"）让两条既有判据变红 ——
     `test_op_error_paths`（未初始化栈变量路径）与 TP5 的**生成物自测**。
