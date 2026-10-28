@@ -568,6 +568,19 @@
   2. docstring 必须有一段**「退出码」**（0/1 的语义），否则 G2 红；
   3. 用 Python 读改写 Markdown 会把换行转成 LF —— `check_eol_convention` 立刻红；
   4. `check_figure_glyphs` 禁 `✅/❌/⚠️`（界面字体无字形），CHANGELOG 里历史 emoji 已换成 `[OK]/[x]/[!]`。
+- **第二个第三方仪器上岗：gcov 覆盖率基准**（新增 `docs/COVERAGE_BASELINE.md`）
+  ```
+  mlc_ops.c      行 56.98% / 688 行 ｜ 分支至少走一次 48.42% / 663 个
+  mlc_runtime.c  行 51.09% /  92 行 ｜ 分支至少走一次 46.38% /  69 个
+  ```
+  **未覆盖的行几乎全是 `return MLC_ERR` 及其卫语句** —— 语料只喂合法输入，
+  所以约 43% 的行一次都没跑过，而那正是泄漏最容易发生的地方（早期 return 跳过 free）。
+  ⇒ 此前"零内存问题"的结论**只覆盖 happy path**。
+- 两处踩坑（都写进文档了）：
+  1. `gcov -b -c mlc_ops.c` 报 `cannot open notes file` —— `-o num.exe` 时对象名是
+     `num-mlc_ops.gcno`，必须用**对象名**调用；
+  2. `--coverage` 编译若在仓库根执行，`.gcno/.gcda` 会落在根目录 —— 必须在临时目录里编译。
+- 官方 `check_all` rc=0 ｜ 语料 40/40
 
 
 ## 2.2.2
