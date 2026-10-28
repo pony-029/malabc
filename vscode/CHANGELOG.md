@@ -535,6 +535,27 @@
 - **同一个错误又犯一次（第三次）**：新正则把下界写成 `[A-Za-z_]\w*`，
   于是 `1` 不匹配 → 整条 for 仍进 unmapped。R550（`_IF_RE` 的 rhs 排除数字）是同一种错误。
   已改为 `(\d+|[A-Za-z_]\w*)`。**「名字的字符类」不等于「任意 token」**。
+- **第一次用第三方仪器检查 C 运行时**（此前仓库里一处都没有）。
+  实测本机能力：
+  ```
+  -fsanitize=address  → 链接失败（MinGW 不带 libasan）
+  -fsanitize=undefined/leak → 同上（无 libubsan/liblSan）
+  cppcheck  ✅ 16.2 工具链附带      gcov ✅      valgrind ❌      cl.exe ✅（MSVC 2022，未接）
+  ```
+  ⇒ 本机可用的第三方仪器是 **cppcheck（静态）** 与 **gcov（覆盖率）**。
+- **cppcheck 立刻抓到一处真缺陷**：
+  ```c
+  mlc_ops.c:70   int64_t idx[MLC_MAX_DIMS];        /* ndim == 0 时上面的 for 不执行 */
+  mlc_ops.c:114  pa[mlc_bcast_offset(a, ndim, idx)]  /* 读未初始化 */
+  ```
+  `cppcheck: warning: Uninitialized variable: idx [uninitvar]`。
+  当前之所以没炸，是因为 `mlc_bcast_offset` 在 `ndim == 0` 时不读 `idx` ——
+  **"靠下游保证"的隐式安全**。已改为 `= {0}`，复跑后 **warning/error = 0**。
+- **工具化尝试失败并回退**：写了 `tools/check_runtime_static.py`（含两向自证，植入缺陷能报出），
+  但 `check_all` 会**自动把 tools/ 下的脚本识别为门**，于是要求登记契约与 README 对等，
+  6 道门同时变红。**时间不足，已移除工具与 README 改动**，只保留那行真修复
+  （`check_all` rc=0，语料 40/40）。
+  **下一轮第一件事**：按 `docs/GATE_REGISTRATION.md` 正式登记这个门（含 `SELFTEST COUNTS` 行）。
 
 
 ## 2.2.2

@@ -67,7 +67,7 @@ static mlc_status mlc_binary_f64(const mlc_array *a, const mlc_array *b,
     const double *pa;
     const double *pb;
     double *po;
-    int64_t idx[MLC_MAX_DIMS];
+    int64_t idx[MLC_MAX_DIMS] = {0};   /* ndim==0 时循环不跑，不能靠下游保证 */
 
     if (a == NULL || b == NULL || out == NULL) {
         return MLC_ERR;
