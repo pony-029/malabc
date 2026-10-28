@@ -240,16 +240,9 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
         let mut ret_names: Vec<String> = Vec::new();
         for r in &f.rets {
             let rn = crate::emit::ret_cname(f, &r.name);
-            if crate::emit::ret_is_dynamic(f, &r.name, funcs) {
-                // 长度数据相关：算子自己分配；零初始化以保证 free 安全
-                out.push(format!("        mlc_array {} = {{0}};", rn));
-            } else {
-                out.push(format!("        mlc_array {};", rn));
-                out.push(format!(
-                    "        mlc_array_init(&{}, MLC_F64, 1, (int64_t[]){{1}});",
-                    rn
-                ));
-            }
+            // 一律零初始化：由**函数自己** init。
+            // G1：`init` 是构造，同一对象 init 两次属未定义 —— 实测每调用泄漏 1 次（D4 的 S2）。
+            out.push(format!("        mlc_array {} = {{0}};", rn));
             ret_names.push(rn);
         }
         let mut call_args: Vec<String> = f.args.iter().map(|a| ident(&a.name)).collect();
