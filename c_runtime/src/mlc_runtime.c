@@ -78,6 +78,25 @@ static mlc_status mlc_compute_strides(mlc_array *a)
     return MLC_OK;
 }
 
+/* 分配/释放计数（只读观测）。 */
+static int64_t g_alloc_n = 0;
+static int64_t g_free_n = 0;
+
+int64_t mlc_rt_alloc_count(void)
+{
+    return g_alloc_n;
+}
+
+int64_t mlc_rt_free_count(void)
+{
+    return g_free_n;
+}
+
+int64_t mlc_rt_alloc_balance(void)
+{
+    return g_alloc_n - g_free_n;
+}
+
 mlc_status mlc_array_init(mlc_array *a, mlc_dtype dt, int32_t ndim,
                           const int64_t *shape)
 {
@@ -118,6 +137,7 @@ mlc_status mlc_array_init(mlc_array *a, mlc_dtype dt, int32_t ndim,
         return MLC_ERR;
     }
     a->owns_data = 1;
+    g_alloc_n += 1;
     return MLC_OK;
 }
 
@@ -128,6 +148,7 @@ void mlc_array_free(mlc_array *a)
     }
     if (a->owns_data && a->data != NULL) {
         free(a->data);
+        g_free_n += 1;
     }
     a->data = NULL;
     a->owns_data = 0;

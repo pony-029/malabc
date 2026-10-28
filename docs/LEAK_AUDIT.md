@@ -1,0 +1,52 @@
+# 泄漏审计（D4）
+
+> 本机没有 ASan（MinGW 的 gcc 不带 `libasan`，`-fsanitize=address` 直接链接失败）。
+> 所以泄漏只能靠**自建计数**观测：`mlc_rt_alloc_count()` / `mlc_rt_free_count()` /
+> `mlc_rt_alloc_balance()`（只读观测，**不改任何行为**）。
+
+## 一、根因
+
+```c
+mlc_array_init(...) {
+    memset(a, 0, sizeof(*a));     /* ← 旧 data 指针被直接抹掉 */
+    ...
+    a->data = calloc(n, esz);
+}
+```
+
+`init` 是「构造」语义：它不释放旧缓冲。于是**对同一个数组 init 两次**
+（且第一次分配了非空缓冲）= 泄漏一次分配。
+
+这不是"某处忘了 free"，而是 `init` 的**前置条件从未写下来**。
+
+## 二、实测清单（`tests/test_rt_balance.py` 会重算）
+
+| 场景 | 形态 | 差值 |
+|---|---|---|
+| S1 | `init` → `free` | **0** [OK] |
+| **S2** | 驱动 `init{1}` → 函数内再 `init{0}` —— **`findhash`/`pickbig` 的真实形态** | **+1** [x] |
+| **S3** | 两次非空 `init` → `free` | **+1** [x] |
+| S4 | dynshape：`init{0}`（data=NULL）→ 算子就地分配 → free | **0** [OK] |
+
+> S4 干净的原因：空数组的 `data` 本来就是 `NULL`，再 init 不会覆盖任何已分配缓冲。
+
+## 三、为什么上一轮的修法回退（R568）
+
+把 `init` 改成「重置」（先 free 旧缓冲）能消掉 S2/S3，但那**改变了核心语义**：
+生成的代码里有大量"驱动先 init、函数再 init"的写法，它们依赖的是「构造」语义。
+实测后果：`test_op_error_paths` 与 TP5 的生成物自测**同时变红**。
+
+⇒ 正确顺序是：**先在调用方修**，而不是改 `init`。候选调用点：
+
+1. `project.rs` 驱动：ret 先 `init{1}` 再被函数 init —— 应改成「ret 用 `= {0}`，不给初值」；
+2. `fill:` 与 `const:` 路径：同一名字被写多次时的重复 init；
+3. `mlc_binary_f64` 的空输出分配（S4 已验证干净，但要保持）。
+
+## 四、当前状态
+
+```
+accumulated alloc=6 free=4 balance=2   （只在探针的 4 个场景里）
+```
+
+**这两个泄漏目前不影响任何语料结果**（进程结束时由 OS 回收），但它们会累积在
+长时间运行的调用方里 —— 而且**没有任何既有判据能看见**，所以先把它变成数字。

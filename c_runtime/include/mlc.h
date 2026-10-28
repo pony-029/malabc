@@ -58,6 +58,13 @@ typedef struct {
 const char *mlc_status_string(mlc_status st);
 size_t mlc_dtype_size(mlc_dtype dt);
 
+/* 分配/释放计数（**只读观测**，不影响行为）。
+ * 差值 > 0 表示泄漏，< 0 表示重复释放。
+ * 本机无 ASan（MinGW 不带 libasan），这是唯一自动化的泄漏观测手段。 */
+int64_t mlc_rt_alloc_count(void);
+int64_t mlc_rt_free_count(void);
+int64_t mlc_rt_alloc_balance(void);
+
 /* 元素总数；维度非法/溢出返回 -1（调用方必须检查）。 */
 int64_t mlc_array_numel(const mlc_array *a);
 
