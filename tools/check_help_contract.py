@@ -234,7 +234,7 @@ GUARD_CONTRACT = {
         2: "缺输入（语料目录不存在，或里面没有文件）",
     },
     "tools/check_runtime_static.py": {
-        0: "通过（RS1–RS2：cppcheck 对 C 运行时的 warning 与 error 都为 0）",
+        0: "通过（RS1–RS3：cppcheck 对 C 运行时的 warning 与 error 都为 0）",
         1: "cppcheck 报出 warning/error —— 先在运行时修掉，不要放过",
     },
     "tools/check_portability.py": {

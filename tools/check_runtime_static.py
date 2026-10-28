@@ -12,6 +12,10 @@
 
 * **RS1**：`cppcheck --enable=warning,performance,portability` 报出的 `warning` 必须为 0。
 * **RS2**：同上，`error` 级必须为 0。
+* **RS3**：覆盖率回归守卫 —— 用 `--coverage` 编 `mlc_ops.c` 并跑 40 例语料，
+  `mlc_ops.c` 的**行覆盖 >= 56.9%**、**分支至少走一次 >= 48.3%**。
+  阈值故意压在实测值（56.98 / 48.42）之下：它守的是「不比今天更差」。
+  没有 gcc/gcov 时 RS3 记为跳过（打印原因，不假装通过）。
 
 `style` 类（如「变量作用域可缩小」）不计入 —— 它不影响正确性。
 
@@ -34,16 +38,17 @@ mlc_ops.c:114   pa[mlc_bcast_offset(a, ndim, idx)]    /* 读未初始化 */
 ## 退出码
 
 0  = 通过（RS1–RS2 全绿：cppcheck warning/error = 0）
-1  = 有 RS1/RS2 问题（warning 或 error），或自证失败
+1  = 有 RS1/RS2 问题（warning 或 error），或 RS3 低于阈值，或自证失败
 """
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 
-ROW_SIGNATURE = "RS1–RS2"
+ROW_SIGNATURE = "RS1–RS3"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -75,6 +80,66 @@ def run_cppcheck(paths, inc):
     r = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                        stderr=subprocess.STDOUT, timeout=600)
     return r.stdout.decode("utf-8", "replace")
+
+
+
+#: RS3 的阈值：实测 56.98 / 48.42，压一点做回归守卫
+MIN_LINE_PCT = 56.9
+MIN_BRANCH_PCT = 48.3
+
+
+def measure_coverage():
+    """跑语料并用 gcov 量 `mlc_ops.c`。返回 (行%, 分支至少走一次%) 或 None。"""
+    gcc = shutil.which("gcc")
+    gcov = shutil.which("gcov")
+    m2c = os.path.join(ROOT, "rust", "m2c", "target", "release", "m2c.exe")
+    if gcc is None or gcov is None or not os.path.isfile(m2c):
+        return None
+
+    d = tempfile.mkdtemp(prefix="m2c_rs3_")
+    try:
+        for src in ("mlc_runtime.c", "mlc_ops.c"):
+            shutil.copy(os.path.join(RT, "src", src), d)
+        mir = os.path.join(d, "n.mir")
+        subprocess.run([sys.executable,
+                        os.path.join(ROOT, "translate", "mir.py"),
+                        os.path.join(ROOT, "translate", "examples", "numeric"),
+                        "-o", mir],
+                       stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                       stderr=subprocess.STDOUT, timeout=600)
+        gen = os.path.join(d, "gen")
+        subprocess.run([m2c, "build", "--mir", mir, "--out", gen,
+                        "--name", "numeric"],
+                       stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                       stderr=subprocess.STDOUT, timeout=900)
+        cc = subprocess.run([gcc, "-std=c99", "-O0", "--coverage",
+                             "-I", os.path.join(gen, "include"),
+                             "-I", INCLUDE,
+                             os.path.join(gen, "src", "gen.c"),
+                             os.path.join(gen, "src", "main.c"),
+                             "mlc_runtime.c", "mlc_ops.c",
+                             "-o", "num.exe", "-lm"],
+                            cwd=d, stdin=subprocess.DEVNULL,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            timeout=900)
+        if cc.returncode != 0:
+            return None
+        subprocess.run([os.path.join(d, "num.exe")], cwd=d,
+                       stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                       stderr=subprocess.STDOUT, timeout=300)
+        out = subprocess.run([gcov, "-b", "-c", "num-mlc_ops.gcno"], cwd=d,
+                             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, timeout=600
+                             ).stdout.decode("utf-8", "replace")
+        line = re.search(r"Lines executed:([\d.]+)%", out)
+        taken = re.search(r"Taken at least once:([\d.]+)%", out)
+        if not line or not taken:
+            return None
+        return float(line.group(1)), float(taken.group(1))
+    except (OSError, subprocess.SubprocessError):
+        return None
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
 
 
 def selftest():
@@ -146,6 +211,22 @@ def main(argv=None):
         return 0
 
     probs = audit(text)
+
+    cov = measure_coverage()
+    if cov is None:
+        print("  [skip] RS3 覆盖率：没有 gcc/gcov 或 m2c 未构建")
+    else:
+        line_pct, branch_pct = cov
+        if line_pct < MIN_LINE_PCT:
+            probs.append(u"RS3 mlc_ops.c 行覆盖 %.2f%% < %.1f%%（回归）"
+                         % (line_pct, MIN_LINE_PCT))
+        if branch_pct < MIN_BRANCH_PCT:
+            probs.append(u"RS3 mlc_ops.c 分支至少走一次 %.2f%% < %.1f%%（回归）"
+                         % (branch_pct, MIN_BRANCH_PCT))
+        if not probs:
+            print("  [OK] RS3 覆盖率：行 %.2f%%，分支至少走一次 %.2f%%"
+                  % (line_pct, branch_pct))
+
     if probs:
         for p in probs[:8]:
             print(u"  " + p)

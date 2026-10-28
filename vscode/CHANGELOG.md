@@ -581,6 +581,16 @@
      `num-mlc_ops.gcno`，必须用**对象名**调用；
   2. `--coverage` 编译若在仓库根执行，`.gcno/.gcda` 会落在根目录 —— 必须在临时目录里编译。
 - 官方 `check_all` rc=0 ｜ 语料 40/40
+- **门从 RS1–RS2 扩到 RS1–RS3：覆盖率进了门禁**（上一轮第 1 项）
+  * **RS3**：`--coverage` 编 `mlc_ops.c` + 跑 40 例语料 + gcov 量数，
+    要求 **行 >= 56.9%**、**分支至少走一次 >= 48.3%**（实测 56.98 / 48.42）。
+  * 阈值故意压在实测值之下 —— **它守的是"不比今天更差"，不是"已经够好"**。
+  * 没有 gcc/gcov 时打印跳过原因，不假装通过。
+  * 门本体耗时 ~1.6s（含一次转 MIR + 编译 + 运行 + gcov），对此前的 30s 全检可忽略。
+- 同步签名四处（`GUARD_CONTRACT` / 两份 README 质量门表 / `check_all` ASCII 树），
+  `releases/gates-last-run.json` 按**真跑一次**更新。
+- 又一次被自己绊倒：用 Python 改写 Markdown/代码后换行退化为 LF，`check_eol_convention` 立刻红 ——
+  这已是同类问题第三次，规则写在这里：**凡是 Python 读改写仓库文本文件，写完必须跑 `to_crlf`**。
 
 
 ## 2.2.2

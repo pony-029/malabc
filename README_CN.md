@@ -846,7 +846,7 @@ python tools/check_all.py        # 跑完 tools/check_*.py 全部护栏 + 各自
 | `check_generated_compiles.py` | GX1–GX2：生成的 C 必须能编译（`-fsyntax-only`）；丢弃返回值的调用不许退回 unmapped |
 | `check_architecture_docs.py` | `AD1–AD11` — 架构文档不许漂移：`FLOW_INDEX.json` ⇄ `candidates/*.json` ⇄ `html/*.html` ⇄ `svg/*.svg` 三向对账；SHA-256 陈旧门；离线版式不变量；CODEOWNERS 覆盖；本地图片路径；中英标签一致；术语表一致（AD9）；术语覆盖率 = 100%（AD10）；ADR 覆盖（AD11）；两份根 README 必须链接索引并嵌入总框架 SVG |
 | `check_tool_selftests.py` | `TS1–TS2` — 凡是声明 `SELFTEST = True` 的工具，发版时都真跑一次。工具的自证和其他门一样：**有人执行它才存在** |
-| `check_runtime_static.py` | `RS1–RS2` —— C 运行时过第三方静态分析（cppcheck）。warning/error 必须为 0；本机 gcc 不带 libasan，静态分析与 gcov 是唯一可用的第三方仪器。 |
+| `check_runtime_static.py` | `RS1–RS3` —— C 运行时过第三方静态分析（cppcheck）。warning/error 必须为 0；本机 gcc 不带 libasan，静态分析与 gcov 是唯一可用的第三方仪器。 |
 | `check_portability.py` | `PF1–PF3` —— 运行时不得假设只有 Windows。Windows 绝对路径只有在该行**登记过且有 POSIX 对照**时才允许；Windows 专属 API（`os.startfile` / `winreg` / `msvcrt` / `ctypes.windll`）一律不豁免。注释与文档串被跳过——写成 `C:\Temp\yalmip` 的实测记录是证据，不是平台假设。PF3 抓反方向：登记的锚点文字消失即陈旧 |
 | `check_version_scheme.py` | `VS1–VS2` —— 版本号脱离自己定的规则。每一位都必须留在 `0–9`（`0.7.9` → `0.8.0`，`0.9.9` → `1.0.0`）；这道门之前，`0.6.105` 和 `0.7.0` 在任何地方都看不出区别，于是补丁位一路涨到 `0.6.104`——读起来像日期，也说明不了改了多少。**VS2** 把扩展清单和版本表绑在一起：升了版本却忘了重新生成表，两边就会静静地对不上 |
 | `check_js_balance.py` | `JS1–JS4` —— `vscode/` 下两个文件必须括号配平、字符串与正则字面量闭合，且不能是空文件；`package.json` 必须可解析、`main` 指向的文件真实存在、声明了 `engines.vscode` 与 `matlab` language（**清单坏了比 JS 坏了更常见**，而 VSCode 连报错都不给）。**这台机器没有任何 JS 引擎**（`node` 不存在，`Code.exe` 是 Electron 外壳，不能当 `node --check`），所以 `extension.js` 写错了没有任何东西会报 —— 而它的失败方式是最糟的：**扩展静默不激活**，用户看到「点了没反应」，日志里连 `activate()` 都不会出现。这是启发式不是解析器：抓得到漏一个 `}` 或引号，抓不到 `const x = ;`。它自己的第一版因为不认正则字面量（`/[&<>"]/g`）报了 300 条假错误，那个用例现在就在自证里 |
