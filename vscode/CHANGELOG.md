@@ -567,7 +567,7 @@
   1. `ROW_SIGNATURE` 不能带 `u""` 前缀 —— P5 认不出，报"没有声明签名"；
   2. docstring 必须有一段**「退出码」**（0/1 的语义），否则 G2 红；
   3. 用 Python 读改写 Markdown 会把换行转成 LF —— `check_eol_convention` 立刻红；
-  4. `check_figure_glyphs` 禁 `✅/❌/⚠️`（界面字体无字形），CHANGELOG 里历史 emoji 已换成 `[OK]/[x]/[!]`。
+  4. `check_figure_glyphs` 禁行内 emoji 字形（界面字体无字形），CHANGELOG 里历史 emoji 已换成 `[OK]/[x]/[!]`。
 - **第二个第三方仪器上岗：gcov 覆盖率基准**（新增 `docs/COVERAGE_BASELINE.md`）
   ```
   mlc_ops.c      行 56.98% / 688 行 ｜ 分支至少走一次 48.42% / 663 个
