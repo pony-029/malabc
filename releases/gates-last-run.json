@@ -9,6 +9,11 @@
   "ms": 289,
   "rc": 0
  },
+ "check_generated_compiles": {
+  "at": "2026-10-24T09:19:20",
+  "ms": 4010,
+  "rc": 0
+ },
  "check_help_contract": {
   "at": "2026-10-24T09:19:20",
   "ms": 3883,
@@ -44,6 +49,11 @@
   "ms": 239,
   "rc": 0
  },
+ "check_runtime_static": {
+  "at": "2026-10-28T20:49:25",
+  "ms": 564,
+  "rc": 0
+ },
  "check_subprocess_hygiene": {
   "at": "2026-10-24T09:19:20",
   "ms": 276,
@@ -77,11 +87,6 @@
  "check_version_scheme": {
   "at": "2026-10-24T09:19:20",
   "ms": 190,
-  "rc": 0
- },
- "check_generated_compiles": {
-  "at": "2026-10-24T09:19:20",
-  "ms": 4010,
   "rc": 0
  }
 }

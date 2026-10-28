@@ -540,7 +540,7 @@
   ```
   -fsanitize=address  → 链接失败（MinGW 不带 libasan）
   -fsanitize=undefined/leak → 同上（无 libubsan/liblSan）
-  cppcheck  ✅ 16.2 工具链附带      gcov ✅      valgrind ❌      cl.exe ✅（MSVC 2022，未接）
+  cppcheck  [OK] 16.2 工具链附带      gcov [OK]      valgrind x      cl.exe [OK]（MSVC 2022，未接）
   ```
   ⇒ 本机可用的第三方仪器是 **cppcheck（静态）** 与 **gcov（覆盖率）**。
 - **cppcheck 立刻抓到一处真缺陷**：
@@ -556,6 +556,18 @@
   6 道门同时变红。**时间不足，已移除工具与 README 改动**，只保留那行真修复
   （`check_all` rc=0，语料 40/40）。
   **下一轮第一件事**：按 `docs/GATE_REGISTRATION.md` 正式登记这个门（含 `SELFTEST COUNTS` 行）。
+- **第 41 道门上线：`check_runtime_static.py`（契约 RS1–RS2）** —— 第三方静态分析进发版门禁。
+  * **RS1**：cppcheck 的 `warning` 必须为 0；**RS2**：`error` 必须为 0（`style` 不计）。
+  * 自证 5 项（含"植入未初始化读必须被报出"），`SELFTEST COUNTS {"bad": 0, "good": 5}`。
+  * 按 `docs/GATE_REGISTRATION.md` 一次登记 **七处**：门本体 / `release.py GATES` /
+    `GUARD_CONTRACT` / 两份 README 质量门表 / `check_all.py` ASCII 树 / `MIN_GUARDS` /
+    散文门数（`CONTRIBUTING.md` 3 处、`README_CN.md` 3 处、`README.md` 2 处、`matlabc_help.py` 1 处）。
+  * `releases/gates-last-run.json` 的记录是**真跑一次**写进去的（rc/ms 取自子进程），不是手填。
+- 登记过程中被门逐个挡下的四件事（都记在这里，下次少走）：
+  1. `ROW_SIGNATURE` 不能带 `u""` 前缀 —— P5 认不出，报"没有声明签名"；
+  2. docstring 必须有一段**「退出码」**（0/1 的语义），否则 G2 红；
+  3. 用 Python 读改写 Markdown 会把换行转成 LF —— `check_eol_convention` 立刻红；
+  4. `check_figure_glyphs` 禁 `✅/❌/⚠️`（界面字体无字形），CHANGELOG 里历史 emoji 已换成 `[OK]/[x]/[!]`。
 
 
 ## 2.2.2
@@ -1303,7 +1315,7 @@
   `ctest` 现在跑 3 组输入 × 10 个函数 = **30 项**，包含 `if` 的 else 分支
 - `check_translate_port` **进了发版清单**（第 16 道门）——移植链路已是最活跃的子系统，
   只放在 CI 里跑，改它的人跑一次发版会看到"假全绿"
-- 慢门 ⚠ 加了**带理由的白名单**（`SLOW_OK`）：`check_translate_port` 要真编译并
+- 慢门 [!] 加了**带理由的白名单**（`SLOW_OK`）：`check_translate_port` 要真编译并
   运行生成的 C 工程，6s 属于正常 —— 否则警告天天亮，很快就没人看
 - 修了 `check_release_gates` 的**失败路径崩溃**：`problems` 早已是字符串，
   还在按元组解包 —— 只在"真有问题时"触发，用 traceback 顶替了报告
@@ -1422,7 +1434,7 @@
 
 - 最慢的门**从 5.3s 降到 4.2s**：`check_help_contract` 的 `--help` 改成**并发预取**，
   并给 `_docstring` 加了按 (路径, mtime, 大小) 的缓存（同一文件原来被解析十几次）
-- 发布日志里，冠军门超过 5 秒会标 **⚠** 并提示「值得优化」
+- 发布日志里，冠军门超过 5 秒会标 **[!]** 并提示「值得优化」
 - `patch_text --plan` 支持 **`--fail-fast`**（默认继续跑完，出错即停可选）
 - 状态栏的缓存计数改为**本次启动累计**，重扫时归零 —— 只增不减的数字说明不了任何事
 
@@ -1550,7 +1562,7 @@
 - 改动记录里**同一文件的多次改动会折成一个可展开节点**（`solver.m  3 次`）——
   一次重构常常连着改同一个文件，平铺时看到的是好几行很像的记录
 - 新增设置 **`matlabc.undoDiffLimit`**（默认 8，1–40）：撤销前最多打开几个并排 diff
-- 字形检查扩到**手册正文**（FG4）：`⇢` 换成 `→`；`✓ ⚠ ✗` 属于引用界面真实文本，
+- 字形检查扩到**手册正文**（FG4）：`⇢` 换成 `→`；`✓ [!] ✗` 属于引用界面真实文本，
   进带理由的允许清单（登记了却已不在文中同样算红）
 - 新增一道门 **`check_release_gates`**：`check_*.py` 要么在发版清单里，
   要么带理由豁免 —— 此前"写了却从没在发布时跑过"是唯一静默的漏洞
@@ -1683,7 +1695,7 @@
 ## 1.1.6
 
 - 新增**状态栏**：`✓ matlabc`（就绪，悬停可看用的哪个 Python 与版本）／
-  `⚠ matlabc`（版本过低、启动失败，悬停给出原因）—— 点一下即可更换解释器。
+  `[!] matlabc`（版本过低、启动失败，悬停给出原因）—— 点一下即可更换解释器。
   扩展出问题时，用户终于有东西可看、可点
 - 选 Python 时会**把上次用过的排到最前面**并标注「上次用的」
 
@@ -2470,7 +2482,7 @@
 - **品牌名统一为 `matlabc`**（此前误写为 malabc）
 - 页头：标题行是 `matlabc`，下面一行是 `冯磊`
 - 命令 ID 同步为 `matlabc.*`
-- ⚠ 扩展标识随之变为 `冯磊.matlabc-lsp`；升级后请卸载旧的 `malabc.matlabc-lsp`，
+- [!] 扩展标识随之变为 `冯磊.matlabc-lsp`；升级后请卸载旧的 `malabc.matlabc-lsp`，
   否则两个扩展会同时启动各自的服务器
 
 ## 0.6.25

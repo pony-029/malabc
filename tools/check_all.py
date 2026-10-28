@@ -35,6 +35,7 @@
         ├─▶ check_browse_clean_manifest.py  `--browse` 清理清单 ⇄ 代码生成点两向对账（M1–M3；起因为 R99「声明改了、diff 里没有」）
         ├─▶ check_flow_figures.py         `flow/index.html` ⇄ `flow/figures/` ⇄ 候选三向对齐 + 图不过期 + 回执同源（FF1–FF7；单语交互图的门）
         ├─▶ check_facts_replay.py         事实重放 == 报表计数 + 位置完备 + 种类封闭（FT1–FT3；facts 层的门）
+        ├─▶ check_runtime_static.py     C 运行时过第三方静态分析：warning/error 必须为 0（契约 RS1..RS2）
         ├─▶ check_portability.py          运行时不得假设只有 Windows（契约 PF1..PF3）
         ├─▶ check_tour.py                 导览页：分帧引用 / 端点穿框 / 换行（契约 TR1..TR3）
         ├─▶ check_figure_glyphs.py       示意图的字形：缺字形画成方块 / 等宽行不许中文（契约 FG1..FG4）
@@ -219,7 +220,7 @@ GUARD_TIMEOUT = 600.0
 # R-行尾1：新增 check_eol_convention.py（EO1–EO3，CRLF/LF 约定），故 23 → 24。
 # R432：新增 check_translate_port.py（TP1–TP4，ABI/适配器/算子/保真/台账），
 #       故 33 → 34。门数只许升（删门/漏登记都会红）。
-MIN_GUARDS = 34
+MIN_GUARDS = 35
 
 
 def _write_help(text):

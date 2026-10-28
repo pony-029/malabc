@@ -233,6 +233,10 @@ GUARD_CONTRACT = {
         1: "增量结果与全量不一致 —— **更快但答案不同，那不是优化，是错误答案**",
         2: "缺输入（语料目录不存在，或里面没有文件）",
     },
+    "tools/check_runtime_static.py": {
+        0: "通过（RS1–RS2：cppcheck 对 C 运行时的 warning 与 error 都为 0）",
+        1: "cppcheck 报出 warning/error —— 先在运行时修掉，不要放过",
+    },
     "tools/check_portability.py": {
         0: "通过（PF1–PF3：运行时代码里的 Windows 绝对路径都成对登记过、"
            "没有 Windows 专属 API、且登记没有陈旧）",
