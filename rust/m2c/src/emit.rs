@@ -1050,6 +1050,13 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                     }
                 }
             }
+            Stmt::Fail { src } => {
+                if let Some(c) = src_comment(*src, indent) { out.push(c); }
+                // `error(...)`：置错误码后跳到清理段 —— 与 return 共用落点
+                out.push(format!("{}st = MLC_ERR;", indent));
+                out.push(format!("{}goto m2c_cleanup;", indent));
+                terminated = true;
+            }
             Stmt::Return { src } => {
                 if let Some(c) = src_comment(*src, indent) { out.push(c); }
                 // 提前退出：跳到函数尾的清理段（那里释放临时量并 return st）
@@ -1592,7 +1599,7 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
     // 否则 `goto m2c_cleanup;` 是悬空跳转（R578 就是这么坏的）。
     let mut has_return = false;
     crate::mir::walk_stmts(&f.body, &mut |s| {
-        if matches!(s, Stmt::Return { .. }) {
+        if matches!(s, Stmt::Return { .. } | Stmt::Fail { .. }) {
             has_return = true;
         }
     });

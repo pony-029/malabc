@@ -931,6 +931,10 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                     out.append("end")      # 收束块
                     blocks.pop()
                 continue
+            if code.startswith("error(") or code.startswith("error ("):
+                # 守卫条款：以错误码退出（端口里没有异常/消息通道）
+                out.append("fail")
+                continue
             if code in ("return", "return;"):
                 # 提前退出：发射器只在真出现时加 `m2c_cleanup:` 标签
                 out.append("return")

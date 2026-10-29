@@ -734,6 +734,19 @@
     一次改动吃掉了 5 个桩、让 4 个函数真正算出了数。
 - `docs/PLAN_TRACKER.md` 的防腐蚀判据**当场报红**（语料 40→41 没同步），
   按它更新后恢复绿 —— 这条判据第一次真正拦住我。
+- **`error('...')` 落地为 `fail`（MLC_ERR + 跳到清理段）** —— 与 `return` 共用同一个落点
+  * 实测依据：非被拒未映射里 `strlit` 130 条几乎全是 `error('...')` ——
+    它们是**守卫条款**（条件不满足就报错退出），此前整条被丢弃。
+  * 三层改动：`mir.py`（`error(` → `fail`）｜ `mir.rs`（`Stmt::Fail`）｜
+    `emit.rs`（`st = MLC_ERR; goto m2c_cleanup;`），并把「清理段存在条件」从
+    `Return` 扩成 `Return | Fail`。
+  * 两向验证（最小 MIR）：`fail` 时标签/错误码/跳转三者齐备且能编译；
+    没有 `fail`/`return` 的函数**不出现标签**（其余生成物逐字节不变）。
+  * 真实文件验证：`extras/adjoint.m` 的未映射从 6 → **5**，`error('Matrix must be square')`
+    不再进 `unmapped`，而是 `fail`。
+  * 读数：YALMIP 仍 `numeric 8 ｜ 桩 49`（那些函数还有别的未映射），
+    但**语义忠实度提升了**：守卫条款从"被丢弃"变成"以错误码退出"。
+  * 语料 41/41 ｜ `check_all` rc=0 ｜ `MIR_SEMANTICS.md` 增 3.10（控制流：return / fail）
 
 
 ## 2.2.2

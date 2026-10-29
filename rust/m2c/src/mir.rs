@@ -66,6 +66,8 @@ pub enum Stmt {
     /// 为什么需要：`while` 的条件若需要降级（语句只能写在循环体内），
     /// 就得写成 `while (1) { <降级>; if (!cond) break; ... }`。
     Break { src: i64 },
+    /// `fail` —— `error(...)` 的端口：以 MLC_ERR 退出（跳到清理段）。
+    Fail { src: i64 },
     /// `return` —— 提前结束本函数（跳到清理段，先释放临时量）。
     Return { src: i64 },
     /// `set:<lhs>:<值>` —— 标量赋值（值：整数字面量，或已声明的 i64 标量名）
@@ -184,7 +186,7 @@ pub fn walk_stmts<F: FnMut(&Stmt)>(stmts: &[Stmt], f: &mut F) {
             Stmt::Op(_) | Stmt::Set { .. } | Stmt::SetBin { .. } | Stmt::Call { .. }
             | Stmt::Call2 { .. }
             | Stmt::Const { .. } | Stmt::Fill { .. } | Stmt::Break { .. }
-            | Stmt::Return { .. } => {}
+            | Stmt::Return { .. } | Stmt::Fail { .. } => {}
             Stmt::For { body, .. } => walk_stmts(body, f),
             Stmt::If { then_body, else_body, .. } => {
                 walk_stmts(then_body, f);
@@ -353,6 +355,11 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
                 srcfile: pending_srcfile.clone(),
                 reject: None,
             });
+            continue;
+        }
+        if line == "fail" {
+            push_stmt!(Stmt::Fail { src: pending_src });
+            pending_src = 0;
             continue;
         }
         if line == "return" {
