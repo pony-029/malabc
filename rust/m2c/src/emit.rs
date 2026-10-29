@@ -1050,6 +1050,12 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                     }
                 }
             }
+            Stmt::Return { src } => {
+                if let Some(c) = src_comment(*src, indent) { out.push(c); }
+                // 提前退出：跳到函数尾的清理段（那里释放临时量并 return st）
+                out.push(format!("{}goto m2c_cleanup;", indent));
+                terminated = true;
+            }
             Stmt::Break { src } => {
                 if let Some(c) = src_comment(*src, indent) { out.push(c); }
                 out.push(format!("{}break;", indent));
@@ -1582,7 +1588,21 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
     let (body, terminated) = emit_block(f, &f.body, "    ", known);
     out.extend(body);
 
-    if !terminated {
+    // 提前退出的**落点**：只要函数里出现过 `return`，这一节必须存在，
+    // 否则 `goto m2c_cleanup;` 是悬空跳转（R578 就是这么坏的）。
+    let mut has_return = false;
+    crate::mir::walk_stmts(&f.body, &mut |s| {
+        if matches!(s, Stmt::Return { .. }) {
+            has_return = true;
+        }
+    });
+    if has_return {
+        out.push("m2c_cleanup:".to_string());
+        for t in &need_free {
+            out.push(format!("    mlc_array_free(&{});", t));
+        }
+        out.push("    return st;".to_string());
+    } else if !terminated {
         if !f.unmapped.is_empty() {
             out.push("    /* 以下语句未能确定性映射（不是猜测的翻译）： */".to_string());
             for u in &f.unmapped {

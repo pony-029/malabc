@@ -11,6 +11,7 @@ cumsum_loop: 1 2 3 4
 dotp: 30
 dynshape: 2 4 6
 dynsum: 10
+earlyret: 7
 emptychk: 1
 findeq: 1 2 3 4
 findfirst: 1 2

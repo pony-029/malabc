@@ -931,6 +931,10 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                     out.append("end")      # 收束块
                     blocks.pop()
                 continue
+            if code in ("return", "return;"):
+                # 提前退出：发射器只在真出现时加 `m2c_cleanup:` 标签
+                out.append("return")
+                continue
             fm = _FOR_RE.match(code)
             if fm:
                 out.append("for:%s:%s:%s" % (fm.group("var"), fm.group("a"),
