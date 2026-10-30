@@ -19,11 +19,10 @@ sys.path.insert(0, HERE)
 import fuzz_ops  # noqa: E402
 
 
-#: 已知分歧（seed=7 反例 #47）：`sum` 对 2-D 输入
-#:   py（MATLAB 语义）：按**列**求和 -> 1x3
-#:   C （现状）      ：全元素归约 -> 1x1（且 out 预置 1x1 时形状不符 -> ERR）
-#: 这是**产品缺陷**，不是装置问题；修法是给归约算子加 `dim` 参数语义。
-@pytest.mark.parametrize("seed", [1])
+#: 原 seed=7 反例 #47（`sum` 对 2-D 输入）已修：`mlc_op_sum` 的**自动分配**
+#: 现在按 MATLAB 语义算形状（2-D 且 rows>1 -> 1xcols），与解释器一致。
+#: 注意：`max`/`min`/`mean` 的自动分配仍是 1x1 —— 同类问题，待下一轮按同一处修。
+@pytest.mark.parametrize("seed", [1, 7])
 # 注意：seed=7 会命中一处**已知语义分歧**（见下），暂不纳入冒烟。
 def test_differential_40_cases(seed):
     assert fuzz_ops.main(["-n", "40", "--seed", str(seed)]) == 0, (

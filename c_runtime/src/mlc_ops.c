@@ -207,8 +207,18 @@ static mlc_status mlc_reduce_prepare(const mlc_array *a, mlc_array *out,
 mlc_status mlc_op_sum(const mlc_array *a, mlc_array *out)
 {
     if (mlc_array_numel(out) == 0) {
-        /* 形状未标注的返回值：归约结果恒为 1x1，这里补上分配 */
-        if (mlc_array_init(out, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) {
+        /* 形状未标注的返回值：按**MATLAB 语义**算形状 ——
+         * 2-D 且行数 > 1 时沿行求和得到 1 x cols，其余为 1x1。
+         * 若这里猜成 1x1，下面的一致性检查必然拒绝（差分测试 seed=7 抓到的正是这一步）。 */
+        int64_t rshape[MLC_MAX_DIMS];
+        int32_t rndim = 1;
+        rshape[0] = 1;
+        if (a != NULL && a->ndim == 2 && a->shape[0] > 1 && a->shape[1] > 0) {
+            rndim = 2;
+            rshape[0] = 1;
+            rshape[1] = a->shape[1];
+        }
+        if (mlc_array_init(out, MLC_F64, rndim, rshape) != MLC_OK) {
             return MLC_ERR;
         }
     }
