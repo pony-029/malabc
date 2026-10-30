@@ -121,15 +121,18 @@ def split_functions(source):
         if cur is None:
             continue
         code = _clean(raw).strip()
+        # 块关键字后面可能带分号：`end;`（YALMIP 实测 35 处）。
+        # 不归一化的话：既多一条 unmapped，又让深度记账不降 -> 后续语句嵌错块。
+        cb = code.rstrip(";").strip()
         # 块开始/结束要按**深度**记账：第一版直接在第一处 `end` 就把函数收掉，
         # 于是 while/if/for 之后的语句被整段丢弃（生成的函数悄悄变短）。
-        if code.startswith("for ") or code.startswith("while ") or \
-                code.startswith("if "):
+        if cb.startswith("for ") or cb.startswith("while ") or \
+                cb.startswith("if "):
             depth += 1
             cur["lines"].append(raw)
             cur["line_nos"].append(raw_no)
             continue
-        if code == "end" or code.startswith("end "):
+        if cb == "end" or cb.startswith("end "):
             depth -= 1
             if depth <= 0:
                 depth = 0
