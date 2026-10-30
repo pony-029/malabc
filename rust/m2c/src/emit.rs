@@ -1604,12 +1604,11 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
         }
     });
     if has_return {
+        // 只放落点；释放与返回仍在下面那段（否则"部分实现"的尾巴会被吞掉，
+        // 半实现的函数就会**报告成功** —— YALMIP `findrows` 实测踩到）
         out.push("m2c_cleanup:".to_string());
-        for t in &need_free {
-            out.push(format!("    mlc_array_free(&{});", t));
-        }
-        out.push("    return st;".to_string());
-    } else if !terminated {
+    }
+    if !terminated || has_return {
         if !f.unmapped.is_empty() {
             out.push("    /* 以下语句未能确定性映射（不是猜测的翻译）： */".to_string());
             for u in &f.unmapped {

@@ -51,7 +51,7 @@
 ```
 官方 check_all        rc=0，41 道门
 语料                  41/41 与 Octave 一致
-YALMIP                numeric 8 ｜ 桩 49 ｜ error 0 ｜ 形状 103 ｜ 拒绝 1043
+YALMIP                numeric 4 ｜ 桩 54 ｜ error 0 ｜ empty 0 ｜ 形状 103 ｜ 拒绝 1043
 覆盖率（mlc_ops.c）   行 56.98% ｜ 分支至少走一次 48.42%
 第三方仪器            cppcheck（门内）｜ gcov（门内）｜ ASan 不可用（MinGW 无 libasan）
 ```

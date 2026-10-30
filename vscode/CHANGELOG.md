@@ -747,6 +747,25 @@
   * 读数：YALMIP 仍 `numeric 8 ｜ 桩 49`（那些函数还有别的未映射），
     但**语义忠实度提升了**：守卫条款从"被丢弃"变成"以错误码退出"。
   * 语料 41/41 ｜ `check_all` rc=0 ｜ `MIR_SEMANTICS.md` 增 3.10（控制流：return / fail）
+- **更正 R579 的读数：`numeric 4 → 8` 里有 4 个是假绿**
+  * 现象：YALMIP 的 `empty 1` —— `findrows:` 输出为空，但状态是 OK。
+  * 根因（R579 引入）：清理段写成
+    ```rust
+    if has_return { 标签 + free + return st; }
+    else if !terminated { …return MLC_UNIMPLEMENTED… }
+    ```
+    **有 `return` 的函数把「部分实现」的尾巴整段吞掉了** ——
+    半实现的函数于是走提前 return 路径、报告成功、输出空。
+  * 修法：标签只放**落点**，释放与返回仍在原来那段；条件是 `!terminated || has_return`
+    （goto 会落到这里）。
+  * 读数（诚实版）：
+    ```
+    numeric 4（不是 8）｜ 桩 54 ｜ error 0 ｜ empty 0 ｜ 形状 103 ｜ 拒绝 1043
+    ```
+    也就是说 `return` 的能力**本身是对的**（语料 `earlyret: 7` 通过），
+    但那 4 个 YALMIP 函数**并没有真的算出来**，之前是被我的缺陷抬上去的。
+- **这是一次"指标上涨掩盖缺陷"的实例**：`numeric +4` 与 `empty +1` 同时发生，
+  而我只看了前者。**新增的 `empty` 分类正是为这类情况准备的，我没用它。**
 
 
 ## 2.2.2
