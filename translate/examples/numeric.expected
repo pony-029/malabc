@@ -32,6 +32,8 @@ relu: 1 2 3 4 5
 rootabs: 1 1.4142135623730951 1.7320508075688772
 row1: 3 4
 shiftmax: 5
+snr: 0
+sumcols: 5 7 9
 sumsq: 30
 tailcols: 2 3 5 6
 transit: 1 4 2 5 3 6
