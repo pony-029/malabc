@@ -81,6 +81,22 @@ _EXPR_BIN = re.compile(r"^(\S.*?)\s*([+\-*/])\s*(\S.*?)$")
 _CALL = re.compile(r"^([A-Za-z_]\w*)\s*\((.*)\)$")
 
 
+
+def _has_string_literal(t):
+    """`'` 既可能是字符串起点，也可能是**转置**。
+
+    `A'` / `A(1)'` / `A.'` 里的 `'` 紧跟标识符或右括号 —— 那是转置，不是字符串。
+    误判会让整条语句被标成 `strlit` 而进 unmapped（实测 YALMIP 上百条）。
+    """
+    for i, ch in enumerate(t):
+        if ch != "'":
+            continue
+        prev = t[i - 1] if i > 0 else ""
+        if prev and (prev.isalnum() or prev in ")]}_.'"):
+            continue                     # 转置
+        return True                      # 字符串起点
+    return False
+
 def _clean(line):
     """去掉行内注释（`%` 之后），保留字符串里的 %（本版无字符串常量）。"""
     out = []
@@ -587,7 +603,7 @@ _KIND_RULES = (
     # 结构体：`a.b` / `a.(e)`；排除 `.*` `./` `.\\` `.'` 与小数（它们也带点）
     ("struct", lambda t: _has_struct_ref(t)),
     # 字符串字面量：MATLAB 用单引号，C 里没有对应语义（且易与转置混淆）
-    ("strlit", lambda t: "'" in t),
+    ("strlit", _has_string_literal),
     ("control", lambda t: t.startswith(("switch", "case", "try", "catch",
                                         "break", "continue", "return"))),
     # 块标记：上一层的 if 没被识别时，else/otherwise 会落到这里
