@@ -144,6 +144,7 @@ def selftest():
 
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("--allow-empty", action="store_true")
     ap.add_argument("src", nargs="?")
     ap.add_argument("--recursive", action="store_true")
     ap.add_argument("--top", type=int, default=0,
@@ -185,6 +186,19 @@ def main(argv=None):
                 args.top -= 1
                 if args.top <= 0:
                     break
+    if cnt["empty"]:
+        print(u"--- empty（算完但结果为空 —— 与「静默算错」同类，必须查）---")
+        for kind, name, rest in rows:
+            if kind == "empty":
+                print("  %s" % name)
+        if not args.allow_empty:
+            print("runnable_report: %d 个函数算出空结果 —— 这通常是"
+                  "「半实现却报告成功」，用 --allow-empty 可显式放行"
+                  % cnt["empty"])
+            if not args.keep and info and os.path.isdir(info) \
+                    and info.startswith(tempfile.gettempdir()):
+                shutil.rmtree(info, ignore_errors=True)
+            return 1
     if not args.keep and info and os.path.isdir(info) \
             and info.startswith(tempfile.gettempdir()):
         # 只删本次的工作目录（绝不能碰临时根目录）
