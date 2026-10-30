@@ -153,10 +153,43 @@ def split_functions(source):
                 if n:
                     cur["types"][n] = am.group("type")
             continue
-        cur["lines"].append(raw)
-        cur["line_nos"].append(raw_no)
+        for piece in _split_stmts(raw):
+            cur["lines"].append(piece)
+            cur["line_nos"].append(raw_no)
     return funcs
 
+
+
+def _split_stmts(raw):
+    """把一行按**括号深度 0** 的分号切成多条语句。
+
+    只在确实切成多段时返回多段；其余原样返回 `[raw]`。
+    理由：`A = [A;temp];` 的分号在 `[]` 里，是拼接不是语句分隔。
+    """
+    out, cur, depth = [], [], 0
+    in_str = False
+    for ch in raw:
+        if ch == "%" and not in_str:
+            break                       # 行尾注释：后面不再切
+        if ch == "'":
+            in_str = not in_str
+        if not in_str:
+            if ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                depth -= 1
+            elif ch == ";":
+                if depth == 0:
+                    seg = "".join(cur).strip()
+                    if seg:
+                        out.append(seg)
+                    cur = []
+                    continue
+        cur.append(ch)
+    seg = "".join(cur).strip()
+    if seg:
+        out.append(seg)
+    return out if len(out) > 1 else [raw]
 
 def _var_line(kind, name, f):
     """`arg:x:f64:3` —— 形状已知就写出来，不知道就不写（发射器会发 TODO）。"""
