@@ -16,6 +16,7 @@ pub const C_IMPLEMENTED: &[&str] = &[
     "OP-SIN", "OP-COS", "OP-TAN", "OP-FLOOR", "OP-CEIL",
     "OP-ROUND", "OP-LOG2", "OP-LOG10",
     "OP-ANY", "OP-ALL", "OP-NNZ", "OP-ISREAL", "OP-ISNUMERIC",
+    "OP-ISEQUAL", "OP-ISEQUALK",
     "OP-FIND2", "OP-FIND3",
 ];
 
@@ -365,6 +366,9 @@ fn out_shape(f: &Func, op: &Op) -> Option<Vec<i64>> {
         return None;
     }
     // 标量结果算子（含 1x1 谓词）
+    if op.id == "OP-ISEQUAL" || op.id == "OP-ISEQUALK" {
+        return Some(vec![1]);
+    }
     if op.id == "OP-ANY" || op.id == "OP-ALL" || op.id == "OP-NNZ"
         || op.id == "OP-ISREAL" || op.id == "OP-ISNUMERIC"
     {
@@ -712,6 +716,23 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
         // 动态长度：调用 _alloc 变体，dst 直接是 out（由算子分配）
         out.push(format!("{}st = mlc_op_mask_alloc({}, {}, {}, {});",
                          pad, arg0, cmp, k, dst));
+    } else if op.id == "OP-ISEQUAL" && op.args.len() == 2 {
+        let arg1 = arg_ref(f, &op.args[1]);
+        out.push(format!(
+            "{}if (mlc_op_isequal({}, {}, {}) != MLC_OK) {{ return MLC_ERR; }}",
+            pad, arg0, arg1, dst
+        ));
+    } else if op.id == "OP-ISEQUALK" && op.args.len() == 2 {
+        let k = &op.args[1];
+        if k.parse::<f64>().is_err() {
+            out.push(format!("{}/* TODO(OP-ISEQUALK): 阈值必须是数字字面量 */", pad));
+            out.push(format!("{}return MLC_UNIMPLEMENTED;", pad));
+            return out;
+        }
+        out.push(format!(
+            "{}if (mlc_op_isequal_k({}, {}, {}) != MLC_OK) {{ return MLC_ERR; }}",
+            pad, arg0, k, dst
+        ));
     } else if op.id == "OP-FIND3" && op.args.len() == 4 {
         let cmp = &op.args[1];
         let k = &op.args[2];

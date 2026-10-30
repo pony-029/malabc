@@ -71,6 +71,9 @@ typedef struct {
 
 **共同错误**：`numel(out) != 1` → `MLC_ERR`；输入 `numel==0` 时 `ALL` 取 0、`ANY` 取 0（与 MATLAB 一致）。
 
+| `OP-ISEQUAL` | `isequal(a,b)`：同形且逐元素相等 -> 1 | 1×1 |
+| `OP-ISEQUALK` | `isequal(a,k)`：`a` 必须 1×1 且等于 `k` | 1×1 |
+
 ### 3.4 归约·取维度（结果恒 1×1）
 
 | 算子 | 语义 |

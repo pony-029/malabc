@@ -77,6 +77,14 @@ mlc_status mlc_op_find_n(const mlc_array *a, int cmp, double k,
 mlc_status mlc_op_find_masked(const mlc_array *a, const mlc_array *b,
                               int cmp, mlc_array *out);
 
+/* `isequal(a,b)`：同形且逐元素相等 -> 1，否则 0（恒 1x1）。 */
+mlc_status mlc_op_isequal(const mlc_array *a, const mlc_array *b,
+                          mlc_array *out);
+
+/* `isequal(a,k)`：a 必须是 1x1 且等于 k。 */
+mlc_status mlc_op_isequal_k(const mlc_array *a, double k,
+                            mlc_array *out);
+
 /* 1x1 谓词：any/all/nnz/isreal/isnumeric（结果恒 1x1）。 */
 mlc_status mlc_op_any(const mlc_array *a, mlc_array *out);
 mlc_status mlc_op_all(const mlc_array *a, mlc_array *out);

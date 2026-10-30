@@ -21,6 +21,7 @@ flatit: 1 3 2 4
 for_acc: 10
 forlen: 4
 head2: 1 2
+iseqtest: 1
 mmul: 22 28 49 64
 ncols: 3
 notempty: 1

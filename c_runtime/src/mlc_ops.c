@@ -405,6 +405,59 @@ static mlc_status mlc_unary_f64(const mlc_array *a, mlc_array *out, int code)
 }
 
 /* 1x1 谓词共用实现：code 0=any 1=all 2=nnz 3=isreal 4=isnumeric */
+mlc_status mlc_op_isequal(const mlc_array *a, const mlc_array *b,
+                          mlc_array *out)
+{
+    int64_t n, i;
+    int64_t shape1[1];
+    const double *pa;
+    const double *pb;
+
+    if (a == NULL || b == NULL || out == NULL || out->data == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64 || b->dtype != MLC_F64 || out->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    if (mlc_array_numel(out) != 1) {
+        return MLC_ERR;              /* 结果恒 1x1 */
+    }
+    n = mlc_array_numel(a);
+    ((double *)out->data)[0] = 0.0;
+    if (mlc_array_numel(b) != n) {
+        return MLC_OK;               /* 形状不同 -> false，不是错误 */
+    }
+    pa = (const double *)a->data;
+    pb = (const double *)b->data;
+    if (n > 0 && (pa == NULL || pb == NULL)) {
+        return MLC_ERR;
+    }
+    for (i = 0; i < n; ++i) {
+        if (pa[i] != pb[i]) {
+            return MLC_OK;
+        }
+    }
+    ((double *)out->data)[0] = 1.0;
+    (void)shape1;
+    return MLC_OK;
+}
+
+mlc_status mlc_op_isequal_k(const mlc_array *a, double k, mlc_array *out)
+{
+    if (a == NULL || out == NULL || out->data == NULL || a->data == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64 || out->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    if (mlc_array_numel(out) != 1) {
+        return MLC_ERR;
+    }
+    ((double *)out->data)[0] =
+        (mlc_array_numel(a) == 1 && ((const double *)a->data)[0] == k) ? 1.0 : 0.0;
+    return MLC_OK;
+}
+
 static mlc_status mlc_pred_f64(const mlc_array *a, mlc_array *out, int code)
 {
     int64_t i, n, cnt = 0, all_nz = 1;

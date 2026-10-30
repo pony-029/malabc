@@ -84,6 +84,12 @@ OPERATORS = (
     {"id": "OP-FIND2", "matlab": "find(a cmp b)", "c": "mlc_op_find_masked",
      "kind": "indexing", "rules": ("IDX-1",),
      "sample": "y = find(a == b);"},
+    {"id": "OP-ISEQUAL", "matlab": "isequal(a,b)", "c": "mlc_op_isequal",
+     "kind": "reduction", "rules": ("ORDER-1",),
+     "sample": "y = isequal(a, b);"},
+    {"id": "OP-ISEQUALK", "matlab": "isequal(a,k)", "c": "mlc_op_isequal_k",
+     "kind": "reduction", "rules": ("ORDER-1",),
+     "sample": "y = isequal(a, 0);"},
     {"id": "OP-ANY", "matlab": "any(x)", "c": "mlc_op_any",
      "kind": "reduction", "rules": ("ORDER-1",),
      "sample": "y = any(x);"},
@@ -177,7 +183,8 @@ C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV",
     "OP-SIN", "OP-COS", "OP-TAN", "OP-FLOOR", "OP-CEIL",
     "OP-ROUND", "OP-LOG2", "OP-LOG10",
     "OP-ANY", "OP-ALL", "OP-NNZ", "OP-ISREAL", "OP-ISNUMERIC",
-    "OP-FIND2", "OP-FIND3")
+    "OP-FIND2", "OP-FIND3",
+    "OP-ISEQUAL", "OP-ISEQUALK")
 
 #: `y(i) = v`（元素赋值）。左边带下标，_ASSIGN_RE 抓不到，单列一条。
 _SETIDX_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*|\d+)\s*\)"
@@ -196,6 +203,10 @@ _FINDN_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*find\s*\(\s*"
 _FIND1_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*find\s*\(\s*"
                          r"([A-Za-z_]\w*)\s*\)\s*;?\s*$")
 
+#: `isequal(a,b)` / `isequal(a,0)` -> 1x1 布尔
+_ISEQ_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*isequal\s*\(\s*"
+                        r"([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*|-?\d+(?:\.\d+)?)\s*\)"
+                        r"\s*;?\s*$")
 #: 1x1 谓词（any/all/nnz/isreal/isnumeric）
 _PRED_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*"
                         r"(any|all|nnz|isreal|isnumeric)\s*\(\s*"
@@ -294,6 +305,15 @@ def parse_line(line):
     if fn_ is not None:
         return {"operator": "OP-FIND3", "lhs": fn_.group(1),
                 "args": [fn_.group(2), "5", "0", fn_.group(3)],
+                "raw": line.rstrip("\n")}
+
+    iq = _ISEQ_LINE.match(line or "")
+    if iq is not None:
+        rhs = iq.group(3)
+        is_lit = re.match(r"^-?\d+(\.\d+)?$", rhs) is not None
+        return {"operator": "OP-ISEQUALK" if is_lit else "OP-ISEQUAL",
+                "lhs": iq.group(1),
+                "args": [iq.group(2), rhs],
                 "raw": line.rstrip("\n")}
 
     f2 = _FIND2_LINE.match(line or "")

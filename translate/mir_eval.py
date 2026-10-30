@@ -185,6 +185,16 @@ def _apply_op(oid, args):
             raise ValueError("col 越界")
         rows = sh[0]
         return Arr([a.data[i + (j - 1) * rows] for i in range(rows)], [rows])
+    if oid == "OP-ISEQUAL":
+        a, b = args[0], args[1]
+        same = (len(a.data) == len(b.data)
+                and all(x == y for x, y in zip(a.data, b.data)))
+        return Arr([1.0 if same else 0.0], [1])
+    if oid == "OP-ISEQUALK":
+        a = args[0]
+        k = float(args[1])
+        ok = (len(a.data) == 1 and a.data[0] == k)
+        return Arr([1.0 if ok else 0.0], [1])
     if oid == "OP-FIND3":
         a = args[0]
         cmp = int(args[1]); k = float(args[2]); n = int(args[3])
