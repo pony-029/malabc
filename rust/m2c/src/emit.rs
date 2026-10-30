@@ -263,7 +263,10 @@ fn resolved_shape_d(f: &Func, name: &str, depth: u32) -> Option<Vec<i64>> {
     if let Some(s) = f.var_shape(name) {
         return Some(s);
     }
-    if depth >= 3 {
+    // 形状求解的深度上限。原先是 3 —— 那不是环检测，只是"再深就不管了"：
+    // `y = 10*log10(mean(sig.*sig)/mean(noise.*noise))` 的链长就是 4，会被误判为"推不出"。
+    // 16 足够覆盖真实表达式的链长，同时对 `x = f(x)` 这类自引用仍然终止。
+    if depth >= 16 {
         return None;            // 防自引用/环
     }
     let mut found: Option<Vec<i64>> = None;
@@ -306,6 +309,14 @@ fn resolved_shape_d(f: &Func, name: &str, depth: u32) -> Option<Vec<i64>> {
                         if b >= a && a >= 1 {
                             found = Some(vec![b - a + 1]);
                         }
+                    }
+                }
+                // 二元逐元素：输出形状 = 两侧广播（与 `out_shape` 用**同一个** `bcast_shape`）
+                "OP-ADD" | "OP-SUB" | "OP-MUL" | "OP-DIV" if op.args.len() == 2 => {
+                    let sa = resolved_shape_d(f, &op.args[0], depth + 1);
+                    let sb = resolved_shape_d(f, &op.args[1], depth + 1);
+                    if let (Some(a), Some(b)) = (sa, sb) {
+                        found = bcast_shape(&a, &b);
                     }
                 }
                 "OP-SUM" | "OP-MEAN" | "OP-MAX" | "OP-MIN" | "OP-INDEX" => {
