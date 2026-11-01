@@ -174,6 +174,73 @@ mlc_status mlc_op_div(const mlc_array *a, const mlc_array *b, mlc_array *out)
 }
 
 
+/* ===================== Q15 定点算子 ===================== */
+
+int64_t mlc_q15_sat(int64_t v)
+{
+    if (v > (int64_t)MLC_Q15_MAX) {
+        return (int64_t)MLC_Q15_MAX;
+    }
+    if (v < (int64_t)MLC_Q15_MIN) {
+        return (int64_t)MLC_Q15_MIN;
+    }
+    return v;
+}
+
+/* a、b、out 必须同形状；不下标广播（定点广播极易静默算错）。 */
+static mlc_status mlc_q15_prepare(const mlc_array *a, const mlc_array *b,
+                                  mlc_array *out, int64_t *n)
+{
+    if (a == NULL || b == NULL || out == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64 || b->dtype != MLC_F64 || out->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    *n = mlc_array_numel(a);
+    if (mlc_array_numel(b) != *n || mlc_array_numel(out) != *n) {
+        return MLC_ERR;
+    }
+    if (*n > 0 && (a->data == NULL || b->data == NULL || out->data == NULL)) {
+        return MLC_ERR;
+    }
+    return MLC_OK;
+}
+
+mlc_status mlc_op_q15_add(const mlc_array *a, const mlc_array *b, mlc_array *out)
+{
+    int64_t n = 0, i;
+    if (mlc_q15_prepare(a, b, out, &n) != MLC_OK) {
+        return MLC_ERR;
+    }
+    for (i = 0; i < n; ++i) {
+        int64_t va = (int64_t)(((const double *)a->data)[i]);
+        int64_t vb = (int64_t)(((const double *)b->data)[i]);
+        ((double *)out->data)[i] = (double)mlc_q15_sat(va + vb);
+    }
+    return MLC_OK;
+}
+
+mlc_status mlc_op_q15_mul(const mlc_array *a, const mlc_array *b, mlc_array *out)
+{
+    int64_t n = 0, i;
+    const int64_t half = ((int64_t)1) << (MLC_Q15_FRAC - 1);
+    if (mlc_q15_prepare(a, b, out, &n) != MLC_OK) {
+        return MLC_ERR;
+    }
+    for (i = 0; i < n; ++i) {
+        int64_t va = (int64_t)(((const double *)a->data)[i]);
+        int64_t vb = (int64_t)(((const double *)b->data)[i]);
+        int64_t prod = va * vb;                 /* |va|,|vb| <= 32768 -> 不溢出 int64 */
+        /* 就近舍入：先加半个 LSB，再算术右移 frac 位（负数也按位右移，C99 实现定义但
+           gcc/clang 均为算术右移；这里显式用除法规避可移植性问题）。 */
+        int64_t num = prod + half;
+        int64_t q = num / (((int64_t)1) << MLC_Q15_FRAC);
+        ((double *)out->data)[i] = (double)mlc_q15_sat(q);
+    }
+    return MLC_OK;
+}
+
 mlc_status mlc_op_sum(const mlc_array *a, mlc_array *out)
 {
     if (mlc_array_numel(out) == 0) {

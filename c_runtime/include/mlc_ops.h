@@ -85,6 +85,18 @@ mlc_status mlc_op_isequal(const mlc_array *a, const mlc_array *b,
 mlc_status mlc_op_isequal_k(const mlc_array *a, double k,
                             mlc_array *out);
 
+/* ---- Q15 定点（饱和 + 就近舍入） ----------------------------------
+ * 整数域 [-32768, 32767]，frac_bits = 15。溢出**饱和**，不环绕。
+ * 这两个算子让 `dtypes.fixed_point` 从"声明"变成"可执行的语义"。 */
+#define MLC_Q15_BITS   16
+#define MLC_Q15_FRAC   15
+#define MLC_Q15_MAX    32767
+#define MLC_Q15_MIN    (-32768)
+
+mlc_status mlc_op_q15_add(const mlc_array *a, const mlc_array *b, mlc_array *out);
+mlc_status mlc_op_q15_mul(const mlc_array *a, const mlc_array *b, mlc_array *out);
+int64_t mlc_q15_sat(int64_t v);
+
 /* 1x1 谓词：any/all/nnz/isreal/isnumeric（结果恒 1x1）。 */
 mlc_status mlc_op_any(const mlc_array *a, mlc_array *out);
 mlc_status mlc_op_all(const mlc_array *a, mlc_array *out);
