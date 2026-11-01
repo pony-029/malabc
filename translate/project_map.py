@@ -199,6 +199,291 @@ def plan(cfg, base=None):
             "roots": {"matlab": mroot, "c": croot}}
 
 
+
+# ===========================================================================
+# v2：工程级关系模型（多个 MATLAB 功能 <-> 一个/多个 C 模块）
+# ===========================================================================
+
+V2_TOP = {"version", "matlab", "c", "targets", "modules", "operators", "constraints"}
+V2_MODULE = {"id", "sources", "targets", "entry", "timing", "operators"}
+V2_TIMING = {"period_ms", "deadline_ms", "entry_kind", "reentrant"}
+V2_TARGET = {"abi", "allow_heap", "dtype", "max_stack_bytes"}
+
+
+def _req(obj, keys, where):
+    for k in keys:
+        if k not in obj:
+            raise _bad("%s.%s" % (where, k) if where else k, "缺少必需项")
+
+
+def load2(path):
+    """读入并校验 v2 配置。未知键一律报错（与 v1 同一原则）。"""
+    # 不能复用 v1 的 load()：它的键白名单里没有 virtual v2 的键，
+    # 会在 v2 校验之前就把合法配置拒掉（本轮踩到）。
+    if not os.path.isfile(path):
+        raise _bad(path, "文件不存在")
+    try:
+        d = json.loads(io.open(path, encoding="utf-8").read())
+    except ValueError as exc:
+        raise _bad(path, "不是合法 JSON（%s）" % exc)
+    if not isinstance(d, dict):
+        raise _bad(path, "顶层必须是对象")
+    if d.get("version") != 2:
+        raise _bad("version", "load2 只接受 2（实际 %r）" % (d.get("version"),))
+    _check_keys(d, V2_TOP, "")
+
+    for k in ("targets", "modules"):
+        if k not in d:
+            raise _bad(k, "v2 必须声明 %s" % k)
+    if not isinstance(d["modules"], list) or not d["modules"]:
+        raise _bad("modules", "必须是非空数组")
+
+    for name, t in (d.get("targets") or {}).items():
+        if not isinstance(t, dict):
+            raise _bad("targets.%s" % name, "必须是对象")
+        _check_keys(t, V2_TARGET, "targets.%s" % name)
+
+    seen_ids = set()
+    for i, m in enumerate(d["modules"]):
+        w = "modules[%d]" % i
+        if not isinstance(m, dict):
+            raise _bad(w, "必须是对象")
+        _check_keys(m, V2_MODULE, w)
+        _req(m, ("id", "sources"), w)
+        if m["id"] in seen_ids:
+            raise _bad("%s.id" % w, "模块 id 重复：%s" % m["id"])
+        seen_ids.add(m["id"])
+        if not isinstance(m["sources"], list) or not m["sources"]:
+            raise _bad("%s.sources" % w, "必须是**非空**数组（模块由哪些 MATLAB 功能拼成）")
+        if "timing" in m:
+            if not isinstance(m["timing"], dict):
+                raise _bad("%s.timing" % w, "必须是对象")
+            _check_keys(m["timing"], V2_TIMING, "%s.timing" % w)
+        for t in m.get("targets") or []:
+            if t not in (d.get("targets") or {}):
+                raise _bad("%s.targets" % w, "引用了未声明的 target：%s" % t)
+        if "operators" in m and not isinstance(m["operators"], dict):
+            raise _bad("%s.operators" % w, "必须是对象（算子名 -> C 符号）")
+    if "operators" in d and not isinstance(d["operators"], dict):
+        raise _bad("operators", "必须是对象（算子名 -> C 符号）")
+    return d
+
+
+def scan_operators(base, cfg, python=None, mir_py=None):
+    """**动态侧**：从真实源码扫出用到的算子（OP-* id）。
+
+    用 `translate/mir.py` 跑一遍配置的 `matlab.root`，再从 MIR 文本里收集 `op:OP-XXX`。
+    这一步是"动"的来源 —— 配置对不对，要由源码说话。
+    """
+    import subprocess
+    import sys
+    import tempfile
+
+    python = python or sys.executable
+    mir_py = mir_py or os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "mir.py")
+    root = os.path.join(base, cfg["matlab"]["root"])
+    if not os.path.isdir(root):
+        return set(), "matlab.root 不存在：%s" % root
+    d = tempfile.mkdtemp(prefix="m2c_scan_")
+    out = os.path.join(d, "p.mir")
+    cmd = [python, mir_py, root, "-o", out]
+    if cfg["matlab"].get("recursive", True):
+        cmd.insert(3, "--recursive")
+    r = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                       stderr=subprocess.STDOUT, timeout=600)
+    if r.returncode != 0 or not os.path.isfile(out):
+        return set(), "扫描失败：%s" % r.stdout.decode("utf-8", "replace")[-300:]
+    used = set()
+    for ln in io.open(out, encoding="utf-8", errors="replace"):
+        if ln.startswith("op:"):
+            parts = ln.split(":")
+            if len(parts) >= 2:
+                used.add(parts[1].strip())
+    return used, ""
+
+
+def _ops_table():
+    """算子表：id -> matlab 名（用于把配置里的 `sum` 解析成 `OP-SUM`）。"""
+    try:
+        from . import operators as O
+    except (ImportError, ValueError):
+        import operators as O
+    tbl = {}
+    for row in getattr(O, "OPERATORS", []):
+        mid = row.get("id")
+        if mid:
+            tbl[mid] = mid
+    return tbl
+
+
+def check_v2(cfg, base, used_ops=None):
+    """M1–M4 / T1–T4。返回 `{"problems": [...], "warnings": [...]}`。"""
+    problems, warnings = [], []
+    probs = problems.append
+    tbl = _ops_table()
+
+    # ---- 模块关系 ----
+    owner = {}
+    for m in cfg["modules"]:
+        for src in m["sources"]:
+            owner.setdefault(src, []).append(m["id"])
+
+    # M4：同一 MATLAB 功能被多个模块引用（未声明共享）
+    for src, mods in owner.items():
+        if len(mods) > 1 and not str(src).startswith("shared:"):
+            probs("M4 函数 %r 被多个模块引用（%s）—— 会生成多份；"
+                  "确实要复用请写成 \"shared:%s\"" % (src, ", ".join(mods), src))
+
+    # M1：sources 必须真实存在（用 matlab.root 下是否有同名 .m 判定）
+    mroot = os.path.join(base, cfg["matlab"]["root"])
+    stems = set()
+    if os.path.isdir(mroot):
+        for dp, _dn, fn in os.walk(mroot):
+            for f in fn:
+                if f.lower().endswith(".m"):
+                    stems.add(os.path.splitext(f)[0])
+    for src in owner:
+        name = str(src).split(".")[-1].replace("shared:", "")
+        if stems and name not in stems:
+            probs("M1 模块引用的函数 %r 在 %s 下找不到对应 .m"
+                  % (src, cfg["matlab"]["root"]))
+
+    # ---- 算子替换：M2 / M3 ----
+    overrides = dict(cfg.get("operators") or {})
+    for m in cfg["modules"]:
+        for k, v in (m.get("operators") or {}).items():
+            overrides.setdefault(k, v)
+    over_ids = set()
+    for k in overrides:
+        if k in tbl:
+            over_ids.add(k)
+        else:
+            hit = [i for i, _ in tbl.items() if i == "OP-" + k.upper()]
+            if hit:
+                over_ids.add(hit[0])
+            else:
+                warnings.append("算子替换 %r 无法对应到任何算子 id（可能拼错）" % k)
+
+    if used_ops is not None:
+        # M2：配置替换了、但源码里根本没用到
+        for oid in sorted(over_ids - set(used_ops)):
+            warnings.append("M2 算子 %s 在配置里被替换，但源码中未使用（多余配置）" % oid)
+        # M3：源码用到、但既不是内置实现也没被替换
+        # 内置实现 = 算子表里的全部 id（不另写一份清单）
+        builtin = set(tbl.keys())
+
+        unknown = sorted(set(used_ops) - builtin - over_ids)
+        for oid in unknown[:12]:
+            probs("M3 源码用到算子 %s，但既无内置实现也无目标覆盖" % oid)
+
+    # ---- 时序：T1–T4 ----
+    targets = cfg.get("targets") or {}
+    for m in cfg["modules"]:
+        tm = m.get("timing") or {}
+        per, dl = tm.get("period_ms"), tm.get("deadline_ms")
+        if per is not None and dl is not None and dl > per:
+            probs("T1 模块 %s：deadline(%s) > period(%s)" % (m["id"], dl, per))
+        if tm.get("entry_kind") == "isr":
+            for t in (m.get("targets") or []):
+                if (targets.get(t) or {}).get("allow_heap") is not False:
+                    probs("T2 模块 %s 是中断入口，但 target %s 未禁止堆分配"
+                          % (m["id"], t))
+    forbid = ((cfg.get("constraints") or {}).get("forbid_heap") or [])
+    for m in cfg["modules"]:
+        for t in (m.get("targets") or []):
+            if t in forbid and (targets.get(t) or {}).get("allow_heap") is not False:
+                probs("T2 target %s 在 forbid_heap 里，但 allow_heap 不是 false" % t)
+
+    return {"problems": problems, "warnings": warnings}
+
+
+def emit_manifest(cfg, path, used_ops=None):
+    """把关系固化成 C 头（嵌入式侧编译期可见）。"""
+    L = ["/* 由 translate/project_map.py 生成 —— 勿手改 */",
+         "#ifndef M2C_MANIFEST_H", "#define M2C_MANIFEST_H", ""]
+    L.append("#define M2C_PROJECT \"%s\"" % cfg["c"].get("project", "?"))
+    L.append("#define M2C_MODULE_COUNT %d" % len(cfg["modules"]))
+    L.append("")
+    for i, m in enumerate(cfg["modules"]):
+        mid = m["id"].upper()
+        L.append("/* 模块 %s：由 %d 个 MATLAB 功能拼成 */" % (m["id"], len(m["sources"])))
+        L.append("#define M2C_%s_SOURCES %d" % (mid, len(m["sources"])))
+        tm = m.get("timing") or {}
+        if "period_ms" in tm:
+            L.append("#define M2C_%s_PERIOD_MS %g" % (mid, tm["period_ms"]))
+        if "deadline_ms" in tm:
+            L.append("#define M2C_%s_DEADLINE_MS %g" % (mid, tm["deadline_ms"]))
+        if tm.get("entry_kind"):
+            L.append("#define M2C_%s_ENTRY_KIND \"%s\"" % (mid, tm["entry_kind"]))
+        for j, src in enumerate(m["sources"]):
+            L.append("#define M2C_%s_SRC%d \"%s\"" % (mid, j, src))
+        L.append("")
+    over = dict(cfg.get("operators") or {})
+    for m in cfg["modules"]:
+        over.update(m.get("operators") or {})
+    if over:
+        L.append("/* 算子替换 */")
+        for k, v in sorted(over.items()):
+            L.append("#define M2C_OP_%s %s" % (k.upper().replace("-", "_"), v))
+        L.append("")
+    if used_ops:
+        L.append("/* 实际用到的算子（由源码扫描得出） */")
+        for oid in sorted(used_ops):
+            L.append("#define M2C_USES_%s 1" % oid.replace("-", "_"))
+        L.append("")
+    L.append("#endif")
+    io.open(path, "w", encoding="utf-8", newline="\n").write("\n".join(L) + "\n")
+    return path
+
+
+def _main_v2(cfg_path, argv, as_json):
+    """v2 的入口：静态校验 + 动态扫算子 + 可选 manifest。"""
+    base = os.path.dirname(os.path.abspath(cfg_path))
+    try:
+        cfg = load2(cfg_path)
+    except ConfigError as exc:
+        print("配置不合规：%s" % exc)
+        return 2
+
+    used, err = scan_operators(base, cfg)
+    if err:
+        print("[warn] %s（跳过 M2/M3 对账）" % err)
+        used = None
+    res = check_v2(cfg, base, used)
+
+    if as_json:
+        print(json.dumps({"used_operators": sorted(used) if used else None,
+                          "problems": res["problems"],
+                          "warnings": res["warnings"]},
+                         ensure_ascii=False, indent=1))
+    else:
+        print("工程：%s ｜ 模块 %d 个 ｜ target %d 个"
+              % (cfg["c"].get("project", "?"), len(cfg["modules"]),
+                 len(cfg.get("targets") or {})))
+        for m in cfg["modules"]:
+            tm = m.get("timing") or {}
+            print("  [%s] <- %s%s"
+                  % (m["id"], " + ".join(m["sources"]),
+                     ("   period=%sms deadline=%sms entry=%s"
+                      % (tm.get("period_ms"), tm.get("deadline_ms"),
+                         tm.get("entry_kind"))) if tm else ""))
+        if used is not None:
+            print("  源码实际用到算子 %d 个" % len(used))
+        for w in res["warnings"]:
+            print("[warn] %s" % w)
+        for p in res["problems"]:
+            print("[problem] %s" % p)
+
+    if "--emit-manifest" in argv:
+        i = argv.index("--emit-manifest")
+        out = argv[i + 1] if len(argv) > i + 1 else "m2c_manifest.h"
+        emit_manifest(cfg, out, used)
+        print("manifest 已写出：%s" % out)
+
+    return 1 if res["problems"] else 0
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv or argv[0] in ("-h", "--help"):
@@ -206,6 +491,13 @@ def main(argv=None):
         return 0
     cfg_path = argv[0]
     as_json = "--json" in argv
+    try:
+        raw = json.loads(io.open(cfg_path, encoding="utf-8").read())
+    except (ValueError, IOError) as exc:
+        print("配置不合规：%s" % exc)
+        return 2
+    if raw.get("version") == 2:
+        return _main_v2(cfg_path, argv, as_json)
     try:
         cfg = load(cfg_path)
     except ConfigError as exc:

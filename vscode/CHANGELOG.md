@@ -35,6 +35,44 @@
   **三条硬规则（宁可报错，不猜）**：未知配置项报错／`mapping` 的键必须在 `matlab.root` 下／
   两个源不许映射到同一个 C 输出。7 条判据已接进 GX2。
 
+### 新增（v2：工程级关系模型）
+
+v1 的映射是**文件级 1:1**，表达不了真实工程：一个 C 模块常由**多个 MATLAB 功能拼装**，
+同一功能可能同时产出 PC 版与嵌入式版，算子要在目标板上替换，还要声明时序约束。
+
+`m2c.project.json` **version 2**（`docs/PROJECT_MAP.md` 有完整模型）：
+
+```json
+{ "version": 2,
+  "targets": { "pc": {"allow_heap": true}, "mcu": {"allow_heap": false, "dtype": "f32"} },
+  "modules": [
+    { "id": "accum", "targets": ["mcu"],
+      "sources": ["colsum_loop", "col2sum"],        ← 多对一（拼装）
+      "entry": "colsum_loop",
+      "timing": {"period_ms": 1, "deadline_ms": 0.8, "entry_kind": "isr"},
+      "operators": {"sum": "vendor_sum_f32"} } ] }   ← 算子替换
+```
+
+**动静结合**（本设计的核心）：
+
+| 规则 | 静态/动态 | 含义 |
+|---|---|---|
+| M1 | 静态 | `sources` 里的函数必须真实存在 |
+| **M2** | **动态** | 配置里替换的算子必须**真的被源码用到**（否则是多余配置） |
+| **M3** | **动态** | 源码用到的算子必须被覆盖（内置 ∪ 配置） |
+| M4 | 静态 | 同一函数被两个模块引用 → 报错（要复用写 `shared:`） |
+| T1 | 静态 | `deadline_ms <= period_ms` |
+| T2 | 静态 | 中断入口（`isr`）不许落在允许堆分配的目标上 |
+
+M2/M3 的事实来自 `mir.py` **扫真实源码**得到的算子集合 ——
+配置改了源码没变、或源码变了配置没跟，都会被报出来。
+实测该示例工程：**扫出 31 个算子**，配置与源码对账通过（rc=0）。
+
+`--emit-manifest` 还会输出 `m2c_manifest.h`（模块由哪些功能拼成、周期/截止期/入口类型的
+`#define` 表），让嵌入式侧在编译期就能看到这些关系。
+
+判据：`tests/test_project_map.py` **15 条**（v1 七条 + v2 八条），已接 GX2。
+
 
 ## 2.2.3
 
