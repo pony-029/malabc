@@ -173,36 +173,6 @@ mlc_status mlc_op_div(const mlc_array *a, const mlc_array *b, mlc_array *out)
     return mlc_binary_f64(a, b, out, MLC_BIN_DIV);
 }
 
-static mlc_status mlc_reduce_prepare(const mlc_array *a, mlc_array *out,
-                                     int64_t *n, const double **pa,
-                                     double **po)
-{
-    if (a == NULL || out == NULL) {
-        return MLC_ERR;
-    }
-    if (a->dtype != MLC_F64 || out->dtype != MLC_F64) {
-        return MLC_ERR;
-    }
-    /* 输出为空（形状未标注的返回值）：归约结果恒为 1x1，这里补上分配 */
-    if (mlc_array_numel(out) == 0) {
-        if (mlc_array_init(out, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) {
-            return MLC_ERR;
-        }
-    }
-    if (mlc_array_numel(out) != 1) {
-        return MLC_ERR;
-    }
-    *n = mlc_array_numel(a);
-    if (*n <= 0) {
-        return MLC_ERR; /* 空输入：诚实报错，不返回 0/NaN */
-    }
-    *pa = (const double *)a->data;
-    *po = (double *)out->data;
-    if (*pa == NULL || *po == NULL) {
-        return MLC_ERR;
-    }
-    return MLC_OK;
-}
 
 mlc_status mlc_op_sum(const mlc_array *a, mlc_array *out)
 {
@@ -284,75 +254,91 @@ mlc_status mlc_op_sum(const mlc_array *a, mlc_array *out)
     return MLC_ERR; /* 3-D+ 暂不静默猜维度 */
 }
 
-mlc_status mlc_op_mean(const mlc_array *a, mlc_array *out)
+/* 归约核心（mean/max/min 共用）：与 `mlc_op_sum` **同一套**列语义。
+ * kind: 0 = mean, 1 = max, 2 = min。
+ * 2-D 且 rows > 1 时沿行归约 -> 1 x cols；其余 -> 1x1。 */
+static mlc_status mlc_reduce_run(const mlc_array *a, mlc_array *out, int kind)
 {
-    int64_t n, i;
+    int64_t rshape[MLC_MAX_DIMS];
+    int32_t rndim = 1;
+    int64_t rows = 0, cols = 0, n, i, j;
     const double *pa;
     double *po;
-    double acc = 0.0;
+    double acc;
 
-    if (mlc_reduce_prepare(a, out, &n, &pa, &po) != MLC_OK) {
+    if (a == NULL || out == NULL) {
         return MLC_ERR;
     }
-    for (i = 0; i < n; ++i) {
-        acc += pa[i];
+    if (a->dtype != MLC_F64 || out->dtype != MLC_F64) {
+        return MLC_ERR;
     }
-    po[0] = acc / (double)n;
+    rshape[0] = 1;
+    if (a->ndim == 2 && a->shape[0] > 1 && a->shape[1] > 0) {
+        rndim = 2;
+        rshape[1] = a->shape[1];
+        rows = a->shape[0];
+        cols = a->shape[1];
+    }
+    if (mlc_array_numel(out) == 0) {
+        if (mlc_array_init(out, MLC_F64, rndim, rshape) != MLC_OK) {
+            return MLC_ERR;
+        }
+    }
+    if (out->ndim != rndim) {
+        return MLC_ERR;
+    }
+    for (i = 0; i < rndim; ++i) {
+        if (out->shape[i] != rshape[i]) {
+            return MLC_ERR;
+        }
+    }
+    n = mlc_array_numel(a);
+    if (n <= 0) {
+        return MLC_ERR;             /* 空输入：诚实报错，不返回 0/NaN */
+    }
+    pa = (const double *)a->data;
+    po = (double *)out->data;
+    if (pa == NULL || po == NULL) {
+        return MLC_ERR;
+    }
+    if (rows <= 1) {
+        /* 1x1（或 1-D）：全元素 */
+        acc = pa[0];
+        for (i = 1; i < n; ++i) {
+            if (kind == 0) { acc += pa[i]; }
+            else if (kind == 1) { if (pa[i] > acc) { acc = pa[i]; } }
+            else { if (pa[i] < acc) { acc = pa[i]; } }
+        }
+        po[0] = (kind == 0) ? (acc / (double)n) : acc;
+        return MLC_OK;
+    }
+    /* 2-D 且 rows > 1：按列归约（行主序：a[i*cols + j]） */
+    for (j = 0; j < cols; ++j) {
+        acc = pa[j];
+        for (i = 1; i < rows; ++i) {
+            double v = pa[i * cols + j];
+            if (kind == 0) { acc += v; }
+            else if (kind == 1) { if (v > acc) { acc = v; } }
+            else { if (v < acc) { acc = v; } }
+        }
+        po[j] = (kind == 0) ? (acc / (double)rows) : acc;
+    }
     return MLC_OK;
+}
+
+mlc_status mlc_op_mean(const mlc_array *a, mlc_array *out)
+{
+    return mlc_reduce_run(a, out, 0);
 }
 
 mlc_status mlc_op_max(const mlc_array *a, mlc_array *out)
 {
-    if (mlc_array_numel(out) == 0) {
-        /* 形状未标注的返回值：归约结果恒为 1x1，这里补上分配 */
-        if (mlc_array_init(out, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) {
-            return MLC_ERR;
-        }
-    }
-
-    int64_t n, i;
-    const double *pa;
-    double *po;
-    double best;
-
-    if (mlc_reduce_prepare(a, out, &n, &pa, &po) != MLC_OK) {
-        return MLC_ERR;
-    }
-    best = pa[0];
-    for (i = 1; i < n; ++i) {
-        if (pa[i] > best) {
-            best = pa[i];
-        }
-    }
-    po[0] = best;
-    return MLC_OK;
+    return mlc_reduce_run(a, out, 1);
 }
 
 mlc_status mlc_op_min(const mlc_array *a, mlc_array *out)
 {
-    if (mlc_array_numel(out) == 0) {
-        /* 形状未标注的返回值：归约结果恒为 1x1，这里补上分配 */
-        if (mlc_array_init(out, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) {
-            return MLC_ERR;
-        }
-    }
-
-    int64_t n, i;
-    const double *pa;
-    double *po;
-    double best;
-
-    if (mlc_reduce_prepare(a, out, &n, &pa, &po) != MLC_OK) {
-        return MLC_ERR;
-    }
-    best = pa[0];
-    for (i = 1; i < n; ++i) {
-        if (pa[i] < best) {
-            best = pa[i];
-        }
-    }
-    po[0] = best;
-    return MLC_OK;
+    return mlc_reduce_run(a, out, 2);
 }
 
 mlc_status mlc_op_setidx(mlc_array *a, const mlc_array *v, int64_t i)

@@ -330,7 +330,9 @@ fn resolved_shape_d(f: &Func, name: &str, depth: u32) -> Option<Vec<i64>> {
 }
 
 fn out_shape(f: &Func, op: &Op) -> Option<Vec<i64>> {
-    if op.id == "OP-SUM" && op.args.len() == 1 {
+    if matches!(op.id.as_str(), "OP-SUM" | "OP-MEAN" | "OP-MAX" | "OP-MIN")
+        && op.args.len() == 1
+    {
         // MATLAB 的 sum 默认沿**第一个非单例维**；2-D 的 2x3 -> 1x3。
         let s = resolved_shape(f, &op.args[0])?;
         if s.len() == 1 {

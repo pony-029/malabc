@@ -108,6 +108,36 @@ def _f(x):
     return float(x.data[0]) if isinstance(x, Arr) else float(x)
 
 
+def _reduce(a, oid):
+    """归约（`MIR_SEMANTICS` 3.3）：**沿第一个非单例维**。
+
+    * 1-D -> 1x1
+    * 2-D 且 rows > 1 -> 1xcols（列归约，MATLAB 的 `sum(A)`）
+    * 其余（rows == 1）-> 1x1
+    四个算子共用这份规则 —— 上一版 `mean/max/min` 走的是"全元素"，
+    与 `sum` 不一致，被差分测试抓出来（R596）。
+    """
+    d = a.data
+    if not d:
+        return None
+    if oid == "OP-SUM":
+        f = lambda xs: sum(xs)              # noqa: E731
+    elif oid == "OP-MEAN":
+        f = lambda xs: sum(xs) / len(xs)    # noqa: E731
+    elif oid == "OP-MAX":
+        f = max
+    else:
+        f = min
+    if len(a.shape) == 1:
+        return Arr([f(d)], [1])
+    if len(a.shape) == 2:
+        rows, cols = a.shape
+        if rows > 1:
+            return Arr([f([d[i * cols + j] for i in range(rows)])
+                        for j in range(cols)], [1, cols])
+        return Arr([f(d)], [1])
+    return None
+
 def apply_op(oid, args):
     """执行一个算子；无法执行返回 None（放弃，不猜）。"""
     try:
@@ -123,26 +153,8 @@ def _apply_op(oid, args):
               "OP-MUL": lambda x, y: x * y,
               "OP-DIV": lambda x, y: (x / y) if y else float("inf")}[oid]
         return _binop(args[0], args[1], fn)
-    if oid == "OP-SUM":
-        a = args[0]
-        d = a.data
-        if len(a.shape) == 1:
-            return Arr([sum(d)], [1])
-        if len(a.shape) == 2:
-            rows, cols = a.shape
-            if rows > 1:
-                # MATLAB 默认沿第一个非单例维：2x3 -> 1x3
-                return Arr([sum(d[i * cols + j] for i in range(rows))
-                            for j in range(cols)], [1, cols])
-            return Arr([sum(d)], [1])
-        return None
-    if oid in ("OP-MEAN", "OP-MAX", "OP-MIN"):
-        d = args[0].data
-        if oid == "OP-MEAN":
-            return Arr([sum(d) / len(d) if d else 0.0], [1])
-        if oid == "OP-MAX":
-            return Arr([max(d) if d else 0.0], [1])
-        return Arr([min(d) if d else 0.0], [1])
+    if oid in ("OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN"):
+        return _reduce(args[0], oid)
     if oid == "OP-INDEX":
         a, i = args[0], _i(args[1])
         if i < 1 or i > len(a.data):

@@ -22,6 +22,7 @@ for_acc: 10
 forlen: 4
 head2: 1 2
 iseqtest: 1
+meancols: 2.5 3.5 4.5
 mmul: 22 28 49 64
 ncols: 3
 notempty: 1
