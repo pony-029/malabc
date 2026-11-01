@@ -115,6 +115,21 @@ M2/M3 的事实来自 `mir.py` **扫真实源码**得到的算子集合 ——
   新增 `tests/test_static_pool.py`（2 条，已接 GX2）：未配池走堆 → 配池后堆计数**不增长**
   → 释放后复用（峰值不涨）→ 池耗尽返回 `MLC_ERR` 且**不回退堆** → 非法对齐/空缓冲被拒。
 
+- **生成器按配置产出静态内存池**（`m2c build --static-pool N --pool-align A`）
+  分工：**Python 读 `m2c.project.json` 推导出两个数字**，Rust 只接受具体参数 ——
+  `m2c` 有 ADR-001「零第三方依赖」，为一个配置引入 JSON 库不划算。
+  生成的 C 里会出现：
+  ```c
+  #include "mlc.h"
+  static double m2c_pool_buf[(N + 7) / 8];        // 用 double 保证 8 字节对齐，不依赖编译器扩展
+  void m2c_pool_boot(void) { mlc_pool_configure(m2c_pool_buf, N, A); }
+  ```
+  并且 `main()` / `selftest` 的**第一句**就是 `m2c_pool_boot();`（池必须在任何分配之前配置）。
+  实测：`--static-pool 65536` 跑语料工程 → 45 个函数输出全部正确；
+  `--static-pool 32` → **完全无输出**（连一个 4 元数组都装不下），证明池确实在分配路径上。
+- 过程中一处顺序错误：池代码最初被插在 `#include "numeric.h"` **之前**，导致
+  `mlc_pool_configure` 隐式声明 → 编译失败。已改为先 `#include "mlc.h"`。
+
 ## 2.2.3
 
 - **返回值形状推断**：`out_shape_for` 原来只看 `Stmt::Op`，于是

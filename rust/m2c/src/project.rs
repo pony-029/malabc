@@ -406,6 +406,7 @@ fn c_file_stem(srcfile: &str) -> String {
 }
 
 pub fn emit_project(funcs: &[Func], name: &str, cases: &[Case],
+    pool: Option<(i64, i64)>,
 ) -> Result<Vec<(String, String)>, String> {
     let guard = format!("M2C_{}_H", ident(name).to_uppercase());
     let mut h = vec![
@@ -421,6 +422,12 @@ pub fn emit_project(funcs: &[Func], name: &str, cases: &[Case],
         h.push(proto(f));
     }
     h.push(String::new());
+    if pool.is_some() {
+        // 池的配置入口：调用方（main/selftest/嵌入式启动代码）第一句就该调它
+        h.push("/* 静态内存池（由工程配置的 memory 段生成）：启动时必须最先调用。 */".to_string());
+        h.push("void m2c_pool_boot(void);".to_string());
+        h.push(String::new());
+    }
     h.push(format!("#endif /* {} */", guard));
 
     // **按源文件拆分**：真实工程里 2MB 的单文件没法定位编译错误，
@@ -510,11 +517,26 @@ pub fn emit_project(funcs: &[Func], name: &str, cases: &[Case],
         "add_test(NAME default_case COMMAND m2c_selftest)".to_string(),
     ];
 
+    let mut gen_c = c.join("\n") + "\n";
+    let mut main_c = emit_main(funcs, name) + "\n";
+    let mut self_c = emit_selftest(funcs, name, cases) + "\n";
+    if let Some((bytes, align)) = pool {
+        let buf = format!(
+            "#include \"mlc.h\"\n/* 静态内存池：{b} 字节，{a} 字节对齐（由 m2c.project.json 的 memory 段生成） */\n\
+             static double m2c_pool_buf[({b} + {d} - 1) / {d}];\n\
+             void m2c_pool_boot(void)\n{{\n    (void)mlc_pool_configure(m2c_pool_buf, {b}, {a});\n}}\n\n",
+            b = bytes, a = align, d = 8);
+        gen_c = buf + &gen_c;
+        // 池必须在任何分配之前配置：main / selftest 的第一句
+        let call = "    m2c_pool_boot();\n";
+        main_c = insert_after_main_open(&main_c, call);
+        self_c = insert_after_main_open(&self_c, call);
+    }
     let mut files_out = vec![
         (format!("include/{}.h", name), h.join("\n") + "\n"),
-        ("src/gen.c".to_string(), c.join("\n") + "\n"),
-        ("src/main.c".to_string(), emit_main(funcs, name) + "\n"),
-        ("src/selftest.c".to_string(), emit_selftest(funcs, name, cases) + "\n"),
+        ("src/gen.c".to_string(), gen_c),
+        ("src/main.c".to_string(), main_c),
+        ("src/selftest.c".to_string(), self_c),
         ("CMakeLists.txt".to_string(), cmake.join("\n") + "\n"),
         ("README.md".to_string(), gen_readme(name)),
         ("fixture.example.txt".to_string(), gen_fixture_example(funcs)),
@@ -526,6 +548,21 @@ pub fn emit_project(funcs: &[Func], name: &str, cases: &[Case],
     ];
     files_out.extend(extra);
     Ok(files_out)
+}
+
+
+/// 在 `int main(...)` 的开括号之后插入一行（池配置必须最先执行）。
+fn insert_after_main_open(src: &str, line: &str) -> String {
+    let mut out = String::with_capacity(src.len() + line.len());
+    let mut done = false;
+    for l in src.split_inclusive('\n') {
+        out.push_str(l);
+        if !done && l.contains("int main(") {
+            out.push_str(line);
+            done = true;
+        }
+    }
+    out
 }
 
 /// 自测程序：按**每组夹具**跑每个可驱动函数，与嵌入的期望串逐字比较。

@@ -32,6 +32,8 @@ fn main() -> ExitCode {
 
     let cmd = args[0].as_str();
     let mut mir_path: Option<PathBuf> = None;
+    let mut pool_bytes: Option<i64> = None;
+    let mut pool_align: Option<i64> = None;
     let mut out_dir: Option<PathBuf> = None;
     let mut name = String::from("gen");
     let mut expect_path: Option<PathBuf> = None;
@@ -78,7 +80,15 @@ fn main() -> ExitCode {
                 }
                 expect_path = Some(PathBuf::from(&args[i]));
             }
-            "--name" => {
+            "--static-pool" => {
+            i += 1;
+            pool_bytes = args.get(i).and_then(|v| v.parse::<i64>().ok());
+        }
+        "--pool-align" => {
+            i += 1;
+            pool_align = args.get(i).and_then(|v| v.parse::<i64>().ok());
+        }
+        "--name" => {
                 i += 1;
                 if i >= args.len() {
                     eprintln!("--name 缺参数");
@@ -138,7 +148,7 @@ fn main() -> ExitCode {
                 }
             };
             let cases = build_cases(expect_path.as_ref(), &case_args);
-            let files = match project::emit_project(&funcs, &name, &cases) {
+            let files = match project::emit_project(&funcs, &name, &cases, pool_bytes.map(|b| (b, pool_align.unwrap_or(8)))) {
                 Ok(v) => v,
                 Err(e) => {
                     eprintln!("发射失败：{}", e);
@@ -424,7 +434,7 @@ fn selftest() -> ExitCode {
     chk(a == b, "同一 MIR 两次发射逐字节一致");
 
     // 工程骨架
-    let proj = project::emit_project(&funcs, "demo", &[]).unwrap_or_default();
+    let proj = project::emit_project(&funcs, "demo", &[], None).unwrap_or_default();
     let names: Vec<&str> = proj.iter().map(|(n, _)| n.as_str()).collect();
     chk(names.contains(&"CMakeLists.txt"), "工程产出含 CMakeLists");
     chk(names.contains(&"include/demo.h"), "工程产出含头文件");
