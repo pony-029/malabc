@@ -59,3 +59,5 @@ rust/*/target/
 
 # 门写下的结构化统计（每次发版覆盖，属于产物不属于源码）
 releases/.gate-stats/
+translate/examples/build/
+translate/examples/.m2c/

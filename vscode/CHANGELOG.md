@@ -130,6 +130,16 @@ M2/M3 的事实来自 `mir.py` **扫真实源码**得到的算子集合 ——
 - 过程中一处顺序错误：池代码最初被插在 `#include "numeric.h"` **之前**，导致
   `mlc_pool_configure` 隐式声明 → 编译失败。已改为先 `#include "mlc.h"`。
 
+- **构建参数由配置推导**：`--emit-cflags` / `--build`
+  ```bash
+  python translate/project_map.py m2c.project.json --emit-cflags
+  # → --name numeric_demo --static-pool 65536 --pool-align 8
+  python translate/project_map.py m2c.project.json --build    # 真跑 mir.py + m2c build
+  ```
+  上次这两个数字是**人肉从 JSON 抄**的（抄成 6553 也能编过，只是池小一点，且毫无提示）。
+  现在配置是唯一来源：`--target` 选目标、没有 `static_pool` 时**不会**产生池参数。
+  判据 27 → **31 条**。构建产物（`build/`、`.m2c/`）已加入 `.gitignore`。
+
 ## 2.2.3
 
 - **返回值形状推断**：`out_shape_for` 原来只看 `Stmt::Op`，于是

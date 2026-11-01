@@ -396,3 +396,51 @@ def test_manifest_contains_memory():
         assert "M2C_MEM_STRATEGY" in t and "static_pool" in t
         assert "M2C_MEM_POOL_BYTES 4096" in t
         assert 'M2C_MEM_ARR0_NAME "buf"' in t
+
+
+# ---------------------------------------------------------------------------
+# 构建参数推导：配置是唯一来源，人不再手抄数字
+# ---------------------------------------------------------------------------
+
+def test_build_flags_from_static_pool_target():
+    cfg = _v2()
+    cfg["targets"]["mcu"] = {"abi": "arm", "allow_heap": False, "dtype": "f32",
+                             "memory": {"strategy": "static_pool",
+                                        "pool_bytes": 4096, "alignment": 16}}
+    fl = PM.build_flags(cfg)
+    assert fl["static_pool"] == 4096
+    assert fl["pool_align"] == 16
+    assert fl["target"] == "mcu"
+    assert "--static-pool 4096" in PM.cflags_string(fl, ".")
+
+
+def test_build_flags_without_pool():
+    """没有 static_pool 时不得凭空产生池参数（否则会静默改变内存行为）。"""
+    cfg = _v2()
+    fl = PM.build_flags(cfg)
+    assert fl["static_pool"] is None
+    assert "--static-pool" not in PM.cflags_string(fl, ".")
+
+
+def test_build_flags_respect_target_argument():
+    cfg = _v2()
+    cfg["targets"]["a"] = {"abi": "host", "allow_heap": True, "dtype": "f64",
+                           "memory": {"strategy": "static_pool",
+                                      "pool_bytes": 1024, "alignment": 8}}
+    cfg["targets"]["b"] = {"abi": "arm", "allow_heap": False, "dtype": "f32",
+                           "memory": {"strategy": "static_pool",
+                                      "pool_bytes": 8192, "alignment": 4}}
+    assert PM.build_flags(cfg, "b")["static_pool"] == 8192
+    assert PM.build_flags(cfg, "a")["static_pool"] == 1024
+
+
+def test_real_config_flags_match_its_memory_section():
+    """真实示例：推导出的参数必须与配置里的 pool_bytes/alignment 一致。"""
+    p = os.path.join(ROOT, "translate", "examples", "m2c.project.json")
+    cfg = PM.load2(p)
+    fl = PM.build_flags(cfg)
+    mem = cfg["targets"][fl["target"]]["memory"]
+    assert fl["static_pool"] == mem["pool_bytes"]
+    assert fl["pool_align"] == mem["alignment"]
+    s = PM.cflags_string(fl, ".")
+    assert str(mem["pool_bytes"]) in s and str(mem["alignment"]) in s

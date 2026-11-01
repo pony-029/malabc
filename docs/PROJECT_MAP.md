@@ -173,3 +173,20 @@ MATLAB 里 `zeros(1e6)` 随手就写；目标板上不行。所以内存必须**
 * 版本靠文件内的 `version` 字段区分，**不靠文件名**（`m2c.project.v2.json` 这种会被判据拒绝）；
 * 多个文件名会让"当前生效的是哪一份"变成猜谜；
 * 判据 `test_single_project_config_file` 守着这一条。
+
+## 十一、构建参数由配置推导（不手抄）
+
+配置里写的是 `pool_bytes: 65536`，而 `m2c build` 要的是 `--static-pool 65536` ——
+中间那次**人肉抄写**是最容易错的一环（抄成 `6553` 也能编过，只是池小了一点，且毫无提示）。
+
+```bash
+python translate/project_map.py m2c.project.json --emit-cflags
+# → --name numeric_demo --static-pool 65536 --pool-align 8
+
+python translate/project_map.py m2c.project.json --build
+# → 真的跑 mir.py + m2c build（out 取自 c.root）
+```
+
+* `--target <名字>`：多个 target 都可选时指定用哪一个的 `memory`；
+* 配置里没有 `strategy: static_pool` 时，**不会**产生任何池参数
+  （否则会静默改变内存行为）。

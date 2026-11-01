@@ -694,6 +694,72 @@ def emit_manifest(cfg, path, used_ops=None):
     return path
 
 
+
+def build_flags(cfg, target=None):
+    """从配置推导 `m2c build` 需要的参数（**唯一来源**，不要手抄）。
+
+    返回 `{"name": str, "static_pool": int|None, "pool_align": int|None,
+           "target": str|None, "c_root": str}`。
+    """
+    targets = cfg.get("targets") or {}
+    mem, tname = {}, None
+    order = ([target] if target else []) + [t for t in targets if t != target]
+    for t in order:
+        m = (targets.get(t) or {}).get("memory")
+        if m and m.get("strategy") == "static_pool":
+            mem, tname = m, t
+            break
+    if not mem and (cfg.get("memory") or {}).get("strategy") == "static_pool":
+        mem = cfg["memory"]
+    return {
+        "name": cfg["c"].get("project") or "gen",
+        "static_pool": mem.get("pool_bytes") if mem else None,
+        "pool_align": (mem.get("alignment") if mem else None) or 8,
+        "target": tname,
+        "c_root": cfg["c"].get("root") or "gen",
+    }
+
+
+def cflags_string(fl, base_dir):
+    """给 shell 用的一串参数（只含真正需要的）。"""
+    parts = ["--name", str(fl["name"])]
+    if fl["static_pool"]:
+        parts += ["--static-pool", str(fl["static_pool"]),
+                  "--pool-align", str(fl["pool_align"])]
+    return " ".join(parts)
+
+
+def run_build(cfg, base, cfg_path, m2c=None, python=None):
+    """真的执行：mir.py -> m2c build。返回 (rc, 命令列表, 输出)。"""
+    import subprocess
+    import sys
+
+    python = python or sys.executable
+    m2c = m2c or os.path.join(base, "..", "..", "rust", "m2c",
+                              "target", "release", "m2c.exe")
+    m2c = os.path.normpath(m2c)
+    fl = build_flags(cfg)
+    mir = os.path.join(base, ".m2c", "project.mir")
+    os.makedirs(os.path.dirname(mir), exist_ok=True)
+    mir_py = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mir.py")
+    root = os.path.join(base, cfg["matlab"]["root"])
+
+    cmd1 = [python, mir_py, root, "-o", mir]
+    if cfg["matlab"].get("recursive", True):
+        cmd1.insert(3, "--recursive")
+    cmd2 = [m2c, "build", "--mir", mir,
+            "--out", os.path.join(base, fl["c_root"])] + cflags_string(fl, base).split()
+
+    log = []
+    for cmd in (cmd1, cmd2):
+        log.append(" ".join(cmd))
+        r = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT, timeout=900)
+        out = r.stdout.decode("utf-8", "replace")
+        if r.returncode != 0:
+            return r.returncode, log, out
+    return 0, log, out
+
 def _main_v2(cfg_path, argv, as_json):
     """v2 的入口：静态校验 + 动态扫算子 + 可选 manifest。"""
     base = os.path.dirname(os.path.abspath(cfg_path))
@@ -736,6 +802,18 @@ def _main_v2(cfg_path, argv, as_json):
             print("[warn] %s" % w)
         for p in res["problems"]:
             print("[problem] %s" % p)
+
+    fl = build_flags(cfg, argv[argv.index("--target") + 1]
+                     if "--target" in argv else None)
+    if "--emit-cflags" in argv:
+        print(cflags_string(fl, base))
+    if "--build" in argv:
+        rc, log, out = run_build(cfg, base, cfg_path)
+        for ln in log:
+            print("$ " + ln)
+        if out.strip():
+            print(out.strip()[-500:])
+        return rc
 
     if "--emit-manifest" in argv:
         i = argv.index("--emit-manifest")
