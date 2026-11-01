@@ -735,8 +735,12 @@ def run_build(cfg, base, cfg_path, m2c=None, python=None):
     import sys
 
     python = python or sys.executable
-    m2c = m2c or os.path.join(base, "..", "..", "rust", "m2c",
-                              "target", "release", "m2c.exe")
+    if not m2c:
+        m2c = os.environ.get("M2C_BIN")
+    if not m2c:
+        # **仓库根**（不是 config 所在目录）：换到临时目录构建时也要能找到
+        repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        m2c = os.path.join(repo, "rust", "m2c", "target", "release", "m2c.exe")
     m2c = os.path.normpath(m2c)
     fl = build_flags(cfg)
     mir = os.path.join(base, ".m2c", "project.mir")

@@ -46,6 +46,7 @@ CHECKS = (
              os.path.join("tests", "test_no_duplicate_decls.py"),
              os.path.join("tests", "test_project_map.py"),
              os.path.join("tests", "test_static_pool.py"),
+             os.path.join("tests", "test_project_build.py"),
              os.path.join("tests", "test_external_project_compiles.py"),
              os.path.join("tests", "test_fuzz_ops_smoke.py"),
              os.path.join("tests", "test_runnable_report_empty.py"),
