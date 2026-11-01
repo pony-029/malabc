@@ -55,6 +55,11 @@ const LOGFILE = path.join(_os.tmpdir(), 'matlabc-ext.log');
 const LOG_MAX = 1024 * 1024;
 let _logWrites = 0;
 
+//: CodeLens 结果缓存（按 uri#version）。VS Code 每次编辑都会重问一遍，
+//: 没有缓存时大工程会堆满 pending 请求 —— 表现就是界面卡死。
+const codeLensCache = new Map();
+const CODELENS_CACHE_MAX = 64;
+
 function log(msg) {
   const line = '[' + new Date().toTimeString().slice(0, 8) + '] ' + msg;
   try {
@@ -3033,10 +3038,17 @@ function activate(context) {
     vscode.languages.registerCodeLensProvider({ language: 'matlab' }, {
       provideCodeLenses: async (doc) => {
         try {
+          // **卡顿的两个来源都在这几行上**：
+          // 1) 每次编辑都会调用本函数（VS Code 的语义），而 LSP 首次预热要 30s+；
+          // 2) 原先是 180s 超时、无去重 -> 几十个 pending 堆在扩展宿主里。
+          // 这里：按 `uri#version` 缓存 + 8 秒超时 + 超大文档跳过。
+          const key = doc.uri.toString() + '#' + doc.version;
+          if (codeLensCache.has(key)) return codeLensCache.get(key);
+          if (doc.lineCount > 20000) return [];      // 超大文件不参与
           const r = await client.request('textDocument/codeLens', {
             textDocument: { uri: doc.uri.toString() },
-          });
-          return (r.result || []).map((l) => {
+          }, { timeoutMs: 8000 });
+          const lenses = (r.result || []).map((l) => {
             const d = l.data || {};
             // `↓N` 只数库内、可跳的调用；`unresolved` 是那些解析不到的
             // （字段取值、toolbox、函数句柄）。**两者必须一起出现**，
@@ -3052,6 +3064,11 @@ function activate(context) {
               arguments: [d.name, doc.uri.toString()],
             });
           });
+          if (codeLensCache.size > CODELENS_CACHE_MAX) {
+            codeLensCache.clear();          // 简单上限，避免无界增长
+          }
+          codeLensCache.set(key, lenses);
+          return lenses;
         } catch (e) {
           log('codeLens 失败：' + (e && e.message));
           return [];

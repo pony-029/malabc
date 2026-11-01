@@ -976,6 +976,19 @@
     实测：故意写一个永不退出的循环，生成的程序 **92 ms 内返回错误**，不再空转。
   * 语料 45/45 无回归 ｜ `check_all` rc=0。
   * 下一轮补一条**常驻判据**（死循环程序必须秒退），现在只有手工验证。
+- **修复 VS Code 扩展卡顿（R599）** —— 深查到两处真实原因
+  1. **`lspClient.request` 的定时器泄漏**：每次请求都挂一个 **180 秒** 的 `setTimeout`，
+     而且**成功时也不 clearTimeout**。CodeLens 在每次编辑时都会发请求，
+     于是扩展宿主里堆积大量 timer + pending —— 表现就是"越用越卡、最后卡死"。
+     修法：`request(method, params, opts)` 支持按调用超时；settle 时 `clearTimeout`；
+     `unref()` 不再阻止事件循环退出。
+  2. **CodeLens 无去重 + 超时长达 180 秒**：VS Code 对**每个可见文档的每次编辑**
+     都会调用 `provideCodeLenses`，而 LSP 首次预热（YALMIP 1665 文件）要 30~35 秒。
+     修法：按 `uri#version` 缓存结果（上限 64 条）、超时降到 **8 秒**、
+     `lineCount > 20000` 的超大文件直接跳过。
+  * 两个文件都过 `node --check`；`check_all` rc=0。
+  * 说明：LSP 服务端本身**有** debounce 与异步 `didOpen`，不是主要嫌疑；
+    真正把界面拖死的是客户端侧的 timer 泄漏与无去重的 CodeLens 风暴。
 
 
 ## 2.2.2

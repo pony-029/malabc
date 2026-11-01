@@ -90,8 +90,9 @@ class LspClient {
     }
   }
 
-  request(method, params) {
+  request(method, params, opts) {
     const id = ++this.seq;
+    const timeoutMs = (opts && opts.timeoutMs) || REQUEST_TIMEOUT_MS;
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
       this._write({ jsonrpc: '2.0', id, method, params });
@@ -99,12 +100,21 @@ class LspClient {
       // 要 35 秒，而这里原来是 15 秒 —— 于是每次 F12 都在服务端算完之前
       // 就 reject，`provideDefinition` 又没 catch，用户看到的就是
       // 「点了什么反应都没有」（日志里只有「F12 请求」，没有「F12 返回」）。
-      setTimeout(() => {
+      // 定时器必须在 settle 时清掉：否则每次成功请求都留一个 timer 挂在
+      // 事件循环里（CodeLens 每次编辑都发请求 -> 定时器越积越多）。
+      const timer = setTimeout(() => {
         if (this.pending.has(id)) {
           this.pending.delete(id);
-          reject(new Error(`timeout: ${method}（${Math.round(REQUEST_TIMEOUT_MS / 1000)}s）`));
+          reject(new Error(
+            `timeout: ${method}（${Math.round(timeoutMs / 1000)}s）`));
         }
-      }, REQUEST_TIMEOUT_MS);
+      }, timeoutMs);
+      if (typeof timer.unref === 'function') timer.unref();
+      const wrap = this.pending.get(id);
+      this.pending.set(id, {
+        resolve: (v) => { clearTimeout(timer); wrap.resolve(v); },
+        reject: (e) => { clearTimeout(timer); wrap.reject(e); },
+      });
     });
   }
 
