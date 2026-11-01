@@ -163,7 +163,29 @@ fn sanitize_comment(s: &str) -> String {
     s.replace("*/", "* /").replace('\n', " ")
 }
 
+/// 定点开关：由 `m2c build --fixed-point q15` 在构建开始时置位。
+///
+/// 为什么用进程级开关而不是逐个函数传参：`op_c_name` 是唯一的映射点，
+/// 传参要穿透 `emit_function -> emit_block -> ...` 整条链，改动面远大于收益。
+/// 生成器是一次性批处理，进程内不会并发切换。
+pub static FIXED_POINT_Q15: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_fixed_point(name: Option<&str>) {
+    let on = matches!(name.map(|s| s.to_lowercase()).as_deref(), Some("q15"));
+    FIXED_POINT_Q15.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 pub fn op_c_name(id: &str) -> String {
+    if FIXED_POINT_Q15.load(std::sync::atomic::Ordering::Relaxed) {
+        // 只有这三种在定点下有对应实现；其余保持原样（不猜）
+        match id {
+            "OP-ADD" => return "q15_add".to_string(),
+            "OP-SUB" => return "q15_sub".to_string(),
+            "OP-MUL" => return "q15_mul".to_string(),
+            _ => {}
+        }
+    }
     id.trim_start_matches("OP-").to_lowercase().replace('-', "_")
 }
 

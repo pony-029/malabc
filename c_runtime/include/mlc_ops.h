@@ -94,6 +94,7 @@ mlc_status mlc_op_isequal_k(const mlc_array *a, double k,
 #define MLC_Q15_MIN    (-32768)
 
 mlc_status mlc_op_q15_add(const mlc_array *a, const mlc_array *b, mlc_array *out);
+mlc_status mlc_op_q15_sub(const mlc_array *a, const mlc_array *b, mlc_array *out);
 mlc_status mlc_op_q15_mul(const mlc_array *a, const mlc_array *b, mlc_array *out);
 int64_t mlc_q15_sat(int64_t v);
 

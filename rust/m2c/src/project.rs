@@ -406,8 +406,9 @@ fn c_file_stem(srcfile: &str) -> String {
 }
 
 pub fn emit_project(funcs: &[Func], name: &str, cases: &[Case],
-    pool: Option<(i64, i64)>,
+    pool: Option<(i64, i64)>, fixed_point: Option<String>,
 ) -> Result<Vec<(String, String)>, String> {
+    crate::emit::set_fixed_point(fixed_point.as_deref());
     let guard = format!("M2C_{}_H", ident(name).to_uppercase());
     let mut h = vec![
         format!("/* {} —— 由 m2c 生成，勿手改 */", name),

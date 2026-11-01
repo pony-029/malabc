@@ -221,6 +221,20 @@ mlc_status mlc_op_q15_add(const mlc_array *a, const mlc_array *b, mlc_array *out
     return MLC_OK;
 }
 
+mlc_status mlc_op_q15_sub(const mlc_array *a, const mlc_array *b, mlc_array *out)
+{
+    int64_t n = 0, i;
+    if (mlc_q15_prepare(a, b, out, &n) != MLC_OK) {
+        return MLC_ERR;
+    }
+    for (i = 0; i < n; ++i) {
+        int64_t va = (int64_t)(((const double *)a->data)[i]);
+        int64_t vb = (int64_t)(((const double *)b->data)[i]);
+        ((double *)out->data)[i] = (double)mlc_q15_sat(va - vb);
+    }
+    return MLC_OK;
+}
+
 mlc_status mlc_op_q15_mul(const mlc_array *a, const mlc_array *b, mlc_array *out)
 {
     int64_t n = 0, i;
