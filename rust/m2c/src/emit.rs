@@ -1251,9 +1251,16 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                 if let Some(c) = src_comment(*src, indent) { out.push(c); }
                 match cond_expr(f, cond) {
                 Some(expr) => {
-                    out.push(format!("{}while ({}) {{", indent, expr));
-                    let (inner, t) = emit_block(f, body, &format!("{}    ", indent), known);
+                    // 迭代上限：条件永不改变时（本版 while 支持很薄）不会把机器拖死
+                    out.push(format!("{}{{", indent));
+                    out.push(format!("{}    int64_t __m2c_iter = 0;", indent));
+                    out.push(format!("{}    while ({}) {{", indent, expr));
+                    out.push(format!(
+                        "{}        if (++__m2c_iter > 1000000LL) {{ return MLC_ERR; }}",
+                        indent));
+                    let (inner, t) = emit_block(f, body, &format!("{}        ", indent), known);
                     out.extend(inner);
+                    out.push(format!("{}    }}", indent));
                     out.push(format!("{}}}", indent));
                     terminated = t;
                 }

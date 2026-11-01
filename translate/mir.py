@@ -26,6 +26,11 @@ MIR 只被这台机器的两个程序读写，行式格式足够，而且 diff �
 from __future__ import absolute_import
 
 import argparse
+
+try:
+    from . import guard
+except (ImportError, ValueError):
+    import guard
 import hashlib
 import io
 import os
@@ -145,6 +150,9 @@ def split_functions(source):
         if cb.startswith("for ") or cb.startswith("while ") or \
                 cb.startswith("if "):
             depth += 1
+            if depth > guard.MAX_BLOCK_DEPTH:
+                # 深层嵌套是"挂住"的常见来源（也常意味着源文件本身有语法问题）
+                continue
             cur["lines"].append(raw)
             cur["line_nos"].append(raw_no)
             continue
@@ -171,6 +179,9 @@ def split_functions(source):
             for n in re.split(r"[,\s]+", am.group("names").strip()):
                 if n:
                     cur["types"][n] = am.group("type")
+            continue
+        if len(cur["lines"]) > guard.MAX_STMTS_PER_FUNC:
+            cur.setdefault("reject", "too_many_stmts")
             continue
         for piece in _split_stmts(raw):
             cur["lines"].append(piece)
@@ -1337,9 +1348,12 @@ def main(argv=None):
     ap.add_argument("-o", "--out", default=None)
     ap.add_argument("--selftest", action="store_true",
                     help="自证：下标 vs 未知函数调用")
+    ap.add_argument("--max-seconds", type=int, default=None,
+                    help="墙钟上限（默认 120s）：到点强制退出，避免机器被拖死")
     ap.add_argument("--recursive", action="store_true",
                     help="目录模式下递归子目录（真实工程必需）")
     args = ap.parse_args(argv)
+    guard.start(getattr(args, "max_seconds", None))   # 到点强制退出
 
     if args.selftest:
         return _selftest()
@@ -1364,6 +1378,11 @@ def main(argv=None):
 
         names, kept, skipped = set(), [], []
         for p in files:
+            if guard.file_too_big(p):
+                skipped.append((p, "file_too_big"))
+                print("[skip] 文件超过 %d MiB：%s" % (
+                    guard.MAX_FILE_BYTES // (1024 * 1024), p))
+                continue
             try:
                 src0 = io.open(p, encoding="utf-8", errors="replace").read()
             except (IOError, OSError) as exc:
