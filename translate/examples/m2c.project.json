@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "matlab": {
+    "root": "numeric",
+    "recursive": true,
+    "exclude": []
+  },
+  "c": {
+    "root": "build/gen",
+    "project": "numeric",
+    "prefix": "m2c_",
+    "runtime": "c_runtime"
+  },
+  "mapping": {
+    "numeric": "build/gen"
+  },
+  "defaults": {
+    "shape": 4,
+    "dtype": "f64",
+    "max_seconds": 120
+  }
+}

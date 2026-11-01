@@ -44,6 +44,7 @@ CHECKS = (
              os.path.join("tests", "test_rt_balance.py"),
              os.path.join("tests", "test_mir_semantics.py"),
              os.path.join("tests", "test_no_duplicate_decls.py"),
+             os.path.join("tests", "test_project_map.py"),
              os.path.join("tests", "test_external_project_compiles.py"),
              os.path.join("tests", "test_fuzz_ops_smoke.py"),
              os.path.join("tests", "test_runnable_report_empty.py"),

@@ -1,6 +1,40 @@
+## 2.3.0
+
+### 修复
+
+- **长时间使用后的卡顿/卡死**（两处真实原因）
+  - `lspClient.request` 每次请求都挂一个 **180 秒** 定时器，且**成功时也不 clearTimeout**
+    —— CodeLens 每次编辑都会发请求，于是扩展宿主里 timer 与 pending 持续堆积。
+    现在：支持按调用设置超时，settle 时清理定时器，`unref()` 不再阻止事件循环退出。
+  - CodeLens 无去重、超时 180 秒：大工程预热要 30~35 秒，期间会堆起几十个 pending。
+    现在：按 `uri#version` 缓存（上限 64 条）、超时降到 **8 秒**、超过 2 万行的文档直接跳过。
+- 翻译器的「机器卡死」防护：墙钟看门狗（默认 120 秒，`--max-seconds` 可调）+ 文件/语句/嵌套上限。
+
+### 已知限制
+
+- `mean/max/min` 在二维输入上的语义与 `sum` 已统一（沿第一个非单例维），
+  但**空数组**的语义仍未定义（见 `docs/MIR_SEMANTICS.md` 第四节）。
+
 # 更新日志
 
 ---
+
+### 新增
+
+- **MATLAB 工程 ↔ C 工程的映射配置**（`m2c.project.json`）
+  此前转一个工程只知道「源路径」「输出路径」，哪些目录要跳、生成物放哪、目录与 C 模块怎么对应，
+  全靠命令行现打 —— 于是**同一个工程每次转换的参数都可能不同，结果不可复现**。
+  现在这些变成**一个文件**，`python translate/project_map.py <配置>` 会打出逐文件映射表。
+  ```json
+  { "version": 1,
+    "matlab": { "root": "matlab", "recursive": true, "exclude": ["**/test/**"] },
+    "c": { "root": "gen", "project": "myproj", "prefix": "m2c_", "runtime": "c_runtime" },
+    "mapping": { "matlab/solvers": "gen/solvers" },
+    "defaults": { "shape": 4, "dtype": "f64", "max_seconds": 120 } }
+  ```
+  **三条硬规则（宁可报错，不猜）**：未知配置项报错／`mapping` 的键必须在 `matlab.root` 下／
+  两个源不许映射到同一个 C 输出。7 条判据已接进 GX2。
+
 
 ## 2.2.3
 
