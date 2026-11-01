@@ -61,6 +61,15 @@ size_t mlc_dtype_size(mlc_dtype dt);
 /* 分配/释放计数（**只读观测**，不影响行为）。
  * 差值 > 0 表示泄漏，< 0 表示重复释放。
  * 本机无 ASan（MinGW 不带 libasan），这是唯一自动化的泄漏观测手段。 */
+/* 静态内存池：配置后 `mlc_array_init` 只从池里取内存，**不再调用 calloc**。
+ * 池耗尽返回 MLC_ERR（绝不回退到堆）——"无堆"必须是可证明的行为。 */
+mlc_status mlc_pool_configure(void *buf, int64_t bytes, int64_t align);
+void mlc_pool_reset(void);
+int mlc_pool_is_active(void);
+int64_t mlc_pool_bytes_left(void);
+int64_t mlc_pool_bytes_used(void);
+int64_t mlc_pool_peak(void);
+
 int64_t mlc_rt_alloc_count(void);
 int64_t mlc_rt_free_count(void);
 int64_t mlc_rt_alloc_balance(void);

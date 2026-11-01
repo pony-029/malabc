@@ -105,6 +105,16 @@ M2/M3 的事实来自 `mir.py` **扫真实源码**得到的算子集合 ——
   DS3 `target.dtype` 合法｜**DS4 动静对账**：默认 dtype 与源码实测不同时必须显式声明转换。
   判据 23 → **27 条**。
 
+- **`strategy: static_pool` 在运行时真正生效**（不再只是配置校验）
+  新增运行时接口：`mlc_pool_configure(buf, bytes, align)` / `mlc_pool_reset` /
+  `mlc_pool_is_active` / `mlc_pool_bytes_left` / `mlc_pool_peak`。
+  池一旦配置，`mlc_array_init` **只从池里切内存，绝不回退到堆**；耗尽即 `MLC_ERR`。
+  分配器是「bump + 单链空闲表」：释放的块按 first-fit 复用（不切分、不合并，刻意简化）。
+  **堆计数器只统计真正的堆分配/释放** —— 否则"池分配不碰堆"这条根本无法证明
+  （第一版正是把池分配也计进了堆计数，判据当场发现）。
+  新增 `tests/test_static_pool.py`（2 条，已接 GX2）：未配池走堆 → 配池后堆计数**不增长**
+  → 释放后复用（峰值不涨）→ 池耗尽返回 `MLC_ERR` 且**不回退堆** → 非法对齐/空缓冲被拒。
+
 ## 2.2.3
 
 - **返回值形状推断**：`out_shape_for` 原来只看 `Stmt::Op`，于是
