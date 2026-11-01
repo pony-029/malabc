@@ -91,6 +91,20 @@ M2/M3 的事实来自 `mir.py` **扫真实源码**得到的算子集合 ——
   嵌入式侧编译期即可看到内存布局。
   判据从 15 条增至 **23 条**（新增 8 条，全部是「构造违反 → 断言报错」）。
 
+- **配置文件只保留一个 `m2c.project.json`**（不再有 `m2c.project.v2.json`）
+  版本靠文件内 `version` 字段区分，不靠文件名 —— 多文件名会让"当前生效的是哪一份"变成猜谜。
+  新增判据 `test_single_project_config_file` 守住这一条。
+- **数据格式与定标约定**（`dtypes` 段）
+  ```json
+  "dtypes": { "default": "f64",
+              "map": { "double": "f64", "single": "f32" },
+              "fixed_point": { "format": "Q15", "frac_bits": 15,
+                               "round": "nearest", "overflow": "saturate" } }
+  ```
+  DS1 未知 dtype 报错｜DS2 `frac_bits` 必须小于 Q 格式位宽、`round`/`overflow` 白名单｜
+  DS3 `target.dtype` 合法｜**DS4 动静对账**：默认 dtype 与源码实测不同时必须显式声明转换。
+  判据 23 → **27 条**。
+
 ## 2.2.3
 
 - **返回值形状推断**：`out_shape_for` 原来只看 `Stmt::Op`，于是

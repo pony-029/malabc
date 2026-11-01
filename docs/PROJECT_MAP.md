@@ -141,3 +141,35 @@ MATLAB 里 `zeros(1e6)` 随手就写；目标板上不行。所以内存必须**
 | **R2** | `constraints.max_ops_per_entry` 限制入口函数算子数 | WCET 的粗估上限 |
 
 这两条同样靠 `mir.py` 扫出的**事实**判定（自调用、每函数算子数），不是靠配置自述。
+
+## 九、数据格式与定标（MATLAB 的 double 不是板子上的 double）
+
+同一份 MATLAB 代码，PC 上跑 `double`，板子上跑 `Q15` —— 数值结果、饱和行为、
+舍入方向**全都不同**。所以它不是实现细节，是**接口约定**，必须写进配置并被校验。
+
+```json
+"dtypes": {
+  "default": "f64",
+  "map": { "double": "f64", "single": "f32", "int16": "int16" },
+  "fixed_point": { "format": "Q15", "frac_bits": 15,
+                   "round": "nearest", "overflow": "saturate" }
+}
+```
+
+| 编号 | 规则 | 违反的后果 |
+|---|---|---|
+| **DS1** | `default` / `map` 的值必须是已知 C dtype | 生成器拿到不认识的类型名 |
+| **DS2** | `frac_bits` 必须小于该 Q 格式位宽；`round`/`overflow` 只能取白名单 | Q15 写了 16 位小数 = 溢出且不可表示 |
+| **DS3** | `target.dtype` 必须是已知 dtype | 目标 ABI 未定义 |
+| **DS4** | **动静对账**：默认 dtype 与**源码实测 dtype** 不同时，必须显式声明转换（`fixed_point` 或 `map`）；否则报错 | 你以为在跑 f32，其实源码是 f64 —— 或者反之 |
+
+`round` 白名单：`nearest | floor | ceil | trunc`；`overflow` 白名单：`saturate | wrap`。
+两者都必须**显式**给出，因为"默认行为"在定点里是一个陷阱。
+
+## 十、只允许一个配置文件
+
+仓库与工程里**只能有一个** `m2c.project.json`：
+
+* 版本靠文件内的 `version` 字段区分，**不靠文件名**（`m2c.project.v2.json` 这种会被判据拒绝）；
+* 多个文件名会让"当前生效的是哪一份"变成猜谜；
+* 判据 `test_single_project_config_file` 守着这一条。

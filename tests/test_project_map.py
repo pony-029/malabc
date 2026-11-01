@@ -110,16 +110,75 @@ def test_exclude_pattern():
         assert not [n for n in names if "/test/" in n], names
 
 
+def test_single_project_config_file():
+    """**只允许一个** `m2c.project.json`：不许出现 `m2c.project.v2.json` 这类后缀。
+
+    配置版本靠文件里的 `version` 字段区分，不靠文件名 ——
+    多个文件名会让"当前生效的是哪一份"变成猜谜。
+    """
+    ex = os.path.join(ROOT, "translate", "examples")
+    files = [f for f in os.listdir(ex) if f.startswith("m2c.project")]
+    assert files == ["m2c.project.json"], files
+
+
 def test_real_example_config_expands():
-    """真实示例：`translate/examples/m2c.project.json` 必须能展开整个语料目录。"""
+    """真实示例：`translate/examples/m2c.project.json` 必须是 v2 且校验通过。"""
     p = os.path.join(ROOT, "translate", "examples", "m2c.project.json")
-    if not os.path.isfile(p):
-        pytest.skip("示例配置不存在")
-    cfg = PM.load(p)
-    res = PM.plan(cfg, os.path.dirname(os.path.abspath(p)))
+    cfg = PM.load2(p)
+    assert cfg["version"] == 2
+    base = os.path.dirname(os.path.abspath(p))
+    facts, err = PM.scan_facts(base, cfg)
+    if err:
+        pytest.skip(err)
+    res = PM.check_v2(cfg, base, facts["ops"], facts["shapes"],
+                      facts["recursive"], facts["op_counts"], facts["dtypes"])
     assert not res["problems"], res["problems"]
-    assert len(res["entries"]) >= 40, len(res["entries"])
-    assert all(e["c"].endswith(".c") for e in res["entries"])
+    assert facts["ops"], "应当扫出算子"
+
+
+def test_ds1_unknown_dtype_rejected():
+    with tempfile.TemporaryDirectory() as d:
+        os.makedirs(os.path.join(d, "m"))
+        io.open(os.path.join(d, "m", "a.m"), "w").write(u"function y = a(x)\n")
+        bad = _v2()
+        bad["dtypes"] = {"default": "half_pumpkin"}
+        p = _write(d, "c.json", bad)
+        with pytest.raises(PM.ConfigError):
+            PM.load2(p)
+
+
+def test_ds2_fixed_point_bounds():
+    with tempfile.TemporaryDirectory() as d:
+        os.makedirs(os.path.join(d, "m"))
+        io.open(os.path.join(d, "m", "a.m"), "w").write(u"function y = a(x)\n")
+        bad = _v2()
+        bad["dtypes"] = {"default": "q15",
+                         "fixed_point": {"format": "Q15", "frac_bits": 16}}
+        p = _write(d, "c.json", bad)
+        with pytest.raises(PM.ConfigError):
+            PM.load2(p)
+        bad["dtypes"]["fixed_point"] = {"format": "Q15", "frac_bits": 15,
+                                        "overflow": "explode"}
+        p2 = _write(d, "c2.json", bad)
+        with pytest.raises(PM.ConfigError):
+            PM.load2(p2)
+
+
+def test_ds4_default_dtype_vs_source():
+    """动静对账：默认 dtype 与源码实测不同，且未声明转换 -> 报错。"""
+    with tempfile.TemporaryDirectory() as d:
+        os.makedirs(os.path.join(d, "m"))
+        io.open(os.path.join(d, "m", "a.m"), "w").write(u"function y = a(x)\n")
+        cfg = _v2()
+        cfg["dtypes"] = {"default": "f32"}
+        res = PM.check_v2(cfg, d, src_dtypes={"x": "f64"})
+        assert any("DS4" in x for x in res["problems"]), res["problems"]
+        # 声明了定标 -> 降级为 warning
+        cfg["dtypes"]["fixed_point"] = {"format": "Q15", "frac_bits": 15}
+        res2 = PM.check_v2(cfg, d, src_dtypes={"x": "f64"})
+        assert not any("DS4" in x for x in res2["problems"]), res2["problems"]
+        assert any("DS4" in x for x in res2["warnings"]), res2["warnings"]
+
 
 
 # ---------------------------------------------------------------------------

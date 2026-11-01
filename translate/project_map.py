@@ -205,13 +205,19 @@ def plan(cfg, base=None):
 # ===========================================================================
 
 V2_TOP = {"version", "matlab", "c", "targets", "modules", "operators",
-          "constraints", "memory"}
+          "constraints", "memory", "dtypes"}
 V2_MODULE = {"id", "sources", "targets", "entry", "timing", "operators"}
 V2_TIMING = {"period_ms", "deadline_ms", "entry_kind", "reentrant"}
 V2_TARGET = {"abi", "allow_heap", "dtype", "max_stack_bytes", "memory"}
 V2_MEM = {"strategy", "pool_bytes", "alignment", "max_array_bytes", "arrays"}
 DTYPE_BYTES = {"f64": 8, "f32": 4, "int64": 8, "int32": 4, "int16": 2,
                "int8": 1, "q15": 2}
+V2_DTYPES = {"default", "map", "fixed_point"}
+V2_FIXED = {"format", "frac_bits", "round", "overflow"}
+ROUND_MODES = ("nearest", "floor", "ceil", "trunc")
+OVERFLOW_MODES = ("saturate", "wrap")
+#: Q 格式 -> (位宽, 最大允许 frac_bits)
+Q_WIDTH = {"Q7": 8, "Q15": 16, "Q31": 32}
 
 
 def _req(obj, keys, where):
@@ -246,6 +252,9 @@ def load2(path):
         if not isinstance(t, dict):
             raise _bad("targets.%s" % name, "必须是对象")
         _check_keys(t, V2_TARGET, "targets.%s" % name)
+        if t.get("dtype") and t["dtype"] not in DTYPE_BYTES:
+            raise _bad("targets.%s.dtype" % name,
+                       "未知 dtype：%r" % (t["dtype"],))
 
     seen_ids = set()
     for i, m in enumerate(d["modules"]):
@@ -271,9 +280,52 @@ def load2(path):
     if "operators" in d and not isinstance(d["operators"], dict):
         raise _bad("operators", "必须是对象（算子名 -> C 符号）")
     _check_mem(d.get("memory"), "memory")
+    _check_dtypes(d.get("dtypes"), "dtypes")
     for name, t in (d.get("targets") or {}).items():
         _check_mem(t.get("memory"), "targets.%s.memory" % name)
     return d
+
+
+def _check_dtypes(dt, where):
+    """DS1/DS2：数据格式与定标的取值必须合法。"""
+    if dt is None:
+        return
+    if not isinstance(dt, dict):
+        raise _bad(where, "必须是对象")
+    _check_keys(dt, V2_DTYPES, where)
+    if "default" in dt and dt["default"] not in DTYPE_BYTES:
+        raise _bad("%s.default" % where,
+                   "未知 dtype：%r（允许 %s）"
+                   % (dt["default"], ", ".join(sorted(DTYPE_BYTES))))
+    mp = dt.get("map")
+    if mp is not None:
+        if not isinstance(mp, dict):
+            raise _bad("%s.map" % where, "必须是对象（MATLAB 类型 -> C dtype）")
+        for k, v in mp.items():
+            if v not in DTYPE_BYTES:
+                raise _bad("%s.map.%s" % (where, k), "未知 C dtype：%r" % (v,))
+    fx = dt.get("fixed_point")
+    if fx is not None:
+        if not isinstance(fx, dict):
+            raise _bad("%s.fixed_point" % where, "必须是对象")
+        _check_keys(fx, V2_FIXED, "%s.fixed_point" % where)
+        fmt = fx.get("format")
+        if fmt is not None and fmt not in Q_WIDTH:
+            raise _bad("%s.fixed_point.format" % where,
+                       "只支持 %s" % ", ".join(sorted(Q_WIDTH)))
+        fb = fx.get("frac_bits")
+        if fb is not None:
+            if not isinstance(fb, int) or fb < 0:
+                raise _bad("%s.fixed_point.frac_bits" % where, "必须是非负整数")
+            if fmt and fb >= Q_WIDTH[fmt]:
+                raise _bad("%s.fixed_point.frac_bits" % where,
+                           "%d 不小于 %s 的位宽 %d" % (fb, fmt, Q_WIDTH[fmt]))
+        if fx.get("round") and fx["round"] not in ROUND_MODES:
+            raise _bad("%s.fixed_point.round" % where,
+                       "只支持 %s" % ", ".join(ROUND_MODES))
+        if fx.get("overflow") and fx["overflow"] not in OVERFLOW_MODES:
+            raise _bad("%s.fixed_point.overflow" % where,
+                       "只支持 %s" % ", ".join(OVERFLOW_MODES))
 
 
 def _check_mem(mem, where):
@@ -364,7 +416,7 @@ def scan_facts(base, cfg, python=None, mir_py=None):
     if r.returncode != 0 or not os.path.isfile(out):
         return None, "扫描失败：%s" % r.stdout.decode("utf-8", "replace")[-300:]
 
-    ops, shapes = set(), {}
+    ops, shapes, dts = set(), {}, {}
     recursive, op_counts = set(), {}
     cur = None
     for ln in io.open(out, encoding="utf-8", errors="replace"):
@@ -386,6 +438,8 @@ def scan_facts(base, cfg, python=None, mir_py=None):
                 op_counts[cur] += 1
         elif ln.startswith("arg:") or ln.startswith("ret:") or ln.startswith("var:"):
             parts = ln.split(":")
+            if len(parts) >= 3 and parts[2].strip():
+                dts[parts[1].strip()] = parts[2].strip()
             if len(parts) >= 4:
                 dims = [x for x in parts[3].split(",") if x.strip().isdigit()]
                 if dims:
@@ -394,7 +448,7 @@ def scan_facts(base, cfg, python=None, mir_py=None):
                         n *= int(x)
                     shapes[parts[1].strip()] = n
     return {"ops": ops, "shapes": shapes, "recursive": recursive,
-            "op_counts": op_counts}, ""
+            "op_counts": op_counts, "dtypes": dts}, ""
 
 
 def _ops_table():
@@ -412,7 +466,7 @@ def _ops_table():
 
 
 def check_v2(cfg, base, used_ops=None, shape_hits=None,
-             recursive_fns=None, op_counts=None):
+             recursive_fns=None, op_counts=None, src_dtypes=None):
     """M1–M4 / T1–T4。返回 `{"problems": [...], "warnings": [...]}`。"""
     problems, warnings = [], []
     probs = problems.append
@@ -544,6 +598,27 @@ def check_v2(cfg, base, used_ops=None, shape_hits=None,
                 probs("MM5 数组 %s 声明 %d 个元素，源码实测 %d"
                       % (nm, a["elements"], shape_hits[nm]))
 
+    # ---- 数据格式 DS4：默认 dtype 与源码实测对账 ----
+    dts_cfg = cfg.get("dtypes") or {}
+    if dts_cfg and src_dtypes:
+        want = dts_cfg.get("default")
+        actual = set(src_dtypes.values())
+        fx = dts_cfg.get("fixed_point") or {}
+        if want and actual and want not in actual:
+            # 有定标或 map 才算"声明了转换"，否则就是配置与源码脱节
+            if not fx and not (dts_cfg.get("map")):
+                probs("DS4 配置默认 dtype 是 %s，但源码实测是 %s；"
+                      "若是有意转换请声明 fixed_point 或 map"
+                      % (want, "/".join(sorted(actual))))
+            else:
+                warnings.append("DS4 默认 dtype %s 与源码 %s 不同（已声明转换）"
+                                % (want, "/".join(sorted(actual))))
+        for oid_target, t in (cfg.get("targets") or {}).items():
+            td = t.get("dtype")
+            if td and actual and td not in actual and not fx:
+                warnings.append("DS4 target %s 的 dtype %s 与源码 %s 不同，且无定标声明"
+                                % (oid_target, td, "/".join(sorted(actual))))
+
     # ---- 递归禁令 R1 ----
     cons = cfg.get("constraints") or {}
     if cons.get("no_recursion") and recursive_fns:
@@ -636,7 +711,8 @@ def _main_v2(cfg_path, argv, as_json):
     res = check_v2(cfg, base, used,
                    shape_hits=facts["shapes"] if facts else None,
                    recursive_fns=facts["recursive"] if facts else None,
-                   op_counts=facts["op_counts"] if facts else None)
+                   op_counts=facts["op_counts"] if facts else None,
+                   src_dtypes=facts["dtypes"] if facts else None)
 
     if as_json:
         print(json.dumps({"used_operators": sorted(used) if used else None,
