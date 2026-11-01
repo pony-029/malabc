@@ -105,3 +105,39 @@ MATLAB 侧（功能）                 C 侧（模块/目标）
 
 `version: 1` 的配置（`matlab.root` + `mapping` 目录映射）仍然可用，语义不变；
 `version: 2` 在它之上加了 `targets/modules/operators/constraints`。两版共存，不迁移。
+
+## 七、内存模型（嵌入式：没有充足的堆）
+
+MATLAB 里 `zeros(1e6)` 随手就写；目标板上不行。所以内存必须**声明式**：
+
+```json
+"targets": {
+  "mcu": {
+    "allow_heap": false, "dtype": "f32",
+    "memory": {
+      "strategy": "static_pool",        // static_pool | heap | stack
+      "pool_bytes": 65536,
+      "alignment": 8,
+      "max_array_bytes": 8192,
+      "arrays": [ { "name": "accum_buf", "elements": 256, "dtype": "f32" } ]
+    }
+  }
+}
+```
+
+| 编号 | 规则 | 违反的后果 |
+|---|---|---|
+| **MM1** | `static_pool` ⇒ 目标必须 `allow_heap: false` | 你以为没有堆，实际还在 malloc |
+| **MM2** | `pool_bytes` 必须是 `alignment` 的整数倍 | 末段永远用不满，且不同对齐下容量错位 |
+| **MM3** | 单个数组字节数 ≤ `max_array_bytes` | 一次分配就把池打穿 |
+| **MM4** | 池容量 ≥ 所有声明数组之和 | 链接期/运行期溢出 |
+| **MM5** | 声明数组的 `elements` 必须与**源码实测形状**一致 | 配置与实际脱节（动静对账） |
+
+## 八、其他嵌入式约束（R1 / R2）
+
+| 编号 | 规则 | 为什么 |
+|---|---|---|
+| **R1** | `constraints.no_recursion` 为真时，源码不得有自调用 | 递归 = 栈深不可静态界定，中断里尤其危险 |
+| **R2** | `constraints.max_ops_per_entry` 限制入口函数算子数 | WCET 的粗估上限 |
+
+这两条同样靠 `mir.py` 扫出的**事实**判定（自调用、每函数算子数），不是靠配置自述。

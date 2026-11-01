@@ -21,7 +21,17 @@
       "abi": "arm",
       "allow_heap": false,
       "dtype": "f32",
-      "max_stack_bytes": 2048
+      "max_stack_bytes": 2048,
+      "memory": {
+        "strategy": "static_pool",
+        "pool_bytes": 65536,
+        "alignment": 8,
+        "max_array_bytes": 8192,
+        "arrays": [
+          { "name": "accum_buf", "elements": 256, "dtype": "f32" },
+          { "name": "accum_tmp", "elements": 64, "dtype": "f32" }
+        ]
+      }
     }
   },
   "modules": [
@@ -49,6 +59,8 @@
   ],
   "operators": {},
   "constraints": {
-    "forbid_heap": ["mcu"]
+    "forbid_heap": ["mcu"],
+    "no_recursion": true,
+    "max_ops_per_entry": 200
   }
 }

@@ -204,10 +204,14 @@ def plan(cfg, base=None):
 # v2：工程级关系模型（多个 MATLAB 功能 <-> 一个/多个 C 模块）
 # ===========================================================================
 
-V2_TOP = {"version", "matlab", "c", "targets", "modules", "operators", "constraints"}
+V2_TOP = {"version", "matlab", "c", "targets", "modules", "operators",
+          "constraints", "memory"}
 V2_MODULE = {"id", "sources", "targets", "entry", "timing", "operators"}
 V2_TIMING = {"period_ms", "deadline_ms", "entry_kind", "reentrant"}
-V2_TARGET = {"abi", "allow_heap", "dtype", "max_stack_bytes"}
+V2_TARGET = {"abi", "allow_heap", "dtype", "max_stack_bytes", "memory"}
+V2_MEM = {"strategy", "pool_bytes", "alignment", "max_array_bytes", "arrays"}
+DTYPE_BYTES = {"f64": 8, "f32": 4, "int64": 8, "int32": 4, "int16": 2,
+               "int8": 1, "q15": 2}
 
 
 def _req(obj, keys, where):
@@ -266,7 +270,38 @@ def load2(path):
             raise _bad("%s.operators" % w, "必须是对象（算子名 -> C 符号）")
     if "operators" in d and not isinstance(d["operators"], dict):
         raise _bad("operators", "必须是对象（算子名 -> C 符号）")
+    _check_mem(d.get("memory"), "memory")
+    for name, t in (d.get("targets") or {}).items():
+        _check_mem(t.get("memory"), "targets.%s.memory" % name)
     return d
+
+
+def _check_mem(mem, where):
+    """校验 memory 段（顶层或某个 target 下）。"""
+    if mem is None:
+        return
+    if not isinstance(mem, dict):
+        raise _bad(where, "必须是对象")
+    _check_keys(mem, V2_MEM, where)
+    strat = mem.get("strategy")
+    if strat is not None and strat not in ("static_pool", "heap", "stack"):
+        raise _bad("%s.strategy" % where,
+                   "只支持 static_pool / heap / stack（实际 %r）" % (strat,))
+    for k in ("pool_bytes", "alignment", "max_array_bytes"):
+        if k in mem and (not isinstance(mem[k], int) or mem[k] <= 0):
+            raise _bad("%s.%s" % (where, k), "必须是正整数")
+    arrs = mem.get("arrays")
+    if arrs is not None:
+        if not isinstance(arrs, list):
+            raise _bad("%s.arrays" % where, "必须是数组")
+        for i, a in enumerate(arrs):
+            w = "%s.arrays[%d]" % (where, i)
+            if not isinstance(a, dict):
+                raise _bad(w, "必须是对象")
+            _check_keys(a, {"name", "elements", "dtype"}, w)
+            _req(a, ("name", "elements"), w)
+            if a.get("dtype") and a["dtype"] not in DTYPE_BYTES:
+                raise _bad("%s.dtype" % w, "未知 dtype：%r" % (a["dtype"],))
 
 
 def scan_operators(base, cfg, python=None, mir_py=None):
@@ -303,6 +338,65 @@ def scan_operators(base, cfg, python=None, mir_py=None):
     return used, ""
 
 
+def scan_facts(base, cfg, python=None, mir_py=None):
+    """**动态侧**：从 MIR 里取算子集合、数组形状、自调用、每函数算子数。
+
+    返回 `(facts, err)`；`facts` 含 `ops / shapes / recursive / op_counts`。
+    """
+    import collections
+    import subprocess
+    import sys
+    import tempfile
+
+    python = python or sys.executable
+    mir_py = mir_py or os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "mir.py")
+    root = os.path.join(base, cfg["matlab"]["root"])
+    if not os.path.isdir(root):
+        return None, "matlab.root 不存在：%s" % root
+    d = tempfile.mkdtemp(prefix="m2c_scan_")
+    out = os.path.join(d, "p.mir")
+    cmd = [python, mir_py, root, "-o", out]
+    if cfg["matlab"].get("recursive", True):
+        cmd.insert(3, "--recursive")
+    r = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                       stderr=subprocess.STDOUT, timeout=600)
+    if r.returncode != 0 or not os.path.isfile(out):
+        return None, "扫描失败：%s" % r.stdout.decode("utf-8", "replace")[-300:]
+
+    ops, shapes = set(), {}
+    recursive, op_counts = set(), {}
+    cur = None
+    for ln in io.open(out, encoding="utf-8", errors="replace"):
+        ln = ln.rstrip("\n")
+        if ln.startswith("func:"):
+            cur = ln[5:].strip()
+            op_counts[cur] = 0
+        elif ln.startswith("op:"):
+            parts = ln.split(":")
+            if len(parts) >= 2:
+                ops.add(parts[1].strip())
+            if cur:
+                op_counts[cur] += 1
+        elif ln.startswith("call:"):
+            parts = ln.split(":")
+            if len(parts) >= 3 and cur and parts[2].strip() == cur:
+                recursive.add(cur)
+            if cur:
+                op_counts[cur] += 1
+        elif ln.startswith("arg:") or ln.startswith("ret:") or ln.startswith("var:"):
+            parts = ln.split(":")
+            if len(parts) >= 4:
+                dims = [x for x in parts[3].split(",") if x.strip().isdigit()]
+                if dims:
+                    n = 1
+                    for x in dims:
+                        n *= int(x)
+                    shapes[parts[1].strip()] = n
+    return {"ops": ops, "shapes": shapes, "recursive": recursive,
+            "op_counts": op_counts}, ""
+
+
 def _ops_table():
     """算子表：id -> matlab 名（用于把配置里的 `sum` 解析成 `OP-SUM`）。"""
     try:
@@ -317,7 +411,8 @@ def _ops_table():
     return tbl
 
 
-def check_v2(cfg, base, used_ops=None):
+def check_v2(cfg, base, used_ops=None, shape_hits=None,
+             recursive_fns=None, op_counts=None):
     """M1–M4 / T1–T4。返回 `{"problems": [...], "warnings": [...]}`。"""
     problems, warnings = [], []
     probs = problems.append
@@ -395,6 +490,75 @@ def check_v2(cfg, base, used_ops=None):
             if t in forbid and (targets.get(t) or {}).get("allow_heap") is not False:
                 probs("T2 target %s 在 forbid_heap 里，但 allow_heap 不是 false" % t)
 
+    # ---- 内存模型：MM1–MM5 ----
+    def mem_of(target_name):
+        t = (targets.get(target_name) or {}).get("memory")
+        return t if t is not None else (cfg.get("memory") or {})
+
+    seen_mem = set()
+    for m in cfg["modules"]:
+        for tname in (m.get("targets") or [None]):
+            key = (m["id"], tname)
+            if key in seen_mem:
+                continue
+            seen_mem.add(key)
+            mem = mem_of(tname)
+            if not mem:
+                continue
+            strat = mem.get("strategy")
+            if strat == "static_pool":
+                tgt = targets.get(tname) or {}
+                if tgt.get("allow_heap") is not False:
+                    probs("MM1 target %s 用 static_pool，但 allow_heap 不是 false"
+                          % tname)
+                align = mem.get("alignment")
+                pool = mem.get("pool_bytes")
+                if align and pool and pool % align:
+                    probs("MM2 pool_bytes(%d) 不是 alignment(%d) 的整数倍"
+                          % (pool, align))
+                arrs = mem.get("arrays") or []
+                mx = mem.get("max_array_bytes")
+                dt = (tgt.get("dtype") or "f64")
+                total = 0
+                for a in arrs:
+                    ab = a["elements"] * DTYPE_BYTES.get(
+                        a.get("dtype") or dt, DTYPE_BYTES.get(dt, 8))
+                    total += ab
+                    if mx and ab > mx:
+                        probs("MM3 数组 %s 占 %d 字节 > max_array_bytes(%d)"
+                              % (a["name"], ab, mx))
+                if pool and total > pool:
+                    probs("MM4 声明数组共 %d 字节 > pool_bytes(%d)" % (total, pool))
+
+    # MM5：声明数组的 elements 与源码实测形状（动静对账）
+    if shape_hits:
+        # 内存段可能挂在 target 下（嵌入式常见），必须全部扫到
+        _mems = [cfg.get("memory") or {}]
+        _mems += [t.get("memory") or {} for t in (cfg.get("targets") or {}).values()]
+        _arrs = []
+        for _m in _mems:
+            _arrs.extend(_m.get("arrays") or [])
+        for a in _arrs:
+            nm = a["name"]
+            if nm in shape_hits and shape_hits[nm] != a["elements"]:
+                probs("MM5 数组 %s 声明 %d 个元素，源码实测 %d"
+                      % (nm, a["elements"], shape_hits[nm]))
+
+    # ---- 递归禁令 R1 ----
+    cons = cfg.get("constraints") or {}
+    if cons.get("no_recursion") and recursive_fns:
+        for fn in sorted(recursive_fns)[:8]:
+            probs("R1 禁止递归，但 %s 有自调用" % fn)
+
+    # R2：入口算子数上限
+    moe = cons.get("max_ops_per_entry")
+    if moe and op_counts:
+        for m in cfg["modules"]:
+            e = m.get("entry")
+            if e and op_counts.get(e, 0) > moe:
+                probs("R2 入口 %s 有 %d 个算子 > max_ops_per_entry(%d)"
+                      % (e, op_counts[e], moe))
+
     return {"problems": problems, "warnings": warnings}
 
 
@@ -419,6 +583,24 @@ def emit_manifest(cfg, path, used_ops=None):
         for j, src in enumerate(m["sources"]):
             L.append("#define M2C_%s_SRC%d \"%s\"" % (mid, j, src))
         L.append("")
+    mem = cfg.get("memory") or {}
+    for tname, t in (cfg.get("targets") or {}).items():
+        if t.get("memory"):
+            mem = t["memory"]
+            break
+    if mem:
+        L.append("/* 内存模型（嵌入式） */")
+        if mem.get("strategy"):
+            L.append("#define M2C_MEM_STRATEGY \"%s\"" % mem["strategy"])
+        if mem.get("pool_bytes"):
+            L.append("#define M2C_MEM_POOL_BYTES %d" % mem["pool_bytes"])
+        if mem.get("alignment"):
+            L.append("#define M2C_MEM_ALIGNMENT %d" % mem["alignment"])
+        for i, a in enumerate(mem.get("arrays") or []):
+            L.append("#define M2C_MEM_ARR%d_NAME \"%s\"" % (i, a["name"]))
+            L.append("#define M2C_MEM_ARR%d_ELEMS %d" % (i, a["elements"]))
+        L.append("")
+
     over = dict(cfg.get("operators") or {})
     for m in cfg["modules"]:
         over.update(m.get("operators") or {})
@@ -446,11 +628,15 @@ def _main_v2(cfg_path, argv, as_json):
         print("配置不合规：%s" % exc)
         return 2
 
-    used, err = scan_operators(base, cfg)
+    facts, err = scan_facts(base, cfg)
     if err:
-        print("[warn] %s（跳过 M2/M3 对账）" % err)
-        used = None
-    res = check_v2(cfg, base, used)
+        print("[warn] %s（跳过 M2/M3/MM5/R1 对账）" % err)
+        facts = None
+    used = facts["ops"] if facts else None
+    res = check_v2(cfg, base, used,
+                   shape_hits=facts["shapes"] if facts else None,
+                   recursive_fns=facts["recursive"] if facts else None,
+                   op_counts=facts["op_counts"] if facts else None)
 
     if as_json:
         print(json.dumps({"used_operators": sorted(used) if used else None,

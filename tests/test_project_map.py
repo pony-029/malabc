@@ -233,3 +233,107 @@ def test_v2_manifest_contains_timing_and_sources():
         assert "M2C_FILT_PERIOD_MS 1" in t
         assert '"isr"' in t
         assert "M2C_USES_OP_ADD" in t
+
+
+# ---------------------------------------------------------------------------
+# v2 内存模型：嵌入式没有充足的堆，内存必须**声明式**
+# ---------------------------------------------------------------------------
+
+def _mem_cfg(mem, allow_heap=False, dtype="f32", extra=None):
+    d = _v2()
+    d["targets"]["mcu"] = {"abi": "arm", "allow_heap": allow_heap, "dtype": dtype,
+                           "memory": mem}
+    d["modules"] = [{"id": "m1", "targets": ["mcu"], "sources": ["a"]}]
+    if extra:
+        d.update(extra)
+    return d
+
+
+def _mk_src(d):
+    os.makedirs(os.path.join(d, "m"), exist_ok=True)
+    io.open(os.path.join(d, "m", "a.m"), "w").write(u"function y = a(x)\n")
+
+
+def test_mm1_static_pool_needs_no_heap():
+    with tempfile.TemporaryDirectory() as d:
+        _mk_src(d)
+        mem = {"strategy": "static_pool", "pool_bytes": 1024, "alignment": 8}
+        bad = PM.check_v2(_mem_cfg(mem, allow_heap=True), d)
+        assert any("MM1" in x for x in bad["problems"]), bad["problems"]
+        ok = PM.check_v2(_mem_cfg(mem, allow_heap=False), d)
+        assert not any("MM1" in x for x in ok["problems"]), ok["problems"]
+
+
+def test_mm2_pool_must_align():
+    with tempfile.TemporaryDirectory() as d:
+        _mk_src(d)
+        mem = {"strategy": "static_pool", "pool_bytes": 1001, "alignment": 8}
+        res = PM.check_v2(_mem_cfg(mem), d)
+        assert any("MM2" in x for x in res["problems"]), res["problems"]
+
+
+def test_mm3_single_array_limit():
+    with tempfile.TemporaryDirectory() as d:
+        _mk_src(d)
+        mem = {"strategy": "static_pool", "pool_bytes": 65536, "alignment": 8,
+               "max_array_bytes": 128,
+               "arrays": [{"name": "big", "elements": 1024, "dtype": "f32"}]}
+        res = PM.check_v2(_mem_cfg(mem), d)
+        assert any("MM3" in x for x in res["problems"]), res["problems"]
+
+
+def test_mm4_pool_capacity():
+    with tempfile.TemporaryDirectory() as d:
+        _mk_src(d)
+        mem = {"strategy": "static_pool", "pool_bytes": 64, "alignment": 8,
+               "arrays": [{"name": "x", "elements": 100, "dtype": "f32"}]}
+        res = PM.check_v2(_mem_cfg(mem), d)
+        assert any("MM4" in x for x in res["problems"]), res["problems"]
+
+
+def test_mm5_declared_vs_measured():
+    """动静对账：声明的元素数必须与源码实测一致。"""
+    with tempfile.TemporaryDirectory() as d:
+        _mk_src(d)
+        mem = {"strategy": "static_pool", "pool_bytes": 65536, "alignment": 8,
+               "arrays": [{"name": "buf", "elements": 256, "dtype": "f32"}]}
+        cfg = _mem_cfg(mem)
+        ok = PM.check_v2(cfg, d, shape_hits={"buf": 256})
+        assert not any("MM5" in x for x in ok["problems"]), ok["problems"]
+        bad = PM.check_v2(cfg, d, shape_hits={"buf": 128})
+        assert any("MM5" in x for x in bad["problems"]), bad["problems"]
+
+
+def test_r1_no_recursion():
+    with tempfile.TemporaryDirectory() as d:
+        _mk_src(d)
+        cfg = _mem_cfg({})
+        cfg["constraints"] = {"no_recursion": True}
+        res = PM.check_v2(cfg, d, recursive_fns={"a"})
+        assert any("R1" in x for x in res["problems"]), res["problems"]
+        res2 = PM.check_v2(cfg, d, recursive_fns=set())
+        assert not any("R1" in x for x in res2["problems"]), res2["problems"]
+
+
+def test_r2_ops_per_entry():
+    with tempfile.TemporaryDirectory() as d:
+        _mk_src(d)
+        cfg = _mem_cfg({})
+        cfg["modules"] = [{"id": "m1", "targets": ["mcu"], "sources": ["a"],
+                           "entry": "a"}]
+        cfg["constraints"] = {"max_ops_per_entry": 3}
+        res = PM.check_v2(cfg, d, op_counts={"a": 9})
+        assert any("R2" in x for x in res["problems"]), res["problems"]
+
+
+def test_manifest_contains_memory():
+    with tempfile.TemporaryDirectory() as d:
+        mem = {"strategy": "static_pool", "pool_bytes": 4096, "alignment": 8,
+               "arrays": [{"name": "buf", "elements": 64, "dtype": "f32"}]}
+        cfg = _mem_cfg(mem)
+        out = os.path.join(d, "m.h")
+        PM.emit_manifest(cfg, out, used_ops={"OP-ADD"})
+        t = io.open(out, encoding="utf-8").read()
+        assert "M2C_MEM_STRATEGY" in t and "static_pool" in t
+        assert "M2C_MEM_POOL_BYTES 4096" in t
+        assert 'M2C_MEM_ARR0_NAME "buf"' in t

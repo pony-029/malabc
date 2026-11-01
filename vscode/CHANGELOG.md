@@ -73,6 +73,23 @@ M2/M3 的事实来自 `mir.py` **扫真实源码**得到的算子集合 ——
 
 判据：`tests/test_project_map.py` **15 条**（v1 七条 + v2 八条），已接 GX2。
 
+- **嵌入式内存模型由 JSON 约束**（v2 扩展）
+  `targets.<name>.memory` 声明 `strategy/pool_bytes/alignment/max_array_bytes/arrays`，
+  六条规则全部会报错：MM1 静态池与 `allow_heap` 必须一致、MM2 池容量按对齐取整、
+  MM3 单数组上限、MM4 池容量够用、**MM5 声明元素数 vs 源码实测形状**（动静对账）。
+  另加 **R1 禁递归**（扫 MIR 里的自调用）与 **R2 入口算子上限**（WCET 粗估）。
+  `--emit-manifest` 现在把 `M2C_MEM_STRATEGY / POOL_BYTES / ALIGNMENT / ARR*` 一并写进头文件，
+  嵌入式侧编译期即可看到内存布局。
+  判据从 15 条增至 **23 条**（新增 8 条，全部是「构造违反 → 断言报错」）。
+
+- **嵌入式内存模型由 JSON 约束**（v2 扩展）
+  `targets.<name>.memory` 声明 `strategy/pool_bytes/alignment/max_array_bytes/arrays`，
+  六条规则全部会报错：MM1 静态池与 `allow_heap` 必须一致、MM2 池容量按对齐取整、
+  MM3 单数组上限、MM4 池容量够用、**MM5 声明元素数 vs 源码实测形状**（动静对账）。
+  另加 **R1 禁递归**（扫 MIR 里的自调用）与 **R2 入口算子上限**（WCET 粗估）。
+  `--emit-manifest` 现在把 `M2C_MEM_STRATEGY / POOL_BYTES / ALIGNMENT / ARR*` 一并写进头文件，
+  嵌入式侧编译期即可看到内存布局。
+  判据从 15 条增至 **23 条**（新增 8 条，全部是「构造违反 → 断言报错」）。
 
 ## 2.2.3
 
