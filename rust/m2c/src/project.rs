@@ -76,6 +76,18 @@ static void m2c_rt_load(const char *path) {
         printf("fixture: cannot open %s\n", path);
         return;
     }
+    {
+        /* 跳过 UTF-8 BOM（EF BB BF）：Windows 记事本 / PowerShell 默认会写，
+         * 不跳过的话它粘在第一行参数名前面，导致该参数**静默退回默认值**。 */
+        int c0 = fgetc(fp);
+        int c1 = (c0 == 0xEF) ? fgetc(fp) : -1;
+        int c2 = (c1 == 0xBB) ? fgetc(fp) : -1;
+        if (!(c0 == 0xEF && c1 == 0xBB && c2 == 0xBF)) {
+            if (c2 >= 0) { ungetc(c2, fp); }
+            if (c1 >= 0) { ungetc(c1, fp); }
+            if (c0 >= 0) { ungetc(c0, fp); }
+        }
+    }
     while (fgets(line, sizeof(line), fp) != NULL) {
         char *p = line;
         char *nm;
