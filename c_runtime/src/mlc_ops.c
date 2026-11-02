@@ -174,6 +174,7 @@ mlc_status mlc_op_div(const mlc_array *a, const mlc_array *b, mlc_array *out)
 }
 
 
+/* @m2c coverage-exclude begin: Q15 定点路径 —— 不在 f64 语料路径上，由 tests/test_q15_ops.py 守护 */
 /* ===================== Q15 定点算子 ===================== */
 
 int64_t mlc_q15_sat(int64_t v)
@@ -309,6 +310,7 @@ mlc_status mlc_op_q15_mul(const mlc_array *a, const mlc_array *b, mlc_array *out
     }
     return MLC_OK;
 }
+/* @m2c coverage-exclude end */
 
 mlc_status mlc_op_sum(const mlc_array *a, mlc_array *out)
 {

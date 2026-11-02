@@ -41,6 +41,7 @@ mlc_ops.c:114   pa[mlc_bcast_offset(a, ndim, idx)]    /* 读未初始化 */
 1  = 有 RS1/RS2 问题（warning 或 error），或 RS3 低于阈值，或自证失败
 """
 import argparse
+import io
 import os
 import re
 import shutil
@@ -84,8 +85,71 @@ def run_cppcheck(paths, inc):
 
 
 #: RS3 的阈值：实测 56.98 / 48.42，压一点做回归守卫
-MIN_LINE_PCT = 56.4
-MIN_BRANCH_PCT = 46.4
+MIN_LINE_PCT = 62.1
+MIN_BRANCH_PCT = 51.6
+
+
+def _excluded_lines(src_path):
+    """读出源码里 `@m2c coverage-exclude begin/end` 之间要排除的行号（1 起，含标记行）。"""
+    excluded = set()
+    inside = False
+    try:
+        lines = io.open(src_path, encoding="utf-8", errors="replace").read().split("\n")
+    except IOError:
+        return excluded
+    for i, ln in enumerate(lines, 1):
+        if "coverage-exclude begin" in ln:
+            inside = True
+            excluded.add(i)
+            continue
+        if "coverage-exclude end" in ln:
+            excluded.add(i)
+            inside = False
+            continue
+        if inside:
+            excluded.add(i)
+    return excluded
+
+
+def _gcov_stats(gcov_path, excluded):
+    """从 `.gcov` 明细算 (行%, 分支至少走一次%)，跳过 `excluded` 行号。
+
+    `.gcov` 行格式：`<次数>:<行号>:<源码>`，其中次数 `#####` 表示未执行、`-` 表示不可执行；
+    分支行紧跟在它的源码行之后：`branch N taken M` 或 `branch N never executed`。
+    """
+    exe = hit = 0
+    br = br_taken = 0
+    cur = None
+    try:
+        f = io.open(gcov_path, encoding="utf-8", errors="replace")
+    except IOError:
+        return None
+    with f:
+        for raw in f:
+            m = re.match(r"\s*([\d#=]+|-):\s*(\d+):", raw)
+            if m:
+                cnt, no = m.group(1), int(m.group(2))
+                cur = no
+                if no in excluded or cnt == "-":
+                    continue
+                exe += 1
+                if cnt not in ("#####", "====="):
+                    try:
+                        if int(cnt) > 0:
+                            hit += 1
+                    except ValueError:
+                        pass
+                continue
+            mb = re.match(r"branch\s+\d+\s+(?:taken\s+(\d+)|never executed)", raw.strip())
+            if mb and cur is not None and cur not in excluded:
+                br += 1
+                if mb.group(1) and int(mb.group(1)) > 0:
+                    br_taken += 1
+    if exe <= 0:
+        return None
+    line_pct = 100.0 * hit / exe
+    br_pct = (100.0 * br_taken / br) if br else 0.0
+    return line_pct, br_pct
 
 
 def measure_coverage():
@@ -131,6 +195,13 @@ def measure_coverage():
                              stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT, timeout=600
                              ).stdout.decode("utf-8", "replace")
+        # 明细文件（与 gcov 的汇总行相比，它可以按行过滤）
+        gpath = os.path.join(d, "mlc_ops.c.gcov")
+        excluded = _excluded_lines(os.path.join(RT, "src", "mlc_ops.c"))
+        got = _gcov_stats(gpath, excluded)
+        if got is not None:
+            return got
+        # 兜底：明细解析失败时退回汇总行（宁可少一点信息，也不要假通过）
         line = re.search(r"Lines executed:([\d.]+)%", out)
         taken = re.search(r"Taken at least once:([\d.]+)%", out)
         if not line or not taken:
