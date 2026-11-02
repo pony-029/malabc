@@ -171,6 +171,11 @@ fn sanitize_comment(s: &str) -> String {
 pub static FIXED_POINT_Q15: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
+/// 当前是否处于 Q15 定点模式（供函数边界转换使用）。
+pub fn is_fixed_point() -> bool {
+    FIXED_POINT_Q15.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 pub fn set_fixed_point(name: Option<&str>) {
     let on = matches!(name.map(|s| s.to_lowercase()).as_deref(), Some("q15"));
     FIXED_POINT_Q15.store(on, std::sync::atomic::Ordering::Relaxed);
@@ -1655,6 +1660,19 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
         }
         out.push(format!("    int64_t {} = 0;", n));
     }
+    // 定点入口：外部 f64 -> 内部 Q15（就地转换，结构体副本共享 data 指针）
+    if is_fixed_point() {
+        for a in &f.args {
+            if is_scalar_dt(&a.dtype) {
+                continue;
+            }
+            let nm = ident(&a.name);
+            out.push(format!(
+                "    if (mlc_op_q15_from_f64(&{n}, &{n}) != MLC_OK) {{ return MLC_ERR; }}",
+                n = nm));
+        }
+    }
+
     let (body, terminated) = emit_block(f, &f.body, "    ", known);
     out.extend(body);
 
@@ -1683,6 +1701,18 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
             }
             out.push("    return MLC_UNIMPLEMENTED;".to_string());
         } else {
+            // 定点出口：内部 Q15 -> 外部 f64（在释放临时量之前做，输出还没被回收）
+            if is_fixed_point() {
+                for r in &f.rets {
+                    if is_scalar_dt(&r.dtype) {
+                        continue;
+                    }
+                    let ptr = ret_cname(f, &r.name);
+                    out.push(format!(
+                        "    if (mlc_op_q15_to_f64({p}, {p}) != MLC_OK) {{ st = MLC_ERR; }}",
+                        p = ptr));
+                }
+            }
             for t in &need_free {
                 out.push(format!("    mlc_array_free(&{});", t));
             }
