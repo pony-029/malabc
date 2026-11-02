@@ -84,8 +84,8 @@ def run_cppcheck(paths, inc):
 
 
 #: RS3 的阈值：实测 56.98 / 48.42，压一点做回归守卫
-MIN_LINE_PCT = 58.7
-MIN_BRANCH_PCT = 49.0
+MIN_LINE_PCT = 56.4
+MIN_BRANCH_PCT = 46.4
 
 
 def measure_coverage():

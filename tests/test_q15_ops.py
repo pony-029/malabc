@@ -150,3 +150,106 @@ def test_q15_constants_match_config_whitelist():
     assert "MLC_Q15_BITS   16" in h
     assert "MLC_Q15_FRAC   15" in h
     assert "MLC_Q15_MAX    32767" in h
+
+
+# ---------------------------------------------------------------------------
+# 边界缩放：f64 <-> Q15 定标整数
+#
+# Q15 只能表示 [-1, 1)。**1.0 * 2^15 = 32768 已越界**，必须饱和到 32767；
+# 若用 int 直接转换，1.0 会环绕成 -32768 —— 这类错误不会报错，只会算错。
+# ---------------------------------------------------------------------------
+
+def ref_from_f64(x):
+    s = x * (1 << FRAC)
+    if s >= MAX:
+        return MAX
+    if s <= MIN:
+        return MIN
+    return int(s + 0.5) if s >= 0 else -int(-s + 0.5)
+
+
+def ref_to_f64(q):
+    return q / float(1 << FRAC)
+
+
+PROG_SCALE = r"""
+#include <stdio.h>
+#include "mlc.h"
+#include "mlc_ops.h"
+
+int main(void)
+{
+    static double xv[4096], qv[4096], bv[4096];
+    int64_t n = 0, i;
+    mlc_array x, q, b;
+
+    if (scanf("%lld", (long long *)&n) != 1) { return 1; }
+    for (i = 0; i < n; ++i) {
+        double v;
+        if (scanf("%lf", &v) != 1) { return 1; }
+        xv[i] = v;
+    }
+    mlc_array_init(&x, MLC_F64, 1, (int64_t[]){n});
+    mlc_array_init(&q, MLC_F64, 1, (int64_t[]){n});
+    mlc_array_init(&b, MLC_F64, 1, (int64_t[]){n});
+    for (i = 0; i < n; ++i) { ((double *)x.data)[i] = xv[i]; }
+
+    if (mlc_op_q15_from_f64(&x, &q) != MLC_OK) { printf("ERR\n"); return 1; }
+    printf("Q");
+    for (i = 0; i < n; ++i) { printf(" %.0f", ((double *)q.data)[i]); }
+    printf("\n");
+
+    if (mlc_op_q15_to_f64(&q, &b) != MLC_OK) { printf("ERR\n"); return 1; }
+    printf("B");
+    for (i = 0; i < n; ++i) { printf(" %.17g", ((double *)b.data)[i]); }
+    printf("\n");
+    (void)qv;
+    mlc_array_free(&x); mlc_array_free(&q); mlc_array_free(&b);
+    return 0;
+}
+"""
+
+
+@pytest.mark.skipif(_cc() is None, reason="没有 C 编译器")
+def test_q15_scaling_differential():
+    rnd = random.Random(7)
+    vals = [0.0, 0.5, -0.5, 0.25, -0.25, 0.999969482421875, -1.0, 1.0,
+            1.5, -1.5, 0.0001, -0.0001, 1e-9]
+    for _ in range(180):
+        vals.append(round(rnd.uniform(-1.2, 1.2), 6))
+
+    d = tempfile.mkdtemp(prefix="m2c_q15s_")
+    try:
+        src = os.path.join(d, "s.c")
+        with open(src, "w") as f:
+            f.write(PROG_SCALE)
+        exe = os.path.join(d, "s.exe")
+        r = subprocess.run([_cc(), "-std=c99", "-O0",
+                            "-I", os.path.join(RT, "include"), src,
+                            os.path.join(RT, "src", "mlc_runtime.c"),
+                            os.path.join(RT, "src", "mlc_ops.c"), "-o", exe, "-lm"],
+                           stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT, timeout=600)
+        assert r.returncode == 0, r.stdout.decode("utf-8", "replace")[-800:]
+
+        inp = "%d\n" % len(vals) + "".join("%.17g\n" % v for v in vals)
+        out = subprocess.run([exe], input=inp.encode(), stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT,
+                             timeout=120).stdout.decode("utf-8", "replace")
+        lines = [x for x in out.splitlines() if x.startswith(("Q", "B"))]
+        assert len(lines) == 2, out[:400]
+        got_q = [int(float(x)) for x in lines[0].split()[1:]]
+        want_q = [ref_from_f64(v) for v in vals]
+        bad = [(i, vals[i], got_q[i], want_q[i])
+               for i in range(len(vals)) if got_q[i] != want_q[i]]
+        assert not bad, "from_f64 与参考实现不一致：%s" % bad[:3]
+
+        # 1.0 必须饱和到 32767（不是环绕成 -32768）
+        assert got_q[vals.index(1.0)] == MAX, "1.0 必须饱和到 32767"
+        assert got_q[vals.index(-1.0)] == MIN
+
+        got_b = [float(x) for x in lines[1].split()[1:]]
+        for i, v in enumerate(vals):
+            assert abs(got_b[i] - ref_to_f64(got_q[i])) < 1e-12
+    finally:
+        shutil.rmtree(d, ignore_errors=True)

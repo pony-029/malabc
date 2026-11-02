@@ -207,6 +207,61 @@ static mlc_status mlc_q15_prepare(const mlc_array *a, const mlc_array *b,
     return MLC_OK;
 }
 
+/* 四舍五入到最近整数（.5 远离零），然后饱和到 Q15 整数域。
+ * 用 double 相乘再判定边界：Q15_MAX 与 2^15 的差距必须**显式**处理，
+ * 否则 1.0 会静默变成 -32768（整型溢出环绕）。 */
+static int64_t m2c_q15_from_double(double x)
+{
+    double s = x * (double)(((int64_t)1) << MLC_Q15_FRAC);
+    if (s >= (double)MLC_Q15_MAX) {
+        return (int64_t)MLC_Q15_MAX;      /* 含 1.0 与更大的值 */
+    }
+    if (s <= (double)MLC_Q15_MIN) {
+        return (int64_t)MLC_Q15_MIN;      /* 含 -1.0 与更小的值 */
+    }
+    return (s >= 0.0) ? (int64_t)(s + 0.5) : -(int64_t)(-s + 0.5);
+}
+
+mlc_status mlc_op_q15_from_f64(const mlc_array *a, mlc_array *out)
+{
+    int64_t n, i;
+    if (a == NULL || out == NULL || a->dtype != MLC_F64 || out->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    n = mlc_array_numel(a);
+    if (mlc_array_numel(out) != n) {
+        return MLC_ERR;
+    }
+    if (n > 0 && (a->data == NULL || out->data == NULL)) {
+        return MLC_ERR;
+    }
+    for (i = 0; i < n; ++i) {
+        ((double *)out->data)[i] =
+            (double)m2c_q15_from_double(((const double *)a->data)[i]);
+    }
+    return MLC_OK;
+}
+
+mlc_status mlc_op_q15_to_f64(const mlc_array *a, mlc_array *out)
+{
+    int64_t n, i;
+    if (a == NULL || out == NULL || a->dtype != MLC_F64 || out->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    n = mlc_array_numel(a);
+    if (mlc_array_numel(out) != n) {
+        return MLC_ERR;
+    }
+    if (n > 0 && (a->data == NULL || out->data == NULL)) {
+        return MLC_ERR;
+    }
+    for (i = 0; i < n; ++i) {
+        ((double *)out->data)[i] =
+            ((const double *)a->data)[i] / (double)(((int64_t)1) << MLC_Q15_FRAC);
+    }
+    return MLC_OK;
+}
+
 mlc_status mlc_op_q15_add(const mlc_array *a, const mlc_array *b, mlc_array *out)
 {
     int64_t n = 0, i;

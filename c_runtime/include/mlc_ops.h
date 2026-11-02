@@ -95,6 +95,11 @@ mlc_status mlc_op_isequal_k(const mlc_array *a, double k,
 
 mlc_status mlc_op_q15_add(const mlc_array *a, const mlc_array *b, mlc_array *out);
 mlc_status mlc_op_q15_sub(const mlc_array *a, const mlc_array *b, mlc_array *out);
+
+/* 边界转换：外部 f64 -> Q15 定标整数，以及反向。
+ * Q15 只能表示 [-1, 1)：超界**饱和**（这是定义，不是缺陷）。 */
+mlc_status mlc_op_q15_from_f64(const mlc_array *a, mlc_array *out);
+mlc_status mlc_op_q15_to_f64(const mlc_array *a, mlc_array *out);
 mlc_status mlc_op_q15_mul(const mlc_array *a, const mlc_array *b, mlc_array *out);
 int64_t mlc_q15_sat(int64_t v);
 
