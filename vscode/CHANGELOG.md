@@ -182,6 +182,15 @@ M2/M3 的事实来自 `mir.py` **扫真实源码**得到的算子集合 ——
   上一轮的 `20001 -32766` 就是它造成的（`a` 用的是默认 `[1, 2]`）。
   生成器的夹具加载器现在会跳过 BOM，判据里也固定用**带 BOM** 的文件跑一遍。
 
+- **`--fixed-point` 也由配置推导**（与 `--static-pool` 一致，不再手打）
+  `build_flags` 增加 `fixed_point`（取自 `dtypes.fixed_point.format` 的小写形式），
+  `--emit-cflags` / `--build` 自动带 `--fixed-point q15`。
+  手打的危险是真实存在的：`--fixed-point q5` 同样能被接受，只是语义完全变了。
+- **示例配置去掉了 `fixed_point`**（并加判据 `test_example_config_is_float_only`）
+  原因很具体：Q15 的 `mul` 是 `(a*b + 2^14) >> 15`，假设两个操作数都已是 Q15 定标整数；
+  语料里的 `1 * 1` 会算成 **0**。把 Q15 写进 f64 语料的示例，等于教人写错的配置。
+  定标的正确用法由 `test_q15_end_to_end.py` 单独覆盖（临时工程 + 夹具 + 饱和验证）。
+
 ## 2.2.3
 
 - **返回值形状推断**：`out_shape_for` 原来只看 `Stmt::Op`，于是

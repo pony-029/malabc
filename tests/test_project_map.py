@@ -444,3 +444,34 @@ def test_real_config_flags_match_its_memory_section():
     assert fl["pool_align"] == mem["alignment"]
     s = PM.cflags_string(fl, ".")
     assert str(mem["pool_bytes"]) in s and str(mem["alignment"]) in s
+
+
+def test_cflags_include_fixed_point_from_config():
+    """定标格式写在配置里，构建参数必须自动带上（不能手打，手打会写成 q5 也编过）。"""
+    cfg = _v2()
+    cfg["dtypes"] = {"default": "q15",
+                     "fixed_point": {"format": "Q15", "frac_bits": 15,
+                                     "round": "nearest", "overflow": "saturate"}}
+    fl = PM.build_flags(cfg)
+    assert fl["fixed_point"] == "q15"
+    assert "--fixed-point q15" in PM.cflags_string(fl, ".")
+
+
+def test_cflags_without_fixed_point():
+    cfg = _v2()
+    cfg["dtypes"] = {"default": "f64"}
+    fl = PM.build_flags(cfg)
+    assert fl["fixed_point"] is None
+    assert "--fixed-point" not in PM.cflags_string(fl, ".")
+
+
+def test_example_config_is_float_only():
+    """示例工程是 f64 语料：**不能**声明 fixed_point。
+
+    Q15 的 `mul` 是 `(a*b + 2^14) >> 15`，它假设两个操作数都已是 Q15 定标整数；
+    语料里的 `1 * 1` 会算成 0。声明了就会把示例变成一条错的教学样例。
+    """
+    p = os.path.join(ROOT, "translate", "examples", "m2c.project.json")
+    cfg = PM.load2(p)
+    assert "fixed_point" not in (cfg.get("dtypes") or {}), (
+        "示例配置不应声明 fixed_point（语料是 f64）")

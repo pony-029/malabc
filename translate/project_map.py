@@ -711,12 +711,16 @@ def build_flags(cfg, target=None):
             break
     if not mem and (cfg.get("memory") or {}).get("strategy") == "static_pool":
         mem = cfg["memory"]
+    fx = (cfg.get("dtypes") or {}).get("fixed_point") or {}
+    fmt = (fx.get("format") or "").strip().lower() or None
     return {
         "name": cfg["c"].get("project") or "gen",
         "static_pool": mem.get("pool_bytes") if mem else None,
         "pool_align": (mem.get("alignment") if mem else None) or 8,
         "target": tname,
         "c_root": cfg["c"].get("root") or "gen",
+        # 定标格式（如 q15）：发射器据此把 ADD/SUB/MUL 换成定点版本
+        "fixed_point": fmt,
     }
 
 
@@ -726,6 +730,8 @@ def cflags_string(fl, base_dir):
     if fl["static_pool"]:
         parts += ["--static-pool", str(fl["static_pool"]),
                   "--pool-align", str(fl["pool_align"])]
+    if fl.get("fixed_point"):
+        parts += ["--fixed-point", str(fl["fixed_point"])]
     return " ".join(parts)
 
 

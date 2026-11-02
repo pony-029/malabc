@@ -19,12 +19,6 @@
       "int32": "int32",
       "int16": "int16",
       "int8": "int8"
-    },
-    "fixed_point": {
-      "format": "Q15",
-      "frac_bits": 15,
-      "round": "nearest",
-      "overflow": "saturate"
     }
   },
   "targets": {
@@ -44,8 +38,16 @@
         "alignment": 8,
         "max_array_bytes": 8192,
         "arrays": [
-          { "name": "accum_buf", "elements": 256, "dtype": "f32" },
-          { "name": "accum_tmp", "elements": 64, "dtype": "f32" }
+          {
+            "name": "accum_buf",
+            "elements": 256,
+            "dtype": "f32"
+          },
+          {
+            "name": "accum_tmp",
+            "elements": 64,
+            "dtype": "f32"
+          }
         ]
       }
     }
@@ -53,8 +55,13 @@
   "modules": [
     {
       "id": "accum",
-      "targets": ["mcu"],
-      "sources": ["colsum_loop", "col2sum"],
+      "targets": [
+        "mcu"
+      ],
+      "sources": [
+        "colsum_loop",
+        "col2sum"
+      ],
       "entry": "colsum_loop",
       "timing": {
         "period_ms": 1,
@@ -68,14 +75,21 @@
     },
     {
       "id": "batch",
-      "targets": ["pc"],
-      "sources": ["condsize", "countel"],
+      "targets": [
+        "pc"
+      ],
+      "sources": [
+        "condsize",
+        "countel"
+      ],
       "entry": "condsize"
     }
   ],
   "operators": {},
   "constraints": {
-    "forbid_heap": ["mcu"],
+    "forbid_heap": [
+      "mcu"
+    ],
     "no_recursion": true,
     "max_ops_per_entry": 200
   }
