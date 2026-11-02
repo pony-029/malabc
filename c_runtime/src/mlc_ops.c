@@ -506,7 +506,7 @@ static mlc_status mlc_unary_f64(const mlc_array *a, mlc_array *out, int code)
 {
     int64_t i, n;
 
-    if (a == NULL || out == NULL || out->data == NULL || a->data == NULL) {
+    if (a == NULL || out == NULL) {
         return MLC_ERR;
     }
     if (a->dtype != MLC_F64 || out->dtype != MLC_F64) {
@@ -514,6 +514,14 @@ static mlc_status mlc_unary_f64(const mlc_array *a, mlc_array *out, int code)
     }
     n = mlc_array_numel(a);
     if (n < 0 || mlc_array_numel(out) != n) {
+        return MLC_ERR;
+    }
+    /* 空数组是**合法输入**：`sqrt([])` 就是 `[]`（MATLAB 语义）。
+     * 空数组的 data 必然是 NULL —— 不能在它上面判"未初始化"。 */
+    if (n == 0) {
+        return MLC_OK;
+    }
+    if (a->data == NULL || out->data == NULL) {
         return MLC_ERR;
     }
     for (i = 0; i < n; ++i) {
