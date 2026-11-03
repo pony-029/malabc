@@ -310,6 +310,99 @@ mlc_status mlc_op_q15_mul(const mlc_array *a, const mlc_array *b, mlc_array *out
     }
     return MLC_OK;
 }
+/* 定点归约核心：kind 0=sum 1=max 2=min 3=mean。
+ * 形状规则与 `mlc_reduce_run` **同一条**（2-D 且 rows>1 -> 1xcols），
+ * 只是累加用 int64、写回前饱和到 Q15 域。 */
+static mlc_status mlc_q15_reduce(const mlc_array *a, mlc_array *out, int kind)
+{
+    int64_t rshape[MLC_MAX_DIMS];
+    int32_t rndim = 1;
+    int64_t rows = 0, cols = 0, n, i, j;
+    const double *pa;
+    double *po;
+
+    if (a == NULL || out == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64 || out->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    rshape[0] = 1;
+    if (a->ndim == 2 && a->shape[0] > 1 && a->shape[1] > 0) {
+        rndim = 2;
+        rshape[1] = a->shape[1];
+        rows = a->shape[0];
+        cols = a->shape[1];
+    }
+    if (mlc_array_numel(out) == 0) {
+        if (mlc_array_init(out, MLC_F64, rndim, rshape) != MLC_OK) {
+            return MLC_ERR;
+        }
+    }
+    if (out->ndim != rndim) {
+        return MLC_ERR;
+    }
+    for (i = 0; i < rndim; ++i) {
+        if (out->shape[i] != rshape[i]) {
+            return MLC_ERR;
+        }
+    }
+    n = mlc_array_numel(a);
+    if (n <= 0) {
+        return MLC_ERR;             /* 空输入：与 f64 归约一致，诚实拒绝 */
+    }
+    pa = (const double *)a->data;
+    po = (double *)out->data;
+    if (pa == NULL || po == NULL) {
+        return MLC_ERR;
+    }
+
+    if (rows <= 1) {
+        int64_t acc = (int64_t)pa[0];
+        for (i = 1; i < n; ++i) {
+            int64_t v = (int64_t)pa[i];
+            if (kind == 0 || kind == 3) { acc += v; }
+            else if (kind == 1) { if (v > acc) { acc = v; } }
+            else { if (v < acc) { acc = v; } }
+        }
+        if (kind == 3) { acc = acc / n; }
+        po[0] = (double)mlc_q15_sat(acc);
+        return MLC_OK;
+    }
+    for (j = 0; j < cols; ++j) {
+        int64_t acc = (int64_t)pa[j];
+        for (i = 1; i < rows; ++i) {
+            int64_t v = (int64_t)pa[i * cols + j];
+            if (kind == 0 || kind == 3) { acc += v; }
+            else if (kind == 1) { if (v > acc) { acc = v; } }
+            else { if (v < acc) { acc = v; } }
+        }
+        if (kind == 3) { acc = acc / rows; }
+        po[j] = (double)mlc_q15_sat(acc);
+    }
+    return MLC_OK;
+}
+
+mlc_status mlc_op_q15_sum(const mlc_array *a, mlc_array *out)
+{
+    return mlc_q15_reduce(a, out, 0);
+}
+
+mlc_status mlc_op_q15_max(const mlc_array *a, mlc_array *out)
+{
+    return mlc_q15_reduce(a, out, 1);
+}
+
+mlc_status mlc_op_q15_min(const mlc_array *a, mlc_array *out)
+{
+    return mlc_q15_reduce(a, out, 2);
+}
+
+mlc_status mlc_op_q15_mean(const mlc_array *a, mlc_array *out)
+{
+    return mlc_q15_reduce(a, out, 3);
+}
+
 /* @m2c coverage-exclude end */
 
 mlc_status mlc_op_sum(const mlc_array *a, mlc_array *out)

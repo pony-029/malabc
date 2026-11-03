@@ -100,6 +100,12 @@ mlc_status mlc_op_q15_sub(const mlc_array *a, const mlc_array *b, mlc_array *out
  * Q15 只能表示 [-1, 1)：超界**饱和**（这是定义，不是缺陷）。 */
 mlc_status mlc_op_q15_from_f64(const mlc_array *a, mlc_array *out);
 mlc_status mlc_op_q15_to_f64(const mlc_array *a, mlc_array *out);
+
+/* 定点归约：形状规则与 f64 版一致（沿第一个非单例维），写回前饱和。 */
+mlc_status mlc_op_q15_sum(const mlc_array *a, mlc_array *out);
+mlc_status mlc_op_q15_mean(const mlc_array *a, mlc_array *out);
+mlc_status mlc_op_q15_max(const mlc_array *a, mlc_array *out);
+mlc_status mlc_op_q15_min(const mlc_array *a, mlc_array *out);
 mlc_status mlc_op_q15_mul(const mlc_array *a, const mlc_array *b, mlc_array *out);
 int64_t mlc_q15_sat(int64_t v);
 

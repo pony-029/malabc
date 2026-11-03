@@ -253,3 +253,111 @@ def test_q15_scaling_differential():
             assert abs(got_b[i] - ref_to_f64(got_q[i])) < 1e-12
     finally:
         shutil.rmtree(d, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# 定点归约：sum / mean / max / min
+#
+# 形状规则与 f64 版**同一条**（沿第一个非单例维：1-D 全元素、2x3 -> 1x3），
+# 只是累加在 int64 里做、写回前饱和。mean 用整数除法（向零截断）。
+# ---------------------------------------------------------------------------
+
+def ref_reduce(vals, kind, rows=0, cols=0):
+    def one(xs):
+        if kind == "sum":
+            return _sat(sum(xs))
+        if kind == "mean":
+            return _sat(_trunc_div(sum(xs), len(xs)))
+        if kind == "max":
+            return max(xs)
+        return min(xs)
+
+    if not rows or rows <= 1:
+        return [one(list(vals))]
+    return [one([vals[i * cols + j] for i in range(rows)]) for j in range(cols)]
+
+
+PROG_RED = r"""
+#include <stdio.h>
+#include "mlc.h"
+#include "mlc_ops.h"
+
+int main(void)
+{
+    static double buf[4096];
+    int64_t rows = 0, cols = 0, i, n;
+    mlc_array a, o;
+    mlc_status st;
+    const char *names[4] = {"sum", "mean", "max", "min"};
+    mlc_status (*fs[4])(const mlc_array *, mlc_array *) = {
+        mlc_op_q15_sum, mlc_op_q15_mean, mlc_op_q15_max, mlc_op_q15_min};
+    int k;
+
+    if (scanf("%lld %lld", (long long *)&rows, (long long *)&cols) != 2) { return 1; }
+    n = rows * cols;
+    for (i = 0; i < n; ++i) {
+        long long v;
+        if (scanf("%lld", &v) != 1) { return 1; }
+        buf[i] = (double)v;
+    }
+    for (k = 0; k < 4; ++k) {
+        int64_t shape[2];
+        shape[0] = rows;
+        shape[1] = cols;
+        if (mlc_array_init(&a, MLC_F64, 2, shape) != MLC_OK) { return 1; }
+        for (i = 0; i < n; ++i) { ((double *)a.data)[i] = buf[i]; }
+        if (mlc_array_init(&o, MLC_F64, 1, (int64_t[]){0}) != MLC_OK) { return 1; }
+        st = fs[k](&a, &o);
+        printf("%s st=%d", names[k], (int)st);
+        for (i = 0; i < mlc_array_numel(&o); ++i) {
+            printf(" %.0f", ((double *)o.data)[i]);
+        }
+        printf("\n");
+        mlc_array_free(&o);
+        mlc_array_free(&a);
+    }
+    return 0;
+}
+"""
+
+
+@pytest.mark.skipif(_cc() is None, reason="没有 C 编译器")
+def test_q15_reductions_differential():
+    rnd = random.Random(31337)
+    cases = [(1, 4), (2, 3), (3, 3), (2, 1)]
+    for _ in range(40):
+        cases.append((rnd.randint(1, 4), rnd.randint(1, 4)))
+
+    d = tempfile.mkdtemp(prefix="m2c_q15r_")
+    try:
+        src = os.path.join(d, "r.c")
+        with open(src, "w") as f:
+            f.write(PROG_RED)
+        exe = os.path.join(d, "r.exe")
+        r = subprocess.run([_cc(), "-std=c99", "-O0",
+                            "-I", os.path.join(RT, "include"), src,
+                            os.path.join(RT, "src", "mlc_runtime.c"),
+                            os.path.join(RT, "src", "mlc_ops.c"), "-o", exe, "-lm"],
+                           stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT, timeout=600)
+        assert r.returncode == 0, r.stdout.decode("utf-8", "replace")[-800:]
+
+        bad = []
+        for (rows, cols) in cases:
+            vals = [rnd.randint(MIN, MAX) for _ in range(rows * cols)]
+            inp = "%d %d\n%s\n" % (rows, cols, " ".join(str(v) for v in vals))
+            out = subprocess.run([exe], input=inp.encode(), stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT,
+                                 timeout=120).stdout.decode("utf-8", "replace")
+            got = {}
+            for ln in out.splitlines():
+                p = ln.split()
+                if len(p) >= 2 and p[0] in ("sum", "mean", "max", "min"):
+                    got[p[0]] = [int(float(x)) for x in p[2:]]
+            for kind in ("sum", "mean", "max", "min"):
+                want = ref_reduce(vals, kind, rows, cols)
+                if got.get(kind) != want:
+                    bad.append((kind, (rows, cols), got.get(kind), want))
+        assert not bad, "定点归约与参考实现不一致：%s" % bad[:3]
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
