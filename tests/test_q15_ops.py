@@ -361,3 +361,125 @@ def test_q15_reductions_differential():
         assert not bad, "定点归约与参考实现不一致：%s" % bad[:3]
     finally:
         shutil.rmtree(d, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# Q15 除法：round(a_q * 2^15 / b_q)，半值远离零，饱和；**除零明确拒绝**
+#
+# 为什么不能"用 f64 除再转回来"：中间量会多走一次浮点舍入，
+# 在 `a_q * 2^15` 恰好落在 .5 边界时与整数实现差 1 —— 而这正是定点最不该有的不确定。
+# ---------------------------------------------------------------------------
+
+def ref_div(a, b):
+    """返回定标整数；除零返回 None（对应 C 的 MLC_ERR）。"""
+    if b == 0:
+        return None
+    num = a << FRAC
+    neg = (num < 0) != (b < 0)
+    an, ad = abs(num), abs(b)
+    q = (an + ad // 2) // ad
+    if neg:
+        q = -q
+    return _sat(q)
+
+
+PROG_DIV = r"""
+#include <stdio.h>
+#include "mlc.h"
+#include "mlc_ops.h"
+
+int main(void)
+{
+    static double av[4096], bv[4096];
+    int64_t n = 0, i;
+    mlc_array a, b, o;
+    mlc_status st;
+
+    if (scanf("%lld", (long long *)&n) != 1) { return 1; }
+    for (i = 0; i < n; ++i) {
+        long long x, y;
+        if (scanf("%lld %lld", &x, &y) != 2) { return 1; }
+        av[i] = (double)x;
+        bv[i] = (double)y;
+    }
+    mlc_array_init(&a, MLC_F64, 1, (int64_t[]){n});
+    mlc_array_init(&b, MLC_F64, 1, (int64_t[]){n});
+    mlc_array_init(&o, MLC_F64, 1, (int64_t[]){n});
+    for (i = 0; i < n; ++i) {
+        ((double *)a.data)[i] = av[i];
+        ((double *)b.data)[i] = bv[i];
+    }
+    st = mlc_op_q15_div(&a, &b, &o);
+    printf("st=%d", (int)st);
+    if (st == MLC_OK) {
+        for (i = 0; i < n; ++i) { printf(" %.0f", ((double *)o.data)[i]); }
+    }
+    printf("\n");
+    mlc_array_free(&a); mlc_array_free(&b); mlc_array_free(&o);
+    return 0;
+}
+"""
+
+
+@pytest.mark.skipif(_cc() is None, reason="没有 C 编译器")
+def test_q15_div_differential():
+    rnd = random.Random(4242)
+    pairs = [(MAX, 1), (MIN, -1), (MAX, -1), (MIN, 1), (16384, 2), (-16384, 2),
+             (16384, 3), (1, MAX), (MIN, MAX), (0, 5), (0, -5), (1, 2), (-1, 2)]
+    for _ in range(180):
+        b = rnd.randint(MIN, MAX)
+        if b == 0:
+            b = 3
+        pairs.append((rnd.randint(MIN, MAX), b))
+
+    d = tempfile.mkdtemp(prefix="m2c_q15d_")
+    try:
+        src = os.path.join(d, "d.c")
+        with open(src, "w") as f:
+            f.write(PROG_DIV)
+        exe = os.path.join(d, "d.exe")
+        r = subprocess.run([_cc(), "-std=c99", "-O0",
+                            "-I", os.path.join(RT, "include"), src,
+                            os.path.join(RT, "src", "mlc_runtime.c"),
+                            os.path.join(RT, "src", "mlc_ops.c"), "-o", exe, "-lm"],
+                           stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT, timeout=600)
+        assert r.returncode == 0, r.stdout.decode("utf-8", "replace")[-800:]
+
+        inp = "%d\n" % len(pairs) + "".join("%d %d\n" % p for p in pairs)
+        out = subprocess.run([exe], input=inp.encode(), stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT,
+                             timeout=120).stdout.decode("utf-8", "replace")
+        line = [x for x in out.splitlines() if x.startswith("st=")]
+        assert line, out[:300]
+        assert line[0].startswith("st=0"), "不该被拒：%s" % line[0]
+        got = [int(float(x)) for x in line[0].split()[1:]]
+        want = [ref_div(a, b) for (a, b) in pairs]
+        bad = [(i, pairs[i], got[i], want[i])
+               for i in range(len(pairs)) if got[i] != want[i]]
+        assert not bad, "q15_div 与参考实现不一致：%s" % bad[:3]
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+@pytest.mark.skipif(_cc() is None, reason="没有 C 编译器")
+def test_q15_div_by_zero_is_rejected():
+    """除零必须明确拒绝，不能返回 0 或饱和值。"""
+    d = tempfile.mkdtemp(prefix="m2c_q15z_")
+    try:
+        src = os.path.join(d, "d.c")
+        with open(src, "w") as f:
+            f.write(PROG_DIV)
+        exe = os.path.join(d, "d.exe")
+        subprocess.run([_cc(), "-std=c99", "-O0",
+                        "-I", os.path.join(RT, "include"), src,
+                        os.path.join(RT, "src", "mlc_runtime.c"),
+                        os.path.join(RT, "src", "mlc_ops.c"), "-o", exe, "-lm"],
+                       stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                       stderr=subprocess.STDOUT, timeout=600, check=True)
+        out = subprocess.run([exe], input=b"2\n1000 0\n1000 5\n",
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             timeout=120).stdout.decode("utf-8", "replace")
+        assert out.startswith("st=1"), out[:200]
+    finally:
+        shutil.rmtree(d, ignore_errors=True)

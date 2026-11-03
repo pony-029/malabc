@@ -107,6 +107,7 @@ mlc_status mlc_op_q15_mean(const mlc_array *a, mlc_array *out);
 mlc_status mlc_op_q15_max(const mlc_array *a, mlc_array *out);
 mlc_status mlc_op_q15_min(const mlc_array *a, mlc_array *out);
 mlc_status mlc_op_q15_mul(const mlc_array *a, const mlc_array *b, mlc_array *out);
+mlc_status mlc_op_q15_div(const mlc_array *a, const mlc_array *b, mlc_array *out);
 int64_t mlc_q15_sat(int64_t v);
 
 /* 1x1 谓词：any/all/nnz/isreal/isnumeric（结果恒 1x1）。 */

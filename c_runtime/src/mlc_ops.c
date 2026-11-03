@@ -403,6 +403,38 @@ mlc_status mlc_op_q15_mean(const mlc_array *a, mlc_array *out)
     return mlc_q15_reduce(a, out, 3);
 }
 
+/* Q15 除法：round(a_q * 2^15 / b_q)，半值远离零，结果饱和。
+ * 除数为 0 时**明确拒绝** —— 定点里返回 0/饱和值会让下游把错误当数据。 */
+mlc_status mlc_op_q15_div(const mlc_array *a, const mlc_array *b, mlc_array *out)
+{
+    int64_t n = 0, i;
+
+    if (mlc_q15_prepare(a, b, out, &n) != MLC_OK) {
+        return MLC_ERR;
+    }
+    for (i = 0; i < n; ++i) {
+        int64_t va = (int64_t)(((const double *)a->data)[i]);
+        int64_t vb = (int64_t)(((const double *)b->data)[i]);
+        int64_t num, den, an, ad, q;
+        int neg;
+
+        if (vb == 0) {
+            return MLC_ERR;             /* 除零：不猜 */
+        }
+        num = va * (((int64_t)1) << MLC_Q15_FRAC);
+        den = vb;
+        neg = ((num < 0) != (den < 0));
+        an = (num < 0) ? -num : num;
+        ad = (den < 0) ? -den : den;
+        q = (an + ad / 2) / ad;         /* 半值远离零 */
+        if (neg) {
+            q = -q;
+        }
+        ((double *)out->data)[i] = (double)mlc_q15_sat(q);
+    }
+    return MLC_OK;
+}
+
 /* @m2c coverage-exclude end */
 
 mlc_status mlc_op_sum(const mlc_array *a, mlc_array *out)

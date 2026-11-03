@@ -188,6 +188,7 @@ pub fn op_c_name(id: &str) -> String {
             "OP-ADD" => return "q15_add".to_string(),
             "OP-SUB" => return "q15_sub".to_string(),
             "OP-MUL" => return "q15_mul".to_string(),
+            "OP-DIV" => return "q15_div".to_string(),
             // 归约也走定点：累加在 int64 里做，写回前饱和
             "OP-SUM" => return "q15_sum".to_string(),
             "OP-MEAN" => return "q15_mean".to_string(),
