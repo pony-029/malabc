@@ -46,6 +46,7 @@ CHECKS = (
              os.path.join("tests", "test_no_duplicate_decls.py"),
              os.path.join("tests", "test_project_map.py"),
              os.path.join("tests", "test_rs3_exclusion.py"),
+             os.path.join("tests", "test_doc_samples.py"),
              os.path.join("tests", "test_static_pool.py"),
              os.path.join("tests", "test_project_build.py"),
              os.path.join("tests", "test_q15_ops.py"),

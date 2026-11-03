@@ -267,6 +267,25 @@ M2/M3 的事实来自 `mir.py` **扫真实源码**得到的算子集合 ——
   与独立 Python 参考实现**逐元素一致**。
   新代码放在 `@m2c coverage-exclude` 区内（不在 f64 语料路径），RS3 不受影响（62.14% / 51.71%）。
 
+- **`PROJECT_MAP.md` 补「产物样例」（真实生成，非手写）**
+  同一份 `acc.m`（`y = sum(x)`）在两种目标下的产物并排放：
+
+  ```c
+  /* f64 */
+  st = mlc_op_sum(&x, y);
+
+  /* --fixed-point q15 */
+  if (mlc_op_q15_from_f64(&x, &x) != MLC_OK) { return MLC_ERR; }
+  st = mlc_op_q15_sum(&x, y);
+  if (mlc_op_q15_to_f64(y, y) != MLC_OK) { st = MLC_ERR; }
+  ```
+
+  **差别正好三行** —— 这就是"同一条 MATLAB 语句在两种目标上转换点显式可见"的样子。
+  另附：内存池的 `gen.c` 开头、`main()` 首句 `m2c_pool_boot()`、`--emit-manifest` 的完整头文件。
+- **文档防腐烂判据** `tests/test_doc_samples.py`（已接 GX2，1.4s）：
+  每次**重新生成**一遍，断言文档里那 10 行关键代码**确实出现在产物中**（两向：
+  产物有而文档没写会红，文档写了而产物没有也会红）。
+
 ## 2.2.3
 
 - **返回值形状推断**：`out_shape_for` 原来只看 `Stmt::Op`，于是

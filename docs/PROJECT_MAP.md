@@ -223,3 +223,86 @@ python translate/project_map.py m2c.project.json --build
 
 实现为 `mlc_op_q15_from_f64` / `mlc_op_q15_to_f64`。
 **`1.0` 必须落到 `32767` 而不是环绕成 `-32768`** —— 这是用 `double` 判边界、而不是整数转换的原因。
+
+## 十二、产物样例（真实生成，非手写）
+
+源文件（`acc.m`）：
+
+```matlab
+function y = acc(x)
+% @m2c shape x 4
+% @m2c shape y 1
+y = sum(x);
+end
+```
+
+配置：`matlab.root=m`、`c.root=gen`、`mcu.memory = static_pool/4096/align 8`、
+模块 `accum` 由 `acc` 单独拼成、`period=1ms deadline=0.8ms entry=isr`。
+
+### 1) 内存池（`gen/src/gen.c` 开头）
+
+```c
+#include "mlc.h"
+/* 静态内存池：4096 字节，8 字节对齐（由 m2c.project.json 的 memory 段生成） */
+static double m2c_pool_buf[(4096 + 8 - 1) / 8];
+void m2c_pool_boot(void)
+{
+    (void)mlc_pool_configure(m2c_pool_buf, 4096, 8);
+}
+```
+
+`src/main.c` 的 `main()` **第一句**就是 `m2c_pool_boot();` —— 池必须先于任何分配配置。
+
+### 2) 函数体：f64 路径
+
+```c
+mlc_status m2c_acc(mlc_array x, mlc_array *y) {
+    mlc_status st = MLC_OK;
+    if (mlc_array_init(y, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) { return MLC_ERR; }
+    st = mlc_op_sum(&x, y);
+    if (st != MLC_OK) { return st; }
+    return st;
+}
+```
+
+### 3) 同一份源码 + `--fixed-point q15`
+
+```c
+mlc_status m2c_acc(mlc_array x, mlc_array *y) {
+    mlc_status st = MLC_OK;
+    if (mlc_array_init(y, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) { return MLC_ERR; }
+    if (mlc_op_q15_from_f64(&x, &x) != MLC_OK) { return MLC_ERR; }
+    st = mlc_op_q15_sum(&x, y);
+    if (st != MLC_OK) { return st; }
+    if (mlc_op_q15_to_f64(y, y) != MLC_OK) { st = MLC_ERR; }
+    return st;
+}
+```
+
+**差别正好三行**：入口转换、归约换成定点版、出口转换。
+这就是"同一条 MATLAB 语句在两种目标上数值可比、且转换点显式可见"的样子。
+
+### 4) `--emit-manifest` 的产物
+
+```c
+#define M2C_PROJECT "demo"
+#define M2C_MODULE_COUNT 1
+
+#define M2C_ACCUM_SOURCES 1
+#define M2C_ACCUM_PERIOD_MS 1
+#define M2C_ACCUM_DEADLINE_MS 0.8
+#define M2C_ACCUM_ENTRY_KIND "isr"
+#define M2C_ACCUM_SRC0 "acc"
+
+#define M2C_MEM_STRATEGY "static_pool"
+#define M2C_MEM_POOL_BYTES 4096
+#define M2C_MEM_ALIGNMENT 8
+
+#define M2C_USES_OP_SUM 1
+```
+
+嵌入式侧只要 `#include` 它，就能在编译期看到"这个模块由哪些 MATLAB 功能拼成、
+跑在什么时序下、内存池多大"。
+
+> 这些片段由 `tests/test_doc_samples.py` 守护：它会**重新生成**一遍并断言
+> 文档里的关键行确实出现在产物中 —— 文档与代码不一致时立刻红。
