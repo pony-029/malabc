@@ -156,7 +156,7 @@ def split_functions(source):
             cur["lines"].append(raw)
             cur["line_nos"].append(raw_no)
             continue
-        if cb == "end" or cb.startswith("end "):
+        if cb.rstrip(";").strip() == "end" or cb.startswith("end "):
             depth -= 1
             if depth <= 0:
                 depth = 0
@@ -983,13 +983,13 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                 continue
             if src_line:
                 out.append("# src:%d" % src_line)
-            if code == "else":
+            if code.rstrip(";").strip() == "else":
                 if blocks and blocks[-1] == "if":
                     out.append("else")
                 else:
                     _emit_unmapped(out, unmapped_kinds, code)
                 continue
-            if code == "end" or code.startswith("end "):
+            if code.rstrip(";").strip() == "end" or code.startswith("end "):
                 if blocks:
                     out.append("end")      # 收束块
                     blocks.pop()
