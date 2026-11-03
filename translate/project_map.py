@@ -526,8 +526,22 @@ def check_v2(cfg, base, used_ops=None, shape_hits=None,
         for oid in unknown[:12]:
             probs("M3 源码用到算子 %s，但既无内置实现也无目标覆盖" % oid)
 
-    # ---- 时序：T1–T4 ----
+    # ---- 时序：T1–T3（T4 与 R2 同义，由 R2 实现）----
     targets = cfg.get("targets") or {}
+
+    # T3：**非可重入**的函数不得被**不同周期**的任务共用（与 M4 无关）
+    uses = {}
+    for m in cfg["modules"]:
+        tm = m.get("timing") or {}
+        for src in m["sources"]:
+            key = str(src).replace("shared:", "")
+            uses.setdefault(key, []).append(
+                (m["id"], tm.get("period_ms"), tm.get("reentrant")))
+    for src, rows in uses.items():
+        periods = set(p for (_mid, p, _r) in rows if p is not None)
+        if len(periods) > 1 and any(r is False for (_m, _p, r) in rows):
+            probs("T3 函数 %s 被不同周期的任务共用（period=%s），但声明了 reentrant: false"
+                  % (src, sorted(periods)))
     for m in cfg["modules"]:
         tm = m.get("timing") or {}
         per, dl = tm.get("period_ms"), tm.get("deadline_ms")

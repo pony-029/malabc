@@ -475,3 +475,64 @@ def test_example_config_is_float_only():
     cfg = PM.load2(p)
     assert "fixed_point" not in (cfg.get("dtypes") or {}), (
         "示例配置不应声明 fixed_point（语料是 f64）")
+
+
+# ---------------------------------------------------------------------------
+# T3：非可重入的函数不得被**不同周期**的任务共用
+#
+# 与 M4 的分工（很容易混）：
+#   M4  看「同一份 .m 被两个模块引用」，与周期无关 -> 管的是**代码重复**
+#   T3  看「周期不同 + reentrant: false」        -> 管的是**并发安全**
+#   T4  与 R2 同义（入口算子数上限）            -> 管的是 **WCET**
+# ---------------------------------------------------------------------------
+
+def _two_modules(periods, reentrant, shared=True):
+    src = "shared:a" if shared else "a"
+    mods = []
+    for i, p in enumerate(periods):
+        tm = {"entry_kind": "isr", "reentrant": reentrant}
+        if p is not None:
+            tm["period_ms"] = p
+        mods.append({"id": "m%d" % i, "targets": ["mcu"],
+                     "sources": [src], "timing": tm})
+    return mods
+
+
+def test_t3_different_periods_not_reentrant_is_error():
+    with tempfile.TemporaryDirectory() as d:
+        _mk_src(d)
+        cfg = _mem_cfg({})
+        cfg["modules"] = _two_modules([1, 10], reentrant=False)
+        res = PM.check_v2(cfg, d)
+        assert any("T3" in x for x in res["problems"]), res["problems"]
+        # 已声明 shared -> 不该再报 M4
+        assert not any("M4" in x for x in res["problems"]), res["problems"]
+
+
+def test_t3_same_period_is_fine():
+    with tempfile.TemporaryDirectory() as d:
+        _mk_src(d)
+        cfg = _mem_cfg({})
+        cfg["modules"] = _two_modules([1, 1], reentrant=False)
+        res = PM.check_v2(cfg, d)
+        assert not any("T3" in x for x in res["problems"]), res["problems"]
+
+
+def test_t3_reentrant_is_fine():
+    with tempfile.TemporaryDirectory() as d:
+        _mk_src(d)
+        cfg = _mem_cfg({})
+        cfg["modules"] = _two_modules([1, 10], reentrant=True)
+        res = PM.check_v2(cfg, d)
+        assert not any("T3" in x for x in res["problems"]), res["problems"]
+
+
+def test_m4_still_fires_without_shared():
+    """M4 与周期无关：同周期、无 shared 也必须报。"""
+    with tempfile.TemporaryDirectory() as d:
+        _mk_src(d)
+        cfg = _mem_cfg({})
+        cfg["modules"] = _two_modules([1, 1], reentrant=True, shared=False)
+        res = PM.check_v2(cfg, d)
+        assert any("M4" in x for x in res["problems"]), res["problems"]
+        assert not any("T3" in x for x in res["problems"]), res["problems"]
