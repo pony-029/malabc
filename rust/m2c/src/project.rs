@@ -275,6 +275,9 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
         out.push(format!("            printf(\"{}:\");", ident(&f.name)));
         for (k, rn) in ret_names.iter().enumerate() {
             if k > 0 {
+                // 保持单空格：`demo_port.expected`（Octave 真值）是 `2 4 6 | 6`。
+                // 注意 Octave 的间距**随形状变化**（标量首返回时是 `7  | 1 4 9`，
+                // 双空格），无法同时匹配两种；正确做法是比较时归一化空白，而不是改这里。
                 out.push("            printf(\" |\");".to_string());
             }
             out.push(format!("            m2c_rt_print(&{});", rn));
