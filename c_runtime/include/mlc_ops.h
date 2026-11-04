@@ -33,6 +33,10 @@ mlc_status mlc_op_min(const mlc_array *a, mlc_array *out);
 /* 切片 `x(from:to)`：1-based **闭区间**，仅 1-D。
    二维的 `x(1:2)` 在 MATLAB 里是**线性索引**（列优先），语义不同，
    所以这里明确拒绝 2-D —— 不猜。 */
+/* 水平拼接 `[a b]`（1-D：结果长度 = 两者之和）。
+ * 只支持 1-D：`[a;b]` 是**竖直**拼接，语义完全不同，不做隐式猜测。 */
+mlc_status mlc_op_hcat(const mlc_array *a, const mlc_array *b, mlc_array *out);
+
 mlc_status mlc_op_slice(const mlc_array *a, int64_t from, int64_t to,
                         mlc_array *out);
 

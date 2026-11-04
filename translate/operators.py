@@ -36,6 +36,12 @@ OPERATORS = (
      "kind": "elementwise", "rules": ("EXPAND-1", "INT-1"),
      "sample": "y = a ./ b;",
      "verified_by": "op_div_elementwise.json"},
+    {"id": "OP-HCAT", "matlab": "[a b]", "c": "mlc_op_hcat",
+     "kind": "shape", "rules": ("SHAPE-1",),
+     "sample": "y = [a b];",
+     # 触发方式不是函数调用，而是语法（`[a b]`）—— 由 mir.py 的 _lower_hcat 处理
+     "trigger": "syntax",
+     "verified_by": ""},
     {"id": "OP-SUM", "matlab": "sum(x)", "c": "mlc_op_sum",
      "kind": "reduction", "rules": ("ORDER-1",),
      "sample": "y = sum(x);",
@@ -175,7 +181,7 @@ OPERATORS = (
 #: `OP-MATMUL` 已由 mlc_ops.c 真实现（2-D f64）；
 #: 注意 `*` / `.*` 在**文本层**都映射到 OP-MUL —— 二者的区别要看形状，
 #: 由 translate/mir.py 在知道 shape 之后决定是否升级成 OP-MATMUL。
-C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV",
+C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-HCAT",
                  "OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN", "OP-INDEX",
                  "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE",
                  "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE", "OP-COL", "OP-COLRANGE",
@@ -294,8 +300,31 @@ def by_id(op_id):
     raise KeyError("未知算子：%s" % op_id)
 
 
+_HCAT_PARSE_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*\[(.*)\]\s*;?\s*$")
+
+
+def _parse_hcat(text):
+    """`y = [a b]` / `y = [a b c]` -> OP-HCAT（链式由调用方展开）。"""
+    m = _HCAT_PARSE_RE.match(text)
+    if m is None:
+        return None
+    body = m.group(2).strip()
+    if not body or ";" in body:
+        return None                      # 竖直拼接不在此
+    parts = [p for p in re.split(r"[\s,]+", body) if p]
+    for p in parts:
+        if not re.match(r"^(-?\d+(\.\d+)?|[A-Za-z_]\w*)$", p):
+            return None                  # 复杂元素不猜
+    if len(parts) < 2:
+        return None
+    return {"operator": "OP-HCAT", "args": parts, "lhs": m.group(1)}
+
+
 def parse_line(line):
     """把一条 MATLAB 赋值语句识别成算子；识别不了返回 None（进 unmapped）。"""
+    _hc = _parse_hcat(line or "")
+    if _hc is not None:
+        return _hc
     pd = _PRED_LINE.match(line or "")
     if pd is not None:
         return {"operator": _PRED_IDS[pd.group(2)], "lhs": pd.group(1),

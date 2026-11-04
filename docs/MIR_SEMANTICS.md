@@ -92,6 +92,7 @@ typedef struct {
 | `OP-ROW` | `A(i,:)` | 1-D，长度 = 列数 |
 | `OP-COL` | `A(:,j)` | 1-D，长度 = 行数 |
 | `OP-SLICE` | `x(lo:hi)`（1-D） | 长度 `hi-lo+1` |
+| `OP-HCAT` | `[a b]`：1-D 水平拼接，输出长度 = 两侧之和 | 仅 1-D；`[a;b]`（竖直）与别名情形（`indx = [indx s]`）**明确不支持** |
 | `OP-COLRANGE` | `A(:,lo:hi)`；`hi<0` 表示 `end` | 2-D `[行数, hi-lo+1]`；输出为空时就地分配 |
 | `OP-MASK` | `x(x>k)` 逻辑索引 | 长度由命中数决定，**自己分配** |
 

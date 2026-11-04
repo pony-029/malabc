@@ -11,7 +11,7 @@ use crate::mir::{walk_stmts, Cond, Func, Op, Stmt};
 /// 已经有 C 落点的算子（与 `translate/operators.py` 的 `C_IMPLEMENTED` 对齐）。
 pub const C_IMPLEMENTED: &[&str] = &[
     "OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-SUM", "OP-MEAN", "OP-MAX",
-    "OP-MIN", "OP-INDEX", "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE",
+    "OP-MIN", "OP-INDEX", "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE", "OP-HCAT",
     "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE", "OP-COL", "OP-COLRANGE", "OP-SQRT", "OP-ABS", "OP-EXP", "OP-LOG",
     "OP-SIN", "OP-COS", "OP-TAN", "OP-FLOOR", "OP-CEIL",
     "OP-ROUND", "OP-LOG2", "OP-LOG10",
@@ -333,6 +333,16 @@ fn resolved_shape_d(f: &Func, name: &str, depth: u32) -> Option<Vec<i64>> {
                     if let Some(src) = resolved_shape_d(f, &op.args[0], depth + 1) {
                         let n: i64 = src.iter().product();
                         found = Some(vec![n]);
+                    }
+                }
+                // 水平拼接：输出长度 = 两侧长度之和（**不是**广播）
+                "OP-HCAT" if op.args.len() == 2 => {
+                    let sa = resolved_shape_d(f, &op.args[0], depth + 1);
+                    let sb = resolved_shape_d(f, &op.args[1], depth + 1);
+                    if let (Some(x), Some(y)) = (sa, sb) {
+                        if x.len() == 1 && y.len() == 1 {
+                            found = Some(vec![x[0] + y[0]]);
+                        }
                     }
                 }
                 "OP-SLICE" if op.args.len() == 3 => {

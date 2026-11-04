@@ -863,6 +863,46 @@ _SETIDX_RE = re.compile(r"^([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*|\d+)\s*\)"
 _RHS_CALL = re.compile(r"^([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*|\d+)\s*\)$")
 
 
+_HCAT_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*\[(.*)\]\s*;?\s*$")
+
+
+def _lower_hcat(out, code, idx_counter):
+    """`y = [a b]` -> `OP-HCAT` 链。返回 True 表示已处理（调用方 continue）。"""
+    m = _HCAT_RE.match(code)
+    if m is None:
+        return False
+    lhs, body = m.group(1), m.group(2).strip()
+    if not body or ";" in body:
+        return False                     # 空 / 竖直拼接：不猜
+    parts = [p for p in re.split(r"[\s,]+", body) if p]
+    if len(parts) < 2:
+        return False                     # `[x]` 不是拼接
+    toks = []
+    for p in parts:
+        if re.match(r"^-?\d+(\.\d+)?$", p):
+            idx_counter[0] += 1
+            t = "__k%d" % idx_counter[0]
+            out.append("const:%s:%s" % (t, p))
+            toks.append(t)
+        elif re.match(r"^[A-Za-z_]\w*$", p):
+            toks.append(p)
+        else:
+            return False                 # 嵌套拼接/调用：不猜
+    if lhs in toks:
+        return False                     # 输出与输入别名，需重分配路径
+    cur = toks[0]
+    for i, t in enumerate(toks[1:]):
+        last = (i == len(toks) - 2)
+        if last:
+            dst = lhs
+        else:
+            idx_counter[0] += 1
+            dst = "__h%d" % idx_counter[0]
+        out.append("op:OP-HCAT:%s:%s:%s" % (dst, cur, t))
+        cur = dst
+    return True
+
+
 def _lower_setidx(out, code, counter, known_ops):
     """`y(i) = v` -> OP-SETIDX；右值是 `x(j)` 时先取出来放临时量。"""
     if "OP-SETIDX" not in known_ops:
@@ -1130,6 +1170,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             if me:
                 # `A = []` -> fill:A:0:0（0 个元素的 1 维数组）
                 out.append("fill:%s:0:0" % me.group(1))
+                continue
+            if _lower_hcat(out, code, idx_counter):
                 continue
             if _lower_setidx(out, code, idx_counter, known_ops):
                 continue

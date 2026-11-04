@@ -1093,6 +1093,49 @@ mlc_status mlc_op_index(const mlc_array *a, int64_t matlab_index,
  * 为什么只做 1-D：二维的 `x(1:2)` 在 MATLAB 里是**线性索引**（列优先展开），
  * 而不是"取前两行"。两者语义不同，混着做最容易生成"能跑但算错"的代码。
  */
+mlc_status mlc_op_hcat(const mlc_array *a, const mlc_array *b, mlc_array *out)
+{
+    int64_t na, nb, i;
+    int64_t sh;
+
+    if (a == NULL || b == NULL || out == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64 || b->dtype != MLC_F64 || out->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    /* 只做 1-D：2-D 的 `[a b]` 是"按列拼"，与这里不是一件事 */
+    if (a->ndim != 1 || b->ndim != 1) {
+        return MLC_ERR;
+    }
+    na = a->shape[0];
+    nb = b->shape[0];
+    if (na < 0 || nb < 0) {
+        return MLC_ERR;
+    }
+    sh = na + nb;
+    if (sh > 0) {
+        if (a->data == NULL || b->data == NULL) {
+            return MLC_ERR;
+        }
+    }
+    if (mlc_array_numel(out) == 0) {
+        if (mlc_array_init(out, MLC_F64, 1, &sh) != MLC_OK) {
+            return MLC_ERR;
+        }
+    }
+    if (mlc_array_numel(out) != sh) {
+        return MLC_ERR;
+    }
+    for (i = 0; i < na; ++i) {
+        ((double *)out->data)[i] = ((const double *)a->data)[i];
+    }
+    for (i = 0; i < nb; ++i) {
+        ((double *)out->data)[na + i] = ((const double *)b->data)[i];
+    }
+    return MLC_OK;
+}
+
 mlc_status mlc_op_slice(const mlc_array *a, int64_t from, int64_t to,
                         mlc_array *out)
 {

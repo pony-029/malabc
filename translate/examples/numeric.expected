@@ -21,6 +21,7 @@ firstel: 1
 flatit: 1 3 2 4
 for_acc: 10
 forlen: 4
+hcat: 1 2 1 2 3
 head2: 1 2
 idx2var: 1
 iseqtest: 1

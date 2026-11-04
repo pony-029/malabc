@@ -165,6 +165,9 @@ def check_operators():
     """算子目录 + 解析 + C 发射。"""
     probs = list(operators.operator_problems())
     for op in operators.OPERATORS:
+        # 语法触发的算子（拼接等）不走 parse_line，跳过 sample 检查
+        if op.get("trigger") == "syntax":
+            continue
         u = operators.parse_line(op["sample"])
         if u is None:
             probs.append("TP3 %s 的 sample 解析不到" % op["id"])
