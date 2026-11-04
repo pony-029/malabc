@@ -830,15 +830,21 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
     } else if op.id == "OP-SLICE" && op.args.len() == 3 {
         let from = &op.args[1];
         let to = &op.args[2];
-        let ok_bounds = from.parse::<i64>().is_ok() && to.parse::<i64>().is_ok();
-        if !ok_bounds {
-            out.push(format!("{}/* TODO(OP-SLICE): 边界必须是整数字面量 */", pad));
-            out.push(format!("{}return MLC_UNIMPLEMENTED;", pad));
-            return out;
-        }
+        // 边界可以是字面量，也可以是 i64 变量（`x(i:i+2)`）——
+        // 后者用 `idx_operand` 取值；长度运行期才知道，算子内部就地定形。
+        let (fc, tc) = match (idx_operand(f, from), idx_operand(f, to)) {
+            (Some(a), Some(b)) => (a, b),
+            _ => {
+                out.push(format!(
+                    "{}/* TODO(OP-SLICE): 边界 {}/{} 既不是字面量也不是已知标量 */",
+                    pad, from, to));
+                out.push(format!("{}return MLC_UNIMPLEMENTED;", pad));
+                return out;
+            }
+        };
         out.push(format!(
             "{}st = mlc_op_slice({}, {}, {}, {});",
-            pad, arg0, from, to, dst));
+            pad, arg0, fc, tc, dst));
     } else if op.id == "OP-ROW" && op.args.len() == 2 {
         let idx = &op.args[1];
         let idx_c = if is_int_literal(idx) {
@@ -1621,7 +1627,10 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
         }
         // 去重：同名只声明一次（三个循环共享 declared）
         if declared.insert(t.clone()) {
-            out.push(format!("    mlc_array {};", t));
+            // **必须零初始化**：动态型算子（MASK/FIND/SLICE）靠 `numel(out)==0`
+            // 判断"由我定形"，而未初始化的 `mlc_array` 里 ndim/dtype 是栈上垃圾，
+            // 那个判断会静默失效（R631 实测：编译通过、运行返回错误）。
+            out.push(format!("    mlc_array {} = {{0}};", t));
             if let Some(sh) = shape {
                 if let Some(l) = init_call(t, "f64", sh, false) {
                     out.push(l);

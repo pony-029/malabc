@@ -1146,10 +1146,15 @@ mlc_status mlc_op_slice(const mlc_array *a, int64_t from, int64_t to,
     if (a == NULL || out == NULL) {
         return MLC_ERR;
     }
-    if (a->dtype != MLC_F64 || out->dtype != MLC_F64) {
+    if (a->dtype != MLC_F64) {
         return MLC_ERR;
     }
-    if (a->ndim != 1 || out->ndim != 1) {
+    /* `out` 尚未定形时（零初始化 -> ndim == 0、dtype == 0）不校验 dtype：
+     * 它会由下面的就地分配赋予正确形状与类型。 */
+    if (out->ndim != 0 && out->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    if (a->ndim != 1 || (out->ndim != 0 && out->ndim != 1)) {
         return MLC_ERR;              /* 2-D 的线性索引语义不同：拒绝 */
     }
     n = a->shape[0];
@@ -1158,8 +1163,11 @@ mlc_status mlc_op_slice(const mlc_array *a, int64_t from, int64_t to,
     }
     len = to - from + 1;
     /* 空输出 = 授权按结果形状就地分配（dynshape 入口）。
-     * 变量边界时生成端推不出长度，只能由这里定形。 */
-    if (mlc_array_numel(out) == 0) {
+     * 变量边界时生成端推不出长度，只能由这里定形。
+     *
+     * `ndim == 0` 也要算"未定形"：生成端现在把临时量零初始化了，
+     * 而零初始化后 `numel` 是**空积 = 1**（不是 0），单看 numel 会漏掉这种情况。 */
+    if (out->ndim == 0 || mlc_array_numel(out) == 0) {
         if (mlc_array_init(out, MLC_F64, 1, &len) != MLC_OK) {
             return MLC_ERR;
         }

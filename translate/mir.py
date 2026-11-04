@@ -496,12 +496,36 @@ def _split_top(expr):
     return expr[:i].strip(), ch, expr[i + 1:].strip()
 
 
+def _strip_outer_parens(e):
+    """剥掉**包住整个表达式**的冗余括号；`(a)+(b)` 这种不剥。"""
+    e = (e or "").strip()
+    while len(e) >= 2 and e[0] == "(" and e[-1] == ")":
+        depth = 0
+        wraps = True
+        for i, ch in enumerate(e):
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth == 0 and i != len(e) - 1:
+                    wraps = False      # 括号在中途就闭合 -> 不是整体包裹
+                    break
+        if not wraps:
+            break
+        e = e[1:-1].strip()
+    return e
+
+
 def _lower_expr(lhs, expr, fnames, emit, counter, src_line, shapes=None):
     """把任意（不超过两运算符的）表达式降级成若干语句；成功返回 True。"""
     sp = _split_top(expr)
     if not sp:
         return False
     left, op, right = sp
+    # 操作数可能整体被括号包住（`e / (abs(k) + 1)`）：先剥掉冗余外层括号，
+    # 否则 `_split_top` 在深度 0 找不到运算符，整个操作数无法降级。
+    left = _strip_outer_parens(left)
+    right = _strip_outer_parens(right)
     for which in (0, 1):
         side = left if which == 0 else right
         if not _split_top(side):
