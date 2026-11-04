@@ -49,6 +49,7 @@ CHECKS = (
              os.path.join("tests", "test_doc_samples.py"),
              os.path.join("tests", "test_static_pool.py"),
              os.path.join("tests", "test_project_build.py"),
+             os.path.join("tests", "test_mm6_stack.py"),
              os.path.join("tests", "test_q15_ops.py"),
              os.path.join("tests", "test_hcat_empty.py"),
              os.path.join("tests", "test_report_player.py"),

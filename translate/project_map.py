@@ -418,12 +418,17 @@ def scan_facts(base, cfg, python=None, mir_py=None):
 
     ops, shapes, dts = set(), {}, {}
     recursive, op_counts = set(), {}
+    # MM6 用：每函数占用的**句柄**（mlc_array）与**标量**（i64）分别去重计数。
+    # 栈帧大小 ≈ 句柄数 × sizeof(mlc_array) + 标量数 × 8，见 `MLC_ARRAY_BYTES`。
+    hand, scal = {}, {}
     cur = None
     for ln in io.open(out, encoding="utf-8", errors="replace"):
         ln = ln.rstrip("\n")
         if ln.startswith("func:"):
             cur = ln[5:].strip()
             op_counts[cur] = 0
+            hand[cur] = set()
+            scal[cur] = set()
         elif ln.startswith("op:"):
             parts = ln.split(":")
             if len(parts) >= 2:
@@ -438,6 +443,11 @@ def scan_facts(base, cfg, python=None, mir_py=None):
                 op_counts[cur] += 1
         elif ln.startswith("arg:") or ln.startswith("ret:") or ln.startswith("var:"):
             parts = ln.split(":")
+            if cur and len(parts) >= 2:
+                _nm = parts[1].strip()
+                _dt = parts[2].strip() if len(parts) >= 3 else ""
+                # `var:X:i64` 是标量（8 字节）；其余一律按数组句柄算（含 arg/ret）
+                (scal[cur] if _dt == "i64" else hand[cur]).add(_nm)
             if len(parts) >= 3 and parts[2].strip():
                 dts[parts[1].strip()] = parts[2].strip()
             if len(parts) >= 4:
@@ -447,8 +457,9 @@ def scan_facts(base, cfg, python=None, mir_py=None):
                     for x in dims:
                         n *= int(x)
                     shapes[parts[1].strip()] = n
+    frames = {k: (len(hand.get(k, ())), len(scal.get(k, ()))) for k in op_counts}
     return {"ops": ops, "shapes": shapes, "recursive": recursive,
-            "op_counts": op_counts, "dtypes": dts}, ""
+            "op_counts": op_counts, "dtypes": dts, "frames": frames}, ""
 
 
 def _ops_table():
@@ -465,9 +476,14 @@ def _ops_table():
     return tbl
 
 
+#: `sizeof(mlc_array)` 的估算值（data 8 + dtype 4 + ndim 4 + shape 64 + strides 64 + owns 4，对齐到 8）。
+#: 用于 MM6 的栈帧估算 —— 宁可略大，也不要让上限看起来比实际宽松。
+MLC_ARRAY_BYTES = 152
+
+
 def check_v2(cfg, base, used_ops=None, shape_hits=None,
-             recursive_fns=None, op_counts=None, src_dtypes=None):
-    """M1–M4 / T1–T4。返回 `{"problems": [...], "warnings": [...]}`。"""
+             recursive_fns=None, op_counts=None, src_dtypes=None, frames=None):
+    """M1–M4 / T1–T4 / MM1–MM6。返回 `{"problems": [...], "warnings": [...]}`。"""
     problems, warnings = [], []
     probs = problems.append
     tbl = _ops_table()
@@ -525,6 +541,27 @@ def check_v2(cfg, base, used_ops=None, shape_hits=None,
         unknown = sorted(set(used_ops) - builtin - over_ids)
         for oid in unknown[:12]:
             probs("M3 源码用到算子 %s，但既无内置实现也无目标覆盖" % oid)
+
+    # ---- MM6：栈帧估算 —— `max_stack_bytes` 以前只声明、从不检查 ----
+    # 估算规则（写进 PROJECT_MAP）：帧 ≈ 句柄数 × sizeof(mlc_array) + 标量数 × 8。
+    # 句柄数取 MIR 里该函数出现过的 arg/ret/var/临时量**去重**计数；
+    # 取**所有函数里最大的那一帧**（同一时刻只在一个函数里），与上限比较。
+    if frames:
+        # `targets` 这个局部名在下面才赋值，这里直接从 cfg 取，避免依赖顺序
+        for tname, tgt in (cfg.get("targets") or {}).items():
+            lim = tgt.get("max_stack_bytes")
+            if not isinstance(lim, int) or lim <= 0:
+                continue
+            worst_fn, worst_bytes = None, 0
+            for fn, (nh, ns) in frames.items():
+                b = nh * MLC_ARRAY_BYTES + ns * 8
+                if b > worst_bytes:
+                    worst_fn, worst_bytes = fn, b
+            if worst_fn is not None and worst_bytes > lim:
+                probs("MM6 函数 %s 的栈帧估算 %d 字节 > max_stack_bytes(%d)"
+                      "（%d 个句柄×%d + %d 个标量×8）"
+                      % (worst_fn, worst_bytes, lim,
+                         frames[worst_fn][0], MLC_ARRAY_BYTES, frames[worst_fn][1]))
 
     # ---- 时序：T1–T3（T4 与 R2 同义，由 R2 实现）----
     targets = cfg.get("targets") or {}
@@ -802,7 +839,8 @@ def _main_v2(cfg_path, argv, as_json):
                    shape_hits=facts["shapes"] if facts else None,
                    recursive_fns=facts["recursive"] if facts else None,
                    op_counts=facts["op_counts"] if facts else None,
-                   src_dtypes=facts["dtypes"] if facts else None)
+                   src_dtypes=facts["dtypes"] if facts else None,
+                   frames=facts["frames"] if facts else None)
 
     if as_json:
         print(json.dumps({"used_operators": sorted(used) if used else None,
