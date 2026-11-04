@@ -1145,10 +1145,23 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             use = operators.parse_line(code)
             if use is not None and use["operator"] == "OP-INDEX":
                 idx = use["args"][1] if len(use["args"]) > 1 else ""
+                callee = use["args"][0] if use["args"] else ""
                 if not idx.isdigit() and idx not in scalar_names:
-                    # `sqrt(x)` / `foo(x)` 这类：x 不是已知标量，
-                    # 那它不是"取下标"，而是我们**不支持**的函数调用
-                    use = None
+                    # `sqrt(x)` / `foo(x)` 这类：x 不是已知标量。
+                    # 但**若被索引的是已知数组**（`y = x(k)`），那就是取下标 ——
+                    # 把 f64 索引降成 i64 临时量，走与 `A(i,j)` 同一条通道。
+                    known_arr = (callee in (f.get("shapes") or {})
+                                 or callee in (f.get("args") or [])
+                                 or callee in (f.get("rets") or []))
+                    if known_arr and re.match(r"^[A-Za-z_]\w*$", idx):
+                        idx_counter[0] += 1
+                        ti = "__i%d" % idx_counter[0]
+                        out.append("var:%s:i64" % ti)
+                        out.append("setb:%s:add:%s:0" % (ti, idx))
+                        use = dict(use)
+                        use["args"] = [callee, ti]
+                    else:
+                        use = None
             if use is None:
                 # 嵌套实参：`y = f(abs(x) + 1)` —— 内层不是裸名。
                 # 先用 `_lower_binary` 把内层降成临时量，再按单参算子发射。

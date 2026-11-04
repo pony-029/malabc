@@ -976,6 +976,25 @@ fn scalar_expr(f: &Func, tok: &str) -> Option<String> {
     }
 }
 
+/// `setb` 的操作数：优先 i64 标量；否则把 **f64 数组的第 0 个元素**转成 int64。
+///
+/// 为什么需要：下标几乎总是 f64 参数（`k` / `i` / `j`），而 `setb` 原先只认 i64 变量，
+/// 于是 `y = x(k)` 和 `A(i,j)` 都会被判成"操作数不是 i64 标量"而退化成桩。
+fn idx_operand(f: &Func, tok: &str) -> Option<String> {
+    if let Some(e) = scalar_expr(f, tok) {
+        return Some(e);
+    }
+    let name = ident(tok);
+    if f.rets.iter().any(|r| r.name == tok) {
+        return Some(format!("(int64_t)((double *){}->data)[0]", name));
+    }
+    let known = f.args.iter().any(|a| a.name == tok) || f.var_dtype(tok).is_some();
+    if known {
+        return Some(format!("(int64_t)((double *){}.data)[0]", name));
+    }
+    None
+}
+
 fn c_bin(op: &str) -> &'static str {
     match op {
         "add" => "+",
@@ -1136,7 +1155,7 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
             }
             Stmt::SetBin { lhs, op, a, b, src } => {
                 if let Some(c) = src_comment(*src, indent) { out.push(c); }
-                match (scalar_expr(f, a), scalar_expr(f, b)) {
+                match (idx_operand(f, a), idx_operand(f, b)) {
                     (Some(x), Some(y)) => out.push(format!(
                         "{}{} = {} {} {};",
                         indent,
