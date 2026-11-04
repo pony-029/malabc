@@ -547,6 +547,18 @@ M2/M3 的事实来自 `mir.py` **扫真实源码**得到的算子集合 ——
   ```
   产物：`E:\temp\matlabc\demo_large\index.html`
 
+- **报告状态一义化**：`error` 只表示"编译/运行失败"
+  `Contents.m` 这类**没有顶层 function 的脚本**原先被算成 `error`，于是真实工程里满屏红 ——
+  而红色本该是"需要人看"的信号，被噪声填满就失效了。
+  现在归到 `skipped`。判据 `tests/test_report_status.py`（已接 GX2）：
+  一个正常函数 + 一个纯文档 → 必须 `numeric` + `skipped`、**不得出现 `error`**。
+  实测 jsonlab 前 25 个：`error 8` → **`skipped 8`**（数字没变，性质变了）。
+- **`yalmip` 迁到 `E:\temp\matlabc\yalmip`**（1682 个 `.m`，robocopy 处理只读、排除 `.git`）。
+  随之修掉 `test_external_project_compiles.py` 里写死的 `C:\Temp\yalmip` ——
+  改为读环境变量 `M2C_YALMIP`，默认 `E:\temp\matlabc\yalmip`。
+- **多库演示（重跑）**：4 个工程 93 个函数，`numeric` 25（26.9%）。
+  产物 `E:\temp\matlabc\demo_v2\index.html`。
+
 ## 2.2.3
 
 - **返回值形状推断**：`out_shape_for` 原来只看 `Stmt::Op`，于是

@@ -29,7 +29,9 @@ M2C = os.path.join(ROOT, "rust", "m2c", "target", "release", "m2c.exe")
 RT = os.path.join(ROOT, "c_runtime")
 
 #: 外部真实工程（不在仓库内）
-YALMIP = r"C:\Temp\yalmip"
+# 外部工程副本按仓库约定放在 E:\temp\matlabc（C 盘不再放测试资料）。
+# 允许用环境变量覆盖，换机器时不用改代码。
+YALMIP = os.environ.get("M2C_YALMIP", r"E:\temp\matlabc\yalmip")
 
 #: 曾出事的文件（相对 YALMIP 根）
 CASES = ("extras/monpowers.m", "extras/setdiff1D.m")

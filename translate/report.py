@@ -69,7 +69,14 @@ def analyze(m, workdir):
     mir = os.path.join(workdir, os.path.basename(m) + ".mir")
     r = _run([sys.executable, MIR_PY, m, "-o", mir], timeout=300)
     if r.returncode != 0 or not os.path.isfile(mir):
-        card["run"] = (r.stdout or b"").decode("utf-8", "replace")[-600:]
+        msg = (r.stdout or b"").decode("utf-8", "replace")
+        # 「没有顶层 function」是**脚本/纯文档**，不是失败。
+        # 归到 error 会让 error 这个分类失去意义（它该只表示编译/运行失败）。
+        if "没有识别到 function" in msg or "没有识别到函数" in msg:
+            card["status"] = "skipped"
+            card["run"] = "该文件没有顶层 function（脚本或纯文档），不参与转换。"
+        else:
+            card["run"] = msg[-600:]
         return card
 
     text = open(mir, encoding="utf-8", errors="replace").read()
