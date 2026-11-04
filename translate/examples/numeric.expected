@@ -17,6 +17,7 @@ endsemi: 7
 findeq: 1 2 3 4
 findfirst: 1 2
 findnz: 1 2 3 4
+fir_lp: 7  | 1 4 9
 firstel: 1
 flatit: 1 3 2 4
 for_acc: 10

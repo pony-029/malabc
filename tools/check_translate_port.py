@@ -569,8 +569,11 @@ def check_numeric_corpus(fast=None):
         return ["TP7 数值语料编译失败：%s" % (out.strip().splitlines()[:3],)]
 
     rc, out = _run([exe], timeout=120)
-    got = sorted(ln.strip() for ln in out.splitlines() if ": " in ln)
-    want = sorted(ln.strip() for ln in
+    # 比较前**归一化空白**：多返回值的分隔符间距随形状变化
+    # （Octave：首返回是标量时 `7  | 1 4 9`、是数组时 `2 4 6 | 6`），
+    # 这种排版差异不是数值差异，不该让真值对拍失败。
+    got = sorted(" ".join(ln.split()) for ln in out.splitlines() if ": " in ln)
+    want = sorted(" ".join(ln.split()) for ln in
                   io.open(exp, encoding="utf-8").read().splitlines() if ln.strip())
     if got != want:
         diff = [(a, b) for a, b in zip(want, got) if a != b][:2]
