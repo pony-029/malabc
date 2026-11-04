@@ -559,6 +559,27 @@ M2/M3 的事实来自 `mir.py` **扫真实源码**得到的算子集合 ——
 - **多库演示（重跑）**：4 个工程 93 个函数，`numeric` 25（26.9%）。
   产物 `E:\temp\matlabc\demo_v2\index.html`。
 
+- **演示站点加「跨工程卡点对比」** —— 这是"哪类代码最难"的直接证据
+  `report.py --site` 现在会在 index 里额外给出一张表：按**同一口径**（MIR 的
+  `reject:` 原因 + `# why:` 归因码）统计每个卡点出现多少次、出现在哪几个工程。
+
+  **93 个真实函数（YALMIP / jsonlab / export_fig）的实测排行**：
+
+  | 卡点 | 次数 | 说明 |
+  |---|---|---|
+  | **`why:strlit`** | **985** | 字符串字面量（`fprintf('…')`、`varargin2struct` 里的格式串） |
+  | `why:struct` | 698 | struct 字段访问 |
+  | `why:cell` | 484 | cell 取下标 |
+  | `why:slice2d` | 369 | 形状未知的二维下标 |
+  | `why:other` | 336 | 混杂 |
+  | `why:cond` / `why:control` | 255 / 224 | 条件与块结构 |
+  | `reject:struct` | 94 | 签名里带 struct（无法用固定 C 签名表达） |
+
+  ⇒ **结论与直觉相反**：`cell`/`struct` 一直被当成"结构性天花板"，但**排第一的是字符串字面量**
+  （985 次，是 `struct` 的 1.4 倍）。而"丢弃只带字符串的语句"在语义上是安全的
+  （屏幕输出不影响数值），是下一轮性价比最高的一项。
+  判据：`test_report_site` 增加断言要求 index 里必须有对比段与内容。
+
 ## 2.2.3
 
 - **返回值形状推断**：`out_shape_for` 原来只看 `Stmt::Op`，于是

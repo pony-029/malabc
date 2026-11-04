@@ -83,11 +83,18 @@ def analyze(m, workdir):
     card["mir"] = text.strip()
 
     func, reject, unmapped, shape_missing = "", False, 0, False
+    #: 卡点分类（跨工程对比的原料）：`reject:` 的原因 + `# why:` 的归因码
+    reasons = []
     for ln in text.splitlines():
         if ln.startswith("func:"):
             func = ln[5:].strip()
         elif ln.startswith("reject:"):
             reject = True
+            for r in ln[7:].strip().split(","):
+                if r.strip():
+                    reasons.append("reject:" + r.strip())
+        elif ln.startswith("# why:"):
+            reasons.append("why:" + ln[6:].strip())
         elif ln.startswith("unmapped:"):
             unmapped += 1
         elif ln.startswith("arg:"):
@@ -95,6 +102,7 @@ def analyze(m, workdir):
             if len(p) < 4 or not p[3].strip():
                 shape_missing = True
     card["name"] = func
+    card["reasons"] = reasons
 
     if not func:
         card["status"] = "skipped"
@@ -388,7 +396,8 @@ CARD = u"""<div class="card" data-status="__STATUS__">
 CHIP = u'<span class="chip" style="color:__C__;background:__BG__">__K__ __V__</span>'
 
 
-def build(path, out, limit):
+def build(path, out, limit, reasons=None):
+    """生成单页报告。`reasons` 若给一个 dict，会累积本工程所有卡点（跨工程对比用）。"""
     if os.path.isdir(path):
         files = []
         for dirpath, _dn, fns in os.walk(path):
@@ -400,12 +409,16 @@ def build(path, out, limit):
         files = [path]
     files = files[:limit]
 
-    work = tempfile.mkdtemp(prefix="m2c_report_")
+    work = tempfile.mkdtemp(prefix="m2c_report_",
+                            dir=os.environ.get("M2C_TMP") or None)
     cards, counts = [], {}
     try:
         for m in files:
             card = analyze(m, work)
             counts[card["status"]] = counts.get(card["status"], 0) + 1
+            if reasons is not None:
+                for r in card.get("reasons") or []:
+                    reasons[r] = reasons.get(r, 0) + 1
             c, bg = COLORS.get(card["status"], ("#334155", "#f1f5f9"))
             cards.append(CARD
                          .replace("__NAME__", html.escape(card["name"] or card["file"]))
@@ -464,6 +477,10 @@ a:hover{text-decoration:underline}
 button{background:var(--card);color:var(--fg);border:1px solid var(--bd);
  border-radius:8px;padding:6px 12px;cursor:pointer;font-size:12.5px}
 .legend{margin:14px 0;display:flex;gap:12px;flex-wrap:wrap;color:var(--mut);font-size:12px}
+.h2{font-size:15px;margin:26px 0 4px;font-weight:650}
+.tag{display:inline-block;font:11.5px ui-monospace,Consolas,monospace;
+ color:var(--mut);background:color-mix(in srgb,var(--fg) 6%,transparent);
+ border-radius:6px;padding:1px 6px;margin-right:5px}
 </style></head><body>
 <header>
   <h1>MATLAB → C 转换演示（多库汇总）</h1>
@@ -475,8 +492,15 @@ button{background:var(--card);color:var(--fg);border:1px solid var(--bd);
       r.dataset.theme=r.dataset.theme==='dark'?'':'dark';">切换主题</button>
   </div>
   <table>
-    <tr><th>工程</th><th>函数</th><th>分布</th><th>numeric</th><th>详情</th></tr>
+    <tr><th>工程</th><th>函数</th><th>分布</th><th>numeric</th><th>主要卡点</th><th>详情</th></tr>
     __ROWS__
+  </table>
+
+  <h2 class="h2">跨工程卡点对比</h2>
+  <div class="sub">同一份统计口径下，各库卡在什么上 —— 这是"哪类代码最难"的直接证据。</div>
+  <table>
+    <tr><th>卡点</th><th>次数</th><th>分布</th><th>出现在</th></tr>
+    __COMPARE__
   </table>
 </div>
 </body></html>
@@ -487,6 +511,7 @@ ROW = u"""<tr>
   <td class="n">__TOTAL__</td>
   <td><div class="bar">__BARS__</div></td>
   <td class="n"><b>__NUM__</b> (__PCT__%)</td>
+  <td>__TOP__</td>
   <td><a href="__LINK__">回放 →</a></td>
 </tr>"""
 
@@ -506,6 +531,13 @@ def build_site(dirs, outdir, limit):
     os.makedirs(outdir, exist_ok=True)
     rows, total_all, num_all = [], 0, 0
     order = ["numeric", "stub", "shape", "rejected", "skipped", "error"]
+    per_proj, all_reasons = [], {}
+    TOTAL_ROW = u"""<tr>
+  <td><span class="tag">%s</span>%s</td>
+  <td class="n">%d</td>
+  <td><div class="bar">%s</div></td>
+  <td>%s</td>
+</tr>"""
 
     # 工程必须真实存在：把输出目录误当成输入是最容易犯的一次错，
     # 而它的表现是"多了一个空工程"，不会报错。
@@ -522,7 +554,11 @@ def build_site(dirs, outdir, limit):
         name = os.path.basename(os.path.abspath(d.rstrip("\\/"))) or "root"
         page = "proj_%s.html" % name
         print("[%s] 分析中…" % name)
-        counts = build(d, os.path.join(outdir, page), limit)
+        rs = {}
+        counts = build(d, os.path.join(outdir, page), limit, reasons=rs)
+        per_proj.append((name, rs))
+        for k, v in rs.items():
+            all_reasons[k] = all_reasons.get(k, 0) + v
         n = sum(counts.values())
         total_all += n
         num_all += counts.get("numeric", 0)
@@ -530,21 +566,43 @@ def build_site(dirs, outdir, limit):
             '<i style="width:%.2f%%;background:%s" title="%s %d"></i>'
             % (100.0 * counts[k] / n if n else 0, COLORS.get(k, ("#334155",))[0], k, counts[k])
             for k in order if counts.get(k))
+        top = sorted(rs.items(), key=lambda kv: -kv[1])[:3]
+        top_html = "".join('<span class="tag">%s×%d</span>'
+                           % (html.escape(k), v) for k, v in top) or "—"
         rows.append(ROW.replace("__NAME__", html.escape(name))
                     .replace("__TOTAL__", str(n))
                     .replace("__BARS__", bars)
                     .replace("__NUM__", str(counts.get("numeric", 0)))
                     .replace("__PCT__", "%.0f" % (100.0 * counts.get("numeric", 0) / n if n else 0))
+                    .replace("__TOP__", top_html)
                     .replace("__LINK__", page))
 
     legend = "".join(
         '<span class="badge" style="color:%s;background:%s">%s</span>'
         % (COLORS[k][0], COLORS[k][1], k) for k in order)
+
+    # 跨工程卡点排行：同一口径下各库分别卡在什么上
+    cmp_rows = []
+    top_all = sorted(all_reasons.items(), key=lambda kv: -kv[1])[:10]
+    vmax = top_all[0][1] if top_all else 1
+    for label, cnt in top_all:
+        who = [nm for nm, rs in per_proj if label in rs]
+        bar = '<div class="bar"><i style="width:%.1f%%;background:#94a3b8"></i></div>' % (
+            100.0 * cnt / vmax)
+        cmp_rows.append(TOTAL_ROW % (html.escape(label.split(":")[0]),
+                                     html.escape(label.split(":", 1)[-1]),
+                                     cnt, bar,
+                                     "".join('<span class="tag">%s</span>' % html.escape(w)
+                                             for w in who[:4])))
+    if not cmp_rows:
+        cmp_rows.append('<tr><td colspan="4" class="sub">没有卡点（全部 numeric）</td></tr>')
+
     summary = "共 %d 个工程 ｜ %d 个函数 ｜ 真能算 %d（%.1f%%）" % (
         len(dirs), total_all, num_all,
         100.0 * num_all / total_all if total_all else 0)
     doc = (INDEX.replace("__SUMMARY__", html.escape(summary))
-           .replace("__LEGEND__", legend).replace("__ROWS__", "\n".join(rows)))
+           .replace("__LEGEND__", legend).replace("__ROWS__", "\n".join(rows))
+           .replace("__COMPARE__", "\n".join(cmp_rows)))
     p = os.path.join(outdir, "index.html")
     open(p, "w", encoding="utf-8", newline="\n").write(doc)
     print("\n" + summary)

@@ -38,9 +38,12 @@ def test_site_mode_builds_index_and_pages():
         assert r.returncode == 0, r.stdout.decode("utf-8", "replace")[-600:]
 
         idx = io.open(os.path.join(out, "index.html"), encoding="utf-8").read()
-        # 两个工程各一行 + 表头
-        assert idx.count("<tr>") == 3, "index 应为 表头 + 2 行"
+        # index 现在有两张表（工程汇总 + 跨工程卡点），所以 <tr> 数不再等于工程数
         assert "proj_numeric.html" in idx and "proj_tiny.html" in idx
+        assert idx.count("<tr>") >= 3, "index 至少应有表头 + 两行"
+        # 跨工程对比段必须存在，且至少有一条卡点行（cells 是真实工程的常见卡点）
+        assert "跨工程卡点对比" in idx, "缺跨工程对比段"
+        assert ("why:cell" in idx or "reject:" in idx or "没有卡点" in idx), "对比段没有内容"
 
         for name in ("numeric", "tiny"):
             p = os.path.join(out, "proj_%s.html" % name)
