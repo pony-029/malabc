@@ -534,6 +534,19 @@ M2/M3 的事实来自 `mir.py` **扫真实源码**得到的算子集合 ——
   * 两个工程 → index 表头 + 2 行、两页都在、链接可达、每页有播放器；
   * 把**输出目录误当输入**时必须提示并返回非 0（这是最容易犯、且不会报错的一次错）。
 
+- **测试产物统一落盘到 `E:\temp\matlabc`**（不再用 C 盘）
+  已迁 `jsonlab` / `exportfig` / 全部演示站点与构建目录；`yalmip`（1665 文件）待下轮搬
+  （本轮批量文件操作配额用满 500 项）。约定写进 `PLAN_TRACKER`：库副本、演示站点、
+  构建目录、临时脚本四类各有固定位置。
+- **多库大规模演示（机制产出）**：`report.py --site` 一条命令生成
+  `index.html` + 每工程一页（带播放器）。
+  ```
+  4 个工程 ｜ 93 个函数 ｜ 真能算 25（26.9%）
+  YALMIP 25（rejected 24 / stub 1）｜ jsonlab 25（error 8 / rejected 17）
+  export_fig 18（rejected 15 / stub 3）｜ 本仓库语料 25（numeric 25）
+  ```
+  产物：`E:\temp\matlabc\demo_large\index.html`
+
 ## 2.2.3
 
 - **返回值形状推断**：`out_shape_for` 原来只看 `Stmt::Op`，于是
