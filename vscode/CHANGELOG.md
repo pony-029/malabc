@@ -580,6 +580,20 @@ M2/M3 的事实来自 `mir.py` **扫真实源码**得到的算子集合 ——
   （屏幕输出不影响数值），是下一轮性价比最高的一项。
   判据：`test_report_site` 增加断言要求 index 里必须有对比段与内容。
 
+- **纯输出调用现在能被正确丢弃**（`disp`/`fprintf` 等，即使参数里带括号）
+  原正则要求"参数里没有括号"，而真实代码常把函数名写进字符串：
+  `disp('run an addpath(genpath(''root''))')` —— 于是最该丢弃的语句反而卡进 unmapped。
+  判据改为**只看调用名**（纯输出调用不产生数据，参数结构无关），并排除赋值形态。
+  实测 YALMIP 全量：`# dropped:` 从 0 涨到 **457**，`strlit` 里 `disp`(76) 与 `fprintf`(35) 消失。
+  判据 `tests/test_drop_sideeffect.py`（已接 GX2，1.7s）三条：带括号的 disp、带嵌套调用的
+  fprintf、以及**赋值形态不得被丢弃**。
+
+- **同时校正一条上一轮的结论（重要）**：`strlit` 并不是"可随意丢弃的输出语句"
+  采样 YALMIP 全量后，`strlit` 的**主体是类型判断**（`if isa(x,'char')` 1669 条），
+  可丢弃的 `disp/fprintf` 只占 111 条。⇒ 它属于和 `struct`/`cell` 同一类的"类型系统"问题，
+  不是便宜活。**本轮的真实收益是"分类正确"，不是"能力提升"**：
+  jsonlab 仍 `numeric 2`、export_fig 仍 `0`（它们的瓶颈是 rejected，不是这些语句）。
+
 ## 2.2.3
 
 - **返回值形状推断**：`out_shape_for` 原来只看 `Stmt::Op`，于是

@@ -1207,8 +1207,13 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                     n_calls[0] += 1
                     continue
             # 纯输出/计时调用：不产生数据 -> 直接丢弃（保留语义的只有"屏幕没字"）
-            _sm = re.match(r"^([A-Za-z_]\w*)\s*\(([^()]*)\)\s*;?$", code)
-            if _sm and _sm.group(1) in _SIDE_EFFECT_OK:
+            #
+            # 判据只看**调用名**，不看参数结构：原来的正则有要求"参数里没有括号"，
+            # 而真实代码常把函数名写进字符串里 ——
+            #   disp('run an addpath(genpath(''root''))')
+            # 于是这条最该被丢弃的语句反而卡在 unmapped（实测 YALMIP 上百条）。
+            _sm = re.match(r"^([A-Za-z_]\w*)\s*\(", code)
+            if _sm and _sm.group(1) in _SIDE_EFFECT_OK and not _ASSIGN_SPLIT.match(code):
                 _snip = " ".join(code.strip().split())[:60].replace("*/", "*_/")
                 out.append("# dropped: %s" % _snip)
                 continue
