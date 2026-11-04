@@ -428,16 +428,132 @@ def build(path, out, limit):
     return counts
 
 
+INDEX = u"""<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MATLAB → C 转换演示（多库）</title>
+<style>
+:root{--bg:#f6f8fb;--card:#fff;--fg:#0f172a;--mut:#64748b;--bd:#e3e8ef;--accent:#2563eb}
+[data-theme="dark"]{--bg:#0b1120;--card:#111827;--fg:#e5e7eb;--mut:#94a3b8;--bd:#1f2937;--accent:#60a5fa}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+ font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}
+header{padding:22px 26px 10px;border-bottom:1px solid var(--bd);background:var(--card)}
+h1{font-size:17px;margin:0 0 4px;font-weight:650}
+.sub{color:var(--mut);font-size:12.5px}
+.wrap{padding:18px 26px 60px;max-width:1100px}
+table{width:100%;border-collapse:collapse;background:var(--card);
+ border:1px solid var(--bd);border-radius:12px;overflow:hidden}
+th,td{padding:10px 13px;text-align:left;border-bottom:1px solid var(--bd);font-size:13px}
+th{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--mut);font-weight:600}
+tr:last-child td{border-bottom:none}
+a{color:var(--accent);text-decoration:none;font-weight:600}
+a:hover{text-decoration:underline}
+.n{font-family:ui-monospace,Consolas,monospace}
+.bar{display:flex;height:9px;border-radius:999px;overflow:hidden;
+ background:color-mix(in srgb,var(--fg) 8%,transparent);min-width:120px}
+.bar i{display:block}
+.badge{font-size:11px;font-weight:650;padding:1px 7px;border-radius:999px}
+button{background:var(--card);color:var(--fg);border:1px solid var(--bd);
+ border-radius:8px;padding:6px 12px;cursor:pointer;font-size:12.5px}
+.legend{margin:14px 0;display:flex;gap:12px;flex-wrap:wrap;color:var(--mut);font-size:12px}
+</style></head><body>
+<header>
+  <h1>MATLAB → C 转换演示（多库汇总）</h1>
+  <span class="sub">__SUMMARY__</span>
+</header>
+<div class="wrap">
+  <div class="legend">__LEGEND__
+    <button onclick="var r=document.documentElement;
+      r.dataset.theme=r.dataset.theme==='dark'?'':'dark';">切换主题</button>
+  </div>
+  <table>
+    <tr><th>工程</th><th>函数</th><th>分布</th><th>numeric</th><th>详情</th></tr>
+    __ROWS__
+  </table>
+</div>
+</body></html>
+"""
+
+ROW = u"""<tr>
+  <td><b>__NAME__</b></td>
+  <td class="n">__TOTAL__</td>
+  <td><div class="bar">__BARS__</div></td>
+  <td class="n"><b>__NUM__</b> (__PCT__%)</td>
+  <td><a href="__LINK__">回放 →</a></td>
+</tr>"""
+
+
+def build_site(dirs, outdir, limit):
+    """把**多个工程**的转换结果汇成一个可点开的站点。
+
+    这是「演示页面的机制」：一条命令产出 index + 每个工程一页，
+    不再每次手工拼页面。工程名取目录名，页名 `proj_<name>.html`。
+    """
+    os.makedirs(outdir, exist_ok=True)
+    rows, total_all, num_all = [], 0, 0
+    order = ["numeric", "stub", "shape", "rejected", "skipped", "error"]
+
+    # 工程必须真实存在：把输出目录误当成输入是最容易犯的一次错，
+    # 而它的表现是"多了一个空工程"，不会报错。
+    bad = [d for d in dirs if not os.path.isdir(d)]
+    if bad:
+        print("不是目录，已跳过：%s" % ", ".join(bad))
+        print("（`--site` 的输入是**工程目录**，输出用 -o 指定）")
+    dirs = [d for d in dirs if os.path.isdir(d)]
+    if not dirs:
+        print("没有任何工程目录")
+        return 2
+
+    for d in dirs:
+        name = os.path.basename(os.path.abspath(d.rstrip("\\/"))) or "root"
+        page = "proj_%s.html" % name
+        print("[%s] 分析中…" % name)
+        counts = build(d, os.path.join(outdir, page), limit)
+        n = sum(counts.values())
+        total_all += n
+        num_all += counts.get("numeric", 0)
+        bars = "".join(
+            '<i style="width:%.2f%%;background:%s" title="%s %d"></i>'
+            % (100.0 * counts[k] / n if n else 0, COLORS.get(k, ("#334155",))[0], k, counts[k])
+            for k in order if counts.get(k))
+        rows.append(ROW.replace("__NAME__", html.escape(name))
+                    .replace("__TOTAL__", str(n))
+                    .replace("__BARS__", bars)
+                    .replace("__NUM__", str(counts.get("numeric", 0)))
+                    .replace("__PCT__", "%.0f" % (100.0 * counts.get("numeric", 0) / n if n else 0))
+                    .replace("__LINK__", page))
+
+    legend = "".join(
+        '<span class="badge" style="color:%s;background:%s">%s</span>'
+        % (COLORS[k][0], COLORS[k][1], k) for k in order)
+    summary = "共 %d 个工程 ｜ %d 个函数 ｜ 真能算 %d（%.1f%%）" % (
+        len(dirs), total_all, num_all,
+        100.0 * num_all / total_all if total_all else 0)
+    doc = (INDEX.replace("__SUMMARY__", html.escape(summary))
+           .replace("__LEGEND__", legend).replace("__ROWS__", "\n".join(rows)))
+    p = os.path.join(outdir, "index.html")
+    open(p, "w", encoding="utf-8", newline="\n").write(doc)
+    print("\n" + summary)
+    print("已写出 %s（%.1f KB）" % (p, os.path.getsize(p) / 1024.0))
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description="MATLAB → C 转换回放（HTML 播放器）")
-    ap.add_argument("source")
-    ap.add_argument("-o", "--out", default="report.html")
+    ap.add_argument("source", nargs="+", help="一个或多个 .m / 目录（--site 时为工程目录）")
+    ap.add_argument("-o", "--out", default=None,
+                    help="单页模式输出文件；--site 模式输出目录")
     ap.add_argument("--limit", type=int, default=12)
+    ap.add_argument("--site", action="store_true",
+                    help="多工程模式：生成 index.html + 每个工程一页")
     a = ap.parse_args()
     if not os.path.isfile(M2C):
         print("m2c 未构建：cd rust/m2c && cargo build --release")
         return 2
-    counts = build(a.source, a.out, a.limit)
+    if a.site:
+        return build_site(a.source, a.out or "m2c-site", a.limit)
+    counts = build(a.source[0], a.out or "report.html", a.limit)
     return 0 if counts.get("error", 0) == 0 else 1
 
 

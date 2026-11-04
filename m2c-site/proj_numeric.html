@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MATLAB → C 转换回放</title>
+<style>
+:root{--bg:#f6f8fb;--card:#fff;--fg:#0f172a;--mut:#64748b;--bd:#e3e8ef;
+ --code:#0f172a;--codebg:#f8fafc;--accent:#2563eb}
+[data-theme="dark"]{--bg:#0b1120;--card:#111827;--fg:#e5e7eb;--mut:#94a3b8;
+ --bd:#1f2937;--code:#e5e7eb;--codebg:#0b1120;--accent:#60a5fa}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+ font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}
+.top{padding:14px 22px 10px;border-bottom:1px solid var(--bd);background:var(--card)}
+h1{font-size:16px;margin:0 0 6px;font-weight:650;display:flex;gap:10px;align-items:center}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 2px}
+.chip{font-size:11.5px;padding:2px 9px;border-radius:999px;font-weight:650}
+/* 播放器 */
+.player{position:sticky;top:0;z-index:9;background:var(--card);
+ border-bottom:1px solid var(--bd);padding:10px 22px 12px}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+button{background:var(--card);color:var(--fg);border:1px solid var(--bd);
+ border-radius:8px;padding:6px 11px;cursor:pointer;font-size:13px;line-height:1}
+button:hover{border-color:var(--accent);color:var(--accent)}
+button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+button.primary:hover{opacity:.92;color:#fff}
+select{background:var(--card);color:var(--fg);border:1px solid var(--bd);
+ border-radius:8px;padding:5px 8px;font-size:12.5px}
+.pos{font:12.5px ui-monospace,Consolas,monospace;color:var(--mut);min-width:96px}
+.track{flex:1;min-width:180px;display:flex;align-items:center;gap:10px}
+input[type=range]{flex:1;accent-color:var(--accent);height:4px}
+.stages{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.stg{font-size:12px;padding:4px 10px;border-radius:999px;border:1px solid var(--bd);
+ color:var(--mut);cursor:pointer;user-select:none}
+.stg.on{border-color:var(--accent);color:var(--accent);font-weight:650;
+ background:color-mix(in srgb,var(--accent) 10%,transparent)}
+/* 卡片 */
+.wrap{padding:16px 22px 60px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;
+ overflow:hidden;margin-bottom:14px;transition:box-shadow .2s}
+.card.active{box-shadow:0 0 0 2px var(--accent)}
+.hd{display:flex;align-items:center;gap:10px;padding:9px 14px;
+ border-bottom:1px solid var(--bd);cursor:pointer}
+.nm{font-weight:650;font-family:ui-monospace,Consolas,monospace}
+.badge{font-size:11.5px;font-weight:650;padding:2px 9px;border-radius:999px}
+.file{color:var(--mut);font-size:12px;margin-left:auto}
+.pane{padding:0;border-top:1px solid var(--bd)}
+.pane:first-of-type{border-top:none}
+.ttl{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);
+ padding:6px 13px;background:color-mix(in srgb,var(--fg) 3%,transparent)}
+pre{margin:0;padding:9px 13px;overflow:auto;max-height:300px;
+ font:12px/1.55 ui-monospace,Consolas,monospace;color:var(--code);background:var(--codebg);
+ white-space:pre-wrap;word-break:break-word}
+.hide{display:none}
+.kbd{font:11.5px ui-monospace,monospace;color:var(--mut);border:1px solid var(--bd);
+ border-radius:5px;padding:1px 5px}
+.foot{color:var(--mut);font-size:12px;padding:6px 0}
+</style></head><body>
+
+<div class="top">
+  <h1>MATLAB → MIR → C 转换回放 <span class="kbd">空格</span> 播放
+    <span class="kbd">←</span><span class="kbd">→</span> 阶段
+    <span class="kbd">1</span>–<span class="kbd">4</span> 直跳</h1>
+  <div class="chips"><span class="chip" style="color:#15803d;background:#dcfce7">numeric 3</span><span class="chip">共 3 个函数</span></div>
+</div>
+
+<div class="player">
+  <div class="row">
+    <button id="first" title="第一个函数">⏮</button>
+    <button id="prev" title="上一阶段">◀</button>
+    <button id="play" class="primary">▶ 播放</button>
+    <button id="next" title="下一阶段">▶</button>
+    <button id="last" title="最后一个函数">⏭</button>
+    <span class="pos" id="pos">1 / 1</span>
+    <div class="track">
+      <input type="range" id="seek" min="0" max="0" value="0">
+    </div>
+    <select id="speed">
+      <option value="0.5">0.5×</option>
+      <option value="1" selected>1×</option>
+      <option value="2">2×</option>
+      <option value="4">4×</option>
+    </select>
+    <button id="loop" title="循环播放">↻</button>
+    <button id="mode" title="切换聚焦 / 总览">聚焦</button>
+    <button id="theme" title="明暗主题">◐</button>
+  </div>
+  <div class="stages" id="stages">
+    <span class="stg" data-i="0">① 源码</span>
+    <span class="stg" data-i="1">② MIR</span>
+    <span class="stg" data-i="2">③ 生成的 C</span>
+    <span class="stg" data-i="3">④ 运行结果</span>
+  </div>
+</div>
+
+<div class="wrap" id="wrap"><div class="card" data-status="numeric">
+  <div class="hd">
+    <span class="nm">above</span>
+    <span class="badge" style="color:#15803d;background:#dcfce7">numeric</span>
+    <span class="file">above.m</span>
+  </div>
+  <div class="pane"><div class="ttl">① MATLAB 源码</div><pre>function y = above(x)
+% @m2c shape x 5
+% 阈值筛选（长度由数据决定）
+y = x(x &gt; 2);
+end</pre></div>
+  <div class="pane"><div class="ttl">② MIR</div><pre>version 3
+# source_sha256:71245054a69609b06223d8b5feb1d82654a239013ff0d0f198288c4f527fdf1f
+func:above
+arg:x:f64:5
+ret:y:f64
+# src:4
+op:OP-MASK:y:x:0:2
+end</pre></div>
+  <div class="pane"><div class="ttl">③ 生成的 C</div><pre>/* above —— 由 m2c 生成，勿手改 */
+#include &quot;above.h&quot;
+
+/* 由 m2c 从 MIR 生成 —— 勿手改；来源函数：above */
+/* @m2c source_sha256:71245054a69609b06223d8b5feb1d82654a239013ff0d0f198288c4f527fdf1f */
+mlc_status m2c_above(mlc_array x, mlc_array *y) {
+    mlc_status st = MLC_OK;
+    (void)st;
+    /* @m2c src:4 */
+    st = mlc_op_mask_alloc(&amp;x, 0, 2, y);
+    if (st != MLC_OK) { return st; }
+    return st;
+}
+
+/* 由 m2c 生成的 C 自测（ctest）。 */
+#include &quot;above.h&quot;
+#include &lt;stdio.h&gt;
+#include &lt;string.h&gt;
+
+static int m2c_rt_fail = 0;
+
+static void m2c_rt_check(const char *cname, const char *fname,
+                      const mlc_array *a, const char *want,
+                      int64_t want_n) {
+    /* 先比长度：动态形状下「长度对但内容错」与「长度就错」要分开报 */
+    if (mlc_array_numel(a) != want_n) {
+        printf(&quot;FAIL [%s] %s: 元素个数 %lld，期望 %lld\n&quot;,
+               cname, fname, (long long)mlc_array_numel(a),
+               (long long)want_n);
+        m2c_rt_fail = 1;
+        return;
+    }
+    char got[512];
+    size_t off = 0;
+    int64_t n = mlc_array_numel(a);
+    got[0] = 0;
+    for (int64_t m2c_ii = 0; m2c_ii &lt; n; ++m2c_ii) {
+        off += (size_t)snprintf(got + off, sizeof(got) - off,
+                                &quot; %.17g&quot;, ((const double *)a-&gt;data)[m2c_ii]);
+        if (off &gt;= sizeof(got)) break;
+    }
+    const char *trimmed = got;
+    while (*trimmed == &#x27; &#x27;) ++trimmed;
+    if (strcmp(trimmed, want) != 0) {
+        printf(&quot;FAIL [%s] %s: got[%s] want[%s]\n&quot;,
+               cname, fname, trimmed, want);
+        m2c_rt_fail = 1;
+    } else {
+        printf(&quot;ok   [%s] %s:%s\n&quot;, cname, fname, trimmed);
+    }
+}
+
+int main(void) {
+    return m2c_rt_fail;
+}</pre></div>
+  <div class="pane"><div class="ttl">④ 运行结果</div><pre>above: 3 4 5</pre></div>
+</div>
+<div class="card" data-status="numeric">
+  <div class="hd">
+    <span class="nm">anyv</span>
+    <span class="badge" style="color:#15803d;background:#dcfce7">numeric</span>
+    <span class="file">anyv.m</span>
+  </div>
+  <div class="pane"><div class="ttl">① MATLAB 源码</div><pre>function y = anyv(x)
+% @m2c shape x 4
+% @m2c shape y 1
+% any：是否含非零（与 all 同一机制，结果恒 1x1）
+y = any(x);
+end</pre></div>
+  <div class="pane"><div class="ttl">② MIR</div><pre>version 3
+# source_sha256:4d0ebee5065ea588d0c0bc3280eab9f78b36112f2ebf853ffcd35c890759667c
+func:anyv
+arg:x:f64:4
+ret:y:f64:1
+# src:5
+op:OP-ANY:y:x
+end</pre></div>
+  <div class="pane"><div class="ttl">③ 生成的 C</div><pre>/* anyv —— 由 m2c 生成，勿手改 */
+#include &quot;anyv.h&quot;
+
+/* 由 m2c 从 MIR 生成 —— 勿手改；来源函数：anyv */
+/* @m2c source_sha256:4d0ebee5065ea588d0c0bc3280eab9f78b36112f2ebf853ffcd35c890759667c */
+mlc_status m2c_anyv(mlc_array x, mlc_array *y) {
+    mlc_status st = MLC_OK;
+    (void)st;
+    if (mlc_array_init(y, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) { return MLC_ERR; }
+    /* @m2c src:5 */
+    st = mlc_op_any(&amp;x, y);
+    if (st != MLC_OK) { return st; }
+    return st;
+}
+
+/* 由 m2c 生成的 C 自测（ctest）。 */
+#include &quot;anyv.h&quot;
+#include &lt;stdio.h&gt;
+#include &lt;string.h&gt;
+
+static int m2c_rt_fail = 0;
+
+static void m2c_rt_check(const char *cname, const char *fname,
+                      const mlc_array *a, const char *want,
+                      int64_t want_n) {
+    /* 先比长度：动态形状下「长度对但内容错」与「长度就错」要分开报 */
+    if (mlc_array_numel(a) != want_n) {
+        printf(&quot;FAIL [%s] %s: 元素个数 %lld，期望 %lld\n&quot;,
+               cname, fname, (long long)mlc_array_numel(a),
+               (long long)want_n);
+        m2c_rt_fail = 1;
+        return;
+    }
+    char got[512];
+    size_t off = 0;
+    int64_t n = mlc_array_numel(a);
+    got[0] = 0;
+    for (int64_t m2c_ii = 0; m2c_ii &lt; n; ++m2c_ii) {
+        off += (size_t)snprintf(got + off, sizeof(got) - off,
+                                &quot; %.17g&quot;, ((const double *)a-&gt;data)[m2c_ii]);
+        if (off &gt;= sizeof(got)) break;
+    }
+    const char *trimmed = got;
+    while (*trimmed == &#x27; &#x27;) ++trimmed;
+    if (strcmp(trimmed, want) != 0) {
+        printf(&quot;FAIL [%s] %s: got[%s] want[%s]\n&quot;,
+               cname, fname, trimmed, want);
+        m2c_rt_fail = 1;
+    } else {
+        printf(&quot;ok   [%s] %s:%s\n&quot;, cname, fname, trimmed);
+    }
+}
+
+int main(void) {
+    return m2c_rt_fail;
+}</pre></div>
+  <div class="pane"><div class="ttl">④ 运行结果</div><pre>anyv: 1</pre></div>
+</div>
+<div class="card" data-status="numeric">
+  <div class="hd">
+    <span class="nm">col1</span>
+    <span class="badge" style="color:#15803d;background:#dcfce7">numeric</span>
+    <span class="file">col1.m</span>
+  </div>
+  <div class="pane"><div class="ttl">① MATLAB 源码</div><pre>function y = col1(A)
+% @m2c shape A 2,3
+% @m2c shape y 2
+% A(:,2)：取第 2 列（此前只有 A(i,:) 行切片）
+y = A(:, 2);
+end</pre></div>
+  <div class="pane"><div class="ttl">② MIR</div><pre>version 3
+# source_sha256:04e25b131e63298266b804eac0511e91abab268a5f10108082a74891a5da927f
+func:col1
+arg:A:f64:2,3
+ret:y:f64:2
+# src:5
+op:OP-FLATTEN:__f1:A
+op:OP-SLICE:y:__f1:3:4
+end</pre></div>
+  <div class="pane"><div class="ttl">③ 生成的 C</div><pre>/* col1 —— 由 m2c 生成，勿手改 */
+#include &quot;col1.h&quot;
+
+/* 由 m2c 从 MIR 生成 —— 勿手改；来源函数：col1 */
+/* @m2c source_sha256:04e25b131e63298266b804eac0511e91abab268a5f10108082a74891a5da927f */
+mlc_status m2c_col1(mlc_array A, mlc_array *y) {
+    mlc_status st = MLC_OK;
+    (void)st;
+    if (mlc_array_init(y, MLC_F64, 1, (int64_t[]){2}) != MLC_OK) { return MLC_ERR; }
+    mlc_array __f1 = {0};
+    if (mlc_array_init(&amp;__f1, MLC_F64, 1, (int64_t[]){6}) != MLC_OK) { return MLC_ERR; }
+    /* @m2c src:5 */
+    st = mlc_op_flatten(&amp;A, &amp;__f1);
+    if (st != MLC_OK) { return st; }
+    st = mlc_op_slice(&amp;__f1, 3, 4, y);
+    if (st != MLC_OK) { return st; }
+    mlc_array_free(&amp;__f1);
+    return st;
+}
+
+/* 由 m2c 生成的 C 自测（ctest）。 */
+#include &quot;col1.h&quot;
+#include &lt;stdio.h&gt;
+#include &lt;string.h&gt;
+
+static int m2c_rt_fail = 0;
+
+static void m2c_rt_check(const char *cname, const char *fname,
+                      const mlc_array *a, const char *want,
+                      int64_t want_n) {
+    /* 先比长度：动态形状下「长度对但内容错」与「长度就错」要分开报 */
+    if (mlc_array_numel(a) != want_n) {
+        printf(&quot;FAIL [%s] %s: 元素个数 %lld，期望 %lld\n&quot;,
+               cname, fname, (long long)mlc_array_numel(a),
+               (long long)want_n);
+        m2c_rt_fail = 1;
+        return;
+    }
+    char got[512];
+    size_t off = 0;
+    int64_t n = mlc_array_numel(a);
+    got[0] = 0;
+    for (int64_t m2c_ii = 0; m2c_ii &lt; n; ++m2c_ii) {
+        off += (size_t)snprintf(got + off, sizeof(got) - off,
+                                &quot; %.17g&quot;, ((const double *)a-&gt;data)[m2c_ii]);
+        if (off &gt;= sizeof(got)) break;
+    }
+    const char *trimmed = got;
+    while (*trimmed == &#x27; &#x27;) ++trimmed;
+    if (strcmp(trimmed, want) != 0) {
+        printf(&quot;FAIL [%s] %s: got[%s] want[%s]\n&quot;,
+               cname, fname, trimmed, want);
+        m2c_rt_fail = 1;
+    } else {
+        printf(&quot;ok   [%s] %s:%s\n&quot;, cname, fname, trimmed);
+    }
+}
+
+int main(void) {
+    return m2c_rt_fail;
+}</pre></div>
+  <div class="pane"><div class="ttl">④ 运行结果</div><pre>col1: 2 5</pre></div>
+</div></div>
+
+<script>
+(function(){
+  var cards = Array.prototype.slice.call(document.querySelectorAll('.card'));
+  var N = cards.length, STAGES = 4;
+  var total = N * STAGES;
+  var idx = 0, playing = false, timer = null, loop = false, focus = true;
+
+  var $ = function(id){ return document.getElementById(id); };
+  var seek = $('seek'); seek.max = Math.max(0, total - 1);
+
+  function stageOf(i){ return i % STAGES; }
+  function cardOf(i){ return Math.floor(i / STAGES); }
+
+  // 逐行显现：让"正在生成"可见（打字机效果）
+  function reveal(pre){
+    if (!pre) return;
+    var lines = pre.getAttribute('data-lines') || '';
+    var all = pre.textContent;
+    if (pre.getAttribute('data-done') === '1'){ return; }
+    pre.textContent = '';
+    var arr = all.split('\n'), k = 0;
+    var step = Math.max(1, Math.ceil(arr.length / 26));
+    var t = setInterval(function(){
+      pre.textContent += arr.slice(k, k + step).join('\n') + (k + step < arr.length ? '\n' : '');
+      k += step;
+      if (k >= arr.length){ clearInterval(t); pre.setAttribute('data-done','1'); }
+    }, 22);
+    void lines;
+  }
+
+  function render(scroll){
+    var ci = cardOf(idx), si = stageOf(idx);
+    cards.forEach(function(c, k){
+      var on = (k === ci);
+      c.classList.toggle('active', on);
+      c.classList.toggle('hide', focus && !on);
+      // 阶段可见性
+      Array.prototype.forEach.call(c.querySelectorAll('.pane'), function(p, pi){
+        p.classList.toggle('hide', on && pi > si);
+      });
+    });
+    Array.prototype.forEach.call($('stages').children, function(el, i){
+      el.classList.toggle('on', i === si);
+    });
+    $('pos').textContent = (idx + 1) + ' / ' + total +
+      '  ·  函数 ' + (ci + 1) + '/' + N;
+    seek.value = idx;
+
+    if (scroll && cards[ci]) {
+      cards[ci].scrollIntoView({behavior:'smooth', block:'center'});
+    }
+    // 当前阶段的代码逐行显现
+    var pane = cards[ci] && cards[ci].querySelectorAll('.pane')[si];
+    if (pane) { var pre = pane.querySelector('pre'); if (pre) reveal(pre); }
+  }
+
+  function go(i, scroll){
+    idx = Math.max(0, Math.min(total - 1, i));
+    render(scroll !== false);
+  }
+
+  function stop(){ playing = false; clearInterval(timer); $('play').textContent = '▶ 播放'; }
+
+  function tick(){
+    if (idx >= total - 1){
+      if (loop) { go(0, true); return; }
+      stop(); return;
+    }
+    go(idx + 1, true);
+  }
+
+  $('play').onclick = function(){
+    if (playing) { stop(); return; }
+    playing = true; this.textContent = '⏸ 暂停';
+    tick();
+    timer = setInterval(tick, 1700 / parseFloat($('speed').value));
+  };
+  $('next').onclick = function(){ stop(); go(idx + 1); };
+  $('prev').onclick = function(){ stop(); go(idx - 1); };
+  $('first').onclick = function(){ stop(); go(0, true); };
+  $('last').onclick = function(){ stop(); go(total - 1, true); };
+  seek.oninput = function(){ stop(); go(parseInt(this.value, 10), false); };
+  $('speed').onchange = function(){
+    if (playing){ clearInterval(timer); timer = setInterval(tick, 1700 / parseFloat(this.value)); }
+  };
+  $('loop').onclick = function(){ loop = !loop; this.style.color = loop ? 'var(--accent)' : ''; };
+  $('mode').onclick = function(){
+    focus = !focus; this.textContent = focus ? '聚焦' : '总览'; render(false);
+  };
+  $('theme').onclick = function(){
+    var r = document.documentElement;
+    r.dataset.theme = r.dataset.theme === 'dark' ? '' : 'dark';
+  };
+  Array.prototype.forEach.call($('stages').children, function(el){
+    el.onclick = function(){
+      stop();
+      go(cardOf(idx) * STAGES + parseInt(el.dataset.i, 10), false);
+    };
+  });
+  document.addEventListener('keydown', function(e){
+    if (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
+    if (e.code === 'Space'){ e.preventDefault(); $('play').click(); }
+    else if (e.code === 'ArrowRight'){ stop(); go(idx + 1); }
+    else if (e.code === 'ArrowLeft'){ stop(); go(idx - 1); }
+    else if (e.code === 'Home'){ stop(); go(0, true); }
+    else if (e.code === 'End'){ stop(); go(total - 1, true); }
+    else if (/^Digit[1-4]$/.test(e.code)){
+      stop(); go(cardOf(idx) * STAGES + (parseInt(e.code.slice(5), 10) - 1), false);
+    }
+  });
+  cards.forEach(function(c, k){
+    c.querySelector('.hd').onclick = function(){ stop(); go(k * STAGES, true); };
+  });
+
+  render(false);
+})();
+</script>
+</body></html>

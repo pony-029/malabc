@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MATLAB → C 转换演示（多库）</title>
+<style>
+:root{--bg:#f6f8fb;--card:#fff;--fg:#0f172a;--mut:#64748b;--bd:#e3e8ef;--accent:#2563eb}
+[data-theme="dark"]{--bg:#0b1120;--card:#111827;--fg:#e5e7eb;--mut:#94a3b8;--bd:#1f2937;--accent:#60a5fa}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+ font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}
+header{padding:22px 26px 10px;border-bottom:1px solid var(--bd);background:var(--card)}
+h1{font-size:17px;margin:0 0 4px;font-weight:650}
+.sub{color:var(--mut);font-size:12.5px}
+.wrap{padding:18px 26px 60px;max-width:1100px}
+table{width:100%;border-collapse:collapse;background:var(--card);
+ border:1px solid var(--bd);border-radius:12px;overflow:hidden}
+th,td{padding:10px 13px;text-align:left;border-bottom:1px solid var(--bd);font-size:13px}
+th{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--mut);font-weight:600}
+tr:last-child td{border-bottom:none}
+a{color:var(--accent);text-decoration:none;font-weight:600}
+a:hover{text-decoration:underline}
+.n{font-family:ui-monospace,Consolas,monospace}
+.bar{display:flex;height:9px;border-radius:999px;overflow:hidden;
+ background:color-mix(in srgb,var(--fg) 8%,transparent);min-width:120px}
+.bar i{display:block}
+.badge{font-size:11px;font-weight:650;padding:1px 7px;border-radius:999px}
+button{background:var(--card);color:var(--fg);border:1px solid var(--bd);
+ border-radius:8px;padding:6px 12px;cursor:pointer;font-size:12.5px}
+.legend{margin:14px 0;display:flex;gap:12px;flex-wrap:wrap;color:var(--mut);font-size:12px}
+</style></head><body>
+<header>
+  <h1>MATLAB → C 转换演示（多库汇总）</h1>
+  <span class="sub">共 2 个工程 ｜ 4 个函数 ｜ 真能算 3（75.0%）</span>
+</header>
+<div class="wrap">
+  <div class="legend"><span class="badge" style="color:#15803d;background:#dcfce7">numeric</span><span class="badge" style="color:#b45309;background:#fef3c7">stub</span><span class="badge" style="color:#6d28d9;background:#ede9fe">shape</span><span class="badge" style="color:#475569;background:#f1f5f9">rejected</span><span class="badge" style="color:#64748b;background:#f1f5f9">skipped</span><span class="badge" style="color:#b91c1c;background:#fee2e2">error</span>
+    <button onclick="var r=document.documentElement;
+      r.dataset.theme=r.dataset.theme==='dark'?'':'dark';">切换主题</button>
+  </div>
+  <table>
+    <tr><th>工程</th><th>函数</th><th>分布</th><th>numeric</th><th>详情</th></tr>
+    <tr>
+  <td><b>site1</b></td>
+  <td class="n">1</td>
+  <td><div class="bar"><i style="width:100.00%;background:#b91c1c" title="error 1"></i></div></td>
+  <td class="n"><b>0</b> (0%)</td>
+  <td><a href="proj_site1.html">回放 →</a></td>
+</tr>
+<tr>
+  <td><b>numeric</b></td>
+  <td class="n">3</td>
+  <td><div class="bar"><i style="width:100.00%;background:#15803d" title="numeric 3"></i></div></td>
+  <td class="n"><b>3</b> (100%)</td>
+  <td><a href="proj_numeric.html">回放 →</a></td>
+</tr>
+  </table>
+</div>
+</body></html>

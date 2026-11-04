@@ -520,6 +520,20 @@ M2/M3 的事实来自 `mir.py` **扫真实源码**得到的算子集合 ——
   * 上限 64 字节 → 必须报 `MM6` 且退出码非 0；
   * 上限 65536 → **不得**报 MM6（防误报）。
 
+- **演示站点机制化**：`report.py --site`（一条命令产出 index + 每工程一页）
+  ```bash
+  python translate/report.py --site <工程1> <工程2> ... -o site/ --limit 10
+  ```
+  index 是汇总表（函数数 / 状态分布条 / `numeric` 占比 / 详情链接），
+  每个工程一页、带**播放器**（回放/快进/阶段步进）。
+
+  实测一次多库演示：**YALMIP + jsonlab + export_fig + 本仓库语料 = 40 个函数**，
+  `numeric` 10（25%），其余 `rejected/stub` —— 与 `runnable_report` 的跨工程读数一致。
+
+  判据 `tests/test_report_site.py`（已接 GX2，3.8s）两条：
+  * 两个工程 → index 表头 + 2 行、两页都在、链接可达、每页有播放器；
+  * 把**输出目录误当输入**时必须提示并返回非 0（这是最容易犯、且不会报错的一次错）。
+
 ## 2.2.3
 
 - **返回值形状推断**：`out_shape_for` 原来只看 `Stmt::Op`，于是
