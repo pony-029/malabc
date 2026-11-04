@@ -490,6 +490,12 @@ def build_site(dirs, outdir, limit):
     这是「演示页面的机制」：一条命令产出 index + 每个工程一页，
     不再每次手工拼页面。工程名取目录名，页名 `proj_<name>.html`。
     """
+    # 输出目录必须**干净**：写进一个已有内容的目录会静默合并，
+    # 用户看到的 index 里混着别的工具产出的文件（实测踩过一次）。
+    if os.path.isdir(outdir) and os.listdir(outdir):
+        print("输出目录非空，拒绝写入：%s" % outdir)
+        print("（换一个空目录，或先手动清理 —— 静默合并会让站点混入无关文件）")
+        return 2
     os.makedirs(outdir, exist_ok=True)
     rows, total_all, num_all = [], 0, 0
     order = ["numeric", "stub", "shape", "rejected", "skipped", "error"]
