@@ -866,6 +866,47 @@ _RHS_CALL = re.compile(r"^([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*|\d+)\s*\)$")
 _HCAT_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*\[(.*)\]\s*;?\s*$")
 
 
+_SLICE_VAR_RE = re.compile(
+    r"^\s*([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*\(\s*([^:()]+?)\s*:\s*([^:()]+?)\s*\)\s*;?\s*$")
+
+#: 边界允许的三种形态：字面量 / 裸名 / `名±常数`
+_BOUND_RE = re.compile(r"^(-?\d+|[A-Za-z_]\w*|[A-Za-z_]\w*\s*[+-]\s*\d+)$")
+
+
+def _lower_slice_var(out, code, idx_counter):
+    """`seg = x(i:j)`（边界含变量）-> i64 临时量 -> `OP-SLICE`。
+
+    **先校验、后发射**：只要有一个边界不认识就整体返回 False，不留半截语句。
+    """
+    mm = _SLICE_VAR_RE.match(code)
+    if mm is None:
+        return False
+    lhs, src = mm.group(1), mm.group(2)
+    bounds = [mm.group(3).strip(), mm.group(4).strip()]
+    if not all(_BOUND_RE.match(b) for b in bounds):
+        return False
+    if all(re.match(r"^-?\d+$", b) for b in bounds):
+        return False                     # 全字面量：交给原来的路径
+
+    toks = []
+    for b in bounds:
+        if re.match(r"^-?\d+$", b):
+            toks.append(b)
+            continue
+        idx_counter[0] += 1
+        t = "__i%d" % idx_counter[0]
+        out.append("var:%s:i64" % t)
+        m2 = re.match(r"^([A-Za-z_]\w*)\s*([+-])\s*(\d+)$", b)
+        if m2 is None:
+            out.append("setb:%s:add:%s:0" % (t, b))
+        else:
+            op = "add" if m2.group(2) == "+" else "sub"
+            out.append("setb:%s:%s:%s:%s" % (t, op, m2.group(1), m2.group(3)))
+        toks.append(t)
+    out.append("op:OP-SLICE:%s:%s:%s:%s" % (lhs, src, toks[0], toks[1]))
+    return True
+
+
 def _lower_hcat(out, code, idx_counter):
     """`y = [a b]` -> `OP-HCAT` 链。返回 True 表示已处理（调用方 continue）。"""
     m = _HCAT_RE.match(code)
@@ -1170,6 +1211,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             if me:
                 # `A = []` -> fill:A:0:0（0 个元素的 1 维数组）
                 out.append("fill:%s:0:0" % me.group(1))
+                continue
+            if _lower_slice_var(out, code, idx_counter):
                 continue
             if _lower_hcat(out, code, idx_counter):
                 continue

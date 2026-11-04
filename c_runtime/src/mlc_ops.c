@@ -1157,7 +1157,14 @@ mlc_status mlc_op_slice(const mlc_array *a, int64_t from, int64_t to,
         return MLC_ERR;              /* 越界不截断：截断会让错误静默通过 */
     }
     len = to - from + 1;
-    if (out->shape[0] != len) {
+    /* 空输出 = 授权按结果形状就地分配（dynshape 入口）。
+     * 变量边界时生成端推不出长度，只能由这里定形。 */
+    if (mlc_array_numel(out) == 0) {
+        if (mlc_array_init(out, MLC_F64, 1, &len) != MLC_OK) {
+            return MLC_ERR;
+        }
+    }
+    if (out->ndim != 1 || out->shape[0] != len) {
         return MLC_ERR;
     }
     pa = (const double *)a->data;

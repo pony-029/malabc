@@ -1534,8 +1534,10 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
             Stmt::Op(op) => {
                 let sh = out_shape(f, op);
                 // 动态分配型算子由 *_alloc 负责 init；先 init 会泄漏旧 buffer。
+                // `OP-SLICE` 也在此列：变量边界（`x(i:i+2)`）时长度只能在运行期知道，
+                // 由算子里就地分配 —— 静态推形状是不可能的，硬猜会写越界。
                 let dynamic = op.id == "OP-MASK" || op.id == "OP-FIND"
-            || op.id == "OP-FIND2";
+            || op.id == "OP-FIND2" || op.id == "OP-SLICE";
                 let sh = if sh.is_none() && dynamic {
                     None
                 } else {
