@@ -143,8 +143,8 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
     out.push(FIXTURE_C.to_string());
     out.push("static void m2c_rt_print(const mlc_array *a) {".to_string());
     out.push("    int64_t n = mlc_array_numel(a);".to_string());
-    out.push("    for (int64_t i = 0; i < n; ++i) {".to_string());
-    out.push("        printf(\" %.17g\", ((const double *)a->data)[i]);".to_string());
+    out.push("    for (int64_t m2c_ii = 0; m2c_ii < n; ++m2c_ii) {".to_string());
+    out.push("        printf(\" %.17g\", ((const double *)a->data)[m2c_ii]);".to_string());
     out.push("    }".to_string());
     out.push("}".to_string());
     out.push(String::new());
@@ -243,9 +243,9 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
                 "        int got_{0} = m2c_rt_get(\"{1}\", vals, M2C_MAX_VALS);",
                 en, extra.name));
             out.push(format!(
-                "        for (int64_t i = 0; i < mlc_array_numel(&{}); ++i) {{", en));
+                "        for (int64_t m2c_ii = 0; m2c_ii < mlc_array_numel(&{}); ++m2c_ii) {{", en));
             out.push(format!(
-                "            ((double *){}.data)[i] = (i < got_{}) ? vals[i] : (double)(i + 1);",
+                "            ((double *){}.data)[m2c_ii] = (m2c_ii < got_{}) ? vals[m2c_ii] : (double)(m2c_ii + 1);",
                 en, en));
             out.push("        }".to_string());
         }
@@ -607,9 +607,9 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
     out.push("    size_t off = 0;".to_string());
     out.push("    int64_t n = mlc_array_numel(a);".to_string());
     out.push("    got[0] = 0;".to_string());
-    out.push("    for (int64_t i = 0; i < n; ++i) {".to_string());
+    out.push("    for (int64_t m2c_ii = 0; m2c_ii < n; ++m2c_ii) {".to_string());
     out.push("        off += (size_t)snprintf(got + off, sizeof(got) - off,".to_string());
-    out.push("                                \" %.17g\", ((const double *)a->data)[i]);".to_string());
+    out.push("                                \" %.17g\", ((const double *)a->data)[m2c_ii]);".to_string());
     out.push("        if (off >= sizeof(got)) break;".to_string());
     out.push("    }".to_string());
     out.push("    const char *trimmed = got;".to_string());
@@ -656,12 +656,12 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
                     out.push(format!("        double {}v[] = {{{}}};",
                                      an, lits.join(", ")));
                     out.push(format!(
-                        "        for (int64_t i = 0; i < mlc_array_numel(&{}); ++i) {{ ((double *){}.data)[i] = {}v[i]; }}",
+                        "        for (int64_t m2c_ii = 0; m2c_ii < mlc_array_numel(&{}); ++m2c_ii) {{ ((double *){}.data)[m2c_ii] = {}v[m2c_ii]; }}",
                         an, an, an));
                 }
                 _ => {
                     out.push(format!(
-                        "        for (int64_t i = 0; i < mlc_array_numel(&{}); ++i) {{ ((double *){}.data)[i] = (double)(i + 1); }}",
+                        "        for (int64_t m2c_ii = 0; m2c_ii < mlc_array_numel(&{}); ++m2c_ii) {{ ((double *){}.data)[m2c_ii] = (double)(m2c_ii + 1); }}",
                         an, an));
                 }
             }
@@ -691,12 +691,12 @@ fn emit_selftest(funcs: &[Func], name: &str, cases: &[Case]) -> String {
                         out.push(format!("        double {}v[] = {{{}}};",
                                          en, lits.join(", ")));
                         out.push(format!(
-                            "        for (int64_t i = 0; i < mlc_array_numel(&{}); ++i) {{ ((double *){}.data)[i] = {}v[i]; }}",
+                            "        for (int64_t m2c_ii = 0; m2c_ii < mlc_array_numel(&{}); ++m2c_ii) {{ ((double *){}.data)[m2c_ii] = {}v[m2c_ii]; }}",
                             en, en, en));
                     }
                     _ => {
                         out.push(format!(
-                            "        for (int64_t i = 0; i < mlc_array_numel(&{}); ++i) {{ ((double *){}.data)[i] = (double)(i + 1); }}",
+                            "        for (int64_t m2c_ii = 0; m2c_ii < mlc_array_numel(&{}); ++m2c_ii) {{ ((double *){}.data)[m2c_ii] = (double)(m2c_ii + 1); }}",
                             en, en));
                     }
                 }
