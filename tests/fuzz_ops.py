@@ -44,6 +44,7 @@ OPS = {
     "OP-MAX": ("mlc_op_max", 1),
     "OP-MIN": ("mlc_op_min", 1),
     "OP-MEAN": ("mlc_op_mean", 1),
+    "OP-HCAT": ("mlc_op_hcat", 2),
 }
 
 #: 一元/归约可用的形状（含空数组）
@@ -52,10 +53,11 @@ OPS = {
 UNARY_SHAPES = ([0], [1], [3], [2, 3])
 
 #: 支持「空输出＝就地分配」的算子（`MIR_SEMANTICS` G3）。一元族**不在其中**。
-DYN_OUT = {"OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV",
+DYN_OUT = {"OP-HCAT", "OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV",
            "OP-SUM", "OP-MAX", "OP-MIN", "OP-MEAN"}
 
 SHAPE_PAIRS = (
+    ([0], [3]), ([3], [0]), ([0], [0]), ([2], [4]),   # 拼接边界：空/单侧零长
     ([3], [3]),
     ([1], [3]),
     ([2, 3], [3]),

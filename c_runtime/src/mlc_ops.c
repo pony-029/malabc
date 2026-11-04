@@ -1114,10 +1114,10 @@ mlc_status mlc_op_hcat(const mlc_array *a, const mlc_array *b, mlc_array *out)
         return MLC_ERR;
     }
     sh = na + nb;
-    if (sh > 0) {
-        if (a->data == NULL || b->data == NULL) {
-            return MLC_ERR;
-        }
+    /* 空数组是**合法**操作数（`[[] b]` 就等于 `b`）：只有当某一侧确实有元素时，
+     * 它的 data 才不许是 NULL。把 NULL 一律当"未初始化"会误拒空拼接。 */
+    if ((na > 0 && a->data == NULL) || (nb > 0 && b->data == NULL)) {
+        return MLC_ERR;
     }
     if (mlc_array_numel(out) == 0) {
         if (mlc_array_init(out, MLC_F64, 1, &sh) != MLC_OK) {

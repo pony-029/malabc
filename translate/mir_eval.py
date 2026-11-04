@@ -138,8 +138,17 @@ def _reduce(a, oid):
         return Arr([f(d)], [1])
     return None
 
+def _op_hcat(a, b):
+    """水平拼接：仅 1-D，结果长度 = 两者之和（与 C 的 `mlc_op_hcat` 同规则）。"""
+    if len(a.shape) != 1 or len(b.shape) != 1:
+        return None                      # 2-D 的水平拼接不是这件事
+    return Arr(list(a.data) + list(b.data), [len(a.data) + len(b.data)])
+
+
 def apply_op(oid, args):
     """执行一个算子；无法执行返回 None（放弃，不猜）。"""
+    if oid == "OP-HCAT":
+        return _op_hcat(args[0], args[1]) if len(args) == 2 else None
     try:
         return _apply_op(oid, args)
     except Exception:        # noqa: BLE001 - 参考执行器不该因为类型意外而崩
