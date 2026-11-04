@@ -436,6 +436,18 @@ M2/M3 的事实来自 `mir.py` **扫真实源码**得到的算子集合 ——
   （`varargin`/struct/cell，结构性天花板），第二块是**形状推不出**（143 个函数连跑都跑不了）。
   ⇒ 下一步优先级应放**形状推断**，而不是继续加库函数。已写进 `PLAN_TRACKER` 的「外部真实工程读数」。
 
+- **转换过程可视化**：`python translate/report.py <文件|目录> -o report.html`
+  一条命令生成**自包含 HTML**，每个函数一张卡片，四栏对照：
+  **① MATLAB 源码 ｜ ② MIR ｜ ③ 生成的 C ｜ ④ 运行结果**，带明/暗主题切换。
+
+  状态色按**真实结果**分，不把"能编译"说成"能算"：
+  `numeric`（跑出数值）/ `stub`（含未映射 → 桩）/ `shape`（入参没形状）/
+  `rejected`（varargin/struct/cell，签名无法表达）/ `skipped`（`Contents.m` 之类无顶层 function）/ `error`（编译或运行失败）。
+
+  实测：语料 10 个 → **numeric 10**；jsonlab 前 12 个 → `rejected 6 / error 6`
+  （其中 error 里第一个是 `Contents.m`，已单列成 `skipped`）。
+  放在 `translate/` 而不是 `tools/`：`tools/` 下的脚本会被自动当成门。
+
 ## 2.2.3
 
 - **返回值形状推断**：`out_shape_for` 原来只看 `Stmt::Op`，于是
