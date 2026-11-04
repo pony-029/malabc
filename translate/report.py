@@ -1,24 +1,31 @@
 # -*- coding: utf-8 -*-
-"""转换过程可视化：一条命令生成**自包含 HTML** 报告。
+"""转换过程可视化 v2：**播放器**。
 
-    python translate/report.py <某个.m 或 目录> [-o report.html] [--limit 12]
+## 交互设计（为什么这样设计）
 
-每个函数一张卡片，四栏对照：
+转换有两条天然的轴，播放器必须同时支持：
 
-    ① MATLAB 源码   ② MIR（中间表示）   ③ 生成的 C   ④ 运行结果
+| 轴 | 单位 | 用户想做的事 |
+|---|---|---|
+| **阶段轴** | 源码 → MIR → 生成的 C → 运行结果 | "这一步它做了什么？" |
+| **函数轴** | 第 1 个函数 → 第 N 个 | "整体进展如何？哪些卡住了？" |
 
-并按**真实状态**着色（这是重点 —— 不把"能编译"说成"能算"）：
+于是播放器是**二维**的：
+* `◀ ▶` 在**阶段**上步进（同一函数内）；
+* `⏮ ⏭` 在**函数**上跳（保持当前阶段号）；
+* `▶ 播放` 沿"函数×阶段"的**扁平日程**自动前进（每个阶段一帧）；
+* 速度 0.5× / 1× / 2× / 4×，`↻` 循环，进度条可直接 seek。
 
-| 状态 | 含义 |
-|---|---|
-| `numeric` | 真的跑出了数值 |
-| `stub` | 生成了，但函数里有未映射语句 → 是桩 |
-| `shape` | 入参没有形状注解 → 连跑都跑不了 |
-| `rejected` | `varargin`/struct/cell 之类，签名无法用固定 C 签名表达 |
-| `error` | 编译或运行失败（最需要盯的一类） |
+## 帧的呈现
 
-为什么放在 `translate/` 而不是 `tools/`：`tools/` 下的脚本会被**自动识别成门**
-（需要七处登记），而这是一个给人看的报告生成器，不是判据。
+* 代码类阶段（②③）**逐行显现**（打字机），让"它正在生成"可视；
+* 状态色常驻在标题上，所以快进时也能立刻看出哪几个是红的；
+* 键盘：`空格` 播放/暂停、`←/→` 阶段、`Home/End` 首尾、`1..4` 直跳阶段。
+
+## 为什么自己写而不引库
+
+报告要能**离线双击打开**（发给别人看），任何 CDN 依赖都会在离线时白屏。
+所以：单文件 HTML + 内联 CSS/JS，零外部请求。
 """
 import argparse
 import html
@@ -35,12 +42,12 @@ M2C = os.path.join(ROOT, "rust", "m2c", "target", "release", "m2c.exe")
 MIR_PY = os.path.join(HERE, "mir.py")
 
 COLORS = {
-    "numeric": ("#16a34a", "#dcfce7"),
-    "stub": ("#d97706", "#fef3c7"),
-    "shape": ("#7c3aed", "#ede9fe"),
-    "rejected": ("#64748b", "#f1f5f9"),
-    "skipped": ("#94a3b8", "#f1f5f9"),
-    "error": ("#dc2626", "#fee2e2"),
+    "numeric": ("#15803d", "#dcfce7"),
+    "stub": ("#b45309", "#fef3c7"),
+    "shape": ("#6d28d9", "#ede9fe"),
+    "rejected": ("#475569", "#f1f5f9"),
+    "skipped": ("#64748b", "#f1f5f9"),
+    "error": ("#b91c1c", "#fee2e2"),
 }
 
 
@@ -51,7 +58,7 @@ def _run(cmd, cwd=None, timeout=600):
 
 
 def analyze(m, workdir):
-    """把一个 .m 走完整链路，返回一张卡需要的数据。"""
+    """把一个 .m 走完整链路，返回四栏内容与状态。"""
     card = {"file": os.path.basename(m), "src": "", "mir": "", "c": "",
             "run": "", "status": "error", "name": ""}
     try:
@@ -68,10 +75,7 @@ def analyze(m, workdir):
     text = open(mir, encoding="utf-8", errors="replace").read()
     card["mir"] = text.strip()
 
-    func = ""
-    reject = False
-    unmapped = 0
-    shape_missing = False
+    func, reject, unmapped, shape_missing = "", False, 0, False
     for ln in text.splitlines():
         if ln.startswith("func:"):
             func = ln[5:].strip()
@@ -86,12 +90,9 @@ def analyze(m, workdir):
     card["name"] = func
 
     if not func:
-        # 没有顶层 function（例如 `Contents.m` 这类纯文档）：中性跳过，
-        # **不算 error** —— 让 error 这个分类只表示"真的编译/运行失败"。
         card["status"] = "skipped"
         card["run"] = "该文件没有顶层 function（脚本或纯文档），不参与转换。"
         return card
-
     if reject:
         card["status"] = "rejected"
         card["run"] = "签名无法用固定 C 签名表达（varargin / struct / cell）—— 拒绝，而不是猜。"
@@ -121,7 +122,7 @@ def analyze(m, workdir):
         card["run"] = "函数是**桩**（含未映射语句）—— 不跑，也不假装有结果。"
         return card
     if card["status"] == "shape":
-        card["run"] = "入参缺形状注解 —— 无法构造输入，跳过着色为 shape。"
+        card["run"] = "入参缺形状注解 —— 无法构造输入。"
         return card
 
     exe = os.path.join(workdir, "run_" + os.path.splitext(os.path.basename(m))[0] + ".exe")
@@ -141,10 +142,10 @@ def analyze(m, workdir):
     r = _run([exe], timeout=120)
     out = r.stdout.decode("utf-8", "replace").strip()
     if out:
-        card["status"] = "numeric"          # 真的跑出了数值
+        card["status"] = "numeric"
         card["run"] = out
     else:
-        card["status"] = "error"            # 退出但无输出：与「静默算错」同类
+        card["status"] = "error"
         card["run"] = "(进程退出，但没有任何输出)"
     return card
 
@@ -152,59 +153,232 @@ def analyze(m, workdir):
 PAGE = u"""<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>MATLAB → C 转换报告</title>
+<title>MATLAB → C 转换回放</title>
 <style>
-:root{--bg:#f8fafc;--card:#fff;--fg:#0f172a;--mut:#64748b;--bd:#e2e8f0;--code:#0f172a;--codebg:#f8fafc}
-[data-theme="dark"]{--bg:#0b1120;--card:#111827;--fg:#e5e7eb;--mut:#94a3b8;--bd:#1f2937;--code:#e5e7eb;--codebg:#0b1120}
+:root{--bg:#f6f8fb;--card:#fff;--fg:#0f172a;--mut:#64748b;--bd:#e3e8ef;
+ --code:#0f172a;--codebg:#f8fafc;--accent:#2563eb}
+[data-theme="dark"]{--bg:#0b1120;--card:#111827;--fg:#e5e7eb;--mut:#94a3b8;
+ --bd:#1f2937;--code:#e5e7eb;--codebg:#0b1120;--accent:#60a5fa}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);
  font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}
-header{padding:20px 24px;border-bottom:1px solid var(--bd);display:flex;
- align-items:center;gap:16px;flex-wrap:wrap}
-h1{font-size:18px;margin:0;font-weight:650}
-.sub{color:var(--mut);font-size:12.5px}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(520px,1fr));
- gap:16px;padding:18px 24px 40px}
-.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;overflow:hidden}
-.hd{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--bd)}
+.top{padding:14px 22px 10px;border-bottom:1px solid var(--bd);background:var(--card)}
+h1{font-size:16px;margin:0 0 6px;font-weight:650;display:flex;gap:10px;align-items:center}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 2px}
+.chip{font-size:11.5px;padding:2px 9px;border-radius:999px;font-weight:650}
+/* 播放器 */
+.player{position:sticky;top:0;z-index:9;background:var(--card);
+ border-bottom:1px solid var(--bd);padding:10px 22px 12px}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+button{background:var(--card);color:var(--fg);border:1px solid var(--bd);
+ border-radius:8px;padding:6px 11px;cursor:pointer;font-size:13px;line-height:1}
+button:hover{border-color:var(--accent);color:var(--accent)}
+button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+button.primary:hover{opacity:.92;color:#fff}
+select{background:var(--card);color:var(--fg);border:1px solid var(--bd);
+ border-radius:8px;padding:5px 8px;font-size:12.5px}
+.pos{font:12.5px ui-monospace,Consolas,monospace;color:var(--mut);min-width:96px}
+.track{flex:1;min-width:180px;display:flex;align-items:center;gap:10px}
+input[type=range]{flex:1;accent-color:var(--accent);height:4px}
+.stages{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.stg{font-size:12px;padding:4px 10px;border-radius:999px;border:1px solid var(--bd);
+ color:var(--mut);cursor:pointer;user-select:none}
+.stg.on{border-color:var(--accent);color:var(--accent);font-weight:650;
+ background:color-mix(in srgb,var(--accent) 10%,transparent)}
+/* 卡片 */
+.wrap{padding:16px 22px 60px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;
+ overflow:hidden;margin-bottom:14px;transition:box-shadow .2s}
+.card.active{box-shadow:0 0 0 2px var(--accent)}
+.hd{display:flex;align-items:center;gap:10px;padding:9px 14px;
+ border-bottom:1px solid var(--bd);cursor:pointer}
 .nm{font-weight:650;font-family:ui-monospace,Consolas,monospace}
-.badge{font-size:11.5px;font-weight:650;padding:2px 8px;border-radius:999px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:0}
-.pane{border-right:1px solid var(--bd);border-bottom:1px solid var(--bd);min-width:0}
-.pane:nth-child(2n){border-right:none}
-.ttl{font-size:11px;letter-spacing:.06em;text-transform:uppercase;
- color:var(--mut);padding:6px 12px;border-bottom:1px dashed var(--bd)}
-pre{margin:0;padding:10px 12px;overflow:auto;max-height:260px;
+.badge{font-size:11.5px;font-weight:650;padding:2px 9px;border-radius:999px}
+.file{color:var(--mut);font-size:12px;margin-left:auto}
+.pane{padding:0;border-top:1px solid var(--bd)}
+.pane:first-of-type{border-top:none}
+.ttl{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);
+ padding:6px 13px;background:color-mix(in srgb,var(--fg) 3%,transparent)}
+pre{margin:0;padding:9px 13px;overflow:auto;max-height:300px;
  font:12px/1.55 ui-monospace,Consolas,monospace;color:var(--code);background:var(--codebg);
  white-space:pre-wrap;word-break:break-word}
-button{background:var(--card);color:var(--fg);border:1px solid var(--bd);
- border-radius:8px;padding:6px 12px;cursor:pointer;font-size:12.5px}
-.stat{display:flex;gap:14px;flex-wrap:wrap}
-.stat b{font-weight:700}
+.hide{display:none}
+.kbd{font:11.5px ui-monospace,monospace;color:var(--mut);border:1px solid var(--bd);
+ border-radius:5px;padding:1px 5px}
+.foot{color:var(--mut);font-size:12px;padding:6px 0}
 </style></head><body>
-<header>
-  <h1>MATLAB → MIR → C 转换报告</h1>
-  <span class="sub">__SUMMARY__</span>
-  <button onclick="var r=document.documentElement;
-    r.dataset.theme = r.dataset.theme==='dark' ? '' : 'dark';">切换主题</button>
-</header>
-<div class="cards">__CARDS__</div>
+
+<div class="top">
+  <h1>MATLAB → MIR → C 转换回放 <span class="kbd">空格</span> 播放
+    <span class="kbd">←</span><span class="kbd">→</span> 阶段
+    <span class="kbd">1</span>–<span class="kbd">4</span> 直跳</h1>
+  <div class="chips">__CHIPS__</div>
+</div>
+
+<div class="player">
+  <div class="row">
+    <button id="first" title="第一个函数">⏮</button>
+    <button id="prev" title="上一阶段">◀</button>
+    <button id="play" class="primary">▶ 播放</button>
+    <button id="next" title="下一阶段">▶</button>
+    <button id="last" title="最后一个函数">⏭</button>
+    <span class="pos" id="pos">1 / 1</span>
+    <div class="track">
+      <input type="range" id="seek" min="0" max="0" value="0">
+    </div>
+    <select id="speed">
+      <option value="0.5">0.5×</option>
+      <option value="1" selected>1×</option>
+      <option value="2">2×</option>
+      <option value="4">4×</option>
+    </select>
+    <button id="loop" title="循环播放">↻</button>
+    <button id="mode" title="切换聚焦 / 总览">聚焦</button>
+    <button id="theme" title="明暗主题">◐</button>
+  </div>
+  <div class="stages" id="stages">
+    <span class="stg" data-i="0">① 源码</span>
+    <span class="stg" data-i="1">② MIR</span>
+    <span class="stg" data-i="2">③ 生成的 C</span>
+    <span class="stg" data-i="3">④ 运行结果</span>
+  </div>
+</div>
+
+<div class="wrap" id="wrap">__CARDS__</div>
+
+<script>
+(function(){
+  var cards = Array.prototype.slice.call(document.querySelectorAll('.card'));
+  var N = cards.length, STAGES = 4;
+  var total = N * STAGES;
+  var idx = 0, playing = false, timer = null, loop = false, focus = true;
+
+  var $ = function(id){ return document.getElementById(id); };
+  var seek = $('seek'); seek.max = Math.max(0, total - 1);
+
+  function stageOf(i){ return i % STAGES; }
+  function cardOf(i){ return Math.floor(i / STAGES); }
+
+  // 逐行显现：让"正在生成"可见（打字机效果）
+  function reveal(pre){
+    if (!pre) return;
+    var lines = pre.getAttribute('data-lines') || '';
+    var all = pre.textContent;
+    if (pre.getAttribute('data-done') === '1'){ return; }
+    pre.textContent = '';
+    var arr = all.split('\\n'), k = 0;
+    var step = Math.max(1, Math.ceil(arr.length / 26));
+    var t = setInterval(function(){
+      pre.textContent += arr.slice(k, k + step).join('\\n') + (k + step < arr.length ? '\\n' : '');
+      k += step;
+      if (k >= arr.length){ clearInterval(t); pre.setAttribute('data-done','1'); }
+    }, 22);
+    void lines;
+  }
+
+  function render(scroll){
+    var ci = cardOf(idx), si = stageOf(idx);
+    cards.forEach(function(c, k){
+      var on = (k === ci);
+      c.classList.toggle('active', on);
+      c.classList.toggle('hide', focus && !on);
+      // 阶段可见性
+      Array.prototype.forEach.call(c.querySelectorAll('.pane'), function(p, pi){
+        p.classList.toggle('hide', on && pi > si);
+      });
+    });
+    Array.prototype.forEach.call($('stages').children, function(el, i){
+      el.classList.toggle('on', i === si);
+    });
+    $('pos').textContent = (idx + 1) + ' / ' + total +
+      '  ·  函数 ' + (ci + 1) + '/' + N;
+    seek.value = idx;
+
+    if (scroll && cards[ci]) {
+      cards[ci].scrollIntoView({behavior:'smooth', block:'center'});
+    }
+    // 当前阶段的代码逐行显现
+    var pane = cards[ci] && cards[ci].querySelectorAll('.pane')[si];
+    if (pane) { var pre = pane.querySelector('pre'); if (pre) reveal(pre); }
+  }
+
+  function go(i, scroll){
+    idx = Math.max(0, Math.min(total - 1, i));
+    render(scroll !== false);
+  }
+
+  function stop(){ playing = false; clearInterval(timer); $('play').textContent = '▶ 播放'; }
+
+  function tick(){
+    if (idx >= total - 1){
+      if (loop) { go(0, true); return; }
+      stop(); return;
+    }
+    go(idx + 1, true);
+  }
+
+  $('play').onclick = function(){
+    if (playing) { stop(); return; }
+    playing = true; this.textContent = '⏸ 暂停';
+    tick();
+    timer = setInterval(tick, 1700 / parseFloat($('speed').value));
+  };
+  $('next').onclick = function(){ stop(); go(idx + 1); };
+  $('prev').onclick = function(){ stop(); go(idx - 1); };
+  $('first').onclick = function(){ stop(); go(0, true); };
+  $('last').onclick = function(){ stop(); go(total - 1, true); };
+  seek.oninput = function(){ stop(); go(parseInt(this.value, 10), false); };
+  $('speed').onchange = function(){
+    if (playing){ clearInterval(timer); timer = setInterval(tick, 1700 / parseFloat(this.value)); }
+  };
+  $('loop').onclick = function(){ loop = !loop; this.style.color = loop ? 'var(--accent)' : ''; };
+  $('mode').onclick = function(){
+    focus = !focus; this.textContent = focus ? '聚焦' : '总览'; render(false);
+  };
+  $('theme').onclick = function(){
+    var r = document.documentElement;
+    r.dataset.theme = r.dataset.theme === 'dark' ? '' : 'dark';
+  };
+  Array.prototype.forEach.call($('stages').children, function(el){
+    el.onclick = function(){
+      stop();
+      go(cardOf(idx) * STAGES + parseInt(el.dataset.i, 10), false);
+    };
+  });
+  document.addEventListener('keydown', function(e){
+    if (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
+    if (e.code === 'Space'){ e.preventDefault(); $('play').click(); }
+    else if (e.code === 'ArrowRight'){ stop(); go(idx + 1); }
+    else if (e.code === 'ArrowLeft'){ stop(); go(idx - 1); }
+    else if (e.code === 'Home'){ stop(); go(0, true); }
+    else if (e.code === 'End'){ stop(); go(total - 1, true); }
+    else if (/^Digit[1-4]$/.test(e.code)){
+      stop(); go(cardOf(idx) * STAGES + (parseInt(e.code.slice(5), 10) - 1), false);
+    }
+  });
+  cards.forEach(function(c, k){
+    c.querySelector('.hd').onclick = function(){ stop(); go(k * STAGES, true); };
+  });
+
+  render(false);
+})();
+</script>
 </body></html>
 """
 
-CARD = u"""<div class="card">
+CARD = u"""<div class="card" data-status="__STATUS__">
   <div class="hd">
     <span class="nm">__NAME__</span>
     <span class="badge" style="color:__C__;background:__BG__">__STATUS__</span>
-    <span class="sub">__FILE__</span>
+    <span class="file">__FILE__</span>
   </div>
-  <div class="grid">
-    <div class="pane"><div class="ttl">① MATLAB 源码</div><pre>__SRC__</pre></div>
-    <div class="pane"><div class="ttl">② MIR</div><pre>__MIR__</pre></div>
-    <div class="pane"><div class="ttl">③ 生成的 C</div><pre>__C__CODE__</pre></div>
-    <div class="pane"><div class="ttl">④ 运行结果</div><pre>__RUN__</pre></div>
-  </div>
+  <div class="pane"><div class="ttl">① MATLAB 源码</div><pre>__SRC__</pre></div>
+  <div class="pane"><div class="ttl">② MIR</div><pre>__MIR__</pre></div>
+  <div class="pane"><div class="ttl">③ 生成的 C</div><pre>__CCODE__</pre></div>
+  <div class="pane"><div class="ttl">④ 运行结果</div><pre>__RUN__</pre></div>
 </div>"""
+
+CHIP = u'<span class="chip" style="color:__C__;background:__BG__">__K__ __V__</span>'
 
 
 def build(path, out, limit):
@@ -233,29 +407,35 @@ def build(path, out, limit):
                          .replace("__C__", c).replace("__BG__", bg)
                          .replace("__SRC__", html.escape(card["src"]))
                          .replace("__MIR__", html.escape(card["mir"]))
-                         .replace("__C__CODE__", html.escape(card["c"]))
+                         .replace("__CCODE__", html.escape(card["c"]))
                          .replace("__RUN__", html.escape(card["run"])))
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
-    total = len(files)
-    summary = "共 %d 个函数 ｜ " % total + " ｜ ".join(
-        "%s %d" % (k, v) for k, v in sorted(counts.items(), key=lambda kv: -kv[1]))
-    doc = PAGE.replace("__SUMMARY__", html.escape(summary)).replace("__CARDS__", "\n".join(cards))
+    chips = []
+    for k, v in sorted(counts.items(), key=lambda kv: -kv[1]):
+        c, bg = COLORS.get(k, ("#334155", "#f1f5f9"))
+        chips.append(CHIP.replace("__K__", k).replace("__V__", str(v))
+                     .replace("__C__", c).replace("__BG__", bg))
+    chips.append('<span class="chip">共 %d 个函数</span>' % len(files))
+
+    doc = (PAGE.replace("__CHIPS__", "".join(chips))
+           .replace("__CARDS__", "\n".join(cards)))
     open(out, "w", encoding="utf-8", newline="\n").write(doc)
-    print(summary)
+    print("共 %d 个函数 ｜ %s" % (len(files),
+                                 " ｜ ".join("%s %d" % kv for kv in counts.items())))
     print("已写出 %s（%.1f KB）" % (out, os.path.getsize(out) / 1024.0))
     return counts
 
 
 def main():
-    ap = argparse.ArgumentParser(description="MATLAB → C 转换报告（HTML）")
+    ap = argparse.ArgumentParser(description="MATLAB → C 转换回放（HTML 播放器）")
     ap.add_argument("source")
     ap.add_argument("-o", "--out", default="report.html")
     ap.add_argument("--limit", type=int, default=12)
     a = ap.parse_args()
     if not os.path.isfile(M2C):
-        print("m2c 未构建：cargo build --release（rust/m2c）")
+        print("m2c 未构建：cd rust/m2c && cargo build --release")
         return 2
     counts = build(a.source, a.out, a.limit)
     return 0 if counts.get("error", 0) == 0 else 1
