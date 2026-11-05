@@ -662,6 +662,25 @@ M2/M3 的事实来自 `mir.py` **扫真实源码**得到的算子集合 ——
   实现上：规则改名 `pc_form`（形式名），命中后按"括号前的名字是不是本函数变量"细分
   `idx2` / `call2`（模块级 `_CUR_F` 提供上下文，只影响归因，不影响语义）。
 
+- **`ones(m,n)`（变量维度）：接完四步中的三步，最后一步未闭环，整体回退**
+  依据是上一轮的重排数据：`call2` 桶里 **`ones` 出现 161 次（第一名）**，
+  典型形态 `status = ones(length(solvers),1);` —— 字面量维度已支持（降成 `fill:`），
+  变量维度不行，因为长度要运行期才知道。
+
+  | 步 | 内容 | 结果 |
+  |---|---|---|
+  | 1 | C `mlc_op_fill_alloc(rows, cols, value, out)` + 表条目（`dynamic: True`）+ `DYNAMIC_OPS` | TP7 51/51 ✓、TP8 已一致 ✓ |
+  | 2 | `mir.py` 的 `_lower_ctor_dims`（维度降成 i64 临时量） | MIR 正确：`var:__n1 / setb / op:OP-FILLA:y:__n1:__n2:1` ✓ |
+  | 3 | 发射器分支（`idx_operand` 取两个维度） | 编译通过、TP7 51/51 ✓ |
+  | 4 | **生成物仍输出 `return MLC_UNIMPLEMENTED;`** | ✗ 未闭环 |
+
+  失败点在**发射器的"已实现算子"白名单**：往 `C_IMPLEMENTED` 里加了 `OP-FILLA` 之后
+  生成物仍是 `UNIMPLEMENTED` —— 说明真正生效的是**另一个清单**（`OP-IDX2` 那次恰好改对了位置，
+  这次没有）。下轮第一件事是**先定位那个清单**（grep `is_implemented` 的实参来源），
+  再决定是否继续。
+
+  已回退，仓库恢复绿（`check_all` rc=0、语料 51/51）。本轮净变化 0 行产品代码。
+
 ## 2.2.3
 
 - **返回值形状推断**：`out_shape_for` 原来只看 `Stmt::Op`，于是
