@@ -665,7 +665,7 @@ _KIND_RULES = (
         "disp", "display", "fprintf", "printf", "error", "warning", "assert",
         "tic", "toc", "drawnow", "pause")),
     ("cond", lambda t: t.startswith(("if ", "if(", "while ", "while("))),
-    ("slice2d", lambda t: "(" in t and ("," in t or ":" in t)),
+    ("pc_form", lambda t: "(" in t and ("," in t or ":" in t)),
     ("nested", lambda t: t.count("(") >= 2),
 )
 
@@ -782,12 +782,34 @@ def _has_struct_ref(t):
     return _re.search(r"[A-Za-z_]\w*\s*\.\s*(\w|\()", cleaned) is not None
 
 
+#: 当前正在降级的函数（供 `_unmapped_kind` 判断"这个名字是不是变量"）。
+#: 只用于**归因**，不影响任何语义；为空时退化为纯形式判断。
+_CUR_F = None
+
+
+def _split_paren_form(text, f=None):
+    """把"含逗号的调用"细分成 `idx2`（真下标）与 `call2`（双参调用）。
+
+    判据只有一条：括号前的名字是不是**本函数的变量/参数/返回值**。
+    这不是语义猜测 —— 名字能否作为数组，本来就只有符号表知道。
+    """
+    m = re.match(r"^\s*([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*\(", text or "")
+    if m is None:
+        return "call2"                    # 裸调用 / 表达式里的调用
+    callee = m.group(2)
+    if f is not None and _is_known_var(f, callee):
+        return "idx2"
+    return "call2"
+
+
 def _unmapped_kind(text):
     """给一条未映射语句归因；判不出来就老实写 other。"""
     t = (text or "").strip()
     for name, pred in _KIND_RULES:
         try:
             if pred(t):
+                if name == "pc_form":
+                    return _split_paren_form(t, _CUR_F)
                 return name
         except Exception:      # noqa: BLE001 - 归因失败不该影响转换
             continue
@@ -1117,6 +1139,10 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
     n_tmp = idx_counter        # 旧名字的别名：两套计数器会撞名
     known_ops = set(o["id"] for o in operators.OPERATORS)
     for f in funcs:
+        # 归因用：让 `_unmapped_kind` 能判断"括号前的名字是不是本函数的变量"
+        # （只影响 `why:` 分类，不影响任何语义）
+        global _CUR_F
+        _CUR_F = f
         out.append("# source_sha256:%s" % src_hash)
         if srcfile:
             # 供 m2c 按源文件拆分输出；路径用相对工程根的写法
