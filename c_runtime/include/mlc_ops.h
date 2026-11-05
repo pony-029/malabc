@@ -153,6 +153,8 @@ mlc_status mlc_op_isempty(const mlc_array *a, mlc_array *out);
 
 mlc_status mlc_op_idx2(const mlc_array *a, int64_t row, int64_t col,
                        mlc_array *out);
+mlc_status mlc_op_fill_alloc(int64_t rows, int64_t cols, double value,
+                            mlc_array *out);
 mlc_status mlc_op_index(const mlc_array *a, int64_t matlab_index,
                         mlc_array *out);
 mlc_status mlc_op_transpose(const mlc_array *a, mlc_array *out);

@@ -14,6 +14,7 @@ dynsum: 10
 earlyret: 7
 emptychk: 1
 endsemi: 7
+filla: 1 1
 findeq: 1 2 3 4
 findfirst: 1 2
 findnz: 1 2 3 4

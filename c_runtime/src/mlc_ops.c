@@ -1067,6 +1067,47 @@ mlc_status mlc_op_idx2(const mlc_array *a, int64_t row, int64_t col,
     return MLC_OK;
 }
 
+/* 运行期维度填充：`ones(m,n)` / `zeros(m,n)`，m/n 只在运行时知道。
+ *
+ * 与 `fill:`（编译期字面量）互补：那边直接写进常量数组，这边必须动态分配。
+ * 维度必须 >= 1：MATLAB 里 0 表示空，但这条通道区分不了"空"与"算错"，拒绝更安全。 */
+mlc_status mlc_op_fill_alloc(int64_t rows, int64_t cols, double value,
+                             mlc_array *out)
+{
+    int64_t n, i;
+    int64_t sh[2];
+    double *po;
+
+    if (out == NULL) {
+        return MLC_ERR;
+    }
+    if (rows < 1 || cols < 1) {
+        return MLC_ERR;
+    }
+    n = rows * cols;
+    if (n / rows != cols) {
+        return MLC_ERR;              /* 乘法溢出 */
+    }
+    sh[0] = rows;
+    sh[1] = cols;
+    if (out->ndim == 0 || mlc_array_numel(out) == 0) {
+        if (mlc_array_init(out, MLC_F64, 2, sh) != MLC_OK) {
+            return MLC_ERR;
+        }
+    }
+    if (out->ndim != 2 || out->shape[0] != rows || out->shape[1] != cols) {
+        return MLC_ERR;
+    }
+    po = (double *)out->data;
+    if (po == NULL) {
+        return MLC_ERR;
+    }
+    for (i = 0; i < n; ++i) {
+        po[i] = value;
+    }
+    return MLC_OK;
+}
+
 mlc_status mlc_op_index(const mlc_array *a, int64_t matlab_index,
                         mlc_array *out)
 {

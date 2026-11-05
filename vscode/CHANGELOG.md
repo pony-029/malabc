@@ -681,6 +681,27 @@ M2/M3 的事实来自 `mir.py` **扫真实源码**得到的算子集合 ——
 
   已回退，仓库恢复绿（`check_all` rc=0、语料 51/51）。本轮净变化 0 行产品代码。
 
+- **`ones(m,n)` / `zeros(m,n)`（维度含变量）落地** —— `call2` 桶第一名（`ones` 161 次）
+  ```matlab
+  status = ones(length(solvers), 1);      % 之前：unmapped
+  y = ones(2, k);                          % 现在：mlc_op_fill_alloc(2, k, 1, y)
+  ```
+  分四步接、每步验证：
+
+  | 步 | 内容 | 结果 |
+  |---|---|---|
+  | 1 | C `mlc_op_fill_alloc` + 表条目（`dynamic: True`）+ `DYNAMIC_OPS` | TP7 绿 |
+  | 2 | `mir.py` 的 `_lower_ctor_dims`（维度降成 i64 临时量） | MIR 正确 |
+  | 3 | 发射器分支 | **先报「参数个数 3 超出本版能力」** |
+  | 4 | 修正后发现 **`op.args` 不含左值** | ✓ 生成物正确 |
+
+  **真因**：`op:OP-FILLA:y:__n1:__n2:1` 里 `y` 是 `dst`，`op.args` 是 `[__n1, __n2, 1]` ——
+  上一轮我按 `len == 4 / args[1..3]` 写，永远不匹配，于是静默落到通用的
+  「参数个数超出本版能力」分支并返回 `MLC_UNIMPLEMENTED`。
+
+  实测：`n=2, k=3` → `fa: 1 1 1 1 1 1` ✓；语料 `filla`（`ones(2,k)`，k=1）→ `1 1`，
+  语料 51 → **52**。覆盖率 60.73% → 60.96%（新算子只在变量维度时发射，主路径走 `fill:`）。
+
 ## 2.2.3
 
 - **返回值形状推断**：`out_shape_for` 原来只看 `Stmt::Op`，于是

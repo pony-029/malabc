@@ -48,6 +48,12 @@ OPERATORS = (
      # 只由 mir.py 在"形状未知"时发射，**不经过 parse_line**
      "trigger": "syntax",
      "verified_by": ""},
+    {"id": "OP-FILLA", "matlab": "ones(m,n)", "c": "mlc_op_fill_alloc",
+     "kind": "shape", "rules": ("SHAPE-1",),
+     "sample": "y = ones(m, n);",
+     "trigger": "syntax",
+     "dynamic": True,
+     "verified_by": ""},
     {"id": "OP-SUM", "matlab": "sum(x)", "c": "mlc_op_sum",
      "kind": "reduction", "rules": ("ORDER-1",),
      "sample": "y = sum(x);",
@@ -187,7 +193,7 @@ OPERATORS = (
 #: `OP-MATMUL` 已由 mlc_ops.c 真实现（2-D f64）；
 #: 注意 `*` / `.*` 在**文本层**都映射到 OP-MUL —— 二者的区别要看形状，
 #: 由 translate/mir.py 在知道 shape 之后决定是否升级成 OP-MATMUL。
-C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-HCAT", "OP-IDX2",
+C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-HCAT", "OP-FILLA", "OP-IDX2",
                  "OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN", "OP-INDEX",
                  "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE",
                  "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE", "OP-COL", "OP-COLRANGE",

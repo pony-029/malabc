@@ -984,6 +984,47 @@ def _lower_index2_runtime(out, lhs, name, ri, ci, idx_counter):
     return True
 
 
+_CTOR_DIMS_RE = re.compile(
+    r"^\s*([A-Za-z_]\w*)\s*=\s*(zeros|ones)\s*\(\s*([^,()]+?)\s*,\s*([^,()]+?)\s*\)\s*;?\s*$")
+
+
+def _lower_ctor_dims(out, code, idx_counter):
+    """`y = ones(m,n)`（**维度含变量**）-> `OP-FILLA`。
+
+    全字面量维度走 `fill:`（编译期常量），那条路已存在；这里只接管
+    "长度要运行期才知道"的情形 —— YALMIP 里 `ones` 出现 161 次，是最大的一块。
+    """
+    m = _CTOR_DIMS_RE.match(code)
+    if m is None:
+        return False
+    lhs, fn = m.group(1), m.group(2)
+    dims = [m.group(3).strip(), m.group(4).strip()]
+    if all(re.match(r"^\d+$", d) for d in dims):
+        return False
+    _tok = re.compile(r"^(-?\d+|[A-Za-z_]\w*|[A-Za-z_]\w*\s*[+-]\s*\d+)$")
+    if not all(_tok.match(d) for d in dims):
+        return False
+    toks = []
+    for d in dims:
+        if re.match(r"^\d+$", d):
+            toks.append(d)
+            continue
+        idx_counter[0] += 1
+        t = "__n%d" % idx_counter[0]
+        out.append("var:%s:i64" % t)
+        m2 = re.match(r"^([A-Za-z_]\w*)\s*([+-])\s*(\d+)$", d)
+        if m2 is None:
+            out.append("setb:%s:add:%s:0" % (t, d))
+        else:
+            out.append("setb:%s:%s:%s:%s"
+                       % (t, "add" if m2.group(2) == "+" else "sub",
+                          m2.group(1), m2.group(3)))
+        toks.append(t)
+    out.append("op:OP-FILLA:%s:%s:%s:%s"
+               % (lhs, toks[0], toks[1], "0" if fn == "zeros" else "1"))
+    return True
+
+
 def _lower_slice_var(out, code, idx_counter):
     """`seg = x(i:j)`（边界含变量）-> i64 临时量 -> `OP-SLICE`。
 
@@ -1331,6 +1372,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             if me:
                 # `A = []` -> fill:A:0:0（0 个元素的 1 维数组）
                 out.append("fill:%s:0:0" % me.group(1))
+                continue
+            if _lower_ctor_dims(out, code, idx_counter):
                 continue
             if _lower_slice_var(out, code, idx_counter):
                 continue
