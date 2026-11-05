@@ -496,6 +496,10 @@ def _split_top(expr):
     return expr[:i].strip(), ch, expr[i + 1:].strip()
 
 
+#: `zeros(2,3)` / `ones(2,3)` —— 只认字面量维度（变量维度要运行期才知道，另说）
+_CTOR_OPERAND_RE = re.compile(r"^(zeros|ones)\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)$")
+
+
 def _strip_outer_parens(e):
     """剥掉**包住整个表达式**的冗余括号；`(a)+(b)` 这种不剥。"""
     e = (e or "").strip()
@@ -529,6 +533,18 @@ def _lower_expr(lhs, expr, fnames, emit, counter, src_line, shapes=None):
     for which in (0, 1):
         side = left if which == 0 else right
         if not _split_top(side):
+            # 操作数是 `zeros(2,3)` / `ones(2,3)`（字面量维度）→ 先降成 `fill:` 临时量。
+            # 真实代码里 `ones(2,3) - x` 很常见，而它既不是已知算子也不是裸名。
+            mc = _CTOR_OPERAND_RE.match(side)
+            if mc:
+                counter[0] += 1
+                t = "__e%d" % counter[0]
+                emit("fill:%s:%s,%s:%s" % (t, mc.group(2), mc.group(3),
+                                           "0" if mc.group(1) == "zeros" else "1"))
+                if which == 0:
+                    left = t
+                else:
+                    right = t
             continue
         counter[0] += 1
         tmp = "__e%d" % counter[0]
