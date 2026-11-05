@@ -1029,6 +1029,44 @@ mlc_status mlc_op_row(const mlc_array *a, int64_t row, mlc_array *out)
     return MLC_OK;
 }
 
+/* 二维下标取值：`A(i,j)`，**形状在运行期才知道**。
+ *
+ *   L   = (i-1) + (j-1)*rows              MATLAB 列主序线性下标
+ *   off = (L % rows) * cols + L / rows    换算到行主序存储
+ *
+ * 与 `mlc_op_index` 的 ORDER-1 同一套换算，只是起点不同。
+ * 只接受 ndim>=2：1-D 的 `A(i,j)` 在 MATLAB 里要求 j==1，猜它不如拒绝。 */
+mlc_status mlc_op_idx2(const mlc_array *a, int64_t row, int64_t col,
+                       mlc_array *out)
+{
+    int64_t rows, cols, l;
+
+    if (a == NULL || out == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64 || out->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    if (mlc_array_numel(out) != 1) {
+        return MLC_ERR;
+    }
+    if (a->ndim < 2 || a->ndim > MLC_MAX_DIMS) {
+        return MLC_ERR;
+    }
+    rows = a->shape[0];
+    cols = a->shape[1];
+    if (rows <= 0 || cols <= 0) {
+        return MLC_ERR;
+    }
+    if (row < 1 || row > rows || col < 1 || col > cols) {
+        return MLC_ERR;              /* 越界不截断 */
+    }
+    l = (row - 1) + (col - 1) * rows;
+    ((double *)out->data)[0] =
+        ((const double *)a->data)[(l % rows) * cols + l / rows];
+    return MLC_OK;
+}
+
 mlc_status mlc_op_index(const mlc_array *a, int64_t matlab_index,
                         mlc_array *out)
 {

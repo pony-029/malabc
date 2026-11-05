@@ -11,7 +11,7 @@ use crate::mir::{walk_stmts, Cond, Func, Op, Stmt};
 /// 已经有 C 落点的算子（与 `translate/operators.py` 的 `C_IMPLEMENTED` 对齐）。
 pub const C_IMPLEMENTED: &[&str] = &[
     "OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-SUM", "OP-MEAN", "OP-MAX",
-    "OP-MIN", "OP-INDEX", "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE", "OP-HCAT",
+    "OP-MIN", "OP-INDEX", "OP-IDX2", "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE", "OP-HCAT",
     "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE", "OP-COL", "OP-COLRANGE", "OP-SQRT", "OP-ABS", "OP-EXP", "OP-LOG",
     "OP-SIN", "OP-COS", "OP-TAN", "OP-FLOOR", "OP-CEIL",
     "OP-ROUND", "OP-LOG2", "OP-LOG10",
@@ -704,6 +704,21 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
     }
 
     let arg0 = arg_ref(f, &op.args[0]);
+    // 二维下标（形状未知）：两个下标都交给运行时，由 C 用 a->shape[0] 自己算
+    if op.id == "OP-IDX2" && op.args.len() == 3 {
+        match (idx_operand(f, &op.args[1]), idx_operand(f, &op.args[2])) {
+            (Some(ri), Some(ci)) => out.push(format!(
+                "{}st = mlc_op_idx2({}, {}, {}, {});",
+                pad, arg0, ri, ci, dst)),
+            _ => {
+                out.push(format!(
+                    "{}/* TODO(OP-IDX2): 下标 {}/{} 不是 i64 标量 */",
+                    pad, op.args[1], op.args[2]));
+                out.push(format!("{}return MLC_UNIMPLEMENTED;", pad));
+            }
+        }
+        return out;
+    }
     if op.id == "OP-INDEX" {
         if op.args.len() != 2 {
             out.push(format!("{}/* TODO(OP-INDEX): 需要 2 个参数，实际 {} */",

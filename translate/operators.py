@@ -42,6 +42,12 @@ OPERATORS = (
      # 触发方式不是函数调用，而是语法（`[a b]`）—— 由 mir.py 的 _lower_hcat 处理
      "trigger": "syntax",
      "verified_by": ""},
+    {"id": "OP-IDX2", "matlab": "A(i, j)", "c": "mlc_op_idx2",
+     "kind": "shape", "rules": ("IDX-1", "ORDER-1"),
+     "sample": "y = A(i, j);",
+     # 只由 mir.py 在"形状未知"时发射，**不经过 parse_line**
+     "trigger": "syntax",
+     "verified_by": ""},
     {"id": "OP-SUM", "matlab": "sum(x)", "c": "mlc_op_sum",
      "kind": "reduction", "rules": ("ORDER-1",),
      "sample": "y = sum(x);",
@@ -181,7 +187,7 @@ OPERATORS = (
 #: `OP-MATMUL` 已由 mlc_ops.c 真实现（2-D f64）；
 #: 注意 `*` / `.*` 在**文本层**都映射到 OP-MUL —— 二者的区别要看形状，
 #: 由 translate/mir.py 在知道 shape 之后决定是否升级成 OP-MATMUL。
-C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-HCAT",
+C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-HCAT", "OP-IDX2",
                  "OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN", "OP-INDEX",
                  "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE",
                  "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE", "OP-COL", "OP-COLRANGE",
@@ -535,6 +541,9 @@ def operator_problems(ops=None):
                 probs.append("OP2 %s 的夹具不存在：%s" % (oid, fn))
     # 每个 sample 必须能被自己的算子识别（不许“登记了却解析不到”）
     for op in ops:
+        # 语法触发算子（OP-IDX2）：入口在 mir.py，不经过 parse_line
+        if op.get("trigger") == "syntax":
+            continue
         u = parse_line(op.get("sample", ""))
         if u is None:
             probs.append("OP3 %s 的 sample 解析不到" % op.get("id"))

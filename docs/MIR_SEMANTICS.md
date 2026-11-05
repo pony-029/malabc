@@ -89,6 +89,7 @@ typedef struct {
 | 算子 | 语义 | 形状 |
 |---|---|---|
 | `OP-INDEX` | 线性下标（1-based） | 1×1 |
+| `OP-IDX2` | `A(i,j)`：**形状未知**时取二维元素，两个下标交给运行时 | 只接受 ndim>=2；1-D 的 `A(i,j)` 明确拒绝（MATLAB 要求 j==1） |
 | `OP-ROW` | `A(i,:)` | 1-D，长度 = 列数 |
 | `OP-COL` | `A(:,j)` | 1-D，长度 = 行数 |
 | `OP-SLICE` | `x(lo:hi)`（1-D） | 长度 `hi-lo+1` |

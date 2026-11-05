@@ -897,6 +897,55 @@ _SLICE_VAR_RE = re.compile(
 _BOUND_RE = re.compile(r"^(-?\d+|[A-Za-z_]\w*|[A-Za-z_]\w*\s*[+-]\s*\d+)$")
 
 
+_IDX2_TOK_RE = re.compile(r"^(-?\d+|[A-Za-z_]\w*|[A-Za-z_]\w*\s*[+-]\s*\d+)$")
+
+
+def _is_known_var(f, name):
+    """`name` 是不是本函数里的**变量/参数/返回值**（而不是内置函数名）。
+
+    `y = zeros(1,4)` 与 `z = A(i,j)` 在语法上完全同形；只有靠"这个名字是不是变量"
+    才能区分 —— 否则 `zeros` 会被当成数组去取下标。
+    """
+    for k in ("args", "rets", "locals"):
+        for item in (f.get(k) or []):
+            nm = item.get("name") if isinstance(item, dict) else item
+            if nm == name:
+                return True
+    if name in (f.get("shapes") or {}):
+        return True
+    if name in (f.get("types") or {}):
+        return True
+    return False
+
+
+def _lower_index2_runtime(out, lhs, name, ri, ci, idx_counter):
+    """`y = A(i,j)`（**形状完全未知**）-> `OP-IDX2`。
+
+    折不成线性下标时，把两个下标都传给运行时，由 C 用 `a->shape[0]` 自己算。
+    先校验后发射，避免留下半截 `var:`/`setb:`。
+    """
+    if not (_IDX2_TOK_RE.match(ri) and _IDX2_TOK_RE.match(ci)):
+        return False
+    toks = []
+    for tok in (ri, ci):
+        if re.match(r"^-?\d+$", tok):
+            toks.append(tok)
+            continue
+        idx_counter[0] += 1
+        t = "__j%d" % idx_counter[0]
+        out.append("var:%s:i64" % t)
+        m2 = re.match(r"^([A-Za-z_]\w*)\s*([+-])\s*(\d+)$", tok)
+        if m2 is None:
+            out.append("setb:%s:add:%s:0" % (t, tok))
+        else:
+            out.append("setb:%s:%s:%s:%s"
+                       % (t, "add" if m2.group(2) == "+" else "sub",
+                          m2.group(1), m2.group(3)))
+        toks.append(t)
+    out.append("op:OP-IDX2:%s:%s:%s:%s" % (lhs, name, toks[0], toks[1]))
+    return True
+
+
 def _lower_slice_var(out, code, idx_counter):
     """`seg = x(i:j)`（边界含变量）-> i64 临时量 -> `OP-SLICE`。
 
@@ -1256,6 +1305,14 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                                      _m2.group(4).strip(), _shp[0], idx_counter,
                                      unmapped_kinds, code):
                         continue
+                elif (_shp is None and _is_known_var(f, _m2.group(2))
+                      and _lower_index2_runtime(
+                          out, _m2.group(1), _m2.group(2),
+                          _m2.group(3).strip(), _m2.group(4).strip(), idx_counter)):
+                    # 只有「**已知变量**且形状完全未知」才交给运行时。
+                    # 必须有 `_is_known_var`：`y = zeros(1,4)` 的形态和 `A(i,j)` 一模一样，
+                    # 少了这一层会把 `zeros` 当数组去取下标（实测把 cumsum_loop 变成桩）。
+                    continue
             use = operators.parse_line(code)
             if use is not None and use["operator"] == "OP-INDEX":
                 idx = use["args"][1] if len(use["args"]) > 1 else ""
