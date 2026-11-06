@@ -481,12 +481,49 @@ button{background:var(--card);color:var(--fg);border:1px solid var(--bd);
 .tag{display:inline-block;font:11.5px ui-monospace,Consolas,monospace;
  color:var(--mut);background:color-mix(in srgb,var(--fg) 6%,transparent);
  border-radius:6px;padding:1px 6px;margin-right:5px}
+/* 全流程条 */
+.flow{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+ gap:10px;margin:10px 0 18px}
+.step{position:relative;background:var(--card);border:1px solid var(--bd);
+ border-radius:12px;padding:12px 14px 11px}
+.step .no{position:absolute;top:-9px;left:12px;width:20px;height:20px;
+ border-radius:50%;background:var(--accent);color:#fff;font:600 11.5px/20px
+ -apple-system,sans-serif;text-align:center}
+.step b{display:block;margin:4px 0 3px;font-size:13.5px}
+.step .d{color:var(--fg);font-size:12px;opacity:.85;
+ font-family:ui-monospace,Consolas,monospace}
+.step .ev{color:var(--mut);font-size:11.5px;margin-top:5px}
+/* 实测数字 */
+.stats{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 4px}
+.kpi{background:var(--card);border:1px solid var(--bd);border-radius:12px;
+ padding:11px 16px;min-width:120px}
+.kpi .v{font:650 22px/1.2 ui-monospace,Consolas,monospace}
+.kpi .k{color:var(--mut);font-size:11.5px;margin-top:3px}
 </style></head><body>
 <header>
   <h1>MATLAB → C 转换演示（多库汇总）</h1>
   <span class="sub">__SUMMARY__</span>
 </header>
 <div class="wrap">
+
+  <h2 class="h2" style="margin-top:4px">转换全流程（每一格的证据都能点开核对）</h2>
+  <div class="sub">同一条命令跑完五步，产物全部可在工程页里逐帧回放。</div>
+  <div class="flow">
+    <div class="step"><div class="no">1</div><b>源解析</b>
+      <div class="d">`.m` → 函数/参数/形状注解</div><div class="ev">证据：① 源码面板</div></div>
+    <div class="step"><div class="no">2</div><b>MIR</b>
+      <div class="d">语句 → 算子序列（`op:`/`setb:`/`fill:`）</div><div class="ev">证据：② MIR 面板</div></div>
+    <div class="step"><div class="no">3</div><b>发射 C</b>
+      <div class="d">MIR → `src/gen.c`（含工程骨架）</div><div class="ev">证据：③ 生成的 C 面板</div></div>
+    <div class="step"><div class="no">4</div><b>编译</b>
+      <div class="d">`gcc -std=c99` + 运行时</div><div class="ev">失败会显式记为 `error`</div></div>
+    <div class="step"><div class="no">5</div><b>运行</b>
+      <div class="d">驱动构造输入 → 打印结果</div><div class="ev">证据：④ 运行结果面板</div></div>
+  </div>
+
+  <div class="stats">__STATS__</div>
+
+  <h2 class="h2">各工程结果</h2>
   <div class="legend">__LEGEND__
     <button onclick="var r=document.documentElement;
       r.dataset.theme=r.dataset.theme==='dark'?'':'dark';">切换主题</button>
@@ -531,7 +568,7 @@ def build_site(dirs, outdir, limit):
     os.makedirs(outdir, exist_ok=True)
     rows, total_all, num_all = [], 0, 0
     order = ["numeric", "stub", "shape", "rejected", "skipped", "error"]
-    per_proj, all_reasons = [], {}
+    per_proj, all_reasons, agg = [], {}, {}
     TOTAL_ROW = u"""<tr>
   <td><span class="tag">%s</span>%s</td>
   <td class="n">%d</td>
@@ -562,6 +599,8 @@ def build_site(dirs, outdir, limit):
         n = sum(counts.values())
         total_all += n
         num_all += counts.get("numeric", 0)
+        for k, v in counts.items():
+            agg[k] = agg.get(k, 0) + v
         bars = "".join(
             '<i style="width:%.2f%%;background:%s" title="%s %d"></i>'
             % (100.0 * counts[k] / n if n else 0, COLORS.get(k, ("#334155",))[0], k, counts[k])
@@ -600,7 +639,23 @@ def build_site(dirs, outdir, limit):
     summary = "共 %d 个工程 ｜ %d 个函数 ｜ 真能算 %d（%.1f%%）" % (
         len(dirs), total_all, num_all,
         100.0 * num_all / total_all if total_all else 0)
+
+    def kpi(val, key, color=None):
+        style = ' style="color:%s"' % color if color else ""
+        return ('<div class="kpi"><div class="v"%s>%s</div>'
+                '<div class="k">%s</div></div>' % (style, val, key))
+
+    stats = (kpi(len(dirs), "工程")
+             + kpi(total_all, "函数总数")
+             + kpi(num_all, "真能算 numeric", COLORS["numeric"][0])
+             + kpi(agg.get("stub", 0), "桩（含未映射）", COLORS["stub"][0])
+             + kpi(agg.get("rejected", 0), "签名拒绝", COLORS["rejected"][0])
+             + kpi(agg.get("skipped", 0), "跳过（无 function）", COLORS["skipped"][0])
+             + kpi(agg.get("error", 0), "编译/运行失败",
+                   COLORS["error"][0] if agg.get("error") else COLORS["numeric"][0]))
+
     doc = (INDEX.replace("__SUMMARY__", html.escape(summary))
+           .replace("__STATS__", stats)
            .replace("__LEGEND__", legend).replace("__ROWS__", "\n".join(rows))
            .replace("__COMPARE__", "\n".join(cmp_rows)))
     p = os.path.join(outdir, "index.html")
