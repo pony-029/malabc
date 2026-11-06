@@ -1108,6 +1108,88 @@ mlc_status mlc_op_fill_alloc(int64_t rows, int64_t cols, double value,
     return MLC_OK;
 }
 
+/* 集合差：`setdiff(a,b)`，1-D 标量集合。
+ *
+ * 规则（与 MATLAB 一致的三条）：A 中元素、排除 B 中出现的、**去重并升序**。
+ * 比较用精确相等：我们只处理能精确表示的整数/常量，浮点近似相等会让结果不可预测。
+ * 长度运行期才知道 -> 先按 numel(a) 分配，去重后再收窄 shape（缓冲区可多不可少）。 */
+mlc_status mlc_op_setdiff_alloc(const mlc_array *a, const mlc_array *b,
+                                mlc_array *out)
+{
+    int64_t na, nb, i, j, k, m;
+    int64_t sh[1];
+    const double *pa, *pb;
+    double *po, t;
+
+    if (a == NULL || b == NULL || out == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64 || b->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    /* `out` 零初始化时 dtype == 0（未定形），由下面的就地分配赋类型 */
+    if (out->ndim != 0 && out->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    if (a->ndim != 1 || b->ndim != 1) {
+        return MLC_ERR;              /* 行集合（'rows'）语义不同：拒绝 */
+    }
+    na = a->shape[0];
+    nb = b->shape[0];
+    if (na <= 0) {
+        return MLC_ERR;
+    }
+    sh[0] = na;
+    if (out->ndim == 0 || mlc_array_numel(out) == 0) {
+        if (mlc_array_init(out, MLC_F64, 1, sh) != MLC_OK) {
+            return MLC_ERR;
+        }
+    }
+    if (mlc_array_numel(out) < na) {
+        return MLC_ERR;
+    }
+    pa = (const double *)a->data;
+    pb = (nb > 0) ? (const double *)b->data : NULL;
+    po = (double *)out->data;
+    if (pa == NULL || po == NULL) {
+        return MLC_ERR;
+    }
+
+    /* 1) 筛掉出现在 b 里的 */
+    m = 0;
+    for (i = 0; i < na; ++i) {
+        int hit = 0;
+        for (j = 0; j < nb; ++j) {
+            if (pa[i] == pb[j]) {
+                hit = 1;
+                break;
+            }
+        }
+        if (!hit) {
+            po[m++] = pa[i];
+        }
+    }
+    /* 2) 插入排序（集合通常很小；O(m^2) 但无额外分配） */
+    for (i = 1; i < m; ++i) {
+        t = po[i];
+        j = i - 1;
+        while (j >= 0 && po[j] > t) {
+            po[j + 1] = po[j];
+            --j;
+        }
+        po[j + 1] = t;
+    }
+    /* 3) 去重（原地收窄） */
+    k = 0;
+    for (i = 0; i < m; ++i) {
+        if (k == 0 || po[k - 1] != po[i]) {
+            po[k++] = po[i];
+        }
+    }
+    out->shape[0] = (k > 0) ? k : 0;
+    return MLC_OK;
+}
+
 mlc_status mlc_op_index(const mlc_array *a, int64_t matlab_index,
                         mlc_array *out)
 {

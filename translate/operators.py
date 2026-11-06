@@ -54,6 +54,13 @@ OPERATORS = (
      "trigger": "syntax",
      "dynamic": True,
      "verified_by": ""},
+    {"id": "OP-SETDIFF", "matlab": "setdiff(a,b)", "c": "mlc_op_setdiff_alloc",
+     "kind": "shape", "rules": ("SHAPE-1", "ORDER-1"),
+     "sample": "y = setdiff(a, b);",
+     "trigger": "syntax",
+     # 输出长度 = 去重后的交集补集大小，只有运行期知道
+     "dynamic": True,
+     "verified_by": ""},
     {"id": "OP-SUM", "matlab": "sum(x)", "c": "mlc_op_sum",
      "kind": "reduction", "rules": ("ORDER-1",),
      "sample": "y = sum(x);",
@@ -193,7 +200,7 @@ OPERATORS = (
 #: `OP-MATMUL` 已由 mlc_ops.c 真实现（2-D f64）；
 #: 注意 `*` / `.*` 在**文本层**都映射到 OP-MUL —— 二者的区别要看形状，
 #: 由 translate/mir.py 在知道 shape 之后决定是否升级成 OP-MATMUL。
-C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-HCAT", "OP-FILLA", "OP-IDX2",
+C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-HCAT", "OP-FILLA", "OP-SETDIFF", "OP-IDX2",
                  "OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN", "OP-INDEX",
                  "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE",
                  "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE", "OP-COL", "OP-COLRANGE",

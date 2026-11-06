@@ -1069,6 +1069,23 @@ def _strip_full_call(code):
     return "".join(out)
 
 
+_SETDIFF_RE = re.compile(
+    r"^\s*([A-Za-z_]\w*)\s*=\s*setdiff\s*\(\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*\)\s*;?\s*$")
+
+
+def _lower_setdiff(out, code):
+    """`y = setdiff(a,b)` -> `OP-SETDIFF`（YALMIP 145 次，其中整句赋值 97 次）。
+
+    只接**整句赋值 + 两个数组名**这一种形态：它占七成，语义最确定。
+    表达式内/多输出/带 `'rows'` 的一律留给后续（那些语义不同，猜会静默错）。
+    """
+    m = _SETDIFF_RE.match(code)
+    if m is None:
+        return False
+    out.append("op:OP-SETDIFF:%s:%s:%s" % (m.group(1), m.group(2), m.group(3)))
+    return True
+
+
 def _lower_slice_var(out, code, idx_counter):
     """`seg = x(i:j)`（边界含变量）-> i64 临时量 -> `OP-SLICE`。
 
@@ -1418,6 +1435,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             if me:
                 # `A = []` -> fill:A:0:0（0 个元素的 1 维数组）
                 out.append("fill:%s:0:0" % me.group(1))
+                continue
+            if _lower_setdiff(out, code):
                 continue
             if _lower_ctor_dims(out, code, idx_counter):
                 continue

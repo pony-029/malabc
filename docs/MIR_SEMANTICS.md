@@ -91,6 +91,7 @@ typedef struct {
 | `OP-INDEX` | 线性下标（1-based） | 1×1 |
 | `OP-IDX2` | `A(i,j)`：**形状未知**时取二维元素，两个下标交给运行时 | 只接受 ndim>=2；1-D 的 `A(i,j)` 明确拒绝（MATLAB 要求 j==1） |
 | `OP-FILLA` | `ones(m,n)` / `zeros(m,n)`，**维度含变量**时按运行期长度分配 | 维度必须 >= 1（0/负数明确拒绝）；全字面量走 `fill:`，不经过这里 |
+| `OP-SETDIFF` | `setdiff(a,b)`：A 中元素去掉 B 里出现的，**去重升序** | 只接受 1-D 标量集合；带 `'rows'` 的行集合语义不同，明确拒绝 |
 | `OP-ROW` | `A(i,:)` | 1-D，长度 = 列数 |
 | `OP-COL` | `A(:,j)` | 1-D，长度 = 行数 |
 | `OP-SLICE` | `x(lo:hi)`（1-D） | 长度 `hi-lo+1` |

@@ -11,7 +11,7 @@ use crate::mir::{walk_stmts, Cond, Func, Op, Stmt};
 /// 已经有 C 落点的算子（与 `translate/operators.py` 的 `C_IMPLEMENTED` 对齐）。
 pub const C_IMPLEMENTED: &[&str] = &[
     "OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-SUM", "OP-MEAN", "OP-MAX",
-    "OP-MIN", "OP-INDEX", "OP-IDX2", "OP-FILLA", "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE", "OP-HCAT",
+    "OP-MIN", "OP-INDEX", "OP-IDX2", "OP-FILLA", "OP-SETDIFF", "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE", "OP-HCAT",
     "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE", "OP-COL", "OP-COLRANGE", "OP-SQRT", "OP-ABS", "OP-EXP", "OP-LOG",
     "OP-SIN", "OP-COS", "OP-TAN", "OP-FLOOR", "OP-CEIL",
     "OP-ROUND", "OP-LOG2", "OP-LOG10",
@@ -86,7 +86,7 @@ pub fn ident(name: &str) -> String {
 
 /// 输出长度**数据相关**的算子：不能由调用方预先 init，
 /// 必须由算子自己分配（`*_alloc` 变体），调用方负责 free。
-pub const DYNAMIC_OPS: &[&str] = &["OP-MASK", "OP-FIND", "OP-FILLA"];
+pub const DYNAMIC_OPS: &[&str] = &["OP-MASK", "OP-FIND", "OP-FILLA", "OP-SETDIFF"];
 
 pub fn op_is_dynamic(id: &str) -> bool {
     DYNAMIC_OPS.contains(&id)
@@ -705,6 +705,24 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
 
     let arg0 = arg_ref(f, &op.args[0]);
     // 运行期维度填充（`ones(m,n)` 且 m/n 是变量）：由算子自己分配
+    // 集合差：`setdiff(a,b)`（1-D 标量集合，输出长度运行期才知道）
+    if op.id == "OP-SETDIFF" && op.args.len() == 2 {
+        let plain = |x: &String| {
+            !x.is_empty()
+                && x.chars().next().map_or(false, |c| c.is_alphabetic() || c == '_')
+                && x.chars().all(|c| c.is_alphanumeric() || c == '_')
+        };
+        if plain(&op.args[0]) && plain(&op.args[1]) {
+            out.push(format!("{}st = mlc_op_setdiff_alloc(&{}, &{}, {});",
+                             pad, ident(&op.args[0]), ident(&op.args[1]), dst));
+        } else {
+            out.push(format!(
+                "{}/* TODO(OP-SETDIFF): 参数必须是数组名，实际 args=[{}] */",
+                pad, op.args.join(", ")));
+            out.push(format!("{}return MLC_UNIMPLEMENTED;", pad));
+        }
+        return out;
+    }
     // 注意：`op.args` **不含左值**（`op:OP-FILLA:y:__n1:__n2:1` -> args = [__n1, __n2, 1]）
     if op.id == "OP-FILLA" && op.args.len() == 3 {
         match (idx_operand(f, &op.args[0]), idx_operand(f, &op.args[1])) {
