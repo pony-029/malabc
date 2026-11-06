@@ -1036,6 +1036,41 @@ mlc_status mlc_op_row(const mlc_array *a, int64_t row, mlc_array *out)
  *
  * 与 `mlc_op_index` 的 ORDER-1 同一套换算，只是起点不同。
  * 只接受 ndim>=2：1-D 的 `A(i,j)` 在 MATLAB 里要求 j==1，猜它不如拒绝。 */
+/* 二维元素赋值：`A(i,j) = v`（形状在运行期才知道）。
+ *
+ * 偏移换算与 `mlc_op_idx2` 完全一致（同一套 ORDER-1 规则），只是方向相反。
+ * `v` 必须是单元素 —— 切片赋值（`A(i,:)=...`）语义不同，另行处理。 */
+mlc_status mlc_op_setidx2(mlc_array *a, int64_t row, int64_t col,
+                          const mlc_array *v)
+{
+    int64_t rows, cols, l;
+
+    if (a == NULL || v == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64 || v->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    if (mlc_array_numel(v) != 1) {
+        return MLC_ERR;              /* 切片赋值走别的路径 */
+    }
+    if (a->ndim < 2 || a->ndim > MLC_MAX_DIMS) {
+        return MLC_ERR;
+    }
+    rows = a->shape[0];
+    cols = a->shape[1];
+    if (rows <= 0 || cols <= 0) {
+        return MLC_ERR;
+    }
+    if (row < 1 || row > rows || col < 1 || col > cols) {
+        return MLC_ERR;              /* 越界不扩容：自动增长会让形状静默改变 */
+    }
+    l = (row - 1) + (col - 1) * rows;
+    ((double *)a->data)[(l % rows) * cols + l / rows] =
+        ((const double *)v->data)[0];
+    return MLC_OK;
+}
+
 mlc_status mlc_op_idx2(const mlc_array *a, int64_t row, int64_t col,
                        mlc_array *out)
 {

@@ -151,6 +151,8 @@ mlc_status mlc_op_length(const mlc_array *a, mlc_array *out);
 /* isempty(x)：空数组返回 1，否则 0（输出必须是 1x1）。 */
 mlc_status mlc_op_isempty(const mlc_array *a, mlc_array *out);
 
+mlc_status mlc_op_setidx2(mlc_array *a, int64_t row, int64_t col,
+                            const mlc_array *v);
 mlc_status mlc_op_idx2(const mlc_array *a, int64_t row, int64_t col,
                        mlc_array *out);
 mlc_status mlc_op_fill_alloc(int64_t rows, int64_t cols, double value,

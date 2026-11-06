@@ -1073,6 +1073,54 @@ _SETDIFF_RE = re.compile(
     r"^\s*([A-Za-z_]\w*)\s*=\s*setdiff\s*\(\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*\)\s*;?\s*$")
 
 
+_SETIDX2_RE = re.compile(
+    r"^\s*([A-Za-z_]\w*)\s*\(\s*([^,()]+?)\s*,\s*([^,()]+?)\s*\)\s*=\s*([^=;]+?)\s*;?\s*$")
+
+
+def _lower_setidx2(out, code, f, idx_counter):
+    """`A(i,j) = v` -> `OP-SETIDX2`（`v` 只接受数字或裸名）。
+
+    RHS 是表达式时语义变成"切片赋值"，与单元素赋值不同 —— 不猜。
+    """
+    m = _SETIDX2_RE.match(code)
+    if m is None:
+        return False
+    name, ri, ci, rhs = (m.group(1), m.group(2).strip(),
+                         m.group(3).strip(), m.group(4).strip())
+    if not _is_known_var(f, name):
+        return False                       # `zeros(1,4) = ...` 不可能，是别的语法
+    _tok = re.compile(r"^(-?\d+|[A-Za-z_]\w*|[A-Za-z_]\w*\s*[+-]\s*\d+)$")
+    if not (_tok.match(ri) and _tok.match(ci)):
+        return False
+    toks = []
+    for d in (ri, ci):
+        if re.match(r"^-?\d+$", d):
+            toks.append(d)
+            continue
+        idx_counter[0] += 1
+        t = "__j%d" % idx_counter[0]
+        out.append("var:%s:i64" % t)
+        m2 = re.match(r"^([A-Za-z_]\w*)\s*([+-])\s*(\d+)$", d)
+        if m2 is None:
+            out.append("setb:%s:add:%s:0" % (t, d))
+        else:
+            out.append("setb:%s:%s:%s:%s"
+                       % (t, "add" if m2.group(2) == "+" else "sub",
+                          m2.group(1), m2.group(3)))
+        toks.append(t)
+    # 值：数字 -> 常量临时量；裸名 -> 直接用
+    if re.match(r"^-?\d+(\.\d+)?$", rhs):
+        idx_counter[0] += 1
+        vt = "__v%d" % idx_counter[0]
+        out.append("const:%s:%s" % (vt, rhs))
+    elif re.match(r"^[A-Za-z_]\w*$", rhs):
+        vt = rhs
+    else:
+        return False                       # 表达式 RHS：切片赋值，走别的路径
+    out.append("op:OP-SETIDX2:%s:%s:%s:%s" % (name, toks[0], toks[1], vt))
+    return True
+
+
 def _lower_setdiff(out, code):
     """`y = setdiff(a,b)` -> `OP-SETDIFF`（YALMIP 145 次，其中整句赋值 97 次）。
 
@@ -1435,6 +1483,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             if me:
                 # `A = []` -> fill:A:0:0（0 个元素的 1 维数组）
                 out.append("fill:%s:0:0" % me.group(1))
+                continue
+            if _lower_setidx2(out, code, f, idx_counter):
                 continue
             if _lower_setdiff(out, code):
                 continue

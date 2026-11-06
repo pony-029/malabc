@@ -11,7 +11,8 @@ use crate::mir::{walk_stmts, Cond, Func, Op, Stmt};
 /// 已经有 C 落点的算子（与 `translate/operators.py` 的 `C_IMPLEMENTED` 对齐）。
 pub const C_IMPLEMENTED: &[&str] = &[
     "OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-SUM", "OP-MEAN", "OP-MAX",
-    "OP-MIN", "OP-INDEX", "OP-IDX2", "OP-FILLA", "OP-SETDIFF", "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE", "OP-HCAT",
+    "OP-MIN", "OP-INDEX", "OP-IDX2", "OP-FILLA", "OP-SETDIFF", "OP-SETIDX2",
+    "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE", "OP-HCAT",
     "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE", "OP-COL", "OP-COLRANGE", "OP-SQRT", "OP-ABS", "OP-EXP", "OP-LOG",
     "OP-SIN", "OP-COS", "OP-TAN", "OP-FLOOR", "OP-CEIL",
     "OP-ROUND", "OP-LOG2", "OP-LOG10",
@@ -705,6 +706,21 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
 
     let arg0 = arg_ref(f, &op.args[0]);
     // 运行期维度填充（`ones(m,n)` 且 m/n 是变量）：由算子自己分配
+    // 二维元素赋值 `A(i,j) = v`：args = [i, j, v]（左值就是被写的数组）
+    if op.id == "OP-SETIDX2" && op.args.len() == 3 {
+        match (idx_operand(f, &op.args[0]), idx_operand(f, &op.args[1])) {
+            (Some(ri), Some(ci)) => out.push(format!(
+                "{}st = mlc_op_setidx2({}, {}, {}, &{});",
+                pad, dst, ri, ci, ident(&op.args[2]))),
+            _ => {
+                out.push(format!(
+                    "{}/* TODO(OP-SETIDX2): 下标 {}/{} 不是 i64 标量，args=[{}] */",
+                    pad, op.args[0], op.args[1], op.args.join(", ")));
+                out.push(format!("{}return MLC_UNIMPLEMENTED;", pad));
+            }
+        }
+        return out;
+    }
     // 集合差：`setdiff(a,b)`（1-D 标量集合，输出长度运行期才知道）
     if op.id == "OP-SETDIFF" && op.args.len() == 2 {
         let plain = |x: &String| {
