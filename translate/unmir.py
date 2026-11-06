@@ -38,7 +38,10 @@ _FN = {
     "OP-CEIL": "ceil", "OP-ROUND": "round", "OP-LENGTH": "length",
     "OP-NUMEL": "numel", "OP-NNZ": "nnz", "OP-ANY": "any", "OP-ALL": "all",
     "OP-ISEMPTY": "isempty", "OP-ISEQUAL": "isequal", "OP-ISEQUALK": "isequal",
-    "OP-FIND": "find", "OP-TRANSPOSE": "__transpose__",
+    # `OP-FIND` 不在这里：它的参数是 `(数组, 阈值, 比较码)`（如 `op:OP-FIND:y:x:0:2`），
+    # 直接展开成 `find(x, 0, 2)` 会被 MATLAB 当成 `find(X,K,'direction')` 而报错。
+    # 要回译得先把比较码翻成 `x > 0`，本轮不做 —— 宁可跳过，也不生成"能跑但语义错"的代码。
+    "OP-TRANSPOSE": "__transpose__",
 }
 
 _CMP = {"lt": "<", "le": "<=", "gt": ">", "ge": ">=", "eq": "==", "ne": "~="}
@@ -122,7 +125,14 @@ class Unmirror(object):
                 if sym is None:
                     self.skipped.append(ln)
                     continue
-                self.sub[tmp] = "(%s %s %s)" % (self._e(a), sym, self._e(b))
+                expr = "(%s %s %s)" % (self._e(a), sym, self._e(b))
+                if tmp.startswith("__"):
+                    self.sub[tmp] = expr        # 临时量：内联
+                else:
+                    # **真变量的自增必须落地成赋值**。
+                    # 早前一律内联，`i = i + 1` 被吞掉 -> 回译出的 while 永不退出
+                    # （往返判据里 3 个函数 20s 超时，就是这个）。
+                    self._emit("%s = %s;" % (tmp, expr))
                 continue
             if ln.startswith("for:"):
                 p = ln.split(":")
