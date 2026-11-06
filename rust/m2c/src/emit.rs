@@ -939,8 +939,10 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
             dst
         ));
     } else {
-        out.push(format!("{}/* TODO({}): 参数个数 {} 超出本版能力 */",
-                         pad, op.id, op.args.len()));
+        // **必须带实参列表**：曾经因为只报"参数个数 3"，我猜了一整轮"白名单没生效"，
+        // 真正的原因是 `op.args` 不含左值 —— 打印出来一眼可见。
+        out.push(format!("{}/* TODO({}): 参数个数 {} 超出本版能力：args=[{}] */",
+                         pad, op.id, op.args.len(), op.args.join(", ")));
         out.push(format!("{}return MLC_UNIMPLEMENTED;", pad));
         return out;
     }

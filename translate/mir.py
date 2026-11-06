@@ -142,6 +142,9 @@ def split_functions(source):
         if cur is None:
             continue
         code = _clean(raw).strip()
+        # `full(x)` 在稠密表示下是**恒等**（YALMIP 出现 84 次）：
+        # 在语句级剥掉，别让它挡住里面真正的语义（`full(max(degrees))` -> `max(degrees)`）。
+        code = _strip_full_call(code)
         # 块关键字后面可能带分号：`end;`（YALMIP 实测 35 处）。
         # 不归一化的话：既多一条 unmapped，又让深度记账不降 -> 后续语句嵌错块。
         cb = code.rstrip(";").strip()
@@ -1025,6 +1028,47 @@ def _lower_ctor_dims(out, code, idx_counter):
     return True
 
 
+_FULL_CALL_RE = re.compile(r"^(\s*[A-Za-z_]\w*\s*=\s*)full\s*\((.*)\)\s*(;?)\s*$")
+
+
+def _strip_full_call(code):
+    """把语句里**任意位置**的 `full(...)` 剥成它的实参（稠密表示下 `full` 是恒等）。
+
+    `full` 在 MATLAB 里是"转成稠密"，而我们的数组本来就稠密。YALMIP 里它出现 84 次，
+    但多数不是 `y = full(x)` 这种整句，而是 `full(a)*2`、`x + full(y)` 这种**嵌在表达式里**的形式——
+    只处理整句会漏掉七成。
+
+    剥除按**括号配对**进行，不做正则贪婪匹配（`full(a)*2` 用 `.*` 会吃掉 `a)*2`）。
+    """
+    s = code or ""
+    if "full" not in s:
+        return s
+    out = []
+    i, n = 0, len(s)
+    while i < n:
+        if s.startswith("full", i):
+            j = i + 4
+            while j < n and s[j] == " ":
+                j += 1
+            if j < n and s[j] == "(":
+                depth, k = 0, j
+                while k < n:
+                    if s[k] == "(":
+                        depth += 1
+                    elif s[k] == ")":
+                        depth -= 1
+                        if depth == 0:
+                            break
+                    k += 1
+                if depth == 0 and k < n:      # 找到配对
+                    out.append(s[j + 1:k])
+                    i = k + 1
+                    continue
+        out.append(s[i])
+        i += 1
+    return "".join(out)
+
+
 def _lower_slice_var(out, code, idx_counter):
     """`seg = x(i:j)`（边界含变量）-> i64 临时量 -> `OP-SLICE`。
 
@@ -1218,6 +1262,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             code = _clean(line).strip()
             if not code:
                 continue
+            # `full(x)` 在稠密表示下是恒等（YALMIP 84 次）：剥掉，别挡住真正的语义
+            code = _strip_full_call(code)
             if src_line:
                 out.append("# src:%d" % src_line)
             if code.rstrip(";").strip() == "else":
