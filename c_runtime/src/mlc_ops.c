@@ -1263,6 +1263,51 @@ mlc_status mlc_op_copy(const mlc_array *a, mlc_array *out)
     return MLC_OK;
 }
 
+/* `y = size(x)`：返回维度向量。
+ *
+ * 2-D 返回 `[rows cols]`；1-D（长度 n）在 MATLAB 里是 1×n，返回 `[1 n]`。
+ * 超过 2 维只取前两维 —— 我们的算子目前只建模到 2 维，多出来的维度
+ * 若悄悄丢掉会让人误判形状，所以这里明确只支持 ndim <= 2。 */
+mlc_status mlc_op_size_all(const mlc_array *a, mlc_array *out)
+{
+    int64_t sh[2];
+
+    if (a == NULL || out == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64 || (out->ndim != 0 && out->dtype != MLC_F64)) {
+        return MLC_ERR;
+    }
+    if (a->ndim < 1 || a->ndim > 2) {
+        return MLC_ERR;
+    }
+    if (a->ndim == 1) {
+        sh[0] = 1;
+        sh[1] = a->shape[0];
+    } else {
+        sh[0] = a->shape[0];
+        sh[1] = a->shape[1];
+    }
+    /* 结果长度固定为 2：形状不符就重新定形。
+     * 生成端会把 `size(x)` 的目标推成 [1]（它不知道这算子返回两个数），
+     * 若坚持"形状必须相等"，这条永远 ERR —— 与 `mlc_op_copy` 同一个判断。 */
+    if (mlc_array_numel(out) != 2) {
+        int64_t osh[2];
+        osh[0] = 1;
+        osh[1] = 2;                  /* 结果本身是 1×2 的向量，**数据**才是 [r c] */
+        mlc_array_free(out);
+        out->ndim = 0;
+        out->data = NULL;
+        out->owns_data = 0;
+        if (mlc_array_init(out, MLC_F64, 2, osh) != MLC_OK) {
+            return MLC_ERR;
+        }
+    }
+    ((double *)out->data)[0] = (double)sh[0];
+    ((double *)out->data)[1] = (double)sh[1];
+    return MLC_OK;
+}
+
 mlc_status mlc_op_index(const mlc_array *a, int64_t matlab_index,
                         mlc_array *out)
 {

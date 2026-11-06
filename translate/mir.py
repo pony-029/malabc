@@ -1163,6 +1163,21 @@ def _lower_setidx2(out, code, f, idx_counter):
     return True
 
 
+_SIZEALL_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*size\s*\(\s*([A-Za-z_]\w*)\s*\)\s*;?\s*$")
+
+
+def _lower_size_all(out, code):
+    """`y = size(x)`（无维度参数）-> `OP-SIZE` 单参形态（返回维度向量）。
+
+    `size(x,1)` 早就能用；无维度的那条一直没接，是原子操作体检里唯一的缺口。
+    """
+    m = _SIZEALL_RE.match(code)
+    if m is None:
+        return False
+    out.append("op:OP-SIZE:%s:%s" % (m.group(1), m.group(2)))
+    return True
+
+
 def _lower_setdiff(out, code):
     """`y = setdiff(a,b)` -> `OP-SETDIFF`（YALMIP 145 次，其中整句赋值 97 次）。
 
@@ -1525,6 +1540,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             if me:
                 # `A = []` -> fill:A:0:0（0 个元素的 1 维数组）
                 out.append("fill:%s:0:0" % me.group(1))
+                continue
+            if _lower_size_all(out, code):
                 continue
             if _lower_setidx2(out, code, f, idx_counter):
                 continue

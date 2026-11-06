@@ -706,6 +706,12 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
 
     let arg0 = arg_ref(f, &op.args[0]);
     // 运行期维度填充（`ones(m,n)` 且 m/n 是变量）：由算子自己分配
+    // `y = size(x)`（无维度参数）：返回维度向量
+    if op.id == "OP-SIZE" && op.args.len() == 1 {
+        out.push(format!("{}st = mlc_op_size_all(&{}, {});",
+                         pad, ident(&op.args[0]), dst));
+        return out;
+    }
     // 二维元素赋值 `A(i,j) = v`：args = [i, j, v]（左值就是被写的数组）
     if op.id == "OP-SETIDX2" && op.args.len() == 3 {
         match (idx_operand(f, &op.args[0]), idx_operand(f, &op.args[1])) {

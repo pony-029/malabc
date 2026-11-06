@@ -43,6 +43,7 @@ setdiff1: 3
 setij: 99
 shadowij: 2
 shiftmax: 5
+sizeall: 1 4
 snr: 0
 sumcols: 5 7 9
 sumsq: 30
