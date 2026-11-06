@@ -988,7 +988,28 @@ def _lower_index2_runtime(out, lhs, name, ri, ci, idx_counter):
 
 
 _CTOR_DIMS_RE = re.compile(
-    r"^\s*([A-Za-z_]\w*)\s*=\s*(zeros|ones)\s*\(\s*([^,()]+?)\s*,\s*([^,()]+?)\s*\)\s*;?\s*$")
+    r"^\s*([A-Za-z_]\w*)\s*=\s*(zeros|ones)\s*\((.*)\)\s*;?\s*$")
+
+
+def _split_args(s):
+    """按**顶层逗号**拆参数（括号内的逗号不算）。
+
+    `ones(length(a),1)` 里的 `length(a)` 自带括号，用 `[^,()]+` 那种正则会直接漏掉 ——
+    而"维度里带尺寸查询"正是最常见的形态。
+    """
+    parts, depth, cur = [], 0, []
+    for ch in s:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        if ch == "," and depth == 0:
+            parts.append("".join(cur))
+            cur = []
+            continue
+        cur.append(ch)
+    parts.append("".join(cur))
+    return [p.strip() for p in parts]
 
 
 def _lower_ctor_dims(out, code, idx_counter):
@@ -1001,17 +1022,38 @@ def _lower_ctor_dims(out, code, idx_counter):
     if m is None:
         return False
     lhs, fn = m.group(1), m.group(2)
-    dims = [m.group(3).strip(), m.group(4).strip()]
+    dims = _split_args(m.group(3))
+    if len(dims) != 2:
+        return False                     # `zeros(n)` 单参形态另有语义（方阵），暂不接
     if all(re.match(r"^\d+$", d) for d in dims):
         return False
     _tok = re.compile(r"^(-?\d+|[A-Za-z_]\w*|[A-Za-z_]\w*\s*[+-]\s*\d+)$")
-    if not all(_tok.match(d) for d in dims):
-        return False
+    # 维度里出现**尺寸查询**（`ones(length(solvers),1)`）是最常见的形态（161 次):
+    # 先把 `length(x)`/`numel(x)`/`size(x,k)` 降成一个临时量，再当维度用。
+    # 这些算子本来就有，缺的只是"在维度位置也认它"。
+    _q = re.compile(r"^(length|numel)\s*\(\s*([A-Za-z_]\w*)\s*\)$")
+    _q2 = re.compile(r"^size\s*\(\s*([A-Za-z_]\w*)\s*,\s*(\d)\s*\)$")
+
     toks = []
     for d in dims:
         if re.match(r"^\d+$", d):
             toks.append(d)
             continue
+        qm = _q.match(d)
+        q2 = _q2.match(d)
+        if qm or q2:
+            idx_counter[0] += 1
+            t = "__s%d" % idx_counter[0]
+            if qm:
+                out.append("op:OP-%s:%s:%s"
+                           % (qm.group(1).upper(), t, qm.group(2)))
+            else:
+                out.append("op:OP-SIZE:%s:%s:%s"
+                           % (t, q2.group(1), q2.group(2)))
+            toks.append(t)
+            continue
+        if not _tok.match(d):
+            return False
         idx_counter[0] += 1
         t = "__n%d" % idx_counter[0]
         out.append("var:%s:i64" % t)

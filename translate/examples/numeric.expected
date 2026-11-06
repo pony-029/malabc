@@ -33,6 +33,7 @@ mmul: 22 28 49 64
 ncols: 3
 notempty: 1
 nzcount: 4
+oneslen: 1 1 1
 pickmax: 4
 plus1: 2 3 4
 relu: 1 2 3 4 5

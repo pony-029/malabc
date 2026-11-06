@@ -1071,7 +1071,13 @@ fn idx_operand(f: &Func, tok: &str) -> Option<String> {
     if f.rets.iter().any(|r| r.name == tok) {
         return Some(format!("(int64_t)((double *){}->data)[0]", name));
     }
-    let known = f.args.iter().any(|a| a.name == tok) || f.var_dtype(tok).is_some();
+    // `__` 前缀是发射器自己生成的**临时量**（`__s1`/`__n1`/`__v3`…），
+    // 它们一定是 `mlc_array` 局部量；`var_dtype` 里查不到，所以要单独认。
+    // 少了这条，`ones(length(x),1)` 这种"维度来自尺寸查询"的形态会退化成桩。
+    let is_temp = tok.starts_with("__");
+    let known = f.args.iter().any(|a| a.name == tok)
+        || f.var_dtype(tok).is_some()
+        || is_temp;
     if known {
         return Some(format!("(int64_t)((double *){}.data)[0]", name));
     }
