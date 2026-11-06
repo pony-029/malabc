@@ -15,6 +15,16 @@ Python 支持无源码分发：把 `foo.py` 编译成同目录的 `foo.pyc`，�
 
 验证（解包后直接跑）：`matlabc_lsp.pyc` → `[matlabc] start` rc=0；`matlabc.pyc --help` rc=0。
 
+- **给「不暴露源码」加回归锁**（`tests/test_vsix_sourceless.py`，已接 GX2，2.1s）
+  打包方式改了但没有锁 —— 任何人把 `build_vsix.py` 里那两处 `_write_py` 改回 `z.write`，
+  包会**静默**变回源码，而所有已有判据都不会红。两向断言：
+
+  1. 包内 `.py` 数量必须为 **0**、`.pyc` 必须 > 30；
+  2. **解包后真跑**：`python matlabc.pyc --help` 必须 rc=0，
+     且 `matlabc_lsp.pyc` 的输出里不得出现「找不到 matlabc.py」。
+
+  第 2 条是关键 —— R654 的三处适配里，LSP 那处**只在真跑时才暴露**。
+
 ## 2.3.0
 
 ### 修复
