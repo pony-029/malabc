@@ -13,6 +13,8 @@ R204：**把分析器一起打包**。
 import io
 import json
 import os
+import py_compile
+import tempfile
 import zipfile
 
 # **路径从脚本位置推导**（R332）：以前写死 `e:\matlabc\malabc` 与
@@ -116,6 +118,31 @@ PY_DIRS = ("analyzer", "binfmt", "frontends", "harness",
 SKIP_DIRS = ("__pycache__",)
 
 
+#: 只发 `.pyc`（无源码分发）：`.py` 会被编译成同名 `.pyc` 再打包。
+#: Python 在找不到 `.py` 时会直接加载同目录的 `.pyc`，入口脚本也能 `python x.pyc`。
+SOURCELESS = True
+_PYC_TMP = os.path.join(tempfile.gettempdir(), "m2c_pyc")
+
+
+def _write_py(z, full, arcname):
+    """把一个 .py 以 .pyc 形式写入 zip（保留相对路径，只换后缀）。
+
+    **非 .py 一律原样打包** —— 这个函数同时被 JS 循环调用，
+    早期版本没有这层判断，于是把 `extension.js` 当 Python 编译了。
+    """
+    if not arcname.endswith(".py"):
+        z.write(full, arcname)
+        return
+    rel = arcname[:-3] + ".pyc"
+    if not SOURCELESS:
+        z.write(full, arcname)
+        return
+    os.makedirs(_PYC_TMP, exist_ok=True)
+    out = os.path.join(_PYC_TMP, os.path.basename(rel))
+    py_compile.compile(full, cfile=out, doraise=True, optimize=2)
+    with io.open(out, "rb") as fh:
+        z.writestr(rel, fh.read())
+
 def add_bytes(z, path, arcname):
     with io.open(path, "rb") as fh:
         z.writestr(arcname, fh.read())
@@ -133,14 +160,14 @@ with zipfile.ZipFile(OUT, "w", zipfile.ZIP_DEFLATED) as z:
         if not os.path.isfile(p):
             print("skip missing:", fn)
             continue
-        z.write(p, "extension/" + fn)
+        _write_py(z, p, "extension/" + fn)
 
     for fn in PY_FILES:
         p = os.path.join(REPO, fn)
         if not os.path.isfile(p):
             print("skip missing:", fn)
             continue
-        z.write(p, "extension/" + fn)
+        _write_py(z, p, "extension/" + fn)
 
     for d in ASSET_DIRS:
         base = os.path.join(SRC, d)
@@ -151,7 +178,7 @@ with zipfile.ZipFile(OUT, "w", zipfile.ZIP_DEFLATED) as z:
             for n in sorted(names):
                 full = os.path.join(dirpath, n)
                 rel = os.path.relpath(full, SRC).replace("\\", "/")
-                z.write(full, "extension/" + rel)
+                _write_py(z, full, "extension/" + rel)
 
     for d in PY_DIRS:
         base = os.path.join(REPO, d)
@@ -162,7 +189,7 @@ with zipfile.ZipFile(OUT, "w", zipfile.ZIP_DEFLATED) as z:
                     continue
                 full = os.path.join(dirpath, n)
                 rel = os.path.relpath(full, REPO).replace("\\", "/")
-                z.write(full, "extension/" + rel)
+                _write_py(z, full, "extension/" + rel)
 
     # 手册里的示意图：**整目录**映射，与 USER_GUIDE.md 的相对路径
     # （`figures/x.png`）保持一致 —— 手册解开后图能直接显示。

@@ -34,7 +34,20 @@ import threading
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-MATLABC = os.path.join(HERE, "matlabc.py")
+def _resolve_matlabc():
+    """定位 `matlabc.py`；**sourceless 分发包**里只有 `matlabc.pyc`。
+
+    vsix 现在只发 .pyc（不暴露源码），如果这里只认 `.py`，
+    装好的扩展会立刻报「缺输入：找不到 matlabc.py」——实测过。
+    """
+    for name in ("matlabc.py", "matlabc.pyc"):
+        p = os.path.join(HERE, name)
+        if os.path.isfile(p):
+            return p
+    return os.path.join(HERE, "matlabc.py")
+
+
+MATLABC = _resolve_matlabc()
 
 #: `--json` 的 `level` -> LSP severity（1=Error 2=Warning 3=Information 4=Hint）
 SEVERITY = {"error": 1, "warning": 2, "note": 3, "info": 3, "hint": 4}

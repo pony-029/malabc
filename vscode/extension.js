@@ -650,6 +650,17 @@ function _syncCounterpart(editor) {
 // "Add to PATH" 默认不勾；conda 装在用户目录；微软商店版在 WindowsApps）。
 // 让他们"去设置里填绝对路径"等于让他们自己去翻磁盘 —— 而这台机器上
 // 扩展明明可以替他们找。
+// 打包只带 `.pyc`（不暴露源码）：定位入口时先试 .py，再退到同名 .pyc。
+// Python 支持无源码分发 —— 找不到 .py 时会直接加载同目录的 .pyc。
+function m2cPickScript(p) {
+  if (fs.existsSync(p)) { return p; }
+  if (/\.py$/.test(p)) {
+    const alt = p.slice(0, -3) + '.pyc';
+    if (fs.existsSync(alt)) { return alt; }
+  }
+  return p;
+}
+
 function pythonCandidates() {
   const out = [];
   const push = (p) => {
@@ -972,9 +983,10 @@ function activate(context) {
   let lspPath = cfg.get('lspPath');
   if (!lspPath) {
     for (const c of candidates) {
-      if (fs.existsSync(c)) { lspPath = c; break; }
+      // 打包只带 .pyc：`.py` 不在时用同名 .pyc（无源码分发）
+      if (fs.existsSync(c)) { lspPath = m2cPickScript(c); break; }
     }
-    if (!lspPath) lspPath = candidates[0];
+    if (!lspPath) lspPath = m2cPickScript(candidates[0]);
   }
   const python = cfg.get('pythonPath', 'python');
 
@@ -991,7 +1003,12 @@ function activate(context) {
       path.join(root, 'malabc', 'matlabc.py'),
     ];
     for (const c of cands) {
-      try { if (fs.existsSync(c)) return c; } catch (e) { /* 下一个 */ }
+      try { if (fs.existsSync(c)) return m2cPickScript(c); } catch (e) { /* 下一个 */ }
+      // `.py` 不在但 `.pyc` 在（sourceless 分发）
+      try {
+        const alt = m2cPickScript(c);
+        if (fs.existsSync(alt)) return alt;
+      } catch (e) { /* 下一个 */ }
     }
     return null;
   }
