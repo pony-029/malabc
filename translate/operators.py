@@ -66,6 +66,11 @@ OPERATORS = (
      "sample": "A(i, j) = v;",
      "trigger": "syntax",
      "verified_by": ""},
+    {"id": "OP-COPY", "matlab": "y = A", "c": "mlc_op_copy",
+     "kind": "shape", "rules": ("SHAPE-1",),
+     "sample": "y = A;",
+     "trigger": "syntax",
+     "verified_by": ""},
     {"id": "OP-SUM", "matlab": "sum(x)", "c": "mlc_op_sum",
      "kind": "reduction", "rules": ("ORDER-1",),
      "sample": "y = sum(x);",
@@ -205,7 +210,7 @@ OPERATORS = (
 #: `OP-MATMUL` 已由 mlc_ops.c 真实现（2-D f64）；
 #: 注意 `*` / `.*` 在**文本层**都映射到 OP-MUL —— 二者的区别要看形状，
 #: 由 translate/mir.py 在知道 shape 之后决定是否升级成 OP-MATMUL。
-C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-HCAT", "OP-FILLA", "OP-SETDIFF", "OP-SETIDX2", "OP-IDX2",
+C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-HCAT", "OP-FILLA", "OP-SETDIFF", "OP-SETIDX2", "OP-COPY", "OP-IDX2",
                  "OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN", "OP-INDEX",
                  "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE",
                  "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE", "OP-COL", "OP-COLRANGE",

@@ -11,7 +11,7 @@ use crate::mir::{walk_stmts, Cond, Func, Op, Stmt};
 /// 已经有 C 落点的算子（与 `translate/operators.py` 的 `C_IMPLEMENTED` 对齐）。
 pub const C_IMPLEMENTED: &[&str] = &[
     "OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-SUM", "OP-MEAN", "OP-MAX",
-    "OP-MIN", "OP-INDEX", "OP-IDX2", "OP-FILLA", "OP-SETDIFF", "OP-SETIDX2",
+    "OP-MIN", "OP-INDEX", "OP-IDX2", "OP-FILLA", "OP-SETDIFF", "OP-SETIDX2", "OP-COPY",
     "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE", "OP-HCAT",
     "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE", "OP-COL", "OP-COLRANGE", "OP-SQRT", "OP-ABS", "OP-EXP", "OP-LOG",
     "OP-SIN", "OP-COS", "OP-TAN", "OP-FLOOR", "OP-CEIL",
@@ -1208,14 +1208,31 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                         out.push(format!("{}{} = {};", indent, ident(lhs), v))
                     }
                     _ => {
-                        out.push(format!(
-                            "{}/* TODO(set): {} = {} 不是合法的标量赋值 */",
-                            indent,
-                            sanitize_comment(lhs),
-                            sanitize_comment(value)
-                        ));
-                        out.push(format!("{}return MLC_UNIMPLEMENTED;", indent));
-                        terminated = true;
+                        // `y = A`（A 是**数组**）：整体拷贝。
+                        // 此前一律落进下面的 TODO —— 而这属于最基础的操作之一。
+                        let rhs_is_array = f.args.iter().any(|a| &a.name == value)
+                            || f.rets.iter().any(|r| &r.name == value)
+                            || f.var_shape(value).is_some();
+                        if rhs_is_array {
+                            let dst = if f.rets.iter().any(|r| &r.name == lhs) {
+                                ident(lhs)
+                            } else {
+                                format!("&{}", ident(lhs))
+                            };
+                            out.push(format!("{}st = mlc_op_copy(&{}, {});",
+                                             indent, ident(value), dst));
+                            out.push(format!("{}if (st != MLC_OK) {{ return st; }}",
+                                             indent));
+                        } else {
+                            out.push(format!(
+                                "{}/* TODO(set): {} = {} 不是合法的标量赋值 */",
+                                indent,
+                                sanitize_comment(lhs),
+                                sanitize_comment(value)
+                            ));
+                            out.push(format!("{}return MLC_UNIMPLEMENTED;", indent));
+                            terminated = true;
+                        }
                     }
                 }
             }

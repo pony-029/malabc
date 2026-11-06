@@ -159,6 +159,7 @@ mlc_status mlc_op_fill_alloc(int64_t rows, int64_t cols, double value,
                             mlc_array *out);
 mlc_status mlc_op_setdiff_alloc(const mlc_array *a, const mlc_array *b,
                                   mlc_array *out);
+mlc_status mlc_op_copy(const mlc_array *a, mlc_array *out);
 mlc_status mlc_op_index(const mlc_array *a, int64_t matlab_index,
                         mlc_array *out);
 mlc_status mlc_op_transpose(const mlc_array *a, mlc_array *out);

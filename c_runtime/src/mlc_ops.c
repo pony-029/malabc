@@ -10,6 +10,7 @@
 #include <math.h>
 
 #include <stddef.h>
+#include <string.h>
 
 enum {
     MLC_BIN_ADD = 0,
@@ -1222,6 +1223,43 @@ mlc_status mlc_op_setdiff_alloc(const mlc_array *a, const mlc_array *b,
         }
     }
     out->shape[0] = (k > 0) ? k : 0;
+    return MLC_OK;
+}
+
+/* 整体拷贝：`y = A`（A 是数组）。
+ *
+ * 生成端此前只处理标量赋值，数组赋值直接退化成桩 —— 这是最基础的操作之一。
+ * 形状必须完全一致：不一致说明形状推断错了，**报错而不是悄悄改形状**，
+ * 否则错误会以"结果对但形状不对"的形式传下去。 */
+mlc_status mlc_op_copy(const mlc_array *a, mlc_array *out)
+{
+    int64_t n;
+
+    if (a == NULL || out == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    n = mlc_array_numel(a);
+    /* 拷贝**以源为准**：形状不符就重新定形。
+     * 生成端对 `set:` 没有形状信息，会把目标推成 [1]；此时若坚持"形状必须相等"，
+     * `y = A` 就永远是 ERR。形状在这里的错误来源是推断，不是数据。 */
+    if (out->ndim != a->ndim || mlc_array_numel(out) != n) {
+        mlc_array_free(out);
+        out->ndim = 0;
+        out->data = NULL;
+        out->owns_data = 0;
+        if (mlc_array_init(out, a->dtype, a->ndim, a->shape) != MLC_OK) {
+            return MLC_ERR;
+        }
+    }
+    if (n > 0) {
+        if (a->data == NULL || out->data == NULL) {
+            return MLC_ERR;
+        }
+        memcpy(out->data, a->data, (size_t)n * sizeof(double));
+    }
     return MLC_OK;
 }
 
