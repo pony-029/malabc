@@ -55,9 +55,9 @@ Python 支持无源码分发：把 `foo.py` 编译成同目录的 `foo.pyc`，�
 - 撞到两道门，都是**名字约定**问题：`OP1` 要求 `sample` 非空、`TP8` 要求分配型算子的
   C 符号必须叫 `*_alloc`。两条都不是功能问题，但不满足就红。
 
-- **`tools/walkthrough.py`：一条命令打印完整转换过程（每步都是真实产物）**
+- **`translate/walkthrough.py`：一条命令打印完整转换过程（每步都是真实产物）**
   ```bash
-  python tools/walkthrough.py translate/examples/numeric/fir_lp.m
+  python translate/walkthrough.py translate/examples/numeric/fir_lp.m
   ```
   五步逐层给出可核对的东西，而不是复述流程：
 

@@ -26,8 +26,16 @@ def _sha(p):
     return hashlib.sha256(io.open(p, "rb").read()).hexdigest()[:12]
 
 
-def _run(cmd, **kw):
-    return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, **kw)
+#: 统一的子进程入口：**必须**给 stdin=DEVNULL 与 timeout。
+#: 本仓有真实挂死案例（继承调用方句柄后读 stdin 永久阻塞）。
+_RUN_TIMEOUT = 600
+
+
+def _run(cmd):
+    # 卫生门（S1/S2）要求这两个**字面出现**在这个调用里：
+    # 早前用 setdefault 隐式传，检查器看不见 —— 而它挡的是真实挂死案例。
+    return subprocess.run(cmd, stdin=subprocess.DEVNULL, timeout=_RUN_TIMEOUT,
+                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
 
 def main():
