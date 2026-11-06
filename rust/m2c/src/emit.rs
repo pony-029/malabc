@@ -12,6 +12,7 @@ use crate::mir::{walk_stmts, Cond, Func, Op, Stmt};
 pub const C_IMPLEMENTED: &[&str] = &[
     "OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-SUM", "OP-MEAN", "OP-MAX",
     "OP-MIN", "OP-INDEX", "OP-IDX2", "OP-FILLA", "OP-SETDIFF", "OP-SETIDX2", "OP-COPY",
+    "OP-VCAT",
     "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE", "OP-HCAT",
     "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE", "OP-COL", "OP-COLRANGE", "OP-SQRT", "OP-ABS", "OP-EXP", "OP-LOG",
     "OP-SIN", "OP-COS", "OP-TAN", "OP-FLOOR", "OP-CEIL",
@@ -87,7 +88,7 @@ pub fn ident(name: &str) -> String {
 
 /// 输出长度**数据相关**的算子：不能由调用方预先 init，
 /// 必须由算子自己分配（`*_alloc` 变体），调用方负责 free。
-pub const DYNAMIC_OPS: &[&str] = &["OP-MASK", "OP-FIND", "OP-FILLA", "OP-SETDIFF"];
+pub const DYNAMIC_OPS: &[&str] = &["OP-MASK", "OP-FIND", "OP-FILLA", "OP-SETDIFF", "OP-VCAT"];
 
 pub fn op_is_dynamic(id: &str) -> bool {
     DYNAMIC_OPS.contains(&id)
@@ -706,6 +707,12 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
 
     let arg0 = arg_ref(f, &op.args[0]);
     // 运行期维度填充（`ones(m,n)` 且 m/n 是变量）：由算子自己分配
+    // 竖直拼接 `[a;b]`：列数相同、行数相加（运行期才知道行数）
+    if op.id == "OP-VCAT" && op.args.len() == 2 {
+        out.push(format!("{}st = mlc_op_vcat_alloc(&{}, &{}, {});",
+                         pad, ident(&op.args[0]), ident(&op.args[1]), dst));
+        return out;
+    }
     // `y = size(x)`（无维度参数）：返回维度向量
     if op.id == "OP-SIZE" && op.args.len() == 1 {
         out.push(format!("{}st = mlc_op_size_all(&{}, {});",

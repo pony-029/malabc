@@ -1308,6 +1308,66 @@ mlc_status mlc_op_size_all(const mlc_array *a, mlc_array *out)
     return MLC_OK;
 }
 
+/* 竖直拼接：`[a;b]`（列数相同，行数相加）。
+ *
+ * 1-D 按 1×n 处理（MATLAB 里行向量），所以两个长度 n 的一维向量拼成 2×n。
+ * 行数运行期才知道 -> 输出就地分配。
+ * `a` 与 `out` 若是同一块内存（`x = [x; v]`）直接拒绝：那需要 realloc，
+ * 猜它会静默丢数据。 */
+mlc_status mlc_op_vcat_alloc(const mlc_array *a, const mlc_array *b,
+                             mlc_array *out)
+{
+    int64_t ra, ca, rb, cb, n;
+    int64_t sh[2];
+    double *po;
+    const double *pa, *pb;
+
+    if (a == NULL || b == NULL || out == NULL) {
+        return MLC_ERR;
+    }
+    if (a->dtype != MLC_F64 || b->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    if (out == a || out == b) {
+        return MLC_ERR;              /* 自累积：需要 realloc，不在这里做 */
+    }
+    if (a->ndim == 1) { ra = 1; ca = a->shape[0]; }
+    else if (a->ndim == 2) { ra = a->shape[0]; ca = a->shape[1]; }
+    else { return MLC_ERR; }
+
+    if (b->ndim == 1) { rb = 1; cb = b->shape[0]; }
+    else if (b->ndim == 2) { rb = b->shape[0]; cb = b->shape[1]; }
+    else { return MLC_ERR; }
+
+    if (ca != cb) {
+        return MLC_ERR;              /* 列数必须相同 */
+    }
+    sh[0] = ra + rb;
+    sh[1] = ca;
+    n = sh[0] * ca;
+    if (n <= 0) {
+        return MLC_ERR;
+    }
+    if (out->ndim == 0 || mlc_array_numel(out) != n) {
+        mlc_array_free(out);
+        out->ndim = 0;
+        out->data = NULL;
+        out->owns_data = 0;
+        if (mlc_array_init(out, MLC_F64, 2, sh) != MLC_OK) {
+            return MLC_ERR;
+        }
+    }
+    pa = (const double *)a->data;
+    pb = (const double *)b->data;
+    po = (double *)out->data;
+    if (pa == NULL || pb == NULL || po == NULL) {
+        return MLC_ERR;
+    }
+    memcpy(po, pa, (size_t)(ra * ca) * sizeof(double));
+    memcpy(po + ra * ca, pb, (size_t)(rb * cb) * sizeof(double));
+    return MLC_OK;
+}
+
 mlc_status mlc_op_index(const mlc_array *a, int64_t matlab_index,
                         mlc_array *out)
 {

@@ -1225,6 +1225,46 @@ def _lower_slice_var(out, code, idx_counter):
     return True
 
 
+_VCAT_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*\[([^\]]*)\]\s*;?\s*$")
+
+
+def _lower_vcat(out, code, idx_counter):
+    """`y = [a; b]` -> `OP-VCAT` 链（竖直拼接）。
+
+    只接**纯名字**用分号分隔的形态（真实工程里最常见的 `ph = [ph; h]` 那种别名形式
+    明确拒绝：输出与输入同内存，需要 realloc，猜会静默丢数据）。
+    """
+    m = _VCAT_RE.match(code)
+    if m is None:
+        return False
+    lhs, body = m.group(1), m.group(2).strip()
+    if not body or ";" not in body:
+        return False                     # 没有分号 = 水平拼接，交给 _lower_hcat
+    parts = [p for p in body.split(";")]
+    parts = [p.strip() for p in parts if p.strip()]
+    if len(parts) < 2:
+        return False
+    toks = []
+    for p in parts:
+        if re.match(r"^[A-Za-z_]\w*$", p):
+            toks.append(p)
+        else:
+            return False                 # 数字/调用/切片：不猜
+    if lhs in toks:
+        return False                     # `x = [x; v]` 自累积：需 realloc，拒绝
+    cur = toks[0]
+    for i, t in enumerate(toks[1:]):
+        last = (i == len(toks) - 2)
+        if last:
+            dst = lhs
+        else:
+            idx_counter[0] += 1
+            dst = "__v%d" % idx_counter[0]
+        out.append("op:OP-VCAT:%s:%s:%s" % (dst, cur, t))
+        cur = dst
+    return True
+
+
 def _lower_hcat(out, code, idx_counter):
     """`y = [a b]` -> `OP-HCAT` 链。返回 True 表示已处理（调用方 continue）。"""
     m = _HCAT_RE.match(code)
@@ -1550,6 +1590,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             if _lower_ctor_dims(out, code, idx_counter):
                 continue
             if _lower_slice_var(out, code, idx_counter):
+                continue
+            if _lower_vcat(out, code, idx_counter):
                 continue
             if _lower_hcat(out, code, idx_counter):
                 continue
