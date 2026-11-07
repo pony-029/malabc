@@ -1507,6 +1507,21 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
         # **参数 struct 展开**：声明的 `s.a`/`s.b` 变成独立形参 `s_a`/`s_b`。
         # 没有声明就绝不动 —— 解析器分不清"结构体字段"和"对象属性"。
         _sf = f.get("struct_fields") or {}
+        # **返回值 struct**：`Z.a = ...`（函数构建一个结构体返回）。
+        # 与参数 struct 对称 —— 展开成多个返回值 `Z_a`。实测 YALMIP 里
+        # "只差一条"的函数中，19 个卡在这类"返回值 struct 写入"。
+        _rf = {n: v for n, v in _sf.items() if n in (f.get("rets") or [])}
+        if _rf:
+            _new_rets = []
+            for _r in f["rets"]:
+                if _r in _rf:
+                    for _fld in _rf[_r]:
+                        _new_rets.append("%s_%s" % (_r, _fld))
+                else:
+                    _new_rets.append(_r)
+            f["rets"] = _new_rets
+            f["args"] = [a for a in f["args"] if a not in _rf]
+            f["_struct_out"] = sorted(_rf)
         if _sf:
             _expanded = []
             for _a in f["args"]:
@@ -1539,7 +1554,9 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             out.append("var:%s:i64" % l)
         # 局部 struct 的无损展开：`s.a` -> `s_a`（只在本函数内、且该名字没有整体流转）
         # 已声明的参数 struct 也参与改写（它们已不在 `args` 里，故需显式并入）
-        struct_hosts = _collect_struct_hosts(f) | set(f.get("struct_fields") or {})
+        struct_hosts = (_collect_struct_hosts(f)
+                        | set(f.get("struct_fields") or {})
+                        | set(f.get("_struct_out") or []))
         # 标量名 = i64 标注过 + 局部标量；其余都是数组（mlc_array）
         for _l in (f.get("locals") or []):
             scalar_names.add(_l)
