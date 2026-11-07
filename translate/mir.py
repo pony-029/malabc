@@ -72,7 +72,19 @@ _FOR_RE = re.compile(r"^for\s+(?P<var>[A-Za-z_]\w*)\s*=\s*(?P<a>[\w]+)\s*:\s*(?P
 
 #: `% @m2c shape x 3` / `% @m2c shape x 3,3` —— 形状必须**显式**说明。
 #: 没有它，发射器不知道 `mlc_array_init` 该给多大，只能发 TODO。
-_SHAPE_RE = re.compile(r"^\s*%\s*@m2c\s+shape\s+(?P<name>[A-Za-z_]\w*)\s+(?P<dims>[\d,\s]+)$")
+#: 形状注解允许**带点**的名字（`% @m2c shape s.a 3`）—— 参数 struct 展开后
+#: 字段就是独立形参 `s_a`，形状自然要能按字段声明。
+_SHAPE_RE = re.compile(
+    r"^\s*%\s*@m2c\s+shape\s+(?P<name>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)\s+(?P<dims>[\d,\s]+)$")
+
+#: `% @m2c fields s.a s.b` —— **显式声明**某个形参是"一组标量"（参数 struct）。
+#:
+#: 为什么必须显式：`x.basis` 在 MATLAB 里既可能是结构体字段，也可能是对象属性，
+#: 解析器看不到类型。声明之后，`s.a` 可以无损展开成独立形参 `s_a`，
+#: C 签名随之变成 `f(s_a, s_b)`。实测 YALMIP 有 115 个函数"只差 struct"，
+#: 而那些 struct 全是形参 —— 这是阶段 3 的真正杠杆。
+_FIELDS_RE = re.compile(
+    r"^\s*%\s*@m2c\s+fields\s+(?P<host>[A-Za-z_]\w*)\s*\.\s*(?P<field>[A-Za-z_]\w*)\s*$")
 #: `% @m2c local n i64` —— 声明一个局部 i64 标量（数组临时由算子输出隐式产生）
 _LOCAL_RE = re.compile(r"^\s*%\s*@m2c\s+local\s+(?P<name>[A-Za-z_]\w*)\s+i64$")
 #: `lhs = rhs` 的通用形状（算子识别失败后才会走到这里）
@@ -180,7 +192,13 @@ def split_functions(source):
         sm = _SHAPE_RE.match(raw)
         if sm:
             dims = [d.strip() for d in sm.group("dims").split(",") if d.strip()]
-            cur["shapes"][sm.group("name")] = dims
+            # 带点的形状按展开后的形参名存（`s.a` -> `s_a`）
+            cur["shapes"][sm.group("name").replace(".", "_")] = dims
+            continue
+        fm = _FIELDS_RE.match(raw)
+        if fm:
+            cur.setdefault("struct_fields", {}).setdefault(fm.group("host"), [])
+            cur["struct_fields"][fm.group("host")].append(fm.group("field"))
             continue
         am = _ANNO_RE.match(raw)
         if am:
@@ -808,7 +826,16 @@ def reject_reason(f, srcfile=""):
         why.append("method")
     if any(("{" in ln or "}" in ln) for ln in f["lines"]):
         why.append("cell")
-    if any(_has_struct_ref(ln) for ln in f["lines"]):
+    # **已声明的**参数 struct 不算拒绝理由：它们会被展开成独立形参。
+    # 未声明的一律拒绝 —— 解析器分不清"结构体字段"和"对象属性"。
+    _sf = set(f.get("struct_fields") or {})
+    if _sf:
+        # 占位符**不能带点**：`X.` 本身还是"字段访问"，会被 _has_struct_ref 再抓一次。
+        _pat = re.compile(r"\b(?:%s)\s*\." % "|".join(sorted(_sf)))
+        _bad = any(_has_struct_ref(_pat.sub("S_", ln)) for ln in f["lines"])
+    else:
+        _bad = any(_has_struct_ref(ln) for ln in f["lines"])
+    if _bad:
         why.append("struct")
     return ",".join(why)
 
@@ -1477,6 +1504,18 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
         # （只影响 `why:` 分类，不影响任何语义）
         global _CUR_F
         _CUR_F = f
+        # **参数 struct 展开**：声明的 `s.a`/`s.b` 变成独立形参 `s_a`/`s_b`。
+        # 没有声明就绝不动 —— 解析器分不清"结构体字段"和"对象属性"。
+        _sf = f.get("struct_fields") or {}
+        if _sf:
+            _expanded = []
+            for _a in f["args"]:
+                if _a in _sf:
+                    for _fld in _sf[_a]:
+                        _expanded.append("%s_%s" % (_a, _fld))
+                else:
+                    _expanded.append(_a)
+            f["args"] = _expanded
         out.append("# source_sha256:%s" % src_hash)
         if srcfile:
             # 供 m2c 按源文件拆分输出；路径用相对工程根的写法
@@ -1499,7 +1538,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
         for l in f.get("locals") or []:
             out.append("var:%s:i64" % l)
         # 局部 struct 的无损展开：`s.a` -> `s_a`（只在本函数内、且该名字没有整体流转）
-        struct_hosts = _collect_struct_hosts(f)
+        # 已声明的参数 struct 也参与改写（它们已不在 `args` 里，故需显式并入）
+        struct_hosts = _collect_struct_hosts(f) | set(f.get("struct_fields") or {})
         # 标量名 = i64 标注过 + 局部标量；其余都是数组（mlc_array）
         for _l in (f.get("locals") or []):
             scalar_names.add(_l)
