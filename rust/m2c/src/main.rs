@@ -102,6 +102,12 @@ fn main() -> ExitCode {
                 }
                 name = emit::ident(&args[i]);
             }
+            // `--shape`：`m2c run` 用，形参形状覆盖（值在下一个 token）。
+            // 必须在外层循环里被"认领"，否则会被当成未知参数直接退出 ——
+            // 而错误发生在 `run` 分支之前，看起来像"run 没实现这个开关"。
+            "--shape" => {
+                i += 1;
+            }
             other => {
                 eprintln!("不认识的参数：{}", other);
                 return ExitCode::from(2);
