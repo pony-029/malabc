@@ -47,7 +47,7 @@ _FN = {
 _CMP = {"lt": "<", "le": "<=", "gt": ">", "ge": ">=", "eq": "==", "ne": "~="}
 
 #: 掩码比较码 → MATLAB 运算符。取值来自 C 的 `mlc_mask_test`，**不要另造一套**。
-_CMP_CODE = {"0": ">", "1": ">=", "2": "<", "3": "<=", "4": "=="}
+_CMP_CODE = {"0": ">", "1": ">=", "2": "<", "3": "<=", "4": "==", "5": "~="}
 
 
 class Unmirror(object):
@@ -159,6 +159,12 @@ class Unmirror(object):
                 self._emit("else")
                 self.indent += 1
                 continue
+            if ln == "return" or ln.startswith("return:"):
+                self._emit("return;")
+                continue
+            if ln == "break":
+                self._emit("break;")
+                continue
             if ln == "end":
                 self.indent = max(1, self.indent - 1)
                 self._emit("end")
@@ -206,9 +212,24 @@ class Unmirror(object):
         if oid == "OP-VCAT" and len(a) >= 2:
             self._emit("%s = [%s; %s];" % (dst, self._e(a[0]), self._e(a[1])))
             return
-        if oid == "OP-SETIDX" and len(a) >= 3:
-            # setidx:dst:val:idx  ->  dst(idx) = val
-            self._emit("%s(%s) = %s;" % (dst, self._e(a[2]), self._e(a[1])))
+        if oid == "OP-SETIDX" and len(a) >= 2:
+            # **`args` 不含左值**：`op:OP-SETIDX:y:__s1:i` -> a = [__s1, i]
+            # 早前按 3 个参数写（a[0]=val、a[2]=idx），永远不匹配 -> 整条跳过。
+            self._emit("%s(%s) = %s;" % (dst, self._e(a[1]), self._e(a[0])))
+            return
+        if oid == "OP-ROW" and len(a) >= 2:
+            # `op:OP-ROW:y:A:2` -> `y = A(2, :);`
+            self._emit("%s = %s(%s, :);" % (dst, self._e(a[0]), self._e(a[1])))
+            return
+        if oid == "OP-COLRANGE" and len(a) >= 3:
+            # `op:OP-COLRANGE:y:A:2:-1` -> `y = A(:, 2:end);`（-1 表示 end）
+            f = self._e(a[1])
+            t = "end" if a[2].strip() == "-1" else self._e(a[2])
+            self._emit("%s = %s(:, %s:%s);" % (dst, self._e(a[0]), f, t))
+            return
+        if oid == "OP-SETDIFF" and len(a) >= 2:
+            self._emit("%s = setdiff(%s, %s);"
+                       % (dst, self._e(a[0]), self._e(a[1])))
             return
         if oid == "OP-SETIDX2" and len(a) >= 3:
             self._emit("%s(%s, %s) = %s;"
