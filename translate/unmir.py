@@ -80,7 +80,7 @@ class Unmirror(object):
 
     # ---------- 主流程 ----------
     def run(self, text):
-        name, args, rets = "f", [], []
+        name, args, rets, shapes = "f", [], [], []
         for raw in text.splitlines():
             ln = raw.strip()
             if not ln or ln.startswith("#") or ln.startswith("version "):
@@ -91,10 +91,17 @@ class Unmirror(object):
             if ln.startswith("arg:"):
                 p = ln.split(":")
                 args.append(p[1].strip())
+                # **把形状带出去**：`arg:x:f64:2,3` -> `% @m2c shape x 2,3`。
+                # 不带的后果很具体：回译出的 .m' 再走一次 mir.py 时形参退回默认长度，
+                # 于是"同一函数"在两侧输入不同形 —— 用 VM 自证时表现为 5 个函数假红（R697）。
+                if p[-1].replace(",", "").isdigit():
+                    shapes.append((p[1].strip(), p[-1].strip()))
                 continue
             if ln.startswith("ret:"):
                 p = ln.split(":")
                 rets.append(p[1].strip())
+                if p[-1].replace(",", "").isdigit():
+                    shapes.append((p[1].strip(), p[-1].strip()))
                 continue
             if ln.startswith("var:"):
                 continue                     # 临时量：内联，不声明
@@ -180,6 +187,10 @@ class Unmirror(object):
 
         lhs = ("[%s]" % ", ".join(rets)) if len(rets) > 1 else (rets[0] if rets else "y")
         head = "function %s = %s(%s)" % (lhs, name, ", ".join(args))
+        # 形状注解：让回译产物**自带输入契约**，再解析时不会退回默认长度
+        ann = ["%% @m2c shape %s %s" % (n, d) for n, d in shapes]
+        if ann:
+            head = "\n".join([head] + ann)
         body = list(self.lines)
         if not body:
             body = ["  %s = %s;" % (rets[0] if rets else "y", args[0] if args else "0")]
