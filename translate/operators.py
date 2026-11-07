@@ -167,6 +167,10 @@ OPERATORS = (
      "kind": "slice", "rules": ("IDX-1",),
      "sample": "y = A(:,2);"},
     {"id": "OP-SIZE", "matlab": "size(x,dim)", "c": "mlc_op_size_dim",
+     # `size(x)`（无维度）走另一个 C 入口 `mlc_op_size_all`。不登记的话，
+     # 从 C 反推（cmir）会认不出它，表现为"算子被吞了" —— 实测在三段对拍里
+     # 把 `sizeall` 误判成发射器丢算子。
+     "c_aliases": ("mlc_op_size_all",),
      "kind": "reduction", "rules": ("ORDER-1",),
      "sample": "y = size(x,2);"},
     {"id": "OP-NUMEL", "matlab": "numel(x)", "c": "mlc_op_numel",

@@ -42,9 +42,26 @@ except ImportError:                    # 直接以脚本运行时（cwd 不同�
 #: C 函数名 -> 算子 id（**从算子表反查**，不另写一份清单）
 _C2OP = {}
 for _op in operators.OPERATORS:
-    _c = str(_op.get("c") or "")
-    if _c.startswith("mlc_op_"):
-        _C2OP[_c] = _op["id"]
+    for _c in (str(_op.get("c") or ""),) + tuple(_op.get("c_aliases") or ()):
+        if _c.startswith("mlc_op_"):
+            _C2OP[_c] = _op["id"]
+
+#: 同一个算子在不同形态下会有**后缀变体**：`mlc_op_size` / `mlc_op_size_all`、
+#: `mlc_op_fill` / `mlc_op_fill_alloc`。精确匹配会漏掉这些 → 三段对拍里表现为
+#: "算子消失了"（实测 `sizeall` 就是这样，被误判成发射器丢算子）。
+_C2OP_SUFFIXES = ("_all", "_alloc", "_n", "_mask", "_masked", "_2")
+
+
+def _lookup(cname):
+    """按 **最长前缀** 反查算子 id（先精确，再去掉已知后缀）。"""
+    if cname in _C2OP:
+        return _C2OP[cname]
+    for suf in _C2OP_SUFFIXES:
+        if cname.endswith(suf):
+            base = cname[:-len(suf)]
+            if base in _C2OP:
+                return _C2OP[base]
+    return None
 
 _FUNC_RE = re.compile(r"^mlc_status\s+m2c_(\w+)\s*\((.*?)\)\s*\{", re.S)
 _CALL_RE = re.compile(r"mlc_op_(\w+)\s*\(([^;]*)\)\s*;")
@@ -110,8 +127,8 @@ def c_to_mir(text, fname):
             st["consts"] += 1
             continue
         m = _CALL_RE.search(ln)
-        if m and ("mlc_op_" + m.group(1)) in _C2OP:
-            oid = _C2OP["mlc_op_" + m.group(1)]
+        oid = _lookup("mlc_op_" + m.group(1)) if m else None
+        if oid is not None:
             parts = [_strip_ref(p) for p in _split_args(m.group(2))]
             out.append("op:%s:%s" % (oid, ":".join(parts)))
             st["ops"] += 1
