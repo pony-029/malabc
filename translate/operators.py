@@ -79,6 +79,18 @@ OPERATORS = (
      # 结果行数 = 两侧行数之和，只有运行期知道
      "dynamic": True,
      "verified_by": ""},
+    {"id": "OP-ISINF", "matlab": "isinf(x)", "c": "mlc_op_isinf",
+     "kind": "elementwise", "rules": ("ORDER-1",),
+     "sample": "y = isinf(x);"},
+    {"id": "OP-ISNAN", "matlab": "isnan(x)", "c": "mlc_op_isnan",
+     "kind": "elementwise", "rules": ("ORDER-1",),
+     "sample": "y = isnan(x);"},
+    {"id": "OP-PROD", "matlab": "prod(x)", "c": "mlc_op_prod",
+     "kind": "reduction", "rules": ("ORDER-1",),
+     "sample": "y = prod(x);"},
+    {"id": "OP-MOD", "matlab": "mod(a,b)", "c": "mlc_op_mod",
+     "kind": "elementwise", "rules": ("ORDER-1",),
+     "sample": "y = mod(a, b);"},
     {"id": "OP-SUM", "matlab": "sum(x)", "c": "mlc_op_sum",
      "kind": "reduction", "rules": ("ORDER-1",),
      "sample": "y = sum(x);",
@@ -222,7 +234,8 @@ OPERATORS = (
 #: `OP-MATMUL` 已由 mlc_ops.c 真实现（2-D f64）；
 #: 注意 `*` / `.*` 在**文本层**都映射到 OP-MUL —— 二者的区别要看形状，
 #: 由 translate/mir.py 在知道 shape 之后决定是否升级成 OP-MATMUL。
-C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-HCAT", "OP-FILLA", "OP-SETDIFF", "OP-SETIDX2", "OP-COPY", "OP-VCAT", "OP-IDX2",
+C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-HCAT",
+             "OP-ISINF", "OP-ISNAN", "OP-PROD", "OP-MOD", "OP-FILLA", "OP-SETDIFF", "OP-SETIDX2", "OP-COPY", "OP-VCAT", "OP-IDX2",
                  "OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN", "OP-INDEX",
                  "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE",
                  "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE", "OP-COL", "OP-COLRANGE",
@@ -262,7 +275,8 @@ _PRED_IDS = {"any": "OP-ANY", "all": "OP-ALL", "nnz": "OP-NNZ",
              "isreal": "OP-ISREAL", "isnumeric": "OP-ISNUMERIC"}
 #: 逐元素标量函数（sqrt/abs/exp/log）
 _UNARY_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*"
-                         r"(sqrt|abs|exp|log|sin|cos|tan|floor|ceil|round|log2|log10)"
+                         r"(sqrt|abs|exp|log|sin|cos|tan|floor|ceil|round|log2|log10"
+                            r"|isinf|isnan|prod)"
                          r"\s*\(\s*"
                          r"([A-Za-z_]\w*)\s*\)\s*;?\s*$")
 _UNARY_IDS = {"sqrt": "OP-SQRT", "abs": "OP-ABS",
@@ -270,7 +284,9 @@ _UNARY_IDS = {"sqrt": "OP-SQRT", "abs": "OP-ABS",
               "sin": "OP-SIN", "cos": "OP-COS", "tan": "OP-TAN",
               "floor": "OP-FLOOR", "ceil": "OP-CEIL",
               "round": "OP-ROUND", "log2": "OP-LOG2",
-              "log10": "OP-LOG10"}
+              "log10": "OP-LOG10",
+                 "isinf": "OP-ISINF", "isnan": "OP-ISNAN",
+                 "prod": "OP-PROD"}
 #: `y = A(:, lo:hi)` —— hi 可为 `end`
 _COLRANGE_LINE = re.compile(
     r"^\s*([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*"
@@ -293,6 +309,9 @@ _ISEMPTY_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*isempty\s*\(\s*"
 _ROWS_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*"
                         r"\(\s*([A-Za-z_]\w*|\d+)\s*,\s*:\s*\)\s*;?\s*$")
 _ASSIGN_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*(.+?)\s*;\s*$")
+_MOD_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*mod\s*\(\s*"
+                          r"([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*\)"
+                          r"\s*;?\s*$")
 _BIN_RE = re.compile(r"^([A-Za-z_]\w*)\s*(\.\*|\./|\+|-|\*)\s*([A-Za-z_]\w*)$")
 _CALL_RE = re.compile(r"^(sum|mean|max|min)\s*\(\s*([A-Za-z_]\w*)\s*\)$")
 # `x'` 是共轭转置，`x.'` 是普通转置。本目录只处理实数 f64，二者等价，
@@ -397,6 +416,12 @@ def parse_line(line):
     if f1 is not None:
         return {"operator": "OP-FIND", "lhs": f1.group(1),
                 "args": [f1.group(2), "5", "0"],
+                "raw": line.rstrip("\n")}
+
+    md = _MOD_LINE.match(line or "")
+    if md is not None:
+        return {"operator": "OP-MOD", "lhs": md.group(1),
+                "args": [md.group(2), md.group(3)],
                 "raw": line.rstrip("\n")}
 
     um = _UNARY_LINE.match(line or "")

@@ -45,6 +45,10 @@ typedef struct {
 
 | 算子 | 形状 | 错误 |
 |---|---|---|
+| `OP-ISINF` | `isinf(x)`：逐元素（0/1），结果与输入同形 | 不能复用归约型 `mlc_pred_f64` |
+| `OP-ISNAN` | `isnan(x)`：逐元素（0/1） | 同上 |
+| `OP-PROD` | `prod(x)`：全元素乘积，归约到 1×1 | 与 `sum` 同类 |
+| `OP-MOD` | `mod(a,b)`：按 MATLAB 定义（`mod(-1,3)=2`） | C 的 `fmod` 符号不同，须修正；除零报错 |
 | `OP-ADD` `OP-SUB` `OP-MUL` `OP-DIV` | 广播：逐维取 max（任一维为 1 或相等）；输出为空时按广播结论就地分配 | 不可广播；`out` 形状与广播结论不符；`data` 为 NULL；非 f64 |
 
 > `OP-MUL` 与 `OP-MATMUL` 的区别：MATLAB 的 `*` 在**标量参与**时是逐元素，双方都是 2-D 且内维匹配时才是矩阵乘。

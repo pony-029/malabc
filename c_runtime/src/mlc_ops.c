@@ -1368,6 +1368,111 @@ mlc_status mlc_op_vcat_alloc(const mlc_array *a, const mlc_array *b,
     return MLC_OK;
 }
 
+/* `isinf(x)` / `isnan(x)`：**逐元素**谓词，结果与输入同形（0/1）。
+ *
+ * 注意与 `mlc_pred_f64` 区分：那个是**归约**（any/all/nnz → 1x1），
+ * 而这两个保留形状 —— MATLAB 里 `isinf([1 inf])` 是 `[0 1]`。 */
+static mlc_status mlc_isfin_f64(const mlc_array *a, mlc_array *out, int want_inf)
+{
+    int64_t i, n;
+
+    if (a == NULL || out == NULL || a->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    n = mlc_array_numel(a);
+    if (out->ndim == 0 || mlc_array_numel(out) != n) {
+        mlc_array_free(out);
+        out->ndim = 0;
+        out->data = NULL;
+        out->owns_data = 0;
+        if (mlc_array_init(out, MLC_F64, a->ndim, a->shape) != MLC_OK) {
+            return MLC_ERR;
+        }
+    }
+    for (i = 0; i < n; ++i) {
+        double v = ((const double *)a->data)[i];
+        int hit = want_inf ? (v > 1.7e308 || v < -1.7e308) : (v != v);
+        ((double *)out->data)[i] = hit ? 1.0 : 0.0;
+    }
+    return MLC_OK;
+}
+
+mlc_status mlc_op_isinf(const mlc_array *a, mlc_array *out)
+{
+    return mlc_isfin_f64(a, out, 1);
+}
+
+mlc_status mlc_op_isnan(const mlc_array *a, mlc_array *out)
+{
+    return mlc_isfin_f64(a, out, 0);
+}
+
+/* `prod(x)`：全元素乘积（与 sum 同为归约到 1x1）。 */
+mlc_status mlc_op_prod(const mlc_array *a, mlc_array *out)
+{
+    int64_t i, n;
+    double acc = 1.0;
+
+    if (a == NULL || out == NULL || a->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    n = mlc_array_numel(a);
+    if (out->ndim == 0 || mlc_array_numel(out) != 1) {
+        int64_t sh[1];
+        sh[0] = 1;
+        mlc_array_free(out);
+        out->ndim = 0;
+        out->data = NULL;
+        out->owns_data = 0;
+        if (mlc_array_init(out, MLC_F64, 1, sh) != MLC_OK) {
+            return MLC_ERR;
+        }
+    }
+    for (i = 0; i < n; ++i) {
+        acc *= ((const double *)a->data)[i];
+    }
+    ((double *)out->data)[0] = acc;
+    return MLC_OK;
+}
+
+/* `mod(a,b)`：MATLAB 的 mod 与 C 的 fmod **符号不同**
+ * （`mod(-1,3)=2`，而 `fmod(-1,3)=-1`）。按 MATLAB 定义修正。 */
+mlc_status mlc_op_mod(const mlc_array *a, const mlc_array *b, mlc_array *out)
+{
+    int64_t i, n;
+
+    if (a == NULL || b == NULL || out == NULL) {
+        return MLC_ERR;
+    }
+    n = mlc_array_numel(a);
+    if (mlc_array_numel(b) != n || a->dtype != MLC_F64 || b->dtype != MLC_F64) {
+        return MLC_ERR;
+    }
+    if (out->ndim == 0 || mlc_array_numel(out) != n) {
+        mlc_array_free(out);
+        out->ndim = 0;
+        out->data = NULL;
+        out->owns_data = 0;
+        if (mlc_array_init(out, MLC_F64, a->ndim, a->shape) != MLC_OK) {
+            return MLC_ERR;
+        }
+    }
+    for (i = 0; i < n; ++i) {
+        double x = ((const double *)a->data)[i];
+        double y = ((const double *)b->data)[i];
+        double r;
+        if (y == 0.0) {
+            return MLC_ERR;              /* 除零：与 MATLAB 一样报错，不返回 inf */
+        }
+        r = fmod(x, y);
+        if (r != 0.0 && ((r < 0) != (y < 0))) {
+            r += y;                      /* 让结果与除数同号（MATLAB 定义） */
+        }
+        ((double *)out->data)[i] = r;
+    }
+    return MLC_OK;
+}
+
 mlc_status mlc_op_index(const mlc_array *a, int64_t matlab_index,
                         mlc_array *out)
 {
