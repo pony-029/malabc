@@ -1199,3 +1199,5 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 三段链路回归报告：`python tools/three_links_report.py <目录...> -o <输出目录>`（MATLAB→MIR→C→MIR，自包含 HTML）。
 
 写“主因是 X”之前先跑桶构成普查：`python tools/bucket_census.py <mir> <桶名>`。
+
+双向转换自检：`python translate/roundtrip.py <x.m>`（MATLAB→MIR→C 与 MIR→MATLAB' 两个方向的数值都必须与原函数一致）。

@@ -1270,3 +1270,5 @@ Author and copyright holder: **冯磊 (Feng Lei)** — © 2026 冯磊 (Feng Lei)
 Three-link regression report: `python tools/three_links_report.py <dirs> -o <out>` (MATLAB->MIR->C->MIR, self-contained HTML).
 
 Bucket census before any "the main cause is X" claim: `python tools/bucket_census.py <mir> <bucket>`.
+
+Bidirectional check: `python translate/roundtrip.py <x.m>` (MATLAB -> MIR -> C, and MIR -> MATLAB'; both must match the original numbers).

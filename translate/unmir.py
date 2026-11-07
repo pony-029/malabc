@@ -113,6 +113,10 @@ class Unmirror(object):
                 if len(dims) == 2 and val in ("0", "1"):
                     fn = "zeros" if val == "0" else "ones"
                     self._emit("%s = %s(%s, %s);" % (lhs, fn, dims[0], dims[1]))
+                elif len(dims) == 1 and dims[0] == "0" and val == "0":
+                    # `fill:A:0:0` 是**空数组**（`A = []`），形状 0×0。
+                    # 与 `fill:y:1,4:0` 的区别只在冒号字段里有没有逗号。
+                    self._emit("%s = zeros(0, 0);" % lhs)
                 else:
                     self.skipped.append(ln)
                 continue
@@ -275,6 +279,25 @@ class Unmirror(object):
             fn = "ones" if a[2].strip() == "1" else "zeros"
             self._emit("%s = %s(%s, %s);"
                        % (dst, fn, self._e(a[0]), self._e(a[1])))
+            return
+        if oid == "OP-FIND2" and len(a) >= 3:
+            # `op:OP-FIND2:y:a:b:4` -> `y = find(a == b);`（args 顺序：a, b, 比较码）
+            cmp_sym = _CMP_CODE.get(a[2])
+            if cmp_sym is None:
+                self.skipped.append(ln)
+                return
+            self._emit("%s = find(%s %s %s);"
+                       % (dst, self._e(a[0]), cmp_sym, self._e(a[1])))
+            return
+        if oid == "OP-FIND3" and len(a) >= 4:
+            # `op:OP-FIND3:y:x:5:0:2` -> `y = find(x ~= 0, 2);`（数组, 比较码, 阈值, 个数）
+            cmp_sym = _CMP_CODE.get(a[1])
+            if cmp_sym is None:
+                self.skipped.append(ln)
+                return
+            self._emit("%s = find(%s %s %s, %s);"
+                       % (dst, self._e(a[0]), cmp_sym, self._e(a[2]),
+                          self._e(a[3])))
             return
         if oid in _FN:
             fn = _FN[oid]
