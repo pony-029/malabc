@@ -1,0 +1,211 @@
+# -*- coding: utf-8 -*-
+"""`check`：**只诊断、不生成代码**。回答"这个函数能不能转，卡在哪一行，怎么改"。
+
+## 为什么需要它（设计文档 docs/DESIGN_TOPLEVEL.md 阶段 1）
+
+工具在自建语料上 58/58，但在真实大库上几乎为零。此前的唯一反馈是
+`unmapped: ...` 这样的内部行 —— 用户看不出**是自己的写法问题，还是工具不支持**。
+
+本命令把 MIR 里的归因变成人能读的三件事：
+
+    第 12 行  [struct]  opt.x = 1;
+              → 把结构体字段拆成显式变量传入
+
+## 关键设计（来自 L2 测量）
+
+一个函数要能转，必须补齐它身上出现的**全部**卡点类别。
+所以诊断除了逐行列出，还会算出：**"先修哪一类，能一次消掉最多处"** ——
+这直接对应"离能转还差多远"，比"共多少条未映射"有用得多。
+
+## 用法
+
+    python translate/check.py <x.m> [--json]
+
+退出码：0 = 可以生成；1 = 有阻塞；2 = 输入/环境问题。
+"""
+import argparse
+import io
+import json
+import os
+import subprocess
+import sys
+import tempfile
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+MIR_PY = os.path.join(HERE, "mir.py")
+WORK = os.environ.get("M2C_TMP") or r"E:\temp\matlabc"
+
+#: 每类卡点 → 给用户的**可行动**建议。键与 mir.py 的 `# why:` 标签一致。
+ADVICE = {
+    "struct": "结构体用法。把字段拆成显式变量/形参传入（本工具不做 struct 类型建模）",
+    "cell": "元胞数组。改成定长数值数组，或把元素拆成独立变量",
+    "call2": "调用了工具不认识的函数。换成已支持的算子，或自己展开成逐元素运算",
+    "other": "未归类的语句。多为字符串/类型转换（char/num2str/class 等），数值代码里通常不需要",
+    "strlit": "字符串字面量相关（对外提示、拼接、regexp 等）。数值通路不需要，删掉即可",
+    "cond": "if/while 的条件含未支持的形态（`&&`/`||`、调用、结构体字段）",
+    "control": "控制流形态未支持（switch/case、try/catch、break/continue 等）",
+    "shadowed": "与内置函数重名，工具无法判断该调谁。改个变量名即可",
+    "idx2": "二维下标但形状未知。给变量加 `% @m2c shape r,c` 注解",
+    "nested": "表达式里嵌套调用。先拆成独立语句再算",
+    "blockmarker": "块标记（else/otherwise）找不到所属块，通常是上一行 if 没被识别",
+    "misc": "其它",
+}
+
+
+def _run(cmd):
+    return subprocess.run(cmd, stdin=subprocess.DEVNULL, timeout=300,
+                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+
+def parse_mir(text):
+    """从 MIR 提取：函数名、算子数、签名拒绝、逐条未映射（含源码行号与类别）。"""
+    funcs, ops, rejects, bad = 0, 0, [], []
+    cur_src, why = 0, "misc"
+    cur_func = None
+    for raw in text.splitlines():
+        ln = raw.rstrip("\n")
+        if ln.startswith("func:"):
+            funcs += 1
+            cur_func = ln[5:].strip()
+            cur_src, why = 0, "misc"
+        elif ln.startswith("# src:"):
+            try:
+                cur_src = int(ln[6:].strip())
+            except ValueError:
+                cur_src = 0
+        elif ln.startswith("# why:"):
+            why = ln[6:].strip()
+        elif ln.startswith("op:"):
+            ops += 1
+        elif ln.startswith("reject:"):
+            for r in ln[7:].split(","):
+                if r.strip():
+                    rejects.append(r.strip())
+        elif ln.startswith("unmapped:"):
+            bad.append({"line": cur_src, "kind": why,
+                        "text": ln[9:].strip(), "func": cur_func})
+            why = "misc"
+    return funcs, ops, rejects, bad
+
+
+def diagnose(path):
+    """返回一个诊断结果字典。"""
+    stem = os.path.splitext(os.path.basename(path))[0]
+    d = WORK if os.path.isdir(WORK) else tempfile.gettempdir()
+    os.makedirs(d, exist_ok=True)
+    mir = os.path.join(d, "chk_" + stem + ".mir")
+    r = _run([sys.executable, MIR_PY, path, "-o", mir])
+    if r.returncode != 0 or not os.path.isfile(mir):
+        msg = r.stdout.decode("utf-8", "replace")
+        kind = "no_function" if ("没有识别到 function" in msg
+                                 or "没有识别到函数" in msg) else "parse_error"
+        return {"file": path, "status": kind, "detail": msg.strip()[-300:]}
+    text = io.open(mir, encoding="utf-8").read()
+    funcs, ops, rejects, bad = parse_mir(text)
+
+    by_kind = {}
+    for b in bad:
+        by_kind.setdefault(b["kind"], []).append(b)
+    # 「先修哪一类」：消掉它就能让函数离可转最近 —— 按"该类涉及的函数数"排，
+    # 相同时按条数排（与 docs/DESIGN_TOPLEVEL.md 的 L2 判据一致）
+    rank = sorted(by_kind.items(),
+                  key=lambda kv: (-len({b["func"] for b in kv[1]}), -len(kv[1])))
+
+    sources = {}
+    try:
+        lines = io.open(path, encoding="utf-8", errors="replace").read().splitlines()
+        for i, s in enumerate(lines, 1):
+            sources[i] = s.strip()
+    except OSError:
+        pass
+
+    return {
+        "file": path,
+        "status": "ok" if (not bad and not rejects) else "blocked",
+        "funcs": funcs, "ops": ops,
+        "rejects": rejects, "blockers": bad,
+        "by_kind": {k: len(v) for k, v in by_kind.items()},
+        "rank": [(k, len(v), len({b["func"] for b in v})) for k, v in rank],
+        "sources": sources,
+    }
+
+
+def render(res):
+    out = []
+    name = os.path.basename(res["file"])
+    if res["status"] == "no_function":
+        out.append("%s → 跳过：该文件没有顶层 function（脚本或纯文档）" % name)
+        return "\n".join(out)
+    if res["status"] == "parse_error":
+        out.append("%s → 源解析失败：%s" % (name, res.get("detail", "")[-160:]))
+        return "\n".join(out)
+
+    if res["status"] == "ok":
+        out.append("%s → **可以生成 C**（函数 %d ｜ 算子 %d ｜ 0 阻塞）"
+                   % (name, res["funcs"], res["ops"]))
+        out.append("  下一步：`python tools/walkthrough.py %s` 看完整转换过程" % res["file"])
+        return "\n".join(out)
+
+    out.append("%s → **不能生成**（函数 %d ｜ 算子 %d ｜ 未映射 %d ｜ 签名拒绝 %d 类）"
+               % (name, res["funcs"], res["ops"], len(res["blockers"]),
+                  len(res["rejects"])))
+    if res["rejects"]:
+        out.append("")
+        out.append("【签名级】整个函数被拒（语句层都没开始）")
+        # 同一文件里每个函数各有一条 reject，去重并按出现次数展示
+        cnt = {}
+        for r in res["rejects"]:
+            cnt[r] = cnt.get(r, 0) + 1
+        for r, n in sorted(cnt.items(), key=lambda kv: -kv[1]):
+            hint = {"varargin": "把可变参数改成显式形参",
+                    "varargout": "把可变输出改成显式返回值",
+                    "cell": "元胞形参改成数值数组",
+                    "struct": "结构体形参改成显式数值参数"}.get(r, "见 docs 的边界说明")
+            times = ("（%d 个函数）" % n) if n > 1 else ""
+            out.append("  - %-10s%s → %s" % (r, times, hint))
+
+    out.append("")
+    out.append("【语句级】按源码行：")
+    shown = 0
+    for b in sorted(res["blockers"], key=lambda x: (x["line"], x["kind"])):
+        if b["line"] <= 0:
+            continue
+        if shown >= 12:
+            out.append("  … 另有 %d 处（用 --json 看全部）"
+                       % (len(res["blockers"]) - shown))
+            break
+        src = res["sources"].get(b["line"], "")
+        out.append("  第 %-4d 行 [%-10s] %s" % (b["line"], b["kind"], src[:60]))
+        shown += 1
+    no_line = [b for b in res["blockers"] if b["line"] <= 0]
+    if no_line:
+        out.append("  （另有 %d 处没有行号信息：多为函数体外的语句）" % len(no_line))
+
+    out.append("")
+    out.append("【先修哪里】按「消掉它能让多少函数更接近可转」排序：")
+    for kind, cnt, nfn in res["rank"][:4]:
+        out.append("  %-12s %4d 处 / 影响 %d 个函数  → %s"
+                   % (kind, cnt, nfn, ADVICE.get(kind, ADVICE["misc"])))
+    return "\n".join(out)
+
+
+def main():
+    ap = argparse.ArgumentParser(description="诊断一个 .m 能不能转成 C（不生成代码）")
+    ap.add_argument("path")
+    ap.add_argument("--json", action="store_true", help="输出机器可读结果")
+    a = ap.parse_args()
+    if not os.path.isfile(a.path):
+        print("找不到文件：%s" % a.path)
+        return 2
+    res = diagnose(a.path)
+    if a.json:
+        res.pop("sources", None)
+        print(json.dumps(res, ensure_ascii=False, indent=2))
+    else:
+        print(render(res))
+    return 0 if res["status"] == "ok" else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
