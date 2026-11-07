@@ -148,6 +148,26 @@ fn main() -> ExitCode {
         // **MIR 解释执行**：不走 C 编译，直接算数值。
         // 用途是自证与回归（替代"必须装 Octave"），不是第二条产物线。
         "run" => {
+            // `--shape "x=2,3;y=4"`：覆盖形参形状。
+            // 回译出的 `.m'` 常没有 `% @m2c shape` 注解，两侧输入会不同形 ——
+            // 那会被误判成"回译算错"（实测 5 个函数因此假红）。
+            let mut shapes: std::collections::HashMap<String, Vec<i64>> =
+                std::collections::HashMap::new();
+            let mut k = 0;
+            while k + 1 < args.len() {
+                if args[k] == "--shape" {
+                    for spec in args[k + 1].split(';') {
+                        if let Some((n, dims)) = spec.split_once('=') {
+                            let v: Vec<i64> =
+                                dims.split(',').filter_map(|d| d.trim().parse().ok()).collect();
+                            if !v.is_empty() {
+                                shapes.insert(n.trim().to_string(), v);
+                            }
+                        }
+                    }
+                }
+                k += 1;
+            }
             let mut bad = 0;
             for f in &funcs {
                 if !f.unmapped.is_empty() {
@@ -155,7 +175,7 @@ fn main() -> ExitCode {
                     continue;
                 }
                 let mut m = vm::Vm::new();
-                match m.run(f) {
+                match m.run(f, &shapes) {
                     Ok(out) => {
                         for r in &f.rets {
                             let v = out.get(&r.name).cloned().unwrap_or_default();

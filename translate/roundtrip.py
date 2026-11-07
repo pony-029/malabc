@@ -72,6 +72,48 @@ def _values(cli, funcs, addpath, workdir, timeout):
     return got[f].split(": ", 1)[1].strip() if f in got else "missing"
 
 
+def _arg_shapes(mir_path):
+    """从 MIR 的 `arg:` 行取形参形状 → `"x=4;y=2,3"`（供 `--shape` 覆盖）。
+
+    回译出的 `.m'` 往往没有 `% @m2c shape` 注解；不覆盖的话两侧**输入不同形**，
+    会被误判成"回译算错"（实测 5 个函数因此假红）。
+    """
+    if not os.path.isfile(mir_path):
+        return ""
+    out = []
+    for ln in io.open(mir_path, encoding="utf-8", errors="replace"):
+        if not ln.startswith("arg:"):
+            continue
+        p = ln.strip().split(":")
+        if len(p) < 3:
+            continue
+        name, dims = p[1], p[-1]
+        if dims.replace(",", "").isdigit():
+            out.append("%s=%s" % (name, dims))
+    return ";".join(out)
+
+
+def _vm_values(mir_path, shape_override=""):
+    """用 Rust VM 算 MIR 的数值。VM 说"不支持/未实现"时返回 None（**不猜**）。
+
+    这是自证的首选路径：R696 起 VM 在语料上与 Octave 58/58 一致，
+    且不用起解释器进程，快一个数量级。
+    """
+    if not os.path.isfile(mir_path):
+        return None
+    cmd = [M2C, "run", "--mir", mir_path]
+    if shape_override:
+        cmd += ["--shape", shape_override]
+    r = _run(cmd, timeout=60)
+    out = r.stdout.decode("utf-8", "replace").strip()
+    if ("不支持" in out) or ("未实现" in out) or ("error（" in out) or ("skip（" in out):
+        return None
+    parts = [ln.split(":", 1)[1].strip() for ln in out.splitlines() if ":" in ln]
+    if not parts:
+        return None
+    return " | ".join(parts) if len(parts) > 1 else parts[0]
+
+
 def roundtrip_one(path, cli, d):
     """跑单个文件的四段链路，返回记录。"""
     stem = os.path.splitext(os.path.basename(path))[0]
@@ -133,14 +175,33 @@ def roundtrip_one(path, cli, d):
             rec["to_c"] = "ok" if run.returncode == 0 and rec["c_out"] else "fail"
 
     # ---- ③ 数值三方差：参考（原 .m） / 回译 .m' / C ----
-    if cli is None:
-        return rec
+    # **优先用 VM 自证**（R696 起覆盖全语料）：不依赖 Octave，也快得多。
+    # 只有 VM 明确说"不支持"时才回退到 Octave —— 且回退要**如实记录**，
+    # 否则"有没有 Octave"会静默改变判据的强度。
     src_dir = os.path.dirname(os.path.abspath(path))
     work = os.path.join(d, "work")
     os.makedirs(work, exist_ok=True)
-    rec["ref"] = _values(cli, funcs, src_dir, work, 20)
+
+    shapes = _arg_shapes(mir)
+    ref = _vm_values(mir, shapes)
+    if ref is None and cli is not None:
+        ref = _values(cli, funcs, src_dir, work, 20)
+        rec["oracle"] = "octave"
+    elif ref is not None:
+        rec["oracle"] = "vm"
+    if ref is None:
+        rec["note"] = rec["note"] or "无可用 oracle（VM 不支持且缺 Octave）"
+        return rec
+    rec["ref"] = ref
+
     if rec["to_m"] == "ok":
-        rec["m_out"] = _values(cli, funcs, back_dir, work, 20)
+        back_mir = os.path.join(d, stem + "_back.mir")
+        if os.path.isfile(out_m):
+            _run([sys.executable, MIR_PY, out_m, "-o", back_mir])
+        v = _vm_values(back_mir, shapes) if os.path.isfile(back_mir) else None
+        if v is None and cli is not None:
+            v = _values(cli, funcs, back_dir, work, 20)
+        rec["m_out"] = v or ""
     return rec
 
 

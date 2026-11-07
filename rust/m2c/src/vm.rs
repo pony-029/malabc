@@ -110,9 +110,28 @@ impl Vm {
     }
 
     /// 执行一个函数。形参按**行主序**填 `1..=n`（与 C 驱动一致）。
-    pub fn run(&mut self, f: &Func) -> Result<HashMap<String, Val>, String> {
+    ///
+    /// `shapes` 可覆盖形参形状（`--shape x=2,3`）：回译出的 `.m'` 往往**没有**
+    /// `% @m2c shape` 注解，若不做覆盖，两侧输入就不同形 —— 而"输入不同"
+    /// 会被误判成"回译算错了"（实测 5 个函数因此假红）。
+    pub fn run(
+        &mut self,
+        f: &Func,
+        shapes: &HashMap<String, Vec<i64>>,
+    ) -> Result<HashMap<String, Val>, String> {
         self.env.clear();
+        let mut effective = Vec::new();
         for a in &f.args {
+            let sh = shapes.get(&a.name).cloned().unwrap_or_else(|| a.shape.clone());
+            effective.push((a.name.clone(), sh));
+        }
+        for (name, sh) in &effective {
+            let a = crate::mir::Var {
+                name: name.clone(),
+                dtype: "f64".into(),
+                shape: sh.clone(),
+            };
+            let a = &a;
             // **一维声明按 1×N**（行向量）。这与 C 驱动、Octave 真值的打印口径一致；
             // 若按 N×1 处理，`size(x)` 会返回 `[N 1]` 而不是 `[1 N]`（实测 sizeall 就是这样错的）。
             let single = a.shape.len() < 2;
