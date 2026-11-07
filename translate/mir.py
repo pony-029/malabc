@@ -1399,6 +1399,50 @@ def _lower_reduce_col(out, code, shapes, counter, known_ops):
     return True
 
 
+#: `X.f` —— 结构体字段访问（本工具目前只做这一种形态的**无损展开**）
+_DOT_FIELD_RE = re.compile(r"([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*)")
+
+
+def _collect_struct_hosts(f):
+    """找出可以**无损展开**的局部 struct 名。
+
+    条件两条：
+      1. 名字不是本函数的参数/返回值（局部）；
+      2. 它在整个函数里**只**以 `X.f` 出现过 —— 一旦有 `func(X)` 或 `X = 调用(...)`，
+         它就不是"一组标量"，而是真的结构体（那需要配置声明，属阶段 3 的后续）。
+
+    实测：jsonlab 33 / export_fig 5 / YALMIP 118 个函数满足这两条。
+    不满足的（整体流转）必须拒绝 —— 展开它等于静默改变语义。
+    """
+    args = set(f.get("args") or [])
+    rets = set(f.get("rets") or [])
+    hosts, other_use = {}, {}
+    for line in (f.get("lines") or []):
+        t = _clean(line).strip()
+        if not t:
+            continue
+        for host, _fld in _DOT_FIELD_RE.findall(t):
+            if host not in args and host not in rets:
+                hosts[host] = True
+        stripped = _DOT_FIELD_RE.sub(" ", t)
+        for nm in re.findall(r"[A-Za-z_]\w*", stripped):
+            other_use[nm] = other_use.get(nm, 0) + 1
+    return set(h for h in hosts if other_use.get(h, 0) == 0)
+
+
+def _rewrite_struct_fields(code, hosts):
+    """把 `s.a` 改写成标量名 `s_a`（只在 `hosts` 内生效）。"""
+    if not hosts:
+        return code
+
+    def rep(m):
+        if m.group(1) in hosts:
+            return "%s_%s" % (m.group(1), m.group(2))
+        return m.group(0)
+
+    return _DOT_FIELD_RE.sub(rep, code)
+
+
 def to_mir(source, extra_names=None, header=True, skip_names=None,
            srcfile=None):
     """返回 (mir_text, stats)。
@@ -1454,6 +1498,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             out.append(_var_line("ret", r, f))
         for l in f.get("locals") or []:
             out.append("var:%s:i64" % l)
+        # 局部 struct 的无损展开：`s.a` -> `s_a`（只在本函数内、且该名字没有整体流转）
+        struct_hosts = _collect_struct_hosts(f)
         # 标量名 = i64 标注过 + 局部标量；其余都是数组（mlc_array）
         for _l in (f.get("locals") or []):
             scalar_names.add(_l)
@@ -1469,6 +1515,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                 continue
             # `full(x)` 在稠密表示下是恒等（YALMIP 84 次）：剥掉，别挡住真正的语义
             code = _strip_full_call(code)
+            if struct_hosts:
+                code = _rewrite_struct_fields(code, struct_hosts)
             if src_line:
                 out.append("# src:%d" % src_line)
             # `otherwise` 是 `switch` 的"兜底分支"，与 `else` **同构**：
