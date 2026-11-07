@@ -159,9 +159,13 @@ fn main() -> ExitCode {
                     Ok(out) => {
                         for r in &f.rets {
                             let v = out.get(&r.name).cloned().unwrap_or_default();
+                            // **平铺一行**（与 C 驱动一致）：二维结果也按行主序铺开，
+                            // 这样 `m2c run` 的输出可以直接和 `.expected` 逐字比对。
                             let s: Vec<String> =
-                                v.iter().map(|x| fmt_num(*x)).collect();
-                            println!("{}: {}", r.name, s.join(" "));
+                                v.data.iter().map(|x| fmt_num(*x)).collect();
+                            if !s.is_empty() {
+                                println!("{}: {}", r.name, s.join(" "));
+                            }
                         }
                     }
                     Err(e) => {

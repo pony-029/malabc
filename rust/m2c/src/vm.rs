@@ -1,32 +1,105 @@
-//! **MIR 解释器**（Rust 运行时第一版）：直接执行 MIR，不经 C 编译。
+//! **MIR 解释器**（Rust 运行时）：直接执行 MIR，不经 C 编译。
 //!
 //! ## 为什么需要它
 //!
-//! 现在每一次"数值是否正确"的判定都要靠 Octave（`test_roundtrip` / `test_three_links`
-//! / `three_links_report` 全都要）。这意味着：
-//!   1. 机器上没装 Octave 就**无法自证**；
-//!   2. 判据跑得慢（每个函数起一次解释器）。
+//! 每一次"数值是否正确"的判定都要靠 Octave。VM 让"这段 MIR 算出来是多少"
+//! 变成一个库调用，用于快速自证与回归。
 //!
-//! VM 让"这段 MIR 算出来是多少"变成一个**库函数调用**，用来做快速自证与回归。
+//! **不是**另一条产物线：C 仍是唯一交付物（嵌入式、静态内存、q15）。
 //!
-//! ## 它不是什么
+//! ## 值模型（R695 起支持二维）
 //!
-//! **不是**另一条产物线。产出的 C 仍然是唯一交付物（嵌入式、静态内存、q15）。
-//! VM 只服务于验证：`m2c run <x.mir>` 必须在语料上与 Octave 数值一致。
+//! `Val { data, rows, cols }`，**行主序存储**（与 C 运行时的 `mlc_array` 一致），
+//! 但**线性下标按 MATLAB 的列主序换算**（`(r,c) -> r + c*rows`）。
 //!
-//! ## 本版支持的子集
-//!
-//! `const` / `setb` / `set` / `op:`（逐元素、归约、索引、拼接）/ `if` / `while` / `for` / `break` / `return`。
-//! 其它一律返回明确错误（**不猜**）—— 这与发射器的策略一致。
+//! 这个区分是被实测逼出来的：驱动按行主序把 `1..n` 填进形参
+//! （`meancols` 的 A 是 `[1 2 3; 4 5 6]`），而 `A(3)` 在 MATLAB 里是 `(1,2)=2`。
+//! 两者混用会让归约和下标同时错，且错得很像对的。
 
 use crate::mir::{Cond, Func, Stmt};
 use std::collections::HashMap;
 
-/// 值模型：一维 f64 序列。标量就是长度 1（与 MATLAB 的 1×1 一致）。
-pub type Value = Vec<f64>;
+/// 值：行主序存储 + 形状。标量是 1×1。
+#[derive(Clone, Debug, Default)]
+pub struct Val {
+    pub data: Vec<f64>,
+    pub rows: usize,
+    pub cols: usize,
+}
+
+impl Val {
+    fn scalar(x: f64) -> Val {
+        Val {
+            data: vec![x],
+            rows: 1,
+            cols: 1,
+        }
+    }
+
+    fn from_vec(v: Vec<f64>) -> Val {
+        let n = v.len();
+        Val {
+            data: v,
+            rows: 1,
+            cols: n.max(1),
+        }
+    }
+
+    fn zeros(rows: usize, cols: usize, fill: f64) -> Val {
+        Val {
+            data: vec![fill; rows.max(1) * cols.max(1)],
+            rows: rows.max(1),
+            cols: cols.max(1),
+        }
+    }
+
+    fn numel(&self) -> usize {
+        self.data.len()
+    }
+
+    fn at(&self, r: usize, c: usize) -> f64 {
+        self.data[r * self.cols + c]
+    }
+
+    /// 形状兼容的逐元素运算：同形，或一方为 1×1（标量广播）。
+    fn ew(&self, other: &Val, f: fn(f64, f64) -> f64) -> Result<Val, String> {
+        if self.rows == other.rows && self.cols == other.cols {
+            return Ok(Val {
+                data: self
+                    .data
+                    .iter()
+                    .zip(&other.data)
+                    .map(|(a, b)| f(*a, *b))
+                    .collect(),
+                rows: self.rows,
+                cols: self.cols,
+            });
+        }
+        if other.numel() == 1 {
+            let k = other.data[0];
+            return Ok(Val {
+                data: self.data.iter().map(|a| f(*a, k)).collect(),
+                rows: self.rows,
+                cols: self.cols,
+            });
+        }
+        if self.numel() == 1 {
+            let k = self.data[0];
+            return Ok(Val {
+                data: other.data.iter().map(|b| f(k, *b)).collect(),
+                rows: other.rows,
+                cols: other.cols,
+            });
+        }
+        Err(format!(
+            "形状不匹配：{:?}x{:?} vs {:?}x{:?}",
+            self.rows, self.cols, other.rows, other.cols
+        ))
+    }
+}
 
 pub struct Vm {
-    env: HashMap<String, Value>,
+    env: HashMap<String, Val>,
 }
 
 impl Vm {
@@ -36,26 +109,33 @@ impl Vm {
         }
     }
 
-    /// 执行一个函数。`inputs` 里没有的形参按 C 侧驱动的约定填 `1..=n`
-    /// （`n` 取 `% @m2c shape` 声明的长度；拿不到就按 3 个元素，与既有驱动一致）。
-    pub fn run(&mut self, f: &Func) -> Result<HashMap<String, Value>, String> {
+    /// 执行一个函数。形参按**行主序**填 `1..=n`（与 C 驱动一致）。
+    pub fn run(&mut self, f: &Func) -> Result<HashMap<String, Val>, String> {
         self.env.clear();
-        // **硬边界：二维形参直接拒绝**。
-        // VM 的值模型是一维序列，`mean(A)` 对 2×3 的 A 会算成全元素的均值，
-        // 而 MATLAB 是**逐列**均值 —— 结果形状对、数值错，属于最危险的一类。
-        // 实测语料里 `meancols` / `sumcols` / `vcat2` 就是这样被算错的（4 例）。
         for a in &f.args {
-            if a.shape.len() > 1 {
-                return Err(format!("二维形参未支持（{}）", a.name));
-            }
-        }
-        for a in &f.args {
-            let n = a.shape.first().copied().unwrap_or(3).max(1);
-            let v: Value = (1..=n).map(|x| x as f64).collect();
-            self.env.insert(a.name.clone(), v);
+            // **一维声明按 1×N**（行向量）。这与 C 驱动、Octave 真值的打印口径一致；
+            // 若按 N×1 处理，`size(x)` 会返回 `[N 1]` 而不是 `[1 N]`（实测 sizeall 就是这样错的）。
+            let single = a.shape.len() < 2;
+            let rows = a.shape.first().copied().unwrap_or(3).max(1) as usize;
+            let cols = if single {
+                rows
+            } else {
+                a.shape.get(1).copied().unwrap_or(1).max(1) as usize
+            };
+            let rows = if single { 1 } else { rows };
+            let n = rows * cols;
+            let v: Vec<f64> = (1..=n).map(|x| x as f64).collect();
+            self.env.insert(
+                a.name.clone(),
+                Val {
+                    data: v,
+                    rows,
+                    cols,
+                },
+            );
         }
         for l in &f.locals {
-            self.env.insert(l.name.clone(), vec![0.0]);
+            self.env.insert(l.name.clone(), Val::scalar(0.0));
         }
         self.exec_block(&f.body)?;
         let mut out = HashMap::new();
@@ -82,17 +162,17 @@ impl Vm {
         match st {
             Stmt::Const { name, value, .. } => {
                 let v = to_f64(value).ok_or_else(|| format!("const 不是数字：{}", value))?;
-                self.env.insert(name.clone(), vec![v]);
+                self.env.insert(name.clone(), Val::scalar(v));
                 Ok(Flow::Next)
             }
             Stmt::SetBin { lhs, op, a, b, .. } => {
                 let va = self.get(a)?;
                 let vb = self.get(b)?;
                 let v = match op.as_str() {
-                    "add" => ew(&va, &vb, |x, y| x + y),
-                    "sub" => ew(&va, &vb, |x, y| x - y),
-                    "mul" => ew(&va, &vb, |x, y| x * y),
-                    "div" => ew(&va, &vb, |x, y| x / y),
+                    "add" => va.ew(&vb, |x, y| x + y)?,
+                    "sub" => va.ew(&vb, |x, y| x - y)?,
+                    "mul" => va.ew(&vb, |x, y| x * y)?,
+                    "div" => va.ew(&vb, |x, y| x / y)?,
                     other => return Err(format!("未知 setb 运算：{}", other)),
                 };
                 self.env.insert(lhs.clone(), v);
@@ -121,7 +201,6 @@ impl Vm {
                 }
             }
             Stmt::While { cond, body, .. } => {
-                // 死循环护栏：与发射器一致（1e6 次），避免判据挂死。
                 let mut guard = 0u64;
                 while self.test(cond)? {
                     guard += 1;
@@ -152,7 +231,7 @@ impl Vm {
                     if guard > 1_000_000 {
                         return Err("for 迭代超过 1e6".into());
                     }
-                    self.env.insert(var.clone(), vec![k]);
+                    self.env.insert(var.clone(), Val::scalar(k));
                     match self.exec_block(body)? {
                         Flow::Break => break,
                         Flow::Return => return Ok(Flow::Return),
@@ -168,12 +247,27 @@ impl Vm {
             Stmt::Call { func, .. } | Stmt::Call2 { func, .. } => {
                 Err(format!("调用未内联的函数：{}（VM 不做链接）", func))
             }
-            Stmt::Fill { name, dims, value, .. } => {
-                // `fill:y:1,4:0` -> zeros(1,4)；负数维度视为 0（空数组）
-                let n: i64 = dims.iter().map(|d| (*d).max(0)).product();
-                let v = to_f64(value)
-                    .ok_or_else(|| format!("fill 的值不是数字：{}", value))?;
-                self.env.insert(name.clone(), vec![v; n as usize]);
+            Stmt::Fill {
+                name,
+                dims,
+                value,
+                ..
+            } => {
+                let rows = dims.first().copied().unwrap_or(0).max(0) as usize;
+                let cols = dims.get(1).copied().unwrap_or(1).max(0) as usize;
+                let v = to_f64(value).ok_or_else(|| format!("fill 的值不是数字：{}", value))?;
+                if rows == 0 || cols == 0 {
+                    self.env.insert(
+                        name.clone(),
+                        Val {
+                            data: vec![],
+                            rows: 1,
+                            cols: 0,
+                        },
+                    );
+                } else {
+                    self.env.insert(name.clone(), Val::zeros(rows, cols, v));
+                }
                 Ok(Flow::Next)
             }
         }
@@ -195,16 +289,16 @@ impl Vm {
 
     fn scalar(&self, tok: &str) -> Result<f64, String> {
         let v = self.get(tok)?;
-        v.first()
+        v.data
+            .first()
             .copied()
             .ok_or_else(|| format!("空值：{}", tok))
     }
 
-    /// 取一个 token 的值：数字字面量或环境里的变量。
-    fn get(&self, tok: &str) -> Result<Value, String> {
+    fn get(&self, tok: &str) -> Result<Val, String> {
         let t = tok.trim();
         if let Some(x) = to_f64(t) {
-            return Ok(vec![x]);
+            return Ok(Val::scalar(x));
         }
         self.env
             .get(t)
@@ -212,19 +306,38 @@ impl Vm {
             .ok_or_else(|| format!("未定义的量：{}", t))
     }
 
-    /// 执行一个 `op:` 语句。**未实现的算子一律报错**（不猜、不返回 0）。
-    fn eval_op(&self, id: &str, args: &[String]) -> Result<Value, String> {
-        let unary = |f: fn(f64) -> f64| -> Result<Value, String> {
+    /// 沿第 1 维（列）归约 —— MATLAB 的默认行为。结果是 **1×cols**。
+    fn reduce_cols(&self, a: &Val, f: fn(&[f64]) -> f64) -> Val {
+        // **沿第一个非单维归约**（MATLAB 规则）：
+        // 行向量（rows==1）→ 全部元素归约成一个标量；否则逐列归约。
+        // 少了这条，`sum([1 4 9])` 会返回 `1 4 9`（每列只有一个元素），
+        // 实测让 `dotp`/`dynsum`/`fir_lp` 等 5 个函数同时算错。
+        if a.rows == 1 {
+            return Val::scalar(f(&a.data));
+        }
+        let mut out = Vec::with_capacity(a.cols);
+        for c in 0..a.cols {
+            let col: Vec<f64> = (0..a.rows).map(|r| a.at(r, c)).collect();
+            out.push(f(&col));
+        }
+        Val::from_vec(out)
+    }
+
+    fn eval_op(&self, id: &str, args: &[String]) -> Result<Val, String> {
+        let unary = |f: fn(f64) -> f64| -> Result<Val, String> {
             let a = self.get(&args[0])?;
-            Ok(a.into_iter().map(f).collect())
+            Ok(Val {
+                data: a.data.iter().map(|x| f(*x)).collect(),
+                rows: a.rows,
+                cols: a.cols,
+            })
         };
-        let binary = |f: fn(f64, f64) -> f64| -> Result<Value, String> {
+        let binary = |f: fn(f64, f64) -> f64| -> Result<Val, String> {
             let a = self.get(&args[0])?;
             let b = self.get(&args[1])?;
-            Ok(ew(&a, &b, f))
+            a.ew(&b, f)
         };
         match id {
-            // ---- 逐元素 ----
             "OP-ADD" => binary(|x, y| x + y),
             "OP-SUB" => binary(|x, y| x - y),
             "OP-MUL" => binary(|x, y| x * y),
@@ -234,107 +347,192 @@ impl Vm {
             "OP-LOG10" => unary(f64::log10),
             "OP-SIN" => unary(f64::sin),
             "OP-FLOOR" => unary(f64::floor),
-            // ---- 归约到标量 ----
-            "OP-SUM" => Ok(vec![self.get(&args[0])?.iter().sum()]),
-            "OP-MEAN" => {
-                let a = self.get(&args[0])?;
-                if a.is_empty() {
-                    Ok(vec![f64::NAN])
+            // ---- 归约：沿列（MATLAB 默认）----
+            "OP-SUM" => Ok(self.reduce_cols(&self.get(&args[0])?, |v| v.iter().sum())),
+            "OP-MEAN" => Ok(self.reduce_cols(&self.get(&args[0])?, |v| {
+                if v.is_empty() {
+                    f64::NAN
                 } else {
-                    Ok(vec![a.iter().sum::<f64>() / a.len() as f64])
+                    v.iter().sum::<f64>() / v.len() as f64
+                }
+            })),
+            "OP-MAX" => Ok(self.reduce_cols(&self.get(&args[0])?, |v| {
+                v.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
+            })),
+            "OP-MIN" => Ok(self.reduce_cols(&self.get(&args[0])?, |v| {
+                v.iter().cloned().fold(f64::INFINITY, f64::min)
+            })),
+            // ---- 谓词/尺寸 ----
+            "OP-ISEMPTY" => Ok(Val::scalar(if self.get(&args[0])?.numel() == 0 {
+                1.0
+            } else {
+                0.0
+            })),
+            "OP-NUMEL" => Ok(Val::scalar(self.get(&args[0])?.numel() as f64)),
+            "OP-LENGTH" => {
+                let a = self.get(&args[0])?;
+                Ok(Val::scalar(a.rows.max(a.cols) as f64))
+            }
+            "OP-ANY" => Ok(Val::scalar(if self.get(&args[0])?.data.iter().any(|x| *x != 0.0) {
+                1.0
+            } else {
+                0.0
+            })),
+            "OP-ALL" => Ok(Val::scalar(if self.get(&args[0])?.data.iter().all(|x| *x != 0.0) {
+                1.0
+            } else {
+                0.0
+            })),
+            "OP-NNZ" => Ok(Val::scalar(
+                self.get(&args[0])?
+                    .data
+                    .iter()
+                    .filter(|x| **x != 0.0)
+                    .count() as f64,
+            )),
+            // ---- 尺寸查询 ----
+            "OP-SIZE" => {
+                let a = self.get(&args[0])?;
+                if args.len() >= 2 {
+                    let d = self.scalar(&args[1])? as usize;
+                    let v = if d == 1 { a.rows } else { a.cols };
+                    Ok(Val::scalar(v as f64))
+                } else {
+                    Ok(Val::from_vec(vec![a.rows as f64, a.cols as f64]))
                 }
             }
-            "OP-MAX" => Ok(vec![self
-                .get(&args[0])?
-                .iter()
-                .cloned()
-                .fold(f64::NEG_INFINITY, f64::max)]),
-            "OP-MIN" => Ok(vec![self
-                .get(&args[0])?
-                .iter()
-                .cloned()
-                .fold(f64::INFINITY, f64::min)]),
-            // ---- 谓词/尺寸（一元，参数是数组名）----
-            "OP-ISEMPTY" => Ok(vec![if self.get(&args[0])?.is_empty() { 1.0 } else { 0.0 }]),
-            "OP-LENGTH" => Ok(vec![self.get(&args[0])?.len() as f64]),
-            "OP-NUMEL" => Ok(vec![self.get(&args[0])?.len() as f64]),
-            "OP-ANY" => Ok(vec![if self.get(&args[0])?.iter().any(|x| *x != 0.0) {
-                1.0
-            } else {
-                0.0
-            }]),
-            "OP-ALL" => Ok(vec![if self.get(&args[0])?.iter().all(|x| *x != 0.0) {
-                1.0
-            } else {
-                0.0
-            }]),
-            "OP-NNZ" => Ok(vec![self
-                .get(&args[0])?
-                .iter()
-                .filter(|x| **x != 0.0)
-                .count() as f64]),
-            // ---- 拷贝与下标 ----
             "OP-COPY" => self.get(&args[0]),
+            // ---- 线性下标：**列主序换算**（与 MATLAB 一致）----
             "OP-INDEX" => {
                 let a = self.get(&args[0])?;
-                let k = self.scalar(&args[1])? as usize;
-                a.get(k.saturating_sub(1))
-                    .copied()
-                    .map(|v| vec![v])
-                    .ok_or_else(|| format!("下标越界：{} / {}", k, a.len()))
+                let k = self.scalar(&args[1])? as i64;
+                if k < 1 || (k as usize) > a.numel() {
+                    return Err(format!("下标越界：{} / {}", k, a.numel()));
+                }
+                let k = (k - 1) as usize;
+                let (r, c) = (k % a.rows, k / a.rows);
+                Ok(Val::scalar(a.at(r, c)))
             }
-            // ---- 切片：`op:OP-SLICE:dst:a:from:to`（1-based 闭区间）----
+            // ---- 切片（1-based 闭区间，按线性下标）----
             "OP-SLICE" => {
                 let a = self.get(&args[0])?;
                 let from = self.scalar(&args[1])? as i64;
                 let to = self.scalar(&args[2])? as i64;
-                let n = a.len() as i64;
+                let n = a.numel() as i64;
                 let (lo, hi) = (from.max(1), to.min(n));
                 if lo > hi {
-                    return Ok(vec![]);
+                    return Ok(Val::from_vec(vec![]));
                 }
-                Ok(a[(lo - 1) as usize..hi as usize].to_vec())
+                // 线性区间按列主序取，再还原行主序
+                let mut out = Vec::new();
+                for k in (lo - 1)..hi {
+                    let k = k as usize;
+                    out.push(a.at(k % a.rows, k / a.rows));
+                }
+                Ok(Val::from_vec(out))
             }
-            // ---- 逻辑下标选值：`a(a cmp k)`（**选值**，不是 0/1 掩码）----
+            // ---- 行/列切片 ----
+            "OP-ROW" => {
+                let a = self.get(&args[0])?;
+                let r = self.scalar(&args[1])? as usize;
+                if r < 1 || r > a.rows {
+                    return Err(format!("行越界：{} / {}", r, a.rows));
+                }
+                let mut out = Vec::with_capacity(a.cols);
+                for c in 0..a.cols {
+                    out.push(a.at(r - 1, c));
+                }
+                Ok(Val::from_vec(out))
+            }
+            "OP-COLRANGE" => {
+                let a = self.get(&args[0])?;
+                let from = self.scalar(&args[1])? as i64;
+                let to_tok = args[2].trim();
+                let to = if to_tok == "-1" {
+                    a.cols as i64
+                } else {
+                    self.scalar(to_tok)? as i64
+                };
+                let (lo, hi) = (from.max(1), to.min(a.cols as i64));
+                if lo > hi {
+                    return Ok(Val::zeros(a.rows, 0, 0.0));
+                }
+                let mut out = vec![0.0; a.rows * (hi - lo + 1) as usize];
+                for r in 0..a.rows {
+                    for (i, c) in (lo..=hi).enumerate() {
+                        out[r * (hi - lo + 1) as usize + i] = a.at(r, (c - 1) as usize);
+                    }
+                }
+                Ok(Val {
+                    data: out,
+                    rows: a.rows,
+                    cols: (hi - lo + 1) as usize,
+                })
+            }
+            // ---- 逻辑下标选值（结果变短）----
             "OP-MASK" => {
                 let a = self.get(&args[0])?;
                 let k = self.scalar(&args[2])?;
                 let sym = cmp_sym(&args[1])?;
-                Ok(a.into_iter().filter(|x| sym(*x, k)).collect())
+                Ok(Val::from_vec(
+                    a.data.iter().cloned().filter(|x| sym(*x, k)).collect(),
+                ))
             }
-            // ---- 查找：满足条件的 **1-based** 下标 ----
+            // ---- 查找：满足条件的 1-based 线性下标（列主序）----
             "OP-FIND" => {
                 let a = self.get(&args[0])?;
                 let k = self.scalar(&args[2])?;
                 let sym = cmp_sym(&args[1])?;
-                Ok(a.iter()
-                    .enumerate()
-                    .filter(|(_, x)| sym(**x, k))
-                    .map(|(i, _)| (i + 1) as f64)
-                    .collect())
+                let mut out = Vec::new();
+                for c in 0..a.cols {
+                    for r in 0..a.rows {
+                        if sym(a.at(r, c), k) {
+                            out.push((r + c * a.rows + 1) as f64);
+                        }
+                    }
+                }
+                Ok(Val::from_vec(out))
             }
-            // ---- 拼接（一维时 hcat/vcat 同义）----
-            "OP-HCAT" | "OP-VCAT" => {
-                let mut a = self.get(&args[0])?;
-                a.extend(self.get(&args[1])?);
-                Ok(a)
+            // ---- 拼接 ----
+            "OP-HCAT" => {
+                let a = self.get(&args[0])?;
+                let b = self.get(&args[1])?;
+                if a.rows != b.rows {
+                    return Err("水平拼接行数不同".into());
+                }
+                let cols = a.cols + b.cols;
+                let mut out = Vec::with_capacity(a.rows * cols);
+                for r in 0..a.rows {
+                    for c in 0..a.cols {
+                        out.push(a.at(r, c));
+                    }
+                    for c in 0..b.cols {
+                        out.push(b.at(r, c));
+                    }
+                }
+                Ok(Val {
+                    data: out,
+                    rows: a.rows,
+                    cols,
+                })
+            }
+            "OP-VCAT" => {
+                let a = self.get(&args[0])?;
+                let b = self.get(&args[1])?;
+                if a.cols != b.cols {
+                    return Err("竖直拼接列数不同".into());
+                }
+                let mut data = a.data.clone();
+                data.extend(b.data.clone());
+                Ok(Val {
+                    data,
+                    rows: a.rows + b.rows,
+                    cols: a.cols,
+                })
             }
             other => Err(format!("VM 未实现该算子：{}", other)),
         }
     }
-}
-
-/// 掩码/查找的比较码 → 判定函数。**取值来自 C 的 `mlc_mask_test`**，不要另造。
-fn cmp_sym(code: &str) -> Result<fn(f64, f64) -> bool, String> {
-    Ok(match code.trim() {
-        "0" => |a, b| a > b,
-        "1" => |a, b| a >= b,
-        "2" => |a, b| a < b,
-        "3" => |a, b| a <= b,
-        "4" => |a, b| (a - b).abs() < 1e-12,
-        "5" => |a, b| (a - b).abs() >= 1e-12,
-        o => return Err(format!("未知比较码：{}", o)),
-    })
 }
 
 enum Flow {
@@ -347,19 +545,15 @@ fn to_f64(t: &str) -> Option<f64> {
     t.trim().parse::<f64>().ok()
 }
 
-/// 逐元素运算；长度不等时按标量**广播**（长度 1 的一方复制）。
-fn ew(a: &[f64], b: &[f64], f: fn(f64, f64) -> f64) -> Value {
-    if a.len() == b.len() {
-        a.iter().zip(b).map(|(x, y)| f(*x, *y)).collect()
-    } else if a.len() == 1 {
-        b.iter().map(|y| f(a[0], *y)).collect()
-    } else if b.len() == 1 {
-        a.iter().map(|x| f(*x, b[0])).collect()
-    } else {
-        // 形状不匹配：返回空的第一个分支长度，让上游看到 NaN 而不是静默 truncate
-        a.iter()
-            .zip(b.iter())
-            .map(|(x, y)| f(*x, *y))
-            .collect()
-    }
+/// 掩码/查找的比较码 → 判定函数。**取值来自 C 的 `mlc_mask_test`**。
+fn cmp_sym(code: &str) -> Result<fn(f64, f64) -> bool, String> {
+    Ok(match code.trim() {
+        "0" => |a, b| a > b,
+        "1" => |a, b| a >= b,
+        "2" => |a, b| a < b,
+        "3" => |a, b| a <= b,
+        "4" => |a, b| (a - b).abs() < 1e-12,
+        "5" => |a, b| (a - b).abs() >= 1e-12,
+        o => return Err(format!("未知比较码：{}", o)),
+    })
 }
