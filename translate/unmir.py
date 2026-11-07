@@ -229,6 +229,32 @@ class Unmirror(object):
             self._emit("%s = find(%s %s %s);"
                        % (dst, self._e(a[0]), cmp_sym, self._e(a[2])))
             return
+        if oid == "OP-MASK" and len(a) >= 3:
+            # `OP-MASK:dst:a:cmp:k` 是**逻辑下标选值**，不是掩码数组：
+            #   `y = x(x > 2);`  ->  `op:OP-MASK:y:x:0:2`
+            # 早前直译成 `y = (x > 2)`，往返判据立刻看到 `0 0 1 1 1`（形状对、值错），
+            # 而正确结果是 `3 4 5`。**判据就是这么把"能跑但语义错"挑出来的。**
+            cmp_sym = _CMP_CODE.get(a[1])
+            if cmp_sym is None:
+                self.skipped.append(ln)
+                return
+            src = self._e(a[0])
+            self._emit("%s = %s(%s %s %s);"
+                       % (dst, src, src, cmp_sym, self._e(a[2])))
+            return
+        if oid == "OP-SIZE":
+            if len(a) >= 2:
+                self._emit("%s = size(%s, %s);" % (dst, self._e(a[0]), self._e(a[1])))
+            elif len(a) == 1:
+                self._emit("%s = size(%s);" % (dst, self._e(a[0])))
+            else:
+                self.skipped.append(ln)
+            return
+        if oid == "OP-FILLA" and len(a) >= 3:
+            fn = "ones" if a[2].strip() == "1" else "zeros"
+            self._emit("%s = %s(%s, %s);"
+                       % (dst, fn, self._e(a[0]), self._e(a[1])))
+            return
         if oid in _FN:
             fn = _FN[oid]
             if fn == "__transpose__":
