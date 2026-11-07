@@ -68,8 +68,13 @@ def test_vm_matches_octave(fn):
 
 
 @pytest.mark.skipif(not os.path.isfile(M2C), reason="m2c 未构建")
-def test_vm_refuses_two_dimension():
-    """二维形参必须**拒绝**，不能算成"全元素归约"。"""
+def test_vm_two_dimension_column_mean():
+    """二维形参：`mean(A)` 必须**逐列**（2×3 的 [1..6] → 2.5 3.5 4.5）。
+
+    这条判据原来是"二维必须拒绝"（VM 只有一维时）。R695 支持二维后，
+    它改成验**正确的列均值** —— 因为"能算"和"算对"是两件事：
+    VM 第一版把 `mean(A)` 算成**全元素均值**（3.5），形状对、数值错。
+    """
     d = WORK if os.path.isdir(WORK) else "."
     p = os.path.join(d, "vm2d.m")
     io.open(p, "w", encoding="utf-8", newline="\n").write(
@@ -80,5 +85,8 @@ def test_vm_refuses_two_dimension():
                    timeout=120, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     r = subprocess.run([M2C, "run", "--mir", mir], stdin=subprocess.DEVNULL,
                        timeout=60, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    out = r.stdout.decode("utf-8", "replace")
-    assert "二维形参未支持" in out, "二维输入必须显式拒绝，实际输出：%r" % out[:120]
+    out = r.stdout.decode("utf-8", "replace").strip()
+    assert r.returncode == 0, out
+    got = out.split(":", 1)[1].strip() if ":" in out else out
+    assert " ".join(got.split()) == "2.5 3.5 4.5", \
+        "二维 mean 必须逐列，实际：%r" % got
