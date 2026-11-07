@@ -256,6 +256,26 @@ Python 支持无源码分发：把 `foo.py` 编译成同目录的 `foo.pyc`，�
 
   `blockmarker`（`else`/`end` 未被识别）是纯解析问题，形态最清晰，列为下一轮首选。
 
+- **`blockmarker`（489）的根因查明：不是 `else` 配对出错，是 `if` 条件不支持**
+
+  采样（YALMIP 全量）：`blockmarker` 只有两种词 —— `else` 1386、`otherwise` 337，**没有 `end`**。
+  这本身就说明块结构没被打开，而不是关闭出错。
+
+  四例最小复现，全部失败在 **`if` 那一行**：
+
+  | 条件形态 | MIR 结果 |
+  |---|---|
+  | `if a >= 0 && b <= 1` | `unmapped: if a >= 0 && b <= 1` |
+  | `if s.v > 0`（struct 字段） | `unmapped` |
+  | `if isa(x,'function_handle')` | `unmapped` |
+
+  机制：`if` 没降级 → **块没打开** → 后面的 `else` 无处归属 → 记成 `blockmarker`。
+
+  ⇒ **`blockmarker` 是症状，`cond`（822 条）才是病**。下一轮做 `if` 条件里的 `&&` / `||`，
+  一次能同时消掉两批。
+
+  本轮产品代码净变化 0 行 —— 但如果按原计划去"修 else 配对"，会白跑一整轮。
+
 ## 2.3.0
 
 ### 修复

@@ -130,3 +130,21 @@ YALMIP                numeric 4 ｜ 桩 54 ｜ error 0 ｜ empty 0 ｜ 形状 10
 
 ⇒ 下一步真正的靶子是 **`call2`：调用结果参与拼接**（25 条，且与已有的 `OP-HCAT` 相邻），
 其次是类型转换类 `other`。
+
+### blockmarker（489）的根因：`if` 条件不支持，不是 `else` 配对出错（R669）
+
+采样（YALMIP 全量）：`blockmarker` 只有两种词 —— `else` 1386、`otherwise` 337，**没有 `end`**。
+
+最小复现（4 例，全部失败在 `if` 那一行）：
+
+| 条件形态 | 结果 |
+|---|---|
+| `if s.v > 0`（struct 字段） | `unmapped: if s.v > 0` |
+| `if isa(x,'function_handle')` | `unmapped: if isa(...)` |
+| **`if a >= 0 && b <= 1`（`&&`）** | `unmapped: if ...` ← **唯一便宜可修的** |
+| `if isa(s.f,'function_handle')` | `unmapped` |
+
+机制：`if` 那一行没被降级 → **块没打开** → 后面的 `else` 无处归属 → 被记成 `blockmarker`。
+所以 `blockmarker` 是**症状**，不是病；真正的病因在 `cond`（822 条）里。
+
+⇒ 下一轮做 **`if` 条件里的 `&&` / `||`**（逻辑与/或），它能同时消掉 `cond` 与 `blockmarker` 两批。
