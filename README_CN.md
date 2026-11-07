@@ -1201,3 +1201,5 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 写“主因是 X”之前先跑桶构成普查：`python tools/bucket_census.py <mir> <桶名>`。
 
 双向转换自检：`python translate/roundtrip.py <x.m>`（MATLAB→MIR→C 与 MIR→MATLAB' 两个方向的数值都必须与原函数一致）。
+
+任务级 KPI（双向转换通过率 + 未通过原因）：`python tools/task_kpi.py <目录...> --min 90`。

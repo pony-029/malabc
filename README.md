@@ -1272,3 +1272,5 @@ Three-link regression report: `python tools/three_links_report.py <dirs> -o <out
 Bucket census before any "the main cause is X" claim: `python tools/bucket_census.py <mir> <bucket>`.
 
 Bidirectional check: `python translate/roundtrip.py <x.m>` (MATLAB -> MIR -> C, and MIR -> MATLAB'; both must match the original numbers).
+
+Task-level KPI (bidirectional pass rate with failure reasons): `python tools/task_kpi.py <dirs...> --min 90`.
