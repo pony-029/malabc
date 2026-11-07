@@ -168,10 +168,14 @@ impl Vm {
             Stmt::Call { func, .. } | Stmt::Call2 { func, .. } => {
                 Err(format!("调用未内联的函数：{}（VM 不做链接）", func))
             }
-            Stmt::Fill { name, dims, .. } => Err(format!(
-                "OP-FILL 运行期维度暂不支持（{} 维 {:?}）",
-                name, dims
-            )),
+            Stmt::Fill { name, dims, value, .. } => {
+                // `fill:y:1,4:0` -> zeros(1,4)；负数维度视为 0（空数组）
+                let n: i64 = dims.iter().map(|d| (*d).max(0)).product();
+                let v = to_f64(value)
+                    .ok_or_else(|| format!("fill 的值不是数字：{}", value))?;
+                self.env.insert(name.clone(), vec![v; n as usize]);
+                Ok(Flow::Next)
+            }
         }
     }
 
@@ -208,6 +212,7 @@ impl Vm {
             .ok_or_else(|| format!("未定义的量：{}", t))
     }
 
+    /// 执行一个 `op:` 语句。**未实现的算子一律报错**（不猜、不返回 0）。
     fn eval_op(&self, id: &str, args: &[String]) -> Result<Value, String> {
         let unary = |f: fn(f64) -> f64| -> Result<Value, String> {
             let a = self.get(&args[0])?;
@@ -219,6 +224,7 @@ impl Vm {
             Ok(ew(&a, &b, f))
         };
         match id {
+            // ---- 逐元素 ----
             "OP-ADD" => binary(|x, y| x + y),
             "OP-SUB" => binary(|x, y| x - y),
             "OP-MUL" => binary(|x, y| x * y),
@@ -228,28 +234,48 @@ impl Vm {
             "OP-LOG10" => unary(f64::log10),
             "OP-SIN" => unary(f64::sin),
             "OP-FLOOR" => unary(f64::floor),
-            "OP-SUM" => {
-                let a = self.get(&args[0])?;
-                Ok(vec![a.iter().sum()])
-            }
+            // ---- 归约到标量 ----
+            "OP-SUM" => Ok(vec![self.get(&args[0])?.iter().sum()]),
             "OP-MEAN" => {
                 let a = self.get(&args[0])?;
                 if a.is_empty() {
-                    return Ok(vec![f64::NAN]);
+                    Ok(vec![f64::NAN])
+                } else {
+                    Ok(vec![a.iter().sum::<f64>() / a.len() as f64])
                 }
-                Ok(vec![a.iter().sum::<f64>() / a.len() as f64])
             }
-            "OP-MAX" => {
-                let a = self.get(&args[0])?;
-                Ok(vec![a.iter().cloned().fold(f64::NEG_INFINITY, f64::max)])
-            }
-            "OP-MIN" => {
-                let a = self.get(&args[0])?;
-                Ok(vec![a.iter().cloned().fold(f64::INFINITY, f64::min)])
-            }
+            "OP-MAX" => Ok(vec![self
+                .get(&args[0])?
+                .iter()
+                .cloned()
+                .fold(f64::NEG_INFINITY, f64::max)]),
+            "OP-MIN" => Ok(vec![self
+                .get(&args[0])?
+                .iter()
+                .cloned()
+                .fold(f64::INFINITY, f64::min)]),
+            // ---- 谓词/尺寸（一元，参数是数组名）----
+            "OP-ISEMPTY" => Ok(vec![if self.get(&args[0])?.is_empty() { 1.0 } else { 0.0 }]),
+            "OP-LENGTH" => Ok(vec![self.get(&args[0])?.len() as f64]),
+            "OP-NUMEL" => Ok(vec![self.get(&args[0])?.len() as f64]),
+            "OP-ANY" => Ok(vec![if self.get(&args[0])?.iter().any(|x| *x != 0.0) {
+                1.0
+            } else {
+                0.0
+            }]),
+            "OP-ALL" => Ok(vec![if self.get(&args[0])?.iter().all(|x| *x != 0.0) {
+                1.0
+            } else {
+                0.0
+            }]),
+            "OP-NNZ" => Ok(vec![self
+                .get(&args[0])?
+                .iter()
+                .filter(|x| **x != 0.0)
+                .count() as f64]),
+            // ---- 拷贝与下标 ----
             "OP-COPY" => self.get(&args[0]),
             "OP-INDEX" => {
-                // 列优先线性下标（与 mlc_op_index 一致）：1-based
                 let a = self.get(&args[0])?;
                 let k = self.scalar(&args[1])? as usize;
                 a.get(k.saturating_sub(1))
@@ -257,16 +283,58 @@ impl Vm {
                     .map(|v| vec![v])
                     .ok_or_else(|| format!("下标越界：{} / {}", k, a.len()))
             }
+            // ---- 切片：`op:OP-SLICE:dst:a:from:to`（1-based 闭区间）----
+            "OP-SLICE" => {
+                let a = self.get(&args[0])?;
+                let from = self.scalar(&args[1])? as i64;
+                let to = self.scalar(&args[2])? as i64;
+                let n = a.len() as i64;
+                let (lo, hi) = (from.max(1), to.min(n));
+                if lo > hi {
+                    return Ok(vec![]);
+                }
+                Ok(a[(lo - 1) as usize..hi as usize].to_vec())
+            }
+            // ---- 逻辑下标选值：`a(a cmp k)`（**选值**，不是 0/1 掩码）----
+            "OP-MASK" => {
+                let a = self.get(&args[0])?;
+                let k = self.scalar(&args[2])?;
+                let sym = cmp_sym(&args[1])?;
+                Ok(a.into_iter().filter(|x| sym(*x, k)).collect())
+            }
+            // ---- 查找：满足条件的 **1-based** 下标 ----
+            "OP-FIND" => {
+                let a = self.get(&args[0])?;
+                let k = self.scalar(&args[2])?;
+                let sym = cmp_sym(&args[1])?;
+                Ok(a.iter()
+                    .enumerate()
+                    .filter(|(_, x)| sym(**x, k))
+                    .map(|(i, _)| (i + 1) as f64)
+                    .collect())
+            }
+            // ---- 拼接（一维时 hcat/vcat 同义）----
             "OP-HCAT" | "OP-VCAT" => {
-                // 一维时两者同义（真实 2-D 语义由 C 侧保证，VM 只用于数值自证）
                 let mut a = self.get(&args[0])?;
-                let b = self.get(&args[1])?;
-                a.extend(b);
+                a.extend(self.get(&args[1])?);
                 Ok(a)
             }
             other => Err(format!("VM 未实现该算子：{}", other)),
         }
     }
+}
+
+/// 掩码/查找的比较码 → 判定函数。**取值来自 C 的 `mlc_mask_test`**，不要另造。
+fn cmp_sym(code: &str) -> Result<fn(f64, f64) -> bool, String> {
+    Ok(match code.trim() {
+        "0" => |a, b| a > b,
+        "1" => |a, b| a >= b,
+        "2" => |a, b| a < b,
+        "3" => |a, b| a <= b,
+        "4" => |a, b| (a - b).abs() < 1e-12,
+        "5" => |a, b| (a - b).abs() >= 1e-12,
+        o => return Err(format!("未知比较码：{}", o)),
+    })
 }
 
 enum Flow {
