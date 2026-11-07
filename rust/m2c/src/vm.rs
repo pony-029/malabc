@@ -184,6 +184,56 @@ impl Vm {
                 Ok(Flow::Next)
             }
             Stmt::Op(op) => {
+                // `y(i) = v` 是**就地写**：要读回 `op.lhs` 当前的值，再改一个元素。
+                // 这类算子不能只靠 args 求值（args 里没有被写的数组本身）。
+                // `A(i,j) = v`：二维就地写（偏移换算与 OP-INDEX 的列主序一致）
+                if op.id == "OP-SETIDX2" {
+                    let cur = self
+                        .env
+                        .get(&op.lhs)
+                        .cloned()
+                        .ok_or_else(|| format!("setidx2 的目标未定义：{}", op.lhs))?;
+                    let i = self.scalar(&op.args[0])? as i64;
+                    let j = self.scalar(&op.args[1])? as i64;
+                    let v = self.scalar(&op.args[2])?;
+                    if i < 1 || j < 1
+                        || (i as usize) > cur.rows
+                        || (j as usize) > cur.cols
+                    {
+                        return Err(format!(
+                            "setidx2 越界：({},{}) / {}x{}",
+                            i, j, cur.rows, cur.cols
+                        ));
+                    }
+                    let mut newv = cur.clone();
+                    let pos = (i as usize - 1) * newv.cols + (j as usize - 1);
+                    if let Some(slot) = newv.data.get_mut(pos) {
+                        *slot = v;
+                    }
+                    self.env.insert(op.lhs.clone(), newv);
+                    return Ok(Flow::Next);
+                }
+                if op.id == "OP-SETIDX" {
+                    let cur = self
+                        .env
+                        .get(&op.lhs)
+                        .cloned()
+                        .ok_or_else(|| format!("setidx 的目标未定义：{}", op.lhs))?;
+                    let v = self.scalar(&op.args[0])?;
+                    let k = self.scalar(&op.args[1])? as i64;
+                    if k < 1 || (k as usize) > cur.numel() {
+                        return Err(format!("setidx 越界：{} / {}", k, cur.numel()));
+                    }
+                    let k = (k - 1) as usize;
+                    let (r, c) = (k % cur.rows.max(1), k / cur.rows.max(1));
+                    let mut newv = cur.clone();
+                    let pos = r * newv.cols.max(1) + c;
+                    if let Some(slot) = newv.data.get_mut(pos) {
+                        *slot = v;
+                    }
+                    self.env.insert(op.lhs.clone(), newv);
+                    return Ok(Flow::Next);
+                }
                 let v = self.eval_op(&op.id, &op.args)?;
                 self.env.insert(op.lhs.clone(), v);
                 Ok(Flow::Next)
@@ -402,6 +452,133 @@ impl Vm {
                 }
             }
             "OP-COPY" => self.get(&args[0]),
+            // ---- 转置 ----
+            "OP-TRANSPOSE" => {
+                let a = self.get(&args[0])?;
+                let mut data = vec![0.0; a.numel()];
+                for r in 0..a.rows {
+                    for c in 0..a.cols {
+                        data[c * a.rows + r] = a.at(r, c);
+                    }
+                }
+                Ok(Val {
+                    data,
+                    rows: a.cols,
+                    cols: a.rows,
+                })
+            }
+            // ---- 矩阵乘（行向量 × 列向量时退化为内积）----
+            "OP-MATMUL" => {
+                let a = self.get(&args[0])?;
+                let b = self.get(&args[1])?;
+                if a.cols != b.rows {
+                    return Err(format!(
+                        "矩阵乘维度不匹配：{}x{} * {}x{}",
+                        a.rows, a.cols, b.rows, b.cols
+                    ));
+                }
+                let mut data = vec![0.0; a.rows * b.cols];
+                for r in 0..a.rows {
+                    for c in 0..b.cols {
+                        let mut acc = 0.0;
+                        for k in 0..a.cols {
+                            acc += a.at(r, k) * b.at(k, c);
+                        }
+                        data[r * b.cols + c] = acc;
+                    }
+                }
+                Ok(Val {
+                    data,
+                    rows: a.rows,
+                    cols: b.cols,
+                })
+            }
+            // ---- 相等判定（逐元素全等）----
+            "OP-ISEQUAL" | "OP-ISEQUALK" => {
+                let a = self.get(&args[0])?;
+                let b = self.get(&args[1])?;
+                let same = a.numel() == b.numel()
+                    && a
+                        .data
+                        .iter()
+                        .zip(&b.data)
+                        .all(|(x, y)| (x - y).abs() < 1e-12);
+                Ok(Val::scalar(if same { 1.0 } else { 0.0 }))
+            }
+            // ---- 集合差：a 中不在 b 里的元素，去重升序 ----
+            "OP-SETDIFF" => {
+                let a = self.get(&args[0])?;
+                let b = self.get(&args[1])?;
+                let mut out: Vec<f64> = a
+                    .data
+                    .iter()
+                    .cloned()
+                    .filter(|x| !b.data.iter().any(|y| (y - x).abs() < 1e-12))
+                    .collect();
+                out.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
+                out.dedup_by(|x, y| (*x - *y).abs() < 1e-12);
+                Ok(Val::from_vec(out))
+            }
+            // ---- 展平：按**列主序**拉成 1×N（MATLAB 的 `A(:)`）----
+            "OP-FLATTEN" => {
+                let a = self.get(&args[0])?;
+                let mut out = Vec::with_capacity(a.numel());
+                for c in 0..a.cols {
+                    for r in 0..a.rows {
+                        out.push(a.at(r, c));
+                    }
+                }
+                Ok(Val::from_vec(out))
+            }
+            // ---- 按运行期维度造数组：`alloc.fill:dst:m:n:v` ----
+            "OP-FILLA" => {
+                let m = self.scalar(&args[0])?.max(0.0) as usize;
+                let n = self.scalar(&args[1])?.max(0.0) as usize;
+                let v = self.scalar(&args[2])?;
+                if m == 0 || n == 0 {
+                    Ok(Val {
+                        data: vec![],
+                        rows: 1,
+                        cols: 0,
+                    })
+                } else {
+                    Ok(Val::zeros(m, n, v))
+                }
+            }
+            // ---- `find(a cmp b)`：逐元素比较两个数组，返回线性下标 ----
+            "OP-FIND2" => {
+                let a = self.get(&args[0])?;
+                let b = self.get(&args[1])?;
+                let sym = cmp_sym(&args[2])?;
+                let mut out = Vec::new();
+                for c in 0..a.cols.max(b.cols) {
+                    for r in 0..a.rows.max(b.rows) {
+                        if sym(a.at(r, c), b.at(r, c)) {
+                            out.push((r + c * a.rows.max(1) + 1) as f64);
+                        }
+                    }
+                }
+                Ok(Val::from_vec(out))
+            }
+            // ---- `find(cond, n)`：前 n 个满足条件的线性下标 ----
+            "OP-FIND3" => {
+                let a = self.get(&args[0])?;
+                let sym = cmp_sym(&args[1])?;
+                let k = self.scalar(&args[2])?;
+                let n = self.scalar(&args[3])? as usize;
+                let mut out = Vec::new();
+                for c in 0..a.cols {
+                    for r in 0..a.rows {
+                        if sym(a.at(r, c), k) {
+                            out.push((r + c * a.rows + 1) as f64);
+                            if out.len() >= n {
+                                return Ok(Val::from_vec(out));
+                            }
+                        }
+                    }
+                }
+                Ok(Val::from_vec(out))
+            }
             // ---- 线性下标：**列主序换算**（与 MATLAB 一致）----
             "OP-INDEX" => {
                 let a = self.get(&args[0])?;
