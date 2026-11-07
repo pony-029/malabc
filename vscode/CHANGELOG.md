@@ -297,6 +297,28 @@ Python 支持无源码分发：把 `foo.py` 编译成同目录的 `foo.pyc`，�
   判据 `tests/test_block_balance.py`（已接 GX2，1.0s）：四种"条件降不了级"的形态
   （`&&` / `||` / struct 字段 / `isa`）都必须让 `else` 正常归属，且不得出现 `blockmarker`。
 
+- **`otherwise` 按 `else` 处理 → `blockmarker` 归零**（318 → 0）
+
+  上一轮修完块平衡后，剩下的 318 条全是 `otherwise`（`switch` 的兜底分支）。
+  追下去发现结构其实早就通了：
+
+  | 成分 | 现状 |
+  |---|---|
+  | `switch X` | 已被降成**恒假占位块**（上一轮的机制） |
+  | `case v` | 不产生结构（记为 `control`，不影响块） |
+  | **`otherwise`** | **没有对应处理 → 孤儿** |
+
+  `otherwise` 与 `else` 是**同构**的（同一个块的中段标记），所以只需并进同一条分支：
+
+  ```python
+  if code.rstrip(";").strip() in ("else", "otherwise"):
+  ```
+
+  ```
+  YALMIP 全量：unmapped 24962 → 24644 ｜ why:blockmarker 318 → 0
+  语料 58/58 无回归
+  ```
+
 ## 2.3.0
 
 ### 修复

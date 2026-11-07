@@ -1428,7 +1428,11 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             code = _strip_full_call(code)
             if src_line:
                 out.append("# src:%d" % src_line)
-            if code.rstrip(";").strip() == "else":
+            # `otherwise` 是 `switch` 的"兜底分支"，与 `else` **同构**：
+            # `switch` 已被降成占位块（恒假 if），`case` 不产生结构，所以
+            # `otherwise` 只要按 `else` 处理，块就闭合了。
+            # 少这一行时，YALMIP 有 318 条 `otherwise` 成了孤儿（记成 blockmarker）。
+            if code.rstrip(";").strip() in ("else", "otherwise"):
                 if blocks and blocks[-1] == "if":
                     out.append("else")
                 else:
