@@ -60,6 +60,7 @@ CHECKS = (
              os.path.join("tests", "test_block_balance.py"),
              os.path.join("tests", "test_check_command.py"),
              os.path.join("tests", "test_check_annotate.py"),
+             os.path.join("tests", "test_struct_out.py"),
              os.path.join("tests", "test_three_links.py"),
              os.path.join("tests", "test_vsix_sourceless.py"),
              os.path.join("tests", "test_drop_sideeffect.py"),
