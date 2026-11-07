@@ -10,6 +10,7 @@
 mod emit;
 mod mir;
 mod project;
+mod vm;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -143,6 +144,37 @@ fn main() -> ExitCode {
                 }
             }
             ExitCode::SUCCESS
+        }
+        // **MIR 解释执行**：不走 C 编译，直接算数值。
+        // 用途是自证与回归（替代"必须装 Octave"），不是第二条产物线。
+        "run" => {
+            let mut bad = 0;
+            for f in &funcs {
+                if !f.unmapped.is_empty() {
+                    println!("{}: skip（未映射 {} 条）", f.name, f.unmapped.len());
+                    continue;
+                }
+                let mut m = vm::Vm::new();
+                match m.run(f) {
+                    Ok(out) => {
+                        for r in &f.rets {
+                            let v = out.get(&r.name).cloned().unwrap_or_default();
+                            let s: Vec<String> =
+                                v.iter().map(|x| fmt_num(*x)).collect();
+                            println!("{}: {}", r.name, s.join(" "));
+                        }
+                    }
+                    Err(e) => {
+                        println!("{}: error（{}）", f.name, e);
+                        bad += 1;
+                    }
+                }
+            }
+            if bad > 0 {
+                ExitCode::from(1)
+            } else {
+                ExitCode::SUCCESS
+            }
         }
         "build" => {
             let out = match out_dir {
@@ -457,5 +489,17 @@ fn selftest() -> ExitCode {
         ExitCode::SUCCESS
     } else {
         ExitCode::from(1)
+    }
+}
+
+/// 数值输出格式：整数不带 `.0`（与 C 驱动、Octave 的打印对齐），其余保留 6 位有效。
+fn fmt_num(x: f64) -> String {
+    if x.is_finite() && (x - x.round()).abs() < 1e-9 {
+        format!("{}", x.round() as i64)
+    } else {
+        // **最短往返表示**（`{}` 对 f64 就是 Rust 的最短表示）。
+        // 早前固定 6 位小数，`sqrt(2)` 打成 1.414214，与 Octave 的
+        // 1.4142135623730951 不一致 —— 那是**打印**差异被误当成数值差异。
+        format!("{}", x)
     }
 }
