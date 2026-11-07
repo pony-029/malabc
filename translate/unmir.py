@@ -46,6 +46,9 @@ _FN = {
 
 _CMP = {"lt": "<", "le": "<=", "gt": ">", "ge": ">=", "eq": "==", "ne": "~="}
 
+#: 掩码比较码 → MATLAB 运算符。取值来自 C 的 `mlc_mask_test`，**不要另造一套**。
+_CMP_CODE = {"0": ">", "1": ">=", "2": "<", "3": "<=", "4": "=="}
+
 
 class Unmirror(object):
     def __init__(self):
@@ -213,6 +216,18 @@ class Unmirror(object):
             return
         if oid == "OP-TRANSPOSE" and len(a) >= 1:
             self._emit("%s = %s.';" % (dst, self._e(a[0])))
+            return
+        if oid == "OP-FIND" and len(a) >= 3:
+            # **参数顺序是 (数组, 比较码, 阈值)** —— `op:OP-FIND:y:x:0:2` 就是 `find(x > 2)`。
+            # 比较码取值来自 C 的 `mlc_mask_test`（0:> 1:>= 2:< 3:<= 4:== 其它:~=）。
+            # 早前把它当普通函数直译成 `find(x, 0, 2)`，Octave 报
+            # `DIRECTION must be "first" or "last"` —— 那正是"能跑但语义错"的典型。
+            cmp_sym = _CMP_CODE.get(a[1])
+            if cmp_sym is None:
+                self.skipped.append(ln)
+                return
+            self._emit("%s = find(%s %s %s);"
+                       % (dst, self._e(a[0]), cmp_sym, self._e(a[2])))
             return
         if oid in _FN:
             fn = _FN[oid]
