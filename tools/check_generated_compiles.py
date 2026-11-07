@@ -56,6 +56,7 @@ CHECKS = (
              os.path.join("tests", "test_report_site.py"),
              os.path.join("tests", "test_report_status.py"),
              os.path.join("tests", "test_roundtrip.py"),
+             os.path.join("tests", "test_block_balance.py"),
              os.path.join("tests", "test_three_links.py"),
              os.path.join("tests", "test_vsix_sourceless.py"),
              os.path.join("tests", "test_drop_sideeffect.py"),

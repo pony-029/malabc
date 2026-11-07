@@ -1731,6 +1731,16 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                                    % (lhs, cm.group(1), ":".join(args)))
                         n_calls[0] += 1
                         continue
+                # **块语句降级失败时，仍要保住块平衡**。
+                # 否则后面的 `else`/`end` 成了孤儿 —— 它们会被记成 `blockmarker`，
+                # 整份 MIR 也不可解析（实测 `if a >= 0 && b <= 1` 就是这样：
+                # 只发了一条 unmapped，连 `if:` 都没开，于是 `else` 无处归属）。
+                # 占位块用**恒假**条件，语义上等于"这一块没执行"——走到这里的函数本来已是桩，
+                # 而块平衡能让**后面的代码继续翻译**。
+                _kw = re.match(r"^(if|while|for|switch|try)\b", code)
+                if _kw:
+                    out.append("if:0:eq:1")
+                    blocks.append("if")
                 _emit_unmapped(out, unmapped_kinds, code)
                 n_unmapped += 1
                 continue
