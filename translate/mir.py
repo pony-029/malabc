@@ -55,8 +55,9 @@ _ANNO_RE = re.compile(r"^\s*%\s*@m2c\s+(?P<type>i64|f64)\s+(?P<names>[A-Za-z_][\
 #: 早前用 `[A-Za-z_\w]+`，`\w` 不含 `-`，于是 `if x <= -1` 整句落进 unmapped ——
 #: 而这是真实代码里最常见的边界写法之一（实测 YALMIP 有上百条）。
 _RHS = r"(?:[A-Za-z_]\w*(?:\([^()]*\))?|[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)"
-_IF_RE = re.compile(r"^if\s+(?P<var>[A-Za-z_]\w*\s*(?:\([^()]*\))?)\s*"
-                    r"(?P<cmp>==|~=|<=|>=|<|>)\s*(?P<rhs>%s)$" % _RHS)
+_NEST = r"(?:[^()]*(?:\([^()]*\)[^()]*)*)"
+_IF_RE = re.compile(r"^if\s+(?P<var>[A-Za-z_]\w*\s*(?:\(%s\))?)\s*" % _NEST
+                    + r"(?P<cmp>==|~=|<=|>=|<|>)\s*(?P<rhs>%s)$" % _RHS)
 #: `while i < 3` —— 与 if 同一套条件语法。
 #:
 #: ⚠ 本版**没有标量赋值语句**，所以 while 的循环变量无法在体内改变：
@@ -265,19 +266,57 @@ def _cond_side(text, shapes, counter, out):
     `A(i,2)` 这类先降成临时量；降不了返回 None（调用方如实记 unmapped）。
     """
     t = (text or "").strip()
-    m = re.match(r"^([A-Za-z_]\w*)\s*\(\s*([^()]*?)\s*\)$", t)
+    m = re.match(r"^([A-Za-z_]\w*)\s*\((.*)\)$", t)
     if not m:
-        return t if re.match(r"^[A-Za-z_]\w*$|^-?\d+(\.\d+)?$", t) else None
-    args = [a.strip() for a in m.group(2).split(",") if a.strip()]
-    # 先问算子表：`size(A,1)` / `numel(v)` / `length(v)` 是算子，不是取下标
+        return t if re.match(r"^[A-Za-z_]\w*$|^[-+]?\d+(\.\d+)?$", t) else None
+    # **实参里的子调用先降级**（自底向上）：
+    # `if prod(size(value)) == 1` 的内层 `size(value)` 必须先变临时量，
+    # 否则整个条件降不了 —— 这类形态占 `cond` 的 1/3。
+    raw = _split_args_top(m.group(2))
+    lowered = []
+    for a in raw:
+        if re.match(r"^[A-Za-z_]\w*\s*\(.*\)$", a):
+            sub = _cond_side(a, shapes, counter, out)
+            if sub is None:
+                return None
+            lowered.append(sub)
+        else:
+            lowered.append(a)
     counter[0] += 1
     tmp = "__c%d" % counter[0]
-    use = operators.parse_line("%s = %s(%s);" % (tmp, m.group(1), m.group(2)))
+    # `size(x)` 单参：`parse_line` 会退化成 OP-INDEX（OP-SIZE 的 sample 是双参），
+    # 这里直接发算子。
+    if m.group(1) == "size" and len(lowered) == 1:
+        out.append("op:OP-SIZE:%s:%s" % (tmp, lowered[0]))
+        return tmp
+    use = operators.parse_line("%s = %s(%s);" % (tmp, m.group(1), ",".join(lowered)))
     if use is not None and use["operator"] != "OP-INDEX":
         out.append("op:%s:%s:%s" % (use["operator"], tmp, ":".join(use["args"])))
         return tmp
     counter[0] -= 1
-    return _index_operand(m.group(1), args, shapes, counter, out.append)
+    # **严格性**：只有括号前的名字确实是本函数的变量，才当"取下标"。
+    # 否则（`prod` / `isinf` 这类未实现的库函数）必须返回 None ——
+    # 早前会发 `op:OP-INDEX:__c:prod:__c1`，**假算子会静默算错**。
+    if not _is_known_var(_CUR_F or {}, m.group(1)):
+        return None
+    return _index_operand(m.group(1), lowered, shapes, counter, out.append)
+
+
+def _split_args_top(s):
+    """按**顶层逗号**拆实参（括号内的逗号不算）。"""
+    parts, depth, cur = [], 0, []
+    for ch in s:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        if ch == "," and depth == 0:
+            parts.append("".join(cur))
+            cur = []
+            continue
+        cur.append(ch)
+    parts.append("".join(cur))
+    return [p.strip() for p in parts if p.strip()]
 
 
 def _lin_token(ia, ib, rows, counter, emit):
