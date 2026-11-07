@@ -27,6 +27,7 @@ import argparse
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -63,12 +64,17 @@ def parse_mir(text):
     funcs, ops, rejects, bad = 0, 0, [], []
     cur_src, why = 0, "misc"
     cur_func = None
+    #: 每个函数的形参 —— 注解建议只对**形参**成立（局部 struct 会另行处理）
+    args_of = {}
     for raw in text.splitlines():
         ln = raw.rstrip("\n")
         if ln.startswith("func:"):
             funcs += 1
             cur_func = ln[5:].strip()
+            args_of.setdefault(cur_func, [])
             cur_src, why = 0, "misc"
+        elif ln.startswith("arg:") and cur_func:
+            args_of[cur_func].append(ln.split(":")[1].strip())
         elif ln.startswith("# src:"):
             try:
                 cur_src = int(ln[6:].strip())
@@ -86,7 +92,7 @@ def parse_mir(text):
             bad.append({"line": cur_src, "kind": why,
                         "text": ln[9:].strip(), "func": cur_func})
             why = "misc"
-    return funcs, ops, rejects, bad
+    return funcs, ops, rejects, bad, args_of
 
 
 def diagnose(path):
@@ -102,7 +108,7 @@ def diagnose(path):
                                  or "没有识别到函数" in msg) else "parse_error"
         return {"file": path, "status": kind, "detail": msg.strip()[-300:]}
     text = io.open(mir, encoding="utf-8").read()
-    funcs, ops, rejects, bad = parse_mir(text)
+    funcs, ops, rejects, bad, args_of = parse_mir(text)
 
     by_kind = {}
     for b in bad:
@@ -128,7 +134,49 @@ def diagnose(path):
         "by_kind": {k: len(v) for k, v in by_kind.items()},
         "rank": [(k, len(v), len({b["func"] for b in v})) for k, v in rank],
         "sources": sources,
+        "annotations": suggest_fields(bad, args_of),
     }
+
+
+#: `X.f` —— 结构体字段访问
+_DOT = re.compile(r"([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*)")
+#: `X.f{...}` —— 元胞字段：那不是"一组标量"，声明成形参语义会错
+_CELL_FIELD = re.compile(r"([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*)\s*\{")
+
+
+def suggest_fields(bad, args_of):
+    """从阻塞语句里**建议** `% @m2c fields s.f` 注解。
+
+    只对**形参**成立（局部 struct 由 mir.py 自行展开，不需要注解）；
+    `s.f{...}`（元胞字段）不建议 —— 它不是"一组标量"，强行声明会改变语义。
+
+    返回 [(函数名, 注解行列表, 跳过原因或空串)]。
+    """
+    per_func = {}
+    for b in bad:
+        fn = b["func"]
+        if not fn:
+            continue
+        entry = per_func.setdefault(fn, {"fields": set(), "cell": set(), "args": args_of.get(fn, [])})
+        for host, fld in _DOT.findall(b["text"]):
+            if host in entry["args"]:
+                entry["fields"].add((host, fld))
+        for host, fld in _CELL_FIELD.findall(b["text"]):
+            entry["cell"].add((host, fld))
+
+    out = []
+    for fn, e in per_func.items():
+        cellf = set(e["cell"])
+        usable = sorted(f for f in e["fields"] if f not in cellf)
+        if not usable:
+            continue
+        lines = ["%% @m2c fields %s.%s" % (h, f) for h, f in usable]
+        note = ""
+        if cellf:
+            note = "%d 个元胞字段（%s）未声明：语义不同" % (
+                len(cellf), ", ".join("%s.%s" % t for t in sorted(cellf)[:2]))
+        out.append((fn, lines, note))
+    return out
 
 
 def render(res):
@@ -182,6 +230,20 @@ def render(res):
     if no_line:
         out.append("  （另有 %d 处没有行号信息：多为函数体外的语句）" % len(no_line))
 
+    anns = res.get("annotations") or []
+    if anns:
+        out.append("")
+        out.append("【可以加的注解】声明这些形参是「一组标量」，即可把它们展开成独立形参：")
+        for fn, lines, note in anns[:3]:
+            out.append("  function %s：" % fn)
+            for ln in lines[:6]:
+                out.append("      " + ln)
+            if len(lines) > 6:
+                out.append("      … 另有 %d 行" % (len(lines) - 6))
+            if note:
+                out.append("      注意：%s" % note)
+        out.append("  用法：把上面几行贴在对应 function 行之后，重跑即可。")
+
     out.append("")
     out.append("【先修哪里】按「消掉它能让多少函数更接近可转」排序：")
     for kind, cnt, nfn in res["rank"][:4]:
@@ -194,11 +256,42 @@ def main():
     ap = argparse.ArgumentParser(description="诊断一个 .m 能不能转成 C（不生成代码）")
     ap.add_argument("path")
     ap.add_argument("--json", action="store_true", help="输出机器可读结果")
+    ap.add_argument("--annotate", nargs="?", const="-", default=None,
+                    metavar="OUT.m",
+                    help="把建议的 `%% @m2c fields` 注解写进一个副本"
+                         "（不给文件名则打印到标准输出）")
     a = ap.parse_args()
     if not os.path.isfile(a.path):
         print("找不到文件：%s" % a.path)
         return 2
     res = diagnose(a.path)
+
+    if a.annotate is not None:
+        anns = res.get("annotations") or []
+        if not anns:
+            print("这个文件不需要 struct 注解（没有「形参 struct」形态的阻塞）")
+            return 0
+        block = []
+        for fn, lines, _note in anns:
+            block.extend(lines)
+        if a.annotate == "-":
+            print("\n".join(block))
+            return 0
+        # 写副本：在每个 function 行后插入对应注解
+        src = io.open(a.path, encoding="utf-8", errors="replace").read().split("\n")
+        by_fn = {fn: lines for fn, lines, _n in anns}
+        out_lines, cur = [], None
+        for ln in src:
+            out_lines.append(ln)
+            st = ln.lstrip()
+            if st.startswith("function"):
+                m = re.search(r"=\s*([A-Za-z_]\w*)\s*\(|function\s+([A-Za-z_]\w*)\s*\(", st)
+                cur = (m.group(1) or m.group(2)) if m else None
+                if cur in by_fn:
+                    out_lines.extend(by_fn[cur])
+        io.open(a.annotate, "w", encoding="utf-8", newline="\n").write("\n".join(out_lines))
+        print("已写出带注解的副本：%s（%d 行注解）" % (a.annotate, len(block)))
+        return 0
     if a.json:
         res.pop("sources", None)
         print(json.dumps(res, ensure_ascii=False, indent=2))

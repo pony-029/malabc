@@ -594,6 +594,29 @@ Python 支持无源码分发：把 `foo.py` 编译成同目录的 `foo.pyc`，�
 
   **满足设计文档的门槛（翻转 ≥5）**，也与 R682 的 0 形成对照：差别只在"struct 是不是形参"。
 
+- **注解自动生成：`check --annotate`**（把 83 次手工注入变成一条命令）
+
+  ```bash
+  python translate/check.py <x.m> --annotate          # 打印可粘贴的注解
+  python translate/check.py <x.m> --annotate out.m    # 写一份带注解的副本
+  ```
+
+  只对**形参** struct 建议注解（局部 struct 由 `mir.py` 自己展开，加了反而多余）；
+  `s.f{...}` 这类**元胞字段不建议** —— 它不是"一组标量"，声明成形参会改变语义。
+
+  实测 `@sdpvar/any.m`：
+
+  ```
+  % @m2c fields x.basis
+  % @m2c fields x.dim
+  ```
+
+  加进副本后：`reject:struct` 消失、形参展开为 `x_basis` / `x_dim`、未映射 3 → 2
+  （剩下的 `sum(x,2)` 与 `reshape` 是另外的缺口，如实保留）。
+
+  判据 `tests/test_check_annotate.py`（已接 GX2，0.8s）：**不看能不能打印**，
+  而是要求"加上注解后形参真的展开、`reject:struct` 真的消失"。
+
 ## 2.3.0
 
 ### 修复
