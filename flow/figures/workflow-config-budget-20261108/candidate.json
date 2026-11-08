@@ -1,0 +1,219 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "F35 配置三层合并与内存预算（当前仅设计）",
+    "locale": "zh-CN",
+    "output": "f35-config-budget.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:pony-029/malabc.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "e23c27fa6dbde2f73baaed14b21b534b20229215"
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "cols": 4,
+    "cellW": 190,
+    "cellH": 96,
+    "gapX": 48,
+    "gapY": 80
+  },
+  "components": [
+    {
+      "id": "pj",
+      "type": "backend",
+      "label": "project 配置",
+      "sublabel": "全局默认",
+      "tag": "设计",
+      "row": 0,
+      "col": 0,
+      "sources": [
+        {
+          "path": "docs/DESIGN_ENGINEERING_PLATFORM.md",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "md",
+      "type": "backend",
+      "label": "module 配置",
+      "sublabel": "一个算法模块",
+      "tag": "设计",
+      "row": 0,
+      "col": 1,
+      "sources": [
+        {
+          "path": "docs/DESIGN_ENGINEERING_PLATFORM.md",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "fn",
+      "type": "backend",
+      "label": "function 注解",
+      "sublabel": "@m2c shape / fields",
+      "tag": "已实现",
+      "row": 0,
+      "col": 2,
+      "sources": [
+        {
+          "path": "translate/mir.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "mg",
+      "type": "backend",
+      "label": "深合并·唯一 reader",
+      "sublabel": "后覆盖前，只此一处",
+      "tag": "硬规则",
+      "row": 0,
+      "col": 3,
+      "sources": [
+        {
+          "path": "docs/DESIGN_ENGINEERING_PLATFORM.md",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "mir",
+      "type": "backend",
+      "label": "MIR 生效点",
+      "sublabel": "arg: / var: / fill:",
+      "tag": "已实现",
+      "row": 1,
+      "col": 0,
+      "sources": [
+        {
+          "path": "translate/mir.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "peak",
+      "type": "backend",
+      "label": "静态峰值计算",
+      "sublabel": "Σ 元素数 × 宽度 + 临时量",
+      "tag": "设计",
+      "row": 1,
+      "col": 1
+    },
+    {
+      "id": "pool",
+      "type": "backend",
+      "label": "池容量",
+      "sublabel": "M2C_POOL_BYTES",
+      "tag": "部分",
+      "row": 1,
+      "col": 2,
+      "sources": [
+        {
+          "path": "c_runtime/src/mlc_runtime.c",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "cmp",
+      "type": "backend",
+      "label": "生成期比对",
+      "sublabel": "超限即报错",
+      "tag": "设计",
+      "row": 1,
+      "col": 3
+    },
+    {
+      "id": "err",
+      "type": "backend",
+      "label": "报错三要素",
+      "sublabel": "函数 / 变量 / 差额",
+      "tag": "设计",
+      "row": 2,
+      "col": 2
+    },
+    {
+      "id": "bud",
+      "type": "backend",
+      "label": "budget.json",
+      "sublabel": "随工程输出",
+      "tag": "设计",
+      "row": 2,
+      "col": 3
+    },
+    {
+      "id": "chk",
+      "type": "backend",
+      "label": "check 建议",
+      "sublabel": "% @m2c shape 提示",
+      "tag": "已实现",
+      "row": 2,
+      "col": 1,
+      "sources": [
+        {
+          "path": "translate/check.py",
+          "line": 1
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "pj",
+      "to": "mg",
+      "label": "全局"
+    },
+    {
+      "from": "md",
+      "to": "mg",
+      "label": "覆盖"
+    },
+    {
+      "from": "fn",
+      "to": "mg",
+      "label": "覆盖"
+    },
+    {
+      "from": "mg",
+      "to": "mir",
+      "label": "写形状"
+    },
+    {
+      "from": "mir",
+      "to": "peak",
+      "label": "元素数"
+    },
+    {
+      "from": "peak",
+      "to": "cmp",
+      "label": "需要"
+    },
+    {
+      "from": "pool",
+      "to": "cmp",
+      "label": "可用"
+    },
+    {
+      "from": "cmp",
+      "to": "err",
+      "label": "超限"
+    },
+    {
+      "from": "cmp",
+      "to": "bud",
+      "label": "通过"
+    },
+    {
+      "from": "peak",
+      "to": "chk",
+      "label": "缺注解"
+    }
+  ]
+}

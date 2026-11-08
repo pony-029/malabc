@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "05ffb825-13d8-4530-aa6b-9db5ae700232",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "E:\\temp\\matlabc\\figstage2\\workflow-config-budget-20261108\\candidate.json",
+  "output": "E:\\temp\\matlabc\\figstage2\\workflow-config-budget-20261108\\f35-config-budget.html",
+  "specification": {
+    "sha256": "7edd4bc67022caa6e243186eb30b7b5a279e322b01f42f05f67d0762410120ca",
+    "bytes": 4259
+  },
+  "artifact": {
+    "sha256": "61f89dd61d781552075d4439b568562e1d122124b92e0fab93c32a6d2ab938e1",
+    "bytes": 847305
+  }
+}

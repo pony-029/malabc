@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "f8bad743-2c99-4442-a49b-5ccab282f7e1",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "E:\\temp\\matlabc\\figstage2\\meta-figure-map-20261108\\candidate.json",
+  "output": "E:\\temp\\matlabc\\figstage2\\meta-figure-map-20261108\\f34-figure-map.html",
+  "specification": {
+    "sha256": "38852ffb5d0405af67cbb34f9034adbe51a63693820ed9ebe9188b562c9456e9",
+    "bytes": 3629
+  },
+  "artifact": {
+    "sha256": "e58a2c9d809bb367379b973fa18fea8378ccd5734b904660636619c593daa9ba",
+    "bytes": 845077
+  }
+}

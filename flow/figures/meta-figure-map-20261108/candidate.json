@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "F34 图集地图：28 张图怎么串起来",
+    "locale": "zh-CN",
+    "output": "f34-figure-map.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:pony-029/malabc.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "e23c27fa6dbde2f73baaed14b21b534b20229215"
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "cols": 4,
+    "cellW": 190,
+    "cellH": 96,
+    "gapX": 48,
+    "gapY": 80
+  },
+  "components": [
+    {
+      "id": "q1",
+      "type": "frontend",
+      "label": "① 它是什么",
+      "sublabel": "F01 / F20 / F19",
+      "tag": "入口",
+      "row": 0,
+      "col": 0,
+      "sources": [
+        {
+          "path": "flow/index.html",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "q2",
+      "type": "backend",
+      "label": "② 我要知道怎么跑",
+      "sublabel": "F14 入口 / F15 编排 / F21 泳道",
+      "tag": "入口",
+      "row": 1,
+      "col": 0
+    },
+    {
+      "id": "q3",
+      "type": "backend",
+      "label": "③ 一条语句的去向",
+      "sublabel": "F31 F16 F17",
+      "tag": "核心",
+      "row": 2,
+      "col": 0
+    },
+    {
+      "id": "q4",
+      "type": "backend",
+      "label": "④ 生成 C 工程",
+      "sublabel": "F30 F32 F35",
+      "tag": "核心",
+      "row": 3,
+      "col": 0
+    },
+    {
+      "id": "grp_entry",
+      "type": "frontend",
+      "label": "入口与编排",
+      "sublabel": "F14 F15 F21 F23",
+      "tag": "1 组",
+      "row": 0,
+      "col": 2,
+      "sources": [
+        {
+          "path": "translate/check.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "grp_front",
+      "type": "backend",
+      "label": "前端与语义",
+      "sublabel": "F16 F17 F22 F05 F11",
+      "tag": "2 组",
+      "row": 1,
+      "col": 2
+    },
+    {
+      "id": "grp_engine",
+      "type": "backend",
+      "label": "降维与工程",
+      "sublabel": "F30 F31 F32 F33 F35",
+      "tag": "3 组（本轮新增）",
+      "row": 2,
+      "col": 2
+    },
+    {
+      "id": "grp_verify",
+      "type": "backend",
+      "label": "自证与四路哈希",
+      "sublabel": "F33 F24 F09",
+      "tag": "4 组",
+      "row": 3,
+      "col": 2
+    },
+    {
+      "id": "grp_ops",
+      "type": "backend",
+      "label": "治理与闭环",
+      "sublabel": "F06 F07 F08 F10 F13 F24",
+      "tag": "5 组",
+      "row": 0,
+      "col": 3
+    },
+    {
+      "id": "grp_legacy",
+      "type": "backend",
+      "label": "历史分层图",
+      "sublabel": "F01 F02 F03 F04 F12 F18",
+      "tag": "6 组（部分已过时）",
+      "row": 1,
+      "col": 3
+    },
+    {
+      "id": "grp_bin",
+      "type": "backend",
+      "label": "二进制与产物",
+      "sublabel": "F18 F22",
+      "tag": "7 组",
+      "row": 2,
+      "col": 3
+    },
+    {
+      "id": "new",
+      "type": "cloud",
+      "label": "本轮新增 4 张",
+      "sublabel": "F30 F31 F32 F33",
+      "tag": "新增",
+      "row": 3,
+      "col": 3
+    }
+  ],
+  "connections": [
+    {
+      "from": "q1",
+      "to": "grp_entry",
+      "label": "先看"
+    },
+    {
+      "from": "q2",
+      "to": "grp_front",
+      "label": "再看"
+    },
+    {
+      "from": "q3",
+      "to": "grp_engine",
+      "label": "深入到"
+    },
+    {
+      "from": "q4",
+      "to": "grp_verify",
+      "label": "最后验"
+    },
+    {
+      "from": "grp_engine",
+      "to": "new",
+      "label": "即"
+    },
+    {
+      "from": "grp_ops",
+      "to": "grp_verify",
+      "label": "闭环"
+    }
+  ]
+}
