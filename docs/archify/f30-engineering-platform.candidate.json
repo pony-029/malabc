@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "F30 工程级降维平台：五层 × 原子步骤",
+    "locale": "zh-CN",
+    "output": "f30-engineering-platform.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:pony-029/malabc.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "427cc6f9e91eb8cc6705ae3a9567e0291d899e79"
+    }
+  },
+  "layout": { "mode": "grid", "cols": 6, "cellW": 176, "cellH": 92, "gapX": 46, "gapY": 78 },
+  "components": [
+    { "id": "proj", "type": "frontend", "label": "① MATLAB 工程目录", "sublabel": "多文件 · 互相调用", "tag": "输入", "row": 0, "col": 0,
+      "sources": [{ "path": "translate/project_map.py", "line": 1 }] },
+    { "id": "graph", "type": "backend", "label": "② 工程图谱", "sublabel": "调用树 / 模块切分", "tag": "有", "row": 0, "col": 1,
+      "sources": [{ "path": "tools/build_module_graph.py", "line": 1 }] },
+    { "id": "cfg", "type": "backend", "label": "③ 配置合并", "sublabel": "project→module→function", "tag": "设计", "row": 0, "col": 2,
+      "sources": [{ "path": "docs/DESIGN_ENGINEERING_PLATFORM.md", "line": 60 }] },
+    { "id": "mir", "type": "backend", "label": "④ MATLAB → MIR", "sublabel": "逐语句降级", "tag": "已实现", "row": 0, "col": 3,
+      "sources": [{ "path": "translate/mir.py", "line": 1 }] },
+    { "id": "hir", "type": "backend", "label": "⑤ HIR 语义层", "sublabel": "表达式树 ⇄ 三地址", "tag": "已实现", "row": 0, "col": 4,
+      "sources": [{ "path": "translate/hir.py", "line": 1 }] },
+    { "id": "emit", "type": "backend", "label": "⑥ MIR → C 工程", "sublabel": "CMake / include / 每函数 .c", "tag": "已实现", "row": 0, "col": 5,
+      "sources": [{ "path": "rust/m2c/src/project.rs", "line": 423 }] },
+
+    { "id": "budget", "type": "backend", "label": "预算判定", "sublabel": "静态峰值 vs 板子 RAM", "tag": "设计", "row": 1, "col": 2,
+      "sources": [{ "path": "docs/DESIGN_ENGINEERING_PLATFORM.md", "line": 120 }] },
+    { "id": "call", "type": "backend", "label": "跨文件 call 解析", "sublabel": "known 可见范围", "tag": "断点", "row": 1, "col": 3,
+      "sources": [{ "path": "rust/m2c/src/emit.rs", "line": 1298 }] },
+    { "id": "stub", "type": "external", "label": "契约桩 m2c_ext_*", "sublabel": "不可生成者局部失败", "tag": "设计", "row": 1, "col": 4,
+      "sources": [{ "path": "docs/DESIGN_CODEGEN_LESSONS.md", "line": 40 }] },
+    { "id": "cmir", "type": "backend", "label": "C → MIR 反推", "sublabel": "dst 归一化", "tag": "已实现", "row": 1, "col": 5,
+      "sources": [{ "path": "translate/cmir.py", "line": 133 }] },
+
+    { "id": "vm", "type": "backend", "label": "Rust VM", "sublabel": "m2c run", "tag": "已实现", "row": 2, "col": 3,
+      "sources": [{ "path": "rust/m2c/src/vm.rs", "line": 1 }] },
+    { "id": "hash", "type": "cloud", "label": "四路哈希差分", "sublabel": "IEEE 位模式", "tag": "已实现", "row": 2, "col": 4,
+      "sources": [{ "path": "tests/test_vm_differential.py", "line": 1 }] },
+    { "id": "check", "type": "frontend", "label": "check 诊断", "sublabel": "该改签名/改写法/超边界", "tag": "已实现", "row": 2, "col": 2,
+      "sources": [{ "path": "translate/check.py", "line": 182 }] }
+  ],
+  "connections": [
+    { "from": "proj", "to": "graph", "label": "扫描 .m" },
+    { "from": "graph", "to": "cfg", "label": "模块 → 配置" },
+    { "from": "cfg", "to": "mir", "label": "shapes / 类型" },
+    { "from": "mir", "to": "hir", "label": "抬升" },
+    { "from": "hir", "to": "emit", "label": "降级" },
+    { "from": "mir", "to": "budget", "label": "静态形状" },
+    { "from": "emit", "to": "call", "label": "符号可见" },
+    { "from": "call", "to": "stub", "label": "不可生成" },
+    { "from": "emit", "to": "cmir", "label": "gen.c" },
+    { "from": "mir", "to": "vm", "label": "同一份 MIR" },
+    { "from": "cmir", "to": "vm", "label": "反推 MIR" },
+    { "from": "vm", "to": "hash", "label": "数值" },
+    { "from": "budget", "to": "check", "label": "超限 → 建议" }
+  ]
+}
