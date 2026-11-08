@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "45f47548-b269-43c3-89fa-668ea2045599",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "E:\\temp\\matlabc\\f37v1\\f37\\candidate.json",
+  "output": "E:\\temp\\matlabc\\f37v1\\f37\\f37-system-whole.html",
+  "specification": {
+    "sha256": "65b208a3471da4674226ad066d19ee6fb20a75ea7cd84c8979584e052403864c",
+    "bytes": 6557
+  },
+  "artifact": {
+    "sha256": "fe9fbadad7f2951c009b7aafe5955d9aa05ede15e2e7dd5565295653571c049c",
+    "bytes": 861631
+  }
+}

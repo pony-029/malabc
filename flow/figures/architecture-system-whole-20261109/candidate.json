@@ -1,0 +1,348 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "F37 系统全貌：分析侧 × 转换侧 × 共享底座",
+    "locale": "zh-CN",
+    "output": "f37-system-whole.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:pony-029/malabc.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "a9b8a3e0ed52a013b173d58888a631cf47d2e61f"
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "cols": 6,
+    "cellW": 178,
+    "cellH": 96,
+    "gapX": 44,
+    "gapY": 84
+  },
+  "components": [
+    {
+      "id": "cli",
+      "type": "frontend",
+      "label": "CLI",
+      "sublabel": "控: 唯一真入口",
+      "tag": "入口",
+      "row": 0,
+      "col": 0,
+      "sources": [
+        {
+          "path": "matlabc.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "lsp",
+      "type": "frontend",
+      "label": "LSP",
+      "sublabel": "控: 编辑器请求",
+      "tag": "入口",
+      "row": 0,
+      "col": 1,
+      "sources": [
+        {
+          "path": "matlabc_lsp.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "mcp",
+      "type": "frontend",
+      "label": "MCP",
+      "sublabel": "控: 外部工具调用",
+      "tag": "入口",
+      "row": 0,
+      "col": 2,
+      "sources": [
+        {
+          "path": "matlabc_mcp.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "gui",
+      "type": "frontend",
+      "label": "GUI",
+      "sublabel": "控: 只拼参数",
+      "tag": "入口",
+      "row": 0,
+      "col": 3,
+      "sources": [
+        {
+          "path": "gui.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "fe",
+      "type": "backend",
+      "label": "前端",
+      "sublabel": "数: 语法树 / 词法",
+      "tag": "已实现",
+      "row": 1,
+      "col": 0,
+      "sources": [
+        {
+          "path": "frontends/matlab.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "ent",
+      "type": "backend",
+      "label": "实体模型",
+      "sublabel": "数: 符号与作用域",
+      "tag": "已实现",
+      "row": 1,
+      "col": 1,
+      "sources": [
+        {
+          "path": "entity_model.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "rel",
+      "type": "backend",
+      "label": "调用关系",
+      "sublabel": "数: 调用边",
+      "tag": "已实现",
+      "row": 1,
+      "col": 2,
+      "sources": [
+        {
+          "path": "callrel.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "ug",
+      "type": "backend",
+      "label": "统一图",
+      "sublabel": "数: 节点+边守恒",
+      "tag": "已实现",
+      "row": 1,
+      "col": 3,
+      "sources": [
+        {
+          "path": "unified_graph.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "facts",
+      "type": "backend",
+      "label": "事实层 facts",
+      "sublabel": "数: 证据+位置",
+      "tag": "已实现",
+      "row": 1,
+      "col": 4,
+      "sources": [
+        {
+          "path": "facts.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "rend",
+      "type": "backend",
+      "label": "渲染层",
+      "sublabel": "数: SARIF/站点/调用图",
+      "tag": "已实现",
+      "row": 1,
+      "col": 5,
+      "sources": [
+        {
+          "path": "renderers/sarif.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "tr",
+      "type": "backend",
+      "label": "translate/",
+      "sublabel": "HIR → MIR → 回译",
+      "tag": "已实现",
+      "row": 2,
+      "col": 0,
+      "sources": [
+        {
+          "path": "translate/hir.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "m2c",
+      "type": "backend",
+      "label": "rust/m2c",
+      "sublabel": "发射 + 工程装配",
+      "tag": "已实现",
+      "row": 2,
+      "col": 1,
+      "sources": [
+        {
+          "path": "rust/m2c/src/emit.rs",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "vm",
+      "type": "backend",
+      "label": "Rust VM",
+      "sublabel": "数: MIR → 数值",
+      "tag": "已实现",
+      "row": 2,
+      "col": 2,
+      "sources": [
+        {
+          "path": "rust/m2c/src/vm.rs",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "crt",
+      "type": "backend",
+      "label": "c_runtime",
+      "sublabel": "静态池 + q15",
+      "tag": "已实现",
+      "row": 2,
+      "col": 3,
+      "sources": [
+        {
+          "path": "c_runtime/src/mlc_runtime.c",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "gates",
+      "type": "backend",
+      "label": "门禁",
+      "sublabel": "41 门 · 各自自证",
+      "tag": "共享",
+      "row": 2,
+      "col": 4,
+      "sources": [
+        {
+          "path": "tools/check_all.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "flow",
+      "type": "backend",
+      "label": "图集",
+      "sublabel": "18 交互 + 13 SVG",
+      "tag": "共享",
+      "row": 2,
+      "col": 5,
+      "sources": [
+        {
+          "path": "flow/index.html",
+          "line": 1
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "cli",
+      "to": "fe",
+      "label": "控: 分发"
+    },
+    {
+      "from": "lsp",
+      "to": "fe",
+      "label": "控: 单文件"
+    },
+    {
+      "from": "mcp",
+      "to": "cli",
+      "label": "控: 转调"
+    },
+    {
+      "from": "gui",
+      "to": "cli",
+      "label": "控: 起子进程"
+    },
+    {
+      "from": "fe",
+      "to": "ent",
+      "label": "数: 声明"
+    },
+    {
+      "from": "ent",
+      "to": "rel",
+      "label": "数: 符号表"
+    },
+    {
+      "from": "rel",
+      "to": "ug",
+      "label": "数: 边"
+    },
+    {
+      "from": "ug",
+      "to": "facts",
+      "label": "数: 事实"
+    },
+    {
+      "from": "facts",
+      "to": "rend",
+      "label": "数: 产物"
+    },
+    {
+      "from": "cli",
+      "to": "tr",
+      "label": "控: 转换子命令"
+    },
+    {
+      "from": "tr",
+      "to": "m2c",
+      "label": "数: MIR"
+    },
+    {
+      "from": "m2c",
+      "to": "crt",
+      "label": "数: 调用运行时"
+    },
+    {
+      "from": "tr",
+      "to": "vm",
+      "label": "数: 同一份 MIR"
+    },
+    {
+      "from": "gates",
+      "to": "tr",
+      "label": "控: 判据"
+    },
+    {
+      "from": "gates",
+      "to": "ug",
+      "label": "控: 判据"
+    },
+    {
+      "from": "flow",
+      "to": "gates",
+      "label": "数: FF/D 对齐"
+    }
+  ]
+}
