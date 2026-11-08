@@ -1,0 +1,162 @@
+# -*- coding: utf-8 -*-
+"""把**真实的逐步追踪**注入 `flow/index.html`：每一步怎么动、输入输出怎么变。
+
+## 为什么不是手写一段说明
+
+手写的"这一步做了什么"会立刻过时：改了代码，说明还停在上个版本。
+这里直接读 `flow/traces/snr.jsonl`（由 `tools/trace_demo.py` 真跑出来的），
+**每一行的输入/输出摘要都是当次运行的 sha256 前 12 位**。
+
+工具只补一件 jsonl 里没有的东西：**每步"怎么动"的一句话语义**（`STEP_DESC`）。
+其余（顺序、模块、耗时、摘要）全部来自数据。
+
+## 幂等
+
+用 `<!-- STEPS:BEGIN -->` / `<!-- STEPS:END -->` 包裹，重复运行是替换而不是追加。
+"""
+import argparse
+import html
+import io
+import json
+import os
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+INDEX = os.path.join(ROOT, "flow", "index.html")
+FIG = os.path.join(ROOT, "flow", "figures")
+SVG = os.path.join(ROOT, "flow", "diagrams")
+TRACE = os.path.join(ROOT, "flow", "traces", "snr.jsonl")
+
+BEGIN = "<!-- STEPS:BEGIN -->"
+END = "<!-- STEPS:END -->"
+SBEGIN = "<!-- STATS:BEGIN -->"
+SEND = "<!-- STATS:END -->"
+
+#: 每步"怎么动"——**这是唯一手写的部分**，其余全部来自 trace 数据。
+STEP_DESC = {
+    "S1": ("读入源码，按行切成语句序列", "磁盘上的 .m 文本 → 内存里的行数组（附行数）"),
+    "S2": ("逐语句匹配、降级成三地址", "源码文本 → MIR 行（`op:` / `const:` / `setb:`）"),
+    "S3": ("把三地址折回表达式树再降级", "MIR op 序列 → HIR 树 → 同构的 MIR（算子多重集必须相等）"),
+    "S4": ("按函数切文件、生成工程骨架", "MIR → `gen.c` + 每函数 .c + 头文件 + CMake（文件数可见）"),
+    "S5": ("把生成的 C 编译成可执行", "C 源文件 → 目标可执行（只看返回码，不看输出）"),
+    "S6": ("运行 C 产物，取数值", "可执行 → stdout 的 `名: 值` 行 → 数值序列"),
+    "S7": ("用解释器跑同一份 MIR", "同一份 MIR → VM 的数值序列（不经 C，独立路径）"),
+    "S8": ("对比两条独立路径的数值", "两份数值序列 → 一致 / 分岔（分歧即定位到这一步）"),
+    "S9": ("从生成的 C 反推 MIR", "`gen.c` 的 mlc_op_* 调用 → MIR op 行（证明产物可被重新理解）"),
+}
+
+
+def read_trace(path):
+    if not os.path.isfile(path):
+        return []
+    return [json.loads(l) for l in io.open(path, encoding="utf-8") if l.strip()]
+
+
+def count_figs():
+    n_int = len([d for d in os.listdir(FIG)
+                 if os.path.isdir(os.path.join(FIG, d))]) if os.path.isdir(FIG) else 0
+    n_svg = len([f for f in os.listdir(SVG) if f.endswith(".svg")]) if os.path.isdir(SVG) else 0
+    return n_int, n_svg
+
+
+def render_steps(rows):
+    if not rows:
+        return (BEGIN + "\n<section id=\"steps\"><h2>每一步怎么动 "
+                "<span class=\"hint\">尚无追踪数据：先跑 tools/trace_demo.py</span></h2></section>\n" + END)
+
+    cards = []
+    for r in rows:
+        st = r.get("step", "")
+        module = r.get("module", "")
+        kind = r.get("kind", "")
+        label = "控制流" if kind == "control" else "数据流"
+        kcls = "ctl" if kind == "control" else "dat"
+        how, delta = STEP_DESC.get(st, ("", ""))
+        detail = " · ".join("%s=%s" % (k, v) for k, v in (r.get("detail") or {}).items())
+        status = r.get("status", "")
+        cards.append(
+            '<article class="step %(st)s">'
+            '<div class="step-h"><span class="sid">%(st)s</span>'
+            '<span class="smod">%(module)s</span>'
+            '<span class="kind %(kcls)s">%(label)s</span>'
+            '<span class="ms">%(ms)s ms</span>'
+            '<span class="st %(status)s">%(status)s</span></div>'
+            '<div class="step-b"><div class="how">%(how)s</div>'
+            '<div class="io"><code>%(inp)s</code> → <code>%(out)s</code>'
+            '<span class="delta">%(delta)s</span></div>'
+            '<div class="act">%(action)s</div>'
+            '%(detail)s</div></article>'
+            % {"st": html.escape(st), "module": html.escape(module),
+               "kcls": kcls, "label": label, "ms": int(r.get("ms", 0)),
+               "status": html.escape(status),
+               "how": html.escape(how), "delta": html.escape(delta),
+               "inp": html.escape(str(r.get("in", ""))),
+               "out": html.escape(str(r.get("out", ""))),
+               "action": html.escape(r.get("action", "")),
+               "detail": ('<div class="det">%s</div>' % html.escape(detail)) if detail else ""})
+
+    ok = sum(1 for r in rows if r.get("status") == "ok")
+    return """%(b)s
+<section id="steps">
+  <h2>每一步怎么动 <span class="hint">数据来自 <code>flow/traces/snr.jsonl</code>：真正的运行记录，不是描述</span></h2>
+  <p class="q">一条真链路共 <b>%(n)d</b> 步 ｜ 通过 <b>%(ok)d</b> ｜
+    每一步都标了<b>控制流/数据流</b>、<b>输入→输出摘要</b>（sha256 前 12 位）与<b>它是怎么变的</b>。
+    摘要相等即证明"上一步的输出真的进了这一步"。</p>
+  <div class="steps">%(cards)s</div>
+</section>
+%(e)s""" % {"b": BEGIN, "e": END, "n": len(rows), "ok": ok, "cards": "\n".join(cards)}
+
+
+def render_stats(n_int, n_svg, rows):
+    ok = sum(1 for r in rows if r.get("status") == "ok")
+    return """%(b)s
+  <div class="stats">
+    <span class="stat"><b>%(ni)d</b>张交互图</span>
+    <span class="stat"><b>%(ns)d</b>张静态 SVG</span>
+    <span class="stat"><b>%(nst)d</b>步可追踪</span>
+    <span class="stat"><b>%(ok)d/%(nst)d</b>追踪通过</span>
+    <span class="stat"><b>0</b>脚本 / 外链</span>
+  </div>
+%(e)s""" % {"b": SBEGIN, "e": SEND, "ni": n_int, "ns": n_svg,
+             "nst": len(rows), "ok": ok}
+
+
+def splice(text, begin, end, block):
+    i, j = text.find(begin), text.find(end)
+    if i >= 0 and j > i:
+        return text[:i] + block + text[j + len(end):]
+    return None
+
+
+def main():
+    ap = argparse.ArgumentParser(description="把逐步追踪注入 flow/index.html")
+    ap.add_argument("--index", default=INDEX)
+    ap.add_argument("--trace", default=TRACE)
+    a = ap.parse_args()
+
+    rows = read_trace(a.trace)
+    n_int, n_svg = count_figs()
+    text = io.open(a.index, encoding="utf-8").read()
+
+    new = splice(text, BEGIN, END, render_steps(rows))
+    if new is None:
+        new = text.replace("</main>", render_steps(rows) + "\n\n</main>", 1)
+    stats = splice(new, SBEGIN, SEND, render_stats(n_int, n_svg, rows))
+    if stats is None:
+        # 首次：替换整个 <div class="stats">…</div>
+        i = new.find('<div class="stats">')
+        if i >= 0:
+            j = new.find("</div>", new.find("</span>", i))
+            j = new.find("</div>", j + 6) if j >= 0 else -1
+            if j > 0:
+                new = new[:i] + render_stats(n_int, n_svg, rows).replace(
+                    SBEGIN + "\n", "").replace("\n" + SEND, "") + new[j + 6:]
+    else:
+        new = stats
+
+    io.open(a.index, "w", encoding="utf-8", newline="\n").write(new)
+    print("已注入：%d 步追踪 ｜ 交互图 %d ｜ SVG %d" % (len(rows), n_int, n_svg))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

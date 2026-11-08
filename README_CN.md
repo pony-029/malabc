@@ -1201,6 +1201,7 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 - `tools/semantics_coverage.py` —— MATLAB 语义完备性核查：真实代码里出现了哪些语义、各自支持到哪一档
 - `tools/flow_catalog.py` —— 生成 `flow/catalog.html`：一处列全所有流程图，并算出「现行 / 近期 / 已过时」状态
 - `tools/trace_demo.py` —— 逐步记录一次真实链路到 JSONL（每步带 sha256 摘要）；`tools/trace_view.py` 把它渲染成静态追踪页
+- `tools/flow_steps.py` —— 把真实的逐步追踪（`flow/traces/*.jsonl`）注入 `flow/index.html`：每步标出控制流/数据流、输入→输出摘要、以及它是怎么变的
 
 写“主因是 X”之前先跑桶构成普查：`python tools/bucket_census.py <mir> <桶名>`。
 

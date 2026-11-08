@@ -50,6 +50,45 @@
   footer{max-width:1180px;margin:0 auto;padding:0 24px 56px;color:var(--muted);font-size:13px}
   code{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--bg);
        border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+
+  /* ---- 逐步追踪（数据来自真实 trace） ---- */
+  .steps{display:flex;flex-direction:column;gap:0;margin-top:16px;
+         border-left:2px solid var(--line);padding-left:18px}
+  .step{position:relative;padding:12px 0 12px 2px;border-bottom:1px dashed var(--line)}
+  .step:last-child{border-bottom:none}
+  .step::before{content:"";position:absolute;left:-25px;top:18px;width:9px;height:9px;
+                border-radius:50%;background:var(--card);border:2px solid var(--accent)}
+  .step.ok::before{border-color:var(--ok)}
+  .step.fail::before{border-color:#d1242f}
+  .step-h{display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:13px}
+  .sid{font:600 13px/1 ui-monospace,Menlo,monospace;color:var(--card);background:var(--accent);
+       border-radius:5px;padding:3px 7px}
+  .smod{font:600 12.5px/1 ui-monospace,Menlo,monospace;color:var(--accent2)}
+  .kind{font-size:11px;font-weight:600;border-radius:999px;padding:2px 8px}
+  .kind.ctl{color:#0969da;border:1px solid #0969da}
+  .kind.dat{color:#9a6700;border:1px solid #9a6700}
+  @media (prefers-color-scheme: dark){
+    .kind.ctl{color:#4493f8;border-color:#4493f8}
+    .kind.dat{color:#d29922;border-color:#d29922}
+  }
+  .ms{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+  .st{font-size:11px;font-weight:600;border-radius:999px;padding:2px 8px;margin-left:auto}
+  .st.ok{color:var(--ok);border:1px solid var(--ok)}
+  .st.fail{color:#d1242f;border:1px solid #d1242f}
+  .step-b{margin-top:8px}
+  .how{font-weight:600;font-size:14.5px;margin-bottom:5px}
+  .io{font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+  .io .delta{color:var(--ink);opacity:.85}
+  .act{font:12px/1.6 ui-monospace,Menlo,monospace;color:var(--muted);margin-top:5px}
+  .det{font:12px/1.6 ui-monospace,Menlo,monospace;color:var(--accent2);margin-top:3px}
+  /* 卡片上的「相关」行 */
+  .rel{margin:0;font-size:12.5px;color:var(--muted)}
+  .rel a{color:var(--accent);text-decoration:none}
+  .rel a:hover{text-decoration:underline}
+  /* 导航吸顶 */
+  nav{position:sticky;top:0;z-index:9;background:var(--bg);padding-top:12px;padding-bottom:12px;
+      border-bottom:1px solid var(--line)}
+  section{scroll-margin-top:64px}
 </style>
 </head>
 <body>
@@ -57,21 +96,24 @@
 <header>
   <h1>malabc 图表总索引</h1>
   <p class="lede">
-    共 <b>24 张</b>图：<b>F01–F13</b> 是既有体系（中英双语 + 独立 SVG），
-    <b>F14–F19</b> 是本次新绘的五个角色层与融合总图，
-    <b>F20–F24</b> 是总架构、端到端流程、数据形态、时序与闭环。
-    每张图都可独立打开，零 JS、零外链、断网可用。
+    <b>19 张可交互图</b> + <b>13 张静态 SVG</b>（中英各一）。
+    先看 <a href="#steps">每一步怎么动</a>（真实运行记录），
+    再看 <a href="#f-f37">F37 系统全貌</a> 与 <a href="#f-f30">F30 五层总览</a> 建立地图，
+    最后按需深入到某一层。全部零 JS、零外链，断网可用。
   </p>
+  <!-- STATS:BEGIN -->
   <div class="stats">
-    <span class="stat"><b>24</b>张图</span>
-    <span class="stat"><b>6</b>张角色层 / 融合</span>
-    <span class="stat"><b>26</b>英文 + 26 中文（既有）</span>
-    <span class="stat"><b>9/9</b>交付检查</span>
-    <span class="stat"><b>pass</b>浏览器证据</span>
+    <span class="stat"><b>19</b>张交互图</span>
+    <span class="stat"><b>26</b>张静态 SVG</span>
+    <span class="stat"><b>9</b>步可追踪</span>
+    <span class="stat"><b>9/9</b>追踪通过</span>
+    <span class="stat"><b>0</b>脚本 / 外链</span>
   </div>
+<!-- STATS:END -->
 </header>
 
 <nav>
+  <a href="#steps">每一步怎么动</a>
   <a href="#overview">一图看懂</a>
   <a href="#layers">五个角色层</a>
   <a href="#flows">流程与数据</a>
@@ -82,6 +124,24 @@
 </nav>
 
 <main>
+
+<!-- STEPS:BEGIN -->
+<section id="steps">
+  <h2>每一步怎么动 <span class="hint">数据来自 <code>flow/traces/snr.jsonl</code>：真正的运行记录，不是描述</span></h2>
+  <p class="q">一条真链路共 <b>9</b> 步 ｜ 通过 <b>9</b> ｜
+    每一步都标了<b>控制流/数据流</b>、<b>输入→输出摘要</b>（sha256 前 12 位）与<b>它是怎么变的</b>。
+    摘要相等即证明"上一步的输出真的进了这一步"。</p>
+  <div class="steps"><article class="step S1"><div class="step-h"><span class="sid">S1</span><span class="smod">front</span><span class="kind dat">数据流</span><span class="ms">0 ms</span><span class="st ok">ok</span></div><div class="step-b"><div class="how">读入源码，按行切成语句序列</div><div class="io"><code>-</code> → <code>4793a4cf1c87</code><span class="delta">磁盘上的 .m 文本 → 内存里的行数组（附行数）</span></div><div class="act">读源码 snr.m</div><div class="det">lines=16</div></div></article>
+<article class="step S2"><div class="step-h"><span class="sid">S2</span><span class="smod">mir</span><span class="kind ctl">控制流</span><span class="ms">281 ms</span><span class="st ok">ok</span></div><div class="step-b"><div class="how">逐语句匹配、降级成三地址</div><div class="io"><code>4793a4cf1c87</code> → <code>81c7d3a2a079</code><span class="delta">源码文本 → MIR 行（`op:` / `const:` / `setb:`）</span></div><div class="act">MATLAB → MIR</div><div class="det">ops=7 · unmapped=0</div></div></article>
+<article class="step S3"><div class="step-h"><span class="sid">S3</span><span class="smod">hir</span><span class="kind dat">数据流</span><span class="ms">7 ms</span><span class="st ok">ok</span></div><div class="step-b"><div class="how">把三地址折回表达式树再降级</div><div class="io"><code>81c7d3a2a079</code> → <code>421fc526cd19</code><span class="delta">MIR op 序列 → HIR 树 → 同构的 MIR（算子多重集必须相等）</span></div><div class="act">MIR → HIR → MIR 恒等</div><div class="det">mapped=True · identical=True</div></div></article>
+<article class="step S4"><div class="step-h"><span class="sid">S4</span><span class="smod">emit</span><span class="kind ctl">控制流</span><span class="ms">23 ms</span><span class="st ok">ok</span></div><div class="step-b"><div class="how">按函数切文件、生成工程骨架</div><div class="io"><code>81c7d3a2a079</code> → <code>-</code><span class="delta">MIR → `gen.c` + 每函数 .c + 头文件 + CMake（文件数可见）</span></div><div class="act">m2c build 生成 C 工程</div><div class="det">files=8</div></div></article>
+<article class="step S5"><div class="step-h"><span class="sid">S5</span><span class="smod">build</span><span class="kind ctl">控制流</span><span class="ms">798 ms</span><span class="st ok">ok</span></div><div class="step-b"><div class="how">把生成的 C 编译成可执行</div><div class="io"><code>-</code> → <code>-</code><span class="delta">C 源文件 → 目标可执行（只看返回码，不看输出）</span></div><div class="act">gcc 编译</div><div class="det">rc=0</div></div></article>
+<article class="step S6"><div class="step-h"><span class="sid">S6</span><span class="smod">run</span><span class="kind dat">数据流</span><span class="ms">71 ms</span><span class="st ok">ok</span></div><div class="step-b"><div class="how">运行 C 产物，取数值</div><div class="io"><code>-</code> → <code>13632e297592</code><span class="delta">可执行 → stdout 的 `名: 值` 行 → 数值序列</span></div><div class="act">C 可执行运行</div><div class="det">values=0</div></div></article>
+<article class="step S7"><div class="step-h"><span class="sid">S7</span><span class="smod">vm</span><span class="kind dat">数据流</span><span class="ms">12 ms</span><span class="st ok">ok</span></div><div class="step-b"><div class="how">用解释器跑同一份 MIR</div><div class="io"><code>81c7d3a2a079</code> → <code>de74180da034</code><span class="delta">同一份 MIR → VM 的数值序列（不经 C，独立路径）</span></div><div class="act">Rust VM 执行同一份 MIR</div><div class="det">values=0</div></div></article>
+<article class="step S8"><div class="step-h"><span class="sid">S8</span><span class="smod">verify</span><span class="kind ctl">控制流</span><span class="ms">0 ms</span><span class="st ok">ok</span></div><div class="step-b"><div class="how">对比两条独立路径的数值</div><div class="io"><code>13632e297592</code> → <code>de74180da034</code><span class="delta">两份数值序列 → 一致 / 分岔（分歧即定位到这一步）</span></div><div class="act">C 与 VM 数值一致</div><div class="det">c=0 · vm=0</div></div></article>
+<article class="step S9"><div class="step-h"><span class="sid">S9</span><span class="smod">cmir</span><span class="kind dat">数据流</span><span class="ms">221 ms</span><span class="st ok">ok</span></div><div class="step-b"><div class="how">从生成的 C 反推 MIR</div><div class="io"><code>e3b0c44298fc</code> → <code>5121ce049e69</code><span class="delta">`gen.c` 的 mlc_op_* 调用 → MIR op 行（证明产物可被重新理解）</span></div><div class="act">C → MIR 反推</div></div></article></div>
+</section>
+<!-- STEPS:END -->
 
 <section id="overview">
   <h2>一图看懂 <span class="hint">先看这五张，再看细节</span></h2>
@@ -334,6 +394,8 @@
 
   </div>
 </section>
+
+
 
 </main>
 
