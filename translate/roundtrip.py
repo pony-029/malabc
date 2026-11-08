@@ -271,6 +271,16 @@ def main():
     if bad:
         for r in bad[:5]:
             print("   ✗ %s：%s" % (r["name"], r["note"] or "数值不一致"))
+
+    # **兜底必须显式计数**：VM 算不了时会回退 Octave，而回退会吞掉
+    # "回译产物解析不了"这类失败 —— 报表照样全绿，直到有人把兜底关掉（R700 的教训）。
+    oct_fb = [r for r in recs if r.get("oracle") == "octave"]
+    if oct_fb:
+        print("\n注意：%d 个函数回退到了 Octave（VM 算不了）：%s"
+              % (len(oct_fb), ", ".join(r["name"] for r in oct_fb[:6])))
+        print("      这些函数的结论**不来自同一套自证**，解读时要分开看。")
+    else:
+        print("\n全部结论由 Rust VM 自证（未使用 Octave 兜底）。")
     return 0 if not bad else 1
 
 
