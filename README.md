@@ -1271,6 +1271,7 @@ Three-link regression report: `python tools/three_links_report.py <dirs> -o <out
 - `tools/hir_links_report.py` — consistency report for MATLAB→MIR / MIR→C / C→MIR, **each scenario routed through HIR** (MIR ⇄ HIR identity)
 - `tools/semantics_coverage.py` — MATLAB semantics completeness check: which language features appear in real code and how far they are supported
 - `tools/flow_catalog.py` — generates `flow/catalog.html`, the single place listing every flow diagram with a computed staleness badge
+- `tools/trace_demo.py` — records a real pipeline run step by step into JSONL (sha256 digests per step); `tools/trace_view.py` renders it as a static HTML trace page
 
 Bucket census before any "the main cause is X" claim: `python tools/bucket_census.py <mir> <bucket>`.
 

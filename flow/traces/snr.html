@@ -1,0 +1,45 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>链路追踪 · snr</title><style>
+:root{--bg:#0f1115;--card:#171a21;--fg:#e6e9ef;--dim:#9aa4b2;--ok:#37d67a;
+--fail:#ff5c5c;--skip:#8b93a1;--line:#252a33;--ctl:#5b9dff;--dat:#f5a524}
+@media(prefers-color-scheme:light){:root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;
+--dim:#5b636e;--line:#e3e6ea}}
+*{box-sizing:border-box}
+body{margin:0;padding:30px;background:var(--bg);color:var(--fg);
+font:14px/1.6 -apple-system,"Segoe UI","Noto Sans SC",sans-serif}
+h1{font-size:22px;margin:0 0 4px}
+.sub{color:var(--dim);margin-bottom:20px}
+table{width:100%;border-collapse:collapse;background:var(--card);
+border:1px solid var(--line);border-radius:12px;overflow:hidden}
+th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line);
+font-size:13px;vertical-align:top}
+th{color:var(--dim);font-size:12px;font-weight:600}
+tr:last-child td{border-bottom:none}
+.mono{font-family:ui-monospace,Consolas,monospace}
+.b{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:600}
+.ok{background:rgba(55,214,122,.15);color:var(--ok)}
+.fail{background:rgba(255,92,92,.15);color:var(--fail)}
+.skip{background:rgba(139,147,161,.18);color:var(--skip)}
+.ctl{color:var(--ctl)}.dat{color:var(--dat)}
+.note{margin-top:16px;color:var(--dim);font-size:13px}
+</style></head><body>
+<h1>链路追踪：snr</h1>
+<div class="sub">共 <b>9</b> 步 ｜ 通过 <b>9</b> ｜ 失败 <b>0</b> ｜ 来源 <span class="mono">flow\traces\snr.jsonl</span></div>
+<table><tr><th>步</th><th>模块</th><th>类型</th><th>动作</th><th>输入 → 输出（摘要）</th>
+<th>细节</th><th>状态</th><th>耗时</th><th>values</th></tr><tr><td class="mono">S1</td><td class="mono">front</td><td><span class="dat">数</span></td><td>读源码 snr.m</td><td class="mono">- → 4793a4cf1c87</td><td class="mono">lines=16</td><td><span class="b ok">ok</span></td><td class="mono">0 ms</td><td class="mono" style="color:var(--dim)">lines=16</td></tr>
+<tr><td class="mono">S2</td><td class="mono">mir</td><td><span class="ctl">控</span></td><td>MATLAB → MIR</td><td class="mono">4793a4cf1c87 → 81c7d3a2a079</td><td class="mono">ops=7 · unmapped=0</td><td><span class="b ok">ok</span></td><td class="mono">281 ms</td><td class="mono" style="color:var(--dim)">ops=7 · unmapped=0</td></tr>
+<tr><td class="mono">S3</td><td class="mono">hir</td><td><span class="dat">数</span></td><td>MIR → HIR → MIR 恒等</td><td class="mono">81c7d3a2a079 → 421fc526cd19</td><td class="mono">mapped=True · identical=True</td><td><span class="b ok">ok</span></td><td class="mono">7 ms</td><td class="mono" style="color:var(--dim)">mapped=True · identical=True</td></tr>
+<tr><td class="mono">S4</td><td class="mono">emit</td><td><span class="ctl">控</span></td><td>m2c build 生成 C 工程</td><td class="mono">81c7d3a2a079 → -</td><td class="mono">files=8</td><td><span class="b ok">ok</span></td><td class="mono">23 ms</td><td class="mono" style="color:var(--dim)">files=8</td></tr>
+<tr><td class="mono">S5</td><td class="mono">build</td><td><span class="ctl">控</span></td><td>gcc 编译</td><td class="mono">- → -</td><td class="mono">rc=0</td><td><span class="b ok">ok</span></td><td class="mono">798 ms</td><td class="mono" style="color:var(--dim)">rc=0</td></tr>
+<tr><td class="mono">S6</td><td class="mono">run</td><td><span class="dat">数</span></td><td>C 可执行运行</td><td class="mono">- → 13632e297592</td><td class="mono">values=0</td><td><span class="b ok">ok</span></td><td class="mono">71 ms</td><td class="mono" style="color:var(--dim)">values=0</td></tr>
+<tr><td class="mono">S7</td><td class="mono">vm</td><td><span class="dat">数</span></td><td>Rust VM 执行同一份 MIR</td><td class="mono">81c7d3a2a079 → de74180da034</td><td class="mono">values=0</td><td><span class="b ok">ok</span></td><td class="mono">12 ms</td><td class="mono" style="color:var(--dim)">values=0</td></tr>
+<tr><td class="mono">S8</td><td class="mono">verify</td><td><span class="ctl">控</span></td><td>C 与 VM 数值一致</td><td class="mono">13632e297592 → de74180da034</td><td class="mono">c=0 · vm=0</td><td><span class="b ok">ok</span></td><td class="mono">0 ms</td><td class="mono" style="color:var(--dim)">c=0 · vm=0</td></tr>
+<tr><td class="mono">S9</td><td class="mono">cmir</td><td><span class="dat">数</span></td><td>C → MIR 反推</td><td class="mono">e3b0c44298fc → 5121ce049e69</td><td class="mono"></td><td><span class="b ok">ok</span></td><td class="mono">221 ms</td><td class="mono" style="color:var(--dim)"></td></tr></table>
+<div class="note">
+摘要 = 内容的 sha256 前 12 位。它让「这一步入的是哪一份数据」变成可核对的事实，
+而不是「我记得我传的是那个文件」。<br>
+类型：<span class="ctl">控</span> = 控制流（谁触发谁）｜
+<span class="dat">数</span> = 数据流（传的是什么）。
+</div>
+</body></html>
