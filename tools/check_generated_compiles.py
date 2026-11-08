@@ -68,6 +68,8 @@ CHECKS = (
              os.path.join("tests", "test_roundtrip_vm.py"),
              os.path.join("tests", "test_hir_links.py"),
              os.path.join("tests", "test_check_verdict.py"),
+             os.path.join("tests", "test_vm_ops.py"),
+             os.path.join("tests", "test_numeric_truth.py"),
              os.path.join("tests", "test_three_links.py"),
              os.path.join("tests", "test_vsix_sourceless.py"),
              os.path.join("tests", "test_drop_sideeffect.py"),
