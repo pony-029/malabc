@@ -1199,6 +1199,7 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 三段链路回归报告：`python tools/three_links_report.py <目录...> -o <输出目录>`（MATLAB→MIR→C→MIR，自包含 HTML）。
 - `tools/hir_links_report.py` —— 三类转换（MATLAB→MIR / MIR→C / C→MIR）一致性报告，**每类都经 HIR**（MIR ⇄ HIR 往返恒等）
 - `tools/semantics_coverage.py` —— MATLAB 语义完备性核查：真实代码里出现了哪些语义、各自支持到哪一档
+- `tools/flow_catalog.py` —— 生成 `flow/catalog.html`：一处列全所有流程图，并算出「现行 / 近期 / 已过时」状态
 
 写“主因是 X”之前先跑桶构成普查：`python tools/bucket_census.py <mir> <桶名>`。
 

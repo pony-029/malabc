@@ -1,0 +1,71 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>流程图目录 · MATLABC</title><style>
+:root{--bg:#0f1115;--card:#171a21;--fg:#e6e9ef;--dim:#9aa4b2;--ok:#37d67a;
+--warn:#f5a524;--line:#252a33;--accent:#5b9dff}
+@media(prefers-color-scheme:light){:root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;
+--dim:#5b636e;--line:#e3e6ea}}
+*{box-sizing:border-box}
+body{margin:0;padding:32px;background:var(--bg);color:var(--fg);
+font:15px/1.65 -apple-system,"Segoe UI","Noto Sans SC",sans-serif}
+h1{font-size:26px;margin:0 0 6px}
+.sub{color:var(--dim);margin-bottom:22px}
+table{width:100%;border-collapse:collapse;background:var(--card);
+border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:26px}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);font-size:14px}
+th{color:var(--dim);font-size:13px;font-weight:600}
+tr:last-child td{border-bottom:none}
+.mono{font-family:ui-monospace,Consolas,monospace}
+.b{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:600}
+.now{background:rgba(55,214,122,.15);color:var(--ok)}
+.stale{background:rgba(245,165,36,.16);color:var(--warn)}
+.na{background:rgba(154,164,178,.16);color:var(--dim)}
+a{color:var(--accent)}
+</style></head><body>
+<h1>流程图目录</h1>
+<div class="sub">共 <b>18</b> 张交互图 + <b>13</b> 张静态 SVG ｜ 其中 <b>18</b> 张交互图落后于当前代码（80965c4c）
+｜ 返回 <a href="index.html">图集首页</a></div>
+
+<h2 style="font-size:18px;margin:0 0 10px">交互图（可点开、可缩放）</h2>
+<table><tr><th>编号</th><th>标题</th><th>状态</th><th>入口</th></tr><tr><td class="mono">F30</td><td>工程级降维平台：五层 × 原子步骤</td><td><span class="b now">近期</span></td><td><a href="figures/architecture-engineering-platform-20261108/f30-engineering-platform.html">打开</a></td></tr>
+<tr><td class="mono">F19</td><td>融合总图：现状、接口层与计划</td><td><span class="b stale">已过时</span></td><td><a href="figures/architecture-fusion-20261017-1220/f19-fusion.html">打开</a></td></tr>
+<tr><td class="mono">F18</td><td>二进制与产物层：两条库链，四种产物</td><td><span class="b stale">已过时</span></td><td><a href="figures/architecture-layer-binary-20261017-1220/f18-layer-binary.html">打开</a></td></tr>
+<tr><td class="mono">F14</td><td>入口层：三条入口，一个编排</td><td><span class="b stale">已过时</span></td><td><a href="figures/architecture-layer-entry-20261017-1220/f14-layer-entry.html">打开</a></td></tr>
+<tr><td class="mono">F16</td><td>前端层：三种原料，一处判定</td><td><span class="b stale">已过时</span></td><td><a href="figures/architecture-layer-frontends-20261017-1220/f16-layer-frontends.html">打开</a></td></tr>
+<tr><td class="mono">F15</td><td>编排层：一个文件里的五件事</td><td><span class="b stale">已过时</span></td><td><a href="figures/architecture-layer-orchestrator-20261017-1220/f15-layer-orchestrator.html">打开</a></td></tr>
+<tr><td class="mono">F17</td><td>语义层：一条投影链，一处守恒</td><td><span class="b stale">已过时</span></td><td><a href="figures/architecture-layer-semantic-20261017-1220/f17-layer-semantic.html">打开</a></td></tr>
+<tr><td class="mono">F20</td><td>malabc 模块交互与功能实现</td><td><span class="b stale">已过时</span></td><td><a href="figures/architecture-malabc-modules-20261017-113257/malabc-modules.html">打开</a></td></tr>
+<tr><td class="mono">F22</td><td>malabc 数据形态流转</td><td><span class="b stale">已过时</span></td><td><a href="figures/dataflow-malabc-model-20261017-121345/model-flow.html">打开</a></td></tr>
+<tr><td class="mono">F03</td><td>告警到基线的闭环</td><td><span class="b stale">已过时</span></td><td><a href="figures/lifecycle-malabc-issue-20261017-121345/issue-closed-loop.html">打开</a></td></tr>
+<tr><td class="mono">F34</td><td>图集地图：28 张图怎么串起来</td><td><span class="b now">近期</span></td><td><a href="figures/meta-figure-map-20261108/f34-figure-map.html">打开</a></td></tr>
+<tr><td class="mono">F23</td><td>一次 C 分析的模块时序</td><td><span class="b stale">已过时</span></td><td><a href="figures/sequence-malabc-analysis-20261017-113257/analysis-sequence.html">打开</a></td></tr>
+<tr><td class="mono">F36</td><td>一次真实追踪：snr.m → 四路一致</td><td><span class="b now">近期</span></td><td><a href="figures/trace-snr-20261108/f36-snr-trace.html">打开</a></td></tr>
+<tr><td class="mono">F33</td><td>C → MIR 反推与四路哈希自证</td><td><span class="b now">近期</span></td><td><a href="figures/workflow-cmir-hash-20261108/f33-cmir-fourway-hash.html">打开</a></td></tr>
+<tr><td class="mono">F35</td><td>配置三层合并与内存预算（当前仅设计）</td><td><span class="b now">近期</span></td><td><a href="figures/workflow-config-budget-20261108/f35-config-budget.html">打开</a></td></tr>
+<tr><td class="mono">F21</td><td>malabc 端到端分析流程</td><td><span class="b stale">已过时</span></td><td><a href="figures/workflow-malabc-pipeline-20261017-121345/pipeline.html">打开</a></td></tr>
+<tr><td class="mono">F31</td><td>MATLAB → MIR：逐语句的原子决策</td><td><span class="b now">近期</span></td><td><a href="figures/workflow-matlab-to-mir-20261108/f31-matlab-to-mir.html">打开</a></td></tr>
+<tr><td class="mono">F32</td><td>MIR → C 工程：装配与三条硬边界</td><td><span class="b now">近期</span></td><td><a href="figures/workflow-mir-to-c-20261108/f32-mir-to-c.html">打开</a></td></tr></table>
+
+<h2 style="font-size:18px;margin:0 0 10px">静态分层图（中英双版）</h2>
+<table><tr><th>编号</th><th>标题</th><th>打开</th></tr><tr><td class="mono">F01</td><td>capabilities</td><td><a href="diagrams/f01-capabilities.zh-CN.svg">中</a> · <a href="diagrams/f01-capabilities.svg">EN</a></td></tr>
+<tr><td class="mono">F02</td><td>binary attribution</td><td><a href="diagrams/f02-binary-attribution.zh-CN.svg">中</a> · <a href="diagrams/f02-binary-attribution.svg">EN</a></td></tr>
+<tr><td class="mono">F03</td><td>binary attach</td><td><a href="diagrams/f03-binary-attach.zh-CN.svg">中</a> · <a href="diagrams/f03-binary-attach.svg">EN</a></td></tr>
+<tr><td class="mono">F04</td><td>layers</td><td><a href="diagrams/f04-layers.zh-CN.svg">中</a> · <a href="diagrams/f04-layers.svg">EN</a></td></tr>
+<tr><td class="mono">F05</td><td>decision point</td><td><a href="diagrams/f05-decision-point.zh-CN.svg">中</a> · <a href="diagrams/f05-decision-point.svg">EN</a></td></tr>
+<tr><td class="mono">F06</td><td>fix loop</td><td><a href="diagrams/f06-fix-loop.zh-CN.svg">中</a> · <a href="diagrams/f06-fix-loop.svg">EN</a></td></tr>
+<tr><td class="mono">F07</td><td>ci gate</td><td><a href="diagrams/f07-ci-gate.zh-CN.svg">中</a> · <a href="diagrams/f07-ci-gate.svg">EN</a></td></tr>
+<tr><td class="mono">F08</td><td>baseline nodeids</td><td><a href="diagrams/f08-baseline-nodeids.zh-CN.svg">中</a> · <a href="diagrams/f08-baseline-nodeids.svg">EN</a></td></tr>
+<tr><td class="mono">F09</td><td>superpower loop</td><td><a href="diagrams/f09-superpower-loop.zh-CN.svg">中</a> · <a href="diagrams/f09-superpower-loop.svg">EN</a></td></tr>
+<tr><td class="mono">F10</td><td>guard registry</td><td><a href="diagrams/f10-guard-registry.zh-CN.svg">中</a> · <a href="diagrams/f10-guard-registry.svg">EN</a></td></tr>
+<tr><td class="mono">F11</td><td>ir attribution</td><td><a href="diagrams/f11-ir-attribution.zh-CN.svg">中</a> · <a href="diagrams/f11-ir-attribution.svg">EN</a></td></tr>
+<tr><td class="mono">F12</td><td>audit layers</td><td><a href="diagrams/f12-audit-layers.zh-CN.svg">中</a> · <a href="diagrams/f12-audit-layers.svg">EN</a></td></tr>
+<tr><td class="mono">F13</td><td>agent loop</td><td><a href="diagrams/f13-agent-loop.zh-CN.svg">中</a> · <a href="diagrams/f13-agent-loop.svg">EN</a></td></tr></table>
+
+<h2 style="font-size:18px;margin:0 0 10px">怎么读</h2>
+<p class="sub">
+① 先看 <a href="index.html#f-f30">F30</a>（五层总览）与 <a href="index.html#f-f34">F34</a>（图集地图）；
+② 想懂一条语句的去向，看 <a href="index.html#f-f31">F31</a>；
+③ 要生成 C 工程，看 <a href="index.html#f-f32">F32</a> 与 <a href="index.html#f-f35">F35</a>；
+④ 想确认「数值真的对」，看 <a href="index.html#f-f36">F36</a> 与 <a href="index.html#f-f33">F33</a>。
+</p>
+</body></html>
