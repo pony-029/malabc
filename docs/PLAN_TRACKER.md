@@ -290,3 +290,30 @@ HIR  ：OP-MUL, OP-MEAN, OP-MUL, OP-MEAN, OP-DIV, OP-LOG10, OP-MUL
 ⇒ 下一阶段不要再按"补 struct / 补 cell / 补签名"排序；
    要么承认这个天花板并把价值放在**单函数契约式转换 + 精确诊断**，
    要么把"字符串子集"作为一个**新的、需重新论证**的立项。
+
+### R720：工程级对接（MATLAB 工程 → C 工程）实测
+
+用一个 3 函数互相调用的小工程验证（`driver → twice → scale`）：
+
+| 环节 | 结果 |
+|---|---|
+| `mir.py <目录>` | ✅ 3 个函数进同一份 MIR，跨函数调用记为 `call:` 语句 |
+| `m2c build --mir` | ✅ 产出**完整 C 工程**：`CMakeLists.txt` / `include/proj.h` / `src/gen.c` / 每函数一个 `.c` / `main.c` / `selftest.c` |
+| `gcc` 编译 | ✅ rc=0（符号与原型都对） |
+| **运行** | ❌ `driver` / `twice` 返回 `unimplemented`，只有无调用的 `scale` 正确 |
+
+根因（在生成的 `twice_m.c` 里直接写明）：
+
+```c
+/* TODO(call): scale 不是本文件里已生成的函数 */
+return MLC_UNIMPLEMENTED;
+```
+
+而 `driver_m.c` 里 `m2c_twice(x, y)` 是**正确生成**的。
+
+⇒ 同一工程内**部分**跨函数调用能解析（driver→twice），另一部分不能（twice→scale）。
+差别待定：最可能是 `scale(x, k)` 有**标量形参**，使它在 `known` 里被判定为不可直接调用。
+
+**这就是"顶层对接"的唯一阻塞点**：工程骨架、头文件、符号、编译全都对，
+只差 `emit_func` 里 `known` 的可见范围 —— 它不是"函数级转义"的问题，
+而是"工程级符号可见性"的问题。
