@@ -130,6 +130,12 @@ def c_to_mir(text, fname):
         oid = _lookup("mlc_op_" + m.group(1)) if m else None
         if oid is not None:
             parts = [_strip_ref(p) for p in _split_args(m.group(2))]
+            # **实参顺序归一化**：C 侧一律 `mlc_op_x(&a, &b, &dst)`，dst 在**末尾**；
+            # 而 MIR 的 `op:` 是 `op:<id>:<dst>:<a>:<b>`，dst 在**第二位**。
+            # 不归一化的话，下游（HIR 抬升按名字消费实参）会把 dst 当成操作数 ——
+            # 实测 `fir_lp` 的 ③ HIR 往返因此少了一个 `OP-ADD`。
+            if len(parts) >= 2:
+                parts = [parts[-1]] + parts[:-1]
             out.append("op:%s:%s" % (oid, ":".join(parts)))
             st["ops"] += 1
             continue
