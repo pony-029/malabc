@@ -97,9 +97,10 @@ def analyze_one(src, d):
     hir_body, mapped = H.mir_to_hir("\n".join(body))
     if mapped and rec["hir1"] == "ok":
         body = H.hir_to_mir(H.hir_wrap(stem, [], [], hir_body)).split("\n")
-    # 函数体的收尾 `end` 由下面统一补 —— 原 body 里已有一个，**必须去掉**，
-    # 否则 `end` 重复、m2c 解析失败（实测 ② 全 0 就是这个）。
-    while body and body[-1].strip() == "end":
+    # 函数体的收尾 `end` 由下面统一补 —— 原 body 末尾已有一个，**只弹一个**。
+    # 早前用 while 弹到没有为止，把 `if` 块自己的 `end` 也弹掉了 →
+    # m2c 报"文件结束时仍有未收束的 func"（② 15 个全挂在这里）。
+    if body and body[-1].strip() == "end":
         body.pop()
     head = [l for l in text.split("\n")
             if l.startswith(("version", "func:", "arg:", "ret:"))]

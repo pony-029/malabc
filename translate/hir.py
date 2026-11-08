@@ -192,13 +192,20 @@ def mir_to_hir(text):
     # **只折"恰好被消费一次"的临时量**。
     # 无人消费的（块末尾的死值）若被折进 env，就再也不会被发出 → 整条算子消失
     # （实测 4 个函数：colmax_loop / earlyret / endsemi / while2d）。
-    uses = {}
+    uses, consumer = {}, {}
     for l in raw_lines:
         m = _OP_LINE.match(l)
         if m:
             for a in m.group(3).split(":"):
                 uses[a] = uses.get(a, 0) + 1
-    foldable = {k for k, v in uses.items() if v == 1 and _TEMP_RE.match(k)}
+                consumer[a] = m.group(1)
+    # `OP-FILLA` 的第 3 实参是**标量值**（C 侧是 `double`）。把它折成表达式会让
+    # 重降级生成一个数组临时量 → gcc 报 "expected double but argument is of type
+    # mlc_array"（实测 `filla` 就挂在最后这一步）。这类"实参不是数组"的位置不折。
+    _NO_FOLD_CONSUMER = {"OP-FILLA"}
+    foldable = {k for k, v in uses.items()
+                if v == 1 and _TEMP_RE.match(k)
+                and consumer.get(k) not in _NO_FOLD_CONSUMER}
 
     env = {}      # 临时量 -> 表达式节点
     emitted = []
