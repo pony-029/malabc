@@ -179,6 +179,42 @@ def suggest_fields(bad, args_of):
     return out
 
 
+#: 语句级卡点里**属于本工具边界**（不是"写法要改"）的类别。
+#: 判据：这类语句即便改了写法也仍是同一件事 —— 只能不做。
+_BOUNDARY_KINDS = {"strlit"}
+#: 签名级拒绝的**改写动作**（用户可以照做）。
+_SIG_FIX = {
+    "cell": "把元胞形参改成定长数值参数（或拆成多个形参）",
+    "struct": "把结构体形参改成显式字段参数（或加 `% @m2c fields s.a` 声明）",
+    "varargin": "把可变参数改成显式形参",
+    "varargout": "把可变输出改成显式返回值",
+}
+
+
+def _verdict(res):
+    """把"不能生成"分成**该动什么**的一句话。
+
+    实测（jsonlab + export_fig，98 个失败）：绝大多数卡在**签名层**
+    （`cell,struct` 59 ／ `varargin,cell,struct` 46 ／ `struct` 36 …）。
+    那时用户最想知道的是：改签名值不值得 —— 所以要把"改完还剩多少"一起给出。
+    """
+    by_kind = res.get("by_kind") or {}
+    boundary = sum(v for k, v in by_kind.items() if k in _BOUNDARY_KINDS)
+    fixable = sum(by_kind.values()) - boundary
+    rej = sorted(set(res.get("rejects") or []))
+
+    if rej:
+        acts = "；".join(_SIG_FIX.get(r, r) for r in rej)
+        tail = ("改完还剩 %d 条语句级卡点（其中 %d 条属于本工具边界，改了也不支持）"
+                % (fixable + boundary, boundary)) if (fixable + boundary) else "改完即可生成"
+        return "**先改签名** —— %s。%s。" % (acts, tail)
+    if fixable:
+        return ("**改写法** —— 有 %d 条语句在支持范围外但可改写（见下方逐行）；"
+                "另有 %d 条属于本工具边界。" % (fixable, boundary))
+    return ("**超出边界** —— 阻塞全部属于本工具不支持的语言特性（如字符串字面量），"
+            "改写法也无法转换。")
+
+
 def render(res):
     out = []
     name = os.path.basename(res["file"])
@@ -198,6 +234,11 @@ def render(res):
     out.append("%s → **不能生成**（函数 %d ｜ 算子 %d ｜ 未映射 %d ｜ 签名拒绝 %d 类）"
                % (name, res["funcs"], res["ops"], len(res["blockers"]),
                   len(res["rejects"])))
+
+    # 【结论】先给一句可执行的判断，再给明细 —— 明细很长，而人只想先知道"该动哪"
+    out.append("")
+    out.append("【结论】" + _verdict(res))
+
     if res["rejects"]:
         out.append("")
         out.append("【签名级】整个函数被拒（语句层都没开始）")
