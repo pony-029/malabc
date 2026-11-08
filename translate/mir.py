@@ -1106,6 +1106,11 @@ def _lower_ctor_dims(out, code, idx_counter):
 
     toks = []
     for d in dims:
+        # 去掉**包裹整段的括号**：回译产物里常见 `ones(2, (k + 0))`。
+        # 不去掉的话这里匹配不到，整句落 unmapped —— 往返闭环就断在"自己解析不了自己"。
+        d = d.strip()
+        while d.startswith("(") and d.endswith(")"):
+            d = d[1:-1].strip()
         if re.match(r"^\d+$", d):
             toks.append(d)
             continue

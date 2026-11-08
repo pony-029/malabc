@@ -259,6 +259,15 @@ _FIND2_CMP = {"==": "4", "~=": "5", ">": "0", ">=": "1",
 #: `find(x, n)` —— 非零下标的前 n 个
 _FINDN_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*find\s*\(\s*"
                          r"([A-Za-z_]\w*)\s*,\s*(\d+)\s*\)\s*;?\s*$")
+
+#: `find(x ~= 0, n)` —— **带条件**的前 n 个。
+#:
+#: 为什么需要：回译把 `OP-FIND3` 还原成 `find(x ~= 0, 2)`，而上面的 `_FINDN_LINE`
+#: 只认"裸数组 + n"，于是回译产物**自己解析不了** —— 往返闭环在这里断掉
+#: （VM-only 校验时 13 个函数因此判红，见 R700）。
+_FINDN_COND_LINE = re.compile(
+    r"^\s*([A-Za-z_]\w*)\s*=\s*find\s*\(\s*([A-Za-z_]\w*)\s*"
+    r"(==|~=|>=|<=|>|<)\s*([A-Za-z_]\w*|\d+)\s*,\s*(\d+)\s*\)\s*;?\s*$")
 #: `y = find(x)` —— 非零下标（等价于 `find(x ~= 0)`，复用 OP-FIND 的 cmp=5/k=0）
 _FIND1_LINE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*find\s*\(\s*"
                          r"([A-Za-z_]\w*)\s*\)\s*;?\s*$")
@@ -389,6 +398,13 @@ def parse_line(line):
     if pd is not None:
         return {"operator": _PRED_IDS[pd.group(2)], "lhs": pd.group(1),
                 "args": [pd.group(3)], "raw": line.rstrip("\n")}
+
+    fnc = _FINDN_COND_LINE.match(line or "")
+    if fnc is not None:
+        return {"operator": "OP-FIND3", "lhs": fnc.group(1),
+                "args": [fnc.group(2), _FIND2_CMP[fnc.group(3)],
+                         fnc.group(4), fnc.group(5)],
+                "raw": line.rstrip("\n")}
 
     fn_ = _FINDN_LINE.match(line or "")
     if fn_ is not None:
