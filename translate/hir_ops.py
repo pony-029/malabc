@@ -54,6 +54,20 @@ HIR_TO_MIR = {
     "alloc.fill": "OP-FILLA",
     # 集合
     "set.setdiff": "OP-SETDIFF",
+    # ---- 尺寸/谓词（R717 补：语料里 20 个函数因此可参与 HIR）----
+    "shape.flatten": "OP-FLATTEN",
+    "shape.size": "OP-SIZE",
+    "pred.isempty": "OP-ISEMPTY",
+    "pred.length": "OP-LENGTH",
+    "pred.numel": "OP-NUMEL",
+    "pred.any": "OP-ANY",
+    "pred.nnz": "OP-NNZ",
+    "pred.isequal": "OP-ISEQUAL",
+    "pred.isequalk": "OP-ISEQUALK",
+    # ---- 下标（行/列区间）----
+    "idx.row": "OP-ROW",
+    "idx.colrange": "OP-COLRANGE",
+
 }
 
 #: 规格要求的 26 个键（用于验收：多一个少一个都算交付不合格）

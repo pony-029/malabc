@@ -135,7 +135,10 @@ def _emit_node(node, dst, out):
     # `alloc` 一族的实参是**标量字面量**（C 侧是 `int64_t rows/cols` 与 `double value`），
     # 物化成临时量会变成 `mlc_array` → gcc 报 "expected double but argument is
     # of type mlc_array"（实测 `filla`）。这类位置必须保持字面量内联。
-    keep_literal = _HO.family_of(op) == "alloc"
+    # `alloc` / `shape` / `idx` 三族的**数字实参是标量**（行号、列号、维度、初值），
+    # C 侧是 `int64_t` / `double`。物化成临时量会变成 `mlc_array` → gcc 报
+    # "expected double/int64_t but argument is of type mlc_array"。
+    keep_literal = _HO.family_of(op) in ("alloc", "shape", "idx")
     args = []
     for a in node["args"]:
         if keep_literal and "num" in a:

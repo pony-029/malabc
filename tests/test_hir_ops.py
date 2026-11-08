@@ -36,6 +36,11 @@ SPEC = {
     "search.find",
     "alloc.fill",
     "set.setdiff",
+    # R717：补齐语料里出现过的尺寸/谓词/下标算子
+    "shape.flatten", "shape.size",
+    "pred.isempty", "pred.length", "pred.numel", "pred.any", "pred.nnz",
+    "pred.isequal", "pred.isequalk",
+    "idx.row", "idx.colrange",
 }
 
 
