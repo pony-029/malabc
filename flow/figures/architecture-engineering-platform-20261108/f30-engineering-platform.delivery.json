@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "1c136029-1aeb-4788-ad15-72301af533a1",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "e:\\matlabc\\malabc\\docs\\archify\\f30-engineering-platform.candidate.json",
+  "output": "E:\\matlabc\\malabc\\docs\\archify\\f30-engineering-platform.html",
+  "specification": {
+    "sha256": "cf7972925b79ec6ffccc7e3f5cbbdd8b574ea1c60e6abedacbf9319ff0445dfb",
+    "bytes": 4212
+  },
+  "artifact": {
+    "sha256": "d6eef883a92add61150aa34c69d914e3365f352eb4a713d1ce58cbc01c6b17df",
+    "bytes": 854578
+  }
+}
