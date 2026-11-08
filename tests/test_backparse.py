@@ -77,7 +77,7 @@ def _unmapped(src):
 
 #: 回译会产出、但前端**尚不认**的写法（R705 实测：能修好，但会牵动别处，暂缓）。
 #: 标 xfail 而不是删掉 —— 它们是"闭环欠账"，要一直可见。
-PENDING = {"assign_paren", "const_left_mul", "while_literal"}
+PENDING = {"while_literal"}
 
 
 @pytest.mark.parametrize("name,src,want", CASES)

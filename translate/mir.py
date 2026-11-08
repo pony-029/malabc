@@ -1368,6 +1368,57 @@ def _compile_arith(expr, out, counter):
     return vals[0] if len(vals) == 1 else None
 
 
+#: 右侧被**整段括号**包裹：`i = (i + 1);`（回译产物常见写法）
+_WRAPPED_RHS = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*(\(.*\))\s*;?\s*$")
+#: 字面量在左的二元：`y = 10 .* a;`
+#: 只收 `.*` / `./`：标量 `*`（矩阵乘）与 `+ -` 走既有路径，
+#: 给它们插 `const:` 会改变形状推断 —— 实测让 `scale2x` 的 `k` 不再被当成
+#: "assumed shape [4]"（`test_nounshaped` 立刻红）。
+_CONST_LEFT_BIN = re.compile(
+    r"^\s*([A-Za-z_]\w*)\s*=\s*(-?\d+(?:\.\d+)?)\s*(\.\*|\./)\s*"
+    r"([A-Za-z_]\w*)\s*;?\s*$")
+
+
+def _fully_wrapped(t):
+    """`(i + 1)` 是整段包裹；`A((i+0))` 不是（开头是 A）。"""
+    t = t.strip()
+    if not (t.startswith("(") and t.endswith(")")):
+        return None
+    depth = 0
+    for i, ch in enumerate(t):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0 and i != len(t) - 1:
+                return None
+    return t[1:-1].strip()
+
+
+def _pre_lower(code, out, counter):
+    """只做一件事：去掉右侧整段包裹的括号，交回既有降级链。
+
+    回译会产出 `i = (i + 1);`，而既有的自增降级只认 `i = i + 1;`。
+    这里**只剥括号**，不生成任何算子 —— 风险最小。
+    """
+    m = _WRAPPED_RHS.match(code)
+    if m:
+        inner = _fully_wrapped(m.group(2))
+        if inner is not None:
+            return "%s = %s;" % (m.group(1), inner)
+
+    # `y = 10 .* a;` —— 字面量在左。MIR 的 `op:` 只写变量名，字面量必须先落成
+    # `const:` 临时量。**只处理字面量在左**：在右（`a .* 10`）本来就能走既有路径，
+    # 多插一条 const 会改变生成物（实测让 TP5 工程级输出不一致）。
+    m = _CONST_LEFT_BIN.match(code)
+    if m:
+        counter[0] += 1
+        t = "__k%d" % counter[0]
+        out.append("const:%s:%s" % (t, m.group(2)))
+        return "%s = %s %s %s;" % (m.group(1), t, m.group(3), m.group(4))
+    return None
+
+
 def _lower_index_arith(code, out, counter):
     """下标位置含算术时降成临时量并返回改写后的语句；否则 None。"""
     m = re.match(r"^\s*([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*\((.*)\)\s*;?\s*$", code)
@@ -1747,6 +1798,9 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             code = _strip_full_call(code)
             # 下标算术：必须在**所有**降级分支之前 —— 否则 `y = A((i+0))` 会先被
             # 归成 `nested`（"括号里套括号"）直接落 unmapped，再也到不了这里。
+            _pl = _pre_lower(code, out, idx_counter)
+            if _pl is not None:
+                code = _pl
             _ia = _lower_index_arith(code, out, idx_counter)
             if _ia is not None:
                 code = _ia
