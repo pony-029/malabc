@@ -132,7 +132,16 @@ def _emit_node(node, dst, out):
     mir_id = _HO.mir_of(op)
     if mir_id is None:
         raise ValueError("HIR 算子未登记：%s" % op)
-    args = [_emit_node(a, None, out) for a in node["args"]]
+    # `alloc` 一族的实参是**标量字面量**（C 侧是 `int64_t rows/cols` 与 `double value`），
+    # 物化成临时量会变成 `mlc_array` → gcc 报 "expected double but argument is
+    # of type mlc_array"（实测 `filla`）。这类位置必须保持字面量内联。
+    keep_literal = _HO.family_of(op) == "alloc"
+    args = []
+    for a in node["args"]:
+        if keep_literal and "num" in a:
+            args.append(a["num"])
+        else:
+            args.append(_emit_node(a, None, out))
     if dst is None:
         _emit_node._counter = getattr(_emit_node, "_counter", 0) + 1
         dst = "__h%d" % _emit_node._counter
