@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>malabc 图表总索引 · 24 张</title>
+<title>malabc 图表总索引 · 19 交互 + 13 SVG</title>
 <style>
   :root{
     --bg:#f6f8fa; --card:#ffffff; --ink:#1f2328; --muted:#59636e; --line:#d1d9e0;
@@ -89,9 +89,50 @@
   nav{position:sticky;top:0;z-index:9;background:var(--bg);padding-top:12px;padding-bottom:12px;
       border-bottom:1px solid var(--line)}
   section{scroll-margin-top:64px}
+
+  /* ================= 深色（手动，纯 CSS） =================
+     放在 :root 之后、且用 body:has() 提高特异性，才能盖过 @media 里的自动深色。 */
+  .theme-cb{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+  .theme-btn{font-size:13px;color:var(--accent);text-decoration:none;border:1px solid var(--line);
+             border-radius:999px;padding:5px 11px;background:var(--card);cursor:pointer;
+             user-select:none;font-weight:600}
+  .theme-btn:hover{border-color:var(--accent)}
+  body:has(.theme-cb:checked){
+    --bg:#0b0e13; --card:#141a22; --ink:#e8eef6; --muted:#98a2b3; --line:#262d38;
+    --accent:#5aa0ff; --accent2:#b98cff; --ok:#3fb950; --warn:#d29922; --plan:#b98cff;
+    color-scheme:dark;
+  }
+  /* ================= 排版与卡片 ================= */
+  body{font-size:15.5px;line-height:1.62;-webkit-font-smoothing:antialiased}
+  h1{font-size:32px;font-weight:700;letter-spacing:-.5px}
+  header{padding-top:48px}
+  .lede a{color:var(--accent);text-decoration:none;border-bottom:1px dashed currentColor}
+  .stat{display:inline-flex;align-items:baseline;gap:6px;transition:border-color .15s}
+  .stat:hover{border-color:var(--accent)}
+  .card{padding:16px 18px 14px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .card:hover{box-shadow:0 6px 18px rgba(0,0,0,.10);transform:translateY(-2px)}
+  body:has(.theme-cb:checked) .card:hover{box-shadow:0 6px 20px rgba(0,0,0,.45)}
+  .card h3{font-size:15.5px;font-weight:650}
+  .q{font-size:13px;line-height:1.6}
+  .links a{font-weight:600}
+  section>h2{position:relative;padding-left:12px}
+  section>h2::before{content:"";position:absolute;left:0;top:5px;bottom:5px;width:3px;
+                     border-radius:2px;background:var(--accent);opacity:.75}
+  /* 回到顶部 */
+  .totop{position:fixed;right:18px;bottom:18px;font-size:12.5px;color:var(--accent);
+         background:var(--card);border:1px solid var(--line);border-radius:999px;
+         padding:7px 12px;text-decoration:none;box-shadow:0 2px 10px rgba(0,0,0,.12)}
+  .totop:hover{border-color:var(--accent)}
+  @media (max-width:640px){
+    header{padding:32px 16px 6px} main{padding:8px 16px 48px}
+    nav{padding:10px 16px} .grid{grid-template-columns:1fr}
+    .steps{padding-left:14px} .step::before{left:-21px}
+  }
 </style>
 </head>
 <body>
+
+<input type="checkbox" id="dark-mode" class="theme-cb">
 
 <header>
   <h1>malabc 图表总索引</h1>
@@ -113,6 +154,7 @@
 </header>
 
 <nav>
+  <label for="dark-mode" class="theme-btn" title="切换深色/浅色">◐ 深色</label>
   <a href="#steps">每一步怎么动</a>
   <a href="#overview">一图看懂</a>
   <a href="#layers">五个角色层</a>
@@ -366,7 +408,7 @@
       <div class="links"><a href="figures/workflow-config-budget-20261108/f35-config-budget.html">打开</a></div>
     </article>
     <article class="card" id="f-f34">
-      <h3><span class="id">F34</span>图集地图：28 张图怎么串起来</h3>
+      <h3><span class="id">F34</span>图集地图：所有图怎么串起来</h3>
       <p class="q">先读哪张、每张解决什么问题、彼此怎么引用。左侧是读法（自上而下），右侧是七组图的归属。</p>
       <p class="rel">相关：F19 F20（总览）· F30 F31 F32 F33（本轮新增）· F21（端到端泳道）</p>
       <div class="links"><a href="figures/meta-figure-map-20261108/f34-figure-map.html">打开</a></div>
@@ -398,6 +440,8 @@
 
 
 </main>
+<a class="totop" href="#">↑ 顶部</a>
+
 
 <footer>
   <p>
