@@ -1268,6 +1268,7 @@ Author and copyright holder: **冯磊 (Feng Lei)** — © 2026 冯磊 (Feng Lei)
 > `python tools/rsi_scenarios.py` drives both protocols end to end, `python tools/mutate_sample.py` proves the judgements can actually fail.
 
 Three-link regression report: `python tools/three_links_report.py <dirs> -o <out>` (MATLAB->MIR->C->MIR, self-contained HTML).
+- `tools/hir_links_report.py` — consistency report for MATLAB→MIR / MIR→C / C→MIR, **each scenario routed through HIR** (MIR ⇄ HIR identity)
 
 Bucket census before any "the main cause is X" claim: `python tools/bucket_census.py <mir> <bucket>`.
 

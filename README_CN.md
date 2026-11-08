@@ -1197,6 +1197,7 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 > `python tools/rsi_scenarios.py` 走公开协议端到端，`python tools/mutate_sample.py` 证明这些判据真的会红。
 
 三段链路回归报告：`python tools/three_links_report.py <目录...> -o <输出目录>`（MATLAB→MIR→C→MIR，自包含 HTML）。
+- `tools/hir_links_report.py` —— 三类转换（MATLAB→MIR / MIR→C / C→MIR）一致性报告，**每类都经 HIR**（MIR ⇄ HIR 往返恒等）
 
 写“主因是 X”之前先跑桶构成普查：`python tools/bucket_census.py <mir> <桶名>`。
 
