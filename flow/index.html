@@ -255,6 +255,24 @@
       <p class="q">从 MATLAB 工程目录到 C 工程的全链路：图谱 → 配置合并 → MIR → HIR → 发射 → 跨文件调用（当前断点）→ 契约桩 → 反推 → 四路哈希。</p>
       <div class="links"><a href="figures/architecture-engineering-platform-20261108/f30-engineering-platform.html">打开</a></div>
     </article>
+    <article class="card">
+      <h3><span class="id">F31</span>MATLAB → MIR：逐语句的原子决策</h3>
+      <p class="q">一条语句从文本到 op: 行的完整路径；四个出口（能降 / 需注解 / 整函数拒 / 逐条记未映射）。</p>
+      <div class="links"><a href="figures/workflow-matlab-to-mir-20261108/f31-matlab-to-mir.html">打开</a></div>
+    </article>
+    <article class="card">
+      <h3><span class="id">F33</span>C → MIR 反推与四路哈希自证</h3>
+      <p class="q">从生成的 C 反推 MIR，再用四条执行路径对齐到同一种可比对象：IEEE-754 位模式。</p>
+      <div class="links"><a href="figures/workflow-cmir-hash-20261108/f33-cmir-fourway-hash.html">打开</a></div>
+    </article>
+    <article class="card">
+      <h3><span class="id">F32</span>MIR → C 工程：装配与三条硬边界</h3>
+      <p class="q">从 MIR 到可编译工程；跨文件调用是当前唯一断点，预算与契约桩是两条必须的边界。</p>
+      <div class="links"><a href="figures/workflow-mir-to-c-20261108/f32-mir-to-c.html">打开</a></div>
+    </article>
+
+
+
 
 
   </div>

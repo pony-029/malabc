@@ -1,0 +1,223 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "F31 MATLAB → MIR：逐语句的原子决策",
+    "locale": "zh-CN",
+    "output": "f31-matlab-to-mir.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:pony-029/malabc.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "70b69bb919f17343692146517fb7c194d944903c"
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "cols": 4,
+    "cellW": 186,
+    "cellH": 96,
+    "gapX": 48,
+    "gapY": 80
+  },
+  "components": [
+    {
+      "id": "txt",
+      "type": "backend",
+      "label": "① 读源码",
+      "sublabel": "去注释 / 续行拼接",
+      "tag": "已实现",
+      "row": 0,
+      "col": 0,
+      "sources": [
+        {
+          "path": "translate/mir.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "sig",
+      "type": "backend",
+      "label": "② 抽签名 + 注解",
+      "sublabel": "function / @m2c shape / fields",
+      "tag": "已实现",
+      "row": 0,
+      "col": 1,
+      "sources": [
+        {
+          "path": "translate/mir.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "rej",
+      "type": "backend",
+      "label": "③ 函数级拒绝判定",
+      "sublabel": "cell / struct / varargin",
+      "tag": "已实现",
+      "row": 0,
+      "col": 2,
+      "sources": [
+        {
+          "path": "translate/mir.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "rew",
+      "type": "backend",
+      "label": "④ 结构体与括号改写",
+      "sublabel": "s.a→s_a / 下标算术",
+      "tag": "已实现",
+      "row": 0,
+      "col": 3,
+      "sources": [
+        {
+          "path": "translate/mir.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "cls",
+      "type": "backend",
+      "label": "⑤ 语句分类",
+      "sublabel": "正则族逐个匹配",
+      "tag": "已实现",
+      "row": 1,
+      "col": 0,
+      "sources": [
+        {
+          "path": "translate/operators.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "tmp",
+      "type": "backend",
+      "label": "⑥ 临时量降级",
+      "sublabel": "const: / setb:",
+      "tag": "已实现",
+      "row": 1,
+      "col": 1,
+      "sources": [
+        {
+          "path": "translate/mir.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "op",
+      "type": "backend",
+      "label": "⑦ 算子发射",
+      "sublabel": "op:OP-xxx:dst:args",
+      "tag": "已实现",
+      "row": 1,
+      "col": 2,
+      "sources": [
+        {
+          "path": "translate/mir.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "un",
+      "type": "backend",
+      "label": "⑧ 未映射记账",
+      "sublabel": "# src:N + # why:K",
+      "tag": "已实现",
+      "row": 1,
+      "col": 3,
+      "sources": [
+        {
+          "path": "translate/check.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "mir",
+      "type": "backend",
+      "label": "⑨ MIR 文本",
+      "sublabel": "func / arg / ret / op",
+      "tag": "产物",
+      "row": 2,
+      "col": 2,
+      "sources": [
+        {
+          "path": "translate/mir.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "chk",
+      "type": "backend",
+      "label": "诊断出口",
+      "sublabel": "哪一行 / 哪一类 / 怎么改",
+      "tag": "已实现",
+      "row": 2,
+      "col": 3,
+      "sources": [
+        {
+          "path": "translate/check.py",
+          "line": 1
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "txt",
+      "to": "sig",
+      "label": "逐行"
+    },
+    {
+      "from": "sig",
+      "to": "rej",
+      "label": "签名"
+    },
+    {
+      "from": "rej",
+      "to": "rew",
+      "label": "放行"
+    },
+    {
+      "from": "rew",
+      "to": "cls",
+      "label": "规范化"
+    },
+    {
+      "from": "cls",
+      "to": "tmp",
+      "label": "可降"
+    },
+    {
+      "from": "tmp",
+      "to": "op",
+      "label": "发算子"
+    },
+    {
+      "from": "cls",
+      "to": "un",
+      "label": "认不出"
+    },
+    {
+      "from": "op",
+      "to": "mir",
+      "label": "累计"
+    },
+    {
+      "from": "un",
+      "to": "chk",
+      "label": "归因"
+    }
+  ]
+}

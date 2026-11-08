@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "55de1289-9c5b-4495-976b-b844006804a7",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "E:\\temp\\matlabc\\figstage\\workflow-matlab-to-mir-20261108\\candidate.json",
+  "output": "E:\\temp\\matlabc\\figstage\\workflow-matlab-to-mir-20261108\\f31-matlab-to-mir.html",
+  "specification": {
+    "sha256": "5c9c860502caa4d3c36317186d37510ae5313312f19a0d769bb5cae841ecee05",
+    "bytes": 4324
+  },
+  "artifact": {
+    "sha256": "68c17a11a5c147ce3598e33e5839b3735e92bcaa22d77c01b9c1de0d5e266a1c",
+    "bytes": 844497
+  }
+}

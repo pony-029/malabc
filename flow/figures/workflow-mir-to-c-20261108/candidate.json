@@ -1,0 +1,223 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "F32 MIR → C 工程：装配与三条硬边界",
+    "locale": "zh-CN",
+    "output": "f32-mir-to-c.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:pony-029/malabc.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "70b69bb919f17343692146517fb7c194d944903c"
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "cols": 4,
+    "cellW": 186,
+    "cellH": 96,
+    "gapX": 48,
+    "gapY": 80
+  },
+  "components": [
+    {
+      "id": "parse",
+      "type": "backend",
+      "label": "① 解析 MIR",
+      "sublabel": "func / arg / ret / op / call",
+      "tag": "已实现",
+      "row": 0,
+      "col": 0,
+      "sources": [
+        {
+          "path": "rust/m2c/src/mir.rs",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "shape",
+      "type": "backend",
+      "label": "② 形状定型",
+      "sublabel": "注解优先，缺失即拒",
+      "tag": "已实现",
+      "row": 0,
+      "col": 1,
+      "sources": [
+        {
+          "path": "rust/m2c/src/project.rs",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "budget",
+      "type": "backend",
+      "label": "③ 预算判定",
+      "sublabel": "静态峰值 vs 池容量",
+      "tag": "设计",
+      "row": 0,
+      "col": 2,
+      "sources": [
+        {
+          "path": "docs/DESIGN_ENGINEERING_PLATFORM.md",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "mod",
+      "type": "backend",
+      "label": "④ 模块切分",
+      "sublabel": "调用连通分量",
+      "tag": "设计",
+      "row": 0,
+      "col": 3,
+      "sources": [
+        {
+          "path": "docs/DESIGN_ENGINEERING_PLATFORM.md",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "emit",
+      "type": "backend",
+      "label": "⑤ 逐函数发射",
+      "sublabel": "op → mlc_op_*",
+      "tag": "已实现",
+      "row": 1,
+      "col": 0,
+      "sources": [
+        {
+          "path": "rust/m2c/src/emit.rs",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "call",
+      "type": "backend",
+      "label": "⑥ 跨文件 call",
+      "sublabel": "known 可见范围",
+      "tag": "断点",
+      "row": 1,
+      "col": 1,
+      "sources": [
+        {
+          "path": "rust/m2c/src/emit.rs",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "stub",
+      "type": "backend",
+      "label": "⑦ 契约桩",
+      "sublabel": "m2c_ext_* 局部失败",
+      "tag": "设计",
+      "row": 1,
+      "col": 2,
+      "sources": [
+        {
+          "path": "docs/DESIGN_CODEGEN_LESSONS.md",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "out",
+      "type": "backend",
+      "label": "⑧ C 工程产物",
+      "sublabel": "CMake / include / .c",
+      "tag": "产物",
+      "row": 1,
+      "col": 3,
+      "sources": [
+        {
+          "path": "rust/m2c/src/project.rs",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "main",
+      "type": "backend",
+      "label": "main.c 驱动",
+      "sublabel": "按注解填 1..n 运行",
+      "tag": "已实现",
+      "row": 2,
+      "col": 2,
+      "sources": [
+        {
+          "path": "rust/m2c/src/project.rs",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "self",
+      "type": "backend",
+      "label": "selftest.c",
+      "sublabel": "生成期自检",
+      "tag": "已实现",
+      "row": 2,
+      "col": 3,
+      "sources": [
+        {
+          "path": "rust/m2c/src/project.rs",
+          "line": 1
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "parse",
+      "to": "shape",
+      "label": "定型"
+    },
+    {
+      "from": "shape",
+      "to": "budget",
+      "label": "元素数"
+    },
+    {
+      "from": "budget",
+      "to": "mod",
+      "label": "余量"
+    },
+    {
+      "from": "mod",
+      "to": "emit",
+      "label": "逐函数"
+    },
+    {
+      "from": "emit",
+      "to": "call",
+      "label": "遇调用"
+    },
+    {
+      "from": "call",
+      "to": "stub",
+      "label": "不可生成"
+    },
+    {
+      "from": "emit",
+      "to": "out",
+      "label": "累计"
+    },
+    {
+      "from": "out",
+      "to": "main",
+      "label": "装配"
+    },
+    {
+      "from": "out",
+      "to": "self",
+      "label": "自检"
+    }
+  ]
+}

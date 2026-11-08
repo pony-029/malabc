@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "e:\\matlabc\\malabc\\docs\\archify\\f30-engineering-platform.candidate.json",
+    "sha256": "cf7972925b79ec6ffccc7e3f5cbbdd8b574ea1c60e6abedacbf9319ff0445dfb",
+    "bytes": 4212
+  },
+  "artifact": {
+    "path": "e:\\matlabc\\malabc\\docs\\archify\\f30-engineering-platform.html",
+    "sha256": "d6eef883a92add61150aa34c69d914e3365f352eb4a713d1ce58cbc01c6b17df",
+    "bytes": 854578
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "E:\\matlabc\\malabc\\docs\\archify\\f30-engineering-platform.finalize.json",
+    "summaryReceipt": "E:\\matlabc\\malabc\\docs\\archify\\f30-engineering-platform.finalize-summary.json",
+    "browserCheckReceipt": "e:\\matlabc\\malabc\\docs\\archify\\f30-engineering-platform.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-11-07T15:27:58.948Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 32382,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  },
+  "visualReviewRecommendation": {
+    "action": "inspect-route-readability",
+    "signals": {
+      "routesOverSuggestedBends": 1
+    },
+    "reason": "Automated gates passed, but crossings or detours still need perceptual review before claiming visual quality.",
+    "affectedRoutes": {
+      "crossings": [],
+      "detours": [
+        {
+          "relationship": {
+            "from": "mir",
+            "to": "vm",
+            "label": "同一份 MIR",
+            "collectionIndex": 9,
+            "artifactIndex": 10
+          },
+          "bends": 3,
+          "stretch": 1.13,
+          "directCorridorBlockers": [
+            {
+              "id": "call",
+              "label": "跨文件 call 解析",
+              "box": [
+                706,
+                250,
+                120,
+                60
+              ]
+            }
+          ]
+        }
+      ],
+      "truncated": false
+    },
+    "repair": "Trace these relationships at the desktop viewport. For Architecture, use references/architecture-layout-repair.md: reflow a blocked main path or tangled connected scene, and repair an isolated defect locally only when the surrounding composition is accepted. Preserve all semantic content and user-fixed geometry. Rerun finalize once after the edit."
+  }
+}

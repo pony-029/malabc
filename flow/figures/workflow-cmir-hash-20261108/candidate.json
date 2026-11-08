@@ -1,0 +1,238 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "F33 C → MIR 反推与四路哈希自证",
+    "locale": "zh-CN",
+    "output": "f33-cmir-fourway-hash.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:pony-029/malabc.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "70b69bb919f17343692146517fb7c194d944903c"
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "cols": 4,
+    "cellW": 186,
+    "cellH": 96,
+    "gapX": 48,
+    "gapY": 80
+  },
+  "components": [
+    {
+      "id": "gen",
+      "type": "backend",
+      "label": "① 读 gen.c",
+      "sublabel": "定位 mlc_op_* 调用",
+      "tag": "已实现",
+      "row": 0,
+      "col": 0,
+      "sources": [
+        {
+          "path": "translate/cmir.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "norm",
+      "type": "backend",
+      "label": "② 实参顺序归一化",
+      "sublabel": "dst 末位 → 第二位",
+      "tag": "已实现",
+      "row": 0,
+      "col": 1,
+      "sources": [
+        {
+          "path": "translate/cmir.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "mir2",
+      "type": "backend",
+      "label": "③ 还原 MIR",
+      "sublabel": "op: 行重建",
+      "tag": "已实现",
+      "row": 0,
+      "col": 2,
+      "sources": [
+        {
+          "path": "translate/cmir.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "hir",
+      "type": "backend",
+      "label": "④ HIR 身份往返",
+      "sublabel": "抬升→降回，多重集相等",
+      "tag": "已实现",
+      "row": 0,
+      "col": 3,
+      "sources": [
+        {
+          "path": "translate/hir.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "oct",
+      "type": "backend",
+      "label": "Octave 跑原始 .m",
+      "sublabel": "可选依赖",
+      "tag": "已实现",
+      "row": 1,
+      "col": 0,
+      "sources": [
+        {
+          "path": "tools/parity_report.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "vm",
+      "type": "backend",
+      "label": "Rust VM 跑 MIR",
+      "sublabel": "m2c run",
+      "tag": "已实现",
+      "row": 1,
+      "col": 1,
+      "sources": [
+        {
+          "path": "rust/m2c/src/vm.rs",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "cc",
+      "type": "backend",
+      "label": "C 跑生成物",
+      "sublabel": "gcc 后执行",
+      "tag": "已实现",
+      "row": 1,
+      "col": 2,
+      "sources": [
+        {
+          "path": "rust/m2c/src/project.rs",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "back",
+      "type": "backend",
+      "label": "回译 .m' 跑",
+      "sublabel": "unmir 产物",
+      "tag": "已实现",
+      "row": 1,
+      "col": 3,
+      "sources": [
+        {
+          "path": "translate/unmir.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "hash",
+      "type": "backend",
+      "label": "⑤ 位模式哈希",
+      "sublabel": "IEEE-754 · 跨架构可比",
+      "tag": "已实现",
+      "row": 2,
+      "col": 1,
+      "sources": [
+        {
+          "path": "tests/test_vm_differential.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "disp",
+      "type": "backend",
+      "label": "⑥ 表示差异归一",
+      "sublabel": "打印 / ±0 / NaN 符号",
+      "tag": "已实现",
+      "row": 2,
+      "col": 2,
+      "sources": [
+        {
+          "path": "tests/test_vm_differential.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "ver",
+      "type": "backend",
+      "label": "⑦ 判定",
+      "sublabel": "一致 / 分岔（可定位）",
+      "tag": "已实现",
+      "row": 2,
+      "col": 3,
+      "sources": [
+        {
+          "path": "tests/test_vm_differential.py",
+          "line": 1
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "gen",
+      "to": "norm",
+      "label": "实参"
+    },
+    {
+      "from": "norm",
+      "to": "mir2",
+      "label": "重建"
+    },
+    {
+      "from": "mir2",
+      "to": "hir",
+      "label": "校验"
+    },
+    {
+      "from": "oct",
+      "to": "hash",
+      "label": "数值"
+    },
+    {
+      "from": "vm",
+      "to": "hash",
+      "label": "数值"
+    },
+    {
+      "from": "cc",
+      "to": "hash",
+      "label": "数值"
+    },
+    {
+      "from": "back",
+      "to": "hash",
+      "label": "数值"
+    },
+    {
+      "from": "hash",
+      "to": "disp",
+      "label": "归一"
+    },
+    {
+      "from": "disp",
+      "to": "ver",
+      "label": "比较"
+    }
+  ]
+}

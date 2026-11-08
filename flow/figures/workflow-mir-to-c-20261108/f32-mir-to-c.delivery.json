@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "034ea120-3018-44b9-8809-e3e68a4a2cd1",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "E:\\temp\\matlabc\\figstage\\workflow-mir-to-c-20261108\\candidate.json",
+  "output": "E:\\temp\\matlabc\\figstage\\workflow-mir-to-c-20261108\\f32-mir-to-c.html",
+  "specification": {
+    "sha256": "ba3402dce4e967a34dbaec664932b099d76ee0fcf2b301eff62e9609e12fed36",
+    "bytes": 4389
+  },
+  "artifact": {
+    "sha256": "1191c1658a55d74c2da2a4988520a6f46c8df24f1b95d4ef00ede997171e1721",
+    "bytes": 844668
+  }
+}
