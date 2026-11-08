@@ -1253,6 +1253,174 @@ def _lower_size_all(out, code):
     return True
 
 
+
+# ---------------------------------------------------------------------------
+# 下标算术降级：`A((i + ((j-1)*n)))`
+#
+# 为什么需要：**回译产物**里下标常带括号算术（`A((i + 0))`），而前端只认
+# `A(i)` / `A(2)` 之类简单下标 —— "自己生成的代码自己解析不了"，往返闭环断掉。
+#
+# 边界（两次失败的教训）：
+#   · 只改**下标位置**的实参，简单下标原样保留（`A(2,:)` 不能被误伤）；
+#   · **已知函数名不当数组**（`floor(a * 10)` 的括号是操作数），判据查算子表；
+#   · 临时量必须 `var:` 声明，否则生成的 C 里 undeclared。
+# ---------------------------------------------------------------------------
+
+_SIMPLE_IDX = re.compile(r"^(?:[A-Za-z_]\w*|-?\d+|:)$")
+_SIMPLE_RANGE = re.compile(
+    r"^(?:[A-Za-z_]\w*|-?\d+)?\s*:\s*(?:[A-Za-z_]\w*|-?\d+)?$")
+_ARITH_TOKEN = re.compile(r"\s*([A-Za-z_]\w*|\d+(?:\.\d+)?|[-+*/()])")
+
+
+def _known_func_names():
+    """算子表里出现过的**函数名**（`matlab` 字段 `foo(x)` 的 foo）。
+
+    这是"这个名字是函数还是数组"的**唯一可靠判据** —— 靠正则猜会连续踩坑：
+    `y = floor(a * 10)` 与 `y = A(i + 1)` 在语法上无法区分。
+    """
+    names = set()
+    for op in getattr(operators, "OPERATORS", []):
+        m = str(op.get("matlab") or "")
+        n = m.split("(")[0].strip()
+        # **只认小写开头**：算子表里有 `A(:)` / `A(i,j)` 这种"以变量名写的示例"，
+        # 若一并收进集合，`A` 就会被判成函数，所有 `y = A((i+0))` 都降不了。
+        # MATLAB 的内置函数一律小写开头，这条约定足够区分。
+        # 还要**至少两个字符**：`x` / `y` 这类单字母在真实代码里绝大多数是变量，
+        # 而算子表里的示例写法（`x` / `A(:)`）会把它们误收进来。
+        if re.match(r"^[a-z][a-z0-9_]+$", n):
+            names.add(n)
+    return names
+
+
+_KNOWN_FUNCS = _known_func_names()
+
+
+def _strip_outer_paren(expr):
+    t = expr.strip()
+    while t.startswith("(") and t.endswith(")"):
+        depth, ok = 0, True
+        for i, ch in enumerate(t):
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth == 0 and i != len(t) - 1:
+                    ok = False
+                    break
+        if not ok:
+            break
+        t = t[1:-1].strip()
+    return t
+
+
+def _compile_arith(expr, out, counter):
+    """`i + ((j - 1) * 3)` → 一串 `setb:`，返回结果临时名；不认识则 None。"""
+    src = _strip_outer_paren(expr)
+    toks, pos = [], 0
+    while pos < len(src):
+        m = _ARITH_TOKEN.match(src, pos)
+        if not m:
+            return None
+        toks.append(m.group(1))
+        pos = m.end()
+    if not toks:
+        return None
+    prec = {"+": 1, "-": 1, "*": 2, "/": 2}
+    vals, ops = [], []
+
+    def apply(op):
+        if len(vals) < 2:
+            return False
+        counter[0] += 1
+        t = "__a%d" % counter[0]
+        rhs, lhs = vals.pop(), vals.pop()
+        out.append("var:%s:i64" % t)          # 先声明，否则 C 里 undeclared
+        out.append("setb:%s:%s:%s:%s"
+                   % (t, {"+": "add", "-": "sub", "*": "mul", "/": "div"}[op], lhs, rhs))
+        vals.append(t)
+        return True
+
+    for tk in toks:
+        if tk in prec:
+            while ops and ops[-1] in prec and prec[ops[-1]] >= prec[tk]:
+                if not apply(ops.pop()):
+                    return None
+            ops.append(tk)
+        elif tk == "(":
+            ops.append(tk)
+        elif tk == ")":
+            while ops and ops[-1] != "(":
+                if not apply(ops.pop()):
+                    return None
+            if not ops:
+                return None
+            ops.pop()
+        elif re.match(r"^\d+(?:\.\d+)?$", tk):
+            counter[0] += 1
+            t = "__n%d" % counter[0]
+            out.append("const:%s:%s" % (t, tk))
+            vals.append(t)
+        else:
+            vals.append(tk)
+    while ops:
+        if ops[-1] == "(" or not apply(ops.pop()):
+            return None
+    return vals[0] if len(vals) == 1 else None
+
+
+def _lower_index_arith(code, out, counter):
+    """下标位置含算术时降成临时量并返回改写后的语句；否则 None。"""
+    m = re.match(r"^\s*([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*\((.*)\)\s*;?\s*$", code)
+    if m:
+        lhs, host, inside = m.group(1), m.group(2), m.group(3)
+        rhs = None
+    else:
+        m = re.match(r"^\s*([A-Za-z_]\w*)\s*\((.*)\)\s*=\s*(.+?)\s*;?\s*$", code)
+        if not m:
+            return None
+        host, inside, rhs = m.group(1), m.group(2), m.group(3)
+        lhs = None
+
+    if host in _KNOWN_FUNCS:                  # 函数调用，不是下标
+        return None
+
+    args = _split_args(inside)
+    if not args:
+        return None
+    newargs, changed = [], False
+    for a in args:
+        t = a.strip()
+        if _SIMPLE_IDX.match(t) or _SIMPLE_RANGE.match(t):
+            newargs.append(t)                 # 简单下标：原样保留
+            continue
+        if ":" in t:
+            lo, _, hi = t.partition(":")
+            parts = []
+            for e in (lo.strip(), hi.strip()):
+                if not e or _SIMPLE_IDX.match(e):
+                    parts.append(e)
+                else:
+                    tmp = _compile_arith(e, out, counter)
+                    if tmp is None:
+                        return None
+                    parts.append(tmp)
+                    changed = True
+            newargs.append("%s:%s" % (parts[0], parts[1]))
+            continue
+        tmp = _compile_arith(t, out, counter)
+        if tmp is None:
+            return None
+        newargs.append(tmp)
+        changed = True
+
+    if not changed:
+        return None
+    joined = ",".join(newargs)
+    if lhs is not None:
+        return "%s = %s(%s);" % (lhs, host, joined)
+    return "%s(%s) = %s;" % (host, joined, rhs.strip())
+
+
 def _lower_setdiff(out, code):
     """`y = setdiff(a,b)` -> `OP-SETDIFF`（YALMIP 145 次，其中整句赋值 97 次）。
 
@@ -1577,6 +1745,11 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                 continue
             # `full(x)` 在稠密表示下是恒等（YALMIP 84 次）：剥掉，别挡住真正的语义
             code = _strip_full_call(code)
+            # 下标算术：必须在**所有**降级分支之前 —— 否则 `y = A((i+0))` 会先被
+            # 归成 `nested`（"括号里套括号"）直接落 unmapped，再也到不了这里。
+            _ia = _lower_index_arith(code, out, idx_counter)
+            if _ia is not None:
+                code = _ia
             if struct_hosts:
                 code = _rewrite_struct_fields(code, struct_hosts)
             if src_line:
