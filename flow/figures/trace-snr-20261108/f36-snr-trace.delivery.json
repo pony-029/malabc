@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "9c5da6e1-d234-4133-8bd2-51ed16399865",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "E:\\temp\\matlabc\\figstage3\\trace-snr-20261108\\candidate.json",
+  "output": "E:\\temp\\matlabc\\figstage3\\trace-snr-20261108\\f36-snr-trace.html",
+  "specification": {
+    "sha256": "7b0f5f2126a710e42058835313d172ca3a17716aef00e5f78a5ac956b68d4059",
+    "bytes": 4426
+  },
+  "artifact": {
+    "sha256": "5fa804ec0e3b952c37b51ecba17f347d043dabd58bb367bf276b43dedef5f96c",
+    "bytes": 849505
+  }
+}

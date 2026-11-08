@@ -1,0 +1,235 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "F36 一次真实追踪：snr.m → 四路一致",
+    "locale": "zh-CN",
+    "output": "f36-snr-trace.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:pony-029/malabc.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "bc2252ae9993d5f6cfa95088e108c541cf86ed43"
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "cols": 4,
+    "cellW": 196,
+    "cellH": 100,
+    "gapX": 46,
+    "gapY": 76
+  },
+  "components": [
+    {
+      "id": "src",
+      "type": "frontend",
+      "label": "① 源码 snr.m",
+      "sublabel": "4 行 · 2 个形参",
+      "tag": "源码",
+      "row": 0,
+      "col": 0,
+      "sources": [
+        {
+          "path": "translate/examples/numeric/snr.m",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "mir",
+      "type": "backend",
+      "label": "② MIR",
+      "sublabel": "7 个 op · 0 未映射",
+      "tag": "MIR",
+      "row": 0,
+      "col": 1,
+      "sources": [
+        {
+          "path": "translate/mir.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "hir",
+      "type": "backend",
+      "label": "③ HIR 抬升",
+      "sublabel": "1 棵表达式树",
+      "tag": "语义层",
+      "row": 0,
+      "col": 2,
+      "sources": [
+        {
+          "path": "translate/hir.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "cgen",
+      "type": "backend",
+      "label": "④ 生成 C",
+      "sublabel": "m2c_snr 函数体",
+      "tag": "C",
+      "row": 0,
+      "col": 3,
+      "sources": [
+        {
+          "path": "rust/m2c/src/emit.rs",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "gcc",
+      "type": "backend",
+      "label": "⑤ gcc 编译",
+      "sublabel": "rc=0 · 无告警",
+      "tag": "构建",
+      "row": 1,
+      "col": 0
+    },
+    {
+      "id": "run",
+      "type": "backend",
+      "label": "⑥ C 运行",
+      "sublabel": "y: 0",
+      "tag": "数值",
+      "row": 1,
+      "col": 1
+    },
+    {
+      "id": "vm",
+      "type": "backend",
+      "label": "⑦ VM 运行",
+      "sublabel": "y: 0",
+      "tag": "数值",
+      "row": 1,
+      "col": 2,
+      "sources": [
+        {
+          "path": "rust/m2c/src/vm.rs",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "back",
+      "type": "backend",
+      "label": "⑧ 回译再跑",
+      "sublabel": ".m' → MIR' → 0",
+      "tag": "数值",
+      "row": 1,
+      "col": 3,
+      "sources": [
+        {
+          "path": "translate/unmir.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "hash",
+      "type": "backend",
+      "label": "⑨ 位模式哈希",
+      "sublabel": "四路同一串",
+      "tag": "判据",
+      "row": 2,
+      "col": 1,
+      "sources": [
+        {
+          "path": "tests/test_vm_differential.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "eq",
+      "type": "cloud",
+      "label": "⑩ 结论",
+      "sublabel": "一致 · 可自证",
+      "tag": "结论",
+      "row": 2,
+      "col": 2
+    },
+    {
+      "id": "oct",
+      "type": "backend",
+      "label": "Octave 真值",
+      "sublabel": "0（可选依赖）",
+      "tag": "参考",
+      "row": 2,
+      "col": 0,
+      "sources": [
+        {
+          "path": "tools/parity_report.py",
+          "line": 1
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "src",
+      "to": "mir",
+      "label": "逐语句"
+    },
+    {
+      "from": "mir",
+      "to": "hir",
+      "label": "抬升"
+    },
+    {
+      "from": "hir",
+      "to": "cgen",
+      "label": "降级"
+    },
+    {
+      "from": "cgen",
+      "to": "gcc",
+      "label": "工程装配"
+    },
+    {
+      "from": "gcc",
+      "to": "run",
+      "label": "执行"
+    },
+    {
+      "from": "mir",
+      "to": "vm",
+      "label": "同一份 MIR"
+    },
+    {
+      "from": "src",
+      "to": "back",
+      "label": "回译链"
+    },
+    {
+      "from": "run",
+      "to": "hash",
+      "label": "数值"
+    },
+    {
+      "from": "vm",
+      "to": "hash",
+      "label": "数值"
+    },
+    {
+      "from": "back",
+      "to": "hash",
+      "label": "数值"
+    },
+    {
+      "from": "oct",
+      "to": "hash",
+      "label": "数值"
+    },
+    {
+      "from": "hash",
+      "to": "eq",
+      "label": "全等"
+    }
+  ]
+}
