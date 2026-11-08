@@ -1377,6 +1377,14 @@ _WRAPPED_RHS = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*(\(.*\))\s*;?\s*$")
 _CONST_LEFT_BIN = re.compile(
     r"^\s*([A-Za-z_]\w*)\s*=\s*(-?\d+(?:\.\d+)?)\s*(\.\*|\./)\s*"
     r"([A-Za-z_]\w*)\s*;?\s*$")
+#: 字面量在右的逐元素：`y = a .* 10;`（回译产出 `m2c_n1 = a .* 10`）。
+#: 同样**只收 `.*` / `./`** —— 标量 `*` 要保留既有的形状推断。
+_CONST_RIGHT_BIN = re.compile(
+    r"^\s*([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*(\.\*|\./)\s*"
+    r"(-?\d+(?:\.\d+)?)\s*;?\s*$")
+#: 条件两侧都是字面量：`while 1 == 1`（回译把恒真条件写成这样）
+_LIT_COND = re.compile(
+    r"^\s*(if|while)\s+(-?\d+(?:\.\d+)?)\s*(==|~=|<=|>=|<|>)\s*(\S+?)\s*;?\s*$")
 
 
 def _fully_wrapped(t):
@@ -1401,6 +1409,20 @@ def _pre_lower(code, out, counter):
     回译会产出 `i = (i + 1);`，而既有的自增降级只认 `i = i + 1;`。
     这里**只剥括号**，不生成任何算子 —— 风险最小。
     """
+    # `break;` / `return;` —— 回译产物带分号，而前端只认不带分号的关键字。
+    m = re.match(r"^\s*(break|return)\s*;\s*$", code)
+    if m:
+        return m.group(1)
+
+    # 条件左侧是字面量：`while 1 == 1`。`_WHILE_RE` / `_IF_RE` 要求左侧是标识符，
+    # 先把字面量落成 `const:` 临时量。**不加分号** —— 那两条正则以 `$` 结尾。
+    m = _LIT_COND.match(code)
+    if m:
+        counter[0] += 1
+        t = "__k%d" % counter[0]
+        out.append("const:%s:%s" % (t, m.group(2)))
+        return "%s %s %s %s" % (m.group(1), t, m.group(3), m.group(4))
+
     m = _WRAPPED_RHS.match(code)
     if m:
         inner = _fully_wrapped(m.group(2))
@@ -1416,6 +1438,13 @@ def _pre_lower(code, out, counter):
         t = "__k%d" % counter[0]
         out.append("const:%s:%s" % (t, m.group(2)))
         return "%s = %s %s %s;" % (m.group(1), t, m.group(3), m.group(4))
+
+    m = _CONST_RIGHT_BIN.match(code)
+    if m:
+        counter[0] += 1
+        t = "__k%d" % counter[0]
+        out.append("const:%s:%s" % (t, m.group(4)))
+        return "%s = %s %s %s;" % (m.group(1), m.group(2), m.group(3), t)
     return None
 
 
@@ -1801,6 +1830,11 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             _pl = _pre_lower(code, out, idx_counter)
             if _pl is not None:
                 code = _pl
+            # `break` —— MIR 有该语句（发射器 `Stmt::Break`），但前端此前没接。
+            # 回译产物里 `while 1 == 1` 循环必然带它，所以往返闭环需要这一步。
+            if code.strip() == "break":
+                out.append("break")
+                continue
             _ia = _lower_index_arith(code, out, idx_counter)
             if _ia is not None:
                 code = _ia

@@ -56,6 +56,8 @@ CASES = [
                      "i = (i + 1);\ny = i;\nend\n", True),
     ("const_left_mul", "function y = f(a)\n% @m2c shape a 3\n% @m2c shape y 3\n"
                        "y = 10 .* a;\nend\n", True),
+    ("const_right_mul", "function y = f(a)\n% @m2c shape a 3\n% @m2c shape y 3\n"
+                        "y = a .* 10;\nend\n", True),
     ("while_literal", "function y = f()\n% @m2c shape y 1\n"
                       "y = 0;\nwhile 1 == 1\ny = y + 1;\nbreak;\nend\nend\n", True),
 ]
@@ -77,7 +79,7 @@ def _unmapped(src):
 
 #: 回译会产出、但前端**尚不认**的写法（R705 实测：能修好，但会牵动别处，暂缓）。
 #: 标 xfail 而不是删掉 —— 它们是"闭环欠账"，要一直可见。
-PENDING = {"while_literal"}
+PENDING = set()
 
 
 @pytest.mark.parametrize("name,src,want", CASES)
