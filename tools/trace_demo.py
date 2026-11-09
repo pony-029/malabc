@@ -126,7 +126,9 @@ def main():
         ob = [l.split(":")[1] for l in back.split("\n") if l.startswith("op:")]
         import collections
         same = collections.Counter(ops) == collections.Counter(ob)
-    t.step("hir", "data", "MIR → HIR → MIR 恒等", sha(mt), sha(hb),
+    # **主产物语义**：这一步吃 MIR、吐的还是 MIR（HIR 是中间的语义视图，不改产物），
+    # 所以 `out` 与 `in` 相同 —— 否则链路检查会把"没换产物"误判成断链。
+    t.step("hir", "data", "MIR → HIR → MIR 恒等", sha(mt), sha(mt),
            "ok" if (same is not False) else "fail",
            (time.time() - t0) * 1000, mapped=mapped, identical=same)
 
@@ -135,7 +137,9 @@ def main():
     g = os.path.join(d, "gen")
     r = run([M2C, "build", "--mir", mir, "--out", g, "--name", "f"])
     files = sum(len(fs) for _dp, _dn, fs in os.walk(g)) if os.path.isdir(g) else 0
-    t.step("emit", "control", "m2c build 生成 C 工程", sha(mt), "-",
+    genc = os.path.join(g, "src", "gen.c")
+    genc_sha = shafile(genc) if os.path.isfile(genc) else "-"
+    t.step("emit", "control", "m2c build 生成 C 工程", sha(mt), genc_sha,
            "ok" if r.returncode == 0 else "fail",
            (time.time() - t0) * 1000, files=files)
 
@@ -146,7 +150,7 @@ def main():
     r = run([cc, "-std=c99", "-O1", "-I", os.path.join(g, "include"),
              "-I", RT_INC, os.path.join(g, "src", "gen.c"),
              os.path.join(g, "src", "main.c")] + RT_SRC + ["-o", exe], timeout=600)
-    t.step("build", "control", "gcc 编译", "-", "-",
+    t.step("build", "control", "gcc 编译", genc_sha, "exe",
            "ok" if r.returncode == 0 else "fail", (time.time() - t0) * 1000,
            rc=r.returncode)
 
@@ -154,7 +158,7 @@ def main():
     t0 = time.time()
     out_c = run([exe]).stdout.decode("utf-8", "replace").strip()
     vals = [l.split(":", 1)[1].strip() for l in out_c.splitlines() if ":" in l]
-    t.step("run", "data", "C 可执行运行", "-", sha(out_c),
+    t.step("run", "data", "C 可执行运行", "exe", sha(out_c),
            ms=(time.time() - t0) * 1000, values=" | ".join(vals)[:60])
 
     # S7 VM
@@ -176,7 +180,8 @@ def main():
     bmir = os.path.join(d, "back.mir")
     r = run([sys.executable, CMIR_PY, os.path.join(g, "src", "gen.c"),
              "-o", bmir, "--name", "f"])
-    t.step("cmir", "data", "C → MIR 反推", sha(""), shafile(bmir) if os.path.isfile(bmir) else "-",
+    t.step("cmir", "data", "C → MIR 反推", genc_sha,
+           shafile(bmir) if os.path.isfile(bmir) else "-",
            "ok" if (r.returncode == 0 and os.path.isfile(bmir)) else "fail",
            (time.time() - t0) * 1000)
 

@@ -1272,6 +1272,7 @@ Three-link regression report: `python tools/three_links_report.py <dirs> -o <out
 - `tools/semantics_coverage.py` — MATLAB semantics completeness check: which language features appear in real code and how far they are supported
 - `tools/flow_catalog.py` — generates `flow/catalog.html`, the single place listing every flow diagram with a computed staleness badge
 - `tools/trace_demo.py` — records a real pipeline run step by step into JSONL (sha256 digests per step); `tools/trace_view.py` renders it as a static HTML trace page
+- `tools/trace_chain.py` — validates trace integrity: every step's input digest must trace back to an earlier step's output
 - `tools/flow_steps.py` — injects the real step-by-step trace (`flow/traces/*.jsonl`) into `flow/index.html`, so every step shows control/data kind, input→output digests and what it changes
 
 Bucket census before any "the main cause is X" claim: `python tools/bucket_census.py <mir> <bucket>`.

@@ -1,9 +1,9 @@
 {"step": "S1", "module": "front", "kind": "data", "action": "读源码 meancols.m", "in": "-", "out": "783a7c080102", "status": "ok", "ms": 0, "detail": {"lines": 7}}
-{"step": "S2", "module": "mir", "kind": "control", "action": "MATLAB → MIR", "in": "783a7c080102", "out": "fcae8be57424", "status": "ok", "ms": 164, "detail": {"ops": 1, "unmapped": 0}}
-{"step": "S3", "module": "hir", "kind": "data", "action": "MIR → HIR → MIR 恒等", "in": "fcae8be57424", "out": "7b92b907e86f", "status": "ok", "ms": 0, "detail": {"mapped": true, "identical": true}}
-{"step": "S4", "module": "emit", "kind": "control", "action": "m2c build 生成 C 工程", "in": "fcae8be57424", "out": "-", "status": "ok", "ms": 33, "detail": {"files": 8}}
-{"step": "S5", "module": "build", "kind": "control", "action": "gcc 编译", "in": "-", "out": "-", "status": "ok", "ms": 666, "detail": {"rc": 0}}
-{"step": "S6", "module": "run", "kind": "data", "action": "C 可执行运行", "in": "-", "out": "f56a76ead0cf", "status": "ok", "ms": 54, "detail": {"values": "2.5 3.5 4.5"}}
-{"step": "S7", "module": "vm", "kind": "data", "action": "Rust VM 执行同一份 MIR", "in": "fcae8be57424", "out": "ff536ae7a7b5", "status": "ok", "ms": 11, "detail": {"values": "2.5 3.5 4.5"}}
+{"step": "S2", "module": "mir", "kind": "control", "action": "MATLAB → MIR", "in": "783a7c080102", "out": "fcae8be57424", "status": "ok", "ms": 150, "detail": {"ops": 1, "unmapped": 0}}
+{"step": "S3", "module": "hir", "kind": "data", "action": "MIR → HIR → MIR 恒等", "in": "fcae8be57424", "out": "fcae8be57424", "status": "ok", "ms": 0, "detail": {"mapped": true, "identical": true}}
+{"step": "S4", "module": "emit", "kind": "control", "action": "m2c build 生成 C 工程", "in": "fcae8be57424", "out": "e7a8ced10753", "status": "ok", "ms": 26, "detail": {"files": 8}}
+{"step": "S5", "module": "build", "kind": "control", "action": "gcc 编译", "in": "e7a8ced10753", "out": "exe", "status": "ok", "ms": 689, "detail": {"rc": 0}}
+{"step": "S6", "module": "run", "kind": "data", "action": "C 可执行运行", "in": "exe", "out": "f56a76ead0cf", "status": "ok", "ms": 65, "detail": {"values": "2.5 3.5 4.5"}}
+{"step": "S7", "module": "vm", "kind": "data", "action": "Rust VM 执行同一份 MIR", "in": "fcae8be57424", "out": "ff536ae7a7b5", "status": "ok", "ms": 0, "detail": {"values": "2.5 3.5 4.5"}}
 {"step": "S8", "module": "verify", "kind": "control", "action": "C 与 VM 数值一致", "in": "f56a76ead0cf", "out": "ff536ae7a7b5", "status": "ok", "ms": 0, "detail": {"c": "2.5 3.5 4.5", "vm": "2.5 3.5 4.5"}}
-{"step": "S9", "module": "cmir", "kind": "data", "action": "C → MIR 反推", "in": "e3b0c44298fc", "out": "4555797fe787", "status": "ok", "ms": 134, "detail": {}}
+{"step": "S9", "module": "cmir", "kind": "data", "action": "C → MIR 反推", "in": "e7a8ced10753", "out": "4555797fe787", "status": "ok", "ms": 150, "detail": {}}
