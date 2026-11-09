@@ -40,6 +40,7 @@ SPEC = {
     "shape.flatten", "shape.size",
     "pred.isempty", "pred.length", "pred.numel", "pred.any", "pred.nnz",
     "pred.isequal", "pred.isequalk",
+    "search.find2", "search.find3",
     "idx.row", "idx.colrange",
 }
 

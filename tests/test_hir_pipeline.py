@@ -52,7 +52,10 @@ def test_via_hir_really_participates():
     m = re.search(r"\[hir\] 接管 (\d+)/(\d+)（恒等 (\d+)）", out)
     assert m, "没看到 [hir] 汇总行：%s" % out[-400:]
     mapped, total, same = int(m.group(1)), int(m.group(2)), int(m.group(3))
-    assert mapped >= 50, "接管率过低：%d/%d" % (mapped, total)
+    # R741 起补全了 `search.find2/find3` 的 HIR 名，接管率应为 **100%**。
+    # 早前是 `>= 50`（留了两个已知缺口）；现在收紧到"一个都不能少"，
+    # 否则将来新增算子缺名时会悄悄退回 55。
+    assert mapped == total, "接管率不足：%d/%d（有新算子缺 HIR 名？）" % (mapped, total)
     assert same == mapped, "接管了但不恒等：same=%d mapped=%d" % (same, mapped)
 
 

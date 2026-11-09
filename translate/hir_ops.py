@@ -50,6 +50,10 @@ HIR_TO_MIR = {
     "guard.mask": "OP-MASK",
     # 查找
     "search.find": "OP-FIND",
+    # `find(a cmp b)` 与 `find(x cmp k, n)`：此前无 HIR 名，导致
+    # 55/57 的接管率卡在这两个上（它们一旦有名字，HIR 就能覆盖全部算子）。
+    "search.find2": "OP-FIND2",
+    "search.find3": "OP-FIND3",
     # 按运行期维度分配
     "alloc.fill": "OP-FILLA",
     # 集合

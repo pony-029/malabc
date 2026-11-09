@@ -70,6 +70,7 @@ CHECKS = (
              os.path.join("tests", "test_check_verdict.py"),
              os.path.join("tests", "test_hir_pipeline.py"),
              os.path.join("tests", "test_hir_emit.py"),
+             os.path.join("tests", "test_hir_scalar_pos.py"),
              os.path.join("tests", "test_trace_chain.py"),
              os.path.join("tests", "test_vm_ops.py"),
              os.path.join("tests", "test_numeric_truth.py"),
