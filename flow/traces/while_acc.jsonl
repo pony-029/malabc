@@ -1,0 +1,9 @@
+{"step": "S1", "module": "front", "kind": "data", "action": "读源码 while_acc.m", "in": "-", "out": "7ee6f6e02339", "status": "ok", "ms": 0, "detail": {"lines": 11}}
+{"step": "S2", "module": "mir", "kind": "control", "action": "MATLAB → MIR", "in": "7ee6f6e02339", "out": "09b307e273c3", "status": "ok", "ms": 157, "detail": {"ops": 2, "unmapped": 0}}
+{"step": "S3", "module": "hir", "kind": "data", "action": "MIR → HIR → MIR 恒等", "in": "09b307e273c3", "out": "0d332069abd4", "status": "ok", "ms": 0, "detail": {"mapped": true, "identical": true}}
+{"step": "S4", "module": "emit", "kind": "control", "action": "m2c build 生成 C 工程", "in": "09b307e273c3", "out": "-", "status": "ok", "ms": 15, "detail": {"files": 8}}
+{"step": "S5", "module": "build", "kind": "control", "action": "gcc 编译", "in": "-", "out": "-", "status": "ok", "ms": 680, "detail": {"rc": 0}}
+{"step": "S6", "module": "run", "kind": "data", "action": "C 可执行运行", "in": "-", "out": "c4b5d2d62372", "status": "ok", "ms": 77, "detail": {"values": "10"}}
+{"step": "S7", "module": "vm", "kind": "data", "action": "Rust VM 执行同一份 MIR", "in": "09b307e273c3", "out": "a7213751908c", "status": "ok", "ms": 11, "detail": {"values": "10"}}
+{"step": "S8", "module": "verify", "kind": "control", "action": "C 与 VM 数值一致", "in": "c4b5d2d62372", "out": "a7213751908c", "status": "ok", "ms": 0, "detail": {"c": "10", "vm": "10"}}
+{"step": "S9", "module": "cmir", "kind": "data", "action": "C → MIR 反推", "in": "e3b0c44298fc", "out": "8dd5e425255b", "status": "ok", "ms": 133, "detail": {}}

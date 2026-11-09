@@ -24,7 +24,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INDEX = os.path.join(ROOT, "flow", "index.html")
 FIG = os.path.join(ROOT, "flow", "figures")
 SVG = os.path.join(ROOT, "flow", "diagrams")
-TRACE = os.path.join(ROOT, "flow", "traces", "snr.jsonl")
+TRACE = os.path.join(ROOT, "flow", "traces")   # 目录：每条 .jsonl 是一条真实链路
 
 BEGIN = "<!-- STEPS:BEGIN -->"
 END = "<!-- STEPS:END -->"
@@ -46,9 +46,21 @@ STEP_DESC = {
 
 
 def read_trace(path):
+    """读一条链。path 可以是**.jsonl 单文件**，也可以是**目录**（取其中全部）。"""
+    if not path:
+        return {}
+    out = {}
+    if os.path.isdir(path):
+        names = sorted(f for f in os.listdir(path) if f.endswith(".jsonl"))
+        for n in names:
+            sub = read_trace(os.path.join(path, n))
+            # 递归返回的是 {名: rows}，这里只取值（否则会套成两层 dict）
+            out[n[:-6]] = next(iter(sub.values())) if sub else []
+        return out
     if not os.path.isfile(path):
-        return []
-    return [json.loads(l) for l in io.open(path, encoding="utf-8") if l.strip()]
+        return {}
+    rows = [json.loads(l) for l in io.open(path, encoding="utf-8") if l.strip()]
+    return {os.path.splitext(os.path.basename(path))[0]: rows}
 
 
 def count_figs():
@@ -58,11 +70,39 @@ def count_figs():
     return n_int, n_svg
 
 
-def render_steps(rows):
-    if not rows:
+def render_case(name, rows):
+    """一条链渲染成一个可折叠区块（`<details>`，纯 HTML，不需要脚本）。"""
+    ok = sum(1 for r in rows if r.get("status") == "ok")
+    inner = render_rows(rows)
+    return ('<details class="case"%s><summary><b>%s</b>'
+            '<span class="case-meta">%d 步 · 通过 %d</span></summary>%s</details>'
+            % (" open" if ok == len(rows) else "", html.escape(name),
+               len(rows), ok, inner))
+
+
+def render_steps(cases):
+    """cases: {链名: rows}。多形态并列，全部来自真实运行。"""
+    if not cases:
         return (BEGIN + "\n<section id=\"steps\"><h2>每一步怎么动 "
                 "<span class=\"hint\">尚无追踪数据：先跑 tools/trace_demo.py</span></h2></section>\n" + END)
 
+    blocks = [render_case(n, rows) for n, rows in sorted(cases.items()) if rows]
+    tot = sum(len(r) for r in cases.values())
+    okall = sum(1 for rows in cases.values() for r in rows if r.get("status") == "ok")
+    return """%(b)s
+<section id="steps">
+  <h2>每一步怎么动 <span class="hint">数据来自 <code>flow/traces/*.jsonl</code>：真实运行记录，不是描述</span></h2>
+  <p class="q"><b>%(n)d</b> 条真实链路（不同形态：一维/二维/循环/累加）共 <b>%(tot)d</b> 步，
+    <b>%(ok)d</b> 步通过。每条链的每一步都标了
+    <b>控制流/数据流</b>、<b>输入→输出摘要</b>（sha256 前 12 位）与<b>它是怎么变的</b>；
+    摘要相等即证明“上一步的输出真的进了这一步”。</p>
+  %(blocks)s
+</section>
+%(e)s""" % {"b": BEGIN, "e": END, "n": len([1 for r in cases.values() if r]),
+             "tot": tot, "ok": okall, "blocks": "\n  ".join(blocks)}
+
+
+def render_rows(rows):
     cards = []
     for r in rows:
         st = r.get("step", "")
@@ -94,16 +134,7 @@ def render_steps(rows):
                "action": html.escape(r.get("action", "")),
                "detail": ('<div class="det">%s</div>' % html.escape(detail)) if detail else ""})
 
-    ok = sum(1 for r in rows if r.get("status") == "ok")
-    return """%(b)s
-<section id="steps">
-  <h2>每一步怎么动 <span class="hint">数据来自 <code>flow/traces/snr.jsonl</code>：真正的运行记录，不是描述</span></h2>
-  <p class="q">一条真链路共 <b>%(n)d</b> 步 ｜ 通过 <b>%(ok)d</b> ｜
-    每一步都标了<b>控制流/数据流</b>、<b>输入→输出摘要</b>（sha256 前 12 位）与<b>它是怎么变的</b>。
-    摘要相等即证明"上一步的输出真的进了这一步"。</p>
-  <div class="steps">%(cards)s</div>
-</section>
-%(e)s""" % {"b": BEGIN, "e": END, "n": len(rows), "ok": ok, "cards": "\n".join(cards)}
+    return '<div class="steps">%s</div>' % "\n".join(cards)
 
 
 def render_stats(n_int, n_svg, rows):
@@ -133,11 +164,12 @@ def main():
     ap.add_argument("--trace", default=TRACE)
     a = ap.parse_args()
 
-    rows = read_trace(a.trace)
+    cases = read_trace(a.trace)
+    rows = [r for rs in cases.values() for r in rs]      # 汇总用（统计条）
     n_int, n_svg = count_figs()
     text = io.open(a.index, encoding="utf-8").read()
 
-    new = splice(text, BEGIN, END, render_steps(rows))
+    new = splice(text, BEGIN, END, render_steps(cases))
     if new is None:
         new = text.replace("</main>", render_steps(rows) + "\n\n</main>", 1)
     stats = splice(new, SBEGIN, SEND, render_stats(n_int, n_svg, rows))
