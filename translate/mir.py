@@ -2255,6 +2255,63 @@ def _selftest(argv=None):
     return 1 if bad else 0
 
 
+def hir_gate(text):
+    """**HIR 校验门**：把生成的每个函数抬升成 HIR 再降回来，算子多重集必须相等。
+
+    ## 为什么放进 mir.py 而不是留在测试脚本里
+
+    在此之前，`hir.py` 只被 `tests/` 与 `tools/hir_links_report.py` 调用 ——
+    **HIR 从未出现在生产路径上**（`mir.py` 里连一次 `hir` 都没提）。
+    做成"每生成一次就自检一次"之后，HIR 才真正成为 MIR 的**契约**：
+    谁改坏了可降级性，谁在本地立刻红。
+
+    返回 (ok, stats, bad)；stats = {"total", "mapped", "same"}。
+    """
+    import collections
+
+    from translate import hir as H          # 延迟导入：避免顶层循环依赖
+
+    blocks, cur = [], None
+    for ln in text.split("\n"):
+        s = ln.rstrip()
+        if s.startswith("func:"):
+            cur = {"name": s[5:].strip(), "body": []}
+            blocks.append(cur)
+            continue
+        if cur is None:
+            continue
+        if s.startswith(("arg:", "ret:", "var:", "op:", "const:", "setb:", "fill:",
+                         "call:", "if:", "else", "end", "while", "for:", "break",
+                         "return")):
+            cur["body"].append(s)
+
+    total = mapped = same = 0
+    bad = []
+    for b in blocks:
+        ops = [l.split(":")[1] for l in b["body"] if l.startswith("op:")]
+        if not ops:
+            continue
+        total += 1
+        body = list(b["body"])
+        while body and body[-1].strip() == "end":
+            body.pop()
+        try:
+            hb, ok_map = H.mir_to_hir("\n".join(body))
+            if not ok_map:
+                continue                      # 有算子无 HIR 名：整体透传，不算失配
+            mapped += 1
+            back = H.hir_to_mir(H.hir_wrap(b["name"], [], [], hb))
+        except Exception as exc:              # noqa: BLE001
+            bad.append((b["name"], "回降异常：%s" % exc))
+            continue
+        ob = [l.split(":")[1] for l in back.split("\n") if l.startswith("op:")]
+        if collections.Counter(ops) == collections.Counter(ob):
+            same += 1
+        else:
+            bad.append((b["name"], "%r ≠ %r" % (ops, ob)))
+    return (not bad), {"total": total, "mapped": mapped, "same": same}, bad
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="MATLAB → MIR")
     ap.add_argument("source", nargs="?")
@@ -2263,6 +2320,8 @@ def main(argv=None):
                     help="自证：下标 vs 未知函数调用")
     ap.add_argument("--max-seconds", type=int, default=None,
                     help="墙钟上限（默认 120s）：到点强制退出，避免机器被拖死")
+    ap.add_argument("--via-hir", action="store_true",
+                    help="生成后强制走一遍 HIR 抬升→降级，算子多重集不等即失败")
     ap.add_argument("--recursive", action="store_true",
                     help="目录模式下递归子目录（真实工程必需）")
     args = ap.parse_args(argv)
@@ -2345,6 +2404,15 @@ def main(argv=None):
         stats["files"] = len(files)
         if dropped:
             print("[warn] 同名函数已丢弃 %d 个（只保留第一次出现）" % dropped)
+        if args.via_hir:
+            ok, hs, bad = hir_gate(text)
+            print("[hir] 接管 %d/%d（恒等 %d）%s"
+                  % (hs["mapped"], hs["total"], hs["same"],
+                     "" if ok else "  ✗ %d 个失配" % len(bad)))
+            if not ok:
+                for nm, why in bad[:3]:
+                    print("      ✗ %s：%s" % (nm, why[:100]))
+                return 1
         if args.out:
             io.open(args.out, "w", encoding="utf-8", newline="").write(text)
             print("[ok] %s（%d 个 .m / 函数 %d / 算子 %d / 未映射 %d）"
@@ -2361,6 +2429,15 @@ def main(argv=None):
         print("读不了 %s：%s" % (args.source, exc))
         return 2
     text, stats = to_mir(src)
+    if args.via_hir:
+        ok, hs, bad = hir_gate(text)
+        print("[hir] 接管 %d/%d（恒等 %d）%s"
+              % (hs["mapped"], hs["total"], hs["same"],
+                 "" if ok else "  ✗ %d 个失配" % len(bad)))
+        if not ok:
+            for nm, why in bad[:3]:
+                print("      ✗ %s：%s" % (nm, why[:100]))
+            return 1
     if not stats["functions"]:
         print("没有识别到 function（本版只处理顶层 function）")
         return 1
