@@ -18,6 +18,7 @@
 不参与折树（本版只对直线代码做语义化）。
 """
 
+import io
 import re
 
 from translate import hir_ops as _HO
@@ -118,6 +119,72 @@ def parse_hir(text):
     return out
 
 
+#: MIR id -> C 原型里各实参是否标量（缓存；来自 `c_runtime/include/mlc_ops.h`）
+_SCALAR_POS = {}
+
+
+def _parse_protos():
+    """从 `mlc_ops.h` 解析出 `{c 名: [参数类型, ...]}`。"""
+    import os
+    import re
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    p = os.path.join(root, "c_runtime", "include", "mlc_ops.h")
+    if not os.path.isfile(p):
+        return {}
+    s = io.open(p, encoding="utf-8", errors="replace").read()
+    out = {}
+    for m in re.finditer(r"mlc_status\s+(mlc_op_\w+)\s*\(([^;]*?)\)\s*;", s, re.S):
+        name, body = m.group(1), m.group(2)
+        params, depth, cur = [], 0, ""
+        for ch in body:
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+            if ch == "," and depth == 0:
+                params.append(cur.strip())
+                cur = ""
+            else:
+                cur += ch
+        if cur.strip():
+            params.append(cur.strip())
+        out[name] = params
+    return out
+
+
+def _scalar_positions(mir_id):
+    """MIR 实参（**不含 dst**）里哪些下标是标量位。
+
+    MIR：`op:<id>:<dst>:a0:a1:...`
+    C  ：`mlc_op_x(a0, a1, ..., out)` —— **最后一个参数是 out**（与 cmir 的归一化一致）。
+
+    原型缺失时返回空集合（保守：全部物化，行为退回 R734 之前）。
+    """
+    if mir_id in _SCALAR_POS:
+        return _SCALAR_POS[mir_id]
+    protos = _parse_protos()
+    cname = None
+    try:
+        from translate import operators as _O
+        for o in getattr(_O, "OPERATORS", []):
+            if o.get("id") == mir_id:
+                cname = o.get("c")
+                break
+    except Exception:                                    # noqa: BLE001
+        cname = None
+    pos = set()
+    params = protos.get(cname or "")
+    if params:
+        # 去掉末尾的 out（指针）后，逐个判断是否 mlc_array
+        inner = params[:-1] if params else []
+        for i, t in enumerate(inner):
+            if "mlc_array" not in t:
+                pos.add(i)
+    _SCALAR_POS[mir_id] = pos
+    return pos
+
+
 def _emit_node(node, dst, out):
     """后序：先降子表达式，再发自己。返回该节点在 MIR 里可用的 token。"""
     if "var" in node:
@@ -135,19 +202,16 @@ def _emit_node(node, dst, out):
     # `alloc` 一族的实参是**标量字面量**（C 侧是 `int64_t rows/cols` 与 `double value`），
     # 物化成临时量会变成 `mlc_array` → gcc 报 "expected double but argument is
     # of type mlc_array"（实测 `filla`）。这类位置必须保持字面量内联。
-    # `alloc` / `shape` / `idx` 三族的**数字实参是标量**（行号、列号、维度、初值），
-    # C 侧是 `int64_t` / `double`。物化成临时量会变成 `mlc_array` → gcc 报
-    # "expected double/int64_t but argument is of type mlc_array"。
-    # `guard`（mask）与 `search`（find）的**比较码/阈值**同理必须保持字面量：
-    # 物化成临时量后，发射器读到的是 `__h1` 而不是 `0..5`，直接报"未知比较码"。
-    # `pred` 族（`isequal` / `isequalk`）的同理：`isequalk(x, 0)` 的 `0` 是
-    # **被比较的标量**，物化成临时量后发射器读到 `__h1` 就发 unimplemented
-    # （实测 `iseqtest` 是 --hir-emit 下唯一失败的一个）。
-    keep_literal = _HO.family_of(op) in ("alloc", "shape", "idx", "guard", "search",
-                                         "pred")
+    # **按 C 原型的参数类型**决定“这个位置是否保持字面量”。
+    #
+    # 早前是按**族**枚举（`alloc` → `guard/search` → `pred`），三族都是等某个函数
+    # 红了才补的 —— 按族枚举必然漏族。真正的判据在 `mlc_ops.h` 里：
+    # 实参位置是 `int64_t` / `double` / `int` 的，就是**标量属性位**（维度、下标、
+    # 比较码、阈值、被比较的值），必须留在语法位置；是 `mlc_array *` 的才物化。
+    scalar_pos = _scalar_positions(mir_id)
     args = []
-    for a in node["args"]:
-        if keep_literal and "num" in a:
+    for i, a in enumerate(node["args"]):
+        if "num" in a and i in scalar_pos:
             args.append(a["num"])
         else:
             args.append(_emit_node(a, None, out))
