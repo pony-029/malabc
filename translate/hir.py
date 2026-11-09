@@ -140,7 +140,11 @@ def _emit_node(node, dst, out):
     # "expected double/int64_t but argument is of type mlc_array"。
     # `guard`（mask）与 `search`（find）的**比较码/阈值**同理必须保持字面量：
     # 物化成临时量后，发射器读到的是 `__h1` 而不是 `0..5`，直接报"未知比较码"。
-    keep_literal = _HO.family_of(op) in ("alloc", "shape", "idx", "guard", "search")
+    # `pred` 族（`isequal` / `isequalk`）的同理：`isequalk(x, 0)` 的 `0` 是
+    # **被比较的标量**，物化成临时量后发射器读到 `__h1` 就发 unimplemented
+    # （实测 `iseqtest` 是 --hir-emit 下唯一失败的一个）。
+    keep_literal = _HO.family_of(op) in ("alloc", "shape", "idx", "guard", "search",
+                                         "pred")
     args = []
     for a in node["args"]:
         if keep_literal and "num" in a:
