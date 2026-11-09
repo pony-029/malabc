@@ -25,6 +25,7 @@ INDEX = os.path.join(ROOT, "flow", "index.html")
 FIG = os.path.join(ROOT, "flow", "figures")
 SVG = os.path.join(ROOT, "flow", "diagrams")
 TRACE = os.path.join(ROOT, "flow", "traces")   # 目录：每条 .jsonl 是一条真实链路
+HIR_JSON = os.path.join(ROOT, "flow", "hir_status.json")   # 由 tools/hir_status.py 产出
 
 BEGIN = "<!-- STEPS:BEGIN -->"
 END = "<!-- STEPS:END -->"
@@ -63,6 +64,16 @@ def read_trace(path):
     return {os.path.splitext(os.path.basename(path))[0]: rows}
 
 
+def read_hir():
+    """读 HIR 链路状态（由 `tools/hir_status.py` **实跑**产出，不手写）。"""
+    if not os.path.isfile(HIR_JSON):
+        return None
+    try:
+        return json.load(io.open(HIR_JSON, encoding="utf-8"))
+    except Exception:                                   # noqa: BLE001
+        return None
+
+
 def count_figs():
     n_int = len([d for d in os.listdir(FIG)
                  if os.path.isdir(os.path.join(FIG, d))]) if os.path.isdir(FIG) else 0
@@ -87,7 +98,9 @@ def render_case(name, rows):
                len(rows), ok, chain, inner))
 
 
-def render_steps(cases):
+def render_steps(cases, hir=None):
+    hirline = ("接管 %d/%d、恒等 %d" % (hir["mapped"], hir["total"], hir["identical"])
+               if hir else "状态未知（先跑 tools/hir_status.py）")
     """cases: {链名: rows}。多形态并列，全部来自真实运行。"""
     if not cases:
         return (BEGIN + "\n<section id=\"steps\"><h2>每一步怎么动 "
@@ -103,10 +116,13 @@ def render_steps(cases):
     <b>%(ok)d</b> 步通过。每条链的每一步都标了
     <b>控制流/数据流</b>、<b>输入→输出摘要</b>（sha256 前 12 位）与<b>它是怎么变的</b>；
     摘要相等即证明“上一步的输出真的进了这一步”。</p>
+  <p class="q">**HIR 已在链上**：`mir.py --via-hir` 每次生成后强制往返一次，
+    %(hirline)s。第 3 步（S3）就是它；`--hir-emit` 还能让 MIR **由 HIR 产出**。</p>
   %(blocks)s
 </section>
 %(e)s""" % {"b": BEGIN, "e": END, "n": len([1 for r in cases.values() if r]),
-             "tot": tot, "ok": okall, "blocks": "\n  ".join(blocks)}
+             "tot": tot, "ok": okall, "blocks": "\n  ".join(blocks),
+             "hirline": hirline}
 
 
 def render_rows(rows):
@@ -144,18 +160,24 @@ def render_rows(rows):
     return '<div class="steps">%s</div>' % "\n".join(cards)
 
 
-def render_stats(n_int, n_svg, rows):
+def render_stats(n_int, n_svg, rows, hir=None):
     ok = sum(1 for r in rows if r.get("status") == "ok")
+    hir_stat = ""
+    if hir:
+        hir_stat = ('\n    <span class="stat"><b>%d/%d</b>HIR 接管</span>'
+                    '\n    <span class="stat"><b>%d/%d</b>HIR 恒等</span>'
+                    % (hir["mapped"], hir["total"],
+                       hir["identical"], hir["total"]))
     return """%(b)s
   <div class="stats">
     <span class="stat"><b>%(ni)d</b>张交互图</span>
     <span class="stat"><b>%(ns)d</b>张静态 SVG</span>
     <span class="stat"><b>%(nst)d</b>步可追踪</span>
     <span class="stat"><b>%(ok)d/%(nst)d</b>追踪通过</span>
-    <span class="stat"><b>0</b>脚本 / 外链</span>
+    <span class="stat"><b>0</b>脚本 / 外链</span>%(hir)s
   </div>
 %(e)s""" % {"b": SBEGIN, "e": SEND, "ni": n_int, "ns": n_svg,
-             "nst": len(rows), "ok": ok}
+             "nst": len(rows), "ok": ok, "hir": hir_stat}
 
 
 def splice(text, begin, end, block):
@@ -176,10 +198,11 @@ def main():
     n_int, n_svg = count_figs()
     text = io.open(a.index, encoding="utf-8").read()
 
-    new = splice(text, BEGIN, END, render_steps(cases))
+    hir = read_hir()
+    new = splice(text, BEGIN, END, render_steps(cases, hir))
     if new is None:
         new = text.replace("</main>", render_steps(rows) + "\n\n</main>", 1)
-    stats = splice(new, SBEGIN, SEND, render_stats(n_int, n_svg, rows))
+    stats = splice(new, SBEGIN, SEND, render_stats(n_int, n_svg, rows, hir))
     if stats is None:
         # 首次：替换整个 <div class="stats">…</div>
         i = new.find('<div class="stats">')

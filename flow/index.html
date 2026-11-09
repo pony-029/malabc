@@ -161,6 +161,8 @@
     <span class="stat"><b>36</b>步可追踪</span>
     <span class="stat"><b>36/36</b>追踪通过</span>
     <span class="stat"><b>0</b>脚本 / 外链</span>
+    <span class="stat"><b>57/57</b>HIR 接管</span>
+    <span class="stat"><b>57/57</b>HIR 恒等</span>
   </div>
 <!-- STATS:END -->
 </header>
@@ -186,6 +188,8 @@
     <b>36</b> 步通过。每条链的每一步都标了
     <b>控制流/数据流</b>、<b>输入→输出摘要</b>（sha256 前 12 位）与<b>它是怎么变的</b>；
     摘要相等即证明“上一步的输出真的进了这一步”。</p>
+  <p class="q">**HIR 已在链上**：`mir.py --via-hir` 每次生成后强制往返一次，
+    接管 57/57、恒等 57。第 3 步（S3）就是它；`--hir-emit` 还能让 MIR **由 HIR 产出**。</p>
   <details class="case" open><summary><b>colmax_loop</b><span class="case-meta">9 步 · 通过 9 · 链路完整</span></summary><div class="steps"><article class="step S1"><div class="step-h"><span class="sid">S1</span><span class="smod">front</span><span class="kind dat">数据流</span><span class="ms">0 ms</span><span class="st ok">ok</span></div><div class="step-b"><div class="how">读入源码，按行切成语句序列</div><div class="io"><code>-</code> → <code>a203b18776d7</code><span class="delta">磁盘上的 .m 文本 → 内存里的行数组（附行数）</span></div><div class="act">读源码 colmax_loop.m</div><div class="det">lines=11</div></div></article>
 <article class="step S2"><div class="step-h"><span class="sid">S2</span><span class="smod">mir</span><span class="kind ctl">控制流</span><span class="ms">156 ms</span><span class="st ok">ok</span></div><div class="step-b"><div class="how">逐语句匹配、降级成三地址</div><div class="io"><code>a203b18776d7</code> → <code>c1591e6d751c</code><span class="delta">源码文本 → MIR 行（`op:` / `const:` / `setb:`）</span></div><div class="act">MATLAB → MIR</div><div class="det">ops=3 · unmapped=0</div></div></article>
 <article class="step S3"><div class="step-h"><span class="sid">S3</span><span class="smod">hir</span><span class="kind dat">数据流</span><span class="ms">9 ms</span><span class="st ok">ok</span></div><div class="step-b"><div class="how">把三地址折回表达式树再降级</div><div class="io"><code>c1591e6d751c</code> → <code>c1591e6d751c</code><span class="delta">MIR op 序列 → HIR 树 → 同构的 MIR（算子多重集必须相等）</span></div><div class="act">MIR → HIR → MIR 恒等</div><div class="det">mapped=True · identical=True</div></div></article>

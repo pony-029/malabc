@@ -68,3 +68,24 @@ def test_default_path_has_no_hir_side_effect():
     out = r.stdout.decode("utf-8", "replace")
     assert r.returncode == 0, out[-300:]
     assert "[hir]" not in out, "默认路径不应触发 HIR 校验"
+
+
+def test_status_snapshot_is_fresh():
+    """`flow/hir_status.json`（首页数字的来源）必须与**当前实跑**一致。
+
+    没有这条，首页会显示一个曾经正确的数字 —— 那比不显示更糟：
+    读者会以为它反映的是现在的代码。
+    """
+    import io as _io
+    import json
+    import re as _re
+    p = os.path.join(ROOT, "flow", "hir_status.json")
+    assert os.path.isfile(p), "缺 flow/hir_status.json（跑 tools/hir_status.py）"
+    old = json.load(_io.open(p, encoding="utf-8"))
+    rc, out = _run_via_hir()
+    m = _re.search(r"\[hir\] 接管 (\d+)/(\d+)（恒等 (\d+)）", out)
+    assert m, out[-300:]
+    now = {"mapped": int(m.group(1)), "total": int(m.group(2)),
+           "identical": int(m.group(3))}
+    assert all(old.get(k) == now[k] for k in now), \
+        "快照过期：文件 %r vs 实跑 %r" % (old, now)
