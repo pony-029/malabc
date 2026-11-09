@@ -73,11 +73,18 @@ def count_figs():
 def render_case(name, rows):
     """一条链渲染成一个可折叠区块（`<details>`，纯 HTML，不需要脚本）。"""
     ok = sum(1 for r in rows if r.get("status") == "ok")
+    # 链路完整性：每个 in 都必须能追溯到更早的 out（R736 的判据）
+    try:
+        from trace_chain import check as _chain_check
+        gaps = len(_chain_check(rows))
+    except Exception:                                   # noqa: BLE001
+        gaps = -1
+    chain = "链路完整" if gaps == 0 else ("断链 %d" % gaps if gaps > 0 else "未校验")
     inner = render_rows(rows)
     return ('<details class="case"%s><summary><b>%s</b>'
-            '<span class="case-meta">%d 步 · 通过 %d</span></summary>%s</details>'
+            '<span class="case-meta">%d 步 · 通过 %d · %s</span></summary>%s</details>'
             % (" open" if ok == len(rows) else "", html.escape(name),
-               len(rows), ok, inner))
+               len(rows), ok, chain, inner))
 
 
 def render_steps(cases):

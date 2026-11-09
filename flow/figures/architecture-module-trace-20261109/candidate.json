@@ -1,0 +1,362 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "F38 模块 × 交互 × 追踪点（T1–T9）",
+    "locale": "zh-CN",
+    "output": "f38-module-trace.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:pony-029/malabc.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "2d27cffc9a12a6f856fa2ada7fa33bf85a36b23c"
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "cols": 6,
+    "cellW": 184,
+    "cellH": 98,
+    "gapX": 44,
+    "gapY": 82
+  },
+  "components": [
+    {
+      "id": "s1",
+      "type": "frontend",
+      "label": "读源码",
+      "sublabel": "T1 · 入: 文件 出: 文本",
+      "tag": "T1",
+      "row": 0,
+      "col": 0,
+      "sources": [
+        {
+          "path": "translate/mir.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "s2",
+      "type": "backend",
+      "label": "生成 MIR",
+      "sublabel": "T2 · 入: 文本 出: MIR",
+      "tag": "T2",
+      "row": 0,
+      "col": 1,
+      "sources": [
+        {
+          "path": "translate/mir.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "s3",
+      "type": "backend",
+      "label": "HIR 往返",
+      "sublabel": "T3 · 入: MIR 出: MIR",
+      "tag": "T3",
+      "row": 0,
+      "col": 2,
+      "sources": [
+        {
+          "path": "translate/hir.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "s4",
+      "type": "backend",
+      "label": "生成 C 工程",
+      "sublabel": "T4 · 入: MIR 出: gen.c",
+      "tag": "T4",
+      "row": 0,
+      "col": 3,
+      "sources": [
+        {
+          "path": "rust/m2c/src/project.rs",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "s5",
+      "type": "backend",
+      "label": "gcc 编译",
+      "sublabel": "T5 · 入: gen.c 出: exe",
+      "tag": "T5",
+      "row": 0,
+      "col": 4
+    },
+    {
+      "id": "s6",
+      "type": "backend",
+      "label": "运行 C",
+      "sublabel": "T6 · 入: exe 出: 数值",
+      "tag": "T6",
+      "row": 0,
+      "col": 5,
+      "sources": [
+        {
+          "path": "c_runtime/src/mlc_runtime.c",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "s7",
+      "type": "backend",
+      "label": "Rust VM",
+      "sublabel": "T7 · 入: MIR 出: 数值",
+      "tag": "T7",
+      "row": 1,
+      "col": 0,
+      "sources": [
+        {
+          "path": "rust/m2c/src/vm.rs",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "s8",
+      "type": "backend",
+      "label": "四路对账",
+      "sublabel": "T8 · 入: 两路数值",
+      "tag": "T8",
+      "row": 1,
+      "col": 1,
+      "sources": [
+        {
+          "path": "tests/test_vm_differential.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "s9",
+      "type": "backend",
+      "label": "C→MIR 反推",
+      "sublabel": "T9 · 入: gen.c 出: MIR'",
+      "tag": "T9",
+      "row": 1,
+      "col": 2,
+      "sources": [
+        {
+          "path": "translate/cmir.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "rel",
+      "type": "backend",
+      "label": "调用关系",
+      "sublabel": "控: 静态分析",
+      "tag": "未覆盖",
+      "row": 1,
+      "col": 3,
+      "sources": [
+        {
+          "path": "callrel.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "ug",
+      "type": "backend",
+      "label": "统一图",
+      "sublabel": "数: 节点+边",
+      "tag": "未覆盖",
+      "row": 1,
+      "col": 4,
+      "sources": [
+        {
+          "path": "unified_graph.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "facts",
+      "type": "backend",
+      "label": "事实层",
+      "sublabel": "数: 证据+位置",
+      "tag": "未覆盖",
+      "row": 1,
+      "col": 5,
+      "sources": [
+        {
+          "path": "facts.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "rend",
+      "type": "backend",
+      "label": "渲染层",
+      "sublabel": "数: SARIF/站点",
+      "tag": "未覆盖",
+      "row": 2,
+      "col": 0,
+      "sources": [
+        {
+          "path": "renderers/sarif.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "chk",
+      "type": "backend",
+      "label": "check 诊断",
+      "sublabel": "控: 该改什么",
+      "tag": "未覆盖",
+      "row": 2,
+      "col": 1,
+      "sources": [
+        {
+          "path": "translate/check.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "bud",
+      "type": "backend",
+      "label": "预算判定",
+      "sublabel": "控: 超限即错",
+      "tag": "设计",
+      "row": 2,
+      "col": 2,
+      "sources": [
+        {
+          "path": "docs/DESIGN_ENGINEERING_PLATFORM.md",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "call",
+      "type": "backend",
+      "label": "跨文件 call",
+      "sublabel": "控: 直调/桩",
+      "tag": "断点",
+      "row": 2,
+      "col": 3,
+      "sources": [
+        {
+          "path": "rust/m2c/src/emit.rs",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "stub",
+      "type": "backend",
+      "label": "契约桩",
+      "sublabel": "控: 局部失败",
+      "tag": "设计",
+      "row": 2,
+      "col": 4,
+      "sources": [
+        {
+          "path": "docs/DESIGN_CODEGEN_LESSONS.md",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "gate",
+      "type": "backend",
+      "label": "门禁 41 门",
+      "sublabel": "控: 判据",
+      "tag": "未覆盖",
+      "row": 2,
+      "col": 5,
+      "sources": [
+        {
+          "path": "tools/check_all.py",
+          "line": 1
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "s1",
+      "to": "s2",
+      "label": "数: 源码文本"
+    },
+    {
+      "from": "s2",
+      "to": "s3",
+      "label": "数: MIR"
+    },
+    {
+      "from": "s3",
+      "to": "s4",
+      "label": "数: MIR（不变）"
+    },
+    {
+      "from": "s4",
+      "to": "s5",
+      "label": "数: gen.c"
+    },
+    {
+      "from": "s5",
+      "to": "s6",
+      "label": "数: exe"
+    },
+    {
+      "from": "s2",
+      "to": "s7",
+      "label": "数: 同一份 MIR"
+    },
+    {
+      "from": "s6",
+      "to": "s8",
+      "label": "数: 数值"
+    },
+    {
+      "from": "s7",
+      "to": "s8",
+      "label": "数: 数值"
+    },
+    {
+      "from": "s4",
+      "to": "s9",
+      "label": "数: gen.c"
+    },
+    {
+      "from": "rel",
+      "to": "ug",
+      "label": "数: 调用边"
+    },
+    {
+      "from": "ug",
+      "to": "facts",
+      "label": "数: 事实"
+    },
+    {
+      "from": "facts",
+      "to": "rend",
+      "label": "数: 产物"
+    },
+    {
+      "from": "call",
+      "to": "stub",
+      "label": "控: 不可生成"
+    },
+    {
+      "from": "gate",
+      "to": "s8",
+      "label": "控: 判据"
+    }
+  ]
+}

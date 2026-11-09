@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "fec82115-3acb-4bb8-9df5-3f78f15fdcf8",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "E:\\temp\\matlabc\\f38v1\\f38\\candidate.json",
+  "output": "E:\\temp\\matlabc\\f38v1\\f38\\f38-module-trace.html",
+  "specification": {
+    "sha256": "4e8bb3609b684ac0432641d6c3e8729b1948e327b9c69fa5c1ae3b28f20022d0",
+    "bytes": 6906
+  },
+  "artifact": {
+    "sha256": "0c309d42091307786553bfd813647cd86bf8cce257db118f5bee9e7cedb423b3",
+    "bytes": 860624
+  }
+}
