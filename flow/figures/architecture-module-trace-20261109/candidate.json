@@ -10,7 +10,7 @@
       "url": "git@github.com:pony-029/malabc.git",
       "provider": "github",
       "link_mode": "local-only",
-      "revision": "2d27cffc9a12a6f856fa2ada7fa33bf85a36b23c"
+      "revision": "bdf736134ae5820d4e836a74898b6638357125b3"
     }
   },
   "layout": {
@@ -55,9 +55,9 @@
     {
       "id": "s3",
       "type": "backend",
-      "label": "HIR 往返",
-      "sublabel": "T3 · 入: MIR 出: MIR",
-      "tag": "T3",
+      "label": "HIR 往返/产出",
+      "sublabel": "T3 · 接管 57/57 · 产出 58/58",
+      "tag": "T3+",
       "row": 0,
       "col": 2,
       "sources": [

@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "fec82115-3acb-4bb8-9df5-3f78f15fdcf8",
+  "receiptId": "2a445576-8fd1-4ee2-9e74-fa33ed705f4d",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
-  "input": "E:\\temp\\matlabc\\f38v1\\f38\\candidate.json",
-  "output": "E:\\temp\\matlabc\\f38v1\\f38\\f38-module-trace.html",
+  "input": "E:\\temp\\matlabc\\f38v2\\candidate.json",
+  "output": "E:\\temp\\matlabc\\f38v2\\f38-module-trace.html",
   "specification": {
-    "sha256": "4e8bb3609b684ac0432641d6c3e8729b1948e327b9c69fa5c1ae3b28f20022d0",
-    "bytes": 6906
+    "sha256": "8fe55ba3da45ffa6c6949c21d26be4725430215a8b0545c4621ec04d62a3622d",
+    "bytes": 6925
   },
   "artifact": {
-    "sha256": "0c309d42091307786553bfd813647cd86bf8cce257db118f5bee9e7cedb423b3",
-    "bytes": 860624
+    "sha256": "465c202bb7e8a207a96f416be3c0ccfa31242c1d183ae060754463f346584898",
+    "bytes": 860701
   }
 }
