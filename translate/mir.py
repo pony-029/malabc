@@ -2312,6 +2312,61 @@ def hir_gate(text):
     return (not bad), {"total": total, "mapped": mapped, "same": same}, bad
 
 
+def hir_emit(text):
+    """**用 HIR 降级结果替换每个函数的算子区** —— MIR 真正由 HIR 产出。
+
+    与 `hir_gate()` 的区别：那个只比对（校验），这个**替换产物**。
+    这是"MATLAB → HIR → MIR → C"里 HIR 在链上的最后一步。
+
+    ## 代价（必须说清）
+
+    折树会把 `# src:N` 逐行注释丢掉（表达式树不对应某一行）。
+    所以它是**可选开关**：默认路径保持逐行注释，需要"由 HIR 产出"时才开。
+
+    有算子缺 HIR 名时，该函数**整体透传**（不降级），并在返回值里记一笔。
+    """
+    from translate import hir as H
+
+    lines = text.split("\n")
+    res, passed = [], []
+    i = 0
+    while i < len(lines):
+        if not lines[i].startswith("func:"):
+            res.append(lines[i])
+            i += 1
+            continue
+        j = i + 1
+        while j < len(lines) and not lines[j].startswith("func:"):
+            j += 1
+        block = lines[i:j]
+        name = block[0][5:].strip()
+        head = [l for l in block if l.startswith(("func:", "arg:", "ret:"))]
+        body = [l for l in block if l and not l.startswith(("func:", "arg:", "ret:", "#"))]
+        # **只弹一个** `end`（函数级那个）。用 while 会把 `if:`/`while:` 块自己的
+        # `end` 也弹掉 —— m2c 随即报"func 未以 end 收束"（R712 在报告脚本里犯过同样一次）。
+        if body and body[-1].strip() == "end":
+            body.pop()
+        try:
+            hb, ok_map = H.mir_to_hir("\n".join(body))
+            if not ok_map:
+                res.extend(block)              # 有算子无 HIR 名：整体透传
+                passed.append(name)
+                i = j
+                continue
+            low = H.hir_to_mir(H.hir_wrap(name, [], [], hb))
+        except Exception:                       # noqa: BLE001
+            res.extend(block)
+            passed.append(name)
+            i = j
+            continue
+        res.extend(head)
+        res.append("# @m2c hir-emitted（算子区由 HIR 降级产出，逐行 src 注释已折入表达式树）")
+        res.extend([l for l in low.split("\n") if l.strip()])
+        res.append("end")
+        i = j
+    return "\n".join(res), passed
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="MATLAB → MIR")
     ap.add_argument("source", nargs="?")
@@ -2322,6 +2377,8 @@ def main(argv=None):
                     help="墙钟上限（默认 120s）：到点强制退出，避免机器被拖死")
     ap.add_argument("--via-hir", action="store_true",
                     help="生成后强制走一遍 HIR 抬升→降级，算子多重集不等即失败")
+    ap.add_argument("--hir-emit", action="store_true",
+                    help="**用 HIR 降级结果作为 MIR 输出**（逐行 src 注释会折入表达式树）")
     ap.add_argument("--recursive", action="store_true",
                     help="目录模式下递归子目录（真实工程必需）")
     args = ap.parse_args(argv)
@@ -2413,6 +2470,10 @@ def main(argv=None):
                 for nm, why in bad[:3]:
                     print("      ✗ %s：%s" % (nm, why[:100]))
                 return 1
+        if args.hir_emit:
+            text, passed = hir_emit(text)
+            print("[hir-emit] 由 HIR 产出 %d 个函数，透传 %d 个"
+                  % (stats["functions"] - len(passed), len(passed)))
         if args.out:
             io.open(args.out, "w", encoding="utf-8", newline="").write(text)
             print("[ok] %s（%d 个 .m / 函数 %d / 算子 %d / 未映射 %d）"
@@ -2429,6 +2490,10 @@ def main(argv=None):
         print("读不了 %s：%s" % (args.source, exc))
         return 2
     text, stats = to_mir(src)
+    if args.hir_emit:
+        text, passed = hir_emit(text)
+        print("[hir-emit] 由 HIR 产出 %d 个函数，透传 %d 个"
+              % (stats["functions"] - len(passed), len(passed)))
     if args.via_hir:
         ok, hs, bad = hir_gate(text)
         print("[hir] 接管 %d/%d（恒等 %d）%s"

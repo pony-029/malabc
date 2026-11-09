@@ -138,7 +138,9 @@ def _emit_node(node, dst, out):
     # `alloc` / `shape` / `idx` 三族的**数字实参是标量**（行号、列号、维度、初值），
     # C 侧是 `int64_t` / `double`。物化成临时量会变成 `mlc_array` → gcc 报
     # "expected double/int64_t but argument is of type mlc_array"。
-    keep_literal = _HO.family_of(op) in ("alloc", "shape", "idx")
+    # `guard`（mask）与 `search`（find）的**比较码/阈值**同理必须保持字面量：
+    # 物化成临时量后，发射器读到的是 `__h1` 而不是 `0..5`，直接报"未知比较码"。
+    keep_literal = _HO.family_of(op) in ("alloc", "shape", "idx", "guard", "search")
     args = []
     for a in node["args"]:
         if keep_literal and "num" in a:
