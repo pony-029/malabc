@@ -168,6 +168,10 @@ def render_stats(n_int, n_svg, rows, hir=None):
                     '\n    <span class="stat"><b>%d/%d</b>HIR 恒等</span>'
                     % (hir["mapped"], hir["total"],
                        hir["identical"], hir["total"]))
+        if hir.get("emitted") is not None:
+            hir_stat += ('\n    <span class="stat"><b>%d/%d</b>由 HIR 产出</span>'
+                         % (hir["emitted"],
+                            hir["emitted"] + hir.get("passthrough", 0)))
     return """%(b)s
   <div class="stats">
     <span class="stat"><b>%(ni)d</b>张交互图</span>

@@ -4,5 +4,8 @@
   "total": 57,
   "identical": 57,
   "participation": 100.0,
-  "identical_rate": 100.0
+  "identical_rate": 100.0,
+  "emitted": 58,
+  "passthrough": 0,
+  "hir_emit_rc": 0
 }

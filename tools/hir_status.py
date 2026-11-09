@@ -33,6 +33,18 @@ def _run(cmd, timeout=300):
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
 
+def measure_emit():
+    """跑 `mir.py --hir-emit`，解析"由 HIR 产出/透传"的函数数。"""
+    tmp = os.path.join(WORK, "hir_emit_status.mir")
+    r = _run([sys.executable, MIR_PY, CORPUS, "--hir-emit", "-o", tmp])
+    out = r.stdout.decode("utf-8", "replace")
+    m = re.search(r"\[hir-emit\] 由 HIR 产出 (\d+) 个函数，透传 (\d+) 个", out)
+    if not m:
+        return {}
+    return {"emitted": int(m.group(1)), "passthrough": int(m.group(2)),
+            "hir_emit_rc": r.returncode}
+
+
 def measure():
     """跑 `mir.py --via-hir`，解析接管率与恒等率。"""
     tmp = os.path.join(WORK, "hir_status.mir")
@@ -42,7 +54,7 @@ def measure():
     if not m:
         return None
     mapped, total, same = (int(m.group(i)) for i in (1, 2, 3))
-    return {
+    out_d = {
         "via_hir_rc": r.returncode,
         "mapped": mapped,
         "total": total,
@@ -50,6 +62,8 @@ def measure():
         "participation": round(100.0 * mapped / max(1, total), 1),
         "identical_rate": round(100.0 * same / max(1, total), 1),
     }
+    out_d.update(measure_emit())
+    return out_d
 
 
 def main(argv=None):
@@ -67,7 +81,7 @@ def main(argv=None):
             print("缺 flow/hir_status.json（先跑一次不带 --check 的）")
             return 1
         old = json.load(io.open(OUT, encoding="utf-8"))
-        keys = ("mapped", "total", "identical")
+        keys = ("mapped", "total", "identical", "emitted", "passthrough")
         if all(old.get(k) == cur.get(k) for k in keys):
             print("hir_status: OK（接管 %d/%d，恒等 %d）"
                   % (cur["mapped"], cur["total"], cur["identical"]))
@@ -78,8 +92,9 @@ def main(argv=None):
 
     io.open(OUT, "w", encoding="utf-8", newline="\n").write(
         json.dumps(cur, ensure_ascii=False, indent=2) + "\n")
-    print("hir_status: 接管 %d/%d（%.1f%%）｜ 恒等 %d"
-          % (cur["mapped"], cur["total"], cur["participation"], cur["identical"]))
+    print("hir_status: 接管 %d/%d（%.1f%%）｜ 恒等 %d ｜ HIR 产出 %s 个（透传 %s）"
+          % (cur["mapped"], cur["total"], cur["participation"], cur["identical"],
+             cur.get("emitted", "-"), cur.get("passthrough", "-")))
     print("已写出 flow/hir_status.json")
     return 0
 
