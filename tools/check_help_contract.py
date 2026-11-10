@@ -221,6 +221,11 @@ ENTRY_SCRIPTS = tuple(sorted(CONTRACT))
 #     护栏的「示例能跑」由 check_all.py 的聚合运行来证明，职责不重复。
 # ---------------------------------------------------------------------------
 GUARD_CONTRACT = {
+    "tools/check_hir_two_paths.py": {
+        0: "契约 TP9a–TP9d 全部通过（两条 MIR 生成路径逐函数等价）",
+        1: "有差异（函数集合 / 算子 / 行号 / 数值任一不等）",
+        2: "缺输入（数值语料目录不存在）",
+    },
     "tools/check_all.py": {
         0: "全部护栏通过",
         1: "有护栏失败，或护栏缺自证，或仓级结构闸门红（计划块 action 不在册 / "
@@ -1814,6 +1819,8 @@ _TREE_ROW_RE = re.compile(
 # 非 Xn 族签名 / 无签名的**登记制**豁免（理由 >= 8 字符）。两向核对：
 # 登记了却已经能被管 ⇒ 陈旧豁免，也红。
 SIGNATURE_CENSUS_EXEMPT = {
+    "tools/check_hir_two_paths.py":
+        "签名是带小写后缀的四元组（TP9a–TP9d），不是可展开的数字区间",
     "tools/check_all.py": "runner：没有判据族，它的退出码契约由 GUARD_CONTRACT 承担",
     "tools/check_doc_flags.py": "签名是属性名 NO_HELP_SCRIPTS，不是 Xn 族",
     "tools/check_operator_impl.py": "签名是算子元表名 _UNIMPLEMENTED_KINDS，不是 Xn 族",
