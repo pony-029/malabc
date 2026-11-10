@@ -101,7 +101,11 @@ def diagnose(path):
     d = WORK if os.path.isdir(WORK) else tempfile.gettempdir()
     os.makedirs(d, exist_ok=True)
     mir = os.path.join(d, "chk_" + stem + ".mir")
-    r = _run([sys.executable, MIR_PY, path, "-o", mir])
+    # `M2C_MIR_ARGS` 允许切到另一条 MIR 生成路径（如 `--hir-emit`），
+    # 用于**对拍诊断**：两条路径的诊断必须逐字一致，否则"行号/类别"就会随默认值漂移。
+    # 默认空 —— 与直接调用 `mir.py` 的行为完全相同。
+    _extra = (os.environ.get("M2C_MIR_ARGS") or "").split()
+    r = _run([sys.executable, MIR_PY, path, "-o", mir] + _extra)
     if r.returncode != 0 or not os.path.isfile(mir):
         msg = r.stdout.decode("utf-8", "replace")
         kind = "no_function" if ("没有识别到 function" in msg

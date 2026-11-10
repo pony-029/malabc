@@ -74,6 +74,7 @@ CHECKS = (
              os.path.join("tests", "test_hir_srcline.py"),
              os.path.join("tests", "test_hir_parity.py"),
              os.path.join("tests", "test_hir_meta_lines.py"),
+             os.path.join("tests", "test_check_diag_two_paths.py"),
              os.path.join("tests", "test_trace_chain.py"),
              os.path.join("tests", "test_vm_ops.py"),
              os.path.join("tests", "test_numeric_truth.py"),
