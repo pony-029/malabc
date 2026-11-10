@@ -45,6 +45,23 @@ def measure_emit():
             "hir_emit_rc": r.returncode}
 
 
+def measure_src():
+    """默认路径 vs `--hir-emit` 的 `# src:` 条数（行号对齐度）。"""
+    a = os.path.join(WORK, "src_base.mir")
+    b = os.path.join(WORK, "src_he.mir")
+    _run([sys.executable, MIR_PY, CORPUS, "-o", a])
+    _run([sys.executable, MIR_PY, CORPUS, "--hir-emit", "-o", b])
+    try:
+        na = io.open(a, encoding="utf-8").read().count("# src:")
+        nb = io.open(b, encoding="utf-8").read().count("# src:")
+    except OSError:
+        return {}
+    if not na:
+        return {}
+    return {"src_base": na, "src_hir_emit": nb,
+            "src_parity": round(100.0 * nb / na, 1)}
+
+
 def measure():
     """跑 `mir.py --via-hir`，解析接管率与恒等率。"""
     tmp = os.path.join(WORK, "hir_status.mir")
@@ -63,6 +80,7 @@ def measure():
         "identical_rate": round(100.0 * same / max(1, total), 1),
     }
     out_d.update(measure_emit())
+    out_d.update(measure_src())
     return out_d
 
 
@@ -81,7 +99,8 @@ def main(argv=None):
             print("缺 flow/hir_status.json（先跑一次不带 --check 的）")
             return 1
         old = json.load(io.open(OUT, encoding="utf-8"))
-        keys = ("mapped", "total", "identical", "emitted", "passthrough")
+        keys = ("mapped", "total", "identical", "emitted", "passthrough",
+            "src_base", "src_hir_emit")
         if all(old.get(k) == cur.get(k) for k in keys):
             print("hir_status: OK（接管 %d/%d，恒等 %d）"
                   % (cur["mapped"], cur["total"], cur["identical"]))

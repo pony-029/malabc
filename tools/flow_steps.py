@@ -172,6 +172,9 @@ def render_stats(n_int, n_svg, rows, hir=None):
             hir_stat += ('\n    <span class="stat"><b>%d/%d</b>由 HIR 产出</span>'
                          % (hir["emitted"],
                             hir["emitted"] + hir.get("passthrough", 0)))
+        if hir.get("src_parity") is not None:
+            hir_stat += ('\n    <span class="stat"><b>%d%%</b>行号对齐</span>'
+                         % int(round(hir["src_parity"])))
     return """%(b)s
   <div class="stats">
     <span class="stat"><b>%(ni)d</b>张交互图</span>
