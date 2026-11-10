@@ -59,6 +59,14 @@ class _Parser:
         name = m.group(0)
         self.i += len(name)
         self._ws()
+        # 行号后缀：嵌套写法是 `name@L12(args)`，顶层是 `expr@L12`（由调用方剥掉）。
+        # 两种都认，才能让**每个**算子都带着自己的源码行号回来。
+        src = None
+        ms = re.match(r"@L(\d+)", self.s[self.i:])
+        if ms:
+            src = ms.group(1)
+            self.i += len(ms.group(0))
+            self._ws()
         if self.i >= len(self.s) or self.s[self.i] != "(":
             return {"var": name}
         self.i += 1
@@ -77,7 +85,10 @@ class _Parser:
             if self.i >= len(self.s) or self.s[self.i] != ")":
                 raise ValueError("缺少右括号")
             self.i += 1
-        return {"op": name, "args": args}
+        node = {"op": name, "args": args}
+        if src:
+            node["src"] = src
+        return node
 
 
 _ExprParser = _Parser
@@ -107,9 +118,15 @@ def parse_hir(text):
             continue
         m = re.match(r"^([A-Za-z_]\w*)\s*=\s*(.+)$", s)
         if m:
-            expr_text = re.sub(r"@L\d+$", "", m.group(2).strip()).strip()
-            out.append({"kind": "let", "dst": m.group(1),
-                        "expr": _Parser(expr_text).parse()})
+            # 行号后缀 `@L12` 只是位置标注：解析前剥掉，但**要挂回节点** ——
+            # 不挂回去，降级时顶层算子就没有 `# src:`（实测 74 条只剩 6 条）。
+            raw_expr = m.group(2).strip()
+            mt = re.search(r"@L(\d+)$", raw_expr)
+            expr_text = re.sub(r"@L\d+$", "", raw_expr).strip()
+            node = _Parser(expr_text).parse()
+            if mt:
+                node["src"] = mt.group(1)
+            out.append({"kind": "let", "dst": m.group(1), "expr": node})
             continue
         # 透传行（控制流等）：原样保留，不参与折树。
         # **必须剥掉 `raw ` 前缀** —— 否则它会被当成 MIR 语句原样输出，
@@ -260,9 +277,12 @@ def _render(node, top=False):
         return node["var"]
     if "num" in node:
         return node["num"]
-    base = "%s(%s)" % (node["op"], ", ".join(_render(a) for a in node["args"]))
-    # **只在顶层加后缀**：嵌套节点若也带 `@L7`，它会落在实参列表里，
-    # 解析器随即报"缺少右括号"（实测 6 个函数因此透传）。
+    name = node["op"]
+    # 嵌套节点把行号写在**名字后面**（`ew.mul@L7(a, b)`）—— 解析器认得这种写法；
+    # 写在尾部会让它落在实参列表里，报"缺少右括号"（R745 就是这样掉了 6 个函数）。
+    if not top and node.get("src"):
+        name = "%s@L%s" % (name, node["src"])
+    base = "%s(%s)" % (name, ", ".join(_render(a) for a in node["args"]))
     if top and node.get("src"):
         return "%s@L%s" % (base, node["src"])
     return base
