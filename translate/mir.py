@@ -2393,11 +2393,16 @@ def main(argv=None):
     # **仍是 opt-in**（R750 试过切默认，打红了两个门，已回退）。
     # 切换前必须补齐的：`--no-hir-emit` 之外，还要让 `test_translate_port` /
     # `check_generated_compiles` 在 hir-emit 下也全绿 —— 现在它们默认仍按直出验。
+    # **默认由 HIR 产出**（R756）：三道闸门已就位 ——
+    #   ① `check_hir_two_paths`（TP9a–TP9d）两路逐函数等价；
+    #   ② `test_check_diag_two_paths` 诊断逐字一致；
+    #   ③ `test_hir_meta_lines` `# src:` 与 `# why:` 双保。
+    # `--no-hir-emit` 是一键回退（切换改变的是所有人拿到的 MIR 文本）。
     ap.add_argument("--hir-emit", dest="hir_emit", action="store_true",
-                    help="用 HIR 降级结果作为 MIR 输出（实验性；默认关闭）")
+                    help="（默认已开启）用 HIR 降级结果作为 MIR 输出")
     ap.add_argument("--no-hir-emit", dest="hir_emit", action="store_false",
-                    help="显式关闭 HIR 产出（当前默认）")
-    ap.set_defaults(hir_emit=False)
+                    help="关闭 HIR 产出，退回直接生成（回退开关）")
+    ap.set_defaults(hir_emit=True)
     ap.add_argument("--recursive", action="store_true",
                     help="目录模式下递归子目录（真实工程必需）")
     args = ap.parse_args(argv)

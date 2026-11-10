@@ -294,8 +294,9 @@ def check_project_dir(fast=None):
 
     d = tempfile.mkdtemp(prefix="m2c_proj_")
     mir = os.path.join(d, "proj.mir")
+    # **钉住直出路径**：这道门验的是 MIR→C→数值，不该随默认值漂移
     rc, out = _run([sys.executable, os.path.join("translate", "mir.py"),
-                    src_dir, "-o", mir])
+                    src_dir, "-o", mir, "--no-hir-emit"])
     if rc != 0:
         return ["TP7 目录转换失败：%s" % (out.strip().splitlines()[:2],)]
 
@@ -449,7 +450,7 @@ def check_parity_demo(fast=None):
     mir = os.path.join(d, "d.mir")
     rc, out = _run([sys.executable, os.path.join("translate", "mir.py"),
                     os.path.join("translate", "examples", "demo_port.m"),
-                    "-o", mir])
+                    "-o", mir, "--no-hir-emit"])
     if rc != 0:
         return ["TP9 生成 MIR 失败：%s" % (out.strip().splitlines()[:2],)]
     rc, out = _run([sys.executable, os.path.join("tools", "parity_report.py"),
@@ -506,7 +507,7 @@ def check_reference_parity(fast=None):
     mir = os.path.join(d, "d.mir")
     rc, out = _run([sys.executable, os.path.join("translate", "mir.py"),
                     os.path.join("translate", "examples", "demo_port.m"),
-                    "-o", mir])
+                    "-o", mir, "--no-hir-emit"])
     if rc != 0:
         return ["TP11 生成 MIR 失败：%s" % (out.strip().splitlines()[:2],)]
     rc, out = _run([sys.executable, os.path.join("tools", "parity_report.py"),
@@ -541,7 +542,7 @@ def check_numeric_corpus(fast=None):
     d = tempfile.mkdtemp(prefix="m2c_num_")
     mir = os.path.join(d, "num.mir")
     rc, out = _run([sys.executable, os.path.join("translate", "mir.py"),
-                    src, "-o", mir])
+                    src, "-o", mir, "--no-hir-emit"])
     if rc != 0:
         return ["TP7 数值语料转换失败：%s" % (out.strip().splitlines()[:2],)]
 
