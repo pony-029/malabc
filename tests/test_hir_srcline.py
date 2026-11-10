@@ -37,7 +37,8 @@ def _gen(extra, name):
 
 def test_hir_emit_keeps_src_lines():
     """`--hir-emit` 的 `# src:` 不得少于默认路径的 95%。"""
-    base = _gen([], "srcline_base.mir")
+    # 基准必须显式关掉 HIR 产出（默认已开启），否则两边同路
+    base = _gen(["--no-hir-emit"], "srcline_base.mir")
     he = _gen(["--hir-emit"], "srcline_he.mir")
 
     n_base = base.count("# src:")
@@ -51,7 +52,7 @@ def test_hir_emit_keeps_src_lines():
 
 def test_hir_emit_keeps_all_ops():
     """行号补回来不能以丢算子为代价。"""
-    base = _gen([], "srcline_base2.mir")
+    base = _gen(["--no-hir-emit"], "srcline_base2.mir")
     he = _gen(["--hir-emit"], "srcline_he2.mir")
     n_base = sum(1 for l in base.splitlines() if l.startswith("op:"))
     n_he = sum(1 for l in he.splitlines() if l.startswith("op:"))

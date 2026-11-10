@@ -77,7 +77,9 @@ def main(argv=None):
     ap.add_argument("--values", action="store_true", help="额外比数值（起 VM）")
     a = ap.parse_args(argv)
 
-    base = _gen([], "parity_base.mir")
+    # 基准路径必须**显式**关掉 HIR 产出：默认已改为 hir-emit，
+    # 不显式关的话两边是同一条路，对拍恒成立（假绿）。
+    base = _gen(["--no-hir-emit"], "parity_base.mir")
     hem = _gen(["--hir-emit"], "parity_he.mir")
     B = _split(io.open(base, encoding="utf-8").read())
     H = _split(io.open(hem, encoding="utf-8").read())

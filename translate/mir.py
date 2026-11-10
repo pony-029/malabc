@@ -2341,9 +2341,14 @@ def hir_emit(text):
         block = lines[i:j]
         name = block[0][5:].strip()
         head = [l for l in block if l.startswith(("func:", "arg:", "ret:"))]
+        # 注释分两类，**都必须带过去**：
+        #   `# src:N`  → 行号（check 靠它指到行）
+        #   `# why:K`  → 卡点类别（check 靠它分出 cell/cond/shadowed…）
+        # 只带 src 时，诊断会全部退化成 `[misc]` —— 行号对、类别丢（实测 loadjson 17 行变化）。
         body = [l for l in block
                 if l and not l.startswith(("func:", "arg:", "ret:"))
-                and (not l.startswith("#") or l.startswith("# src:"))]
+                and (not l.startswith("#")
+                     or l.startswith("# src:") or l.startswith("# why:"))]
         # **只弹一个** `end`（函数级那个）。用 while 会把 `if:`/`while:` 块自己的
         # `end` 也弹掉 —— m2c 随即报"func 未以 end 收束"（R712 在报告脚本里犯过同样一次）。
         if body and body[-1].strip() == "end":
@@ -2385,8 +2390,14 @@ def main(argv=None):
                     help="墙钟上限（默认 120s）：到点强制退出，避免机器被拖死")
     ap.add_argument("--via-hir", action="store_true",
                     help="生成后强制走一遍 HIR 抬升→降级，算子多重集不等即失败")
-    ap.add_argument("--hir-emit", action="store_true",
-                    help="**用 HIR 降级结果作为 MIR 输出**（逐行 src 注释会折入表达式树）")
+    # **仍是 opt-in**（R750 试过切默认，打红了两个门，已回退）。
+    # 切换前必须补齐的：`--no-hir-emit` 之外，还要让 `test_translate_port` /
+    # `check_generated_compiles` 在 hir-emit 下也全绿 —— 现在它们默认仍按直出验。
+    ap.add_argument("--hir-emit", dest="hir_emit", action="store_true",
+                    help="用 HIR 降级结果作为 MIR 输出（实验性；默认关闭）")
+    ap.add_argument("--no-hir-emit", dest="hir_emit", action="store_false",
+                    help="显式关闭 HIR 产出（当前默认）")
+    ap.set_defaults(hir_emit=False)
     ap.add_argument("--recursive", action="store_true",
                     help="目录模式下递归子目录（真实工程必需）")
     args = ap.parse_args(argv)

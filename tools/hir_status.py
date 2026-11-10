@@ -49,8 +49,9 @@ def measure_src():
     """默认路径 vs `--hir-emit` 的 `# src:` 条数（行号对齐度）。"""
     a = os.path.join(WORK, "src_base.mir")
     b = os.path.join(WORK, "src_he.mir")
-    _run([sys.executable, MIR_PY, CORPUS, "-o", a])
-    _run([sys.executable, MIR_PY, CORPUS, "--hir-emit", "-o", b])
+    # 基准必须**显式关掉** HIR 产出：默认已开启，不关的话两边同路（假 100%）
+    _run([sys.executable, MIR_PY, CORPUS, "--no-hir-emit", "-o", a])
+    _run([sys.executable, MIR_PY, CORPUS, "-o", b])
     try:
         na = io.open(a, encoding="utf-8").read().count("# src:")
         nb = io.open(b, encoding="utf-8").read().count("# src:")
