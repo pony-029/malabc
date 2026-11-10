@@ -2341,22 +2341,30 @@ def hir_emit(text):
         block = lines[i:j]
         name = block[0][5:].strip()
         head = [l for l in block if l.startswith(("func:", "arg:", "ret:"))]
-        body = [l for l in block if l and not l.startswith(("func:", "arg:", "ret:", "#"))]
+        body = [l for l in block
+                if l and not l.startswith(("func:", "arg:", "ret:"))
+                and (not l.startswith("#") or l.startswith("# src:"))]
         # **只弹一个** `end`（函数级那个）。用 while 会把 `if:`/`while:` 块自己的
         # `end` 也弹掉 —— m2c 随即报"func 未以 end 收束"（R712 在报告脚本里犯过同样一次）。
         if body and body[-1].strip() == "end":
             body.pop()
+        # **透传必须带原因**：早前这里是裸 `except: 透传`，于是 6 个函数悄悄退回旧路径
+        # —— 产出照旧可用、判据照旧绿，只有产出的函数数从 58 掉到 52 时才看得见。
+        why = None
         try:
             hb, ok_map = H.mir_to_hir("\n".join(body))
             if not ok_map:
-                res.extend(block)              # 有算子无 HIR 名：整体透传
-                passed.append(name)
-                i = j
-                continue
-            low = H.hir_to_mir(H.hir_wrap(name, [], [], hb))
-        except Exception:                       # noqa: BLE001
+                miss = [l.split(":")[1] for l in body if l.startswith("op:")
+                        and l.split(":")[1] not in H._MIR2HIR_NAME]
+                why = "缺 HIR 名：%s" % (", ".join(sorted(set(miss))[:3]) or "?")
+                low = None
+            else:
+                low = H.hir_to_mir(H.hir_wrap(name, [], [], hb))
+        except Exception as exc:                # noqa: BLE001
+            why, low = "%s: %s" % (type(exc).__name__, exc), None
+        if low is None:
             res.extend(block)
-            passed.append(name)
+            passed.append((name, why))
             i = j
             continue
         res.extend(head)
@@ -2474,6 +2482,8 @@ def main(argv=None):
             text, passed = hir_emit(text)
             print("[hir-emit] 由 HIR 产出 %d 个函数，透传 %d 个"
                   % (stats["functions"] - len(passed), len(passed)))
+            for nm, why in passed[:5]:
+                print("      透传 %-14s %s" % (nm, (why or "")[:90]))
         if args.out:
             io.open(args.out, "w", encoding="utf-8", newline="").write(text)
             print("[ok] %s（%d 个 .m / 函数 %d / 算子 %d / 未映射 %d）"

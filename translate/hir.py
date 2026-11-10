@@ -107,8 +107,9 @@ def parse_hir(text):
             continue
         m = re.match(r"^([A-Za-z_]\w*)\s*=\s*(.+)$", s)
         if m:
+            expr_text = re.sub(r"@L\d+$", "", m.group(2).strip()).strip()
             out.append({"kind": "let", "dst": m.group(1),
-                        "expr": _Parser(m.group(2).strip()).parse()})
+                        "expr": _Parser(expr_text).parse()})
             continue
         # 透传行（控制流等）：原样保留，不参与折树。
         # **必须剥掉 `raw ` 前缀** —— 否则它会被当成 MIR 语句原样输出，
@@ -218,6 +219,8 @@ def _emit_node(node, dst, out):
     if dst is None:
         _emit_node._counter = getattr(_emit_node, "_counter", 0) + 1
         dst = "__h%d" % _emit_node._counter
+    if node.get("src"):
+        out.append("# src:%s" % node["src"])
     out.append("op:%s:%s:%s" % (mir_id, dst, ":".join(args)))
     return dst
 
@@ -244,18 +247,25 @@ def hir_to_mir(text):
 
 _OP_LINE = re.compile(r"^op:(OP-[A-Z0-9]+):([A-Za-z_]\w*):(.*)$")
 _CONST_LINE = re.compile(r"^const:([A-Za-z_]\w*):(-?\d+(?:\.\d+)?)$")
+#: `# src:12` —— 源码行号，必须跟着算子走
+_SRC_LINE = re.compile(r"^#\s*src:\s*(\d+)\s*$")
 #: 只折**生成器产生的临时量**（`__h` / `__c` / `__t` 前缀），
 #: 用户变量一律不折 —— 折了会改变可读性，也会让"这个值后来被改过"变得不可见。
 _TEMP_RE = re.compile(r"^__(?:h|c|t)\d+$")
 _MIR2HIR_NAME = {v: k for k, v in _HO.HIR_TO_MIR.items()}
 
 
-def _render(node):
+def _render(node, top=False):
     if "var" in node:
         return node["var"]
     if "num" in node:
         return node["num"]
-    return "%s(%s)" % (node["op"], ", ".join(_render(a) for a in node["args"]))
+    base = "%s(%s)" % (node["op"], ", ".join(_render(a) for a in node["args"]))
+    # **只在顶层加后缀**：嵌套节点若也带 `@L7`，它会落在实参列表里，
+    # 解析器随即报"缺少右括号"（实测 6 个函数因此透传）。
+    if top and node.get("src"):
+        return "%s@L%s" % (base, node["src"])
+    return base
 
 
 def mir_to_hir(text):
@@ -291,13 +301,21 @@ def mir_to_hir(text):
 
     env = {}      # 临时量 -> 表达式节点
     emitted = []
+    cur_src = None                     # 最近一条 `# src:N`，挂到下一个算子/语句上
     for l in raw_lines:
+        ms = _SRC_LINE.match(l)
+        if ms:
+            cur_src = ms.group(1)
+            continue
         m = _CONST_LINE.match(l)
         if m:
             name, val = m.group(1), m.group(2)
             if name in foldable:
                 env[name] = {"num": val}
                 continue
+            if cur_src:
+                emitted.append("raw # src:%s" % cur_src)
+                cur_src = None
             emitted.append("raw " + l)
             continue
         m = _OP_LINE.match(l)
@@ -305,11 +323,17 @@ def mir_to_hir(text):
             oid, dst, args = m.group(1), m.group(2), m.group(3).split(":")
             nodes = [env.pop(a, {"var": a}) for a in args]
             node = {"op": _MIR2HIR_NAME[oid], "args": nodes}
+            if cur_src:
+                node["src"] = cur_src
+                cur_src = None
             if dst in foldable:
                 env[dst] = node
             else:
-                emitted.append("%s = %s" % (dst, _render(node)))
+                emitted.append("%s = %s" % (dst, _render(node, True)))
             continue
+        if cur_src:
+            emitted.append("raw # src:%s" % cur_src)
+            cur_src = None
         emitted.append("raw " + l)
     return "\n".join(emitted), True
 
