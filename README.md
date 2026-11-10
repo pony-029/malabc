@@ -1274,6 +1274,7 @@ Three-link regression report: `python tools/three_links_report.py <dirs> -o <out
 - `tools/trace_demo.py` — records a real pipeline run step by step into JSONL (sha256 digests per step); `tools/trace_view.py` renders it as a static HTML trace page
 - `tools/trace_chain.py` — validates trace integrity: every step's input digest must trace back to an earlier step's output
 - `tools/hir_status.py` — runs `mir.py --via-hir` and writes `flow/hir_status.json` (participation / identity counts), so the numbers on the index page can only come from a real run
+- `tools/hir_parity.py` — per-function parity between the default path and `--hir-emit` (op multiset, `# src` set, values); the gate for making HIR emission the default
 - `tools/flow_steps.py` — injects the real step-by-step trace (`flow/traces/*.jsonl`) into `flow/index.html`, so every step shows control/data kind, input→output digests and what it changes
 
 Bucket census before any "the main cause is X" claim: `python tools/bucket_census.py <mir> <bucket>`.
