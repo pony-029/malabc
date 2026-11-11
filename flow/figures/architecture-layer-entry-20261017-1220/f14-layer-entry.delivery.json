@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "820311a9-bdbd-4e5e-8a43-c4e1fdcfd84f",
+  "receiptId": "1a00ea15-c1eb-4f07-a27c-28ef965e811f",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
-  "input": "E:\\temp\\matlabc\\figstage_all\\architecture-layer-entry-20261017-1220\\candidate.json",
-  "output": "E:\\temp\\matlabc\\figstage_all\\architecture-layer-entry-20261017-1220\\out.html",
+  "input": "E:\\temp\\matlabc\\rr_hat8j4a5\\candidate.json",
+  "output": "E:\\temp\\matlabc\\rr_hat8j4a5\\out.html",
   "specification": {
-    "sha256": "5a2224ef89955b500deb361af7c28d03d4d8a215fb507e00007966a61026f512",
-    "bytes": 3999
+    "sha256": "8209994e5d59779466f29df0faf9e9d3f2cad63991c8366cc3689be5f8d7fb66",
+    "bytes": 3998
   },
   "artifact": {
-    "sha256": "501438151ee47277b6077cfe0bb7300caba27d220f9795cb78046a2d0ab8e6e9",
+    "sha256": "163a3eb3669cd684fe9ea9a379472b56fba1e421ad3173edae40ba40a142f431",
     "bytes": 842051
   }
 }

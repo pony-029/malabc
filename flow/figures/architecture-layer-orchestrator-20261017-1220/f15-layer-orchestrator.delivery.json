@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "93bc3b80-c3d3-475c-a4d2-d3eb7c569205",
+  "receiptId": "a418e0f1-5bfb-4f51-ad6e-8536963080ca",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
-  "input": "E:\\temp\\matlabc\\figstage_all\\architecture-layer-orchestrator-20261017-1220\\candidate.json",
-  "output": "E:\\temp\\matlabc\\figstage_all\\architecture-layer-orchestrator-20261017-1220\\out.html",
+  "input": "E:\\temp\\matlabc\\rr_dp_3jn7x\\candidate.json",
+  "output": "E:\\temp\\matlabc\\rr_dp_3jn7x\\out.html",
   "specification": {
-    "sha256": "1605558161eecc9abde74d79dea52f52853d8a2981ba78aa63592122903c9f9c",
-    "bytes": 4371
+    "sha256": "0b01f20798e75df2f6b75cb06f818f4ef47c92200fa527659b57d5e3012cd507",
+    "bytes": 4370
   },
   "artifact": {
-    "sha256": "9cf81b7606eef0b4f0c763c21cdaa389e0d6752ec0c49b61736c034dc5f5b006",
+    "sha256": "439232ac9691cc5cfa5d75b94cad8366e0df48b55bd47aacb69217c488bf8666",
     "bytes": 842770
   }
 }

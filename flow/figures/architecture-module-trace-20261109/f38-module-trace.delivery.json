@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "ef55066f-475f-476c-bf71-16c42b36478e",
+  "receiptId": "8a959129-8ef2-4ce4-bdbf-b7554d0d6c3c",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
-  "input": "E:\\temp\\matlabc\\figstage_all\\architecture-module-trace-20261109\\candidate.json",
-  "output": "E:\\temp\\matlabc\\figstage_all\\architecture-module-trace-20261109\\out.html",
+  "input": "E:\\temp\\matlabc\\rr_18l6j3ih\\candidate.json",
+  "output": "E:\\temp\\matlabc\\rr_18l6j3ih\\out.html",
   "specification": {
-    "sha256": "6e44ac5f3eda18356a4ebeb47b58eb9d73aead1058be42aed39dc0cc12f96681",
-    "bytes": 6924
+    "sha256": "67ba7a86a5041715325287921a3c9cc92130688925530b8aa6611c8073d8ffcb",
+    "bytes": 6923
   },
   "artifact": {
-    "sha256": "51d4680b8e3df1c2ae1cd0ee3b316643a076e92f7be5b29bd13e97cf6d966860",
+    "sha256": "faaa5e3dd5f8bd541081b0265bb313799ad7d5b0f6b5fbbb581002501c5e97d2",
     "bytes": 860697
   }
 }

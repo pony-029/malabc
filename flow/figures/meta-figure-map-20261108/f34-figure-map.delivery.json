@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "09185d18-5066-4767-9ca9-d60553430a41",
+  "receiptId": "32c20f93-15ad-4331-8719-de96091b6299",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
-  "input": "E:\\temp\\matlabc\\f34v2\\candidate.json",
-  "output": "E:\\temp\\matlabc\\f34v2\\f34-figure-map.html",
+  "input": "E:\\temp\\matlabc\\rr_nfi9qao4\\candidate.json",
+  "output": "E:\\temp\\matlabc\\rr_nfi9qao4\\out.html",
   "specification": {
-    "sha256": "cf86b561f06943813d8250926eb5ad82e06f9be18da6344d478ab35db6ed190c",
-    "bytes": 3625
+    "sha256": "e231a856293d6272e59b1036fc073cf0dce205d0bc7001b14cd8bc9bca306d53",
+    "bytes": 3624
   },
   "artifact": {
-    "sha256": "cf02329e580a1942e555398449a2ed63bb0a97aecf517db423bf999d74b3a6d2",
+    "sha256": "84b7ad36250d14b55b4297bef1521a003aa5119d4f70b578133281572e7ff627",
     "bytes": 845061
   }
 }

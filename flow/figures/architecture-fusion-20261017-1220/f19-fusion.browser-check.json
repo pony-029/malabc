@@ -6,10 +6,10 @@
   "status": "pass",
   "visualReview": "not-requested",
   "provenance": "current",
-  "deliveryReceiptId": "b499f474-41a0-46ea-ba76-088640486e47",
+  "deliveryReceiptId": "b9f2ff97-5d18-4231-a2c3-638b11dc446c",
   "artifact": {
-    "path": "E:\\temp\\matlabc\\figstage_all\\architecture-fusion-20261017-1220\\out.html",
-    "sha256": "5ffad96f96f47f4c8d74e45f12e637e01e53fed65be46ff170664fba21c60896",
+    "path": "E:\\temp\\matlabc\\rr_zvgdat7n\\out.html",
+    "sha256": "c994fd743e629abd1e95390f31bb1072873fc339bc9ce7458968dd5a13f61053",
     "bytes": 856771
   },
   "state": {

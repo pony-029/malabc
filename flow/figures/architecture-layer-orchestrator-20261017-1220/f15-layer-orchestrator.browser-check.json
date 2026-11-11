@@ -6,10 +6,10 @@
   "status": "pass",
   "visualReview": "not-requested",
   "provenance": "current",
-  "deliveryReceiptId": "93bc3b80-c3d3-475c-a4d2-d3eb7c569205",
+  "deliveryReceiptId": "a418e0f1-5bfb-4f51-ad6e-8536963080ca",
   "artifact": {
-    "path": "E:\\temp\\matlabc\\figstage_all\\architecture-layer-orchestrator-20261017-1220\\out.html",
-    "sha256": "9cf81b7606eef0b4f0c763c21cdaa389e0d6752ec0c49b61736c034dc5f5b006",
+    "path": "E:\\temp\\matlabc\\rr_dp_3jn7x\\out.html",
+    "sha256": "439232ac9691cc5cfa5d75b94cad8366e0df48b55bd47aacb69217c488bf8666",
     "bytes": 842770
   },
   "state": {

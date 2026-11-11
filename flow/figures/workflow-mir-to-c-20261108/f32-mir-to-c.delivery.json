@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "034ea120-3018-44b9-8809-e3e68a4a2cd1",
+  "receiptId": "80d84930-bc33-45d0-b9f5-530e6840214e",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
-  "input": "E:\\temp\\matlabc\\figstage\\workflow-mir-to-c-20261108\\candidate.json",
-  "output": "E:\\temp\\matlabc\\figstage\\workflow-mir-to-c-20261108\\f32-mir-to-c.html",
+  "input": "E:\\temp\\matlabc\\rr_mebvcyak\\candidate.json",
+  "output": "E:\\temp\\matlabc\\rr_mebvcyak\\out.html",
   "specification": {
-    "sha256": "ba3402dce4e967a34dbaec664932b099d76ee0fcf2b301eff62e9609e12fed36",
-    "bytes": 4389
+    "sha256": "7f82c379fb814d46f2276a3d5c88862299e09829b766d62328ac17dcb76083e4",
+    "bytes": 4388
   },
   "artifact": {
-    "sha256": "1191c1658a55d74c2da2a4988520a6f46c8df24f1b95d4ef00ede997171e1721",
+    "sha256": "2379f9b5604346ff39a1580988609ff806d2b72e72c7cb2ad911d3831516291d",
     "bytes": 844668
   }
 }

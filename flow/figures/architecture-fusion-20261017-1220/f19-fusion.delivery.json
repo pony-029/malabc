@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "b499f474-41a0-46ea-ba76-088640486e47",
+  "receiptId": "b9f2ff97-5d18-4231-a2c3-638b11dc446c",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
-  "input": "E:\\temp\\matlabc\\figstage_all\\architecture-fusion-20261017-1220\\candidate.json",
-  "output": "E:\\temp\\matlabc\\figstage_all\\architecture-fusion-20261017-1220\\out.html",
+  "input": "E:\\temp\\matlabc\\rr_zvgdat7n\\candidate.json",
+  "output": "E:\\temp\\matlabc\\rr_zvgdat7n\\out.html",
   "specification": {
-    "sha256": "d6be87d0fa673f44c7fd1c0eeb2b3fc48b2ee05ec691d74e7054f3cdf7b0e71e",
-    "bytes": 6305
+    "sha256": "46501cc0ab999af1f134ab6f3fd1d44e8b0874b733ff079ddca0de8c5c16ad5b",
+    "bytes": 6304
   },
   "artifact": {
-    "sha256": "5ffad96f96f47f4c8d74e45f12e637e01e53fed65be46ff170664fba21c60896",
+    "sha256": "c994fd743e629abd1e95390f31bb1072873fc339bc9ce7458968dd5a13f61053",
     "bytes": 856771
   }
 }

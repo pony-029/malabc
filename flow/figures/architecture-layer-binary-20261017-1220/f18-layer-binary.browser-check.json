@@ -6,10 +6,10 @@
   "status": "pass",
   "visualReview": "not-requested",
   "provenance": "current",
-  "deliveryReceiptId": "9a691fa4-fd88-4039-b81a-d2e3c650f400",
+  "deliveryReceiptId": "5e79e058-2c7f-447f-82c3-36f6536c385d",
   "artifact": {
-    "path": "E:\\temp\\matlabc\\figstage_all\\architecture-layer-binary-20261017-1220\\out.html",
-    "sha256": "96ba737b4b2355acc27500021fdae2ab20c08f072040c63952a1b9a1af34ba2c",
+    "path": "E:\\temp\\matlabc\\rr_fnj4bng2\\out.html",
+    "sha256": "d08e3ec7703f741a9456c1c3e5dbdc7d3432ff808b5ada9d658fffa9bf74e819",
     "bytes": 839028
   },
   "state": {

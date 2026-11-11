@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "70e41ad5-da21-425b-8bfc-2e2f22864dae",
+  "receiptId": "f15d59b6-3ab7-4062-8b5a-661b0e2d36bb",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
-  "input": "E:\\temp\\matlabc\\figstage_all\\architecture-layer-semantic-20261017-1220\\candidate.json",
-  "output": "E:\\temp\\matlabc\\figstage_all\\architecture-layer-semantic-20261017-1220\\out.html",
+  "input": "E:\\temp\\matlabc\\rr_lkkbuulk\\candidate.json",
+  "output": "E:\\temp\\matlabc\\rr_lkkbuulk\\out.html",
   "specification": {
-    "sha256": "9bdd76b080855ef30efb19a0c241d62a05cb7ec8e0521c925a3fd79c5435e5a8",
-    "bytes": 3499
+    "sha256": "5b3e889fb51fbc7b35fd9c67503008d444a3e953a16db1ebbd2d2e29217bc114",
+    "bytes": 3498
   },
   "artifact": {
-    "sha256": "65236061383b2fde3c2d598d7e174debcdef82b647b5f25c0ff17616246b2b73",
+    "sha256": "da93def9e72c2b04a9875d6569b7ce0d842729cc4f297aa65afee50aeab15cb4",
     "bytes": 837379
   }
 }
