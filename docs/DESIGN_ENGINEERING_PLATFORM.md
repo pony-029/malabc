@@ -261,3 +261,25 @@ if !ok { /* 发 TODO(call) 并 return MLC_UNIMPLEMENTED */ }
 读配置（唯一 reader）→ 跑 `mir.py` → 跑 `m2c build --static-pool/--pool-align`，
 支持 `--dry-run` 打印两条命令；判据：改 `pool_bytes` 后生成物**确实**变化，
 且 `grep` 证明只有 `project_build.py` 读这份配置。
+
+### P2 落地（2026-11-11）：预算在**生成期**算、写进产物、超限即失败
+
+`translate/budget.py` 是唯一实现（命令行工具 `tools/project_budget.py` 复用同一份）：
+
+```
+单变量 = 元素数 × 类型宽度（arg:x:f64:3,2 → 6×8 = 48）
+单函数 = 所有 arg/ret/var 之和（保守上界，不做活跃区间分析）
+工程   = 各函数之和（池全局，函数间不共享）
+```
+
+`project_map.run_build()` 在**构建成功后**立刻：
+
+1. 解析 `.m2c/project.mir` → 算峰值；
+2. 写 `<c_root>/budget.json`（`functions` / `total_bytes` / `pool_bytes` / `within_budget`）；
+3. 若池子放不下 → **返回非零**，并打印超限明细（函数 / 变量 / 字节）。
+
+实测（numeric 语料 58 函数）：`3320 / 65536`，`within_budget: true`；
+把池子改成 1 字节时构建失败，明细首项 `while2d A 48 字节`。
+
+判据：`tests/test_budget.py`（P2a 字节正确 / P2b 落产物 / P2c 超限即失败并指名 /
+P2d 两处实现同口径）。

@@ -819,6 +819,29 @@ def run_build(cfg, base, cfg_path, m2c=None, python=None):
         out = r.stdout.decode("utf-8", "replace")
         if r.returncode != 0:
             return r.returncode, log, out
+
+    # —— 生成期预算（P2）：**构建成功之后立刻算**，并把结果写进产物 ——
+    # 之所以放在这里而不是留给板子：嵌入式最差的交付形态是"能编过、一跑就崩"。
+    # 算不出来（类型/形状未知）不阻塞构建 —— 预算不是构建的前置条件，是交付的一部分。
+    try:
+        import budget as _budget
+        pf = _budget.parse(io.open(mir, encoding="utf-8", errors="replace").read())
+        ok_b, data, top = _budget.report(pf, fl.get("static_pool"))
+        bpath = os.path.join(base, fl["c_root"], "budget.json")
+        os.makedirs(os.path.dirname(bpath), exist_ok=True)
+        io.open(bpath, "w", encoding="utf-8", newline="\n").write(
+            json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+        log.append("budget: %d 字节 / pool=%s → %s"
+                   % (data["total_bytes"], fl.get("static_pool"), bpath))
+        if not ok_b:
+            msg = ("**超预算**：需要 %d 字节，池只有 %s（差 %d）\n"
+                   % (data["total_bytes"], fl.get("static_pool"), data["over_by"]))
+            for b, fn, name in top:
+                msg += "   %-16s %-14s %6d 字节\n" % (fn, name, b)
+            return 1, log, out + msg
+    except Exception as exc:                      # noqa: BLE001
+        log.append("budget: 跳过（%s: %s）" % (type(exc).__name__, exc))
+
     return 0, log, out
 
 def _main_v2(cfg_path, argv, as_json):
