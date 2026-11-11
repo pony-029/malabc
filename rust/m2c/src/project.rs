@@ -437,6 +437,50 @@ pub fn emit_project(funcs: &[Func], name: &str, cases: &[Case],
     for f in funcs {
         h.push(proto(f));
     }
+
+    // —— 契约桩（P3）：被调用、但**不在本工程内**的函数，必须在契约面上可见 ——
+    //
+    // 现状：调用处会 `return MLC_UNIMPLEMENTED`（工程仍能编译、其余函数照跑），
+    // 但用户无从知道"我还需要提供哪几个函数"。这里把它们写进头文件，
+    // 形状按**调用点实参个数**推出（mlc_array 逐个 + 输出指针由调用方取址）。
+    {
+        let known: std::collections::HashSet<&str> =
+            funcs.iter().map(|f| f.name.as_str()).collect();
+        let mut ext: Vec<(String, usize)> = Vec::new();
+        for f in funcs {
+            crate::mir::walk_stmts(&f.body, &mut |s| {
+                if let crate::mir::Stmt::Call { func, args, .. } = s {
+                    if !known.contains(func.as_str()) {
+                        let mut found = false;
+                        for e in ext.iter_mut() {
+                            if &e.0 == func {
+                                e.1 = e.1.max(args.len());
+                                found = true;
+                            }
+                        }
+                        if !found {
+                            ext.push((func.clone(), args.len()));
+                        }
+                    }
+                }
+            });
+        }
+        if !ext.is_empty() {
+            h.push(String::new());
+            h.push("/* ==== 契约桩：以下函数被调用，但不在本工程内 ==== */".to_string());
+            h.push("/* 默认在调用处返回 MLC_UNIMPLEMENTED；需要真行为时由用户提供实现。 */"
+                .to_string());
+            for (nm, n) in ext.iter() {
+                let ps = (0..*n)
+                    .map(|i| format!("mlc_array a{}", i))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                h.push(format!("mlc_status m2c_ext_{}({});", nm, ps));
+            }
+            h.push(String::new());
+        }
+    }
+
     h.push(String::new());
     if pool.is_some() {
         // 池的配置入口：调用方（main/selftest/嵌入式启动代码）第一句就该调它

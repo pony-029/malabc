@@ -47,6 +47,7 @@ CHECKS = (
              os.path.join("tests", "test_config_effective.py"),
              # P2：预算在生成期算出来、落进 budget.json、超限即失败
              os.path.join("tests", "test_budget.py"),
+             os.path.join("tests", "test_contract_stub.py"),
              os.path.join("tests", "test_rt_balance.py"),
              os.path.join("tests", "test_mir_semantics.py"),
              os.path.join("tests", "test_no_duplicate_decls.py"),
