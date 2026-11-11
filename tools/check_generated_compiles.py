@@ -107,11 +107,30 @@ CHECKS = (
 )
 
 
-def _run_all():
-    """一次跑完全部用例文件；返回 (ok, tail, out)。"""
+#: **慢档**用例：跑 VM / 全语料编译 / 反推 / 端到端，合计约占 80% 用时。
+#: 本地迭代默认跳过它们（约 40s 出结论），官方全检仍跑全部
+#: （`check_all` 会设 `M2C_FULL_GATES=1`，或手工 `--full`）。
+SLOW_PAT = ("test_vm_", "test_roundtrip_vm", "test_translate_port",
+            "test_hir_links", "test_runtime_bounds", "test_multi_arg_driver",
+            "test_three_links", "test_backparse")
+
+
+def _is_slow(path):
+    base = os.path.basename(path)
+    return any(base.startswith(p) for p in SLOW_PAT)
+
+
+def _run_all(full=True):
+    """跑用例文件；返回 (ok, tail, out)。`full=False` 时跳过慢档。"""
     files = []
     for _, f, _ in CHECKS:
         files.extend(f if isinstance(f, (list, tuple)) else [f])
+    if not full:
+        kept = [f for f in files if not _is_slow(f)]
+        skipped = len(files) - len(kept)
+        print("  [快档] 跳过 %d 个慢用例文件（加 --full 或设 M2C_FULL_GATES=1 跑全量）"
+              % skipped)
+        files = kept
     cmd = [sys.executable, "-m", "pytest"] + list(files) + [
         "-q", "--tb=no", "-rf", "-p", "no:cacheprovider"]
     env = dict(os.environ)
@@ -173,7 +192,14 @@ def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--help", action="store_true")
+    # 默认**完整**（官方口径）；本地想快就 `--fast`，或显式 `--full`。
+    # `check_all` 会设 M2C_FULL_GATES=1，保证官方跑的是全量。
+    ap.add_argument("--fast", action="store_true", help="跳过慢档用例（本地迭代用）")
+    ap.add_argument("--full", action="store_true", help="跑全部用例（默认）")
     args = ap.parse_args(argv)
+    full = not args.fast or args.full
+    if os.environ.get("M2C_FULL_GATES") == "1":
+        full = True
 
     if args.help:
         print(__doc__)
@@ -191,7 +217,7 @@ def main(argv=None):
         print("check_generated_compiles: 缺 pytest（GX1/GX2 无法执行）")
         return 2
 
-    ok, tail, out = _run_all()
+    ok, tail, out = _run_all(full=full)
     probs = [] if ok else _attribute(out)
     for p in probs:
         print("  - " + p)

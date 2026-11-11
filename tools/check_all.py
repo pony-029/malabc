@@ -997,6 +997,11 @@ def main(argv):
         if not _write_help(__doc__):
             return 2
         return 0
+    # 官方全检跑**完整**用例集：某些门（如 `check_generated_compiles`）默认有
+    # "快档"跳过慢用例，只有这个环境变量能让它们回到全量。子进程继承环境，
+    # 所以在这里设一次即可（`_run` 用 Popen 未显式传 env）。
+    os.environ["M2C_FULL_GATES"] = "1"
+
     if "--selftest" in argv:
         bad, good = _selftest()
         print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
