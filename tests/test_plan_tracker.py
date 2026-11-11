@@ -80,3 +80,36 @@ def test_gate_count_matches_tools_dir():
     assert m, "PLAN_TRACKER 里没有写「N 道门」"
     assert int(m.group(1)) == n, \
         "文档写 %s 道门，实际 tools/check_*.py 有 %d 个" % (m.group(1), n)
+
+
+def test_every_test_file_is_referenced():
+    """`tests/` 下每个 `test_*.py` 都必须被**某个门或工作流**引用。
+
+    删除一个测试与**忘记运行**一个测试，在报表上完全一样 —— 都不出现。
+    R762 实测：71 个文件里 **15 个从未被任何清单引用**（其中 26 个判据的文件
+    已经红了一轮而无人知道）。这条判据把"清单漏项"变成红灯。
+    """
+    import glob
+    import re as _re
+
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    tests = sorted(os.path.basename(p) for p in
+                   glob.glob(os.path.join(repo, "tests", "test_*.py")))
+
+    hay = []
+    for sub in ("tools", os.path.join(".github", "workflows"), "ci-examples"):
+        d = os.path.join(repo, sub)
+        if not os.path.isdir(d):
+            continue
+        for f in os.listdir(d):
+            p = os.path.join(d, f)
+            if os.path.isfile(p) and f.endswith((".py", ".yml", ".yaml", ".sh", ".ps1", ".md")):
+                hay.append(io.open(p, encoding="utf-8", errors="replace").read())
+    for f in ("README.md", "README_CN.md", "CONTRIBUTING.md"):
+        p = os.path.join(repo, f)
+        if os.path.isfile(p):
+            hay.append(io.open(p, encoding="utf-8", errors="replace").read())
+    blob = "\n".join(hay)
+
+    orphans = [t for t in tests if not _re.search(r"\b%s\b" % _re.escape(t), blob)]
+    assert not orphans, "这些测试文件未被任何门引用（红了也没人知道）：%s" % orphans
