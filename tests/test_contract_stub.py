@@ -66,6 +66,37 @@ def test_header_lists_unresolved_external(header):
         "头文件没列出未解析的外部函数（用户无从知道要补什么）：\n%s" % header[-400:]
 
 
+def _gen_mir(src_text, extra_args=()):
+    import sys
+    d = tempfile.mkdtemp(prefix="p3s_", dir=WORK if os.path.isdir(WORK) else None)
+    p = os.path.join(d, "f.m")
+    io.open(p, "w", encoding="utf-8", newline="\n").write(src_text)
+    r = subprocess.run([sys.executable, os.path.join(ROOT, "translate", "mir.py"),
+                        p, "-o", os.path.join(d, "f.mir")] + list(extra_args),
+                       stdin=subprocess.DEVNULL, timeout=120,
+                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    assert r.returncode == 0, r.stdout.decode("utf-8", "replace")[-300:]
+    return io.open(os.path.join(d, "f.mir"), encoding="utf-8").read()
+
+
+SRC = ("function y = uses_ext(x)\n% @m2c shape x 3\n% @m2c shape y 3\n"
+       "y = external_magic(x);\nend\n")
+
+
+def test_external_call_kept_only_when_asked():
+    """P3c：默认**不**保留（如实标未映射）；`--external-calls` 才保留成 `call:`。
+
+    默认值是这条判据的重点：把"运行期才失败的调用"当成默认，
+    等于把可行动的诊断换成静默。
+    """
+    off = _gen_mir(SRC)
+    assert "call:" not in off, "默认不该把工程外调用转成 call:"
+    assert "unmapped:" in off, "默认应如实标为未映射"
+
+    on = _gen_mir(SRC, ("--external-calls",))
+    assert "call:y:external_magic:x" in on, "开了开关仍没保留成 call:"
+
+
 def test_arity_matches_callsite(header):
     """P3b：形参个数按**调用点实参个数**推出（本例 2 个 → a0, a1）。"""
     line = [l for l in header.splitlines() if "m2c_ext_missing" in l]

@@ -1724,7 +1724,7 @@ def _rewrite_struct_fields(code, hosts):
 
 
 def to_mir(source, extra_names=None, header=True, skip_names=None,
-           srcfile=None):
+           srcfile=None, external_calls=False):
     """返回 (mir_text, stats)。
 
     stats: {functions, ops, unmapped, per_op} —— 门与报告都用它，
@@ -1732,6 +1732,13 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
 
     `extra_names`：**整个工程**的函数名。目录转换时传入 ——
     否则跨文件调用会被当成"未知名字"而拒绝，而单文件视角看不出这是错的。
+
+    `external_calls`：把**工程外**的调用（`y = f(x)` 且 f 既非本工程函数、
+    也非已登记算子）保留成 `call:` 而不是 `unmapped:`。
+
+    **默认关**：这些函数终究不会被生成，转成 `call:` 意味着发射器要发
+    `MLC_UNIMPLEMENTED`（运行期才失败）。默认行为仍是"如实标为未映射"——
+    那是可行动的诊断；只有用户**显式**要"先装工程再补实现"时才开（P3 契约桩）。
     """
     src_norm = (source or "").replace("\r\n", "\n").replace("\r", "\n")
     src_hash = hashlib.sha256(src_norm.encode("utf-8")).hexdigest()
@@ -2142,7 +2149,7 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                         n_ops_delta[0] += 1
                         continue
                     cm = _CALL.match(rhs)
-                    if cm and cm.group(1) in fnames:
+                    if cm and (cm.group(1) in fnames or external_calls):
                         args = [x.strip() for x in cm.group(2).split(",")
                                 if x.strip()]
                         out.append("call:%s:%s:%s"
@@ -2407,6 +2414,10 @@ def main(argv=None):
     ap.add_argument("--no-hir-emit", dest="hir_emit", action="store_false",
                     help="关闭 HIR 产出，退回直接生成（回退开关）")
     ap.set_defaults(hir_emit=True)
+    # P3 契约桩：把**工程外**的调用保留成 `call:`（默认关 —— 默认行为是如实标为未映射，
+    # 那是更可行动的诊断；只有在"先装工程、再补实现"时才开）。
+    ap.add_argument("--external-calls", action="store_true",
+                    help="工程外的函数调用保留为 call:（配合契约桩 m2c_ext_*）")
     ap.add_argument("--recursive", action="store_true",
                     help="目录模式下递归子目录（真实工程必需）")
     args = ap.parse_args(argv)
@@ -2477,7 +2488,8 @@ def main(argv=None):
             # 相对工程根的路径：m2c 用它把函数分到各自的 .c
             rel = os.path.relpath(p, args.source).replace(os.sep, "/")
             t, st = to_mir(src, extra_names=names, header=(body is None),
-                           skip_names=skip, srcfile=rel)
+                           skip_names=skip, srcfile=rel,
+                           external_calls=getattr(args, "external_calls", False))
             body = t if body is None else body + t
             emitted |= {f["name"] for f in fs if f["name"] not in skip} \
                 if skip else emitted | {f["name"] for f in fs}
@@ -2519,7 +2531,7 @@ def main(argv=None):
     except (IOError, OSError) as exc:
         print("读不了 %s：%s" % (args.source, exc))
         return 2
-    text, stats = to_mir(src)
+    text, stats = to_mir(src, external_calls=getattr(args, "external_calls", False))
     if args.hir_emit:
         text, passed = hir_emit(text)
         print("[hir-emit] 由 HIR 产出 %d 个函数，透传 %d 个"
