@@ -52,6 +52,8 @@ CHECKS = (
              os.path.join("tests", "test_config_external_calls.py"),
              # P6：无 Octave 也成立的多路对账（位模式哈希 + 反推算子序列）
              os.path.join("tests", "test_four_way_no_octave.py"),
+             # P4：每个模块给出"该配什么"，且采纳后复扫有变化
+             os.path.join("tests", "test_config_suggest.py"),
              os.path.join("tests", "test_rt_balance.py"),
              os.path.join("tests", "test_mir_semantics.py"),
              os.path.join("tests", "test_no_duplicate_decls.py"),

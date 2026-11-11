@@ -1202,6 +1202,7 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 - `tools/semantics_coverage.py` —— MATLAB 语义完备性核查：真实代码里出现了哪些语义、各自支持到哪一档
 - `tools/flow_catalog.py` —— 生成 `flow/catalog.html`：一处列全所有流程图，并算出「现行 / 近期 / 已过时」状态
 - `tools/project_budget.py` —— 从 MIR 算**静态内存峰值**（元素数 × 类型宽度）并写出 `budget.json`；给 `--pool N` 时超限即报错并指名函数/变量
+- `tools/config_suggest.py` —— P4：对配置里的每个模块/源文件给出**该配什么**（注解或配置键）以及能消掉几处卡点；`--selftest` 自证映射
 - `tools/trace_demo.py` —— 逐步记录一次真实链路到 JSONL（每步带 sha256 摘要）；`tools/trace_view.py` 把它渲染成静态追踪页
 - `tools/trace_chain.py` —— 校验追踪链完整性：每一步的输入摘要都必须能追溯到更早某步的输出
 - `tools/hir_status.py` —— 实跑 `mir.py --via-hir` 并写出 `flow/hir_status.json`（接管率/恒等数），使首页上的数字只能来自真实运行
