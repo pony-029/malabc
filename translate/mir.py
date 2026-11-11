@@ -2341,18 +2341,22 @@ def hir_emit(text):
         block = lines[i:j]
         name = block[0][5:].strip()
         head = [l for l in block if l.startswith(("func:", "arg:", "ret:"))]
-        # 注释分两类，**都必须带过去**：
-        #   `# src:N`  → 行号（check 靠它指到行）
-        #   `# why:K`  → 卡点类别（check 靠它分出 cell/cond/shadowed…）
-        # 只带 src 时，诊断会全部退化成 `[misc]` —— 行号对、类别丢（实测 loadjson 17 行变化）。
+        # **注释一律带过去**。它们各自都是给下游/人看的契约：
+        #   `# src:N`     行号（check 靠它指到行）
+        #   `# why:K`     卡点类别（check 靠它分出 cell/cond/shadowed…）
+        #   `# dropped:K` 被丢弃的副作用语句（test_drop_sideeffect 靠它断言）
+        # 早前只带 src/why，于是 `# dropped:` 消失、两个测试红（R758）。
         body = [l for l in block
-                if l and not l.startswith(("func:", "arg:", "ret:"))
-                and (not l.startswith("#")
-                     or l.startswith("# src:") or l.startswith("# why:"))]
+                if l and not l.startswith(("func:", "arg:", "ret:"))]
         # **只弹一个** `end`（函数级那个）。用 while 会把 `if:`/`while:` 块自己的
         # `end` 也弹掉 —— m2c 随即报"func 未以 end 收束"（R712 在报告脚本里犯过同样一次）。
-        if body and body[-1].strip() == "end":
-            body.pop()
+        # 删除**最后一个** `end`（函数级那个）。不能只看 body[-1]：
+        # 保留注释后，块尾可能是 `# dropped:`，此时 `end` 不在末尾 ——
+        # 之前那种写法会漏删，然后在下面再补一个，产出"多余的 end"。
+        for _k in range(len(body) - 1, -1, -1):
+            if body[_k].strip() == "end":
+                body.pop(_k)
+                break
         # **透传必须带原因**：早前这里是裸 `except: 透传`，于是 6 个函数悄悄退回旧路径
         # —— 产出照旧可用、判据照旧绿，只有产出的函数数从 58 掉到 52 时才看得见。
         why = None
@@ -2402,7 +2406,7 @@ def main(argv=None):
                     help="（默认已开启）用 HIR 降级结果作为 MIR 输出")
     ap.add_argument("--no-hir-emit", dest="hir_emit", action="store_false",
                     help="关闭 HIR 产出，退回直接生成（回退开关）")
-    ap.set_defaults(hir_emit=False)
+    ap.set_defaults(hir_emit=True)
     ap.add_argument("--recursive", action="store_true",
                     help="目录模式下递归子目录（真实工程必需）")
     args = ap.parse_args(argv)
