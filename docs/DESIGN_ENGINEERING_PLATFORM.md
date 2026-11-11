@@ -251,12 +251,11 @@ if !ok { /* 发 TODO(call) 并 return MLC_UNIMPLEMENTED */ }
 | 配置模型（v2） | ✅ 完整 | `translate/project_map.py`：`modules/targets/memory/dtypes`，校验 M1–M5、T1–T3、MM1–MM5 |
 | 内存段 | ✅ 有 | `memory.pool_bytes` / `alignment` / `max_array_bytes` / `arrays` |
 | 静态池**能力** | ✅ 有 | `m2c build --static-pool N --pool-align A` 实测**改变产物**（头文件 diff 非空） |
-| 配置 → 生成器 | ❌ **缺** | `m2c build` 没有 `--config`；仓库里没有任何代码把 `pool_bytes` 传给 `--static-pool` |
+| 配置 → 生成器 | ✅ **已接线** | `project_map.run_build()` 用 `build_flags()`（配置 → 参数）+ `cflags_string()` 拼出 `--static-pool/--pool-align` 再调 `m2c build`；实测改 `pool_bytes` 65536→32768 时命令行随之变化（R770 更正） |
 | 配置 → 清单 | ⚠️ 部分 | `project_map.py` 能产 `manifest.h`（`M2C_MEM_POOL_BYTES`），但那是**旁路产物**，与 `m2c build` 的产物无因果关系 |
 
-**这就是 P1 的"唯一生效点"要求的真实缺口**：今天改 `memory.pool_bytes`
-只影响 `manifest.h`，**不影响** `gen.c` / 平台宏 —— 所以"改一处配置 → 只有对应行变化"
-这条判据目前**不可能通过**。
+**更正（R770）**：上一段结论是错的。接线在 `project_map.run_build()` 里，它读的是**已解析的 cfg 对象**（不是文件名），所以 `grep "m2c.project.json"` 找不到它。实测：`build_flags` 的 `static_pool` 与 `cflags_string` 的输出都随配置变化，而 `--static-pool` 会改变产物（头文件出现 `m2c_pool_boot`）。
+**真正缺的是判据**，已补 `tests/test_config_effective.py`（P1a/P1b/P1c）。
 
 **最小实现**（下一步，一轮可完成）：新增 `tools/project_build.py`：
 读配置（唯一 reader）→ 跑 `mir.py` → 跑 `m2c build --static-pool/--pool-align`，

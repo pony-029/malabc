@@ -43,6 +43,8 @@ CHECKS = (
              os.path.join("tests", "test_plan_tracker.py"),
              # 工程级（P0）：3 函数互调 -> C 工程 -> gcc -> 运行数值
              os.path.join("tests", "test_project_level.py"),
+             # P1：配置真的生效（build_flags/cflags_string/唯一 reader）
+             os.path.join("tests", "test_config_effective.py"),
              os.path.join("tests", "test_rt_balance.py"),
              os.path.join("tests", "test_mir_semantics.py"),
              os.path.join("tests", "test_no_duplicate_decls.py"),
