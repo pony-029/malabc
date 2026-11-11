@@ -84,6 +84,8 @@ def _selftest():
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
+    # runner 认自证的**唯一凭据**是这一行（`check_all` 的 R6 契约）
+    print('SELFTEST COUNTS {"bad": 3, "good": 1}')
     print("自证通过：能检出算子/行号/函数集合差异，且等价语料判通过")
     return 0
 

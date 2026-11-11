@@ -229,7 +229,11 @@ class TestSourceHandling(unittest.TestCase):
                                timeout=60)
             self.assertEqual(r.returncode, 0, r.stdout.decode("utf-8", "replace"))
             c = open(os.path.join(out, "src", "gen.c"), encoding="utf-8").read()
-            self.assertIn("mlc_array z;", c)
+            # 动态形状临时量**不预分配**：只声明 + 零初始化结构体，
+            # 真正的分配由 `mlc_op_mask_alloc` 自己做（长度由数据决定）。
+            # 早前断言的是旧写法 `mlc_array z;` —— 后来改成 `= {0}`（零初始化，
+            # 避免未初始化指针），性质没变，是**测试过时**而不是行为回归。
+            self.assertRegex(c, r"mlc_array\s+z\s*=\s*\{0\};")
             self.assertNotIn("mlc_array_init(&z", c)
             self.assertIn("mlc_op_mask_alloc(&v", c)
         finally:

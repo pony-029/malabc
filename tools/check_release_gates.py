@@ -69,6 +69,9 @@ CI_ONLY = (
     # 依赖 docs/architecture 的生成物（HTML/SVG）；发版清单只收几秒内的快门，
     # 生成物对账放在 CI 更合适。
     "check_architecture_docs",
+    # 跑**全语料两路对拍**（直出 vs --hir-emit，含 VM）：约 3~5s，
+    # 与 GX 编译判据叠加会撑破 BUDGET_MS=6000 的预算。
+    "check_hir_two_paths",
 )
 
 EXEMPT = {
