@@ -808,6 +808,10 @@ def run_build(cfg, base, cfg_path, m2c=None, python=None):
     cmd1 = [python, mir_py, root, "-o", mir]
     if cfg["matlab"].get("recursive", True):
         cmd1.insert(3, "--recursive")
+    # P3 契约桩：配置里显式声明了 `c.external_calls` 才把工程外调用保留成 `call:`
+    # （默认关 —— 默认是"如实标未映射"，那是更早暴露问题的诊断）。
+    if (cfg.get("c") or {}).get("external_calls"):
+        cmd1.append("--external-calls")
     cmd2 = [m2c, "build", "--mir", mir,
             "--out", os.path.join(base, fl["c_root"])] + cflags_string(fl, base).split()
 

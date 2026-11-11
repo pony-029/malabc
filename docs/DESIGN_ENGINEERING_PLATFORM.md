@@ -283,3 +283,19 @@ if !ok { /* 发 TODO(call) 并 return MLC_UNIMPLEMENTED */ }
 
 判据：`tests/test_budget.py`（P2a 字节正确 / P2b 落产物 / P2c 超限即失败并指名 /
 P2d 两处实现同口径）。
+
+### P3 落地（2026-11-11）：契约桩**可见**，且由配置决定开关
+
+| 环节 | 状态 |
+|---|---|
+| 工程仍能编译、其余函数照跑 | ✅ 早就成立（实测 `ok1: 2 4 6`，只有调用方 `unimplemented`） |
+| 头文件列出未解析外部函数 | ✅ `mlc_status m2c_ext_<名>(mlc_array a0, …);`，形参个数按**调用点**推出 |
+| 源码侧能产生 `call:` | ✅ `mir.py --external-calls`（**默认关**） |
+| 配置驱动 | ✅ `c.external_calls: true` → `run_build` 自动加开关 |
+
+**为什么默认关**：默认把工程外调用转成 `call:`，等于把"现在就能诊断的未映射"
+换成"运行期才返回 `MLC_UNIMPLEMENTED`"。工具的价值在于**更早暴露问题**，
+所以这个开关只能显式打开。
+
+判据：`tests/test_contract_stub.py`（P3a/P3b/P3c）+
+`tests/test_config_external_calls.py`（P3e-1 默认不转 / P3e-2 配置开了才转）。
