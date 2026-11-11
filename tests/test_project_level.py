@@ -106,18 +106,15 @@ def test_no_unimplemented(outputs):
 
 #: 第二形态：跨文件调用的实参是**字面量**（`scale(x, 2)`）。
 LITERAL_SRC = {
+    # `k` 必须是**标量形参**（`% @m2c i64 k`）—— 字面量实参只有配标量形参才合法；
+    # 配数组形参需要先落 1 元临时量，那是另一种形态，见文档「P0 实测」。
     "scale.m": "function y = scale(x, k)\n% @m2c shape x 3\n% @m2c shape y 3\n"
-               "% @m2c shape k 1\ny = x .* k;\nend\n",
+               "% @m2c i64 k\ny = x .* k;\nend\n",
     "twice.m": "function y = twice(x)\n% @m2c shape x 3\n% @m2c shape y 3\n"
                "y = scale(x, 2);\nend\n",
 }
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "P0 第二形态未实现：跨文件调用的**字面量实参**。"
-    "emit.rs 逐实参调 `f.var_dtype(a)`，字面量 `2` 返回 None ⇒ ok=false ⇒ "
-    "发 `TODO(call)` + `MLC_UNIMPLEMENTED`。修好后这条会 XPASS，"
-    "strict 会强制把标记摘掉（不允许欠账变静默）。"))
 def test_literal_arg_cross_file_call():
     """`twice → scale(x, 2)` 必须能生成并算对（= 2 4 6）。"""
     if not os.path.isfile(M2C):

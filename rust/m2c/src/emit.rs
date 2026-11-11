@@ -162,6 +162,14 @@ fn is_scalar_dt(dt: &str) -> bool {
     dt == "i64" || dt == "i32"
 }
 
+/// 实参是不是**数字字面量**（`2` / `-1` / `3.5`）。
+///
+/// 字面量在 MIR 里没有 dtype（`var_dtype` 返回 None），所以调用点必须
+/// 单独判一次：只有它配对的是**标量形参**时才允许直接写出来（R768）。
+fn is_num_literal(s: &str) -> bool {
+    !s.is_empty() && s.parse::<f64>().is_ok()
+}
+
 fn sanitize_comment(s: &str) -> String {
     s.replace("*/", "* /").replace('\n', " ")
 }
@@ -1313,10 +1321,13 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                             func, c.rets.len()));
                     } else {
                         for (actual, formal) in args.iter().zip(c.args.iter()) {
-                            let a_scalar = f
-                                .var_dtype(actual)
-                                .map(|d| is_scalar_dt(&d))
-                                .unwrap_or(false);
+                            // **字面量实参**没有 dtype：只有当形参是标量时才算"对得上"。
+                            // 不加这一条，`scale(x, 2)` 会在签名检查处就被判不符，
+                            // 再往下走永远发 `TODO(call)`（R767 实测）。
+                            let a_scalar = match f.var_dtype(actual) {
+                                Some(d) => is_scalar_dt(&d),
+                                None => is_num_literal(actual) && is_scalar_dt(&formal.dtype),
+                            };
                             if a_scalar != is_scalar_dt(&formal.dtype) {
                                 sig_err = Some(format!(
                                     "参数类型不符：{} 形参 {} 是 {}，实参 {} 是 {}",
@@ -1332,7 +1343,7 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                 let mut ok = known_names;
                 // 形参一律**按值**（`mlc_array x` / `int64_t i`），
                 // 所以实参直接写名字；只有"输出参数"才取地址。
-                for a in args {
+                for (argi, a) in args.iter().enumerate() {
                     match f.var_dtype(a) {
                         // 形参按值传：返回值是指针，要解引用；其余直接写名字
                         Some(dt) if !is_scalar_dt(&dt)
@@ -1342,8 +1353,19 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                         }
                         Some(_) => call_args.push(ident(a)),
                         None => {
-                            ok = false;
-                            call_args.push(ident(a));
+                            // **字面量实参**：形参是标量就直接写出来（`scale(x, 2)`）。
+                            // 形参是数组时仍需先落临时量 —— 那是另一种形态，暂不支持，
+                            // 保持 `TODO(call)`，不猜。
+                            let formal_scalar = callee
+                                .and_then(|c| c.args.get(argi))
+                                .map(|p| is_scalar_dt(&p.dtype))
+                                .unwrap_or(false);
+                            if formal_scalar && is_num_literal(a) {
+                                call_args.push(a.clone());
+                            } else {
+                                ok = false;
+                                call_args.push(ident(a));
+                            }
                         }
                     }
                 }
