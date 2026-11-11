@@ -169,7 +169,7 @@ def render_stats(n_int, n_svg, rows, hir=None):
                     % (hir["mapped"], hir["total"],
                        hir["identical"], hir["total"]))
         if hir.get("emitted") is not None:
-            hir_stat += ('\n    <span class="stat"><b>%d/%d</b>由 HIR 产出</span>'
+            hir_stat += ('\n    <span class="stat"><b>%d/%d</b>由 HIR 产出（默认）</span>'
                          % (hir["emitted"],
                             hir["emitted"] + hir.get("passthrough", 0)))
         if hir.get("src_parity") is not None:

@@ -10,7 +10,7 @@
       "url": "git@github.com:pony-029/malabc.git",
       "provider": "github",
       "link_mode": "local-only",
-      "revision": "f9b9751413ef557bc26630ad8bcb7cbfa168c7b5"
+      "revision": "70f46c825cb61f4d39911ab308a12618073a2c9d"
     }
   },
   "layout": {
@@ -56,7 +56,7 @@
       "id": "s3",
       "type": "backend",
       "label": "HIR 往返/产出",
-      "sublabel": "T3 · 产出 58/58 · 行号 100%",
+      "sublabel": "T3 · 默认产出 · 行号 100%",
       "tag": "T3+",
       "row": 0,
       "col": 2,
