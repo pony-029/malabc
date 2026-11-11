@@ -50,6 +50,8 @@ CHECKS = (
              os.path.join("tests", "test_contract_stub.py"),
              # P3：配置 c.external_calls 决定工程外调用是否进契约块
              os.path.join("tests", "test_config_external_calls.py"),
+             # P6：无 Octave 也成立的多路对账（位模式哈希 + 反推算子序列）
+             os.path.join("tests", "test_four_way_no_octave.py"),
              os.path.join("tests", "test_rt_balance.py"),
              os.path.join("tests", "test_mir_semantics.py"),
              os.path.join("tests", "test_no_duplicate_decls.py"),
