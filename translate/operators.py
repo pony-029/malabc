@@ -389,6 +389,24 @@ def _parse_hcat(text):
     return {"operator": "OP-HCAT", "args": parts, "lhs": m.group(1)}
 
 
+#: `parse_line` **不负责**识别这些算子的样本形态（登记制，两向核对）。
+#:
+#: 它们的样本不是「`y = f(...)`」这一类，而是：无括号赋值（`y = A;`）、
+#: 拼接（`y = [a; b];`）、二维写回（`A(i,j) = v;`）、按运行期维度造数组
+#: （`y = ones(m,n);`）。这些形态由 `mir.py` 的专门分支处理 —— 能力在，
+#: 只是不走这个通用入口。给 parse_line 再补一套正则等于重复实现、并抢语义。
+#:
+#: 登记了却已经能被解析 ⇒ 陈旧豁免，测试会反向抓出来。
+PARSE_LINE_EXEMPT = {
+    "OP-COPY": "无括号赋值 `y = A;`，由 mir.py 的复制分支处理",
+    "OP-VCAT": "拼接 `y = [a; b];`，由 mir.py 的 hcat/vcat 分支处理",
+    "OP-IDX2": "二维下标读取 `y = A(i, j);`，由 mir.py 的 IDX2 分支处理",
+    "OP-SETIDX2": "二维写回 `A(i, j) = v;`，由 mir.py 的 SETIDX2 分支处理",
+    "OP-FILLA": "运行期维度造数组 `y = ones(m, n);`，由 mir.py 的 fill 分支处理",
+    "OP-SETDIFF": "集合差 `y = setdiff(a, b);`，由 mir.py 的 setdiff 降级链处理",
+}
+
+
 def parse_line(line):
     """把一条 MATLAB 赋值语句识别成算子；识别不了返回 None（进 unmapped）。"""
     _hc = _parse_hcat(line or "")

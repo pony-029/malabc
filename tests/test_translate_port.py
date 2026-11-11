@@ -74,8 +74,22 @@ class TestAdapters(unittest.TestCase):
 
 class TestOperators(unittest.TestCase):
     def test_every_sample_parses_to_itself(self):
+        """样本必须能被 `parse_line` 认回自己 —— 除登记豁免的那些。
+
+        豁免有两种失效方式，都要抓：登记了但样本其实能解析（陈旧），
+        以及表里新增了算子却忘了登记（漏登记会直接在这里报 None）。
+        """
+        exempt = getattr(operators, "PARSE_LINE_EXEMPT", {})
+        ids = {op["id"] for op in operators.OPERATORS}
+        stale = sorted(set(exempt) - ids)
+        self.assertEqual(stale, [], "豁免登记里有无主条目（算子已不存在）：%s" % stale)
+
         for op in operators.OPERATORS:
             u = operators.parse_line(op["sample"])
+            if op["id"] in exempt:
+                self.assertIsNone(
+                    u, "%s 已在豁免表里，但样本现在能解析了 —— 陈旧豁免" % op["id"])
+                continue
             self.assertIsNotNone(u, op["id"])
             self.assertEqual(u["operator"], op["id"])
         self.assertEqual(operators.operator_problems(), [])
