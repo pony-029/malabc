@@ -34,8 +34,17 @@ ROW_SIGNATURE = "TS1–TS2"
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
+#: runner 也是"带自证的工具"，只是名字以 `check_` 开头被上面的过滤跳过了。
+#:
+#: 为什么必须纳入（R782）：`check_all.py --selftest` 里有一条「MIN_GUARDS 必须等于
+#: 本目录真实护栏数」的棘轮。R753 加了门却没同步数字，于是**自证一直红** ∈
+#: 而没有任何一条路会跑它 —— 因为本函数只扫非 `check_` 前缀的工具。
+#: 棘轮的第二半（那个数字本身不能落后）就这样形同虚设。
+RUNNER = "check_all.py"
+
+
 def _tools_with_selftest():
-    out = []
+    out = [RUNNER]
     for n in sorted(os.listdir(HERE)):
         if not n.endswith(".py") or n.startswith("check_"):
             continue
