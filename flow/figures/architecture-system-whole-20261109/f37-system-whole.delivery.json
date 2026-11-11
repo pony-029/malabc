@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "45f47548-b269-43c3-89fa-668ea2045599",
+  "receiptId": "915730e2-e06f-4aa8-8d0c-ccae0c9efedb",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
-  "input": "E:\\temp\\matlabc\\f37v1\\f37\\candidate.json",
-  "output": "E:\\temp\\matlabc\\f37v1\\f37\\f37-system-whole.html",
+  "input": "E:\\temp\\matlabc\\figstage_all\\architecture-system-whole-20261109\\candidate.json",
+  "output": "E:\\temp\\matlabc\\figstage_all\\architecture-system-whole-20261109\\out.html",
   "specification": {
-    "sha256": "65b208a3471da4674226ad066d19ee6fb20a75ea7cd84c8979584e052403864c",
+    "sha256": "045056787af0fa5924459a4cdd2b8cb1886fc1ca84f7b5dd8d8856abe4c3c02d",
     "bytes": 6557
   },
   "artifact": {
-    "sha256": "fe9fbadad7f2951c009b7aafe5955d9aa05ede15e2e7dd5565295653571c049c",
+    "sha256": "a9bdb9a700525e1d0e7c8fac2271374c2fad149f1d4a94d0dac2052e283f40af",
     "bytes": 861631
   }
 }

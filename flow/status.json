@@ -106,7 +106,7 @@
       "path": "flow/",
       "duty": "流程图与目录页",
       "status": "ok",
-      "files": 180,
+      "files": 190,
       "gx2_tests": 76
     },
     {
@@ -118,12 +118,12 @@
     }
   ],
   "figures": {
-    "current": 0,
+    "current": 10,
     "recent": 0,
-    "stale": 20,
+    "stale": 10,
     "unknown": 0,
     "count": 20
   },
   "gx2_tests": 76,
-  "head": "e63f0466dcd8"
+  "head": "b397a149869d"
 }

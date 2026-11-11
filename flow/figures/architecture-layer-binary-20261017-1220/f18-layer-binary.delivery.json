@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "aa14da31-805f-40f2-b945-d6f15f40549c",
+  "receiptId": "9a691fa4-fd88-4039-b81a-d2e3c650f400",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
-  "input": "E:\\matlabc\\malabc\\flow\\figures\\architecture-layer-binary-20261017-1220\\candidate.json",
-  "output": "E:\\matlabc\\malabc\\flow\\figures\\architecture-layer-binary-20261017-1220\\f18-layer-binary.html",
+  "input": "E:\\temp\\matlabc\\figstage_all\\architecture-layer-binary-20261017-1220\\candidate.json",
+  "output": "E:\\temp\\matlabc\\figstage_all\\architecture-layer-binary-20261017-1220\\out.html",
   "specification": {
-    "sha256": "d210946d87d1d9578c0ef03447e76d725c5bf94a935f20e57e2dd59c1c9ba897",
-    "bytes": 2792
+    "sha256": "c5d20fe531d0d131ea111566775455266bfb5f58db98036af8b0e7f0b8224e93",
+    "bytes": 3712
   },
   "artifact": {
-    "sha256": "9226e8b1616fb18079ce1995f53f132084b5a156787f6d0ae736136cbf1f2e31",
-    "bytes": 816536
+    "sha256": "96ba737b4b2355acc27500021fdae2ab20c08f072040c63952a1b9a1af34ba2c",
+    "bytes": 839028
   }
 }

@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "ef1ec5be-7da5-4b18-aa11-7c8e643d0c04",
+  "receiptId": "b499f474-41a0-46ea-ba76-088640486e47",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
-  "input": "E:\\matlabc\\malabc\\flow\\figures\\architecture-fusion-20261017-1220\\candidate.json",
-  "output": "E:\\matlabc\\malabc\\flow\\figures\\architecture-fusion-20261017-1220\\f19-fusion.html",
+  "input": "E:\\temp\\matlabc\\figstage_all\\architecture-fusion-20261017-1220\\candidate.json",
+  "output": "E:\\temp\\matlabc\\figstage_all\\architecture-fusion-20261017-1220\\out.html",
   "specification": {
-    "sha256": "84df644772f69660234abe5f157ab821a575de63477c0b7250a4123866d42707",
-    "bytes": 4804
+    "sha256": "d6be87d0fa673f44c7fd1c0eeb2b3fc48b2ee05ec691d74e7054f3cdf7b0e71e",
+    "bytes": 6305
   },
   "artifact": {
-    "sha256": "0ce97bc0ba502bd134232b1b879850b98519e8944d3ecb61d212b3bc3322bf2b",
-    "bytes": 834279
+    "sha256": "5ffad96f96f47f4c8d74e45f12e637e01e53fed65be46ff170664fba21c60896",
+    "bytes": 856771
   }
 }

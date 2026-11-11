@@ -10,7 +10,7 @@
       "url": "git@github.com:pony-029/malabc.git",
       "provider": "github",
       "link_mode": "local-only",
-      "revision": "069fe5553a8939591a0c390f047854bf43d740d4"
+      "revision": "b397a149869da2d0644612c6292bd04a1915b22d"
     }
   },
   "layout": {
@@ -30,7 +30,11 @@
       "row": 0,
       "col": 0,
       "sources": [
-        { "path": "gui.py", "line": 184, "label": "build_cli_args" }
+        {
+          "path": "gui.py",
+          "line": 184,
+          "label": "build_cli_args"
+        }
       ]
     },
     {
@@ -42,8 +46,16 @@
       "row": 0,
       "col": 1,
       "sources": [
-        { "path": "matlabc.py", "line": 32242, "label": "--browse" },
-        { "path": "matlabc.py", "line": 32389, "label": "--gen-tests" }
+        {
+          "path": "matlabc.py",
+          "line": 32242,
+          "label": "--browse"
+        },
+        {
+          "path": "matlabc.py",
+          "line": 32389,
+          "label": "--gen-tests"
+        }
       ]
     },
     {
@@ -54,8 +66,16 @@
       "row": 0,
       "col": 2,
       "sources": [
-        { "path": "matlabc.py", "line": 3523, "label": "MatlabFunction" },
-        { "path": "frontends/matlab.py", "line": 32, "label": "unresolved_tuples" }
+        {
+          "path": "matlabc.py",
+          "line": 3523,
+          "label": "MatlabFunction"
+        },
+        {
+          "path": "frontends/matlab.py",
+          "line": 32,
+          "label": "unresolved_tuples"
+        }
       ]
     },
     {
@@ -66,8 +86,16 @@
       "row": 0,
       "col": 4,
       "sources": [
-        { "path": "callrel.py", "line": 749, "label": "call_relations" },
-        { "path": "callrel.py", "line": 21, "label": "两种口径" }
+        {
+          "path": "callrel.py",
+          "line": 749,
+          "label": "call_relations"
+        },
+        {
+          "path": "callrel.py",
+          "line": 21,
+          "label": "两种口径"
+        }
       ]
     },
     {
@@ -79,8 +107,16 @@
       "row": 0,
       "col": 5,
       "sources": [
-        { "path": "renderers/csite.py", "line": 503, "label": "render_c_site" },
-        { "path": "renderers/csite.py", "line": 300, "label": "_graph_svg" }
+        {
+          "path": "renderers/csite.py",
+          "line": 503,
+          "label": "render_c_site"
+        },
+        {
+          "path": "renderers/csite.py",
+          "line": 300,
+          "label": "_graph_svg"
+        }
       ]
     },
     {
@@ -91,7 +127,11 @@
       "row": 1,
       "col": 0,
       "sources": [
-        { "path": "matlabc_mcp.py", "line": 9, "label": "工具清单" }
+        {
+          "path": "matlabc_mcp.py",
+          "line": 9,
+          "label": "工具清单"
+        }
       ]
     },
     {
@@ -103,8 +143,16 @@
       "row": 1,
       "col": 1,
       "sources": [
-        { "path": "matlabc.py", "line": 8990, "label": "FRONTEND_REGISTRY" },
-        { "path": "matlabc.py", "line": 8758, "label": "_parse_c_source" }
+        {
+          "path": "matlabc.py",
+          "line": 8990,
+          "label": "FRONTEND_REGISTRY"
+        },
+        {
+          "path": "matlabc.py",
+          "line": 8758,
+          "label": "_parse_c_source"
+        }
       ]
     },
     {
@@ -116,8 +164,16 @@
       "row": 1,
       "col": 2,
       "sources": [
-        { "path": "matlabc.py", "line": 7255, "label": "_c_lex" },
-        { "path": "matlabc.py", "line": 9469, "label": "_c_heuristic_checks" }
+        {
+          "path": "matlabc.py",
+          "line": 7255,
+          "label": "_c_lex"
+        },
+        {
+          "path": "matlabc.py",
+          "line": 9469,
+          "label": "_c_heuristic_checks"
+        }
       ]
     },
     {
@@ -129,8 +185,16 @@
       "row": 1,
       "col": 3,
       "sources": [
-        { "path": "frontends/ir.py", "line": 64, "label": "resolve_calls" },
-        { "path": "frontends/ir.py", "line": 93, "label": "call_sites_of_files" }
+        {
+          "path": "frontends/ir.py",
+          "line": 64,
+          "label": "resolve_calls"
+        },
+        {
+          "path": "frontends/ir.py",
+          "line": 93,
+          "label": "call_sites_of_files"
+        }
       ]
     },
     {
@@ -142,8 +206,16 @@
       "row": 1,
       "col": 4,
       "sources": [
-        { "path": "unified_graph.py", "line": 184, "label": "UnifiedGraph" },
-        { "path": "unified_graph.py", "line": 337, "label": "conservation_problems" }
+        {
+          "path": "unified_graph.py",
+          "line": 184,
+          "label": "UnifiedGraph"
+        },
+        {
+          "path": "unified_graph.py",
+          "line": 337,
+          "label": "conservation_problems"
+        }
       ]
     },
     {
@@ -155,9 +227,21 @@
       "row": 2,
       "col": 0,
       "sources": [
-        { "path": "matlabc_ask.py", "line": 1, "label": "问答" },
-        { "path": "agent_loop.py", "line": 1, "label": "循环" },
-        { "path": "analyzer_memory.py", "line": 1, "label": "记忆" }
+        {
+          "path": "matlabc_ask.py",
+          "line": 1,
+          "label": "问答"
+        },
+        {
+          "path": "agent_loop.py",
+          "line": 1,
+          "label": "循环"
+        },
+        {
+          "path": "analyzer_memory.py",
+          "line": 1,
+          "label": "记忆"
+        }
       ]
     },
     {
@@ -168,9 +252,21 @@
       "row": 2,
       "col": 1,
       "sources": [
-        { "path": "renderers/sarif.py", "line": 10, "label": "render_sarif" },
-        { "path": "renderers/snapshot.py", "line": 129, "label": "快照报告" },
-        { "path": "matlabc.py", "line": 32729, "label": "--gen-apply-patch" }
+        {
+          "path": "renderers/sarif.py",
+          "line": 10,
+          "label": "render_sarif"
+        },
+        {
+          "path": "renderers/snapshot.py",
+          "line": 129,
+          "label": "快照报告"
+        },
+        {
+          "path": "matlabc.py",
+          "line": 32729,
+          "label": "--gen-apply-patch"
+        }
       ]
     },
     {
@@ -181,8 +277,16 @@
       "row": 2,
       "col": 2,
       "sources": [
-        { "path": "pyast_frontend.py", "line": 17, "label": "ast 层" },
-        { "path": "matlabc.py", "line": 11467, "label": "扩展语言模式" }
+        {
+          "path": "pyast_frontend.py",
+          "line": 17,
+          "label": "ast 层"
+        },
+        {
+          "path": "matlabc.py",
+          "line": 11467,
+          "label": "扩展语言模式"
+        }
       ]
     },
     {
@@ -193,8 +297,16 @@
       "row": 2,
       "col": 3,
       "sources": [
-        { "path": "entity_model.py", "line": 186, "label": "matlab_entities" },
-        { "path": "entity_model.py", "line": 258, "label": "c_entities" }
+        {
+          "path": "entity_model.py",
+          "line": 186,
+          "label": "matlab_entities"
+        },
+        {
+          "path": "entity_model.py",
+          "line": 258,
+          "label": "c_entities"
+        }
       ]
     },
     {
@@ -206,8 +318,16 @@
       "row": 2,
       "col": 4,
       "sources": [
-        { "path": "binfmt/attribute.py", "line": 59, "label": "SymbolIndex" },
-        { "path": "binfmt/resolve.py", "line": 470, "label": "resolve_graph" }
+        {
+          "path": "binfmt/attribute.py",
+          "line": 59,
+          "label": "SymbolIndex"
+        },
+        {
+          "path": "binfmt/resolve.py",
+          "line": 470,
+          "label": "resolve_graph"
+        }
       ]
     },
     {
@@ -218,7 +338,11 @@
       "row": 2,
       "col": 5,
       "sources": [
-        { "path": "renderers/dynlibs.py", "line": 327, "label": "extract_dynlib_refs" }
+        {
+          "path": "renderers/dynlibs.py",
+          "line": 327,
+          "label": "extract_dynlib_refs"
+        }
       ]
     },
     {
@@ -229,33 +353,149 @@
       "row": 3,
       "col": 4,
       "sources": [
-        { "path": "binfmt/container.py", "line": 67, "label": "parse" },
-        { "path": "binfmt/elf.py", "line": 127, "label": "ELF parse" }
+        {
+          "path": "binfmt/container.py",
+          "line": 67,
+          "label": "parse"
+        },
+        {
+          "path": "binfmt/elf.py",
+          "line": 127,
+          "label": "ELF parse"
+        }
       ]
     }
   ],
   "connections": [
-    { "id": "cli-orch", "from": "cli", "to": "orchestrator", "label": "argv / 配置", "variant": "emphasis" },
-    { "id": "gui-orch", "from": "gui", "to": "orchestrator", "label": "build_cli_args" },
-    { "id": "mcp-orch", "from": "mcp", "to": "orchestrator", "label": "JSON-RPC" },
-    { "id": "ai-orch", "from": "ai", "to": "orchestrator", "label": "问答 / 循环" },
-    { "id": "orch-outputs", "from": "orchestrator", "to": "outputs", "label": "落盘产物" },
-    { "id": "orch-matlab", "from": "orchestrator", "to": "fe-matlab", "label": "MATLAB 默认", "variant": "emphasis" },
-    { "id": "orch-c", "from": "orchestrator", "to": "fe-c", "label": "--lang c" },
-    { "id": "orch-pyjs", "from": "orchestrator", "to": "fe-pyjs", "label": "--lang py|js" },
-    { "id": "matlab-ir", "from": "fe-matlab", "to": "fe-ir", "label": "calls / unresolved" },
-    { "id": "c-ir", "from": "fe-c", "to": "fe-ir", "label": "calls / unresolved" },
-    { "id": "pyjs-ir", "from": "fe-pyjs", "to": "fe-ir", "label": "calls / unresolved" },
-    { "id": "c-entity", "from": "fe-c", "to": "entity", "label": "适配器归一化" },
-    { "id": "pyjs-entity", "from": "fe-pyjs", "to": "entity", "label": "适配器归一化" },
-    { "id": "ir-callrel", "from": "fe-ir", "to": "callrel", "label": "edges" },
-    { "id": "callrel-ugraph", "from": "callrel", "to": "ugraph", "label": "有界投影" },
-    { "id": "entity-ugraph", "from": "entity", "to": "ugraph", "label": "实体节点" },
-    { "id": "binfmt-attr", "from": "binfmt", "to": "binattr", "label": "容器读数" },
-    { "id": "attr-ugraph", "from": "binattr", "to": "ugraph", "label": "归因边" },
-    { "id": "callrel-site", "from": "callrel", "to": "site", "label": "调用图 / 交叉引用" },
-    { "id": "ugraph-site", "from": "ugraph", "to": "site", "label": "统一图" },
-    { "id": "dynlibs-site", "from": "dynlibs", "to": "site", "label": "源码想用谁", "variant": "dashed" }
+    {
+      "id": "cli-orch",
+      "from": "cli",
+      "to": "orchestrator",
+      "label": "argv / 配置",
+      "variant": "emphasis"
+    },
+    {
+      "id": "gui-orch",
+      "from": "gui",
+      "to": "orchestrator",
+      "label": "build_cli_args"
+    },
+    {
+      "id": "mcp-orch",
+      "from": "mcp",
+      "to": "orchestrator",
+      "label": "JSON-RPC"
+    },
+    {
+      "id": "ai-orch",
+      "from": "ai",
+      "to": "orchestrator",
+      "label": "问答 / 循环"
+    },
+    {
+      "id": "orch-outputs",
+      "from": "orchestrator",
+      "to": "outputs",
+      "label": "落盘产物"
+    },
+    {
+      "id": "orch-matlab",
+      "from": "orchestrator",
+      "to": "fe-matlab",
+      "label": "MATLAB 默认",
+      "variant": "emphasis"
+    },
+    {
+      "id": "orch-c",
+      "from": "orchestrator",
+      "to": "fe-c",
+      "label": "--lang c"
+    },
+    {
+      "id": "orch-pyjs",
+      "from": "orchestrator",
+      "to": "fe-pyjs",
+      "label": "--lang py|js"
+    },
+    {
+      "id": "matlab-ir",
+      "from": "fe-matlab",
+      "to": "fe-ir",
+      "label": "calls / unresolved"
+    },
+    {
+      "id": "c-ir",
+      "from": "fe-c",
+      "to": "fe-ir",
+      "label": "calls / unresolved"
+    },
+    {
+      "id": "pyjs-ir",
+      "from": "fe-pyjs",
+      "to": "fe-ir",
+      "label": "calls / unresolved"
+    },
+    {
+      "id": "c-entity",
+      "from": "fe-c",
+      "to": "entity",
+      "label": "适配器归一化"
+    },
+    {
+      "id": "pyjs-entity",
+      "from": "fe-pyjs",
+      "to": "entity",
+      "label": "适配器归一化"
+    },
+    {
+      "id": "ir-callrel",
+      "from": "fe-ir",
+      "to": "callrel",
+      "label": "edges"
+    },
+    {
+      "id": "callrel-ugraph",
+      "from": "callrel",
+      "to": "ugraph",
+      "label": "有界投影"
+    },
+    {
+      "id": "entity-ugraph",
+      "from": "entity",
+      "to": "ugraph",
+      "label": "实体节点"
+    },
+    {
+      "id": "binfmt-attr",
+      "from": "binfmt",
+      "to": "binattr",
+      "label": "容器读数"
+    },
+    {
+      "id": "attr-ugraph",
+      "from": "binattr",
+      "to": "ugraph",
+      "label": "归因边"
+    },
+    {
+      "id": "callrel-site",
+      "from": "callrel",
+      "to": "site",
+      "label": "调用图 / 交叉引用"
+    },
+    {
+      "id": "ugraph-site",
+      "from": "ugraph",
+      "to": "site",
+      "label": "统一图"
+    },
+    {
+      "id": "dynlibs-site",
+      "from": "dynlibs",
+      "to": "site",
+      "label": "源码想用谁",
+      "variant": "dashed"
+    }
   ],
   "cards": [
     {

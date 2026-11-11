@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "fa01ae86-34bd-460f-8d23-399c2d48a6eb",
+  "receiptId": "d2f4ed15-1961-474d-aae6-df68988cfc3f",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
-  "input": "E:\\temp\\matlabc\\f30v2\\f30\\candidate.json",
-  "output": "E:\\temp\\matlabc\\f30v2\\f30\\f30-engineering-platform.html",
+  "input": "E:\\temp\\matlabc\\figstage_all\\architecture-engineering-platform-20261108\\candidate.json",
+  "output": "E:\\temp\\matlabc\\figstage_all\\architecture-engineering-platform-20261108\\out.html",
   "specification": {
-    "sha256": "9f35176dce46a84a105aeca8c616221575b3805141c03cbcbbda3caeea83a2f6",
+    "sha256": "61f2398f4ecbfb4c6bfc636e95b529c817aec25a22456e5398e06b651f960c4c",
     "bytes": 5825
   },
   "artifact": {
-    "sha256": "f0aa344eb6b92bc6849fb611df03c89f01c90e0df520ec454f089ed93649e662",
+    "sha256": "72bb9cfa421c7317e957dde999257b7a7200ac083d56d17a032fbebc3b597f52",
     "bytes": 855604
   }
 }

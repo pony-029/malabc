@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "f3502791-5f25-4598-9074-f4c6d2519c26",
+  "receiptId": "cc2c2140-0bb9-4c30-84fb-3f20847808b7",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
-  "input": "E:\\matlabc\\malabc\\flow\\figures\\architecture-malabc-modules-20261017-113257\\candidate.json",
-  "output": "E:\\matlabc\\malabc\\flow\\figures\\architecture-malabc-modules-20261017-113257\\malabc-modules.html",
+  "input": "E:\\temp\\matlabc\\figstage_all\\architecture-malabc-modules-20261017-113257\\candidate.json",
+  "output": "E:\\temp\\matlabc\\figstage_all\\architecture-malabc-modules-20261017-113257\\out.html",
   "specification": {
-    "sha256": "e4985ea2e36e8f261c3bfd62db0e919e2a9b6c8e754326f86c4bfb2001075fb0",
-    "bytes": 10633
+    "sha256": "9b102f9eb7dd46c74f18c2ff485603485679486dad0b8a3655f48b662e8f5062",
+    "bytes": 12192
   },
   "artifact": {
-    "sha256": "0504d16b8b0c0f7e841c6a81a25df710020c0153126dcbfb6559d8865a78cf1f",
-    "bytes": 850052
+    "sha256": "1e51b9897dcb9608c522467a1e2295f88a236f56ada3c76ddce44a92fa14cad4",
+    "bytes": 872544
   }
 }
