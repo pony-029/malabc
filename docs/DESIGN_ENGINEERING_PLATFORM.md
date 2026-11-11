@@ -243,3 +243,22 @@ if !ok { /* 发 TODO(call) 并 return MLC_UNIMPLEMENTED */ }
 
 **欠账是具名的**：`test_literal_arg_cross_file_call` 用 `xfail(strict=True)` 登记 ——
 一旦修好，它会 XPASS 并让测试套件变红，强制摘掉标记（不允许欠账悄悄变绿）。
+
+### P1 现状（2026-11-11）：**配置模型完整，但没有接线到生成器**
+
+| 环节 | 状态 | 证据 |
+|---|---|---|
+| 配置模型（v2） | ✅ 完整 | `translate/project_map.py`：`modules/targets/memory/dtypes`，校验 M1–M5、T1–T3、MM1–MM5 |
+| 内存段 | ✅ 有 | `memory.pool_bytes` / `alignment` / `max_array_bytes` / `arrays` |
+| 静态池**能力** | ✅ 有 | `m2c build --static-pool N --pool-align A` 实测**改变产物**（头文件 diff 非空） |
+| 配置 → 生成器 | ❌ **缺** | `m2c build` 没有 `--config`；仓库里没有任何代码把 `pool_bytes` 传给 `--static-pool` |
+| 配置 → 清单 | ⚠️ 部分 | `project_map.py` 能产 `manifest.h`（`M2C_MEM_POOL_BYTES`），但那是**旁路产物**，与 `m2c build` 的产物无因果关系 |
+
+**这就是 P1 的"唯一生效点"要求的真实缺口**：今天改 `memory.pool_bytes`
+只影响 `manifest.h`，**不影响** `gen.c` / 平台宏 —— 所以"改一处配置 → 只有对应行变化"
+这条判据目前**不可能通过**。
+
+**最小实现**（下一步，一轮可完成）：新增 `tools/project_build.py`：
+读配置（唯一 reader）→ 跑 `mir.py` → 跑 `m2c build --static-pool/--pool-align`，
+支持 `--dry-run` 打印两条命令；判据：改 `pool_bytes` 后生成物**确实**变化，
+且 `grep` 证明只有 `project_build.py` 读这份配置。
