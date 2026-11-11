@@ -1,0 +1,129 @@
+{
+  "phases": [
+    {
+      "id": "P0",
+      "title": "打通调用（跨文件 call）",
+      "status": "done",
+      "evidence": [
+        "tests/test_project_level.py"
+      ],
+      "missing": [],
+      "not_gated": []
+    },
+    {
+      "id": "P1",
+      "title": "配置唯一生效点",
+      "status": "done",
+      "evidence": [
+        "tests/test_config_effective.py"
+      ],
+      "missing": [],
+      "not_gated": []
+    },
+    {
+      "id": "P2",
+      "title": "预算模型（budget.json）",
+      "status": "done",
+      "evidence": [
+        "tests/test_budget.py"
+      ],
+      "missing": [],
+      "not_gated": []
+    },
+    {
+      "id": "P3",
+      "title": "契约桩（m2c_ext_*）",
+      "status": "done",
+      "evidence": [
+        "tests/test_contract_stub.py",
+        "tests/test_config_external_calls.py"
+      ],
+      "missing": [],
+      "not_gated": []
+    },
+    {
+      "id": "P4",
+      "title": "图谱接配置（该配什么）",
+      "status": "done",
+      "evidence": [
+        "tests/test_config_suggest.py"
+      ],
+      "missing": [],
+      "not_gated": []
+    },
+    {
+      "id": "P5",
+      "title": "HIR 接管",
+      "status": "done",
+      "evidence": [
+        "tests/test_hir_parity.py",
+        "tests/test_hir_srcline.py"
+      ],
+      "missing": [],
+      "not_gated": []
+    },
+    {
+      "id": "P6",
+      "title": "多路对账（无 Octave）",
+      "status": "done",
+      "evidence": [
+        "tests/test_four_way_no_octave.py"
+      ],
+      "missing": [],
+      "not_gated": []
+    }
+  ],
+  "modules": [
+    {
+      "path": "translate/",
+      "duty": "MATLAB → MIR / HIR / C（转换侧主体）",
+      "status": "ok",
+      "files": 138,
+      "gx2_tests": 76
+    },
+    {
+      "path": "rust/m2c/",
+      "duty": "MIR → C 工程（发射器与装配）",
+      "status": "ok",
+      "files": 18,
+      "gx2_tests": 76
+    },
+    {
+      "path": "c_runtime/",
+      "duty": "C 运行时（mlc_array / 算子实现）",
+      "status": "ok",
+      "files": 4,
+      "gx2_tests": 76
+    },
+    {
+      "path": "tools/",
+      "duty": "门禁、状态、追踪、预算等工具",
+      "status": "ok",
+      "files": 139,
+      "gx2_tests": 76
+    },
+    {
+      "path": "flow/",
+      "duty": "流程图与目录页",
+      "status": "ok",
+      "files": 180,
+      "gx2_tests": 76
+    },
+    {
+      "path": "tests/",
+      "duty": "判据（含 GX2 的全部用例）",
+      "status": "ok",
+      "files": 193,
+      "gx2_tests": 76
+    }
+  ],
+  "figures": {
+    "current": 0,
+    "recent": 0,
+    "stale": 20,
+    "unknown": 0,
+    "count": 20
+  },
+  "gx2_tests": 76,
+  "head": "e63f0466dcd8"
+}

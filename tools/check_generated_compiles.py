@@ -54,6 +54,8 @@ CHECKS = (
              os.path.join("tests", "test_four_way_no_octave.py"),
              # P4：每个模块给出"该配什么"，且采纳后复扫有变化
              os.path.join("tests", "test_config_suggest.py"),
+             # 整体状态：每个阶段的"完成"必须有在跑的证据
+             os.path.join("tests", "test_project_status.py"),
              os.path.join("tests", "test_rt_balance.py"),
              os.path.join("tests", "test_mir_semantics.py"),
              os.path.join("tests", "test_no_duplicate_decls.py"),
