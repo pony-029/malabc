@@ -346,8 +346,36 @@ fn gen_fixture_example(funcs: &[Func]) -> String {
     out.join("\n") + "\n"
 }
 
+/// 被调用、但**不在本工程内**的函数：`(名字, 调用点最大实参个数)`。
+///
+/// 头文件与 README 都用它 —— 两处各算一遍最容易分叉（一边列了、一边没列）。
+fn unresolved_externals(funcs: &[Func]) -> Vec<(String, usize)> {
+    let known: std::collections::HashSet<&str> =
+        funcs.iter().map(|f| f.name.as_str()).collect();
+    let mut ext: Vec<(String, usize)> = Vec::new();
+    for f in funcs {
+        crate::mir::walk_stmts(&f.body, &mut |s| {
+            if let crate::mir::Stmt::Call { func, args, .. } = s {
+                if !known.contains(func.as_str()) {
+                    let mut found = false;
+                    for e in ext.iter_mut() {
+                        if &e.0 == func {
+                            e.1 = e.1.max(args.len());
+                            found = true;
+                        }
+                    }
+                    if !found {
+                        ext.push((func.clone(), args.len()));
+                    }
+                }
+            }
+        });
+    }
+    ext
+}
+
 /// 生成物自带的说明：拿到工程的人第一眼就知道该敲什么。
-fn gen_readme(name: &str) -> String {
+fn gen_readme(name: &str, funcs: &[Func]) -> String {
     let mut out: Vec<String> = Vec::new();
     out.push(format!("# {}（由 m2c 生成）", name));
     out.push(String::new());
@@ -395,6 +423,27 @@ fn gen_readme(name: &str) -> String {
     out.push("| `CMakeLists.txt` | 构建脚本 |".to_string());
     out.push(String::new());
     out.push("**勿手改**：改 `.m` 再重新生成，否则下次生成会覆盖。".to_string());
+
+    // —— 契约桩：让"我还需要提供哪些函数"在 README 里也看得见 ——
+    // 头文件里有声明，但读 README 的人比读头文件的人多。
+    let ext = unresolved_externals(funcs);
+    if !ext.is_empty() {
+        out.push(String::new());
+        out.push("## 还需要你提供的函数（契约桩）".to_string());
+        out.push(String::new());
+        out.push(
+            "下列函数被调用，但**不在本工程内**。未提供实现时，调用处返回 \
+             `MLC_UNIMPLEMENTED`；其余函数不受影响。"
+                .to_string(),
+        );
+        out.push(String::new());
+        out.push("| 函数 | 形参个数 | 头文件里的声明 |".to_string());
+        out.push("| --- | --- | --- |".to_string());
+        for (nm, n) in ext.iter() {
+            out.push(format!("| `{}` | {} | `m2c_ext_{}` |", nm, n, nm));
+        }
+    }
+
     out.join("\n") + "\n"
 }
 
@@ -444,27 +493,7 @@ pub fn emit_project(funcs: &[Func], name: &str, cases: &[Case],
     // 但用户无从知道"我还需要提供哪几个函数"。这里把它们写进头文件，
     // 形状按**调用点实参个数**推出（mlc_array 逐个 + 输出指针由调用方取址）。
     {
-        let known: std::collections::HashSet<&str> =
-            funcs.iter().map(|f| f.name.as_str()).collect();
-        let mut ext: Vec<(String, usize)> = Vec::new();
-        for f in funcs {
-            crate::mir::walk_stmts(&f.body, &mut |s| {
-                if let crate::mir::Stmt::Call { func, args, .. } = s {
-                    if !known.contains(func.as_str()) {
-                        let mut found = false;
-                        for e in ext.iter_mut() {
-                            if &e.0 == func {
-                                e.1 = e.1.max(args.len());
-                                found = true;
-                            }
-                        }
-                        if !found {
-                            ext.push((func.clone(), args.len()));
-                        }
-                    }
-                }
-            });
-        }
+        let ext = unresolved_externals(funcs);
         if !ext.is_empty() {
             h.push(String::new());
             h.push("/* ==== 契约桩：以下函数被调用，但不在本工程内 ==== */".to_string());
@@ -598,7 +627,7 @@ pub fn emit_project(funcs: &[Func], name: &str, cases: &[Case],
         ("src/main.c".to_string(), main_c),
         ("src/selftest.c".to_string(), self_c),
         ("CMakeLists.txt".to_string(), cmake.join("\n") + "\n"),
-        ("README.md".to_string(), gen_readme(name)),
+        ("README.md".to_string(), gen_readme(name, funcs)),
         ("fixture.example.txt".to_string(), gen_fixture_example(funcs)),
         // 用户很可能把生成工程直接提交：默认就把构建产物挡在外面
         (".gitignore".to_string(),

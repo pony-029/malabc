@@ -55,15 +55,27 @@ def header():
         assert r.returncode == 0, r.stdout.decode("utf-8", "replace")[-400:]
         h = os.path.join(out, "include", "p.h")
         assert os.path.isfile(h), "没有生成头文件"
-        return io.open(h, encoding="utf-8").read()
+        rd = os.path.join(out, "README.md")
+        assert os.path.isfile(rd), "没有生成 README"
+        return (io.open(h, encoding="utf-8").read(),
+                io.open(rd, encoding="utf-8").read())
     finally:
         shutil.rmtree(d, ignore_errors=True)
 
 
 def test_header_lists_unresolved_external(header):
     """P3a：头文件里必须有 `m2c_ext_missing(...)` 的声明。"""
-    assert "m2c_ext_missing" in header, \
-        "头文件没列出未解析的外部函数（用户无从知道要补什么）：\n%s" % header[-400:]
+    h, _readme = header
+    assert "m2c_ext_missing" in h, \
+        "头文件没列出未解析的外部函数（用户无从知道要补什么）：\n%s" % h[-400:]
+
+
+def test_readme_lists_contract(header):
+    """P3d：**工程 README** 里也要有这一节 —— 读 README 的人比读头文件的人多。"""
+    _h, readme = header
+    assert "还需要你提供的函数" in readme, \
+        "README 没有契约桩小节：\n%s" % readme[-400:]
+    assert "m2c_ext_missing" in readme
 
 
 def _gen_mir(src_text, extra_args=()):
@@ -99,7 +111,8 @@ def test_external_call_kept_only_when_asked():
 
 def test_arity_matches_callsite(header):
     """P3b：形参个数按**调用点实参个数**推出（本例 2 个 → a0, a1）。"""
-    line = [l for l in header.splitlines() if "m2c_ext_missing" in l]
+    h, _readme = header
+    line = [l for l in h.splitlines() if "m2c_ext_missing" in l]
     assert line, "没有声明行"
     assert "a0" in line[0] and "a1" in line[0], "形参个数与调用点不符：%r" % line[0]
     assert "a2" not in line[0], "形参个数多了：%r" % line[0]
