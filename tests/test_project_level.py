@@ -102,3 +102,58 @@ def test_no_unimplemented(outputs):
     """工程里只要有一个 `unimplemented`，就等于"装得起来但跑不动"。"""
     bad = [ln.strip() for ln in outputs.splitlines() if "unimplemented" in ln]
     assert not bad, "P0c 有函数未实现：%r" % bad[:4]
+
+
+#: 第二形态：跨文件调用的实参是**字面量**（`scale(x, 2)`）。
+LITERAL_SRC = {
+    "scale.m": "function y = scale(x, k)\n% @m2c shape x 3\n% @m2c shape y 3\n"
+               "% @m2c shape k 1\ny = x .* k;\nend\n",
+    "twice.m": "function y = twice(x)\n% @m2c shape x 3\n% @m2c shape y 3\n"
+               "y = scale(x, 2);\nend\n",
+}
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "P0 第二形态未实现：跨文件调用的**字面量实参**。"
+    "emit.rs 逐实参调 `f.var_dtype(a)`，字面量 `2` 返回 None ⇒ ok=false ⇒ "
+    "发 `TODO(call)` + `MLC_UNIMPLEMENTED`。修好后这条会 XPASS，"
+    "strict 会强制把标记摘掉（不允许欠账变静默）。"))
+def test_literal_arg_cross_file_call():
+    """`twice → scale(x, 2)` 必须能生成并算对（= 2 4 6）。"""
+    if not os.path.isfile(M2C):
+        pytest.skip("m2c 未构建")
+    cc = shutil.which("gcc") or shutil.which("clang")
+    if not cc:
+        pytest.skip("没有 C 编译器")
+
+    import tempfile
+    d = tempfile.mkdtemp(prefix="p0d_", dir=WORK if os.path.isdir(WORK) else None)
+    try:
+        src = os.path.join(d, "src")
+        os.makedirs(src)
+        for n, body in LITERAL_SRC.items():
+            io.open(os.path.join(src, n), "w", encoding="utf-8",
+                    newline="\n").write(body)
+        mir = os.path.join(d, "p.mir")
+        r = _run([sys.executable, MIR_PY, src, "-o", mir], 120)
+        assert r.returncode == 0, r.stdout.decode("utf-8", "replace")[-300:]
+
+        g = os.path.join(d, "g")
+        r = _run([M2C, "build", "--mir", mir, "--out", g, "--name", "p"], 180)
+        assert r.returncode == 0, r.stdout.decode("utf-8", "replace")[-300:]
+
+        exe = os.path.join(g, "p.exe" if os.name == "nt" else "p")
+        r = _run([cc, "-std=c99", "-O1", "-I", os.path.join(g, "include"),
+                  "-I", RT_INC, os.path.join(g, "src", "gen.c"),
+                  os.path.join(g, "src", "main.c")] + RT_SRC + ["-o", exe], 600)
+        assert r.returncode == 0, r.stdout.decode("utf-8", "replace")[-400:]
+
+        out = _run([exe], 120).stdout.decode("utf-8", "replace")
+        assert "unimplemented" not in out, "仍有 unimplemented：\n%s" % out[-300:]
+        got = None
+        for ln in out.splitlines():
+            if ln.startswith("twice:"):
+                got = " ".join(ln.split(":", 1)[1].split())
+        assert got == "2 4 6", "twice 得 %r 期望 '2 4 6'" % got
+    finally:
+        shutil.rmtree(d, ignore_errors=True)

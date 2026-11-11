@@ -214,3 +214,32 @@ function 注解 ─┘        （唯一 reader）              （唯一消费�
 
 这条判据今天会红（R720 实测 `unimplemented`），而这正是它的价值：
 **它把"工程能跑"从口号变成红灯。**
+
+### P0 实测（2026-11-11）：**单实参已通，字面量实参未通**
+
+本文档原先写着"这条判据今天会红"（基于 R721 的实测）。三十多轮之后它**部分绿了**：
+
+| 形态 | 例子 | 状态 |
+|---|---|---|
+| 单实参跨文件调用 | `combine → addone / scale2` | ✅ 跑出 `4 8 12`（判据：`tests/test_project_level.py`） |
+| **字面量实参**跨文件调用 | `twice → scale(x, 2)` | ❌ `TODO(call)` + `MLC_UNIMPLEMENTED` |
+
+**根因（`rust/m2c/src/emit.rs` 约 1335 行）**：
+
+```rust
+for a in args {
+    match f.var_dtype(a) {
+        Some(dt) if ... => { ... }
+        Some(_) => call_args.push(ident(a)),
+        None => { ok = false; ... }   // ← 字面量 `2` 走这里
+    }
+}
+if !ok { /* 发 TODO(call) 并 return MLC_UNIMPLEMENTED */ }
+```
+
+字面量没有 dtype ⇒ `ok=false` ⇒ 整条 call 被放弃。
+修法方向：字面量按**被调函数形参类型**处理（标量形参直接写字面量；
+`mlc_array` 形参需要先落一个 1 元临时量）。
+
+**欠账是具名的**：`test_literal_arg_cross_file_call` 用 `xfail(strict=True)` 登记 ——
+一旦修好，它会 XPASS 并让测试套件变红，强制摘掉标记（不允许欠账悄悄变绿）。
