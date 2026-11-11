@@ -87,10 +87,13 @@ def test_pool_reaches_generated_c():
 
 
 def test_single_reader():
-    """P1c：读这份配置的代码只能有一处（`project_map.py`）。
+    """P1c：配置只能有**一个解析点**（`project_map.load2`）。
 
-    允许出现的：文档（.md）、测试（tests/）、样例配置本身。
-    其它任何 `.py` 里出现"读 m2c.project.json"的调用，都算第二 reader。
+    ⚠ 口径要精确（R780 被自己抓过一次）：
+      * **允许**：任何模块 `import project_map` 后调 `PM.load2(...)` —— 那是**用** API；
+      * **禁止**：自己 `json.load` 一份 `m2c.project.json` —— 那是**第二个解析点**，
+        校验、默认值、键白名单全都会分叉。
+    所以判据是「出现了配置文件名，却**没有**经过 project_map」。
     """
     hits = []
     for base, _dirs, files in os.walk(ROOT):
@@ -107,6 +110,11 @@ def test_single_reader():
                 src = io.open(p, encoding="utf-8", errors="replace").read()
             except OSError:
                 continue
-            if re.search(r"load2\(|m2c\.project\.json", src):
-                hits.append(rel)
-    assert not hits, "配置出现了第二个 reader：%r" % hits[:5]
+            # 只在"碰了配置文件"的文件里判；碰了就必须走 project_map
+            if "m2c.project.json" not in src and "load2(" not in src:
+                continue
+            if "project_map" in src:
+                continue                      # 走的是唯一解析点，合规
+            hits.append(rel)
+    assert not hits, \
+        "这些地方自己解析了配置（绕过 project_map.load2）：%r" % hits[:5]

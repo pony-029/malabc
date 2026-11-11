@@ -62,6 +62,13 @@ def _build(d, pool_bytes, cc):
     r = subprocess.run([sys.executable, PM_PY, p, "--build"],
                        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                        stderr=subprocess.STDOUT, timeout=900, cwd=d)
+    # P2（R773）起，**超预算在生成期就失败**，不再等运行期 OOM。
+    # 老版本这里断言 rc==0（构建成功、运行崩），那是 P2 之前的行为。
+    if pool_bytes < 4096:
+        assert r.returncode != 0, "池子 %d 字节竟然构建成功（应超预算失败）" % pool_bytes
+        out = r.stdout.decode("utf-8", "replace")
+        assert "超预算" in out, "失败信息里没有『超预算』：%s" % out[-400:]
+        return
     assert r.returncode == 0, r.stdout.decode("utf-8", "replace")[-800:]
 
     gen = os.path.join(d, "gen")
@@ -103,15 +110,21 @@ def test_build_generates_pool_and_runs():
 
 
 @pytest.mark.skipif(_cc() is None or not os.path.isfile(M2C), reason="缺编译器或 m2c")
-def test_tiny_pool_breaks_execution():
-    """反向：32 字节池连一个 4 元数组（32B + 块头）都装不下 -> 不再有结果。"""
+def test_tiny_pool_is_rejected_at_generation():
+    """反向：32 字节池连一个 4 元数组都装不下 —— **在生成期就拒绝**。
+
+    ⚠ 这条判据在 R773（P2）之前断言的是"构建成功、运行期不出结果"。
+    P2 把超预算提前到生成期（`budget.json` + 指名函数/变量），
+    所以现在要断言"构建失败且说明超预算" —— 比"运行期悄悄没了结果"可行动得多。
+    """
     d1 = tempfile.mkdtemp(prefix="m2c_poolbig_")
     d2 = tempfile.mkdtemp(prefix="m2c_pooltiny_")
     try:
         _, big = _build(d1, 4096, _cc())
-        _, tiny = _build(d2, 32, _cc())
         assert big.strip(), "大池应当有输出"
-        assert not tiny.strip(), "32 字节池不应产出任何结果：\n" + tiny[:300]
+        # 32 字节池：`_build` 内部已断言"必须失败且含『超预算』"
+        _build(d2, 32, _cc())
     finally:
         shutil.rmtree(d1, ignore_errors=True)
+        shutil.rmtree(d2, ignore_errors=True)
         shutil.rmtree(d2, ignore_errors=True)
