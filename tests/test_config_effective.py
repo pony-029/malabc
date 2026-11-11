@@ -56,6 +56,36 @@ def test_cmdline_carries_pool_flag():
     assert "32768" in s, "命令行里的池大小不是配置值：%r" % s
 
 
+def test_pool_reaches_generated_c():
+    """P1d（端到端）：两个不同 `pool_bytes` 各构建一次，`gen.c` 里的池大小必须跟着变。
+
+    前面三条都是**纯函数**（flags / 命令行）。这条走完整链路：
+    配置 → `run_build` → `mir.py` → `m2c build` → `gen.c`。
+    只验"参数推导对"是不够的 —— 参数可能推导对了却没被用上。
+    """
+    import shutil
+    import tempfile
+
+    root = os.path.join(ROOT, "translate", "examples")
+    outs = {}
+    for pool in (65536, 32768):
+        d = tempfile.mkdtemp(prefix="p1d_", dir=os.environ.get("M2C_TMP") or None)
+        try:
+            cfg = _cfg(pool)
+            cfg["matlab"]["root"] = os.path.join(root, cfg["matlab"]["root"])
+            rc, _cmds, out = PM.run_build(cfg, d, CFG)
+            assert rc == 0, "构建失败（pool=%d）：%s" % (pool, out[-400:])
+            gen = os.path.join(d, cfg["c"]["root"], "src", "gen.c")
+            assert os.path.isfile(gen), "没找到 gen.c：%s" % gen
+            outs[pool] = io.open(gen, encoding="utf-8", errors="replace").read()
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+    assert outs[65536] != outs[32768], "两个 pool 配置产出了**完全相同**的 gen.c"
+    assert "65536" in outs[65536], "pool=65536 时 gen.c 里没有 65536"
+    assert "32768" in outs[32768], "pool=32768 时 gen.c 里没有 32768"
+
+
 def test_single_reader():
     """P1c：读这份配置的代码只能有一处（`project_map.py`）。
 
