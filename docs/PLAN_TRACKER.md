@@ -51,7 +51,7 @@
 ## 五、当前状态（每轮更新这一节）
 
 ```
-官方 check_all        rc=0，41 道门
+官方 check_all        rc=0，42 道门
 语料                  58/58 与 Octave 一致
 YALMIP                numeric 4 ｜ 桩 54 ｜ error 0 ｜ empty 0 ｜ 形状 103 ｜ 拒绝 1043
 覆盖率（mlc_ops.c）   行 58.60% ｜ 分支至少走一次 47.29%

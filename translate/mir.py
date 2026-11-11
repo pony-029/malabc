@@ -2402,7 +2402,7 @@ def main(argv=None):
                     help="（默认已开启）用 HIR 降级结果作为 MIR 输出")
     ap.add_argument("--no-hir-emit", dest="hir_emit", action="store_false",
                     help="关闭 HIR 产出，退回直接生成（回退开关）")
-    ap.set_defaults(hir_emit=True)
+    ap.set_defaults(hir_emit=False)
     ap.add_argument("--recursive", action="store_true",
                     help="目录模式下递归子目录（真实工程必需）")
     args = ap.parse_args(argv)
