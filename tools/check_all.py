@@ -89,6 +89,10 @@ R106 起还包括两个仓级结构闸门的样本 —— **计划块**（动作
                                               #   ⚠ 必须用**录制基线时的那个解释器**跑 ——
                                               #   基线记的是版本串（现为 3.10.10）；换解释器会判红，
                                               #   那是「读数不可比」，不是测试退化
+    python tools/check_all.py --only check_eol_convention,check_help_contract
+                                              # 分批迭代：只跑指定的门（**不是完整门禁**）
+    python tools/check_all.py --skip check_generated_compiles
+                                              # 分批迭代：跳过慢门
     python tools/check_all.py --help          # 显示本帮助（立即返回，不跑护栏）
 
 退出码：
@@ -221,7 +225,7 @@ GUARD_TIMEOUT = 600.0
 # R-行尾1：新增 check_eol_convention.py（EO1–EO3，CRLF/LF 约定），故 23 → 24。
 # R432：新增 check_translate_port.py（TP1–TP4，ABI/适配器/算子/保真/台账），
 #       故 33 → 34。门数只许升（删门/漏登记都会红）。
-MIN_GUARDS = 35
+MIN_GUARDS = 42
 
 
 def _write_help(text):
@@ -297,8 +301,16 @@ def _run(py, argv, cwd=None, timeout=GUARD_TIMEOUT):
                       % (timeout, min(6, len(_lines)), _tail))
 
 
-def run_guards(tools_dir, python_exe=None, timeout=GUARD_TIMEOUT):
-    """跑目录下全部 check_*.py（不含本文件）；返回 (bad 列表, 护栏名列表)。"""
+def run_guards(tools_dir, python_exe=None, timeout=GUARD_TIMEOUT,
+               only=None, skip=()):
+    """跑目录下全部 check_*.py（不含本文件）；返回 (bad 列表, 护栏名列表)。
+
+    `only` / `skip` 是**分批迭代**用的（R781）：全集跑一次要十几分钟，
+    而改一处往往只关心几道门。两者都接受 `check_xxx` 或 `xxx` 写法。
+
+    ⚠ 分批模式**不是完整门禁**：它跳过门数棘轮（否则「只跑 3 道」必然判红），
+    所以调用方必须把它与完整跑区分开 —— 见 `main()` 里的横幅。
+    """
     py = python_exe or sys.executable
     if not os.path.isdir(tools_dir):
         print("check_all: 护栏目录不存在：%s（缺输入 → 红）" % tools_dir)
@@ -307,6 +319,14 @@ def run_guards(tools_dir, python_exe=None, timeout=GUARD_TIMEOUT):
     guards = sorted(f for f in os.listdir(tools_dir)
                     if f.startswith("check_") and f.endswith(".py")
                     and f != me)
+    if only:
+        want = set(only)
+        guards = [g for g in guards
+                  if g in want or g[:-3] in want]
+    if skip:
+        drop = set(skip)
+        guards = [g for g in guards
+                  if not (g in drop or g[:-3] in drop)]
     if not guards:
         print("check_all: 未找到任何 tools/check_*.py（缺输入 → 红）")
         return None, []
@@ -1020,7 +1040,25 @@ def main(argv):
             return 2
         tools_dir = argv[i + 1]
 
-    bad, guards = run_guards(tools_dir)
+    def _multi(flag):
+        """`--only a,b` → ["a", "b"]（也支持空格分隔）。"""
+        if flag not in argv:
+            return []
+        i = argv.index(flag)
+        if i + 1 >= len(argv):
+            return []
+        raw = argv[i + 1].replace(",", " ")
+        return [x for x in raw.split() if x]
+
+    _only, _skip = _multi("--only"), _multi("--skip")
+    _filtered = bool(_only or _skip)
+    if _filtered:
+        print("check_all: 分批模式（%s%s）—— **不是完整门禁**，"
+              "门数棘轮不施加" % (
+                  "--only " + ",".join(_only) if _only else "",
+                  (" --skip " + ",".join(_skip)) if _skip else ""))
+
+    bad, guards = run_guards(tools_dir, only=_only, skip=_skip)
     if bad is None:
         return 2
     # 本仓自己的 tools/ —— 门数棘轮与测试门都只在这种情况下才施加
@@ -1029,8 +1067,9 @@ def main(argv):
         os.path.abspath(__file__))
 
     # R33/C'9：门数棘轮 —— 只有当跑的是本仓自己的 tools/ 时才要求下限。
+    # 分批模式跳过门数棘轮：只跑 3 道时"门数不足"是**必然**的，判红毫无信息。
     _guard_prob = _guard_count_problem(len(guards), MIN_GUARDS,
-                                       True) if _local else None
+                                       True) if (_local and not _filtered) else None
 
     # [R106] 仓级结构闸门（各条判据**独立结算**：任一条红都不挡住其余各条的读数）。
     _root = os.path.dirname(os.path.abspath(tools_dir))
@@ -1072,8 +1111,9 @@ def main(argv):
         print("check_all: 测试基线一致（%s）" % TEST_BASELINE_PATH)
     if bad or _guard_prob or _tests_prob or _plan_prob or _doc_prob:
         return 1
-    print("check_all: OK（%d 个护栏，全部通过且各自自证；门数下限 %d）"
-          % (len(guards), MIN_GUARDS))
+    print("check_all: OK（%d 个护栏，全部通过且各自自证；门数下限 %d%s）"
+          % (len(guards), MIN_GUARDS,
+             "；**分批模式，未覆盖全部护栏**" if _filtered else ""))
     # R152：LSP 的判据**不在** runner 里 —— 它要起子进程 + 跑分析，放进来会把
     # 24 道门从 2 分钟拖到 3 分钟。所以这里**只提示、不执行**：
     # 让「忘了跑」变得可见，而不是让门变慢。
