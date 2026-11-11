@@ -75,6 +75,8 @@ CHECKS = (
              os.path.join("tests", "test_hir_parity.py"),
              os.path.join("tests", "test_hir_meta_lines.py"),
              os.path.join("tests", "test_check_diag_two_paths.py"),
+             # 26 个判据（逐算子发射 / 动态临时量 / BOM），此前不在任何门里
+             os.path.join("tests", "test_translate_port.py"),
              os.path.join("tests", "test_trace_chain.py"),
              os.path.join("tests", "test_vm_ops.py"),
              os.path.join("tests", "test_numeric_truth.py"),
