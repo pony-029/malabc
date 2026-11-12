@@ -79,52 +79,58 @@
       "duty": "MATLAB → MIR / HIR / C（转换侧主体）",
       "status": "ok",
       "files": 138,
-      "gx2_tests": 76
+      "gx2_tests": 76,
+      "group": "转换侧"
     },
     {
       "path": "rust/m2c/",
       "duty": "MIR → C 工程（发射器与装配）",
       "status": "ok",
       "files": 18,
-      "gx2_tests": 76
+      "gx2_tests": 76,
+      "group": "转换侧"
     },
     {
       "path": "c_runtime/",
       "duty": "C 运行时（mlc_array / 算子实现）",
       "status": "ok",
       "files": 4,
-      "gx2_tests": 76
+      "gx2_tests": 76,
+      "group": "运行时"
     },
     {
       "path": "tools/",
       "duty": "门禁、状态、追踪、预算等工具",
       "status": "ok",
       "files": 140,
-      "gx2_tests": 76
+      "gx2_tests": 76,
+      "group": "工具与门禁"
     },
     {
       "path": "flow/",
       "duty": "流程图与目录页",
       "status": "ok",
       "files": 197,
-      "gx2_tests": 76
+      "gx2_tests": 76,
+      "group": "图与文档"
     },
     {
       "path": "tests/",
       "duty": "判据（含 GX2 的全部用例）",
       "status": "ok",
       "files": 194,
-      "gx2_tests": 76
+      "gx2_tests": 76,
+      "group": "判据"
     }
   ],
   "figures": {
     "current": 0,
-    "recent": 16,
-    "stale": 0,
+    "recent": 0,
+    "stale": 16,
     "unknown": 0,
     "historical": 4,
     "count": 20
   },
   "gx2_tests": 76,
-  "head": "2ed52ac899c5"
+  "head": "e4f28c48cca7"
 }

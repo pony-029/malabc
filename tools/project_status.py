@@ -64,6 +64,18 @@ MODULES = [
     ("tests/", "判据（含 GX2 的全部用例）"),
 ]
 
+#: 职责域。**分组是为了回答"哪一层最厚/最薄"**，而不是把目录再列一遍：
+#: 转换侧（把 MATLAB 变成 C）、运行时（C 自己）、工具与门禁（验证）、图与文档（沟通）、
+#: 判据（证据）。任何目录都必须落在某个域里 —— 否则它就是在"没人负责"的地带。
+GROUPS = {
+    "translate/": "转换侧",
+    "rust/m2c/": "转换侧",
+    "c_runtime/": "运行时",
+    "tools/": "工具与门禁",
+    "flow/": "图与文档",
+    "tests/": "判据",
+}
+
 
 def _run(cmd, timeout=120):
     return subprocess.run(cmd, stdin=subprocess.DEVNULL, timeout=timeout,
@@ -117,7 +129,21 @@ def modules():
         # 该模块"被 GX2 覆盖"不按目录算（测试不按目录归属），这里只报文件规模；
         # 覆盖度由 phases 那栏承担 —— 不在这里编一个好看的数。
         out.append({"path": path, "duty": duty, "status": "ok",
-                    "files": n, "gx2_tests": len(gx)})
+                    "files": n, "gx2_tests": len(gx),
+                    "group": GROUPS.get(path, "未分组")})
+    return out
+
+
+def groups(mods=None):
+    """按职责域汇总：`{域: {"dirs": n, "files": n}}`。"""
+    mods = mods if mods is not None else modules()
+    out = {}
+    for m in mods:
+        g = m.get("group") or "未分组"
+        d = out.setdefault(g, {"dirs": 0, "files": 0, "paths": []})
+        d["dirs"] += 1
+        d["files"] += m.get("files", 0)
+        d["paths"].append(m.get("path"))
     return out
 
 
@@ -341,6 +367,10 @@ def main(argv=None):
                 print("        缺证据文件：%s" % m)
             for m in p["not_gated"]:
                 print("        判据存在但未接入 GX2：%s" % m)
+        print("\n== 职责域 ==")
+        for g, d in groups(st["modules"]).items():
+            print("  %-10s 目录 %d ｜ 文件 %4d ｜ %s"
+                  % (g, d["dirs"], d["files"], " ".join(d["paths"])))
         print("\n== 子模块 ==")
         for m in st["modules"]:
             print("  %-14s %-34s 文件 %3d" % (m["path"], m["duty"], m["files"]))

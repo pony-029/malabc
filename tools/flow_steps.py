@@ -225,6 +225,21 @@ def render_status(st):
                html.escape(ph.get("title", "")),
                html.escape(", ".join(ph.get("evidence") or []))))
 
+    # 职责域：**按层看厚薄**，而不是把目录再列一遍
+    g = {}
+    for m in st.get("modules") or []:
+        k = m.get("group") or "未分组"
+        d = g.setdefault(k, {"dirs": 0, "files": 0, "paths": []})
+        d["dirs"] += 1
+        d["files"] += m.get("files", 0)
+        d["paths"].append(m.get("path", ""))
+    grows = []
+    for k in sorted(g, key=lambda x: -g[x]["files"]):
+        d = g[k]
+        grows.append("<tr><td>%s</td><td>%d</td><td>%d</td><td><code>%s</code></td></tr>"
+                     % (html.escape(k), d["dirs"], d["files"],
+                        html.escape(" ".join(d["paths"]))))
+
     f = st.get("figures") or {}
     live = (f.get("current", 0) + f.get("recent", 0))
     return """%(b)s
@@ -236,6 +251,12 @@ def render_status(st):
         <th style="padding:4px 8px">内容</th>
         <th style="padding:4px 8px">证据判据（须已在 GX2 里跑）</th></tr>
       %(rows)s
+    </table>
+    <table class="stt" style="border-collapse:collapse;width:100%%;font-size:13px;margin:10px 0">
+      <tr style="text-align:left;border-bottom:1px solid currentColor">
+        <th style="padding:4px 8px">职责域</th><th style="padding:4px 8px">目录数</th>
+        <th style="padding:4px 8px">文件数</th><th style="padding:4px 8px">包含</th></tr>
+      %(grows)s
     </table>
     <p class="q"><b>流程图</b>：共 %(cnt)d 张 ｜ 现行/近期 <b>%(live)d</b> ｜
       已过时 <b>%(stale)d</b> ｜ 历史(登记) <b>%(hist)d</b>。
@@ -250,6 +271,7 @@ def render_status(st):
         "stale": f.get("stale", 0), "hist": f.get("historical", 0),
         "gx2": st.get("gx2_tests", 0), "head": st.get("head", ""),
         "histline": _render_hist(st),
+        "grows": "\n      ".join(grows),
     }
 
 
