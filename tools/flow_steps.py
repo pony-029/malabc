@@ -16,6 +16,7 @@
 """
 import argparse
 import html
+import sys
 import io
 import json
 import os
@@ -240,6 +241,7 @@ def render_status(st):
       已过时 <b>%(stale)d</b> ｜ 历史(登记) <b>%(hist)d</b>。
       历史档是不随代码重渲染的旧 schema 图（重渲染会丢语义），不是欠账。</p>
     <p class="q">门禁与测试覆盖：GX2 引用 <b>%(gx2)d</b> 个测试文件 ｜ HEAD <code>%(head)s</code>。</p>
+    %(histline)s
   </section>
 %(e)s""" % {
         "b": STATUS_BEGIN, "e": STATUS_END,
@@ -247,7 +249,25 @@ def render_status(st):
         "cnt": f.get("count", 0), "live": live,
         "stale": f.get("stale", 0), "hist": f.get("historical", 0),
         "gx2": st.get("gx2_tests", 0), "head": st.get("head", ""),
+        "histline": _render_hist(st),
     }
+
+
+def _render_hist(st):
+    """"上次记录 / 变化"一行 —— 让**退化**可见，而不只是当前值。"""
+    try:
+        sys.path.insert(0, ROOT)
+        from tools import project_status as PS      # noqa: PLC0415
+        old = PS.history()
+        if not old:
+            return ('<p class="q">尚无历史：跑 '
+                    '<code>python tools/project_status.py --record</code> 记一条。</p>')
+        d = PS.delta(st)
+        return ('<p class="q">上次记录 <code>%s</code> ｜ 变化：<b>%s</b></p>'
+                % (html.escape(str(old[-1].get("ts", ""))[:19]),
+                   html.escape(d)))
+    except Exception:                                # noqa: BLE001
+        return ""
 
 
 def splice(text, begin, end, block):

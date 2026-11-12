@@ -164,6 +164,79 @@ def build():
             "gx2_tests": len(_gx2_tests()), "head": _head()[:12]}
 
 
+HISTORY = os.path.join(ROOT, "flow", "status-history.jsonl")
+
+
+def _snapshot(st):
+    """一行历史：只留**会变**的字段，便于人读与 diff。"""
+    f = st.get("figures") or {}
+    return {
+        "head": st.get("head", ""),
+        "phases_done": sum(1 for p in st.get("phases") or []
+                           if p.get("status") == "done"),
+        "phases_total": len(st.get("phases") or []),
+        "fig_live": f.get("current", 0) + f.get("recent", 0),
+        "fig_stale": f.get("stale", 0),
+        "fig_hist": f.get("historical", 0),
+        "gx2": st.get("gx2_tests", 0),
+    }
+
+
+def record(st, path=None):
+    """把快照追加到 `flow/status-history.jsonl`；**同 head 同数字不重复写**。
+
+    去重很关键：这个工具会被反复跑（首页生成、判据、手工），
+    不去重的话历史文件会变成同一行刷屏，而"变化"再也看不出来。
+    """
+    path = path or HISTORY
+    snap = _snapshot(st)
+    snap["ts"] = subprocess.run(["git", "log", "-1", "--format=%cI"], cwd=ROOT,
+                                stdin=subprocess.DEVNULL, timeout=60,
+                                stdout=subprocess.PIPE).stdout.decode().strip()
+    old = history(path)
+    if old and {k: old[-1].get(k) for k in snap if k != "ts"} == \
+            {k: snap[k] for k in snap if k != "ts"}:
+        return False, len(old)
+    io.open(path, "a", encoding="utf-8", newline="").write(
+        json.dumps(snap, ensure_ascii=False) + "\r\n")
+    return True, len(old) + 1
+
+
+def history(path=None):
+    path = path or HISTORY
+    if not os.path.isfile(path):
+        return []
+    out = []
+    for ln in io.open(path, encoding="utf-8", errors="replace"):
+        s = ln.strip()
+        if not s:
+            continue
+        try:
+            out.append(json.loads(s))
+        except ValueError:
+            continue                    # 坏行不阻塞读取（判据里单独抓）
+    return out
+
+
+def delta(st, path=None):
+    """与上一条历史比，返回可读的变化串（无历史时返回 ""）。"""
+    old = history(path)
+    if not old:
+        return ""
+    prev, cur = old[-1], _snapshot(st)
+    diffs = []
+    if cur["phases_done"] != prev.get("phases_done"):
+        diffs.append("阶段 %s→%s" % (prev.get("phases_done"),
+                                   cur["phases_done"]))
+    if cur["fig_live"] != prev.get("fig_live"):
+        diffs.append("可维护图 %s→%s" % (prev.get("fig_live"), cur["fig_live"]))
+    if cur["fig_stale"] != prev.get("fig_stale"):
+        diffs.append("已过时图 %s→%s" % (prev.get("fig_stale"), cur["fig_stale"]))
+    if cur["gx2"] != prev.get("gx2"):
+        diffs.append("GX2 覆盖 %s→%s" % (prev.get("gx2"), cur["gx2"]))
+    return "；".join(diffs) if diffs else "无变化"
+
+
 def _selftest():
     """两向自证：状态判定能区分 done / unknown（不是恒 green）。"""
     good = {"evidence": ["tests/test_project_level.py"],
@@ -193,6 +266,8 @@ def _selftest():
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--record", action="store_true",
+                    help="把本次快照追加到 flow/status-history.jsonl（同 head 同数字不重复写）")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("-h", "--help", action="store_true")
     a, _rest = ap.parse_known_args(argv or sys.argv[1:])
@@ -208,6 +283,10 @@ def main(argv=None):
         return 2
 
     st = build()
+    if a.record:
+        added, total = record(st)
+        st["history"] = {"added": added, "lines": total,
+                         "delta": delta(st)}
     unknown = [p["id"] for p in st["phases"] if p["status"] != "done"]
     if a.json:
         print(json.dumps(st, ensure_ascii=False, indent=2))
