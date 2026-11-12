@@ -263,9 +263,15 @@ def _render_hist(st):
             return ('<p class="q">尚无历史：跑 '
                     '<code>python tools/project_status.py --record</code> 记一条。</p>')
         d = PS.delta(st)
-        return ('<p class="q">上次记录 <code>%s</code> ｜ 变化：<b>%s</b></p>'
+        # 历史**条数**与**折叠数**都要露出来：折叠标记写着"中间有 N 条被折掉了"，
+        # 而它一旦不可见，"上次记录 → 现在"就会被误读成**连续**的两条。
+        folded = sum(int(x.get("folded") or 0) for x in old
+                     if isinstance(x.get("folded"), int))
+        extra = "，其中早前折叠 %d 条" % folded if folded else ""
+        return ('<p class="q">上次记录 <code>%s</code> ｜ 变化：<b>%s</b>'
+                ' ｜ 历史共 <b>%d</b> 条%s</p>'
                 % (html.escape(str(old[-1].get("ts", ""))[:19]),
-                   html.escape(d)))
+                   html.escape(d), len(old), extra))
     except Exception:                                # noqa: BLE001
         return ""
 
