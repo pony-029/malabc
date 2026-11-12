@@ -119,6 +119,14 @@ _OP_C2MIR = {"-": "sub", "+": "add", "*": "mul", "/": "div"}
 #: `while (i <= 4) {` —— MIR 是 `while:i:le:4`
 _WHILE_RE = re.compile(r"^\s*while\s*\((.*)\)\s*\{\s*$")
 
+#: 函数间调用。生成物实测两种写法：
+#:   `st = m2c_addone(x, y);`        ← 输出直接传（`y` 已是指针）
+#:   `st = m2c_scale2(*y, y);`       ← 实参带解引用
+#: 定义行 `mlc_status m2c_addone(mlc_array x, mlc_array *y) {` **不会**命中
+#: （它以 `) {` 结尾，而这里要求 `);` 或 `) !=`）。
+#: MIR 是 `call:<dst>:<函数名>:<实参…>` —— **dst 在最后一位**。
+_FCALL_RE = re.compile(r"\bm2c_(\w+)\s*\(([^;]*?)\)\s*(?:!=|;)")
+
 #: 迭代上限守卫：`if (++__m2c_iter > 1000000LL) { return MLC_ERR; }`
 #: 它由发射器插入（防止死循环），**不是源码分支**。
 _ITER_GUARD = "__m2c_iter"
@@ -181,7 +189,9 @@ _CAST_RE = re.compile(r"^\(\s*(?:const\s+)?(?:double|int64_t|int32_t|int|size_t)
 
 def _strip_ref(tok):
     tok = tok.strip()
-    while tok.startswith("&"):
+    # `&x`（取地址）与 `*y`（解引用，跨文件调用时实参常这么写）都要剥掉：
+    # MIR 里只有名字。签名解析另有分支先按 `*` 分类，所以这里剥不会误伤。
+    while tok[:1] in ("&", "*"):
         tok = tok[1:]
     tok = _CAST_RE.sub("", tok).strip()     # `(int64_t)4` -> `4`
     tok = tok.replace("->", ".").strip()
@@ -330,10 +340,15 @@ def c_to_mir(text, fname):
             out.append("op:%s:%s" % (oid, ":".join(parts)))
             st["ops"] += 1
             continue
-        # ⚠ 函数间 `call:` 的还原**已设计未落地**（R798 撤回）：
-        # 现有 `translate/examples/proj` 的生成物把被调方 `#include` 进来，
-        # 调用点没有独立的 `m2c_xxx(&a, &y)` 行，因此**没有样本可验**。
-        # 没有样本的实现等于未实现 —— 等有跨文件调用样本时再补，并同时补判据。
+        m_fc = _FCALL_RE.search(ln)
+        if m_fc:
+            # 函数间调用（`m2c_` 前缀，与 `mlc_op_` 不冲突）
+            parts = [_strip_ref(p) for p in _split_args(m_fc.group(2))]
+            if len(parts) >= 2:
+                out.append("call:%s:%s:%s"
+                           % (parts[-1], m_fc.group(1), ":".join(parts[:-1])))
+                st["calls"] = st.get("calls", 0) + 1
+                continue
         if ln.startswith(("if (", "return", "}", "{", "mlc_array", "int64_t",
                           "double *", "const double *", "(void)")):
             continue

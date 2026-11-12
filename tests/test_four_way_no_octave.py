@@ -174,6 +174,57 @@ def test_three_paths_agree_without_octave(name):
             got["ops_a"][:8], got["ops_c"][:8])
 
 
+def test_backparsed_cross_file_calls():
+    """跨函数工程的**调用点**要能被反推还原（R799）。
+
+    样本用 `translate/examples/proj`（addone / scale2 / combine 互调）。
+    生成物里调用点是 `st = m2c_addone(x, y);`，输出在**末位**、实参可能带 `*`，
+    所以反推要：剥 `&`/`*`、把末位放到 MIR 的第二位。
+
+    ⚠ **只比结构不比数值**：Rust VM 不做函数链接（`VM 不做链接`），
+    所以两路都会在同一处报错 —— 那正是"行为等价"的证据，不是缺陷。
+    """
+    proj = os.path.join(ROOT, "translate", "examples", "proj")
+    if not os.path.isdir(proj) or not os.path.isfile(M2C):
+        pytest.skip("缺 proj 样本或 m2c 未构建")
+
+    d = tempfile.mkdtemp(prefix="p6c_", dir=WORK if os.path.isdir(WORK) else None)
+    try:
+        mir = os.path.join(d, "proj.mir")
+        assert _run([sys.executable, MIR_PY, proj, "-o", mir, "--recursive"],
+                    180).returncode == 0
+        g = os.path.join(d, "g")
+        assert _run([M2C, "build", "--mir", mir, "--out", g, "--name", "p"],
+                    180).returncode == 0
+
+        # 每个源文件一份 .c：逐份反推后拼成一份
+        parts = []
+        for base, _dirs, files in os.walk(g):
+            for f in sorted(files):
+                if not f.endswith(".c") or f in ("main.c", "selftest.c"):
+                    continue
+                c = os.path.join(base, f)
+                if "m2c_" not in io.open(c, encoding="utf-8").read():
+                    continue
+                out = c + ".mir"
+                assert _run([sys.executable, CMIR_PY, c, "-o", out],
+                            180).returncode == 0
+                txt = io.open(out, encoding="utf-8").read()
+                if parts:
+                    txt = "\n".join(l for l in txt.splitlines()
+                                    if not l.startswith("version"))
+                parts.append(txt.rstrip())
+        assert parts, "没有找到任何生成 .c"
+
+        back = io.open(mir, encoding="utf-8").read()
+        want = sorted(re.findall(r"^call:[\w:]+$", back, re.M))
+        got = sorted(re.findall(r"^call:[\w:]+$", "\n".join(parts), re.M))
+        assert want, "原 MIR 里没有 call:（样本选错了）"
+        assert got == want, "调用点还原不一致：\n 原始 %r\n 反推 %r" % (want, got)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def test_hash_normalizes_only_representation():
     """归一只能是**表示**差异（-0.0 / NaN），不能顺手抹掉真实差异。"""
     assert _bit_hash([0.0]) == _bit_hash([-0.0]), "-0.0 与 0.0 应视为同一个数"
