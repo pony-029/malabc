@@ -106,25 +106,25 @@
       "path": "flow/",
       "duty": "流程图与目录页",
       "status": "ok",
-      "files": 196,
+      "files": 197,
       "gx2_tests": 76
     },
     {
       "path": "tests/",
       "duty": "判据（含 GX2 的全部用例）",
       "status": "ok",
-      "files": 193,
+      "files": 194,
       "gx2_tests": 76
     }
   ],
   "figures": {
-    "current": 1,
-    "recent": 15,
+    "current": 0,
+    "recent": 16,
     "stale": 0,
     "unknown": 0,
     "historical": 4,
     "count": 20
   },
   "gx2_tests": 76,
-  "head": "61e7b2890f37"
+  "head": "2ed52ac899c5"
 }

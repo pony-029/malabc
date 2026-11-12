@@ -182,11 +182,19 @@ def _snapshot(st):
     }
 
 
+#: 历史文件的上界。**只追加**的文件必须有上界，否则它会无限膨胀。
+MAX_HISTORY = 200
+
+
 def record(st, path=None):
     """把快照追加到 `flow/status-history.jsonl`；**同 head 同数字不重复写**。
 
     去重很关键：这个工具会被反复跑（首页生成、判据、手工），
     不去重的话历史文件会变成同一行刷屏，而"变化"再也看不出来。
+
+    折叠：超过 `MAX_HISTORY` 行时保留**第一行（起点）+ 最后若干行**，
+    中间插一条 `{"folded": n}` 记录说明折掉了多少 —— 起点不能丢，
+    否则"从哪来"就没有了；中间隔断点会被标记出来，不会被误当成连续历史。
     """
     path = path or HISTORY
     snap = _snapshot(st)
@@ -197,9 +205,42 @@ def record(st, path=None):
     if old and {k: old[-1].get(k) for k in snap if k != "ts"} == \
             {k: snap[k] for k in snap if k != "ts"}:
         return False, len(old)
-    io.open(path, "a", encoding="utf-8", newline="").write(
-        json.dumps(snap, ensure_ascii=False) + "\r\n")
-    return True, len(old) + 1
+
+    raw = []
+    if os.path.isfile(path):
+        raw = [ln.strip() for ln in
+               io.open(path, encoding="utf-8", errors="replace")
+               if ln.strip()]
+    raw.append(json.dumps(snap, ensure_ascii=False))
+
+    if len(raw) > MAX_HISTORY:
+        first = raw[0]
+        keep = raw[-(MAX_HISTORY - 2):]
+        # **折叠数是累计值**：把已有的 `{"folded": n}` 一起算进来。
+        # 只算本次的话，第二次折折叠就会把"总共折掉多少"改小（实测：12 条只剩
+        # 5 条时标记写着 2）—— 那是一个会说谎的数字。
+        prev, n_real = 0, 0
+        for ln in raw[1:]:
+            try:
+                j = json.loads(ln)
+            except ValueError:
+                n_real += 1
+                continue
+            if isinstance(j.get("folded"), int):
+                prev += j["folded"]      # 之前折掉的
+            else:
+                n_real += 1              # 真实记录
+        # 标记行由本函数写，键固定为 `"folded"`；用它区分真实记录即可
+        real_kept = sum(1 for ln in keep if '"folded"' not in ln)
+        # 只数**真实记录**：旧标记行本身会被替换掉，把它算进"折掉多少"会虚高
+        # （实测：12 条折叠后标记写成 14，比总数还多）。
+        dropped = prev + n_real - real_kept
+        marker = json.dumps({"folded": dropped}, ensure_ascii=False)
+        raw = [first, marker] + keep
+
+    io.open(path, "w", encoding="utf-8", newline="").write(
+        "\r\n".join(raw) + "\r\n")
+    return True, len(raw)
 
 
 def history(path=None):

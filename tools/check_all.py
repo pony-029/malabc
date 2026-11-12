@@ -1140,6 +1140,20 @@ def main(argv):
                  (_sc_last[-1] if _sc_last else "")[:80]))
         if _scrc != 0:
             return 1
+
+    # **自动留痕**（R792）：全检跑完就把这一刻的整体状态追加进
+    # `flow/status-history.jsonl`，于是"退化"有人记录，而不是靠谁记得手工跑
+    # `tools/project_status.py --record`。失败也要记 —— 红的那次同样是历史。
+    # 它**绝不影响退出码**：记录是旁路，不是判据。
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import project_status as _PS            # noqa: PLC0415
+        _added, _lines = _PS.record(_PS.build())
+        print("check_all: 状态历史 %s（共 %d 行，flow/status-history.jsonl）"
+              % ("已追加" if _added else "无变化未追加", _lines))
+    except Exception as _exc:                   # noqa: BLE001
+        print("check_all: 状态历史跳过（%s: %s）" % (type(_exc).__name__, _exc))
+
     return 0
 
 

@@ -167,6 +167,86 @@ def test_historical_figures_are_registered_with_reason():
         "这些图标了 historical 但已是现行 —— 应摘掉标记：%r" % stale_mark[:5]
 
 
+def test_history_is_bounded_and_parsable():
+    """历史文件：**每行可解析** + **行数有上界** + 折叠点要说明折了多少。
+
+    只追加的文件没有上界就会无限膨胀；而膨胀之后没人会读它 ——
+    于是"变化"这一列重新变回不可用，与不记录没有区别。
+    """
+    p = PS.HISTORY
+    if not os.path.isfile(p):
+        pytest.skip("还没有历史文件（先跑一次 --record）")
+    raw = [ln.strip() for ln in io.open(p, encoding="utf-8", errors="replace")
+           if ln.strip()]
+    assert raw, "历史文件是空的"
+    assert len(raw) <= PS.MAX_HISTORY, \
+        "历史 %d 行超过上界 %d" % (len(raw), PS.MAX_HISTORY)
+
+    bad, folded = [], []
+    for i, ln in enumerate(raw, 1):
+        try:
+            j = json.loads(ln)
+        except ValueError:
+            bad.append((i, ln[:60]))
+            continue
+        if "folded" in j:
+            folded.append(j["folded"])
+            if not isinstance(j["folded"], int) or j["folded"] < 1:
+                bad.append((i, "折叠标记的值不是正整数：%r" % j["folded"]))
+    assert not bad, "历史文件有坏行：%r" % bad[:3]
+    assert len(folded) <= 1, "折叠标记出现了 %d 次（应最多一次）" % len(folded)
+
+
+def test_record_is_idempotent_for_same_snapshot():
+    """同一个快照重复记录**不应**增加行数（否则历史会被刷屏）。"""
+    p = PS.HISTORY
+    if not os.path.isfile(p):
+        pytest.skip("还没有历史文件")
+    st = PS.build()
+    before = len([l for l in io.open(p, encoding="utf-8") if l.strip()])
+    added, after = PS.record(st, p)
+    added2, after2 = PS.record(st, p)
+    now = len([l for l in io.open(p, encoding="utf-8") if l.strip()])
+    assert after2 == after, "第二次记录改变了行数：%d -> %d" % (after, after2)
+    assert now in (before, before + 1), "行数异常：before=%d now=%d" % (before, now)
+    assert not (added and added2), "同一快照被记了两次"
+
+
+def test_fold_arithmetic_is_truthful():
+    """折叠标记必须等于「总记录数 − 保留的真实记录数」（在临时文件上验）。
+
+    这个数字很容易写错，而且错得很隐蔽：第一版把**被替换掉的旧标记行**也
+    算进"折掉多少"，于是 12 条记录折叠后标记写成 14（比总数还多）。
+    一个会说谎的计数，比不计数更糟 —— 读者会拿它当依据。
+    """
+    import tempfile
+
+    tmp_root = os.environ.get("M2C_TMP")
+    d = tempfile.mkdtemp(prefix="hist_",
+                         dir=tmp_root if tmp_root and os.path.isdir(tmp_root) else None)
+    old_max = PS.MAX_HISTORY
+    try:
+        PS.MAX_HISTORY = 5
+        p = os.path.join(d, "h.jsonl")
+        n = 30
+        for i in range(n):
+            PS.record({"head": "h%02d" % i, "phases": [], "figures": {},
+                       "gx2_tests": i}, p)
+        lines = [json.loads(l) for l in io.open(p, encoding="utf-8") if l.strip()]
+        assert len(lines) <= 5, "折叠后仍超上界：%d 行" % len(lines)
+        real = [l for l in lines if "folded" not in l]
+        folded = [l["folded"] for l in lines if "folded" in l]
+        assert len(folded) == 1, "折叠标记应恰好一个：%r" % folded
+        assert folded[0] == n - len(real), \
+            "折叠数不实：标记 %d，实际折掉 %d" % (folded[0], n - len(real))
+        assert lines[0].get("head") == "h00", "首行（起点）不能丢"
+        assert lines[-1].get("head") == "h%02d" % (n - 1), "末行必须是最新记录"
+    finally:
+        PS.MAX_HISTORY = old_max
+        import shutil
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def test_rot_criterion_has_teeth():
     """**判据自己要有牙齿**：把 `MAX_LAG` 压到 0 必须让它红。
 
