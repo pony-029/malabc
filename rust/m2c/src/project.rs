@@ -398,6 +398,36 @@ fn gen_readme(name: &str, funcs: &[Func]) -> String {
     out.push(String::new());
     out.push("也可以用环境变量：`MLC_RUNTIME=/path/to/c_runtime cmake -S . -B build`".to_string());
     out.push(String::new());
+    // —— 不用 CMake 的人：**别 `gcc src/*.c`** ——
+    // `src/gen.c` 是 unity 文件（它 `#include` 了 `src/gen/*.c`），
+    // 而且 `main.c` 与 `selftest.c` 都定义 `main()`。
+    // 这两件事都会让"最自然的写法"直接炸在链接期（实测 3 个函数重复定义）。
+    out.push("### 不用 CMake 时（直接 gcc/clang）".to_string());
+    out.push(String::new());
+    out.push("**先看 `src/sources.txt`** —— 它列出了编译单位，分三组：".to_string());
+    out.push(String::new());
+    out.push("| 组 | 含义 |".to_string());
+    out.push("| --- | --- |".to_string());
+    out.push("| `[lib]` | 库：只有 `src/gen.c`（unity 文件） |".to_string());
+    out.push("| `[app]` | 演示入口 `src/main.c` |".to_string());
+    out.push("| `[test]` | 自测入口 `src/selftest.c`（与 `[app]` **二选一**） |".to_string());
+    out.push(String::new());
+    out.push("两条铁律：".to_string());
+    out.push(String::new());
+    out.push("1. `src/gen/*.c` **不要单独编译** —— 它们已被 `src/gen.c` 以 `#include` 引入，\
+再编一次就是 `multiple definition`。"
+        .to_string());
+    out.push("2. `main.c` 与 `selftest.c` **不能同时链接** —— 两个都定义 `main()`。"
+        .to_string());
+    out.push(String::new());
+    out.push("```bash".to_string());
+    out.push("# 只编 [lib] + [app]".to_string());
+    out.push("gcc -std=c99 -O1 -I include -I <path-to>/c_runtime/include \\".to_string());
+    out.push("    src/gen.c src/main.c \\".to_string());
+    out.push("    <path-to>/c_runtime/src/mlc_runtime.c \\".to_string());
+    out.push("    <path-to>/c_runtime/src/mlc_ops.c -o demo".to_string());
+    out.push("```".to_string());
+    out.push(String::new());
     out.push("## 跑一遍看数值".to_string());
     out.push(String::new());
     out.push("```bash".to_string());

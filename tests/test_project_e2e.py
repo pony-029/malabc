@@ -138,6 +138,24 @@ def test_e2e1_compile_units_are_declared(built):
         "`[lib]` 里没有 unity 文件 gen.c：%r" % g["lib"]
 
 
+def test_e2e5_readme_explains_build(built):
+    """E2E5：工程 README 必须解释**不用 CMake 时怎么编**。
+
+    只给 `sources.txt` 不够 —— 用户不会主动去找它，而 `gcc src/*.c` 是
+    最自然的写法，会撞 `multiple definition`。README 要在他犯错之前说清两件事：
+    `gen.c` 是 unity、`main.c` 与 `selftest.c` 二选一。
+    """
+    _d, gen = built
+    p = os.path.join(gen, "README.md")
+    assert os.path.isfile(p), "生成工程缺 README.md"
+    txt = io.open(p, encoding="utf-8", errors="replace").read()
+    assert "sources.txt" in txt, "README 没提 `src/sources.txt`（编译单位清单）"
+    assert "unity" in txt.lower() or "#include" in txt, \
+        "README 没说 `gen.c` 是 unity 文件（用户会去单独编 src/gen/*.c）"
+    assert "selftest" in txt and "二选一" in txt, \
+        "README 没警告 `main.c` 与 `selftest.c` 都有 main()（同时链接会炸）"
+
+
 def test_e2e2_e2e4_build_run_and_values(built):
     """E2E2–E2E4：按清单编译 → 运行 → 无 unimplemented 且数值正确。"""
     cc = _cc()
