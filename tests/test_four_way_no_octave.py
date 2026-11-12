@@ -179,3 +179,43 @@ def test_hash_normalizes_only_representation():
     assert _bit_hash([float("nan")]) == _bit_hash([float("nan")])
     assert _bit_hash([1.0]) != _bit_hash([1.0 + 1e-12]), "真差异必须能区分"
     assert _bit_hash([1.0]) != _bit_hash([-1.0])
+
+
+def test_backparsed_mir_is_executable():
+    """反推 MIR 必须**能被 VM 执行**，且必须标明"形参形状不可恢复"。
+
+    这是 R793 修的两件事：
+      * `_FUNC_RE` 缺 `re.M` → 签名从未匹配 → 没有 `arg:`/`ret:`（VM 报未定义量）；
+      * 局部量没有 `var:` 声明 → 同样跑不了。
+    执行成功**不等于**数值一致 —— 形参形状在 C 里没有记录，VM 会用默认值填充。
+    所以这里只断言"可执行 + 如实标注"，数值一致性仍由 A/B 两路保证。
+    """
+    if not os.path.isfile(M2C):
+        pytest.skip("m2c 未构建")
+    src = os.path.join(CORPUS, "colmean.m")
+    if not os.path.isfile(src):
+        pytest.skip("样本不存在")
+
+    d = tempfile.mkdtemp(prefix="p6x_", dir=WORK if os.path.isdir(WORK) else None)
+    try:
+        mir = os.path.join(d, "a.mir")
+        assert _run([sys.executable, MIR_PY, src, "-o", mir], 180).returncode == 0
+        g = os.path.join(d, "g")
+        assert _run([M2C, "build", "--mir", mir, "--out", g, "--name", "t"],
+                    180).returncode == 0
+        back = os.path.join(d, "back.mir")
+        assert _run([sys.executable, CMIR_PY, os.path.join(g, "src", "gen.c"),
+                     "-o", back], 180).returncode == 0
+
+        txt = io.open(back, encoding="utf-8").read()
+        assert "arg:" in txt and "ret:" in txt, \
+            "反推 MIR 缺形参/返回声明（VM 会报未定义量）：\n%s" % txt[:300]
+        assert "# arg-shape:unknown" in txt, \
+            "有形参却没标注形状不可恢复 —— 读者会以为数值可复现"
+
+        r = _run([M2C, "run", "--mir", back], 180)
+        out = r.stdout.decode("utf-8", "replace")
+        assert r.returncode == 0, "反推 MIR 跑不起来：%s" % out[-300:]
+        assert _parse_vals(out) is not None, "反推 MIR 没产出数值：%s" % out[:200]
+    finally:
+        shutil.rmtree(d, ignore_errors=True)

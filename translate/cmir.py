@@ -63,7 +63,16 @@ def _lookup(cname):
                 return _C2OP[base]
     return None
 
-_FUNC_RE = re.compile(r"^mlc_status\s+m2c_(\w+)\s*\((.*?)\)\s*\{", re.S)
+#: 函数签名。**必须带 `re.M`**：`^` 否则只匹配文件首字符，而 `.c` 文件开头是
+#: 注释块 —— 于是签名永远匹配不到，arg/ret 全空，反推产物在 VM 里一句都跑不了
+#: （R793 实测：报「未定义的量」）。
+_FUNC_RE = re.compile(r"^mlc_status\s+m2c_(\w+)\s*\((.*?)\)\s*\{", re.S | re.M)
+#: `mlc_array s2 = {0};` —— 局部量声明
+_LOCAL_RE = re.compile(r"^\s*mlc_array\s+(\w+)\s*(?:=\s*\{0\})?\s*;\s*$", re.M)
+#: `mlc_array_init(&s2, MLC_F64, 1, (int64_t[]){4})` —— 紧跟声明的形状
+_INIT_RE = re.compile(
+    r"mlc_array_init\(\s*&(\w+)\s*,\s*MLC_\w+\s*,\s*(\d+)\s*,\s*"
+    r"\(int64_t\[\]\)\s*\{([\d,\s]*)\}\s*\)")
 _CALL_RE = re.compile(r"mlc_op_(\w+)\s*\(([^;]*)\)\s*;")
 _CONST_RE = re.compile(r"\(\(double \*\)(\w+(?:->\w+)?)\.data\)\[0\]\s*=\s*([-\d.eE+]+)\s*;")
 _LOOP_RE = re.compile(r"^\s*(while|for)\s*\(")
@@ -95,11 +104,14 @@ def _strip_ref(tok):
 
 def c_to_mir(text, fname):
     """把一段生成 C 转成 MIR 文本；返回 (mir 文本, 统计)。"""
-    st = {"ops": 0, "consts": 0, "loops": 0, "unknown": 0}
+    st = {"ops": 0, "consts": 0, "loops": 0, "unknown": 0, "shape_unknown": 0}
 
     sig = _FUNC_RE.search(text)
     args, rets = [], []
     if sig:
+        # 函数名以 **C 签名**为准（文件名只是兜底）：
+        # 之前用 `fname`（文件 stem），反推出的 MIR 全叫 `func:gen`，与源码函数名无关。
+        fname = sig.group(1)
         for a in _split_args(sig.group(2)):
             if "*" in a:                       # `mlc_array *y` -> 返回值
                 rets.append(_strip_ref(a.split("*")[-1]))
@@ -112,6 +124,27 @@ def c_to_mir(text, fname):
         out.append("arg:%s:f64" % a)
     for r in rets:
         out.append("ret:%s:f64" % r)
+    if args:
+        # **参数形状在 C 里没有记录**：生成物只写 `mlc_array A`，而原 MIR 是
+        # `arg:A:f64:3,2`。反推时补不出来，于是 VM 会用默认值填充 —— 反推产物
+        # **可执行、但数值只在"实参恰好是 1 元"时才与原路径一致**（R793 实测：
+        # `colmean` 原路径 `1 3 5`，反推 `1 2 3`）。
+        # 这里如实标注，而不是假装形状已知。
+        out.append("# arg-shape:unknown（C 未记录形参形状，VM 将用默认值填充）")
+        st["shape_unknown"] = len(args)
+    # **局部量必须声明**，否则 VM 会报「未定义的量」（实测 `sig`）。
+    # 形状从紧跟着的 `mlc_array_init(&x, MLC_F64, n, (int64_t[]){...})` 取；
+    # 取不到形状时按 1 元声明（**不猜多维**，只保证可执行）。
+    inits = dict((m.group(1), [d for d in m.group(3).replace(" ", "").split(",") if d])
+                 for m in _INIT_RE.finditer(text))
+    declared = set(args) | set(rets)
+    for m in _LOCAL_RE.finditer(text):
+        nm = m.group(1)
+        if nm in declared:
+            continue
+        declared.add(nm)
+        dims = inits.get(nm) or ["1"]
+        out.append("var:%s:f64:%s" % (nm, ",".join(dims)))
 
     for raw in text.splitlines():
         ln = raw.strip()
