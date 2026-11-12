@@ -108,6 +108,24 @@ def test_ce3_no_unimplemented(corpus):
     assert not bad, "%d 个函数未实现：%r" % (len(bad), bad[:5])
 
 
+def test_ce5_function_count_is_ratcheted(corpus):
+    """CE5：**函数数不能悄悄变少**（棘轮）。
+
+    CE3 断言"没有 unimplemented"，但一个函数可以：
+      * 被跳过（`m2c run` 对含 unmapped 的函数打 `skip`，不产出行）；
+      * 直接没被生成（源文件被误删/被 exclude 吃掉）。
+    这两种情况都不会触发 CE3 —— 输出的行数只是变少，而少多少没人知道。
+
+    所以这里锚一个**下界**：语料有 58 个 `.m`，输出行数不允许低于它。
+    数字变大是好事（说明又通了一个），变小必须是人有意改的。
+    """
+    out, _gen = corpus
+    lines = [l for l in out.splitlines() if l.strip()]
+    assert len(lines) >= 58, \
+        "语料工程只产出 %d 行（应 ≥58）—— 有函数被跳过或没被生成：\n%s" % (
+            len(lines), out[-400:])
+
+
 def test_ce4_spot_values(corpus):
     """CE4：三个不同形态各抽一个，数值必须与手算一致。"""
     out, _gen = corpus

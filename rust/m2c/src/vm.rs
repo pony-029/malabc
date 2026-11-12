@@ -383,8 +383,52 @@ impl Vm {
                 }
                 Ok(Flow::Next)
             }
-            Stmt::Call2 { func, .. } => Err(format!(
-                "多返回值调用尚未在 VM 内链接：{}（先用 C 路验证）", func)),
+            Stmt::Call2 { lhs, func, args, .. } => {
+                // 多返回值：与 `Call` 同一条链接路径，区别只在**写回多个左值**。
+                let callee = match self.program.iter().find(|k| &k.name == func) {
+                    Some(c) => c.clone(),
+                    None => {
+                        return Err(format!(
+                            "调用了不在本 MIR 内的函数：{}（跨文件需要先合到一份 MIR）",
+                            func))
+                    }
+                };
+                if self.depth >= MAX_CALL_DEPTH {
+                    return Err(format!("调用深度超过 {}（{}）", MAX_CALL_DEPTH, func));
+                }
+                let actual: Vec<Val> = args
+                    .iter()
+                    .map(|a| match self.env.get(a).cloned() {
+                        Some(v) => v,
+                        None => match to_f64(a) {
+                            Some(x) => Val::scalar(x),
+                            None => Val::default(),
+                        },
+                    })
+                    .collect();
+
+                let saved = std::mem::replace(&mut self.env, HashMap::new());
+                for (p, v) in callee.args.iter().zip(actual.into_iter()) {
+                    self.env.insert(p.name.clone(), v);
+                }
+                for l in &callee.locals {
+                    self.env.entry(l.name.clone()).or_insert_with(|| Val::scalar(0.0));
+                }
+                self.depth += 1;
+                let r = self.exec_block(&callee.body);
+                self.depth -= 1;
+                let rets: Vec<Val> = callee
+                    .rets
+                    .iter()
+                    .map(|r| self.env.get(&r.name).cloned().unwrap_or_default())
+                    .collect();
+                self.env = saved;
+                r?;
+                for (name, v) in lhs.iter().zip(rets.into_iter()) {
+                    self.env.insert(name.clone(), v);
+                }
+                Ok(Flow::Next)
+            }
             Stmt::Fill {
                 name,
                 dims,
