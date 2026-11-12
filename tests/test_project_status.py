@@ -162,6 +162,37 @@ def test_every_top_dir_has_a_group():
         "这些顶层目录没有归属职责域（在 tools/project_status.py 的 GROUPS 里补）：%r" % missing
 
 
+def test_figure_gate_counts_match_reality():
+    """图上写的「门禁 N 门」必须等于真实门数。
+
+    这类数字**不会被任何东西自动纠正**（渲染器只校验宽度，不校验事实），
+    所以它只会安静地过期：R816 实测，42 道门时 F38 上还写着 41。
+    现在 `figures_refresh` 会在渲染前同步它，这条判据保证**没重渲染也不会漂**。
+
+    口径与 `check_all` 的 `MIN_GUARDS` 一致：**排除 runner 自身**。
+    """
+    tools_dir = os.path.join(ROOT, "tools")
+    real = len([f for f in os.listdir(tools_dir)
+                if f.startswith("check_") and f.endswith(".py")
+                and f != "check_all.py"])
+    base = os.path.join(ROOT, "flow", "figures")
+    if not os.path.isdir(base):
+        pytest.skip("没有 flow/figures")
+
+    bad = []
+    for d in sorted(os.listdir(base)):
+        p = os.path.join(base, d, "candidate.json")
+        if not os.path.isfile(p):
+            continue
+        txt = io.open(p, encoding="utf-8", errors="replace").read()
+        for m in re.finditer(r"门禁\s*(\d+)\s*门", txt):
+            if int(m.group(1)) != real:
+                bad.append((d, int(m.group(1))))
+    assert not bad, \
+        "这些图上的门数过期（真实 %d 门）：%r —— 跑 tools/figures_refresh.py 重渲染" % (
+            real, bad[:5])
+
+
 def test_historical_figures_are_registered_with_reason():
     """历史图必须**带理由**，且**不能被标成现行**（两向）。
 

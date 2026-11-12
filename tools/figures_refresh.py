@@ -31,6 +31,7 @@ import argparse
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -88,12 +89,52 @@ def plan(head_rev):
     return todo, skip
 
 
+#: 图上写死的「门禁 N 门」。**这类数字必须由代码算** ——
+#: 手写的那个不会报错，只会安静地过期（R816 实测：42 道门时图上还写着 41）。
+_GATE_LABEL_RE = re.compile(r"门禁\s*(\d+)\s*门")
+
+
+#: runner 自身**不算**一道门（它跑别人）。`check_all` 的 `MIN_GUARDS`、
+#: `project_status` 的护栏数都按这个口径 —— 三者必须一致，否则"42 门"会出现
+#: 42/43 两种说法（第一次实现就多算了 runner，图上写成 43）。
+RUNNER = "check_all.py"
+
+
+def gate_count(tools_dir=None):
+    """真实的门数，与 `check_all` 的 `MIN_GUARDS` 同一口径（排除 runner）。"""
+    d = tools_dir or os.path.join(ROOT, "tools")
+    if not os.path.isdir(d):
+        return 0
+    return len([f for f in os.listdir(d)
+                if f.startswith("check_") and f.endswith(".py")
+                and f != RUNNER])
+
+
+def sync_gate_counts(cand, n):
+    """把 candidate 里所有「门禁 N 门」改成 n；返回改动的字段数。
+
+    只动 `label` / `sublabel` —— 那是渲染器真正画出来的字段。
+    """
+    changed = 0
+    for x in cand.get("components") or []:
+        for k in ("label", "sublabel"):
+            v = x.get(k)
+            if isinstance(v, str) and _GATE_LABEL_RE.search(v):
+                new = _GATE_LABEL_RE.sub("门禁 %d 门" % n, v)
+                if new != v:
+                    x[k] = new
+                    changed += 1
+    return changed
+
+
 def refresh(d, target):
     """渲染一张图并写回。返回 (ok, 原因)。"""
     dpath = os.path.join(FIGS, d)
     cand = os.path.join(dpath, "candidate.json")
     c = json.load(io.open(cand, encoding="utf-8"))
     c.setdefault("meta", {}).setdefault("repository", {})["revision"] = head()
+    # 先同步"可算出来的数字"，再渲染 —— 否则图会替一个过期的数字背书
+    sync_gate_counts(c, gate_count())
 
     work = tempfile.mkdtemp(prefix="fig_", dir=WORK)
     try:
@@ -162,8 +203,27 @@ def _selftest():
         if "cur" not in why or "现行" not in why["cur"]:
             print("自证失败：已现行的图没被跳过（%r）" % why.get("cur"))
             return 1
-        print('SELFTEST COUNTS {"bad": 2, "good": 1}')
-        print("自证通过：该刷的刷、现行跳过、历史跳过")
+        # —— 门数同步（三向：改得对 / 不误伤 / 幂等）——
+        fake = {"components": [
+            {"id": "g", "label": "门禁 41 门", "sublabel": "控: 判据"},
+            {"id": "x", "label": "别的东西", "sublabel": "无关"},
+        ]}
+        if sync_gate_counts(fake, 42) != 1:
+            print("自证失败：门数同步应改动 1 处")
+            return 1
+        if fake["components"][0]["label"] != "门禁 42 门":
+            print("自证失败：门数没改成 42（实得 %r）"
+                  % fake["components"][0]["label"])
+            return 1
+        if fake["components"][1]["label"] != "别的东西":
+            print("自证失败：误伤了不含门数的字段")
+            return 1
+        if sync_gate_counts(fake, 42) != 0:
+            print("自证失败：同步不幂等（第二次还改）")
+            return 1
+
+        print('SELFTEST COUNTS {"bad": 5, "good": 4}')
+        print("自证通过：该刷的刷、现行跳过、历史跳过；门数同步改得对/不误伤/幂等")
         return 0
     finally:
         FIGS = saved
