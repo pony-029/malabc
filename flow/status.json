@@ -118,12 +118,13 @@
     }
   ],
   "figures": {
-    "current": 16,
-    "recent": 0,
-    "stale": 4,
+    "current": 0,
+    "recent": 16,
+    "stale": 0,
     "unknown": 0,
+    "historical": 4,
     "count": 20
   },
   "gx2_tests": 76,
-  "head": "7ec8e91cd081"
+  "head": "e0ed04f7ef0d"
 }

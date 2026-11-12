@@ -18,6 +18,7 @@
 **数字是诚实的**（张数 == 磁盘目录数、三档之和 == 张数），滞后本身由
 `flow/catalog.html` 展示给人看。
 """
+import io
 import json
 import os
 import re
@@ -68,11 +69,44 @@ def test_figure_counts_are_honest(status):
                    if os.path.isdir(os.path.join(base, d))])
     assert f["count"] == on_disk, \
         "统计到 %d 张，磁盘上 %d 张" % (f["count"], on_disk)
-    s = f["current"] + f["recent"] + f["stale"] + f["unknown"]
-    assert s == f["count"], "三档之和 %d != 张数 %d" % (s, f["count"])
+    s = (f["current"] + f["recent"] + f["stale"] + f["unknown"]
+         + f.get("historical", 0))
+    assert s == f["count"], "各档之和 %d != 张数 %d" % (s, f["count"])
 
 
 def test_gx2_list_is_nonempty(status):
     """GX2 清单非空 —— 否则"已接线"这个判定会在空集上恒真。"""
     assert status["gx2_tests"] >= 50, \
         "GX2 只引用了 %d 个测试文件（判据可能被清空）" % status["gx2_tests"]
+
+
+def test_historical_figures_are_registered_with_reason():
+    """历史图必须**带理由**，且**不能被标成现行**（两向）。
+
+    * 有 `meta.status == "historical"` 却没有理由 ⇒ 红（免检要写清为什么）；
+    * 标了 historical 却已经是现行（revision == HEAD）⇒ 陈旧登记 ⇒ 红
+      （它其实能刷新，不该挂在历史档里）。
+
+    这条守的是登记制最容易烂掉的方式：**只加不减**。
+    """
+    base = os.path.join(ROOT, "flow", "figures")
+    if not os.path.isdir(base):
+        pytest.skip("没有 flow/figures")
+    head = PS._head()
+    missing_reason, stale_mark = [], []
+    for d in sorted(os.listdir(base)):
+        p = os.path.join(base, d, "candidate.json")
+        if not os.path.isfile(p):
+            continue
+        c = json.load(io.open(p, encoding="utf-8"))
+        meta = c.get("meta") or {}
+        if (meta.get("status") or "") != "historical":
+            continue
+        if len((meta.get("historical_reason") or "").strip()) < 12:
+            missing_reason.append(d)
+        rev = ((meta.get("repository") or {}).get("revision") or "").strip()
+        if rev and head and rev == head:
+            stale_mark.append(d)
+    assert not missing_reason, "历史图缺理由（或太短）：%r" % missing_reason[:5]
+    assert not stale_mark, \
+        "这些图标了 historical 但已是现行 —— 应摘掉标记：%r" % stale_mark[:5]

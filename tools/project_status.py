@@ -126,7 +126,7 @@ def figures():
     if not os.path.isdir(base):
         return {"count": 0, "current": 0, "recent": 0, "stale": 0, "unknown": 0}
     head = _head()
-    dist = {"current": 0, "recent": 0, "stale": 0, "unknown": 0}
+    dist = {"current": 0, "recent": 0, "stale": 0, "unknown": 0, "historical": 0}
     n = 0
     for d in sorted(os.listdir(base)):
         p = os.path.join(base, d, "candidate.json")
@@ -139,6 +139,11 @@ def figures():
             rev = ((meta.get("repository") or {}).get("revision") or "").strip()
         except (ValueError, OSError):
             dist["unknown"] += 1
+            continue
+        # **历史图单独一档**：它们用旧 schema，重渲染会丢语义，登记后不再计为欠账。
+        # 但"登记了却其实能刷新成现行"要能反向抓出来 —— 见 tests/test_project_status.py。
+        if (meta.get("status") or "") == "historical":
+            dist["historical"] += 1
             continue
         if not rev or not head:
             dist["unknown"] += 1
@@ -221,8 +226,9 @@ def main(argv=None):
             print("  %-14s %-34s 文件 %3d" % (m["path"], m["duty"], m["files"]))
         f = st["figures"]
         print("\n== 流程图 ==")
-        print("  共 %d 张 ｜ 现行 %d ｜ 近期 %d ｜ 已过时 %d ｜ 无回执 %d"
-              % (f["count"], f["current"], f["recent"], f["stale"], f["unknown"]))
+        print("  共 %d 张 ｜ 现行 %d ｜ 近期 %d ｜ 已过时 %d ｜ 历史(登记) %d ｜ 无回执 %d"
+              % (f["count"], f["current"], f["recent"], f["stale"],
+                 f.get("historical", 0), f["unknown"]))
         print("\nGX2 覆盖测试文件 %d 个 ｜ HEAD %s" % (st["gx2_tests"], st["head"]))
         if unknown:
             print("\n需要人看一眼：%s" % ", ".join(unknown))

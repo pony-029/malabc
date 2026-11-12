@@ -11,7 +11,9 @@
       "link_mode": "local-only",
       "revision": "069fe5553a8939591a0c390f047854bf43d740d4"
     },
-    "locale": "zh-CN"
+    "locale": "zh-CN",
+    "status": "historical",
+    "historical_reason": "旧 schema（dataflow/lifecycle/sequence/workflow 各自一套），与今天的 architecture 规格不同；硬转会丢掉消息顺序 / 状态迁移 / 泳道等语义。保留原图作历史参考，不再随代码重渲染。"
   },
   "stages": [
     {
