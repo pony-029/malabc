@@ -92,6 +92,22 @@ MAIN_FIGURES = {
 MAX_LAG = 40
 
 
+def rot_problems(items, max_lag):
+    """纯判定：`[(标题, 目录, lag 或 错误串)]` → 问题列表。
+
+    抽成纯函数是为了让"判据会不会响"能**注入合成数据**验证 ——
+    否则所有图都现行时，`MAX_LAG=0` 也不会红，那条自证就变成了
+    "环境恰好合适才成立"（R818 实测：16 张全部重渲染后它哑了）。
+    """
+    rot = []
+    for title, d, lag in items:
+        if not isinstance(lag, int):
+            rot.append((title, d, lag))
+        elif lag > max_lag:
+            rot.append((title, d, "落后 %d 个提交（上限 %d）" % (lag, max_lag)))
+    return rot
+
+
 def test_main_figures_do_not_rot():
     """主干图不得落后超过 `MAX_LAG` 个提交。
 
@@ -107,28 +123,26 @@ def test_main_figures_do_not_rot():
     head = PS._head()
     if not head:
         pytest.skip("取不到 HEAD")
-    rot = []
+    items = []
     for d, title in MAIN_FIGURES.items():
         p = os.path.join(base, d, "candidate.json")
         if not os.path.isfile(p):
-            rot.append((title, d, "目录不存在"))
+            items.append((title, d, "目录不存在"))
             continue
         c = json.load(io.open(p, encoding="utf-8"))
         meta = c.get("meta") or {}
         rev = ((meta.get("repository") or {}).get("revision") or "").strip()
         if not rev:
-            rot.append((title, d, "没有 revision"))
+            items.append((title, d, "没有 revision"))
             continue
         r = subprocess.run(["git", "rev-list", "--count", "%s..%s" % (rev, head)],
                            cwd=ROOT, stdin=subprocess.DEVNULL, timeout=60,
                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         try:
-            lag = int(r.stdout.decode().strip())
+            items.append((title, d, int(r.stdout.decode().strip())))
         except ValueError:
-            rot.append((title, d, "算不出 lag"))
-            continue
-        if lag > MAX_LAG:
-            rot.append((title, d, "落后 %d 个提交（上限 %d）" % (lag, MAX_LAG)))
+            items.append((title, d, "算不出 lag"))
+    rot = rot_problems(items, MAX_LAG)
     assert not rot, (
         "主干图已腐烂，请重渲染：\n  " +
         "\n  ".join("%s (%s)：%s" % t for t in rot) +
@@ -306,16 +320,18 @@ def test_fold_arithmetic_is_truthful():
 
 
 def test_rot_criterion_has_teeth():
-    """**判据自己要有牙齿**：把 `MAX_LAG` 压到 0 必须让它红。
+    """**判据自己要有牙齿**：注入合成数据，越过腐烂线必须被报出来。
 
-    没有这条，`test_main_figures_do_not_rot` 可能因为"恰好没有明显过期"而
-    永远绿 —— 而它到底会不会在过期时报警，没人验证过。
+    ⚠ 早前这条是"把 `MAX_LAG` 压到 0，然后期待真实现红"。R818 把 16 张图
+    全部重渲染到现行之后，那条自证**哑了**（lag 全是 0，压到 0 也不超）——
+    于是它从"验证判据会响"退化成"验证当前环境恰好有滞后"。
+
+    现在改成**纯函数 + 合成数据**：与仓库真实状态无关，永远可验。
     """
-    import test_project_status as _self
-    old = _self.MAX_LAG
-    try:
-        _self.MAX_LAG = 0
-        with pytest.raises(AssertionError):
-            _self.test_main_figures_do_not_rot()
-    finally:
-        _self.MAX_LAG = old
+    # 越过线 → 必须报
+    assert rot_problems([("F37", "d1", 41)], 40), "41 > 40 竟然没被报"
+    # 正好在线 → 不报（边界不能误伤）
+    assert not rot_problems([("F37", "d1", 40)], 40), "40 恰好等于上限，不该报"
+    # 取不到 lag / 目录缺失 → 也必须报（未知不等于健康）
+    assert rot_problems([("F38", "d2", "目录不存在")], 40)
+    assert rot_problems([("F30", "d3", "没有 revision")], 40)

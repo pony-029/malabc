@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "5e79e058-2c7f-447f-82c3-36f6536c385d",
+  "receiptId": "e06594dc-0297-4441-8f4d-bf26664f1026",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
-  "input": "E:\\temp\\matlabc\\rr_fnj4bng2\\candidate.json",
-  "output": "E:\\temp\\matlabc\\rr_fnj4bng2\\out.html",
+  "input": "C:\\Users\\ponyp\\AppData\\Local\\Temp\\fig_yjqf4bt7\\candidate.json",
+  "output": "C:\\Users\\ponyp\\AppData\\Local\\Temp\\fig_yjqf4bt7\\out.html",
   "specification": {
-    "sha256": "ddbb3a3cca3403a7edfa81e1e8f6d47c7c44ec6a72726237afd06461d42d92cc",
+    "sha256": "bc6bee3d5ebe562b65e399e798760b526eb76128b65a16cf2a609e638fda8279",
     "bytes": 3711
   },
   "artifact": {
-    "sha256": "d08e3ec7703f741a9456c1c3e5dbdc7d3432ff808b5ada9d658fffa9bf74e819",
+    "sha256": "2b6c8e79b8cac0fb0eb1f4d46de3cd8d5d23717c369a2d1caa392d578c5732a8",
     "bytes": 839028
   }
 }

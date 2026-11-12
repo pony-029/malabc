@@ -204,13 +204,13 @@
     }
   ],
   "figures": {
-    "current": 1,
+    "current": 16,
     "recent": 0,
-    "stale": 15,
+    "stale": 0,
     "unknown": 0,
     "historical": 4,
     "count": 20
   },
   "gx2_tests": 79,
-  "head": "213283ee4c3c"
+  "head": "244e85f88db7"
 }
