@@ -99,10 +99,66 @@
       "group": "运行时"
     },
     {
+      "path": "malabc-rt/",
+      "duty": "Rust 运行时 crate",
+      "status": "ok",
+      "files": 92,
+      "gx2_tests": 76,
+      "group": "运行时"
+    },
+    {
+      "path": "frontends/",
+      "duty": "多语言前端（候选站点 / IR）",
+      "status": "ok",
+      "files": 6,
+      "gx2_tests": 76,
+      "group": "转换侧"
+    },
+    {
+      "path": "analyzer/",
+      "duty": "分析侧（索引与关系）",
+      "status": "ok",
+      "files": 6,
+      "gx2_tests": 76,
+      "group": "分析侧"
+    },
+    {
+      "path": "binfmt/",
+      "duty": "二进制与构建系统的格式解析",
+      "status": "ok",
+      "files": 22,
+      "gx2_tests": 76,
+      "group": "分析侧"
+    },
+    {
+      "path": "renderers/",
+      "duty": "渲染层（资产 / 调用图）",
+      "status": "ok",
+      "files": 47,
+      "gx2_tests": 76,
+      "group": "分析侧"
+    },
+    {
       "path": "tools/",
       "duty": "门禁、状态、追踪、预算等工具",
       "status": "ok",
       "files": 140,
+      "gx2_tests": 76,
+      "group": "工具与门禁"
+    },
+    {
+      "path": "harness/",
+      "duty": "图与候选的生成辅助",
+      "status": "ok",
+      "files": 6,
+      "gx2_tests": 76,
+      "group": "工具与门禁"
+    },
+    {
+      "path": "ci-examples/",
+      "duty": "CI 配置样例",
+      "status": "ok",
+      "files": 9,
       "gx2_tests": 76,
       "group": "工具与门禁"
     },
@@ -115,12 +171,36 @@
       "group": "图与文档"
     },
     {
+      "path": "m2c-site/",
+      "duty": "静态展示站",
+      "status": "ok",
+      "files": 3,
+      "gx2_tests": 76,
+      "group": "图与文档"
+    },
+    {
+      "path": "docs/",
+      "duty": "设计文档",
+      "status": "ok",
+      "files": 274,
+      "gx2_tests": 76,
+      "group": "图与文档"
+    },
+    {
       "path": "tests/",
       "duty": "判据（含 GX2 的全部用例）",
       "status": "ok",
       "files": 194,
       "gx2_tests": 76,
       "group": "判据"
+    },
+    {
+      "path": "vscode/",
+      "duty": "编辑器插件",
+      "status": "ok",
+      "files": 14,
+      "gx2_tests": 76,
+      "group": "编辑器"
     }
   ],
   "figures": {
@@ -132,5 +212,5 @@
     "count": 20
   },
   "gx2_tests": 76,
-  "head": "e4f28c48cca7"
+  "head": "e579f1c37d0d"
 }

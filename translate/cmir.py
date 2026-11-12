@@ -327,6 +327,10 @@ def c_to_mir(text, fname):
         m_fill = _FILL_RE.match(ln)
         if m_fill:
             name = m_fill.group(1)
+            # 维度取**形状元数据**。已知差异：原 MIR 里 `ret:y:f64:4` 与
+            # `fill:y:1,4:0` 本身就不一致（返回声明是 1 维 4，填充分配是 1×4），
+            # C 只记了前者，所以反推得到 `fill:y:4:0` —— 元素数相同、数值一致，
+            # 是**原 MIR 的信息差**，不是反推丢维度。
             dims = shapes.get(name) or ",".join(inits.get(name) or ["1"])
             out.append("fill:%s:%s:%s" % (name, dims, m_fill.group(3)))
             st["fills"] = st.get("fills", 0) + 1

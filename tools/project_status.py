@@ -59,9 +59,19 @@ MODULES = [
     ("translate/", "MATLAB → MIR / HIR / C（转换侧主体）"),
     ("rust/m2c/", "MIR → C 工程（发射器与装配）"),
     ("c_runtime/", "C 运行时（mlc_array / 算子实现）"),
+    ("malabc-rt/", "Rust 运行时 crate"),
+    ("frontends/", "多语言前端（候选站点 / IR）"),
+    ("analyzer/", "分析侧（索引与关系）"),
+    ("binfmt/", "二进制与构建系统的格式解析"),
+    ("renderers/", "渲染层（资产 / 调用图）"),
     ("tools/", "门禁、状态、追踪、预算等工具"),
+    ("harness/", "图与候选的生成辅助"),
+    ("ci-examples/", "CI 配置样例"),
     ("flow/", "流程图与目录页"),
+    ("m2c-site/", "静态展示站"),
+    ("docs/", "设计文档"),
     ("tests/", "判据（含 GX2 的全部用例）"),
+    ("vscode/", "编辑器插件"),
 ]
 
 #: 职责域。**分组是为了回答"哪一层最厚/最薄"**，而不是把目录再列一遍：
@@ -69,11 +79,22 @@ MODULES = [
 #: 判据（证据）。任何目录都必须落在某个域里 —— 否则它就是在"没人负责"的地带。
 GROUPS = {
     "translate/": "转换侧",
+    "rust/": "转换侧",          # 顶层归属（具体模块是 rust/m2c/）
     "rust/m2c/": "转换侧",
+    "frontends/": "转换侧",
     "c_runtime/": "运行时",
+    "malabc-rt/": "运行时",
+    "analyzer/": "分析侧",
+    "binfmt/": "分析侧",
+    "renderers/": "分析侧",
     "tools/": "工具与门禁",
+    "harness/": "工具与门禁",
+    "ci-examples/": "工具与门禁",
     "flow/": "图与文档",
+    "m2c-site/": "图与文档",
+    "docs/": "图与文档",
     "tests/": "判据",
+    "vscode/": "编辑器",
 }
 
 

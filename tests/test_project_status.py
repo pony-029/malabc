@@ -135,6 +135,33 @@ def test_main_figures_do_not_rot():
         "\n  修法：python tools/figures_refresh.py --only <目录名>")
 
 
+def test_every_top_dir_has_a_group():
+    """每个**顶层目录**都必须落在某个职责域里。
+
+    分组表是人写的，人写的清单只会被追加、很少被审 —— 新目录很容易落进
+    "未分组"，而它一旦出现，就意味着有一层代码**没人负责**（既不属于转换，
+    也不属于运行时/工具/判据）。这条判据把这个缺口变成红灯。
+
+    豁免只允许：`docs/`（纯文档）、`vscode/`（编辑器插件）、`.git` 等点目录。
+    """
+    # 只豁免"不是本项目代码"的目录（构建产物、缓存、空目录）。
+    # `docs/`、`vscode/` **不豁免** —— 它们也是本项目的一部分，必须归属某个域。
+    EXEMPT = {"releases", "node_modules", "flow_out", "__pycache__", "dlow"}
+    groups = PS.GROUPS
+    known = {p.rstrip("/") for p in groups}
+    missing = []
+    for d in sorted(os.listdir(ROOT)):
+        if d.startswith(".") or d in EXEMPT:
+            continue
+        full = os.path.join(ROOT, d)
+        if not os.path.isdir(full):
+            continue
+        if d not in known:
+            missing.append(d)
+    assert not missing, \
+        "这些顶层目录没有归属职责域（在 tools/project_status.py 的 GROUPS 里补）：%r" % missing
+
+
 def test_historical_figures_are_registered_with_reason():
     """历史图必须**带理由**，且**不能被标成现行**（两向）。
 
