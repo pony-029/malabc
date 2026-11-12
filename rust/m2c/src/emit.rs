@@ -1362,6 +1362,16 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                                 .unwrap_or(false);
                             if formal_scalar && is_num_literal(a) {
                                 call_args.push(a.clone());
+                            } else if is_num_literal(a) {
+                                // 字面量配数组形参：需要先落临时量，不猜
+                                ok = false;
+                                call_args.push(ident(a));
+                            } else if f.declared().iter().any(|d| d == a) {
+                                // **上一跳的产出**（`t = scale(a,2); y = addc(t,1);`）：
+                                // `t` 不是形参也没有 `var:` 声明，但它由前一条 `call`/`op`
+                                // 产出，是数组。不认它，跨目录链路会在第二个调用点断掉
+                                // （R805 实测：`scale` 通了、`addc` 却 TODO(call)）。
+                                call_args.push(ident(a));
                             } else {
                                 ok = false;
                                 call_args.push(ident(a));
