@@ -242,9 +242,14 @@ def render_status(st):
 
     f = st.get("figures") or {}
     live = (f.get("current", 0) + f.get("recent", 0))
+    done = sum(1 for ph in (st.get("phases") or [])
+               if ph.get("status") == "done")
+    total = len(st.get("phases") or [])
     return """%(b)s
   <section id="status">
     <h2>项目整体状态 <span class="hint">由 <code>tools/project_status.py</code> 从仓库算出（数字不可手写）</span></h2>
+    <p class="q">计划阶段完成度：<b>%(done)d/%(total)d</b>
+      （"完成" = 证据判据文件存在 **且** 已接入 GX2 —— 判据没人跑就不算）。</p>
     <table class="stt" style="border-collapse:collapse;width:100%%;font-size:13px;margin:8px 0">
       <tr style="text-align:left;border-bottom:1px solid currentColor">
         <th style="padding:4px 8px">状态</th><th style="padding:4px 8px">阶段</th>
@@ -272,6 +277,7 @@ def render_status(st):
         "gx2": st.get("gx2_tests", 0), "head": st.get("head", ""),
         "histline": _render_hist(st),
         "grows": "\n      ".join(grows),
+        "done": done, "total": total,
     }
 
 
