@@ -628,6 +628,23 @@ pub fn emit_project(funcs: &[Func], name: &str, cases: &[Case],
         ("src/selftest.c".to_string(), self_c),
         ("CMakeLists.txt".to_string(), cmake.join("\n") + "\n"),
         ("README.md".to_string(), gen_readme(name, funcs)),
+        // **该编译哪些源文件的清单**（R804）。
+        //
+        // 为什么必须有：`src/gen.c` 是 **unity 文件** —— 它 `#include` 了
+        // 各分片（`src/gen/*.c`）。于是「`gcc src/*.c`」这种最自然的写法会
+        // 撞上 `multiple definition`（实测 3 个函数全部重复定义）。
+        // CMakeLists 里只列 gen.c，但那要求用户去读 CMake 才知道该编什么。
+        // 这份清单让"编译单位"变成**可机读的事实**，而不是藏在构建脚本里的约定。
+        ("src/sources.txt".to_string(), {
+            let mut v = String::new();
+            v.push_str("# 编译单位清单（m2c 生成，勿手改）\n");
+            v.push_str("# 规则：其余 .c 由 `[lib]` 里的 src/gen.c 以 #include 引入，\n");
+            v.push_str("#        **不要再单独编译它们**，否则 multiple definition。\n");
+            v.push_str("# 两个入口二选一：[app] 是演示入口，[test] 是 ctest 自测，\n");
+            v.push_str("#       它们都定义 main()，不能同时链接。\n\n");
+            v.push_str("[lib]\nsrc/gen.c\n\n[app]\nsrc/main.c\n\n[test]\nsrc/selftest.c\n");
+            v
+        }),
         ("fixture.example.txt".to_string(), gen_fixture_example(funcs)),
         // 用户很可能把生成工程直接提交：默认就把构建产物挡在外面
         (".gitignore".to_string(),
