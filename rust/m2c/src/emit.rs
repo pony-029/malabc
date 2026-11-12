@@ -307,6 +307,27 @@ fn resolved_shape_d(f: &Func, name: &str, depth: u32) -> Option<Vec<i64>> {
     if let Some(s) = f.var_shape(name) {
         return Some(s);
     }
+    // **标量名字**：`const:x:3` / `set:x:1` / `setb:x:...` / `for:x:...` 都是 1×1。
+    //
+    // 不认它们会怎样：`op:OP-DIV:t:o:z`（两边都是 `const:`）推不出 `t` 的形状，
+    // 于是按纪律拒绝生成整条函数（`TODO(shape)` + `MLC_UNIMPLEMENTED`）。
+    // 实测这就是 `ninf`（-Inf）那条欠账的真因 —— 它躺了一个多月，理由还写成"数值分岔"。
+    let mut scalar_name = false;
+    walk_stmts(&f.body, &mut |st| {
+        let hit = match st {
+            Stmt::Const { name: n, .. } => n == name,
+            Stmt::Set { lhs: n, .. } => n == name,
+            Stmt::SetBin { lhs: n, .. } => n == name,
+            Stmt::For { var: n, .. } => n == name,
+            _ => false,
+        };
+        if hit {
+            scalar_name = true;
+        }
+    });
+    if scalar_name {
+        return Some(vec![1]);
+    }
     // 形状求解的深度上限。原先是 3 —— 那不是环检测，只是"再深就不管了"：
     // `y = 10*log10(mean(sig.*sig)/mean(noise.*noise))` 的链长就是 4，会被误判为"推不出"。
     // 16 足够覆盖真实表达式的链长，同时对 `x = f(x)` 这类自引用仍然终止。

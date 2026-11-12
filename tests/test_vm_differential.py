@@ -167,15 +167,10 @@ def test_random_differential_vm_vs_c():
     # 一旦分岔回来就会红（这比"xpass 只提示"更早暴露）。
     "inf",
     "nan",
-    # `ninf`：**理由已更正**。它从来不是数值分岔，而是 C 生成器在
-    # `op:OP-DIV:t:o:z`（两侧都是 `const:` 标量）处**推不出临时量的形状**，
-    # 按纪律拒绝生成（`TODO(shape)`）；而 VM 直接算出了 -Inf。
-    # 所以这是两条路在"未声明形状"上的**策略差异**，不是谁算错了。
-    # 真正要补的是生成器的形状推断：`const:` 名字应当按 1×1 标量参与推导。
-    pytest.param("ninf", marks=pytest.mark.xfail(
-        strict=False,
-        reason="C 路子 `const` 标量运算处推不出形状（TODO(shape)），"
-               "按纪律拒绝生成；VM 算出 -inf。待补生成器形状推断")),
+    # `ninf` 曾长期挂 xfail，理由写的是"数值分岔（R719 待定位）"—— **那是错的**。
+    # 真因是生成器在 `op:OP-DIV:t:o:z`（两侧都是 `const:` 标量）处推不出临时量形状，
+    # 按纪律拒绝生成；R812 给 `resolved_shape` 补上"标量名字 → 1×1"后两侧一致。
+    "ninf",
 ])
 def test_special_values_agree(kind):
     """NaN / ±Inf：两条实现必须**一致地**产出，且不崩溃。"""
