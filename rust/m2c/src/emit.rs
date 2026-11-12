@@ -1522,6 +1522,26 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
     if !f.source_hash.is_empty() {
         out.push(format!("/* @m2c source_sha256:{} */", f.source_hash));
     }
+    // **形状元数据**：C 的语言签名表达不了 `arg:A:f64:3,2` 里的 `3,2`，
+    // 而这正是反推（`translate/cmir.py`）唯一缺的那条信息 —— 缺了它，
+    // 反推产物在 VM 里会用默认值填充形参，数值静默变形（R793 实测：
+    // `colmean` 从 `1 3 5` 变成 `1 2 3`）。写成注释：不改 ABI，编译器无感。
+    for a in &f.args {
+        if is_scalar_dt(&a.dtype) || a.shape.is_empty() {
+            continue;
+        }
+        let dims: Vec<String> = a.shape.iter().map(|d| d.to_string()).collect();
+        out.push(format!("/* @m2c arg-shape {} {} */", ident(&a.name),
+                         dims.join(",")));
+    }
+    for r in &f.rets {
+        if is_scalar_dt(&r.dtype) || r.shape.is_empty() {
+            continue;
+        }
+        let dims: Vec<String> = r.shape.iter().map(|d| d.to_string()).collect();
+        out.push(format!("/* @m2c ret-shape {} {} */", ret_cname(f, &r.name),
+                         dims.join(",")));
+    }
     out.push(proto(f).replace(';', " {"));
     out.push("    mlc_status st = MLC_OK;".to_string());
     out.push("    (void)st;".to_string());

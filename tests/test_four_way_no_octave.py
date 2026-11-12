@@ -181,14 +181,16 @@ def test_hash_normalizes_only_representation():
     assert _bit_hash([1.0]) != _bit_hash([-1.0])
 
 
-def test_backparsed_mir_is_executable():
-    """反推 MIR 必须**能被 VM 执行**，且必须标明"形参形状不可恢复"。
+def test_backparsed_mir_reproduces_values():
+    """反推 MIR 必须**可执行且数值复现**（R793 + R794）。
 
-    这是 R793 修的两件事：
-      * `_FUNC_RE` 缺 `re.M` → 签名从未匹配 → 没有 `arg:`/`ret:`（VM 报未定义量）；
-      * 局部量没有 `var:` 声明 → 同样跑不了。
-    执行成功**不等于**数值一致 —— 形参形状在 C 里没有记录，VM 会用默认值填充。
-    所以这里只断言"可执行 + 如实标注"，数值一致性仍由 A/B 两路保证。
+    修的三处：`re.M`（签名匹配）、函数名以 C 签名为准、局部量 `var:` 声明。
+    第四处才是数值复现的关键：**形状元数据**。C 的签名表达不了 `arg:A:f64:3,2`，
+    于是生成器现在把它写成注释、`cmir` 读回来 —— 没有它，VM 用默认值填形参，
+    `colmean` 会从 `1 3 5` 静默变成 `1 2 3`。
+
+    ⚠ 仍只对**无控制流**的样本成立：`cmir` 不还原 if/for（那需要结构化，
+    不是补注释能解决的）。
     """
     if not os.path.isfile(M2C):
         pytest.skip("m2c 未构建")
@@ -208,14 +210,16 @@ def test_backparsed_mir_is_executable():
                      "-o", back], 180).returncode == 0
 
         txt = io.open(back, encoding="utf-8").read()
-        assert "arg:" in txt and "ret:" in txt, \
-            "反推 MIR 缺形参/返回声明（VM 会报未定义量）：\n%s" % txt[:300]
-        assert "# arg-shape:unknown" in txt, \
-            "有形参却没标注形状不可恢复 —— 读者会以为数值可复现"
+        assert "arg:A:f64:3,2" in txt, \
+            "反推 MIR 没恢复形参形状（生成器的 `arg-shape` 注释没被读回？）：\n%s" \
+            % txt[:300]
 
-        r = _run([M2C, "run", "--mir", back], 180)
-        out = r.stdout.decode("utf-8", "replace")
-        assert r.returncode == 0, "反推 MIR 跑不起来：%s" % out[-300:]
-        assert _parse_vals(out) is not None, "反推 MIR 没产出数值：%s" % out[:200]
+        a_out = _run([M2C, "run", "--mir", mir], 180).stdout.decode("utf-8", "replace")
+        b_out = _run([M2C, "run", "--mir", back], 180).stdout.decode("utf-8", "replace")
+        va, vb = _parse_vals(a_out), _parse_vals(b_out)
+        assert va is not None and vb is not None, \
+            "有一路没产出数值：\n 原=%s\n 反推=%s" % (a_out[:120], b_out[:120])
+        assert _bit_hash(va) == _bit_hash(vb), \
+            "反推数值不还原：原 %r vs 反推 %r" % (va, vb)
     finally:
         shutil.rmtree(d, ignore_errors=True)

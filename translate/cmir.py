@@ -73,6 +73,10 @@ _LOCAL_RE = re.compile(r"^\s*mlc_array\s+(\w+)\s*(?:=\s*\{0\})?\s*;\s*$", re.M)
 _INIT_RE = re.compile(
     r"mlc_array_init\(\s*&(\w+)\s*,\s*MLC_\w+\s*,\s*(\d+)\s*,\s*"
     r"\(int64_t\[\]\)\s*\{([\d,\s]*)\}\s*\)")
+#: `/* @m2c arg-shape A 3,2 */` —— 生成器写的**形状元数据**。
+#: C 的签名表达不了它，但对拍需要：没有形状，VM 会用默认值填形参，
+#: 数值静默变形（R793 实测 `colmean` 从 `1 3 5` 变 `1 2 3`）。
+_SHAPE_RE = re.compile(r"@m2c\s+(arg|ret)-shape\s+(\w+)\s+([\d,]+)")
 _CALL_RE = re.compile(r"mlc_op_(\w+)\s*\(([^;]*)\)\s*;")
 _CONST_RE = re.compile(r"\(\(double \*\)(\w+(?:->\w+)?)\.data\)\[0\]\s*=\s*([-\d.eE+]+)\s*;")
 _LOOP_RE = re.compile(r"^\s*(while|for)\s*\(")
@@ -118,13 +122,21 @@ def c_to_mir(text, fname):
             elif a.startswith("mlc_array "):
                 args.append(_strip_ref(a.split(None, 1)[1]))
 
+    # 形状元数据（生成器写在函数头前的注释里）
+    shapes = {}
+    for m in _SHAPE_RE.finditer(text):
+        shapes[m.group(2)] = m.group(3)
+
     out = ["version 3"]
     out.append("func:%s" % fname)
     for a in args:
-        out.append("arg:%s:f64" % a)
+        sh = shapes.get(a)
+        out.append("arg:%s:f64:%s" % (a, sh) if sh else "arg:%s:f64" % a)
     for r in rets:
-        out.append("ret:%s:f64" % r)
-    if args:
+        sh = shapes.get(r)
+        out.append("ret:%s:f64:%s" % (r, sh) if sh else "ret:%s:f64" % r)
+    missing = [n for n in list(args) + list(rets) if n not in shapes]
+    if missing:
         # **参数形状在 C 里没有记录**：生成物只写 `mlc_array A`，而原 MIR 是
         # `arg:A:f64:3,2`。反推时补不出来，于是 VM 会用默认值填充 —— 反推产物
         # **可执行、但数值只在"实参恰好是 1 元"时才与原路径一致**（R793 实测：
