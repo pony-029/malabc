@@ -118,6 +118,7 @@ _OP_C2MIR = {"-": "sub", "+": "add", "*": "mul", "/": "div"}
 
 #: `while (i <= 4) {` —— MIR 是 `while:i:le:4`
 _WHILE_RE = re.compile(r"^\s*while\s*\((.*)\)\s*\{\s*$")
+
 #: 迭代上限守卫：`if (++__m2c_iter > 1000000LL) { return MLC_ERR; }`
 #: 它由发射器插入（防止死循环），**不是源码分支**。
 _ITER_GUARD = "__m2c_iter"
@@ -329,6 +330,10 @@ def c_to_mir(text, fname):
             out.append("op:%s:%s" % (oid, ":".join(parts)))
             st["ops"] += 1
             continue
+        # ⚠ 函数间 `call:` 的还原**已设计未落地**（R798 撤回）：
+        # 现有 `translate/examples/proj` 的生成物把被调方 `#include` 进来，
+        # 调用点没有独立的 `m2c_xxx(&a, &y)` 行，因此**没有样本可验**。
+        # 没有样本的实现等于未实现 —— 等有跨文件调用样本时再补，并同时补判据。
         if ln.startswith(("if (", "return", "}", "{", "mlc_array", "int64_t",
                           "double *", "const double *", "(void)")):
             continue
