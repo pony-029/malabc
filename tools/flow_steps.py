@@ -187,6 +187,69 @@ def render_stats(n_int, n_svg, rows, hir=None):
              "nst": len(rows), "ok": ok, "hir": hir_stat}
 
 
+STATUS_BEGIN = "<!-- STATUS:BEGIN -->"
+STATUS_END = "<!-- STATUS:END -->"
+
+
+def read_status():
+    """读 `flow/status.json`（由 `tools/project_status.py` 产出）。"""
+    p = os.path.join(ROOT, "flow", "status.json")
+    if not os.path.isfile(p):
+        return None
+    try:
+        return json.load(io.open(p, encoding="utf-8"))
+    except (ValueError, OSError):
+        return None
+
+
+def render_status(st):
+    """把**计划阶段 + 图分布**渲染成静态表。
+
+    数字全部来自 JSON（一次真实计算），页面本身不写死任何结论 ——
+    否则它就是又一份会过期的散文。
+    """
+    if not st:
+        return (STATUS_BEGIN + "\n"
+                "<section id=\"status\"><h2>项目整体状态</h2>"
+                "<p class=\"q\">缺 <code>flow/status.json</code>："
+                "先跑 <code>python tools/project_status.py --json</code>。</p></section>\n"
+                + STATUS_END)
+
+    rows = []
+    for ph in st.get("phases") or []:
+        ok = ph.get("status") == "done"
+        rows.append(
+            "<tr><td>%s</td><td>%s</td><td>%s</td><td><code>%s</code></td></tr>"
+            % ("✅" if ok else "⚠️", ph.get("id", ""),
+               html.escape(ph.get("title", "")),
+               html.escape(", ".join(ph.get("evidence") or []))))
+
+    f = st.get("figures") or {}
+    live = (f.get("current", 0) + f.get("recent", 0))
+    return """%(b)s
+  <section id="status">
+    <h2>项目整体状态 <span class="hint">由 <code>tools/project_status.py</code> 从仓库算出（数字不可手写）</span></h2>
+    <table class="stt" style="border-collapse:collapse;width:100%%;font-size:13px;margin:8px 0">
+      <tr style="text-align:left;border-bottom:1px solid currentColor">
+        <th style="padding:4px 8px">状态</th><th style="padding:4px 8px">阶段</th>
+        <th style="padding:4px 8px">内容</th>
+        <th style="padding:4px 8px">证据判据（须已在 GX2 里跑）</th></tr>
+      %(rows)s
+    </table>
+    <p class="q"><b>流程图</b>：共 %(cnt)d 张 ｜ 现行/近期 <b>%(live)d</b> ｜
+      已过时 <b>%(stale)d</b> ｜ 历史(登记) <b>%(hist)d</b>。
+      历史档是不随代码重渲染的旧 schema 图（重渲染会丢语义），不是欠账。</p>
+    <p class="q">门禁与测试覆盖：GX2 引用 <b>%(gx2)d</b> 个测试文件 ｜ HEAD <code>%(head)s</code>。</p>
+  </section>
+%(e)s""" % {
+        "b": STATUS_BEGIN, "e": STATUS_END,
+        "rows": "\n      ".join(rows),
+        "cnt": f.get("count", 0), "live": live,
+        "stale": f.get("stale", 0), "hist": f.get("historical", 0),
+        "gx2": st.get("gx2_tests", 0), "head": st.get("head", ""),
+    }
+
+
 def splice(text, begin, end, block):
     i, j = text.find(begin), text.find(end)
     if i >= 0 and j > i:
@@ -206,7 +269,10 @@ def main():
     text = io.open(a.index, encoding="utf-8").read()
 
     hir = read_hir()
-    new = splice(text, BEGIN, END, render_steps(cases, hir))
+    new = splice(text, STATUS_BEGIN, STATUS_END, render_status(read_status()))
+    if new is None:
+        new = text
+    new = splice(new, BEGIN, END, render_steps(cases, hir))
     if new is None:
         new = text.replace("</main>", render_steps(rows) + "\n\n</main>", 1)
     stats = splice(new, SBEGIN, SEND, render_stats(n_int, n_svg, rows, hir))

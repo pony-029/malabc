@@ -40,6 +40,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 FIGS = os.path.join(ROOT, "flow", "figures")
 CLI = os.environ.get("ARCHIFY_CLI") or r"D:\project\archify\archify\bin\archify.mjs"
+#: 供 `check_tool_selftests` 识别（它认显式标记，不认源码里出现过 `--selftest` 字样）
+SELFTEST = True
+
 WORK = os.environ.get("M2C_TMP") or tempfile.gettempdir()
 
 

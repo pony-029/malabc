@@ -154,6 +154,28 @@
     再看 <a href="#f-f37">F37 系统全貌</a> 与 <a href="#f-f30">F30 五层总览</a> 建立地图，
     最后按需深入到某一层。全部零 JS、零外链，断网可用。
   </p>
+  <!-- STATUS:BEGIN -->
+  <section id="status">
+    <h2>项目整体状态 <span class="hint">由 <code>tools/project_status.py</code> 从仓库算出（数字不可手写）</span></h2>
+    <table class="stt" style="border-collapse:collapse;width:100%;font-size:13px;margin:8px 0">
+      <tr style="text-align:left;border-bottom:1px solid currentColor">
+        <th style="padding:4px 8px">状态</th><th style="padding:4px 8px">阶段</th>
+        <th style="padding:4px 8px">内容</th>
+        <th style="padding:4px 8px">证据判据（须已在 GX2 里跑）</th></tr>
+      <tr><td>✅</td><td>P0</td><td>打通调用（跨文件 call）</td><td><code>tests/test_project_level.py</code></td></tr>
+      <tr><td>✅</td><td>P1</td><td>配置唯一生效点</td><td><code>tests/test_config_effective.py</code></td></tr>
+      <tr><td>✅</td><td>P2</td><td>预算模型（budget.json）</td><td><code>tests/test_budget.py</code></td></tr>
+      <tr><td>✅</td><td>P3</td><td>契约桩（m2c_ext_*）</td><td><code>tests/test_contract_stub.py, tests/test_config_external_calls.py</code></td></tr>
+      <tr><td>✅</td><td>P4</td><td>图谱接配置（该配什么）</td><td><code>tests/test_config_suggest.py</code></td></tr>
+      <tr><td>✅</td><td>P5</td><td>HIR 接管</td><td><code>tests/test_hir_parity.py, tests/test_hir_srcline.py</code></td></tr>
+      <tr><td>✅</td><td>P6</td><td>多路对账（无 Octave）</td><td><code>tests/test_four_way_no_octave.py</code></td></tr>
+    </table>
+    <p class="q"><b>流程图</b>：共 20 张 ｜ 现行/近期 <b>16</b> ｜
+      已过时 <b>0</b> ｜ 历史(登记) <b>4</b>。
+      历史档是不随代码重渲染的旧 schema 图（重渲染会丢语义），不是欠账。</p>
+    <p class="q">门禁与测试覆盖：GX2 引用 <b>76</b> 个测试文件 ｜ HEAD <code>61e7b2890f37</code>。</p>
+  </section>
+<!-- STATUS:END -->
   <!-- STATS:BEGIN -->
   <div class="stats">
     <span class="stat"><b>20</b>张交互图</span>
