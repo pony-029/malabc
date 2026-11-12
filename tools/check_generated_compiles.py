@@ -56,6 +56,8 @@ CHECKS = (
              os.path.join("tests", "test_config_suggest.py"),
              # 工程级端到端：多目录 + 两跳调用 -> C 工程 -> gcc -> 数值
              os.path.join("tests", "test_project_e2e.py"),
+             # 规模判据：58 函数语料工程 -> C 工程 -> gcc -> 0 unimplemented
+             os.path.join("tests", "test_project_corpus_e2e.py"),
              # 整体状态：每个阶段的"完成"必须有在跑的证据
              os.path.join("tests", "test_project_status.py"),
              os.path.join("tests", "test_rt_balance.py"),
