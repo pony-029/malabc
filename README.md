@@ -1275,6 +1275,7 @@ Three-link regression report: `python tools/three_links_report.py <dirs> -o <out
 - `tools/project_budget.py` — computes the static memory peak from a MIR (elements × dtype width) and writes `budget.json`; with `--pool N` it fails and names the function/variable when over budget
 - `tools/config_suggest.py` — P4: for every module/source in the project config, report **what to configure** (annotation / config key) and how many stalls it would clear; `--selftest` proves the mapping
 - `tools/project_status.py` — whole-project status **computed** from the repo: plan phases P0–P6 (evidence file must exist **and** be wired into GX2), module sizes, and figure freshness distribution
+- `tools/figures_refresh.py` — re-renders `flow/figures` at the current HEAD (skips `meta.status=historical`; writes `candidate.json` with CRLF); `--dry-run` / `--only` / `--selftest`
 - `tools/trace_demo.py` — records a real pipeline run step by step into JSONL (sha256 digests per step); `tools/trace_view.py` renders it as a static HTML trace page
 - `tools/trace_chain.py` — validates trace integrity: every step's input digest must trace back to an earlier step's output
 - `tools/hir_status.py` — runs `mir.py --via-hir` and writes `flow/hir_status.json` (participation / identity counts), so the numbers on the index page can only come from a real run
