@@ -104,6 +104,18 @@ _OPERAND_RE = re.compile(
     r"\s*\[\s*0\s*\]")
 _CMP_C2MIR = {"==": "eq", "!=": "ne", "<": "lt", "<=": "le", ">": "gt", ">=": "ge"}
 
+#: `for (int64_t i = 2; i <= 3; ++i) {` —— MIR 是 `for:i:2:3`
+_FOR_RE = re.compile(
+    r"^\s*for\s*\(\s*int64_t\s+(\w+)\s*=\s*(-?\d+)\s*;\s*\1\s*<=\s*(\w+|-?\d+)\s*;")
+
+#: `int64_t __j1 = 0;` —— 标量局部量，MIR 是 `var:__j1:i64`
+_INT_LOCAL_RE = re.compile(r"^\s*int64_t\s+(\w+)\s*=\s*-?\d+\s*;\s*$")
+
+#: `__j1 = 2 - 1;` —— 标量二元运算，MIR 是 `setb:__j1:sub:2:1`
+_SETB_RE = re.compile(r"^(\w+)\s*=\s*(\w+|-?\d+)\s*([-+*/])\s*(\w+|-?\d+)\s*;\s*$")
+_SET_RE = re.compile(r"^(\w+)\s*=\s*(-?\d+)\s*;\s*$")
+_OP_C2MIR = {"-": "sub", "+": "add", "*": "mul", "/": "div"}
+
 
 def _cond_to_mir(expr):
     """把 C 的比较式转成 `var:cmp:rhs`；转不了返回 None（不猜）。"""
@@ -242,8 +254,26 @@ def c_to_mir(text, fname):
                 depth -= 1
                 out.append("end")
             continue
+        m_for = _FOR_RE.match(ln)
+        if m_for:
+            out.append("for:%s:%s:%s" % (m_for.group(1), m_for.group(2),
+                                         m_for.group(3)))
+            st["loops"] += 1
+            depth += 1
+            continue
+        m_int = _INT_LOCAL_RE.match(ln)
+        if m_int:
+            out.append("var:%s:i64" % m_int.group(1))   # 标量局部量
+            continue
+        m_sb = _SETB_RE.match(ln)
+        if m_sb and m_sb.group(1) not in declared:
+            # 只对**已声明为 i64 的标量**还原（数组赋值另有其道，不猜）
+            out.append("setb:%s:%s:%s:%s"
+                       % (m_sb.group(1), _OP_C2MIR[m_sb.group(3)],
+                          m_sb.group(2), m_sb.group(4)))
+            continue
         if _LOOP_RE.match(ln):
-            st["loops"] += 1                   # 循环尚未还原（if/else 已还原）
+            st["loops"] += 1                   # while 尚未还原（for/if 已还原）
             out.append("# loop: %s" % ln[:60])
             continue
         m = _CONST_RE.search(ln)

@@ -27,6 +27,7 @@ import hashlib
 import io
 import math
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -181,7 +182,8 @@ def test_hash_normalizes_only_representation():
     assert _bit_hash([1.0]) != _bit_hash([-1.0])
 
 
-def test_backparsed_mir_reproduces_values():
+@pytest.mark.parametrize("name", ["colmean", "iseqtest", "colmax_loop"])
+def test_backparsed_mir_reproduces_values(name):
     """反推 MIR 必须**可执行且数值复现**（R793 + R794）。
 
     修的三处：`re.M`（签名匹配）、函数名以 C 签名为准、局部量 `var:` 声明。
@@ -189,14 +191,15 @@ def test_backparsed_mir_reproduces_values():
     于是生成器现在把它写成注释、`cmir` 读回来 —— 没有它，VM 用默认值填形参，
     `colmean` 会从 `1 3 5` 静默变成 `1 2 3`。
 
-    ⚠ 仍只对**无控制流**的样本成立：`cmir` 不还原 if/for（那需要结构化，
-    不是补注释能解决的）。
+    R795 起连**控制流**也还原：`if`/`else`、`for`、标量 `setb:`、`int64_t` 局部量，
+    并且两种算子写法（裸调用 / 守卫式）都要认。
+    因此三个样本覆盖三条不同路径：纯算子 / if 分支 / for 循环。
     """
     if not os.path.isfile(M2C):
         pytest.skip("m2c 未构建")
-    src = os.path.join(CORPUS, "colmean.m")
+    src = os.path.join(CORPUS, name + ".m")
     if not os.path.isfile(src):
-        pytest.skip("样本不存在")
+        pytest.skip("样本不存在：%s" % src)
 
     d = tempfile.mkdtemp(prefix="p6x_", dir=WORK if os.path.isdir(WORK) else None)
     try:
@@ -210,7 +213,8 @@ def test_backparsed_mir_reproduces_values():
                      "-o", back], 180).returncode == 0
 
         txt = io.open(back, encoding="utf-8").read()
-        assert "arg:A:f64:3,2" in txt, \
+        # 形状必须被读回（不同样本的形参名/维度不同，只要求"带维度的 arg 行"存在）
+        assert re.search(r"^arg:\w+:f64:[\d,]+$", txt, re.M), \
             "反推 MIR 没恢复形参形状（生成器的 `arg-shape` 注释没被读回？）：\n%s" \
             % txt[:300]
 
