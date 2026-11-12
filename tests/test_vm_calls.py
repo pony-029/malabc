@@ -103,6 +103,30 @@ def test_vc2_call2_binds_multiple_rets():
     assert out.count("y: 1 4 9") >= 1, out[-300:]
 
 
+BAD_REDUCE = "\n".join([
+    "version 3",
+    "func:main",
+    "arg:x:f64:5",
+    "ret:y:f64:1",
+    "op:OP-MIN:y:x:x",     # 归约只吃 1 个输入，这里给了 2 个
+    "end",
+    "",
+])
+
+
+def test_vc4_reduce_arity_is_rejected_at_parse():
+    """VC4：归约算子给了多余实参，必须在**解析期**就报错。
+
+    不让它走到 C：生成物会写出 `mlc_op_min(&x, &x, y)`，gcc 报
+    `too many arguments`；而 VM 会忽略多余实参算出结果 —— 两边"看起来不一致"，
+    实际是样本不合法。R813 就有三个假分岔是这么来的，白挂了一个多月的 xfail。
+    """
+    rc, out = _run_mir(BAD_REDUCE, "bad_reduce.mir")
+    assert rc != 0, "非法的归约实参竟然通过了：\n%s" % out[-300:]
+    assert "归约" in out, "报错没说明是归约算子的元数问题：\n%s" % out[-300:]
+    assert "OP-MIN" in out, "报错没指明是哪个算子：\n%s" % out[-300:]
+
+
 def test_vc3_missing_callee_is_reported():
     """VC3：调不存在的函数必须**报错**，不能静默给 0。
 

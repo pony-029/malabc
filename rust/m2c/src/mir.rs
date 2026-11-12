@@ -232,6 +232,21 @@ fn parse_op(rest: &str, src: i64) -> Result<Op, String> {
     if args.is_empty() {
         return Err(format!("op 参数为空：{}", rest));
     }
+    // **归约算子只吃 1 个输入**（`mlc_op_min(const mlc_array *a, mlc_array *out)`）。
+    // 多给的实参不会被 C 原型接受 —— 生成物照样写出来，然后 **gcc 报
+    // `too many arguments`**；而 VM 会忽略多余实参算出结果。于是现场看起来
+    // 像"两条实现算出了不同的数"，实际是**样本本身不合法**（R813 实测：
+    // 三个假分岔全部来自这里，白挂了一个多月的 xfail）。
+    // 在**解析期**就拒绝，让错误早一步、且说得具体。
+    const REDUCE_OPS: [&str; 4] = ["OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN"];
+    if REDUCE_OPS.contains(&parts[0]) && args.len() != 1 {
+        return Err(format!(
+            "归约算子 {} 只接受 1 个输入，实际给了 {} 个（会生成 C 原型拒绝的调用）：{}",
+            parts[0],
+            args.len(),
+            rest
+        ));
+    }
     Ok(Op { id: parts[0].to_string(), lhs: parts[1].to_string(),
             args, src })
 }
