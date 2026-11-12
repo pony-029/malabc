@@ -138,6 +138,33 @@ def test_e2e1_compile_units_are_declared(built):
         "`[lib]` 里没有 unity 文件 gen.c：%r" % g["lib"]
 
 
+def test_e2e6_vm_links_same_mir(built):
+    """E2E6：**VM 这一路**也要能跑跨函数工程。
+
+    早前 VM 遇到 `call:` 直接报「不做链接」，于是多函数工程只有 C 路可验
+    （要编译器、几十秒）。链接的本质只是"换形参绑定 → 执行 → 取返回值"，
+    现在支持了，所以这条判据要求：同一份 MIR，VM 跑出的 `top` 必须等于 C 路的 `3 5 7`。
+    """
+    d, _gen = built
+    mir = os.path.join(d, ".m2c", "project.mir")
+    if not os.path.isfile(mir):
+        pytest.skip("没找到 .m2c/project.mir")
+    r = _run([M2C, "run", "--mir", mir], timeout=180)
+    out = r.stdout.decode("utf-8", "replace")
+    assert "不做链接" not in out, "VM 仍在拒绝链接：\n%s" % out[-300:]
+    assert "error" not in out, "VM 跑这个工程出错了：\n%s" % out[-400:]
+
+    # ⚠ VM 的输出键是**返回值名**（`y`），不是函数名 —— 所以按**值**断言：
+    #   `top` 与 `compute` 都应得到同一组 `3 5 7`（两跳链路一致）。
+    vals = []
+    for ln in out.splitlines():
+        if ":" in ln:
+            vals.append(" ".join(ln.partition(":")[2].split()))
+    assert vals.count("3 5 7") >= 2, \
+        "VM 路应至少两处得到 '3 5 7'（top / compute），实得 %r（原始输出：%r）" % (
+            vals, out[-300:])
+
+
 def test_e2e5_readme_explains_build(built):
     """E2E5：工程 README 必须解释**不用 CMake 时怎么编**。
 

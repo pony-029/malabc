@@ -181,6 +181,8 @@ fn main() -> ExitCode {
                     continue;
                 }
                 let mut m = vm::Vm::new();
+                // 整份 MIR 注册进去：`call:` 要链接同 MIR 内的其它函数
+                m.set_program(&funcs);
                 match m.run(f, &shapes) {
                     Ok(out) => {
                         for r in &f.rets {

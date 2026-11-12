@@ -100,13 +100,32 @@ impl Val {
 
 pub struct Vm {
     env: HashMap<String, Val>,
+    /// 同一份 MIR 里的**全部函数**：`call:` 靠它链接。
+    ///
+    /// 早前这里直接报「VM 不做链接」—— 那让"多函数工程"在 VM 这一路完全跑不了，
+    /// 于是跨函数工程只能靠 C 路验证（而 C 路要编译器 + 几十秒）。链接的本质
+    /// 只是"换一份形参绑定、执行体、取返回值"，没有理由不做。
+    program: Vec<Func>,
+    /// 调用深度上限的计数器（递归 MIR 会让 VM 栈无限增长）。
+    depth: usize,
 }
+
+/// 单次运行的调用深度上限。超过就报错而不是栈溢出 —— 栈溢出会把整个进程带走，
+/// 连"哪个调用链太深"都印不出来。
+const MAX_CALL_DEPTH: usize = 32;
 
 impl Vm {
     pub fn new() -> Self {
         Vm {
             env: HashMap::new(),
+            program: Vec::new(),
+            depth: 0,
         }
+    }
+
+    /// 注册可被 `call:` 链接的函数集合（同一份 MIR 的全部函数）。
+    pub fn set_program(&mut self, program: &[Func]) {
+        self.program = program.to_vec();
     }
 
     /// 执行一个函数。形参按**行主序**填 `1..=n`（与 C 驱动一致）。
@@ -313,9 +332,59 @@ impl Vm {
             Stmt::Break { .. } => Ok(Flow::Break),
             Stmt::Return { .. } => Ok(Flow::Return),
             Stmt::Fail { .. } => Err("MIR 里显式标记了 Fail（该路径不支持）".into()),
-            Stmt::Call { func, .. } | Stmt::Call2 { func, .. } => {
-                Err(format!("调用未内联的函数：{}（VM 不做链接）", func))
+            Stmt::Call { lhs, func, args, .. } => {
+                // 同 MIR 内的函数链接：绑定形参 → 执行体 → 取第一个返回值。
+                let callee = match self.program.iter().find(|k| &k.name == func) {
+                    Some(c) => c.clone(),
+                    None => {
+                        return Err(format!(
+                            "调用了不在本 MIR 内的函数：{}（跨文件需要先合到一份 MIR）",
+                            func))
+                    }
+                };
+                if self.depth >= MAX_CALL_DEPTH {
+                    return Err(format!("调用深度超过 {}（{}）", MAX_CALL_DEPTH, func));
+                }
+                // 实参值先取出来（取的时候还在调用者的环境里）。
+                // **字面量实参**（`scale(a, 2)` 里的 `2`）在环境里没有名字，
+                // 必须按数值解析 —— 直接 `unwrap_or_default()` 会得到 0×0，
+                // 于是被调方拿到的形参是空数组（实测报「形状不匹配：1x3 vs 0x0」）。
+                let actual: Vec<Val> = args
+                    .iter()
+                    .map(|a| match self.env.get(a).cloned() {
+                        Some(v) => v,
+                        None => match to_f64(a) {
+                            Some(x) => Val::scalar(x),
+                            None => Val::default(),
+                        },
+                    })
+                    .collect();
+
+                let saved = std::mem::replace(&mut self.env, HashMap::new());
+                for (p, v) in callee.args.iter().zip(actual.into_iter()) {
+                    self.env.insert(p.name.clone(), v);
+                }
+                for l in &callee.locals {
+                    self.env.entry(l.name.clone()).or_insert_with(|| Val::scalar(0.0));
+                }
+                self.depth += 1;
+                let r = self.exec_block(&callee.body);
+                self.depth -= 1;
+                let rets: Vec<Val> = callee
+                    .rets
+                    .iter()
+                    .map(|r| self.env.get(&r.name).cloned().unwrap_or_default())
+                    .collect();
+                self.env = saved;
+                // 被调方里的 `return` 只结束它自己（Flow::Return 在此吞掉）
+                r?;
+                if let Some(v) = rets.into_iter().next() {
+                    self.env.insert(lhs.clone(), v);
+                }
+                Ok(Flow::Next)
             }
+            Stmt::Call2 { func, .. } => Err(format!(
+                "多返回值调用尚未在 VM 内链接：{}（先用 C 路验证）", func)),
             Stmt::Fill {
                 name,
                 dims,
