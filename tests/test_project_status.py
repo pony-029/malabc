@@ -80,6 +80,61 @@ def test_gx2_list_is_nonempty(status):
         "GX2 只引用了 %d 个测试文件（判据可能被清空）" % status["gx2_tests"]
 
 
+#: 主干图（读者建立"系统长什么样"全靠这几张）。
+MAIN_FIGURES = {
+    "architecture-system-whole-20261109": "F37 系统全貌",
+    "architecture-module-trace-20261109": "F38 模块×交互×追踪点",
+    "architecture-engineering-platform-20261108": "F30 五层总览",
+}
+
+#: 允许多少提交的滞后。**这不是"新鲜度"，是"腐烂线"**：
+#: 每次提交都重渲染不现实（一次 20~40s），但落后几十个提交的图会开始说谎。
+MAX_LAG = 40
+
+
+def test_main_figures_do_not_rot():
+    """主干图不得落后超过 `MAX_LAG` 个提交。
+
+    为什么用"腐烂线"而不是"必须现行"：图的价值是**给人建立地图**，
+    而地图在落后十几个提交时仍然基本正确；落后几十个提交则开始指错地方。
+    判据卡在后者 —— 它拦的是"放着不管"，不是"没跟到最新一次提交"。
+
+    修法只有一条：`python tools/figures_refresh.py --only <目录名>`。
+    """
+    base = os.path.join(ROOT, "flow", "figures")
+    if not os.path.isdir(base):
+        pytest.skip("没有 flow/figures")
+    head = PS._head()
+    if not head:
+        pytest.skip("取不到 HEAD")
+    rot = []
+    for d, title in MAIN_FIGURES.items():
+        p = os.path.join(base, d, "candidate.json")
+        if not os.path.isfile(p):
+            rot.append((title, d, "目录不存在"))
+            continue
+        c = json.load(io.open(p, encoding="utf-8"))
+        meta = c.get("meta") or {}
+        rev = ((meta.get("repository") or {}).get("revision") or "").strip()
+        if not rev:
+            rot.append((title, d, "没有 revision"))
+            continue
+        r = subprocess.run(["git", "rev-list", "--count", "%s..%s" % (rev, head)],
+                           cwd=ROOT, stdin=subprocess.DEVNULL, timeout=60,
+                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        try:
+            lag = int(r.stdout.decode().strip())
+        except ValueError:
+            rot.append((title, d, "算不出 lag"))
+            continue
+        if lag > MAX_LAG:
+            rot.append((title, d, "落后 %d 个提交（上限 %d）" % (lag, MAX_LAG)))
+    assert not rot, (
+        "主干图已腐烂，请重渲染：\n  " +
+        "\n  ".join("%s (%s)：%s" % t for t in rot) +
+        "\n  修法：python tools/figures_refresh.py --only <目录名>")
+
+
 def test_historical_figures_are_registered_with_reason():
     """历史图必须**带理由**，且**不能被标成现行**（两向）。
 
@@ -110,3 +165,19 @@ def test_historical_figures_are_registered_with_reason():
     assert not missing_reason, "历史图缺理由（或太短）：%r" % missing_reason[:5]
     assert not stale_mark, \
         "这些图标了 historical 但已是现行 —— 应摘掉标记：%r" % stale_mark[:5]
+
+
+def test_rot_criterion_has_teeth():
+    """**判据自己要有牙齿**：把 `MAX_LAG` 压到 0 必须让它红。
+
+    没有这条，`test_main_figures_do_not_rot` 可能因为"恰好没有明显过期"而
+    永远绿 —— 而它到底会不会在过期时报警，没人验证过。
+    """
+    import test_project_status as _self
+    old = _self.MAX_LAG
+    try:
+        _self.MAX_LAG = 0
+        with pytest.raises(AssertionError):
+            _self.test_main_figures_do_not_rot()
+    finally:
+        _self.MAX_LAG = old
