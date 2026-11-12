@@ -77,9 +77,58 @@ _INIT_RE = re.compile(
 #: C 的签名表达不了它，但对拍需要：没有形状，VM 会用默认值填形参，
 #: 数值静默变形（R793 实测 `colmean` 从 `1 3 5` 变 `1 2 3`）。
 _SHAPE_RE = re.compile(r"@m2c\s+(arg|ret)-shape\s+(\w+)\s+([\d,]+)")
-_CALL_RE = re.compile(r"mlc_op_(\w+)\s*\(([^;]*)\)\s*;")
-_CONST_RE = re.compile(r"\(\(double \*\)(\w+(?:->\w+)?)\.data\)\[0\]\s*=\s*([-\d.eE+]+)\s*;")
+#: 算子调用。两种写法都要认：
+#:   裸调用 `st = mlc_op_add(&a, &b, &y);`
+#:   守卫式 `if (mlc_op_add(&a, &b, &y) != MLC_OK) { return st; }`
+#: 只认前者的后果：反推里**算子全丢**（实测 `iseqtest` 只剩 0 个算子）。
+_CALL_RE = re.compile(r"mlc_op_(\w+)\s*\(([^;]*?)\)\s*(?:!=|;)")
+#: 常量写回。**`.data` 与 `->data` 都要认**：返回值是 `mlc_array *`，
+#: 发射器写的是 `((double *)y->data)[0] = 0;` —— 只认 `.data` 时这条被忽略，
+#: 于是 `y` 从未被初始化，VM 报「未定义的量：y」（实测 `iseqtest`）。
+_CONST_RE = re.compile(
+    r"\(\(double \*\)(\w+(?:->\w+)?)(?:\.|->)data\)\[0\]\s*=\s*([-\d.eE+]+)\s*;")
 _LOOP_RE = re.compile(r"^\s*(while|for)\s*\(")
+
+#: 骨架守卫：`if (st != MLC_OK) { return st; }` / `if (mlc_array_init(...) != MLC_OK)`
+#: —— 它们不是源码里的分支，是发射器保证错误传播的样板，**必须跳过**，
+#: 否则反推出来的 MIR 会多出一堆假 `if`。
+_GUARD_RE = re.compile(r"^\s*if\s*\(.*(!=\s*MLC_OK|==\s*MLC_ERR).*$")
+
+#: 真分支：`if (((const double *)__t3.data)[0] > ((const double *)y->data)[0]) {`
+_IF_RE = re.compile(r"^\s*if\s*\((.*)\)\s*\{\s*$")
+_ELSE_RE = re.compile(r"^\s*\}\s*else\s*\{\s*$")
+
+#: 操作数：`((const double *)X.data)[0]` / `((const double *)X->data)[0]` / 数字
+_OPERAND_RE = re.compile(
+    r"\(\s*\(\s*const\s+double\s*\*\s*\)\s*(\w+)(?:\s*\.data|\s*->data)\s*\)"
+    r"\s*\[\s*0\s*\]")
+_CMP_C2MIR = {"==": "eq", "!=": "ne", "<": "lt", "<=": "le", ">": "gt", ">=": "ge"}
+
+
+def _cond_to_mir(expr):
+    """把 C 的比较式转成 `var:cmp:rhs`；转不了返回 None（不猜）。"""
+    e = expr.strip()
+    for c, name in (("==", "eq"), ("!=", "ne"), ("<=", "le"), (">=", "ge"),
+                    ("<", "lt"), (">", "gt")):
+        if c not in e:
+            continue
+        left, _, right = e.partition(c)
+
+        def operand(t):
+            t = t.strip()
+            m = _OPERAND_RE.search(t)
+            if m:
+                return m.group(1)
+            try:
+                float(t)
+                return t
+            except ValueError:
+                return None
+
+        a, b = operand(left), operand(right)
+        if a and b:
+            return "%s:%s:%s" % (a, name, b)
+    return None
 
 
 def _split_args(s):
@@ -98,10 +147,15 @@ def _split_args(s):
     return [p.strip() for p in parts if p.strip()]
 
 
+#: C 的强制类型转换：`(int64_t)4` / `(double)` / `(const double *)`
+_CAST_RE = re.compile(r"^\(\s*(?:const\s+)?(?:double|int64_t|int32_t|int|size_t)\s*\*?\s*\)")
+
+
 def _strip_ref(tok):
     tok = tok.strip()
     while tok.startswith("&"):
         tok = tok[1:]
+    tok = _CAST_RE.sub("", tok).strip()     # `(int64_t)4` -> `4`
     tok = tok.replace("->", ".").strip()
     return tok
 
@@ -149,6 +203,7 @@ def c_to_mir(text, fname):
     # 取不到形状时按 1 元声明（**不猜多维**，只保证可执行）。
     inits = dict((m.group(1), [d for d in m.group(3).replace(" ", "").split(",") if d])
                  for m in _INIT_RE.finditer(text))
+    depth = 0                                  # 已识别的 if/else 块深度
     declared = set(args) | set(rets)
     for m in _LOCAL_RE.finditer(text):
         nm = m.group(1)
@@ -162,8 +217,33 @@ def c_to_mir(text, fname):
         ln = raw.strip()
         if not ln or ln.startswith(("//", "/*", "*", "#include")):
             continue
+        if _GUARD_RE.match(ln) and "mlc_op_" not in ln:
+            # 骨架守卫，不是源码分支。
+            # ⚠ **但含 `mlc_op_` 的行不能跳**：发射器把算子也写成守卫形式
+            #   `if (mlc_op_isequal(&x,&x,&__c1) != MLC_OK) {...}`，
+            #   整行跳过会把算子一起丢掉（实测 `iseqtest` 反推后算子是 0 个）。
+            continue
+        if _ELSE_RE.match(ln):
+            if depth > 0:
+                out.append("else")
+            continue
+        m_if = _IF_RE.match(ln)
+        if m_if:
+            cond = _cond_to_mir(m_if.group(1))
+            if cond:
+                out.append("if:%s" % cond)
+                depth += 1
+            else:
+                # 转不了就如实留注释，不伪造分支（半真的 if 比没有更危险）
+                out.append("# if?: %s" % m_if.group(1)[:60])
+            continue
+        if ln == "}":
+            if depth > 0:
+                depth -= 1
+                out.append("end")
+            continue
         if _LOOP_RE.match(ln):
-            st["loops"] += 1                   # 控制流暂不还原
+            st["loops"] += 1                   # 循环尚未还原（if/else 已还原）
             out.append("# loop: %s" % ln[:60])
             continue
         m = _CONST_RE.search(ln)
