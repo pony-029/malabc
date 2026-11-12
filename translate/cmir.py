@@ -52,6 +52,40 @@ for _op in operators.OPERATORS:
 _C2OP_SUFFIXES = ("_all", "_alloc", "_n", "_mask", "_masked", "_2")
 
 
+#: `mlc_ops.h` 里的原型：`{c 名: [参数类型…]}`。缓存一次。
+_PROTOS = {}
+
+
+def _protos():
+    if _PROTOS:
+        return _PROTOS
+    import re as _re
+    p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     "c_runtime", "include", "mlc_ops.h")
+    if not os.path.isfile(p):
+        return _PROTOS
+    s = io.open(p, encoding="utf-8", errors="replace").read()
+    for m in _re.finditer(r"mlc_status\s+(mlc_op_\w+)\s*\(([^;]*?)\)\s*;", s, _re.S):
+        _PROTOS[m.group(1)] = _split_args(m.group(2))
+    return _PROTOS
+
+
+def _dst_index(cname, nargs):
+    """dst 在实参里的位置：**唯一一个非 `const` 的 `mlc_array *` 参数**。
+
+    早前用"dst 在最后一位"的固定规则，`OP-SETIDX` 就此出错：
+    原型是 `mlc_op_setidx(mlc_array *a, const mlc_array *v, int64_t i)` ——
+    dst 在**第一位**，标量下标在最后。硬套"末位"会把下标当成 dst。
+    查不到原型时退回末位（保守，与旧行为一致）。
+    """
+    ps = _protos().get(cname) or []
+    for i, t in enumerate(ps):
+        if "mlc_array" in t and "*" in t and "const" not in t:
+            if i < nargs:
+                return i
+    return nargs - 1
+
+
 def _lookup(cname):
     """按 **最长前缀** 反查算子 id（先精确，再去掉已知后缀）。"""
     if cname in _C2OP:
@@ -107,6 +141,15 @@ _CMP_C2MIR = {"==": "eq", "!=": "ne", "<": "lt", "<=": "le", ">": "gt", ">=": "g
 #: `for (int64_t i = 2; i <= 3; ++i) {` —— MIR 是 `for:i:2:3`
 _FOR_RE = re.compile(
     r"^\s*for\s*\(\s*int64_t\s+(\w+)\s*=\s*(-?\d+)\s*;\s*\1\s*<=\s*(\w+|-?\d+)\s*;")
+
+#: `zeros/ones` 的**单行填充循环**：
+#:   `for (int64_t i = 0; i < mlc_array_numel(y); ++i) { ((double *)y->data)[i] = 0; }`
+#: MIR 是 `fill:<名字>:<维度>:<值>` —— 维度取自形状元数据（`arg-shape`/`ret-shape`
+#: 或 `mlc_array_init`）。**必须排在 `_FOR_RE` 之前**，否则会被当成普通循环。
+_FILL_RE = re.compile(
+    r"^\s*for\s*\(\s*int64_t\s+\w+\s*=\s*0\s*;\s*\w+\s*<\s*mlc_array_numel\((\w+)\)"
+    r"\s*;\s*\+\+\w+\s*\)\s*\{\s*\(\(double\s*\*\)\s*(\w+)(?:->|\.)data\)"
+    r"\s*\[\s*\w+\s*\]\s*=\s*([-\d.eE+]+)\s*;\s*\}\s*$")
 
 #: `int64_t __j1 = 0;` —— 标量局部量，MIR 是 `var:__j1:i64`
 _INT_LOCAL_RE = re.compile(r"^\s*int64_t\s+(\w+)\s*=\s*-?\d+\s*;\s*$")
@@ -281,6 +324,13 @@ def c_to_mir(text, fname):
                 depth -= 1
                 out.append("end")
             continue
+        m_fill = _FILL_RE.match(ln)
+        if m_fill:
+            name = m_fill.group(1)
+            dims = shapes.get(name) or ",".join(inits.get(name) or ["1"])
+            out.append("fill:%s:%s:%s" % (name, dims, m_fill.group(3)))
+            st["fills"] = st.get("fills", 0) + 1
+            continue
         m_for = _FOR_RE.match(ln)
         if m_for:
             out.append("for:%s:%s:%s" % (m_for.group(1), m_for.group(2),
@@ -336,7 +386,10 @@ def c_to_mir(text, fname):
             # 不归一化的话，下游（HIR 抬升按名字消费实参）会把 dst 当成操作数 ——
             # 实测 `fir_lp` 的 ③ HIR 往返因此少了一个 `OP-ADD`。
             if len(parts) >= 2:
-                parts = [parts[-1]] + parts[:-1]
+                # dst 的位置按**原型**定（非 const 的 `mlc_array *`），
+                # 不是固定末位 —— `OP-SETIDX` 的 dst 就在第一位。
+                di = _dst_index("mlc_op_" + m.group(1), len(parts))
+                parts = [parts[di]] + parts[:di] + parts[di + 1:]
             out.append("op:%s:%s" % (oid, ":".join(parts)))
             st["ops"] += 1
             continue

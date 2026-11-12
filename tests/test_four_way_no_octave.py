@@ -233,7 +233,8 @@ def test_hash_normalizes_only_representation():
     assert _bit_hash([1.0]) != _bit_hash([-1.0])
 
 
-@pytest.mark.parametrize("name", ["colmean", "iseqtest", "colmax_loop", "while_acc"])
+@pytest.mark.parametrize("name", ["colmean", "iseqtest", "colmax_loop", "while_acc",
+                                  "cumsum_loop"])
 def test_backparsed_mir_reproduces_values(name):
     """反推 MIR 必须**可执行且数值复现**（R793 + R794）。
 
