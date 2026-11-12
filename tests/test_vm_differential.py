@@ -136,7 +136,6 @@ def _make_mir(d, name, body, n, nret=1):
 
 
 @pytest.mark.skipif(not os.path.isfile(M2C), reason="m2c 未构建")
-@pytest.mark.xfail(strict=False, reason="已发现 VM/C 分岔（R719 待定位），保留为可见欠账")
 def test_random_differential_vm_vs_c():
     """随机算子 × 随机形状（1/2/3/5/7）：两条实现的**位模式哈希**必须相同。"""
     rnd = random.Random(20261108)          # 固定种子，失败可复现
@@ -146,7 +145,12 @@ def test_random_differential_vm_vs_c():
         op = rnd.choice(ELEM_OPS + REDUCE_OPS)
         n_el = rnd.choice([1, 2, 3, 5, 7])
         n_ret = 1 if op in REDUCE_OPS else n_el      # 归约只有 1 个输出
-        body = ["op:%s:y:x:x" % op]
+        # **归约算子只吃 1 个输入**（`mlc_op_min(const mlc_array *a, mlc_array *out)`）。
+        # 早前这里一律造 `x:x`，于是归约样本本身不合法：C 路 gcc 直接报
+        # "too many arguments"，而 VM 忽略多余实参算出结果 —— 于是被记成
+        # "VM/C 分岔（R719 待定位）"。真因是**样本造错**，不是两条实现不一致。
+        body = (["op:%s:y:x:x" % op] if op in ELEM_OPS
+                else ["op:%s:y:x" % op])
         name = "r%d" % i
         mir = _make_mir(d, name, body, n_el, n_ret)
         rc1, out1 = _run_vm(mir)
