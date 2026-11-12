@@ -116,6 +116,20 @@ _SETB_RE = re.compile(r"^(\w+)\s*=\s*(\w+|-?\d+)\s*([-+*/])\s*(\w+|-?\d+)\s*;\s*
 _SET_RE = re.compile(r"^(\w+)\s*=\s*(-?\d+)\s*;\s*$")
 _OP_C2MIR = {"-": "sub", "+": "add", "*": "mul", "/": "div"}
 
+#: `while (i <= 4) {` —— MIR 是 `while:i:le:4`
+_WHILE_RE = re.compile(r"^\s*while\s*\((.*)\)\s*\{\s*$")
+#: 迭代上限守卫：`if (++__m2c_iter > 1000000LL) { return MLC_ERR; }`
+#: 它由发射器插入（防止死循环），**不是源码分支**。
+_ITER_GUARD = "__m2c_iter"
+
+
+def _is_num(t):
+    try:
+        float(t)
+        return True
+    except ValueError:
+        return False
+
 
 def _cond_to_mir(expr):
     """把 C 的比较式转成 `var:cmp:rhs`；转不了返回 None（不猜）。"""
@@ -131,11 +145,12 @@ def _cond_to_mir(expr):
             m = _OPERAND_RE.search(t)
             if m:
                 return m.group(1)
-            try:
-                float(t)
+            # **裸标识符/数字**：`while (i <= 4)` 里的 `i` 就是标量名，
+            # 不是 `((double *)x.data)[0]` 那种取值形式。
+            t = _CAST_RE.sub("", t).strip()
+            if t.replace("_", "").isalnum() or _is_num(t):
                 return t
-            except ValueError:
-                return None
+            return None
 
         a, b = operand(left), operand(right)
         if a and b:
@@ -215,7 +230,8 @@ def c_to_mir(text, fname):
     # 取不到形状时按 1 元声明（**不猜多维**，只保证可执行）。
     inits = dict((m.group(1), [d for d in m.group(3).replace(" ", "").split(",") if d])
                  for m in _INIT_RE.finditer(text))
-    depth = 0                                  # 已识别的 if/else 块深度
+    depth = 0                                  # 已识别的 if/else/for/while 块深度
+    scalars = set()                            # 已声明为 i64 的标量（set/setb 只对它们还原）
     declared = set(args) | set(rets)
     for m in _LOCAL_RE.finditer(text):
         nm = m.group(1)
@@ -263,14 +279,33 @@ def c_to_mir(text, fname):
             continue
         m_int = _INT_LOCAL_RE.match(ln)
         if m_int:
+            if _ITER_GUARD in ln:
+                continue                        # 发射器插入的死循环守卫，不属于源码
             out.append("var:%s:i64" % m_int.group(1))   # 标量局部量
+            scalars.add(m_int.group(1))
             continue
         m_sb = _SETB_RE.match(ln)
-        if m_sb and m_sb.group(1) not in declared:
+        if m_sb and m_sb.group(1) in scalars:
             # 只对**已声明为 i64 的标量**还原（数组赋值另有其道，不猜）
             out.append("setb:%s:%s:%s:%s"
                        % (m_sb.group(1), _OP_C2MIR[m_sb.group(3)],
                           m_sb.group(2), m_sb.group(4)))
+            continue
+        m_set = _SET_RE.match(ln)
+        if m_set and m_set.group(1) in scalars:
+            out.append("set:%s:%s" % (m_set.group(1), m_set.group(2)))
+            continue
+        m_wh = _WHILE_RE.match(ln)
+        if m_wh:
+            cond = _cond_to_mir(m_wh.group(1))
+            if cond:
+                out.append("while:%s" % cond)
+                depth += 1
+            else:
+                out.append("# while?: %s" % m_wh.group(1)[:60])
+            continue
+        if ln == "break;":
+            out.append("break")
             continue
         if _LOOP_RE.match(ln):
             st["loops"] += 1                   # while 尚未还原（for/if 已还原）
