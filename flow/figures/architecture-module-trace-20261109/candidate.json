@@ -10,7 +10,7 @@
       "url": "git@github.com:pony-029/malabc.git",
       "provider": "github",
       "link_mode": "local-only",
-      "revision": "7ec8e91cd081ec3e1e3c9b20c1879ce86a395757"
+      "revision": "213283ee4c3c0ada378d5c94c63b241d56a14be4"
     }
   },
   "layout": {
@@ -110,7 +110,7 @@
       "id": "s7",
       "type": "backend",
       "label": "Rust VM",
-      "sublabel": "T7 · 入: MIR 出: 数值",
+      "sublabel": "T7 · 可链接同 MIR",
       "tag": "T7",
       "row": 1,
       "col": 0,
@@ -274,7 +274,7 @@
     {
       "id": "gate",
       "type": "backend",
-      "label": "门禁 41 门",
+      "label": "门禁 42 门",
       "sublabel": "控: 判据",
       "tag": "未覆盖",
       "row": 2,
