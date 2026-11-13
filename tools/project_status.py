@@ -188,6 +188,24 @@ def domain_coverage(tests_dir=None):
         for g, names in paths.items():
             if any(n and n in src for n in names):
                 out[g] += n_tests
+
+    # **编辑器的判据不在 `tests/` 下** —— 它们是 `vscode/test_*.js` 里的
+    # `chk(cond, msg)` 脚本。不补这一段，编辑器那一行只会显示"tests/ 里顺带
+    # 提到 vscode 的条数"（R823 实测 19），读起来像"这层几乎没测"，而实际是
+    # **指标看不见它**。指标看不见某层，和那层没人测，是两件事。
+    vd = os.path.join(ROOT, "vscode")
+    if os.path.isdir(vd) and "编辑器" in out:
+        n_js = 0
+        for f in sorted(os.listdir(vd)):
+            if not (f.startswith("test_") and f.endswith(".js")):
+                continue
+            try:
+                src = io.open(os.path.join(vd, f), encoding="utf-8",
+                              errors="replace").read()
+            except OSError:
+                continue
+            n_js += len(re.findall(r"\bchk\(", src))
+        out["编辑器"] += n_js
     return out
 
 
