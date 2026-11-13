@@ -56,6 +56,10 @@ PHASES = [
 
 #: 子模块：目录 → 一句话职责（写不出来就别列，别用"其他"糊）。
 MODULES = [
+    # **仓根脚本**（`./`）：入口、流水线、分析组件都在这儿，共 22 个文件。
+    # 不列出来的后果和 R819 漏目录一样 —— 它们在"职责域"表里**完全不存在**，
+    # 而 `analyzer_memory.py` 这种还有专门的测试（2 个文件），只是没人看见。
+    ("./", "仓根脚本（入口 / 流水线 / 分析组件）"),
     ("translate/", "MATLAB → MIR / HIR / C（转换侧主体）"),
     ("rust/m2c/", "MIR → C 工程（发射器与装配）"),
     ("c_runtime/", "C 运行时（mlc_array / 算子实现）"),
@@ -78,6 +82,7 @@ MODULES = [
 #: 转换侧（把 MATLAB 变成 C）、运行时（C 自己）、工具与门禁（验证）、图与文档（沟通）、
 #: 判据（证据）。任何目录都必须落在某个域里 —— 否则它就是在"没人负责"的地带。
 GROUPS = {
+    "./": "入口与流水线",
     "translate/": "转换侧",
     "rust/": "转换侧",          # 顶层归属（具体模块是 rust/m2c/）
     "rust/m2c/": "转换侧",
@@ -137,6 +142,14 @@ def modules():
     gx = sorted(_gx2_tests())
     out = []
     for path, duty in MODULES:
+        if path == "./":
+            # **只数仓根本层的 `.py`**：递归会把这个仓库所有文件都算进来。
+            n = len([f for f in os.listdir(ROOT)
+                     if f.endswith(".py") and os.path.isfile(os.path.join(ROOT, f))])
+            out.append({"path": "./", "duty": duty, "status": "ok" if n else "unknown",
+                        "files": n, "gx2_tests": len(gx),
+                        "group": GROUPS.get("./", "未分组")})
+            continue
         d = os.path.join(ROOT, path)
         if not os.path.isdir(d):
             out.append({"path": path, "duty": duty, "status": "unknown",
@@ -201,7 +214,20 @@ def domain_coverage(tests_dir=None):
     # 返回值是 `(条数, 文件数)` —— 两个读数回答不同问题，见 `domain_files()`。
     paths = {}
     for p, g in GROUPS.items():
-        paths.setdefault(g, []).append(p.rstrip("/"))
+        name = p.rstrip("/")
+        # `./`（仓根）不是可匹配的目录名：rstrip 后变成 "."，而 `"./" in src`
+        # 会在很多文件里偶然命中，把"入口与流水线"灌满假阳性。
+        if name in ("", "."):
+            # 仓根没有目录名可匹配，改用**根脚本的模块名**（`agent_loop` 等）：
+            # 否则这一域永远是 0 条，而实际有测试 `import agent_loop`。
+            if g == "入口与流水线":
+                paths.setdefault(g, []).extend(
+                    f[:-3] for f in os.listdir(ROOT)
+                    if f.endswith(".py")
+                    and os.path.isfile(os.path.join(ROOT, f))
+                    and f not in ("setup.py",))
+            continue
+        paths.setdefault(g, []).append(name)
     for f in sorted(os.listdir(d)):
         if not (f.startswith("test_") and f.endswith(".py")):
             continue

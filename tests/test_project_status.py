@@ -182,6 +182,25 @@ def test_lag_badges_match_gate_thresholds():
             "第 %d 档的样式不是内联 background：%r" % (n, s)
 
 
+def test_root_scripts_have_a_home():
+    """**仓根脚本**必须有归属域，且数量与磁盘一致。
+
+    它们是入口 / 流水线 / 分析组件（22 个 `.py`）。不列出来的后果和"漏掉的目录"
+    一样：在整体视图里**完全不存在** —— 而 `analyzer_memory.py` 还有两个测试文件
+    专门测它，只是没人看得见。
+    """
+    mods = PS.modules()
+    root = [m for m in mods if m.get("path") == "./"]
+    assert root, "仓根脚本没有归属（整体视图会漏掉它们）"
+    assert root[0].get("group") == "入口与流水线", \
+        "仓根脚本的域是 %r，应为「入口与流水线」" % root[0].get("group")
+    real = len([f for f in os.listdir(PS.ROOT)
+                if f.endswith(".py")
+                and os.path.isfile(os.path.join(PS.ROOT, f))])
+    assert root[0]["files"] == real, \
+        "统计 %d 个根脚本，实际 %d 个" % (root[0]["files"], real)
+
+
 def test_every_top_dir_has_a_group():
     """每个**顶层目录**都必须落在某个职责域里。
 
