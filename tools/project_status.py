@@ -168,7 +168,7 @@ def modules():
     return out
 
 
-def _mentions(src, name):
+def _mentions(src, name, strict=False):
     """`src` 是否"提到"了 `name` 这一层。两种写法都算：
 
     * **路径形态** `analyzer/` —— 直接写了目录；
@@ -188,8 +188,12 @@ def _mentions(src, name):
     # 斜杠、也不是 import，只认前两种会把它漏掉（实测：运行时 31 -> 3 个文件）。
     if ('"%s"' % name) in src or ("'%s'" % name) in src:
         return True
-    pat = r"(?:^|[^\w])(?:from|import)\s+%s\b|\b%s\." % (
-        re.escape(name), re.escape(name))
+    # `strict=True`：只认 `import X` / `from X import`，**不认** `X.` 属性形态。
+    # 为什么需要这一档：仓根那 22 个脚本的名字（`facts` / `callrel` / `concurrency`）
+    # 是普通英文词，`X.` 会让散文和别的模块的属性访问都被算进来（实测虚高 543 条）。
+    pat = (r"(?:^|[^\w])(?:from|import)\s+%s\b" % re.escape(name)) if strict else \
+          (r"(?:^|[^\w])(?:from|import)\s+%s\b|\b%s\." % (re.escape(name),
+                                                         re.escape(name)))
     return re.search(pat, src, re.M) is not None
 
 
@@ -239,7 +243,10 @@ def domain_coverage(tests_dir=None):
         if not n_tests:
             continue
         for g, names in paths.items():
-            if any(_mentions(src, n) for n in names):
+            # 入口域的匹配词是**模块名**（facts/callrel/…），普通英文词太多，
+            # 必须用严格档，否则 `X.` 会把它灌成全场最高。
+            strict = (g == "入口与流水线")
+            if any(_mentions(src, n, strict) for n in names):
                 out[g] += n_tests
                 nfiles[g] += 1
 
