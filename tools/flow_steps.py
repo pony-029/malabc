@@ -261,7 +261,7 @@ def render_status(st):
     <table class="stt" style="border-collapse:collapse;width:100%%;font-size:13px;margin:10px 0">
       <tr style="text-align:left;border-bottom:1px solid currentColor">
         <th style="padding:4px 8px">职责域</th><th style="padding:4px 8px">目录数</th>
-        <th style="padding:4px 8px">文件数</th><th style="padding:4px 8px">提及它的判据文件</th>
+        <th style="padding:4px 8px">文件数</th><th style="padding:4px 8px">判据条数（含提及）</th>
         <th style="padding:4px 8px">包含</th></tr>
       %(grows)s
     </table>

@@ -156,13 +156,17 @@ def modules():
 
 
 def domain_coverage(tests_dir=None):
-    """每个职责域被**多少条测试文件**提到（粗粒度覆盖读数）。
+    """每个职责域被**多少条判据函数**提到（粗粒度覆盖读数）。
 
     口径：扫 `tests/*.py` 的正文，看它是否出现该域下任一目录名（如 `translate/`、
-    `c_runtime/`）。一个测试提到两个域就两边都算 —— 这是**上界**，不是精确归属。
+    `c_runtime/`）；命中则把该文件里 `def test_` 的个数计入该域。
+    一个文件提到两个域就两边都算 —— 这是**上界**，不是精确归属。
 
-    为什么用这么粗的口径：精确归属需要解析 import 依赖，而这里要回答的问题只是
-    "这一层有没有人测"。0 才是危险信号；3 和 5 的差别不值得用更贵的手段换。
+    ⚠ 早前数的是**文件数**，于是"往同一个文件里再加 3 条判据"读数不动
+    （R822 实测：分析侧加了 3 条仍是 6）。文件数衡量的是**面**，不是**量**。
+
+    为什么仍用这么粗的口径：精确归属要解析 import 依赖，而这里只回答
+    "这一层有没有人测、大概多少"。0 是危险信号；3 和 5 的差别不值得更贵的手段。
     """
     d = tests_dir or os.path.join(ROOT, "tests")
     out = dict((g, 0) for g in set(GROUPS.values()))
@@ -178,9 +182,12 @@ def domain_coverage(tests_dir=None):
             src = io.open(os.path.join(d, f), encoding="utf-8", errors="replace").read()
         except OSError:
             continue
+        n_tests = len(re.findall(r"^def test_", src, re.M))
+        if not n_tests:
+            continue
         for g, names in paths.items():
             if any(n and n in src for n in names):
-                out[g] += 1
+                out[g] += n_tests
     return out
 
 
