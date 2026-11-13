@@ -273,6 +273,16 @@ def render_status(st):
       已过时 <b>%(stale)d</b> ｜ 历史(登记) <b>%(hist)d</b>。
       历史档是不随代码重渲染的旧 schema 图（重渲染会丢语义），不是欠账。</p>
     <p class="q">门禁与测试覆盖：GX2 引用 <b>%(gx2)d</b> 个测试文件 ｜ HEAD <code>%(head)s</code>。</p>
+    <details class="q"><summary>怎么自己验一遍（两条命令）</summary>
+      <pre><code># 1) 41 道快/中门（约 3~4 分钟）
+python tools/check_all.py --skip check_generated_compiles
+
+# 2) 第 42 道：GX2（约 6 分钟，**流式打印进度**）
+python tools/check_generated_compiles.py</code></pre>
+      <p>两步分开的原因：整体跑一次要 10 分钟，中途一旦被环境回收就**什么都拿不到**；
+      分开后各自有结论，失败也知道落在哪一半。GX2 会逐行转发 pytest 输出 ——
+      看不到进度时，先判断是"慢"还是"沉默"。</p>
+    </details>
     %(histline)s
   </section>
 %(e)s""" % {
