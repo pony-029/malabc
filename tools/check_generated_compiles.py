@@ -73,6 +73,9 @@ CHECKS = (
              os.path.join("tests", "test_binfmt_resolve.py"),
              os.path.join("tests", "test_binfmt_missing_deps.py"),
              os.path.join("tests", "test_renderers_assets.py"),
+             os.path.join("tests", "test_site_matching_entry.py"),
+             os.path.join("tests", "test_concurrency_entry.py"),
+             os.path.join("tests", "test_unified_graph_entry.py"),
              # 整体状态：每个阶段的"完成"必须有在跑的证据
              os.path.join("tests", "test_project_status.py"),
              os.path.join("tests", "test_rt_balance.py"),
