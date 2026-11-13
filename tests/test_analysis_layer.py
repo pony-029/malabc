@@ -77,6 +77,43 @@ def test_al2_missing_dir_raises():
         A.analyze(missing)
 
 
+def test_al4_library_filename_is_not_rewrapped():
+    """AL4：**已经是文件名**的引用不能再套一遍 `-l` 拼法。
+
+    该函数自己的注释就写着这个坑：对 `libfoo.so.1` 再拼一次会产出
+    `libfoo.so.1.so` 这样的噪音候选，而它"不会找不到"，只会让解析绕远路。
+    所以判据盯的是**负向**：噪音不能出现；同时正向要有去版本后的规范名。
+    """
+    from binfmt import resolve as R
+
+    got = R.candidate_names("libfoo.so.1")
+    assert "libfoo.so" in got, "没有补出 SONAME 规范名：%r" % (got,)
+    assert "libfoo.so.1.so" not in got, "把文件名又当 -l 简名拼了一遍：%r" % (got,)
+
+
+def test_al5_short_name_expands_to_platform_forms():
+    """AL5：`-l` 简名要展开成三种平台的候选（.so / .dll / .dylib）。"""
+    from binfmt import resolve as R
+
+    got = R.candidate_names("m")
+    for want in ("libm.so", "m.dll", "libm.dylib"):
+        assert want in got, "简名展开缺 %r：%r" % (want, got)
+
+
+def test_al6_cmake_link_vars_are_not_deps():
+    """AL6：`target_link_libraries` 里的变量引用不能被当成库名。
+
+    变量在构建期才展开；把它写成一条依赖，等于给用户一个查不到的库。
+    """
+    from binfmt import buildsys as B
+
+    deps, _notes = B.parse_cmake(
+        "target_link_libraries(app PRIVATE blas ${EXTRA_LIBS})\n", "CMakeLists.txt")
+    names = [d.name for d in deps]
+    assert "blas" in names, "普通库名没被解析出来：%r" % (names,)
+    assert not any("${" in n for n in names), "变量被当成了库名：%r" % (names,)
+
+
 def test_al3_conflicting_exports_are_reported():
     """AL3：同一导出符号被多个二进制定义，必须报出来。
 
