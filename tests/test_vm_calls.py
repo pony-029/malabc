@@ -123,8 +123,11 @@ def test_vc4_reduce_arity_is_rejected_at_parse():
     """
     rc, out = _run_mir(BAD_REDUCE, "bad_reduce.mir")
     assert rc != 0, "非法的归约实参竟然通过了：\n%s" % out[-300:]
-    assert "归约" in out, "报错没说明是归约算子的元数问题：\n%s" % out[-300:]
+    # ⚠ 文案在 R836 变过：原来只有 4 个归约算子特判（说「归约算子…只接受 1 个」），
+    # 现在统一走 `OP_ARITY` 表（说「算子 OP-MIN 接受 1..=1 个输入」）。
+    # 断言跟着**真实输出**改，而不是让实现去迁就旧文案。
     assert "OP-MIN" in out, "报错没指明是哪个算子：\n%s" % out[-300:]
+    assert "个输入" in out, "报错没说明实参个数问题：\n%s" % out[-300:]
 
 
 def test_vc3_missing_callee_is_reported():
