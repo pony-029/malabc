@@ -69,6 +69,10 @@ CHECKS = (
              os.path.join("tests", "test_renderers.py"),
              # 元数交叉校验：生成器的 op 实参个数 vs C 原型形参个数
              os.path.join("tests", "test_op_arity.py"),
+             os.path.join("tests", "test_binfmt_buildsys.py"),
+             os.path.join("tests", "test_binfmt_resolve.py"),
+             os.path.join("tests", "test_binfmt_missing_deps.py"),
+             os.path.join("tests", "test_renderers_assets.py"),
              # 整体状态：每个阶段的"完成"必须有在跑的证据
              os.path.join("tests", "test_project_status.py"),
              os.path.join("tests", "test_rt_balance.py"),
