@@ -155,6 +155,31 @@ def modules():
     return out
 
 
+def _mentions(src, name):
+    """`src` 是否"提到"了 `name` 这一层。两种写法都算：
+
+    * **路径形态** `analyzer/` —— 直接写了目录；
+    * **模块形态** `from analyzer import api` / `import binfmt` / `analyzer.api`
+      —— 只写模块名、不写斜杠。
+
+    为什么必须两种都认（R840）：只认路径时，`from analyzer import api` 这种
+    **最典型的**测试写法反而计不进去，于是"分析侧只有 7 个文件"低估了真实分布。
+    但**不能**退化成"裸名字出现即算" —— `rust` / `flow` / `docs` 是常见英文词，
+    那样会把所有文件都算进去，指标就失去意义。
+    """
+    if not name:
+        return False
+    if (name + "/") in src:
+        return True
+    # 作为**路径段**出现：`os.path.join(ROOT, "c_runtime", "src")` 这类写法没有
+    # 斜杠、也不是 import，只认前两种会把它漏掉（实测：运行时 31 -> 3 个文件）。
+    if ('"%s"' % name) in src or ("'%s'" % name) in src:
+        return True
+    pat = r"(?:^|[^\w])(?:from|import)\s+%s\b|\b%s\." % (
+        re.escape(name), re.escape(name))
+    return re.search(pat, src, re.M) is not None
+
+
 def domain_coverage(tests_dir=None):
     """每个职责域被**多少条判据函数**提到（粗粒度覆盖读数）。
 
@@ -188,7 +213,7 @@ def domain_coverage(tests_dir=None):
         if not n_tests:
             continue
         for g, names in paths.items():
-            if any(n and n in src for n in names):
+            if any(_mentions(src, n) for n in names):
                 out[g] += n_tests
                 nfiles[g] += 1
 
