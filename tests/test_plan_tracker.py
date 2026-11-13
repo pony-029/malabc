@@ -82,6 +82,39 @@ def test_gate_count_matches_tools_dir():
         "文档写 %s 道门，实际 tools/check_*.py 有 %d 个" % (m.group(1), n)
 
 
+def test_no_silent_xfail():
+    """全仓 `tests/` 里 **不许有 `pytest.mark.xfail`**（当前为 0，这是棘轮）。
+
+    为什么把"0"当成要守的数：xfail 的默认语义是"失败也不红"，而它的 reason
+    字段又极易写成"待定位"这种无信息文本。R811–R813 清掉了最后三个，其中**没有
+    一个是它写的那个原因**（两个早已修好、一个是样本造错）。
+
+    所以规则是：新增 xfail 必须同时把这里的 `ALLOWED` 数字改大，并在注释里
+    写清"哪一侧、哪一步、什么现象"——**让豁免变成一次有记录的显式决定**，
+    而不是随手加个装饰器。
+
+    全仓零 xfail 这件事本身也是证据：所有判据现在都是"真断言"。
+    """
+    ALLOWED = 0
+    base = os.path.join(ROOT, "tests")
+    me = os.path.basename(__file__)
+    hits = []
+    for f in sorted(os.listdir(base)):
+        if not f.endswith(".py") or f == me:
+            continue                     # 本文件正文里就有这个词，别自匹配
+        src = io.open(os.path.join(base, f), encoding="utf-8",
+                      errors="replace").read()
+        for i, ln in enumerate(src.splitlines(), 1):
+            # 只认**装饰器行**：`@pytest.mark.xfail(...)`，
+            # 这样注释/文档里提到这个词不会被误判。
+            if re.match(r"\s*@pytest\.mark\.xfail\b", ln):
+                hits.append("%s:%d" % (f, i))
+    assert len(hits) <= ALLOWED, (
+        "出现 %d 处 xfail（上限 %d）：%r\n"
+        "  要么修掉它，要么把 ALLOWED 改大并在旁边写明理由"
+        "（哪一侧、哪一步、什么现象）。" % (len(hits), ALLOWED, hits[:5]))
+
+
 def test_every_test_file_is_referenced():
     """`tests/` 下每个 `test_*.py` 都必须被**某个门或工作流**引用。
 

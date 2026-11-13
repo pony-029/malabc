@@ -265,6 +265,10 @@ def render_status(st):
         <th style="padding:4px 8px">包含</th></tr>
       %(grows)s
     </table>
+    <p class="q">「判据条数」的口径：扫 <code>tests/*.py</code> 与 <code>vscode/test_*.js</code>
+      正文，出现该域目录名就把该文件里的判据数计入 —— **一个文件提到两个域就两边都算**，
+      所以它是<b>上界</b>，不是精确归属。用来回答"这一层有没有人测、大概多少"，
+      不是用来排名。读数为 0 才是事故。</p>
     <p class="q"><b>流程图</b>：共 %(cnt)d 张 ｜ 现行/近期 <b>%(live)d</b> ｜
       已过时 <b>%(stale)d</b> ｜ 历史(登记) <b>%(hist)d</b>。
       历史档是不随代码重渲染的旧 schema 图（重渲染会丢语义），不是欠账。</p>
