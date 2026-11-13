@@ -77,6 +77,15 @@ SCAN_DIRS = (".", "tools", "binfmt", "renderers")
 # S3：`Popen` + 捕获输出、但不带 timeout 的合法点（每条必须有理由）。
 # 键 = "<相对路径>|<最内层函数名>"，值 = 为什么这里可以没有 timeout。
 POPEN_STREAMING = {
+    "tools/check_generated_compiles.py|_run_all":
+        "长跑门禁的**流式转发**（R825）：这里 Popen 的唯一目的是把 pytest 的"
+        "输出逐行转给用户看 —— 之前用 run(capture) 会把输出全缓冲到进程结束，"
+        "外部连续三轮只看到「6 分钟 0 字节」，无法判断它在跑、卡住还是已死。"
+        "挂死风险由三层兜住：① stdin=DEVNULL（不会被输入阻塞）；"
+        "② 逐行读放在**后台线程**里，主线程用 `queue.get(timeout=…)` 取，"
+        "因此 `readline` 本身没有超时这件事不再能挂住主流程；"
+        "③ 总 deadline 900s（与原来 run(timeout=900) 一致），到点 `kill()` 并"
+        "在输出里写明「超时」，之后 `wait(timeout=30)` 再兜一次。",
     "tools/rsi_scenarios.py|__init__":
         "全场景探针：它要同时驱动 LSP（Content-Length 分帧）与 MCP（行分隔）"
         "两种协议，stdin/stdout **都必须**是 PIPE，无法 DEVNULL。挂死风险由三层"

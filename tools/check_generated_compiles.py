@@ -20,6 +20,9 @@
 import argparse
 import os
 import shutil
+import queue
+import threading
+import time
 import subprocess
 import sys
 
@@ -168,14 +171,47 @@ def _run_all(full=True):
     chunks = []
     p = subprocess.Popen(cmd, cwd=ROOT, stdin=subprocess.DEVNULL,
                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                         env=env, bufsize=1 if False else -1)
-    for raw in iter(p.stdout.readline, b""):
+                         env=env)
+    # **看门狗**：`readline` 自己**没有超时** —— 子进程若静默挂住，逐行读会
+    # 永远等下去。所以把读取放到后台线程、主线程按 deadline 取队列：
+    # 到点就 kill 并报错。这不是"登记一下风险"，是把它真的兜住。
+    deadline = time.time() + 900
+    q = queue.Queue()
+
+    def _pump():
+        for raw in iter(p.stdout.readline, b""):
+            q.put(raw)
+        q.put(None)                     # EOF 哨兵
+
+    t = threading.Thread(target=_pump, daemon=True)
+    t.start()
+    timed_out = False
+    while True:
+        left = deadline - time.time()
+        if left <= 0:
+            timed_out = True
+            p.kill()
+            break
+        try:
+            raw = q.get(timeout=min(left, 5))
+        except queue.Empty:
+            if p.poll() is not None and not t.is_alive():
+                break
+            continue
+        if raw is None:
+            break
         line = raw.decode("utf-8", "replace").rstrip()
         chunks.append(line)
         if line.strip():
             print("  | " + line[:160], flush=True)
     p.stdout.close()
-    p.wait(timeout=900)
+    try:
+        p.wait(timeout=30)
+    except subprocess.TimeoutExpired:
+        p.kill()
+        timed_out = True
+    if timed_out:
+        chunks.append("**[超时] 900 秒未跑完，已 kill**")
     out = "\n".join(chunks)
     lines = [ln for ln in out.strip().splitlines() if ln.strip()]
     tail = lines[-1] if lines else ""
