@@ -168,9 +168,15 @@ def test_rust_table_matches_prototypes():
     extra = [k for k in rust if k not in want]
     diff = [(k, rust[k], want[k]) for k in want
             if k in rust and rust[k] != want[k]]
-    assert not missing, "Rust 表缺这些算子：%r" % missing[:6]
-    assert not extra, "Rust 表多出这些算子（原型里没有）：%r" % extra[:6]
-    assert not diff, "元数区间不一致（算子, Rust, 原型）：%r" % diff[:6]
+    if missing or extra or diff:
+        # 失败时**直接给出可粘贴的整块** —— 把"重生成"从"写个脚本"降成"复制粘贴"。
+        # 生成的表如果还要靠临时脚本才能修，那它一定会过期（脚本不在仓库里）。
+        block = "\n".join('    ("%s", %d, %d),' % (k, want[k][0], want[k][1])
+                          for k in sorted(want))
+        raise AssertionError(
+            "Rust 的 OP_ARITY 与 mlc_ops.h 不一致（缺 %r / 多 %r / 区间不符 %r）。\n"
+            "把 mir.rs 里 `pub const OP_ARITY` 的条目整块替换为下面这些：\n\n%s"
+            % (missing[:6], extra[:6], diff[:6], block))
 
 
 def test_parse_rejects_wrong_arity():
