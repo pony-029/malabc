@@ -38,7 +38,15 @@ WORK = os.environ.get("M2C_TMP")
 
 
 def expected_arity():
-    """`{OP-ID: 期望实参个数}`，由原型参数数 − 1 得到。"""
+    """`{OP-ID: {可接受的实参个数…}}`，由原型参数数 − 1 得到。
+
+    **一个 op-id 可以有多个 C 入口**：`size(x)` 走 `mlc_op_size_all`（1 个实参），
+    `size(x,dim)` 走 `mlc_op_size_dim`（2 个实参）。目录里用 `c` 记主入口、
+    `c_aliases` 记同族其余入口 —— 所以期望元数是一个**集合**，不是单值。
+
+    ⚠ 第一版只读 `c`，于是把 `op:OP-SIZE:y:x` 判成"元数不符"并挂了个豁免。
+    真实情况是**判据的模型太窄**，数据早就写清了别名（R829 的教训）。
+    """
     from operators import OPERATORS
 
     h = io.open(HEADER, encoding="utf-8", errors="replace").read()
@@ -47,9 +55,10 @@ def expected_arity():
         protos[m.group(1)] = len([p for p in m.group(2).split(",") if p.strip()])
     out = {}
     for op in OPERATORS:
-        cname = op.get("c")
-        if cname and cname in protos:
-            out[op["id"]] = protos[cname] - 1
+        names = [op.get("c")] + list(op.get("c_aliases") or ())
+        arities = set(protos[n] - 1 for n in names if n in protos)
+        if arities:
+            out[op["id"]] = arities
     return out
 
 
@@ -60,12 +69,10 @@ def expected_arity():
 #: 的是 `mlc_op_size_all(&x, y)`；而目录里记的是 `mlc_op_size_dim(a, dim, out)`
 #: （2 个实参）。**元数据与实现不一致** —— 记在这里，别让豁免变成垃圾桶：
 #: 每条必须带理由，且总数受下面的棘轮约束。
-OP_ARITY_EXEMPT = {
-    "OP-SIZE": "发射器用 mlc_op_size_all（无 dim），目录里记的是 mlc_op_size_dim",
-}
+OP_ARITY_EXEMPT = {}   # R830：`OP-SIZE` 已由 `c_aliases` 正确覆盖，豁免清零
 
-#: 豁免上限（棘轮）：新增一条必须改大这里，并在上面写清为什么。
-MAX_OP_EXEMPT = 1
+#: 豁免上限（棘轮）：**0** —— 新增一条必须改大这里，并在上面写清为什么。
+MAX_OP_EXEMPT = 0
 
 
 def bad_ops(mir_text, expect):
@@ -79,8 +86,8 @@ def bad_ops(mir_text, expect):
         args = [p for p in parts[3:] if p.strip()] if len(parts) > 3 else []
         if oid in OP_ARITY_EXEMPT:
             continue
-        if oid in expect and len(args) != expect[oid]:
-            bad.append((oid, len(args), expect[oid], ln[:60]))
+        if oid in expect and len(args) not in expect[oid]:
+            bad.append((oid, len(args), sorted(expect[oid]), ln[:60]))
     return bad
 
 
@@ -91,8 +98,8 @@ def test_arity_table_is_derivable():
     """
     expect = expected_arity()
     assert len(expect) >= 50, "只推出 %d 个算子的元数（原型或映射缺了）" % len(expect)
-    assert all(v >= 1 for v in expect.values()), \
-        "有算子的期望元数 < 1：%r" % [k for k, v in expect.items() if v < 1]
+    assert all(min(v) >= 1 for v in expect.values()), \
+        "有算子的期望元数 < 1：%r" % [k for k, v in expect.items() if min(v) < 1]
 
 
 def test_corpus_mir_matches_c_prototypes():
@@ -130,9 +137,13 @@ def test_exempt_list_is_curated():
 
 def test_arity_checker_has_teeth():
     """判据自己要有牙齿：坏行必须被抓出来，好行不能被误伤。"""
-    expect = {"OP-MIN": 1, "OP-ADD": 2}
+    expect = {"OP-MIN": {1}, "OP-ADD": {2}, "OP-SIZE": {1, 2}}
     assert bad_ops("op:OP-MIN:y:x:x", expect), "归约多给一个输入竟然没被抓到"
     assert bad_ops("op:OP-ADD:y:x", expect), "二元算子少给一个输入竟然没被抓到"
     assert not bad_ops("op:OP-MIN:y:x", expect), "正常的归约被误判"
     assert not bad_ops("op:OP-ADD:y:x:x", expect), "正常的二元被误判"
+    # **同族两个 C 入口**：`size(x)` 与 `size(x,dim)` 都合法
+    assert not bad_ops("op:OP-SIZE:y:x", expect), "size_all（1 个实参）被误判"
+    assert not bad_ops("op:OP-SIZE:y:x:2", expect), "size_dim（2 个实参）被误判"
+    assert bad_ops("op:OP-SIZE:y:x:2:3", expect), "size 给 3 个实参竟然没被抓到"
     assert not bad_ops("op:OP-UNKNOWN-ID:y:a:b:c", expect), "未知算子被误判（应由别的门管）"
