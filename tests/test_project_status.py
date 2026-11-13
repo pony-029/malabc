@@ -216,7 +216,7 @@ def test_every_domain_has_some_test_mention():
     一件真事：某一层**完全没人测**。R819 实测时，分析侧（75 文件）只有 4 条
     测试提到、编辑器（14 文件）只有 1 条 —— 数字难看，但"0"才是事故。
     """
-    cov = PS.domain_coverage()
+    cov, files = PS.domain_coverage()
     zero = [g for g, n in cov.items() if n == 0]
     assert not zero, \
         "这些职责域没有任何判据提及（等于没人测）：%r（口径：tests/*.py 正文出现该域目录名）" % zero

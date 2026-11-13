@@ -170,8 +170,10 @@ def domain_coverage(tests_dir=None):
     """
     d = tests_dir or os.path.join(ROOT, "tests")
     out = dict((g, 0) for g in set(GROUPS.values()))
+    nfiles = dict((g, 0) for g in set(GROUPS.values()))
     if not os.path.isdir(d):
-        return out
+        return out, nfiles
+    # 返回值是 `(条数, 文件数)` —— 两个读数回答不同问题，见 `domain_files()`。
     paths = {}
     for p, g in GROUPS.items():
         paths.setdefault(g, []).append(p.rstrip("/"))
@@ -188,6 +190,7 @@ def domain_coverage(tests_dir=None):
         for g, names in paths.items():
             if any(n and n in src for n in names):
                 out[g] += n_tests
+                nfiles[g] += 1
 
     # **编辑器的判据不在 `tests/` 下** —— 它们是 `vscode/test_*.js` 里的
     # `chk(cond, msg)` 脚本。不补这一段，编辑器那一行只会显示"tests/ 里顺带
@@ -206,7 +209,19 @@ def domain_coverage(tests_dir=None):
                 continue
             n_js += len(re.findall(r"\bchk\(", src))
         out["编辑器"] += n_js
-    return out
+        nfiles["编辑器"] += len([f for f in os.listdir(vd)
+                               if f.startswith("test_") and f.endswith(".js")])
+    return out, nfiles
+
+
+def domain_files(tests_dir=None):
+    """每个职责域被**多少个**测试文件提到（集中度读数）。
+
+    与 `domain_coverage()`（条数）配对使用：条数说明"测了多少点"，
+    文件数说明"这些点有多少个独立的立足处"。527 条挤在 6 个文件里时，
+    一个文件的 fixture 坏掉会带走同域一大批判据 —— 而总量上看不出来。
+    """
+    return domain_coverage(tests_dir)[1]
 
 
 def groups(mods=None):
@@ -269,7 +284,8 @@ def figures():
 
 def build():
     return {"phases": phases(), "modules": modules(), "figures": figures(),
-            "domain_tests": domain_coverage(),
+            "domain_tests": domain_coverage()[0],
+            "domain_files": domain_coverage()[1],
             "gx2_tests": len(_gx2_tests()), "head": _head()[:12]}
 
 

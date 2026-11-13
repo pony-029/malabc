@@ -264,11 +264,13 @@ def render_status(st):
         d["paths"].append(m.get("path", ""))
     grows = []
     cov = (st.get("domain_tests") or {})
+    covf = (st.get("domain_files") or {})
     for k in sorted(g, key=lambda x: -g[x]["files"]):
         d = g[k]
-        grows.append("<tr><td>%s</td><td>%d</td><td>%d</td><td>%d</td><td><code>%s</code></td></tr>"
+        grows.append("<tr><td>%s</td><td>%d</td><td>%d</td><td>%s</td><td><code>%s</code></td></tr>"
                      % (html.escape(k), d["dirs"], d["files"],
-                        cov.get(k, 0), html.escape(" ".join(d["paths"]))))
+                        "%d / %d" % (cov.get(k, 0), covf.get(k, 0)),
+                        html.escape(" ".join(d["paths"]))))
 
     f = st.get("figures") or {}
     live = (f.get("current", 0) + f.get("recent", 0))
@@ -291,7 +293,7 @@ def render_status(st):
     <table class="stt" style="border-collapse:collapse;width:100%%;font-size:13px;margin:10px 0">
       <tr style="text-align:left;border-bottom:1px solid currentColor">
         <th style="padding:4px 8px">职责域</th><th style="padding:4px 8px">目录数</th>
-        <th style="padding:4px 8px">文件数</th><th style="padding:4px 8px">判据条数（含提及）</th>
+        <th style="padding:4px 8px">文件数</th><th style="padding:4px 8px">判据条数 / 文件数</th>
         <th style="padding:4px 8px">包含</th></tr>
       %(grows)s
     </table>
