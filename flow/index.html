@@ -177,11 +177,11 @@
         <th style="padding:4px 8px">职责域</th><th style="padding:4px 8px">目录数</th>
         <th style="padding:4px 8px">文件数</th><th style="padding:4px 8px">判据条数（含提及）</th>
         <th style="padding:4px 8px">包含</th></tr>
-      <tr><td>图与文档</td><td>3</td><td>474</td><td>596</td><td><code>flow/ m2c-site/ docs/</code></td></tr>
-      <tr><td>判据</td><td>1</td><td>204</td><td>558</td><td><code>tests/</code></td></tr>
-      <tr><td>转换侧</td><td>3</td><td>162</td><td>691</td><td><code>translate/ rust/m2c/ frontends/</code></td></tr>
-      <tr><td>工具与门禁</td><td>3</td><td>156</td><td>577</td><td><code>tools/ harness/ ci-examples/</code></td></tr>
-      <tr><td>运行时</td><td>2</td><td>96</td><td>575</td><td><code>c_runtime/ malabc-rt/</code></td></tr>
+      <tr><td>图与文档</td><td>3</td><td>474</td><td>597</td><td><code>flow/ m2c-site/ docs/</code></td></tr>
+      <tr><td>判据</td><td>1</td><td>207</td><td>559</td><td><code>tests/</code></td></tr>
+      <tr><td>转换侧</td><td>3</td><td>162</td><td>696</td><td><code>translate/ rust/m2c/ frontends/</code></td></tr>
+      <tr><td>工具与门禁</td><td>3</td><td>156</td><td>578</td><td><code>tools/ harness/ ci-examples/</code></td></tr>
+      <tr><td>运行时</td><td>2</td><td>96</td><td>579</td><td><code>c_runtime/ malabc-rt/</code></td></tr>
       <tr><td>分析侧</td><td>3</td><td>75</td><td>527</td><td><code>analyzer/ binfmt/ renderers/</code></td></tr>
       <tr><td>编辑器</td><td>1</td><td>14</td><td>63</td><td><code>vscode/</code></td></tr>
     </table>
@@ -192,7 +192,10 @@
     <p class="q"><b>流程图</b>：共 20 张 ｜ 现行/近期 <b>16</b> ｜
       已过时 <b>0</b> ｜ 历史(登记) <b>4</b>。
       历史档是不随代码重渲染的旧 schema 图（重渲染会丢语义），不是欠账。</p>
-    <p class="q">门禁与测试覆盖：GX2 引用 <b>81</b> 个测试文件 ｜ HEAD <code>c0dba21eb8de</code>。</p>
+    <p class="q"><b>距上次刷新</b>：最大滞后 <b>0</b> 个提交（超过 10 转"已过时"，
+      超过 40 触发主干图腐烂判据）。这个数字每次提交都会自己变大 ——
+      它是唯一能说明"离下一次变红还有多远"的读数。</p>
+    <p class="q">门禁与测试覆盖：GX2 引用 <b>82</b> 个测试文件 ｜ HEAD <code>14e61532712f</code>。</p>
     <details class="q"><summary>怎么自己验一遍（两条命令）</summary>
       <pre><code># 1) 41 道快/中门（约 3~4 分钟）
 python tools/check_all.py --skip check_generated_compiles
@@ -203,7 +206,7 @@ python tools/check_generated_compiles.py</code></pre>
       分开后各自有结论，失败也知道落在哪一半。GX2 会逐行转发 pytest 输出 ——
       看不到进度时，先判断是"慢"还是"沉默"。</p>
     </details>
-    <p class="q">上次记录 <code>2026-11-13T22:35:04</code> ｜ 变化：<b>可维护图 0→16；已过时图 16→0；GX2 覆盖 82→81</b> ｜ 历史共 <b>23</b> 条</p>
+    <p class="q">上次记录 <code>2026-11-13T22:35:04</code> ｜ 变化：<b>可维护图 0→16；已过时图 16→0</b> ｜ 历史共 <b>23</b> 条</p>
   </section>
 <!-- STATUS:END -->
   <!-- STATS:BEGIN -->

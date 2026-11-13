@@ -228,6 +228,7 @@ def figures():
         return {"count": 0, "current": 0, "recent": 0, "stale": 0, "unknown": 0}
     head = _head()
     dist = {"current": 0, "recent": 0, "stale": 0, "unknown": 0, "historical": 0}
+    lags = []                      # 非历史图的滞后提交数（用于算 max_lag）
     n = 0
     for d in sorted(os.listdir(base)):
         p = os.path.join(base, d, "candidate.json")
@@ -256,7 +257,13 @@ def figures():
             dist["unknown"] += 1
             continue
         dist["current" if lag == 0 else ("recent" if lag <= 10 else "stale")] += 1
+        lags.append(lag)
     dist["count"] = n
+    # **最大滞后**：只报"现行/近期/已过时"是不够的 —— 这三档会把 0 和 10 都算作
+    # "近期"，也会把 11 和 40 都算作"已过时"。而"离下一次退化还有多远"只由
+    # 那个**最大数**决定（R832 实测：R818 刷到全部现行后，仅 10 个提交，
+    # 16 张就整体转 stale —— 期间没有做错任何事，只是 HEAD 往前走了）。
+    dist["max_lag"] = max(lags) if lags else 0
     return dist
 
 

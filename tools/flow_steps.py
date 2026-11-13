@@ -272,6 +272,9 @@ def render_status(st):
     <p class="q"><b>流程图</b>：共 %(cnt)d 张 ｜ 现行/近期 <b>%(live)d</b> ｜
       已过时 <b>%(stale)d</b> ｜ 历史(登记) <b>%(hist)d</b>。
       历史档是不随代码重渲染的旧 schema 图（重渲染会丢语义），不是欠账。</p>
+    <p class="q"><b>距上次刷新</b>：最大滞后 <b>%(maxlag)d</b> 个提交（超过 10 转"已过时"，
+      超过 %(rot)d 触发主干图腐烂判据）。这个数字每次提交都会自己变大 ——
+      它是唯一能说明"离下一次变红还有多远"的读数。</p>
     <p class="q">门禁与测试覆盖：GX2 引用 <b>%(gx2)d</b> 个测试文件 ｜ HEAD <code>%(head)s</code>。</p>
     <details class="q"><summary>怎么自己验一遍（两条命令）</summary>
       <pre><code># 1) 41 道快/中门（约 3~4 分钟）
@@ -291,6 +294,7 @@ python tools/check_generated_compiles.py</code></pre>
         "cnt": f.get("count", 0), "live": live,
         "stale": f.get("stale", 0), "hist": f.get("historical", 0),
         "gx2": st.get("gx2_tests", 0), "head": st.get("head", ""),
+        "maxlag": f.get("max_lag", 0), "rot": 40,
         "histline": _render_hist(st),
         "grows": "\n      ".join(grows),
         "done": done, "total": total,
