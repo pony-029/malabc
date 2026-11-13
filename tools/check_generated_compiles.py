@@ -160,10 +160,23 @@ def _run_all(full=True):
         "-q", "--tb=no", "-rf", "-p", "no:cacheprovider"]
     env = dict(os.environ)
     env["PYTHONIOENCODING"] = "utf-8"
-    p = subprocess.run(cmd, cwd=ROOT, stdin=subprocess.DEVNULL,
-                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                       timeout=900, env=env)
-    out = p.stdout.decode("utf-8", "replace")
+    # **流式读取**（R825）：`subprocess.run(capture_output)` 会把 pytest 的输出
+    # 全缓冲到进程结束才吐 —— 于是外部看到的是"6 分钟 0 字节"，无法判断
+    # 是在跑、卡住、还是已经死了（实测连续三轮因此拿不到结论）。
+    # 改成 Popen 逐行读、逐行打印（同时累积全文供判定），进度从此可见。
+    print("  [pytest] %d 个用例文件，开始…" % len(files), flush=True)
+    chunks = []
+    p = subprocess.Popen(cmd, cwd=ROOT, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                         env=env, bufsize=1 if False else -1)
+    for raw in iter(p.stdout.readline, b""):
+        line = raw.decode("utf-8", "replace").rstrip()
+        chunks.append(line)
+        if line.strip():
+            print("  | " + line[:160], flush=True)
+    p.stdout.close()
+    p.wait(timeout=900)
+    out = "\n".join(chunks)
     lines = [ln for ln in out.strip().splitlines() if ln.strip()]
     tail = lines[-1] if lines else ""
     return p.returncode == 0, tail, out
