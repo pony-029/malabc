@@ -80,6 +80,8 @@ CHECKS = (
              os.path.join("tests", "test_callrel_entry.py"),
              os.path.join("tests", "test_binhops_entry.py"),
              os.path.join("tests", "test_entity_model_entry.py"),
+             # 长任务门自身的单实例锁（R846）
+             os.path.join("tests", "test_single_instance.py"),
              # 整体状态：每个阶段的"完成"必须有在跑的证据
              os.path.join("tests", "test_project_status.py"),
              os.path.join("tests", "test_rt_balance.py"),
@@ -159,6 +161,95 @@ SLOW_PAT = ("test_vm_", "test_roundtrip_vm", "test_translate_port",
 def _is_slow(path):
     base = os.path.basename(path)
     return any(base.startswith(p) for p in SLOW_PAT)
+
+
+def lock_path():
+    """锁文件位置：**机器本地临时目录**（不进仓库、不跨用户共享）。"""
+    import tempfile
+    return os.path.join(tempfile.gettempdir(), "m2c-gx2.lock")
+
+
+def pid_alive(pid):
+    """进程是否还活着。**跨平台**：Windows 走 OpenProcess，其余走 `kill(pid, 0)`。"""
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+        h = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)  # QUERY_LIMITED
+        if not h:
+            return False
+        ctypes.windll.kernel32.CloseHandle(h)
+        return True
+    try:
+        os.kill(pid, 0)
+    except PermissionError:
+        return True          # 存在但没权限发信号
+    except OSError:
+        return False
+    return True
+
+
+def read_lock(path=None):
+    """读锁内容（坏锁当成没有）；返回 dict 或 None。"""
+    import json
+    p = path or lock_path()
+    if not os.path.isfile(p):
+        return None
+    try:
+        import io as _io
+        return json.load(_io.open(p, encoding="utf-8"))
+    except (ValueError, OSError):
+        return None
+
+
+def acquire_lock(path=None, force=False):
+    """尝试取锁，返回 `(ok, 原因)`。
+
+    ## 为什么需要
+
+    R845 实测：连续几轮我都以为 GX2 "跑得慢"，实际上是**上一轮的实例从未退出**，
+    两个 6 分钟的任务在互相抢 CPU —— 越重试越慢，且永远不会自己变好。
+    等待只能解决"算得慢"，解决不了"两个在抢"。
+
+    ## 语义
+
+    * 锁里的 pid **还活着**且不是自己 → 拒绝（并说出是谁、什么时候开始的）；
+    * 锁里的 pid **已死**（上次被 kill / 崩溃）→ 直接接管，不要求手工删；
+    * `force=True` → 无视占用强行接管（给"确认它卡死"的场景留出口）。
+    """
+    import json
+    import time as _time
+    p = path or lock_path()
+    info = read_lock(p)
+    if info and not force:
+        other = info.get("pid")
+        if other and int(other) != os.getpid() and pid_alive(other):
+            return False, ("已有实例在跑（pid %s，开始于 %s）"
+                           % (other, info.get("ts", "?")))
+    try:
+        import io as _io
+        _io.open(p, "w", encoding="utf-8", newline="\n").write(
+            json.dumps({"pid": os.getpid(),
+                        "ts": _time.strftime("%Y-%m-%d %H:%M:%S")}))
+    except OSError:
+        return True, ""          # 写不了锁不该挡住检查本身
+    return True, ""
+
+
+def release_lock(path=None):
+    """释放锁（pid 不是自己就不动 —— 避免误删别人的锁）。"""
+    p = path or lock_path()
+    info = read_lock(p)
+    if info and int(info.get("pid") or 0) not in (0, os.getpid()):
+        return
+    try:
+        os.remove(p)
+    except OSError:
+        pass
 
 
 def _run_all(full=True):
@@ -283,6 +374,8 @@ def main(argv=None):
     # `check_all` 会设 M2C_FULL_GATES=1，保证官方跑的是全量。
     ap.add_argument("--fast", action="store_true", help="跳过慢档用例（本地迭代用）")
     ap.add_argument("--full", action="store_true", help="跑全部用例（默认）")
+    ap.add_argument("--force", action="store_true",
+                    help="无视已有实例强行启动（仅用于确认旧实例已卡死）")
     args = ap.parse_args(argv)
     full = not args.fast or args.full
     if os.environ.get("M2C_FULL_GATES") == "1":
@@ -304,6 +397,20 @@ def main(argv=None):
         print("check_generated_compiles: 缺 pytest（GX1/GX2 无法执行）")
         return 2
 
+    # **单实例**：两个实例并行只会互相拖慢，而且看起来都像"跑不完"（R845 实测）。
+    _ok, _why = acquire_lock(force=args.force)
+    if not _ok:
+        print("check_generated_compiles: 拒绝启动 —— %s" % _why)
+        print("  同一时刻只允许一个实例；确认旧实例已卡死时可用 --force。")
+        return 3
+    try:
+        return _main_body(full)
+    finally:
+        release_lock()
+
+
+def _main_body(full):
+    """真正的执行体（锁由 `main` 负责获取/释放）。"""
     ok, tail, out = _run_all(full=full)
     probs = [] if ok else _attribute(out)
     for p in probs:
