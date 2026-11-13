@@ -60,6 +60,8 @@ CHECKS = (
              os.path.join("tests", "test_project_corpus_e2e.py"),
              # VM 层：call/call2 链接（手写 MIR，不依赖编译器）
              os.path.join("tests", "test_vm_calls.py"),
+             # 分析侧：analyzer 计数口径 / 缺目录抛错 / binfmt 符号冲突
+             os.path.join("tests", "test_analysis_layer.py"),
              # 整体状态：每个阶段的"完成"必须有在跑的证据
              os.path.join("tests", "test_project_status.py"),
              os.path.join("tests", "test_rt_balance.py"),

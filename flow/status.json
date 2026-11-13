@@ -79,7 +79,7 @@
       "duty": "MATLAB → MIR / HIR / C（转换侧主体）",
       "status": "ok",
       "files": 138,
-      "gx2_tests": 79,
+      "gx2_tests": 80,
       "group": "转换侧"
     },
     {
@@ -87,7 +87,7 @@
       "duty": "MIR → C 工程（发射器与装配）",
       "status": "ok",
       "files": 18,
-      "gx2_tests": 79,
+      "gx2_tests": 80,
       "group": "转换侧"
     },
     {
@@ -95,7 +95,7 @@
       "duty": "C 运行时（mlc_array / 算子实现）",
       "status": "ok",
       "files": 4,
-      "gx2_tests": 79,
+      "gx2_tests": 80,
       "group": "运行时"
     },
     {
@@ -103,7 +103,7 @@
       "duty": "Rust 运行时 crate",
       "status": "ok",
       "files": 92,
-      "gx2_tests": 79,
+      "gx2_tests": 80,
       "group": "运行时"
     },
     {
@@ -111,7 +111,7 @@
       "duty": "多语言前端（候选站点 / IR）",
       "status": "ok",
       "files": 6,
-      "gx2_tests": 79,
+      "gx2_tests": 80,
       "group": "转换侧"
     },
     {
@@ -119,7 +119,7 @@
       "duty": "分析侧（索引与关系）",
       "status": "ok",
       "files": 6,
-      "gx2_tests": 79,
+      "gx2_tests": 80,
       "group": "分析侧"
     },
     {
@@ -127,7 +127,7 @@
       "duty": "二进制与构建系统的格式解析",
       "status": "ok",
       "files": 22,
-      "gx2_tests": 79,
+      "gx2_tests": 80,
       "group": "分析侧"
     },
     {
@@ -135,7 +135,7 @@
       "duty": "渲染层（资产 / 调用图）",
       "status": "ok",
       "files": 47,
-      "gx2_tests": 79,
+      "gx2_tests": 80,
       "group": "分析侧"
     },
     {
@@ -143,7 +143,7 @@
       "duty": "门禁、状态、追踪、预算等工具",
       "status": "ok",
       "files": 141,
-      "gx2_tests": 79,
+      "gx2_tests": 80,
       "group": "工具与门禁"
     },
     {
@@ -151,7 +151,7 @@
       "duty": "图与候选的生成辅助",
       "status": "ok",
       "files": 6,
-      "gx2_tests": 79,
+      "gx2_tests": 80,
       "group": "工具与门禁"
     },
     {
@@ -159,7 +159,7 @@
       "duty": "CI 配置样例",
       "status": "ok",
       "files": 9,
-      "gx2_tests": 79,
+      "gx2_tests": 80,
       "group": "工具与门禁"
     },
     {
@@ -167,7 +167,7 @@
       "duty": "流程图与目录页",
       "status": "ok",
       "files": 197,
-      "gx2_tests": 79,
+      "gx2_tests": 80,
       "group": "图与文档"
     },
     {
@@ -175,7 +175,7 @@
       "duty": "静态展示站",
       "status": "ok",
       "files": 3,
-      "gx2_tests": 79,
+      "gx2_tests": 80,
       "group": "图与文档"
     },
     {
@@ -183,15 +183,15 @@
       "duty": "设计文档",
       "status": "ok",
       "files": 274,
-      "gx2_tests": 79,
+      "gx2_tests": 80,
       "group": "图与文档"
     },
     {
       "path": "tests/",
       "duty": "判据（含 GX2 的全部用例）",
       "status": "ok",
-      "files": 200,
-      "gx2_tests": 79,
+      "files": 202,
+      "gx2_tests": 80,
       "group": "判据"
     },
     {
@@ -199,7 +199,7 @@
       "duty": "编辑器插件",
       "status": "ok",
       "files": 14,
-      "gx2_tests": 79,
+      "gx2_tests": 80,
       "group": "编辑器"
     }
   ],
@@ -212,14 +212,14 @@
     "count": 20
   },
   "domain_tests": {
-    "工具与门禁": 22,
+    "判据": 9,
+    "分析侧": 5,
+    "编辑器": 2,
     "运行时": 31,
-    "判据": 8,
-    "编辑器": 1,
+    "工具与门禁": 22,
     "图与文档": 15,
-    "分析侧": 4,
     "转换侧": 61
   },
-  "gx2_tests": 79,
-  "head": "05d819381627"
+  "gx2_tests": 80,
+  "head": "1c4697d2d9c1"
 }
