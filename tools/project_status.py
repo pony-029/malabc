@@ -276,6 +276,23 @@ def build():
 HISTORY = os.path.join(ROOT, "flow", "status-history.jsonl")
 
 
+#: 漂移预警线。**不是判据**：超过它不会红，只是提示"该刷图了"。
+#: 取 8 的理由：分档是 `>10` 才转 stale，8 之后只剩两个提交的缓冲。
+DRIFT_WARN = 8
+
+
+def drift_hint(max_lag):
+    """图正在漂移时返回一句可执行的提示；未超阈值返回 `""`。
+
+    抽成纯函数是为了**能验它会响** —— 原来它内联在 `check_all` 的收尾里，
+    而那条路径只在"恰好超阈值"时才有输出，等于永远没被验证过。
+    """
+    if max_lag > DRIFT_WARN:
+        return ("图正在漂移（最大滞后 %d 个提交，>10 即掉档）—— 建议："
+                "python tools/figures_refresh.py" % max_lag)
+    return ""
+
+
 def _snapshot(st):
     """一行历史：只留**会变**的字段，便于人读与 diff。"""
     f = st.get("figures") or {}

@@ -1148,9 +1148,16 @@ def main(argv):
     try:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import project_status as _PS            # noqa: PLC0415
-        _added, _lines = _PS.record(_PS.build())
+        _st = _PS.build()
+        _added, _lines = _PS.record(_st)
         print("check_all: 状态历史 %s（共 %d 行，flow/status-history.jsonl）"
               % ("已追加" if _added else "无变化未追加", _lines))
+        # **图正在漂移就提醒**（R835）：不自动重渲染（一次 20~40s × 16 张，
+        # 会把这句"检查"变成"构建"），只把命令写在这里 —— 让"该刷了"这件事
+        # 出现在人一定会看到的那一屏，而不是等它掉档后再去猜为什么。
+        _hint = _PS.drift_hint((_st.get("figures") or {}).get("max_lag", 0))
+        if _hint:
+            print("check_all: " + _hint)
     except Exception as _exc:                   # noqa: BLE001
         print("check_all: 状态历史跳过（%s: %s）" % (type(_exc).__name__, _exc))
 

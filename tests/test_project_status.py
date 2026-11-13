@@ -149,6 +149,39 @@ def test_main_figures_do_not_rot():
         "\n  修法：python tools/figures_refresh.py --only <目录名>")
 
 
+def test_lag_badges_match_gate_thresholds():
+    """首页滞后读数的**分级阈值必须与真判据对齐**（不是随手挑的数）。
+
+    * 掉档点 `>10`：`project_status.figures()` 就按这个把图归入 stale；
+    * 腐烂线 `>=40`：`test_main_figures_do_not_rot` 的 `MAX_LAG`；
+    * 预警点 `>8`：8 之后只剩两个提交就掉档 —— 这一档**没有判据对应**，
+      是给人的缓冲，所以它只能出现在这里，不能反过来影响判据。
+    """
+    import flow_steps as F
+
+    # 掉档点与 project_status 的分档一致
+    assert F._lag_text(10) != "已过时", "10 还不该叫已过时（分档是 >10）"
+    assert F._lag_text(11) == "已过时", "11 应已掉档（分档是 >10）"
+    # 腐烂线与主干图判据一致
+    assert F._lag_text(39) != "已越过腐烂线"
+    assert F._lag_text(40) == "已越过腐烂线"
+    # 预警：9 起变色，但标签不能说成已过时
+    assert F._lag_style(9), "9 应该已经有底色（提前预警）"
+    assert not F._lag_style(8), "8 及以下不该染色"
+    assert F._lag_text(9) == "即将掉档"
+    # 首页的染色阈值与漂移提示**必须同一个数**（否则一处说没事、一处催你刷）
+    assert not PS.drift_hint(PS.DRIFT_WARN), "达到预警线不该提示（是 > 不是 >=）"
+    assert PS.drift_hint(PS.DRIFT_WARN + 1), "超过预警线必须给出可执行提示"
+    assert not F._lag_style(PS.DRIFT_WARN), "首页在预警线处不该染色"
+    assert F._lag_style(PS.DRIFT_WARN + 1), "首页超过预警线必须染色"
+    assert "figures_refresh" in PS.drift_hint(99), "提示里没有可执行的命令"
+    # 空串=无色；有底色时必须有内联 style（页面不引外部 CSS）
+    for n in (0, 9, 11, 40):
+        s = F._lag_style(n)
+        assert (s == "") or s.startswith("background:"), \
+            "第 %d 档的样式不是内联 background：%r" % (n, s)
+
+
 def test_every_top_dir_has_a_group():
     """每个**顶层目录**都必须落在某个职责域里。
 

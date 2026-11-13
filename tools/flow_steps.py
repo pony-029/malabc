@@ -203,6 +203,35 @@ def read_status():
         return None
 
 
+def _lag_style(n):
+    """滞后读数的**分级底色**。
+
+    阈值不是随便取的，全部对齐已有判据：
+      * `>10`  → `project_status` 把它归入 stale（已过时）；
+      * `>8`   → **提前两档变黄**：8 之后只剩 2 个提交就会掉档，
+                 而"掉档那一刻"才报警的话，人已经没有缓冲了；
+      * `>=40` → 主干图腐烂判据（`test_main_figures_do_not_rot`）。
+    返回内联样式：页面不引外部 CSS（断网可读）。
+    """
+    if n >= 40:
+        return "background:#ffcdd2;padding:0 4px;border-radius:3px"     # 红：已腐烂
+    if n > 10:
+        return "background:#ffe0b2;padding:0 4px;border-radius:3px"     # 橙：已过时
+    if n > 8:
+        return "background:#fff3cd;padding:0 4px;border-radius:3px"     # 黄：即将掉档
+    return ""                                                           # 正常
+
+
+def _lag_text(n):
+    if n >= 40:
+        return "已越过腐烂线"
+    if n > 10:
+        return "已过时"
+    if n > 8:
+        return "即将掉档"
+    return "正常"
+
+
 def render_status(st):
     """把**计划阶段 + 图分布**渲染成静态表。
 
@@ -243,6 +272,7 @@ def render_status(st):
 
     f = st.get("figures") or {}
     live = (f.get("current", 0) + f.get("recent", 0))
+    ml = f.get("max_lag", 0)
     done = sum(1 for ph in (st.get("phases") or [])
                if ph.get("status") == "done")
     total = len(st.get("phases") or [])
@@ -272,7 +302,8 @@ def render_status(st):
     <p class="q"><b>流程图</b>：共 %(cnt)d 张 ｜ 现行/近期 <b>%(live)d</b> ｜
       已过时 <b>%(stale)d</b> ｜ 历史(登记) <b>%(hist)d</b>。
       历史档是不随代码重渲染的旧 schema 图（重渲染会丢语义），不是欠账。</p>
-    <p class="q"><b>距上次刷新</b>：最大滞后 <b>%(maxlag)d</b> 个提交（超过 10 转"已过时"，
+    <p class="q"><b>距上次刷新</b>：最大滞后 <span style="%(lagstyle)s">(%(lagtxt)s)</span>
+      <b>%(maxlag)d</b> 个提交（超过 10 转"已过时"，
       超过 %(rot)d 触发主干图腐烂判据）。这个数字每次提交都会自己变大 ——
       它是唯一能说明"离下一次变红还有多远"的读数。</p>
     <p class="q">门禁与测试覆盖：GX2 引用 <b>%(gx2)d</b> 个测试文件 ｜ HEAD <code>%(head)s</code>。</p>
@@ -294,7 +325,8 @@ python tools/check_generated_compiles.py</code></pre>
         "cnt": f.get("count", 0), "live": live,
         "stale": f.get("stale", 0), "hist": f.get("historical", 0),
         "gx2": st.get("gx2_tests", 0), "head": st.get("head", ""),
-        "maxlag": f.get("max_lag", 0), "rot": 40,
+        "maxlag": ml, "rot": 40,
+        "lagstyle": _lag_style(ml), "lagtxt": _lag_text(ml),
         "histline": _render_hist(st),
         "grows": "\n      ".join(grows),
         "done": done, "total": total,
