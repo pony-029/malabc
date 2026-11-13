@@ -219,6 +219,73 @@ fn parse_var(spec: &str) -> Result<Var, String> {
     Ok(Var { name: parts[0].to_string(), dtype: parts[1].to_string(), shape })
 }
 
+/// `(op-id, 最少实参个数, 最多实参个数)` —— **由 `mlc_ops.h` 原型 − 1 推出**。
+///
+/// 为什么放进解析期：实参个数不对时，生成物仍会写出 `mlc_op_min(&x, &x, y)`，
+/// 然后 **gcc 报 `too many arguments`** —— 错误报在 C 编译器，而不是我们的工具里；
+/// 而 VM 会忽略多余实参照常出数，于是现场像"两条实现算出了不同的数"
+/// （R813 实测：三个假分岔全来自此）。
+///
+/// **两向核对**：`tests/test_op_arity.py` 会重新从原型推导一遍并与本表比对
+/// （表里多一条或少数一条都会红），所以这里不会悄悄过期。
+pub const OP_ARITY: &[(&str, usize, usize)] = &[
+    ("OP-ABS", 1, 1),
+    ("OP-ADD", 2, 2),
+    ("OP-ALL", 1, 1),
+    ("OP-ANY", 1, 1),
+    ("OP-CEIL", 1, 1),
+    ("OP-COL", 2, 2),
+    ("OP-COLRANGE", 3, 3),
+    ("OP-COPY", 1, 1),
+    ("OP-COS", 1, 1),
+    ("OP-DIV", 2, 2),
+    ("OP-EXP", 1, 1),
+    ("OP-FILLA", 3, 3),
+    ("OP-FIND", 3, 3),
+    ("OP-FIND2", 3, 3),
+    ("OP-FIND3", 4, 4),
+    ("OP-FLATTEN", 1, 1),
+    ("OP-FLOOR", 1, 1),
+    ("OP-HCAT", 2, 2),
+    ("OP-IDX2", 3, 3),
+    ("OP-INDEX", 2, 2),
+    ("OP-ISEMPTY", 1, 1),
+    ("OP-ISEQUAL", 2, 2),
+    ("OP-ISEQUALK", 2, 2),
+    ("OP-ISINF", 1, 1),
+    ("OP-ISNAN", 1, 1),
+    ("OP-ISNUMERIC", 1, 1),
+    ("OP-ISREAL", 1, 1),
+    ("OP-LENGTH", 1, 1),
+    ("OP-LOG", 1, 1),
+    ("OP-LOG10", 1, 1),
+    ("OP-LOG2", 1, 1),
+    ("OP-MASK", 3, 3),
+    ("OP-MATMUL", 2, 2),
+    ("OP-MAX", 1, 1),
+    ("OP-MEAN", 1, 1),
+    ("OP-MIN", 1, 1),
+    ("OP-MOD", 2, 2),
+    ("OP-MUL", 2, 2),
+    ("OP-NNZ", 1, 1),
+    ("OP-NUMEL", 1, 1),
+    ("OP-PROD", 1, 1),
+    ("OP-ROUND", 1, 1),
+    ("OP-ROW", 2, 2),
+    ("OP-SETDIFF", 2, 2),
+    ("OP-SETIDX", 2, 2),
+    ("OP-SETIDX2", 3, 3),
+    ("OP-SIN", 1, 1),
+    ("OP-SIZE", 1, 2),
+    ("OP-SLICE", 3, 3),
+    ("OP-SQRT", 1, 1),
+    ("OP-SUB", 2, 2),
+    ("OP-SUM", 1, 1),
+    ("OP-TAN", 1, 1),
+    ("OP-TRANSPOSE", 1, 1),
+    ("OP-VCAT", 2, 2),
+];
+
 fn parse_op(rest: &str, src: i64) -> Result<Op, String> {
     let parts: Vec<&str> = rest.split(':').map(|x| x.trim()).collect();
     if parts.len() < 3 {
@@ -232,20 +299,15 @@ fn parse_op(rest: &str, src: i64) -> Result<Op, String> {
     if args.is_empty() {
         return Err(format!("op 参数为空：{}", rest));
     }
-    // **归约算子只吃 1 个输入**（`mlc_op_min(const mlc_array *a, mlc_array *out)`）。
-    // 多给的实参不会被 C 原型接受 —— 生成物照样写出来，然后 **gcc 报
-    // `too many arguments`**；而 VM 会忽略多余实参算出结果。于是现场看起来
-    // 像"两条实现算出了不同的数"，实际是**样本本身不合法**（R813 实测：
-    // 三个假分岔全部来自这里，白挂了一个多月的 xfail）。
-    // 在**解析期**就拒绝，让错误早一步、且说得具体。
-    const REDUCE_OPS: [&str; 4] = ["OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN"];
-    if REDUCE_OPS.contains(&parts[0]) && args.len() != 1 {
-        return Err(format!(
-            "归约算子 {} 只接受 1 个输入，实际给了 {} 个（会生成 C 原型拒绝的调用）：{}",
-            parts[0],
-            args.len(),
-            rest
-        ));
+    // **实参个数必须与 C 原型一致**（见下方 `OP_ARITY` 的说明）。
+    // 未知 op-id 不在这里判 —— 那是"算子未登记"的另一种病，由别的门管。
+    if let Some(&(id, lo, hi)) = OP_ARITY.iter().find(|(id, _, _)| *id == parts[0]) {
+        if args.len() < lo || args.len() > hi {
+            return Err(format!(
+                "算子 {} 接受 {}..={} 个输入，实际给了 {} 个（生成物会被 C 原型拒绝）：{}",
+                id, lo, hi, args.len(), rest
+            ));
+        }
     }
     Ok(Op { id: parts[0].to_string(), lhs: parts[1].to_string(),
             args, src })

@@ -135,6 +135,71 @@ def test_exempt_list_is_curated():
         assert len(why.strip()) >= 12, "%s 的豁免理由太短：%r" % (k, why)
 
 
+MIR_RS = os.path.join(ROOT, "rust", "m2c", "src", "mir.rs")
+M2C = os.path.join(ROOT, "rust", "m2c", "target", "release",
+                   "m2c.exe" if os.name == "nt" else "m2c")
+
+
+def rust_table():
+    """`mir.rs` 里的 `OP_ARITY` 表：`{op-id: (lo, hi)}`。"""
+    if not os.path.isfile(MIR_RS):
+        return None
+    src = io.open(MIR_RS, encoding="utf-8", errors="replace").read()
+    out = {}
+    for m in re.finditer(r'\("(OP-[A-Z0-9]+)",\s*(\d+),\s*(\d+)\)', src):
+        out[m.group(1)] = (int(m.group(2)), int(m.group(3)))
+    return out
+
+
+def test_rust_table_matches_prototypes():
+    """**两向核对**：Rust 解析期的元数表必须与 `mlc_ops.h` 推出的一致。
+
+    这张表是生成进去的（55 条），而生成物最容易的失效方式是**悄悄过期**：
+    原型改了、表没改，于是解析期开始拒绝合法 MIR（或放过非法 MIR）。
+    """
+    rust = rust_table()
+    if rust is None:
+        pytest.skip("没有 mir.rs")
+    derived = expected_arity()
+    assert len(rust) >= 50, "Rust 表只有 %d 条（应 ≥50）" % len(rust)
+
+    want = dict((k, (min(v), max(v))) for k, v in derived.items())
+    missing = [k for k in want if k not in rust]
+    extra = [k for k in rust if k not in want]
+    diff = [(k, rust[k], want[k]) for k in want
+            if k in rust and rust[k] != want[k]]
+    assert not missing, "Rust 表缺这些算子：%r" % missing[:6]
+    assert not extra, "Rust 表多出这些算子（原型里没有）：%r" % extra[:6]
+    assert not diff, "元数区间不一致（算子, Rust, 原型）：%r" % diff[:6]
+
+
+def test_parse_rejects_wrong_arity():
+    """解析期必须真的拒：多给和**少给**都要拒（少给原来会一路走到 gcc）。"""
+    if not os.path.isfile(M2C):
+        pytest.skip("m2c 未构建")
+    import tempfile
+
+    d = tempfile.mkdtemp(prefix="ar_", dir=WORK if WORK and os.path.isdir(WORK) else None)
+    cases = [
+        (["func:f", "arg:x:f64:3", "ret:y:f64:1", "op:OP-MIN:y:x:x", "end"], "多给"),
+        (["func:f", "arg:x:f64:3", "ret:y:f64:3", "op:OP-ADD:y:x", "end"], "少给"),
+    ]
+    try:
+        for body, what in cases:
+            p = os.path.join(d, "t.mir")
+            io.open(p, "w", encoding="utf-8", newline="\n").write(
+                "version 3\n" + "\n".join(body) + "\n")
+            r = subprocess.run([M2C, "run", "--mir", p],
+                               stdin=subprocess.DEVNULL, timeout=120,
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            out = r.stdout.decode("utf-8", "replace")
+            assert r.returncode != 0, "%s实参竟然通过了：%s" % (what, out[-200:])
+            assert "个输入" in out, "%s实参的报错没说清个数：%s" % (what, out[-200:])
+    finally:
+        import shutil
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def test_arity_checker_has_teeth():
     """判据自己要有牙齿：坏行必须被抓出来，好行不能被误伤。"""
     expect = {"OP-MIN": {1}, "OP-ADD": {2}, "OP-SIZE": {1, 2}}
