@@ -287,6 +287,10 @@ def _snapshot(st):
         "fig_live": f.get("current", 0) + f.get("recent", 0),
         "fig_stale": f.get("stale", 0),
         "fig_hist": f.get("historical", 0),
+        # **最大滞后**也要进历史：只记 live/stale 看不出"漂移速度"——
+        # 两次记录都是 live=16 时，可能一次是刚刷新（lag 0），一次是
+        # 已经攒了 9 个提交（lag 9，随时会掉档）。差值要靠这个数才看得见。
+        "fig_max_lag": f.get("max_lag", 0),
         "gx2": st.get("gx2_tests", 0),
     }
 
@@ -382,6 +386,9 @@ def delta(st, path=None):
         diffs.append("可维护图 %s→%s" % (prev.get("fig_live"), cur["fig_live"]))
     if cur["fig_stale"] != prev.get("fig_stale"):
         diffs.append("已过时图 %s→%s" % (prev.get("fig_stale"), cur["fig_stale"]))
+    if cur.get("fig_max_lag") != prev.get("fig_max_lag"):
+        diffs.append("图最大滞后 %s→%s 个提交"
+                     % (prev.get("fig_max_lag"), cur.get("fig_max_lag")))
     if cur["gx2"] != prev.get("gx2"):
         diffs.append("GX2 覆盖 %s→%s" % (prev.get("gx2"), cur["gx2"]))
     return "；".join(diffs) if diffs else "无变化"
