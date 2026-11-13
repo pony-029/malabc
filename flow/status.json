@@ -204,13 +204,22 @@
     }
   ],
   "figures": {
-    "current": 16,
-    "recent": 0,
+    "current": 0,
+    "recent": 16,
     "stale": 0,
     "unknown": 0,
     "historical": 4,
     "count": 20
   },
+  "domain_tests": {
+    "工具与门禁": 22,
+    "运行时": 31,
+    "判据": 8,
+    "编辑器": 1,
+    "图与文档": 15,
+    "分析侧": 4,
+    "转换侧": 61
+  },
   "gx2_tests": 79,
-  "head": "244e85f88db7"
+  "head": "05d819381627"
 }

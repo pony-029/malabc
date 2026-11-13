@@ -155,6 +155,35 @@ def modules():
     return out
 
 
+def domain_coverage(tests_dir=None):
+    """每个职责域被**多少条测试文件**提到（粗粒度覆盖读数）。
+
+    口径：扫 `tests/*.py` 的正文，看它是否出现该域下任一目录名（如 `translate/`、
+    `c_runtime/`）。一个测试提到两个域就两边都算 —— 这是**上界**，不是精确归属。
+
+    为什么用这么粗的口径：精确归属需要解析 import 依赖，而这里要回答的问题只是
+    "这一层有没有人测"。0 才是危险信号；3 和 5 的差别不值得用更贵的手段换。
+    """
+    d = tests_dir or os.path.join(ROOT, "tests")
+    out = dict((g, 0) for g in set(GROUPS.values()))
+    if not os.path.isdir(d):
+        return out
+    paths = {}
+    for p, g in GROUPS.items():
+        paths.setdefault(g, []).append(p.rstrip("/"))
+    for f in sorted(os.listdir(d)):
+        if not (f.startswith("test_") and f.endswith(".py")):
+            continue
+        try:
+            src = io.open(os.path.join(d, f), encoding="utf-8", errors="replace").read()
+        except OSError:
+            continue
+        for g, names in paths.items():
+            if any(n and n in src for n in names):
+                out[g] += 1
+    return out
+
+
 def groups(mods=None):
     """按职责域汇总：`{域: {"dirs": n, "files": n}}`。"""
     mods = mods if mods is not None else modules()
@@ -208,6 +237,7 @@ def figures():
 
 def build():
     return {"phases": phases(), "modules": modules(), "figures": figures(),
+            "domain_tests": domain_coverage(),
             "gx2_tests": len(_gx2_tests()), "head": _head()[:12]}
 
 

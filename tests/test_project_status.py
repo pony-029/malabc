@@ -176,6 +176,19 @@ def test_every_top_dir_has_a_group():
         "这些顶层目录没有归属职责域（在 tools/project_status.py 的 GROUPS 里补）：%r" % missing
 
 
+def test_every_domain_has_some_test_mention():
+    """每个职责域至少要有一条 `tests/` 文件提到它。
+
+    这是**粗粒度上界读数**（口径见 `project_status.domain_coverage`），但它能抓
+    一件真事：某一层**完全没人测**。R819 实测时，分析侧（75 文件）只有 4 条
+    测试提到、编辑器（14 文件）只有 1 条 —— 数字难看，但"0"才是事故。
+    """
+    cov = PS.domain_coverage()
+    zero = [g for g, n in cov.items() if n == 0]
+    assert not zero, \
+        "这些职责域没有任何判据提及（等于没人测）：%r（口径：tests/*.py 正文出现该域目录名）" % zero
+
+
 def test_figure_gate_counts_match_reality():
     """图上写的「门禁 N 门」必须等于真实门数。
 
