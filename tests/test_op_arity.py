@@ -126,6 +126,36 @@ def test_corpus_mir_matches_c_prototypes():
         shutil.rmtree(d, ignore_errors=True)
 
 
+#: **登记了但 C 侧没实现的算子**。当前为空 —— 这是棘轮，新增必须写理由。
+#:
+#: 为什么需要这条：`check_translate_port` 的 TP8 只核对 `C_IMPLEMENTED` 在
+#: Python 与 Rust 两份清单之间**同步**，但如果两边都漏了同一个算子，没人会发现。
+#: 于是"55 登记 / 55 实现"这种结论只能靠我临时跑一次脚本得出 —— 而一次性测量
+#: 会随下一次改动静默过期。
+UNIMPLEMENTED: dict = {}
+
+
+def test_every_registered_op_has_c_implementation():
+    """每个登记在目录里的算子，都必须有 C 落点（否则生成时只能 `TODO`）。"""
+    from operators import C_IMPLEMENTED, OPERATORS
+
+    registered = [o["id"] for o in OPERATORS]
+    impl = set(C_IMPLEMENTED)
+    missing = sorted(set(registered) - impl)
+
+    unexpected = [m for m in missing if m not in UNIMPLEMENTED]
+    assert not unexpected, (
+        "这些算子已登记但 C 没实现（生成时会落到 TODO + MLC_UNIMPLEMENTED）：%r\n"
+        "  要么补实现，要么在 UNIMPLEMENTED 里写清为什么可以先没有。" % unexpected)
+
+    # 反向：豁免表里不许留下"其实已实现"的陈旧条目
+    stale = sorted(k for k in UNIMPLEMENTED if k in impl)
+    assert not stale, "UNIMPLEMENTED 里有已实现的算子（陈旧条目）：%r" % stale
+
+    for k, why in UNIMPLEMENTED.items():
+        assert len(why.strip()) >= 12, "%s 的豁免理由太短：%r" % (k, why)
+
+
 def test_exempt_list_is_curated():
     """豁免表不能变成垃圾桶：条数有上界、每条都有理由。"""
     assert len(OP_ARITY_EXEMPT) <= MAX_OP_EXEMPT, \
