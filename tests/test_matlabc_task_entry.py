@@ -45,6 +45,49 @@ def test_empty_project_lists_nothing():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_successful_record_is_listed():
+    """记一条成功任务 → 返回非空 id，且能被 `list_tasks` 看到。"""
+    import matlabc_task as MT
+
+    d = _tmp()
+    try:
+        rid = MT.record_task(d, "rename", {"old": "a", "new": "b"}, {})
+        assert rid, "record_task 成功路径却返回空串（用户会以为能 undo）"
+        rows = MT.list_tasks(d)
+        assert len(rows) == 1, "记了一条却列出 %d 条" % len(rows)
+        assert rows[0].get("kind") == "rename"
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_failure_log_goes_to_project_not_repo():
+    """**失败日志必须写在被操作的项目里**，不能写到本仓库根。
+
+    R855 修的真缺陷：早前用 `os.path.dirname(__file__)`，于是操作别人的工程时
+    日志落到**本仓库根目录** —— 既污染工作区（多出一个未跟踪文件），
+    用户在**自己的项目里**也找不到它。日志要挨着它描述的对象放。
+    """
+    import matlabc_task as MT
+
+    d = _tmp()
+    repo_log = os.path.join(ROOT, "matlabc_task.log")
+    if os.path.exists(repo_log):
+        os.remove(repo_log)          # 清掉可能的历史残留，再验会不会重新生成
+    try:
+        # `backup=None` 会在内部 `backup.items()` 处失败 —— 这正是要覆盖的失败路径
+        rid = MT.record_task(d, "rename", {"old": "a", "new": "b"}, None)
+        assert rid == "", "明知会失败却返回了 id（用户会去 undo 一条不存在的记录）"
+
+        inproj = os.path.join(d, MT.HISTORY_DIR, "matlabc_task.log")
+        assert os.path.isfile(inproj), "失败日志没写在项目里（用户找不到）"
+        assert not os.path.exists(repo_log), \
+            "失败日志写到了本仓库根（污染工作区）"
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+        if os.path.exists(repo_log):
+            os.remove(repo_log)
+
+
 def test_prune_reports_zero_on_empty_and_is_idempotent():
     """空工程裁剪：四个计数全 0，且连跑两次结果一致。"""
     import matlabc_task as MT

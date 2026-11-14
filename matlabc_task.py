@@ -318,10 +318,20 @@ def record_task(root, kind, params, backup, created=None, scan=None,
     except Exception as exc:
         # 记不上不该让任务**失败**（任务是主体），但必须**说出来** ——
         # 第一版这里静默返回空串，用户以为能 undo，真去撤时才发现没记录。
-        io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "matlabc_task.log"), "a",
-                encoding="utf-8").write(
-            u"record_task 失败：%r\n" % (exc,))
+        #
+        # ⚠ 日志要写在**被操作的项目里**，不是写在模块旁边（R855 修）：
+        # 早前用 `os.path.dirname(__file__)`，于是操作别人的工程时日志落到
+        # **本仓库根目录** —— 既污染工作区（多出一个未跟踪文件），
+        # 也让用户在自己的项目里找不到它。日志必须紧挨着它描述的对象。
+        try:
+            ld = os.path.join(root, HISTORY_DIR)
+            if not os.path.isdir(ld):
+                os.makedirs(ld, exist_ok=True)
+            io.open(os.path.join(ld, "matlabc_task.log"), "a",
+                    encoding="utf-8").write(
+                u"record_task 失败：%r\n" % (exc,))
+        except OSError:
+            pass                     # 连日志都写不了时也不要让任务失败
         return u""
 
 
