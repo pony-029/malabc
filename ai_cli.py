@@ -41,7 +41,19 @@ TASK_GUIDE = {
 }
 
 CODE_BLOCK_RE = re.compile(r"```([\w-]*)\n(.*?)```", re.DOTALL)
-SECRET_RE = re.compile(r"(sk-[A-Za-z0-9]{6,}|Bearer\s+[A-Za-z0-9._-]{6,}|api_key[=:]\s*\S+)", re.IGNORECASE)
+#: 凭据模式。**覆盖常见的"键=值"形态**，不只 `api_key`。
+#:
+#: R851 实测的缺口：`redact("password=hunter2")` 原样返回 —— 因为旧模式只有
+#: `sk-` / `Bearer` / `api_key` 三类。而 `password=` / `token=` / `secret=` 是
+#: 同样常见（甚至更常见）的泄露形态，脱敏函数漏掉它们等于给了一个假保障。
+#: 这里**宁可多遮**：泄露的代价远高于把一段普通文本遮掉 4 个字。
+SECRET_RE = re.compile(
+    r"(sk-[A-Za-z0-9]{6,}"                                   # OpenAI 风格
+    r"|Bearer\s+[A-Za-z0-9._-]{6,}"                          # Bearer token
+    r"|\bBasic\s+[A-Za-z0-9+/=]{8,}"                         # HTTP Basic
+    r"|(?:api[_-]?key|access[_-]?key|passwd|password|secret"
+    r"|token|credential)[=:]\s*\S+)",                        # 键=值
+    re.IGNORECASE)
 
 # ----------------------------------------------------------------------------
 # Provider 预设注册表（含国产大模型）

@@ -212,7 +212,10 @@ def test_every_top_dir_has_a_group():
     """
     # 只豁免"不是本项目代码"的目录（构建产物、缓存、空目录）。
     # `docs/`、`vscode/` **不豁免** —— 它们也是本项目的一部分，必须归属某个域。
-    EXEMPT = {"releases", "node_modules", "flow_out", "__pycache__", "dlow"}
+    # ⚠ 豁免表只许列**真实存在且确实不该归属**的目录。
+    # R851 删掉了 `dlow`：它是个空目录，全仓只有这条豁免提到它 —— 属于"陈旧豁免"，
+    # 与图片登记表"只加不减"是同一个病。空目录已删除。
+    EXEMPT = {"releases", "node_modules", "flow_out", "__pycache__"}
     groups = PS.GROUPS
     known = {p.rstrip("/") for p in groups}
     missing = []

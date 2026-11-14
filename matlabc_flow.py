@@ -130,6 +130,17 @@ def check_patch_preserves_source(patch_text, before_alerts):
     if (patch_text or "").strip() and hunks == 0:
         return False, dict(detail,
                            reason="补丁非空却解析不出任何 hunk（无法自证 → 拒绝应用）")
+    # **判定是精确相等**，不是「不超过」。
+    #
+    # 为什么把这个事实写在这里：两者语义差别很大 ——
+    #   `removed <= allowed`：删得比声明的少 ⇒ 安全（少删不是吞语句）；
+    #   `removed != allowed`（当前）：少删也算违规。
+    # 于是「报告声明 2 条 dead_code、补丁只删 1 行」会被拒。
+    #
+    # 这可能是**有意的**（补丁生成器总是删光全部死代码，少删说明生成器与报告不一致，
+    # 此时拒绝比放行安全），也可能只是当初顺手写成 `!=`。**代码里没有记录理由**，
+    # 所以按现状钉住：`tests/test_matlabc_flow_entry.py::test_judgement_is_exact_match_not_upper_bound`
+    # 会在这个语义被改成 `<=` 时变红 —— 那时请把这个决定写进本注释，而不是顺手放宽。
     if removed != allowed:
         return False, dict(detail, reason=(
             "语句保持不变量被破坏：补丁删除 %d 行，而报告只声明 %d 条 dead_code"
