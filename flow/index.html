@@ -178,12 +178,12 @@
         <th style="padding:4px 8px">文件数</th><th style="padding:4px 8px">判据条数 / 文件数</th>
         <th style="padding:4px 8px">包含</th></tr>
       <tr><td>图与文档</td><td>3</td><td>474</td><td>555 / 10</td><td><code>flow/ m2c-site/ docs/</code></td></tr>
-      <tr><td>判据</td><td>1</td><td>215</td><td>561 / 8</td><td><code>tests/</code></td></tr>
+      <tr><td>判据</td><td>1</td><td>235</td><td>561 / 8</td><td><code>tests/</code></td></tr>
       <tr><td>转换侧</td><td>3</td><td>162</td><td>698 / 61</td><td><code>translate/ rust/m2c/ frontends/</code></td></tr>
-      <tr><td>工具与门禁</td><td>3</td><td>157</td><td>578 / 18</td><td><code>tools/ harness/ ci-examples/</code></td></tr>
+      <tr><td>工具与门禁</td><td>3</td><td>158</td><td>582 / 19</td><td><code>tools/ harness/ ci-examples/</code></td></tr>
       <tr><td>运行时</td><td>2</td><td>96</td><td>64 / 30</td><td><code>c_runtime/ malabc-rt/</code></td></tr>
       <tr><td>分析侧</td><td>3</td><td>75</td><td>535 / 7</td><td><code>analyzer/ binfmt/ renderers/</code></td></tr>
-      <tr><td>入口与流水线</td><td>1</td><td>22</td><td>526 / 2</td><td><code>./</code></td></tr>
+      <tr><td>入口与流水线</td><td>1</td><td>22</td><td>556 / 11</td><td><code>./</code></td></tr>
       <tr><td>编辑器</td><td>1</td><td>14</td><td>65 / 4</td><td><code>vscode/</code></td></tr>
     </table>
     <p class="q">「判据条数」的口径：扫 <code>tests/*.py</code> 与 <code>vscode/test_*.js</code>
@@ -197,7 +197,7 @@
       <b>1</b> 个提交（超过 10 转"已过时"，
       超过 40 触发主干图腐烂判据）。这个数字每次提交都会自己变大 ——
       它是唯一能说明"离下一次变红还有多远"的读数。</p>
-    <p class="q">门禁与测试覆盖：GX2 引用 <b>86</b> 个测试文件 ｜ HEAD <code>242f6da3c11d</code>。</p>
+    <p class="q">门禁与测试覆盖：GX2 引用 <b>96</b> 个测试文件 ｜ HEAD <code>df9df8dffe7b</code>。</p>
     <details class="q"><summary>怎么自己验一遍（两条命令）</summary>
       <pre><code># 1) 41 道快/中门（约 3~4 分钟）
 python tools/check_all.py --skip check_generated_compiles
@@ -208,7 +208,7 @@ python tools/check_generated_compiles.py</code></pre>
       分开后各自有结论，失败也知道落在哪一半。GX2 会逐行转发 pytest 输出 ——
       看不到进度时，先判断是"慢"还是"沉默"。</p>
     </details>
-    <p class="q">上次记录 <code>2026-11-14T00:06:10</code> ｜ 变化：<b>无变化</b> ｜ 历史共 <b>34</b> 条</p>
+    <p class="q">上次记录 <code>2026-11-14T00:43:08</code> ｜ 变化：<b>图最大滞后 8→1 个提交；GX2 覆盖 95→96</b> ｜ 历史共 <b>39</b> 条</p>
   </section>
 <!-- STATUS:END -->
   <!-- STATS:BEGIN -->
