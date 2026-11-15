@@ -91,6 +91,7 @@ CHECKS = (
              os.path.join("tests", "test_binfmt_elf_entry.py"),
              os.path.join("tests", "test_binfmt_pe_macho_entry.py"),
              os.path.join("tests", "test_binfmt_macho_dylib.py"),
+             os.path.join("tests", "test_binfmt_macho_symtab.py"),
              os.path.join("tests", "test_binfmt_buildsys_scan.py"),
              os.path.join("tests", "test_repo_hygiene.py"),
              os.path.join("tests", "test_matlabc_ask_entry.py"),
