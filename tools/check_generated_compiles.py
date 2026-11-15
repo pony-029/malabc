@@ -292,7 +292,14 @@ def _run_all(full=True):
     # 全缓冲到进程结束才吐 —— 于是外部看到的是"6 分钟 0 字节"，无法判断
     # 是在跑、卡住、还是已经死了（实测连续三轮因此拿不到结论）。
     # 改成 Popen 逐行读、逐行打印（同时累积全文供判定），进度从此可见。
-    print("  [pytest] %d 个用例文件，开始…" % len(files), flush=True)
+    # ⚠ **串行纪律**（R864）：这些用例会大量调用 `m2c.exe` / `gcc`，并且共用
+    # `E:\temp\matlabc`（`test_vm_differential.WORK`）。若在此期间另开一趟
+    # pytest / 编译（哪怕只是临时探查脚本），Windows 的文件锁会让个别用例
+    # **偶发**失败 —— 现象是"全量红、单独绿、重跑绿"。
+    # R862 就吃过这个：一个假的 `1 failed` 花了整整一轮去二分，最后发现是
+    # 我自己的并发。单实例锁只挡 GX2 之间，挡不住"门 + 临时脚本"。
+    print("  [pytest] %d 个用例文件，开始…（本轮请勿并发运行其它 pytest/编译）"
+          % len(files), flush=True)
     chunks = []
     p = subprocess.Popen(cmd, cwd=ROOT, stdin=subprocess.DEVNULL,
                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
