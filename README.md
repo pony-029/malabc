@@ -1267,6 +1267,8 @@ Author and copyright holder: **冯磊 (Feng Lei)** — © 2026 冯磊 (Feng Lei)
 
 > **Verifying this repo**: `python tools/check_all.py` runs every static gate (each carries its own two-way self-test); `python tools/lsp_selftest.py --all --list` covers the behavioural judgements over the LSP / MCP surface.
 > `python tools/rsi_scenarios.py` drives both protocols end to end, `python tools/mutate_sample.py` proves the judgements can actually fail.
+>
+> **Run gates serially.** `check_generated_compiles` and the corpus/e2e tests drive `m2c.exe` and `gcc` through one shared temp tree, so a second pytest or build running at the same time makes single tests fail *intermittently* — the pattern is "full suite red, one file green, rerun green". Finish one run before starting the next; a second GX2 instance is refused by a lock, but the lock cannot see your own ad-hoc script.
 
 Three-link regression report: `python tools/three_links_report.py <dirs> -o <out>` (MATLAB->MIR->C->MIR, self-contained HTML).
 - `tools/hir_links_report.py` — consistency report for MATLAB→MIR / MIR→C / C→MIR, **each scenario routed through HIR** (MIR ⇄ HIR identity)

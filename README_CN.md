@@ -1196,6 +1196,8 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 
 > **本仓如何自证**：`python tools/check_all.py` 跑全部静态门（每道门自带两向自证）；`python tools/lsp_selftest.py --all --list` 覆盖 LSP / MCP 的行为判据。
 > `python tools/rsi_scenarios.py` 走公开协议端到端，`python tools/mutate_sample.py` 证明这些判据真的会红。
+>
+> **门要串行跑。** `check_generated_compiles` 与语料/端到端用例都会通过同一棵临时目录调用 `m2c.exe` 与 `gcc`，所以同时再开一趟 pytest 或编译，会让个别用例**偶发**失败 —— 现象是「全量红、单文件绿、重跑绿」。跑完一趟再起下一趟；GX2 之间由锁互斥，但锁看不见你自己临时起的脚本。
 
 三段链路回归报告：`python tools/three_links_report.py <目录...> -o <输出目录>`（MATLAB→MIR→C→MIR，自包含 HTML）。
 - `tools/hir_links_report.py` —— 三类转换（MATLAB→MIR / MIR→C / C→MIR）一致性报告，**每类都经 HIR**（MIR ⇄ HIR 往返恒等）
