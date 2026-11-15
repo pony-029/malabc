@@ -32206,10 +32206,6 @@ def cli_entry(argv=None):
                     help="转换产物目录（默认 <DIR>/_m2c_build）")
     args = ap.parse_args(argv)
 
-    # 主线分派：`--to-c` 走转换，不再往下走结构分析
-    if getattr(args, "to_c", None):
-        return run_to_c(args)
-
     # R62-R31c：`--lang cpp` 是 `--lang c` 的**显式别名** —— C++ 复用 C 前端
     # （C++ 按 C 子集解析，模板/类/命名空间不保证识别；这是已披露的降级）。
     # 在此归一化，使后续所有 `args.lang in (...)` 分支无需再各处加 cpp。
@@ -32631,6 +32627,15 @@ def run_to_c(args):
 def main(argv=None):
     t_start = time.time()  # P48：记录开始时间，供摘要输出各阶段耗时
     args, ap = cli_entry(argv)
+
+    # 主线分派：`--to-c` 走转换，不再往下走结构分析。
+    # ⚠ 必须放在这里而不是 `cli_entry` 里：那个函数要返回 `(args, ap)`，
+    # 在其中提前 `return 0` 会让上面这行解包失败（R874 实测：转换全部成功，
+    # 却在收尾处 `TypeError: cannot unpack non-iterable int object`，
+    # 退出码变成 1 —— **成功了却报失败**，比失败更坏）。
+    if getattr(args, "to_c", None):
+        sys.exit(run_to_c(args))
+
     if getattr(args, "binary", None):
         _rc = _run_binary_analysis(args)
         sys.exit(_rc)
