@@ -82,6 +82,61 @@ def test_prune_does_not_delete_when_under_limit():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def _project_mixed(n_undone, n_live):
+    """造 `n_undone` 条已撤销 + `n_live` 条正常记录。"""
+    import matlabc_task as MT
+
+    tmp = os.environ.get("M2C_TMP")
+    d = tempfile.mkdtemp(prefix="prunem_",
+                         dir=tmp if tmp and os.path.isdir(tmp) else None)
+    for i in range(n_undone):
+        MT.record_task(d, "rollback", {"i": i}, {},
+                       verdict="rollback", reason="测试")
+    for i in range(n_live):
+        MT.record_task(d, "rename", {"i": i}, {})
+    return d
+
+
+def test_undone_records_are_removed_first():
+    """**「先删已撤销」这条分支**：只有撤销的多余时，一条正常记录都不该动。
+
+    这条分支此前从未被执行过 —— 之前的判据只造正常记录，`removed_undone`
+    永远是 0，于是"先删已撤销"这句注释一直只是注释。
+    语义依据是该函数 docstring：撤销记录的目标状态已被回退，留着只占地方；
+    只有它们删光仍超限，才去动"还能撤"的记录（那会让用户失去撤销能力）。
+    """
+    import matlabc_task as MT
+
+    d = _project_mixed(3, 3)
+    try:
+        res = MT.prune_tasks(d, keep=3, apply_it=True)
+        assert res["removed_undone"] == 3, \
+            "已撤销的没被优先删掉：%r" % (res,)
+        assert res["removed_live"] == 0, \
+            "只删撤销记录就够时，竟然动了正常记录：%r" % (res,)
+        left = MT.list_tasks(d)
+        assert len(left) == 3
+        assert not any(r.get("undone") for r in left), \
+            "留下的记录里还有已撤销的：%r" % ([r.get("undone") for r in left],)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_live_records_removed_only_after_undone_are_gone():
+    """撤销记录删光仍超限时，才动正常记录 —— 且计数要分得清是谁被删的。"""
+    import matlabc_task as MT
+
+    d = _project_mixed(1, 4)          # 1 undone + 4 live，keep=3
+    try:
+        res = MT.prune_tasks(d, keep=3, apply_it=True)
+        assert res["removed_undone"] == 1, "那 1 条撤销记录没被删：%r" % (res,)
+        assert res["removed_live"] == 1, "还差 1 条才到 keep=3，却没动正常记录：%r" % (res,)
+        assert res["kept"] == 3
+        assert len(MT.list_tasks(d)) == 3
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def test_counts_are_self_consistent():
     """`total == removed_undone + removed_live + kept` —— 报表要能自己对上。"""
     import matlabc_task as MT
