@@ -109,6 +109,80 @@ def test_no_writes_next_to_module():
         "\n  修法：把目标路径改成**被操作的项目内**（如 root/.matlabc/…）")
 
 
+#: JS 侧会「写东西」的调用名。`mkdirSync` 也算：它会造出目录。
+JS_WRITE_FNS = (
+    "writeFileSync", "appendFileSync", "createWriteStream",
+    "mkdirSync", "renameSync", "unlinkSync", "rmSync", "copyFileSync",
+)
+
+
+def _js_files():
+    for base, dirs, files in os.walk(ROOT):
+        dirs[:] = [d for d in dirs
+                   if d not in (".git", "node_modules", "__pycache__", "target",
+                                "releases", ".m2c")]
+        for f in files:
+            if f.endswith(".js"):
+                yield os.path.join(base, f)
+
+
+def _js_violations(path):
+    """JS 里「写操作 + 路径含 `__dirname`」的行号。"""
+    try:
+        lines = io.open(path, encoding="utf-8", errors="replace").read().splitlines()
+    except OSError:
+        return []
+    out = []
+    for i, ln in enumerate(lines, 1):
+        if ln.lstrip().startswith("//"):
+            continue
+        if not any(fn in ln for fn in JS_WRITE_FNS):
+            continue
+        if "__dirname" in ln:
+            out.append(i)
+    return out
+
+
+def test_no_js_writes_next_to_dirname():
+    """`.js` 同样不许往 `__dirname` 旁边写 —— 编辑器侧会往仓库里漏日志。
+
+    实测现状是干净的：`extension.js` 的日志用 `os.tmpdir()`，
+    `test_*.js` 里的 `__dirname` 只用于**读**语料。这条棘轮守的是"以后别变"。
+    """
+    bad = []
+    for p in _js_files():
+        rel = os.path.relpath(p, ROOT).replace("\\", "/")
+        if rel in EXEMPT:
+            continue
+        for line in _js_violations(p):
+            bad.append("%s:%d" % (rel, line))
+    assert not bad, (
+        "这些 JS 往「模块旁边」写文件（会污染仓库工作区）：\n  " +
+        "\n  ".join(bad[:10]) +
+        "\n  修法：目标路径改用 `os.tmpdir()` 或用户工程内的目录")
+
+
+def test_js_ratchet_has_teeth():
+    """**牙齿**：造一段 `writeFileSync(path.join(__dirname, …))` 必须被抓。"""
+    import tempfile
+
+    src = (
+        "const fs = require('fs');\n"
+        "const path = require('path');\n"
+        "fs.writeFileSync(path.join(__dirname, 'x.log'), 'x');\n"
+        "// fs.writeFileSync(path.join(__dirname, 'ok.log'), 'x');\n"
+    )
+    d = tempfile.mkdtemp(prefix="hygjs_")
+    p = os.path.join(d, "bad.js")
+    try:
+        io.open(p, "w", encoding="utf-8", newline="\n").write(src)
+        hits = _js_violations(p)
+        assert hits == [3], "只有第 3 行该被抓（第 4 行是注释），实得 %r" % (hits,)
+    finally:
+        import shutil
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def test_ratchet_has_teeth():
     """**牙齿**：造一段真会写 `__file__` 旁边的代码，检查器必须认出来。"""
     import tempfile
