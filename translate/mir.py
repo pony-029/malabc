@@ -1825,6 +1825,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                 scalar_names.add(_n)
         scalars = scalar_names        # 同一个集合的别名，不再维护两份
         blocks = []                    # 块栈："for" / "if"
+        # elseif 去糖后多压的 if 层数：{块深度: 层数}，由 `end` 处补弹（R877）
+        extras = {}
         for line_i, line in enumerate(f["lines"]):
             src_line = (f.get("line_nos") or [0] * len(f["lines"]))[line_i]
             code = _clean(line).strip()
@@ -1853,6 +1855,34 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             # `switch` 已被降成占位块（恒假 if），`case` 不产生结构，所以
             # `otherwise` 只要按 `else` 处理，块就闭合了。
             # 少这一行时，YALMIP 有 318 条 `otherwise` 成了孤儿（记成 blockmarker）。
+            # `elseif`（R877）：MATLAB 最常见形态之一，此前**完全没有处理** ——
+            # 它的体被并进上一个 if 分支，函数末尾落 `TODO(unmapped)` 并返回
+            # `MLC_UNIMPLEMENTED`（诚实，但等于不支持）。
+            # 降级成 `else` + 嵌套 `if`（标准去糖），语义等价：
+            #     if c1 / elseif c2 / end   →   if c1 / else / if c2 / end / end
+            # 多压的那层 if 在 `end` 处由 `extras` 记的计数补弹（见下）。
+            _se = code.strip()
+            if _se.startswith("elseif ") and blocks and blocks[-1] == "if":
+                _cond = _se[len("elseif "):].strip()
+                out.append("else")
+                _ok = False
+                _im2 = _IF_RE.match("if " + _cond)
+                if _im2:
+                    _ok = _emit_cond("if", _im2, f.get("shapes") or {},
+                                     idx_counter, out)
+                if not _ok:
+                    _ib2 = _IF_BARE.match("if " + _cond)
+                    if _ib2:
+                        _ok = _emit_bare_cond("if", _ib2,
+                                              f.get("shapes") or {},
+                                              idx_counter, out)
+                if not _ok:
+                    # 条件推不出：占位恒假块，保住块平衡（错误会记在 unmapped 里）
+                    out.append("if:0:eq:1")
+                blocks.append("if")
+                _d = len(blocks) - 1
+                extras[_d] = extras.get(_d, 0) + 1
+                continue
             if code.rstrip(";").strip() in ("else", "otherwise"):
                 if blocks and blocks[-1] == "if":
                     out.append("else")
@@ -1860,9 +1890,16 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                     _emit_unmapped(out, unmapped_kinds, code)
                 continue
             if code.rstrip(";").strip() == "end" or code.startswith("end "):
+                # elseif 降级时多压了一层 if，这里按记录补弹（R877）
+                _d0 = len(blocks)
                 if blocks:
-                    out.append("end")      # 收束块
-                    blocks.pop()
+                    blocks[:] = blocks[:-1]
+                    out.append("end")
+                while extras.get(len(blocks), 0) > 0:
+                    extras[len(blocks)] -= 1
+                    if blocks:
+                        blocks[:] = blocks[:-1]
+                    out.append("end")
                 continue
             if code.startswith("error(") or code.startswith("error ("):
                 # 守卫条款：以错误码退出（端口里没有异常/消息通道）
