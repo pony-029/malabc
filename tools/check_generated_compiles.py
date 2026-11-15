@@ -280,8 +280,12 @@ def _run_all(full=True):
         print("  [快档] 跳过 %d 个慢用例文件（加 --full 或设 M2C_FULL_GATES=1 跑全量）"
               % skipped)
         files = kept
+    # `--tb=short`（R863，原为 `--tb=no`）：`--tb=no` 是为让日志短，但它把
+    # **为什么红**一起删掉了 —— R862 实测：全量出现 `1 failed ... TypeError`
+    # 而日志里没有行号，只能整批重跑才能换回现场。失败只发生一次，
+    # 缩短输出应删重复的成功行，不该删失败细节。
     cmd = [sys.executable, "-m", "pytest"] + list(files) + [
-        "-q", "--tb=no", "-rf", "-p", "no:cacheprovider"]
+        "-q", "--tb=short", "-rf", "-p", "no:cacheprovider"]
     env = dict(os.environ)
     env["PYTHONIOENCODING"] = "utf-8"
     # **流式读取**（R825）：`subprocess.run(capture_output)` 会把 pytest 的输出
