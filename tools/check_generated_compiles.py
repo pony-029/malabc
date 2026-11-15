@@ -95,6 +95,8 @@ CHECKS = (
              os.path.join("tests", "test_matlabc_ask_entry.py"),
              os.path.join("tests", "test_binfmt_gpu_entry.py"),
              os.path.join("tests", "test_gui_entry.py"),
+             os.path.join("tests", "test_matlabc_boot_entry.py"),
+             os.path.join("tests", "test_binfmt_container_entry.py"),
              # 整体状态：每个阶段的"完成"必须有在跑的证据
              os.path.join("tests", "test_project_status.py"),
              os.path.join("tests", "test_rt_balance.py"),
