@@ -148,9 +148,22 @@ def refresh(d, target):
         except ValueError:
             return False, "非 JSON 输出：" + r.stdout.decode("utf-8", "replace")[-120:]
         if not j.get("ok"):
-            bad = [(x.get("code"), (x.get("message") or "")[:60])
-                   for x in (j.get("diagnostics") or [])][:2]
-            return False, str(bad)
+            diags = [(x.get("code"), (x.get("message") or "")[:60])
+                     for x in (j.get("diagnostics") or [])]
+            src0 = os.path.join(work, "out.html")
+            # **产物已就绪、只是临时目录没清干净** → 降级为警告（R869）。
+            #
+            # 实测（R868）：`viewer/temp-cleanup-incomplete` 会让整张图判失败，
+            # 而同一份 `browser-check.json` 里写着 `ok:true / status:pass`，
+            # `out.html` 也已在 work 里 —— 也就是说**唯一的问题是残留了一个
+            # 临时目录**（当时被另一个进程短暂占用）。把它当致命错误，
+            # 会让"渲染成功"的图被判红，还掩盖真正的内容类诊断。
+            only_cleanup = bool(diags) and all(
+                (code or "").startswith("viewer/temp-cleanup")
+                for code, _ in diags)
+            if not (only_cleanup and os.path.isfile(src0)):
+                return False, str(diags[:2])
+            print("  ⚠ 清理未完成（产物已就绪，继续）：%s" % (diags[0][0],))
         src = os.path.join(work, "out.html")
         if not os.path.isfile(src):
             return False, "没有产出 html"
