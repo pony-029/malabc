@@ -127,6 +127,20 @@ def sync_gate_counts(cand, n):
     return changed
 
 
+#: **收尾类**诊断码前缀：渲染已经完成，只是临时目录/浏览器句柄没清干净。
+#:
+#: 为什么要一张显式表（R869→R870）：判定逻辑原本写死了一个字符串前缀，
+#: 于是"哪些算收尾问题"这件事只存在于某一行的字面量里 —— 既无法审计，
+#: 也没法加自证。列在这里之后，新增一类只改这一处，且自证能逐条验。
+CLEANUP_CODES = ("viewer/temp-cleanup-incomplete",)
+
+
+def is_cleanup_code(code):
+    """诊断码是否属于"产物已就绪、只是收尾没做完"那一类。"""
+    c = code or ""
+    return any(c == x or c.startswith(x) for x in CLEANUP_CODES)
+
+
 def refresh(d, target):
     """渲染一张图并写回。返回 (ok, 原因)。"""
     dpath = os.path.join(FIGS, d)
@@ -159,8 +173,7 @@ def refresh(d, target):
             # 临时目录**（当时被另一个进程短暂占用）。把它当致命错误，
             # 会让"渲染成功"的图被判红，还掩盖真正的内容类诊断。
             only_cleanup = bool(diags) and all(
-                (code or "").startswith("viewer/temp-cleanup")
-                for code, _ in diags)
+                is_cleanup_code(code) for code, _ in diags)
             if not (only_cleanup and os.path.isfile(src0)):
                 return False, str(diags[:2])
             print("  ⚠ 清理未完成（产物已就绪，继续）：%s" % (diags[0][0],))
@@ -235,7 +248,23 @@ def _selftest():
             print("自证失败：同步不幂等（第二次还改）")
             return 1
 
-        print('SELFTEST COUNTS {"bad": 5, "good": 4}')
+        # —— 收尾类诊断白名单（三向：认得对 / 不误认 / 表自洽）——
+        if not CLEANUP_CODES:
+            print("自证失败：CLEANUP_CODES 为空（降级逻辑会永远不成立）")
+            return 1
+        for c in CLEANUP_CODES:
+            if not c.startswith("viewer/"):
+                print("自证失败：%r 不是 viewer/ 命名空间的诊断码" % (c,))
+                return 1
+        if not is_cleanup_code("viewer/temp-cleanup-incomplete"):
+            print("自证失败：已知的收尾类诊断没被认出")
+            return 1
+        for bad in ("viewer/render-failed", "viewer/shape-overflow", "", None):
+            if is_cleanup_code(bad):
+                print("自证失败：%r 被误判成收尾类（会掩盖真正的内容问题）" % (bad,))
+                return 1
+
+        print('SELFTEST COUNTS {"bad": 9, "good": 4}')
         print("自证通过：该刷的刷、现行跳过、历史跳过；门数同步改得对/不误伤/幂等")
         return 0
     finally:
