@@ -32194,7 +32194,21 @@ def cli_entry(argv=None):
     ap.add_argument("--config", metavar="FILE",
                     help="从 JSON 配置文件读取参数（CLI 显式参数优先于配置文件）")
     ap.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
+    # ---- 主线：MATLAB → C 转换（R874）------------------------------------
+    # 在此之前的十几轮里，这条链路只能通过 `translate.project_map.run_build()`
+    # 这个**内部 API** 调用（只有测试能触达）；`--mixed` 是"同时分析 .m 与 .c"，
+    # 不生成 C。于是"用户把自己的 .m 工程转成 C"这件事在命令行上**不存在**。
+    ap.add_argument("--to-c", metavar="DIR",
+                    help="主线：把 DIR 下的 MATLAB 工程转换成 C 工程（不再做结构分析）")
+    ap.add_argument("--to-c-config", metavar="FILE",
+                    help="转换用的工程配置（默认 translate/examples/m2c.project.json）")
+    ap.add_argument("--to-c-out", metavar="DIR",
+                    help="转换产物目录（默认 <DIR>/_m2c_build）")
     args = ap.parse_args(argv)
+
+    # 主线分派：`--to-c` 走转换，不再往下走结构分析
+    if getattr(args, "to_c", None):
+        return run_to_c(args)
 
     # R62-R31c：`--lang cpp` 是 `--lang c` 的**显式别名** —— C++ 复用 C 前端
     # （C++ 按 C 子集解析，模板/类/命名空间不保证识别；这是已披露的降级）。
@@ -32560,6 +32574,58 @@ def run_pipeline(args, root, paths, prev=None, changed=None, overlay=None):
         files=files, index=index, edges=edges, stats=stats,
         model=model, c_model=c_model,
         checks_for_sarif=checks_for_sarif, early_exit=None, facts=facts)
+
+
+def run_to_c(args):
+    """**主线入口**：MATLAB 工程 → C 工程。返回退出码。
+
+    为什么需要它（R874）：这条链路此前只能通过
+    `translate.project_map.run_build(cfg, base, cfg_path)` 调用 —— 而那是内部 API，
+    只有测试能触达。命令行上"把我的 .m 工程转成 C"这件事**不存在**，
+    于是 500 多条判据都在验一个用户碰不到的系统。
+
+    用法：
+        python matlabc.py --to-c 我的工程/ --to-c-out 出目录/
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    src = os.path.abspath(args.to_c)
+    if not os.path.isdir(src):
+        print("--to-c：不是目录：%s" % src, file=sys.stderr)
+        return 2
+    out = os.path.abspath(args.to_c_out or os.path.join(src, "_m2c_build"))
+    cfg_path = os.path.abspath(
+        args.to_c_config or os.path.join(here, "translate", "examples",
+                                         "m2c.project.json"))
+    if not os.path.isfile(cfg_path):
+        print("--to-c：找不到工程配置：%s" % cfg_path, file=sys.stderr)
+        return 2
+    tr = os.path.join(here, "translate")
+    if tr not in sys.path:
+        sys.path.insert(0, tr)
+    try:
+        import project_map as PM              # noqa: PLC0415
+    except ImportError as e:
+        print("--to-c：无法加载转换器（translate/project_map.py）：%s" % e,
+              file=sys.stderr)
+        return 2
+
+    cfg = PM.load2(cfg_path)
+    # 用**用户给的目录**覆盖配置里的相对 root —— 这是本入口存在的全部意义：
+    # 同一套 dtypes/targets 配置，作用在不同的 .m 树上。
+    cfg["matlab"]["root"] = src
+    print("[to-c] 源：%s" % src, flush=True)
+    print("[to-c] 出：%s" % out, flush=True)
+    rc, _log, text = PM.run_build(cfg, out, cfg_path)
+    if text:
+        sys.stdout.write(text if text.endswith("\n") else text + "\n")
+    gen = os.path.join(out, cfg["c"]["root"])
+    if rc != 0:
+        print("[to-c] 失败（rc=%d）。产物目录：%s" % (rc, gen), file=sys.stderr)
+        return rc or 1
+    sp = os.path.join(gen, "src", "sources.txt")
+    print("[to-c] 完成。C 工程：%s" % gen)
+    print("[to-c] 源清单：%s" % sp if os.path.isfile(sp) else "[to-c] 未生成源清单")
+    return 0
 
 
 def main(argv=None):
