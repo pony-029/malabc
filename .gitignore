@@ -61,3 +61,9 @@ rust/*/target/
 releases/.gate-stats/
 translate/examples/build/
 translate/examples/.m2c/
+
+# 运行日志与任务历史（R858 补）——
+# *.log：matlabc_task 曾把失败日志写到模块旁，留下未跟踪文件；
+# .matlabc/：任务记录与日志现在写在**被操作的项目内**，属于产物。
+*.log
+.matlabc/

@@ -143,6 +143,48 @@ def _js_violations(path):
     return out
 
 
+#: 必须被 `.gitignore` 覆盖的产物形态。`{模式: 为什么`}
+#: —— 每条都对应过真实事故或有明确的生成路径，不是"看着像垃圾"。
+MUST_IGNORE = {
+    "__pycache__/": "Python 字节码缓存（每次导入都会生成）",
+    "*.pyc": "字节码文件",
+    "*.log": "运行日志（matlabc_task.log 曾因此污染工作区）",
+    "*.sarif": "分析报告产物",
+    ".matlabc/": "任务历史与日志（工具在工作区内写的那一支）",
+}
+
+
+def test_gitignore_covers_known_artifacts():
+    """`.gitignore` 必须覆盖已知的产生产物 —— 否则一次跑动就脏了工作区。"""
+    p = os.path.join(ROOT, ".gitignore")
+    assert os.path.isfile(p), "仓库根没有 .gitignore"
+    lines = set(ln.strip() for ln in
+                io.open(p, encoding="utf-8").read().splitlines())
+    missing = [k for k in MUST_IGNORE if k not in lines]
+    assert not missing, (
+        "`.gitignore` 缺这些形态（各自的理由见 MUST_IGNORE）：%r" % missing)
+
+
+def test_no_generated_artifacts_are_tracked():
+    """**反向审计**：`git ls-files` 里不许出现产物类文件。
+
+    被**跟踪**的产物比未跟踪的更糟：它会被每个人的 checkout 复制一份，
+    而且 `git status` 永远干净 —— 于是没人再想起它。
+    """
+    import subprocess
+
+    r = subprocess.run(["git", "ls-files"], cwd=ROOT, stdin=subprocess.DEVNULL,
+                       timeout=120, stdout=subprocess.PIPE,
+                       stderr=subprocess.DEVNULL)
+    if r.returncode != 0:
+        import pytest
+        pytest.skip("不是 git 仓库（或 git 不可用）")
+    tracked = r.stdout.decode("utf-8", "replace").splitlines()
+    pats = (".log", ".tmp", ".pyc", "__pycache__", ".sarif")
+    bad = [f for f in tracked if f.endswith(pats) or "__pycache__" in f]
+    assert not bad, "这些产物被 git 跟踪了（应删除并加入 .gitignore）：%r" % bad[:8]
+
+
 def test_no_js_writes_next_to_dirname():
     """`.js` 同样不许往 `__dirname` 旁边写 —— 编辑器侧会往仓库里漏日志。
 
