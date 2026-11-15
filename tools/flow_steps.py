@@ -267,9 +267,15 @@ def render_status(st):
     covf = (st.get("domain_files") or {})
     for k in sorted(g, key=lambda x: -g[x]["files"]):
         d = g[k]
-        grows.append("<tr><td>%s</td><td>%d</td><td>%d</td><td>%s</td><td><code>%s</code></td></tr>"
+        grows.append("<tr><td>%s</td><td>%d</td><td>%d</td><td>%s</td>"
+                     "<td>%d : %d</td><td><code>%s</code></td></tr>"
                      % (html.escape(k), d["dirs"], d["files"],
                         "%d / %d" % (cov.get(k, 0), covf.get(k, 0)),
+                        # **判据文件 : 源文件**（R861）。两个原始数并排，
+                        # 不折算成百分比 —— 各域的文件粒度差着量级
+                        # （`docs/` 274 份 md vs `c_runtime/` 4 个 C 文件），
+                        # 同一个百分比在两种粒度上没有可比性。
+                        covf.get(k, 0), d["files"],
                         html.escape(" ".join(d["paths"]))))
 
     f = st.get("figures") or {}
@@ -294,6 +300,7 @@ def render_status(st):
       <tr style="text-align:left;border-bottom:1px solid currentColor">
         <th style="padding:4px 8px">职责域</th><th style="padding:4px 8px">目录数</th>
         <th style="padding:4px 8px">文件数</th><th style="padding:4px 8px">判据条数 / 文件数</th>
+        <th style="padding:4px 8px">判据文件 : 源文件</th>
         <th style="padding:4px 8px">包含</th></tr>
       %(grows)s
     </table>
