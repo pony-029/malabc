@@ -1826,7 +1826,7 @@ _BY_NAME = dict((t["name"], t) for t in TOOLS)
 #:
 #: 起因：本地 27B 模型跑在 16GB 显卡上，上下文只能开 4096 —— 而 14 个工具的
 #: description 本身就要 2000~3000 token，加上客户端系统提示，**还没发问就先超了**。
-#: 所以给一个「核心 6 个」的档位：覆盖「了解工程 / 看结构 / 查影响 / 查字段」。
+#: 所以给一个「核心 7 个」的档位（数字由 CORE_TOOLS 算，别手写）：覆盖「了解工程 / 看结构 / 查影响 / 查字段」。
 #: 完整档位（all）留给上下文充足的情况，不要为了省钱删能力，只是分档。
 CORE_TOOLS = ("matlabc_help", "matlabc_stats", "matlabc_outline",
               "matlabc_impact", "matlabc_explain", "matlabc_fields",
@@ -1904,8 +1904,13 @@ def main(argv=None):
     ap.add_argument("--root", default=os.getcwd(),
                     help="MATLAB 工程根目录（默认当前目录）")
     ap.add_argument("--tools", default="all", choices=("all", "core"),
-                    help="暴露的工具集：all=全部，core=核心 6 个"
-                         "（本地小上下文模型的显存档位，省 token）")
+                    # 数字**由代码算**（R865）：原来是硬写的，与
+                    # `CORE_TOOLS` 的实际条数对不上 —— 手写数字只会安静地过期。
+                    # （判据会扫「核心 N 个」并与 len(CORE_TOOLS) 对账，
+                    #  所以这里**不要**再写出任何具体数字。）
+                    help="暴露的工具集：all=全部，core=核心 %d 个"
+                         "（本地小上下文模型的显存档位，省 token）"
+                         % len(CORE_TOOLS))
     ap.add_argument("--cross-lang", dest="cross_lang", default="on",
                     choices=("on", "off"),
                     help="跨语言分析（C 源 / mex / DLL 导出表）："
