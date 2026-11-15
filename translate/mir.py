@@ -1827,6 +1827,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
         blocks = []                    # 块栈："for" / "if"
         # elseif 去糖后多压的 if 层数：{块深度: 层数}，由 `end` 处补弹（R877）
         extras = {}
+        # switch 上下文（R878）：`switch` 不开块，第一个 `case` 才开 if
+        switch_stack = []
         for line_i, line in enumerate(f["lines"]):
             src_line = (f.get("line_nos") or [0] * len(f["lines"]))[line_i]
             code = _clean(line).strip()
@@ -1855,6 +1857,44 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             # `switch` 已被降成占位块（恒假 if），`case` 不产生结构，所以
             # `otherwise` 只要按 `else` 处理，块就闭合了。
             # 少这一行时，YALMIP 有 318 条 `otherwise` 成了孤儿（记成 blockmarker）。
+            # `switch` / `case`（R878）：此前整体被降成**恒假块**（`if:0:eq:1`），
+            # `case` 全落 unmapped，函数返回 `MLC_UNIMPLEMENTED` —— 等于不支持。
+            #
+            # 降级成等价的 if 链（与 `elseif` 同一套补弹机制）：
+            #     switch n / case 1 / A / case 2 / B / otherwise / C / end
+            #   → if n==1 / A / else / if n==2 / B / else / C / end / end
+            # `switch` 本身**不开块**（否则 `end` 会多弹一次），由第一个 `case` 开。
+            _sw = re.match(r"^switch\s+(.+)$", code.strip())
+            if _sw:
+                _sv = _cond_side(_sw.group(1).strip(), f.get("shapes") or {},
+                                 idx_counter, out)
+                # 记下"开关时的块深度"，`end` 时据此判断这条 switch 是否已闭合
+                switch_stack.append({"var": _sv, "n": 0,
+                                     "depth": len(blocks)})
+                continue
+
+            _ca = re.match(r"^case\s+(.+)$", code.strip())
+            if _ca and switch_stack:
+                _top = switch_stack[-1]
+                _cv = _cond_side(_ca.group(1).strip(), f.get("shapes") or {},
+                                 idx_counter, out)
+                if _top.get("var") and _cv is not None:
+                    if _top["n"] > 0:
+                        out.append("else")
+                    out.append("if:%s:eq:%s" % (_top["var"], _cv))
+                    blocks.append("if")
+                    if _top["n"] > 0:
+                        # 第二次起的 case 多压了一层，交给 `end` 补弹
+                        _d = len(blocks) - 1
+                        extras[_d] = extras.get(_d, 0) + 1
+                    _top["n"] += 1
+                    continue
+                # 条件降不了：如实记 unmapped，并保住块平衡
+                out.append("if:0:eq:1")
+                blocks.append("if")
+                _emit_unmapped(out, unmapped_kinds, code)
+                continue
+
             # `elseif`（R877）：MATLAB 最常见形态之一，此前**完全没有处理** ——
             # 它的体被并进上一个 if 分支，函数末尾落 `TODO(unmapped)` 并返回
             # `MLC_UNIMPLEMENTED`（诚实，但等于不支持）。
@@ -1892,6 +1932,12 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             if code.rstrip(";").strip() == "end" or code.startswith("end "):
                 # elseif 降级时多压了一层 if，这里按记录补弹（R877）
                 _d0 = len(blocks)
+                # `switch` 本身不开块：若它一个 `case` 都没有，这个 `end` 属于它，
+                # 不能再弹外层块（否则整份 MIR 的块平衡被破坏，解析直接失败）。
+                if (switch_stack and switch_stack[-1]["n"] == 0
+                        and switch_stack[-1]["depth"] >= len(blocks)):
+                    switch_stack.pop()
+                    continue
                 if blocks:
                     blocks[:] = blocks[:-1]
                     out.append("end")
@@ -1900,6 +1946,9 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                     if blocks:
                         blocks[:] = blocks[:-1]
                     out.append("end")
+                # 这条 `end` 闭合的若是一个 switch 的 if 链，撤掉它的上下文
+                while switch_stack and switch_stack[-1]["depth"] >= len(blocks):
+                    switch_stack.pop()
                 continue
             if code.startswith("error(") or code.startswith("error ("):
                 # 守卫条款：以错误码退出（端口里没有异常/消息通道）
