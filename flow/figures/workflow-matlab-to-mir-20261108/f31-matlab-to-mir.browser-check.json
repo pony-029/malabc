@@ -6,10 +6,10 @@
   "status": "pass",
   "visualReview": "not-requested",
   "provenance": "current",
-  "deliveryReceiptId": "362c3647-a049-4c5f-a715-8b5305172228",
+  "deliveryReceiptId": "32cfb17c-8ec5-4033-aa80-f5cd48b5a19b",
   "artifact": {
-    "path": "C:\\Users\\ponyp\\AppData\\Local\\Temp\\fig_75q_ego9\\out.html",
-    "sha256": "2a14ad229131400638326b95a7b26604146a837e5e486c21e83b27829b5c1b4d",
+    "path": "C:\\Users\\ponyp\\AppData\\Local\\Temp\\fig_p_57tdjd\\out.html",
+    "sha256": "a6dda88f7d6cfa2c9f0240a640bb15772c7af6d23e839d875908c1a9c1e0cda9",
     "bytes": 844497
   },
   "state": {

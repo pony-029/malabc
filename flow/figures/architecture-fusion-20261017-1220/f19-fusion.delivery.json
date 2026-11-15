@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "bae5692c-09d0-4b0f-b493-0e537106b593",
+  "receiptId": "440503b5-a106-4fcd-8a53-b2c686d7bf7b",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
-  "input": "C:\\Users\\ponyp\\AppData\\Local\\Temp\\fig_0k9p54ok\\candidate.json",
-  "output": "C:\\Users\\ponyp\\AppData\\Local\\Temp\\fig_0k9p54ok\\out.html",
+  "input": "C:\\Users\\ponyp\\AppData\\Local\\Temp\\fig__tytyqgk\\candidate.json",
+  "output": "C:\\Users\\ponyp\\AppData\\Local\\Temp\\fig__tytyqgk\\out.html",
   "specification": {
-    "sha256": "10dcaffa9d6aae9670091dbc4d43a16e9bbbd5d88c934ed66e0df56ebc2866a5",
+    "sha256": "e73756de6d8cdd58cb078758aff274975952ac086090754647abec2afdd132ce",
     "bytes": 6304
   },
   "artifact": {
-    "sha256": "aec8be7969d50c1c6c5e4110951e5c563dd4d9b91ed9eec512afe302723c8de3",
+    "sha256": "e3949784cedd7d49d6f5750b201d265628d7af4d2e131e68934a380accd321e7",
     "bytes": 856771
   }
 }
