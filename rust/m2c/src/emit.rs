@@ -653,6 +653,31 @@ fn arg_ref(f: &Func, name: &str) -> String {
     format!("&{}", ident(name))
 }
 
+/// 名字是否是"标量值"，从而需要桥接成 1×1 `mlc_array` 才能当算子实参。
+///
+/// 两类：**声明过标量 dtype 的量**，以及**循环变量**（`for i = 1:n` ——
+/// 它是 `int64_t`，不在 `var_dtype` 里，但同样是标量）。
+/// 两者漏任一类，生成物都会把一个裸标量指针当数组传，gcc 报
+/// `incompatible pointer type`，而错误点离原因很远。
+fn is_scalar_name(f: &Func, name: &str) -> bool {
+    if f.var_dtype(name).map(|d| is_scalar_dt(&d)).unwrap_or(false) {
+        return true;
+    }
+    let mut hit = false;
+    walk_stmts(&f.body, &mut |st| {
+        if hit {
+            return;
+        }
+        if let Stmt::For { var, .. } = st {
+            if var == name {
+                hit = true;
+            }
+        }
+    });
+    hit
+}
+
+
 fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
     let mut out = Vec::new();
     let pad = indent.to_string();
@@ -977,10 +1002,12 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
         let mut bridge: Vec<String> = Vec::new();
         let mut wraps: Vec<Option<String>> = vec![None, None];
         for (i, a) in op.args.iter().enumerate() {
-            let is_scalar_var = f
-                .var_dtype(a)
-                .map(|d| is_scalar_dt(&d))
-                .unwrap_or(false);
+            // 标量判定的**唯一入口**（见 `is_scalar_name`）：`var_dtype` 只看
+            // 声明过的量，而**循环变量**（`for i = 1:n`）是 `int64_t` 局部量、
+            // 不在其中。漏掉它就会生成 `mlc_op_add(y, &i, y)` —— `&i` 是
+            // `int64_t*`，与 `const mlc_array*` 不兼容（R875 规模实测：
+            // 169 个生成文件里 4 个编译失败，`for_loop_m.c` 是其中之一）。
+            let is_scalar_var = is_scalar_name(f, a);
             if is_scalar_var {
                 let t = format!("__s{}_{}", i, op.src);
                 bridge.push(format!(
