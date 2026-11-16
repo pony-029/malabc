@@ -115,7 +115,10 @@ def generate(out_dir, limit=0):
         sample = (op.get("sample") or "").strip()
         if not sample:
             continue
-        for idx, n in enumerate((1, 3, 7)):
+        # 下标类算子的样本里写着固定下标（`x(2)` / `a:b`），n=1 会让它越界
+        # —— 那是**样本非法**，不是运行时缺陷（VM 报「下标越界：2 / 1」）。
+        sizes = (2, 3, 7) if op["id"] in (INDEXY | SLICEY) else (1, 3, 7)
+        for idx, n in enumerate(sizes):
             p = os.path.join(out_dir, "%s_%d_%d.m" % (
                 op["id"].lower().replace("-", "_"), n, idx))
             io.open(p, "w", encoding="utf-8", newline="\n").write(

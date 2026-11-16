@@ -252,13 +252,25 @@ impl Vm {
                     return Ok(Flow::Next);
                 }
                 if op.id == "OP-SETIDX" {
-                    let cur = self
-                        .env
-                        .get(&op.lhs)
-                        .cloned()
-                        .ok_or_else(|| format!("setidx 的目标未定义：{}", op.lhs))?;
                     let v = self.scalar(&op.args[0])?;
                     let k = self.scalar(&op.args[1])? as i64;
+                    // **目标未预置**时的回退（R889）。
+                    //
+                    // 典型形态 `y(2) = 3`：`y` 是**返回值**，而 VM 只预置了
+                    // `locals`，从没把 `rets` 放进 env —— 于是这里报
+                    // 「setidx 的目标未定义：y」。C 侧没这个问题：生成物
+                    // 先 `mlc_array_init(y, …)` 再按下标写。
+                    //
+                    // 语义上"没写过就读作 0"是对的（MATLAB 里 `y(2)=3` 会让
+                    // `y` 变成 `[0 3]`），所以这里按下标**撑开**一个零向量，
+                    // 而不是猜一个形状。
+                    let cur = match self.env.get(&op.lhs).cloned() {
+                        Some(c) => c,
+                        // 没写过 ⇒ 按 MATLAB 语义读作 0，按下标撑开。
+                        // （`VmL` 里拿不到"这个名字是不是返回值"，而两种情形
+                        //  的语义要求一样：未写入的位置都是 0。）
+                        None => Val::from_vec(vec![0.0; k.max(1) as usize]),
+                    };
                     if k < 1 || (k as usize) > cur.numel() {
                         return Err(format!("setidx 越界：{} / {}", k, cur.numel()));
                     }
