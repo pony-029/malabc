@@ -529,8 +529,30 @@ impl Vm {
             "OP-LOG10" => unary(f64::log10),
             "OP-SIN" => unary(f64::sin),
             "OP-FLOOR" => unary(f64::floor),
+            // ---- R888：补齐 C 运行时已有、VM 缺失的逐元素算子 ----
+            // 此前 VM 只分派 40/55 个算子，而 `test_op_arity` 的棘轮只查
+            // `C_IMPLEMENTED` —— 于是"两个执行后端覆盖不一致"一直没有红灯。
+            // 实测：规模语料跑 VM 时 13 种算子直接报「VM 未实现该算子」。
+            "OP-CEIL" => unary(f64::ceil),
+            "OP-ROUND" => unary(f64::round),
+            "OP-COS" => unary(f64::cos),
+            "OP-TAN" => unary(f64::tan),
+            "OP-EXP" => unary(f64::exp),
+            "OP-LOG" => unary(f64::ln),
+            "OP-LOG2" => unary(f64::log2),
+            // 判定类：MATLAB 返回逻辑矩阵，本仓统一用 0/1 的 f64 表示
+            "OP-ISNAN" => unary(|x| if x.is_nan() { 1.0 } else { 0.0 }),
+            "OP-ISINF" => unary(|x| if x.is_infinite() { 1.0 } else { 0.0 }),
+            // 数值类型恒为真（本仓只有 f64/i64，没有复数/字符串矩阵）
+            "OP-ISNUMERIC" => unary(|_| 1.0),
+            "OP-ISREAL" => unary(|_| 1.0),
+            // MATLAB `mod` 取**除数**的符号（Rust `%` 取被除数），且 `mod(x,0)=x`
+            "OP-MOD" => binary(|x, y| if y == 0.0 { x } else { x - y * (x / y).floor() }),
             // ---- 归约：沿列（MATLAB 默认）----
             "OP-SUM" => Ok(self.reduce_cols(&self.get(&args[0])?, |v| v.iter().sum())),
+            "OP-PROD" => Ok(self.reduce_cols(&self.get(&args[0])?, |v| {
+                v.iter().product()
+            })),
             "OP-MEAN" => Ok(self.reduce_cols(&self.get(&args[0])?, |v| {
                 if v.is_empty() {
                     f64::NAN
