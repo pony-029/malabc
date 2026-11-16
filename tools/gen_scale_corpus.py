@@ -105,12 +105,13 @@ def _head():
         return ""
 
 
-def generate(out_dir):
+def generate(out_dir, limit=0):
     if os.path.isdir(out_dir):
         shutil.rmtree(out_dir)
     os.makedirs(out_dir)
     made = 0
-    for op in O.OPERATORS:
+    ops = O.OPERATORS[:limit] if limit else O.OPERATORS
+    for op in ops:
         sample = (op.get("sample") or "").strip()
         if not sample:
             continue
@@ -127,12 +128,16 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="规模语料：MATLAB → C 完全实现率")
     ap.add_argument("--keep", action="store_true", help="保留产物目录")
     ap.add_argument("--out", metavar="DIR", help="产物目录（默认临时目录）")
+    ap.add_argument("--limit", type=int, metavar="N", default=0,
+                    help="只取前 N 个算子（给门禁用的小样本，0=全部）")
+    ap.add_argument("--no-record", action="store_true",
+                    help="不写 flow/scale.json（小样本不该冒充全量读数）")
     ns = ap.parse_args(argv)
 
     base = ns.out or tempfile.mkdtemp(prefix="m2c_scale_")
     src_dir = os.path.join(base, "src_m")
     build = os.path.join(base, "build")
-    made = generate(src_dir)
+    made = generate(src_dir, limit=ns.limit)
     print("生成 .m 文件: %d" % made)
 
     if not os.path.isfile(TOC):
@@ -158,6 +163,12 @@ def main(argv=None):
     ok = len(cs) - len(bad)
     print("生成 .c: %d ｜ **完全实现 %d (%.1f%%)** ｜ 残缺 %d"
           % (len(cs), ok, 100.0 * ok / max(1, len(cs)), len(bad)))
+
+    if ns.no_record:
+        print("（--no-record：不写 flow/scale.json）")
+        if not ns.keep:
+            shutil.rmtree(base, ignore_errors=True)
+        return 0 if not bad else 1
 
     # 落盘读数：`project_status.build()` 会读它，进状态历史。
     # 带 `head` 是为了让"这个数是哪个提交量的"永远可查 —— 否则它和

@@ -137,6 +137,7 @@ CHECKS = (
              os.path.join("tests", "test_hir_pipeline.py"),
              os.path.join("tests", "test_hir_emit.py"),
              os.path.join("tests", "test_hir_pipeline_entry.py"),
+             os.path.join("tests", "test_scale_corpus_smoke.py"),
              os.path.join("tests", "test_hir_scalar_pos.py"),
              os.path.join("tests", "test_hir_srcline.py"),
              os.path.join("tests", "test_hir_parity.py"),

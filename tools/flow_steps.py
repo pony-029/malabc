@@ -232,6 +232,35 @@ def _lag_text(n):
     return "正常"
 
 
+def _scale_line(st):
+    """主线的**完全实现率**一行（读数来自 `flow/scale.json`）。
+
+    为什么必须带上"量的那个提交"：这个数只在下一次跑工具时更新，
+    而代码天天在动。只显示 `100%` 会让人以为它天天是 100% —— 实际上
+    它可能是一次很久以前的测量（与 R832 的图漂移是同一类问题）。
+    """
+    s = st.get("scale")
+    if not s:
+        return ("主线规模读数：<b>尚未测量</b> —— 跑 "
+                "<code>python tools/gen_scale_corpus.py</code>（约 1 分钟）。")
+    full, total = s.get("full"), s.get("total")
+    rate = s.get("rate")
+    if full is None or total is None:
+        return "主线规模读数：格式不完整（缺 full/total）。"
+    txt = ("主线<b>完全实现率</b>：<b>%s%%</b>（%s/%s 个函数 —— 生成物里不含 "
+           "<code>MLC_UNIMPLEMENTED</code> 的比例；编译通过率回答不了这个问题）"
+           % (rate, full, total))
+    sh = (s.get("head") or "")[:7]
+    hh = (st.get("head") or "")[:7]
+    if sh and hh and sh != hh:
+        txt += ("<br><span style=\"background:#fff3cd;padding:0 4px;"
+                "border-radius:3px\">读数落后</span>：量于 <code>%s</code>，"
+                "当前 <code>%s</code> —— 代码已变，建议重跑。" % (sh, hh))
+    elif sh:
+        txt += "（实测于 <code>%s</code>，与当前 HEAD 一致）" % sh
+    return txt
+
+
 def render_status(st):
     """把**计划阶段 + 图分布**渲染成静态表。
 
@@ -319,6 +348,7 @@ def render_status(st):
       超过 %(rot)d 触发主干图腐烂判据）。这个数字每次提交都会自己变大 ——
       它是唯一能说明"离下一次变红还有多远"的读数。</p>
     <p class="q">门禁与测试覆盖：GX2 引用 <b>%(gx2)d</b> 个测试文件 ｜ HEAD <code>%(head)s</code>。</p>
+    <p class="q">%(scaleline)s</p>
     <details class="q"><summary>怎么自己验一遍（两条命令）</summary>
       <pre><code># 1) 41 道快/中门（约 3~4 分钟）
 python tools/check_all.py --skip check_generated_compiles
@@ -337,7 +367,7 @@ python tools/check_generated_compiles.py</code></pre>
         "cnt": f.get("count", 0), "live": live,
         "stale": f.get("stale", 0), "hist": f.get("historical", 0),
         "gx2": st.get("gx2_tests", 0), "head": st.get("head", ""),
-        "maxlag": ml, "rot": 40,
+        "maxlag": ml, "rot": 40, "scaleline": _scale_line(st),
         "lagstyle": _lag_style(ml), "lagtxt": _lag_text(ml),
         "histline": _render_hist(st),
         "grows": "\n      ".join(grows),

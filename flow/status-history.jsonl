@@ -53,3 +53,7 @@
 {"head": "c9087a05c632", "phases_done": 7, "phases_total": 7, "fig_live": 16, "fig_stale": 0, "fig_hist": 4, "fig_max_lag": 3, "gx2": 113, "ts": "2026-11-15T22:42:15+08:00"}
 {"head": "970171811071", "phases_done": 7, "phases_total": 7, "fig_live": 16, "fig_stale": 0, "fig_hist": 4, "fig_max_lag": 2, "gx2": 115, "ts": "2026-11-15T23:01:03+08:00"}
 {"head": "e64d1f40a4c4", "phases_done": 7, "phases_total": 7, "fig_live": 16, "fig_stale": 0, "fig_hist": 4, "fig_max_lag": 0, "gx2": 116, "ts": "2026-11-15T23:16:42+08:00"}
+{"head": "9ea3df74a5fa", "phases_done": 7, "phases_total": 7, "fig_live": 16, "fig_stale": 0, "fig_hist": 4, "fig_max_lag": 1, "gx2": 116, "ts": "2026-11-15T23:26:24+08:00"}
+{"head": "82e4c4158870", "phases_done": 7, "phases_total": 7, "fig_live": 16, "fig_stale": 0, "fig_hist": 4, "fig_max_lag": 10, "gx2": 118, "ts": "2026-11-16T00:31:46+08:00"}
+{"head": "71b7df6120f7", "phases_done": 7, "phases_total": 7, "fig_live": 0, "fig_stale": 16, "fig_hist": 4, "fig_max_lag": 11, "gx2": 118, "ts": "2026-11-16T22:14:00+08:00"}
+{"head": "26ee0e41e2d8", "phases_done": 7, "phases_total": 7, "fig_live": 0, "fig_stale": 16, "fig_hist": 4, "fig_max_lag": 12, "gx2": 118, "scale_full": null, "scale_total": null, "ts": "2026-11-16T22:27:13+08:00"}

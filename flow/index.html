@@ -178,13 +178,13 @@
         <th style="padding:4px 8px">文件数</th><th style="padding:4px 8px">判据条数 / 文件数</th>
         <th style="padding:4px 8px">判据文件 : 源文件</th>
         <th style="padding:4px 8px">包含</th></tr>
-      <tr><td>图与文档</td><td>3</td><td>474</td><td>565 / 12</td><td>12 : 474</td><td><code>flow/ m2c-site/ docs/</code></td></tr>
-      <tr><td>判据</td><td>1</td><td>275</td><td>567 / 9</td><td>9 : 275</td><td><code>tests/</code></td></tr>
-      <tr><td>转换侧</td><td>3</td><td>162</td><td>699 / 61</td><td>61 : 162</td><td><code>translate/ rust/m2c/ frontends/</code></td></tr>
-      <tr><td>工具与门禁</td><td>3</td><td>158</td><td>587 / 20</td><td>20 : 158</td><td><code>tools/ harness/ ci-examples/</code></td></tr>
+      <tr><td>图与文档</td><td>3</td><td>475</td><td>565 / 12</td><td>12 : 475</td><td><code>flow/ m2c-site/ docs/</code></td></tr>
+      <tr><td>判据</td><td>1</td><td>279</td><td>567 / 9</td><td>9 : 279</td><td><code>tests/</code></td></tr>
+      <tr><td>转换侧</td><td>3</td><td>162</td><td>703 / 62</td><td>62 : 162</td><td><code>translate/ rust/m2c/ frontends/</code></td></tr>
+      <tr><td>工具与门禁</td><td>3</td><td>159</td><td>587 / 20</td><td>20 : 159</td><td><code>tools/ harness/ ci-examples/</code></td></tr>
       <tr><td>运行时</td><td>2</td><td>96</td><td>65 / 30</td><td>30 : 96</td><td><code>c_runtime/ malabc-rt/</code></td></tr>
-      <tr><td>分析侧</td><td>3</td><td>75</td><td>567 / 16</td><td>16 : 75</td><td><code>analyzer/ binfmt/ renderers/</code></td></tr>
-      <tr><td>入口与流水线</td><td>1</td><td>22</td><td>605 / 22</td><td>22 : 22</td><td><code>./</code></td></tr>
+      <tr><td>分析侧</td><td>3</td><td>75</td><td>571 / 17</td><td>17 : 75</td><td><code>analyzer/ binfmt/ renderers/</code></td></tr>
+      <tr><td>入口与流水线</td><td>1</td><td>23</td><td>609 / 23</td><td>23 : 23</td><td><code>./</code></td></tr>
       <tr><td>编辑器</td><td>1</td><td>14</td><td>65 / 4</td><td>4 : 14</td><td><code>vscode/</code></td></tr>
     </table>
     <p class="q">「判据条数」的口径：扫 <code>tests/*.py</code> 与 <code>vscode/test_*.js</code>
@@ -194,14 +194,15 @@
       「判据文件 : 源文件」是<b>两个原始数并排</b>，不折算百分比 —— 各域的文件
       粒度差着量级（<code>docs/</code> 的 md 与 <code>c_runtime/</code> 的 C 文件），
       同一个百分比在两种粒度上没有可比性。</p>
-    <p class="q"><b>流程图</b>：共 20 张 ｜ 现行/近期 <b>16</b> ｜
-      已过时 <b>0</b> ｜ 历史(登记) <b>4</b>。
+    <p class="q"><b>流程图</b>：共 20 张 ｜ 现行/近期 <b>0</b> ｜
+      已过时 <b>16</b> ｜ 历史(登记) <b>4</b>。
       历史档是不随代码重渲染的旧 schema 图（重渲染会丢语义），不是欠账。</p>
-    <p class="q"><b>距上次刷新</b>：最大滞后 <span style="">(正常)</span>
-      <b>0</b> 个提交（超过 10 转"已过时"，
+    <p class="q"><b>距上次刷新</b>：最大滞后 <span style="background:#ffe0b2;padding:0 4px;border-radius:3px">(已过时)</span>
+      <b>13</b> 个提交（超过 10 转"已过时"，
       超过 40 触发主干图腐烂判据）。这个数字每次提交都会自己变大 ——
       它是唯一能说明"离下一次变红还有多远"的读数。</p>
-    <p class="q">门禁与测试覆盖：GX2 引用 <b>116</b> 个测试文件 ｜ HEAD <code>e64d1f40a4c4</code>。</p>
+    <p class="q">门禁与测试覆盖：GX2 引用 <b>118</b> 个测试文件 ｜ HEAD <code>e8884f63d762</code>。</p>
+    <p class="q">主线<b>完全实现率</b>：<b>100.0%</b>（165/165 个函数 —— 生成物里不含 <code>MLC_UNIMPLEMENTED</code> 的比例；编译通过率回答不了这个问题）<br><span style="background:#fff3cd;padding:0 4px;border-radius:3px">读数落后</span>：量于 <code>26ee0e4</code>，当前 <code>e8884f6</code> —— 代码已变，建议重跑。</p>
     <details class="q"><summary>怎么自己验一遍（两条命令）</summary>
       <pre><code># 1) 41 道快/中门（约 3~4 分钟）
 python tools/check_all.py --skip check_generated_compiles
@@ -212,7 +213,7 @@ python tools/check_generated_compiles.py</code></pre>
       分开后各自有结论，失败也知道落在哪一半。GX2 会逐行转发 pytest 输出 ——
       看不到进度时，先判断是"慢"还是"沉默"。</p>
     </details>
-    <p class="q">上次记录 <code>2026-11-15T23:16:42</code> ｜ 变化：<b>无变化</b> ｜ 历史共 <b>55</b> 条</p>
+    <p class="q">上次记录 <code>2026-11-16T22:27:13</code> ｜ 变化：<b>图最大滞后 12→13 个提交</b> ｜ 历史共 <b>59</b> 条</p>
   </section>
 <!-- STATUS:END -->
   <!-- STATS:BEGIN -->
