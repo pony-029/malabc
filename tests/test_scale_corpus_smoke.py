@@ -31,7 +31,8 @@ def test_small_corpus_is_fully_implemented():
     scale_json = os.path.join(ROOT, "flow", "scale.json")
     before = io.open(scale_json, encoding="utf-8").read() if os.path.isfile(scale_json) else None
 
-    r = subprocess.run([sys.executable, TOOL, "--limit", "8", "--no-record"],
+    r = subprocess.run([sys.executable, TOOL, "--limit", "8", "--no-record",
+                        "--numeric"],
                        cwd=ROOT, stdin=subprocess.DEVNULL, timeout=600,
                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     out = r.stdout.decode("utf-8", "replace")
@@ -40,6 +41,12 @@ def test_small_corpus_is_fully_implemented():
     assert "生成 .c: 24" in out, "生成数量不对（8 算子 × 3 体量应为 24）：\n%s" % out[-400:]
     assert "完全实现 24 (100.0%)" in out, \
         "小样本不再是 100% 完全实现（翻译有退化）：\n%s" % out[-600:]
+
+    # **两个后端必须算出同样的值**（R903）：只验"完全实现"会漏掉
+    # "两边都实现了但结果不同" —— 那类错不会让任何单侧断言变红。
+    # 小样本走这条只要 4 秒，值得每次都跑。
+    assert "数值一致率 100.0%" in out, \
+        "小样本的 VM ⇄ C 数值不再一致（或 --numeric 没跑起来）：\n%s" % out[-600:]
 
     # `--no-record` 必须真的不写全量读数文件
     after = io.open(scale_json, encoding="utf-8").read() if os.path.isfile(scale_json) else None
