@@ -108,12 +108,21 @@ def make_func(op_id, sample, n, idx):
             continue
         if v.isupper():
             ann.append("%% @m2c shape %s 2,2" % v)      # 二维对象
+        elif op_id in ("OP-HCAT", "OP-VCAT", "OP-TRANSPOSE"):
+            # 这三类要求入参是**二维**：`mlc_op_hcat` 读 `a->rows`，
+            # 一维数组的 rows/cols 语义与它不符（实测 C 侧 error）。
+            ann.append("%% @m2c shape %s 1,%d" % (v, n))
         elif op_id in SLICEY and n < 3:
             ann.append("%% @m2c shape %s 3" % v)        # 边界 1:2 需要 3 个元素
         else:
             ann.append("%% @m2c shape %s %d" % (v, n))
     # 结果长度按算子族给（见 `Y_LEN`）—— 拼接是 2n、标量是 1、集合类 ≤ n。
     y_dim = Y_LEN.get(op_id, lambda k: max(k, 3 if op_id in SLICEY else k))(n)
+    # 这几类的结果是**二维**的（拼接/转置/整列切片），声明成一维会让目标数组
+    # 装不下（`mlc_array_init(y, 1, {6})` 之后再写 rows=1,cols=6 → MLC_ERR）。
+    # R893 实测：`op_hcat_*/op_transpose_*/op_colrange_*` 的 C 侧 error 就是这个。
+    y_shape2 = {"OP-HCAT": "1,%d" % (2 * n), "OP-VCAT": "2,%d" % n,
+                "OP-TRANSPOSE": "%d,1" % n, "OP-COLRANGE": "2,1"}.get(op_id)
     # **把 lhs 统一改写成 `y`**：`find` 的样本是 `i = find(...)`，而 `i` 会被
     # 发射器当成"循环变量/i64 标量"（`is_loop_var`），于是返回变量 `i` 被按
     # 整型指针传，gcc 报 `incompatible type for argument 4 of mlc_op_find_alloc`。
@@ -125,7 +134,7 @@ def make_func(op_id, sample, n, idx):
         body = re.sub(r"^\s*%s\s*=" % re.escape(rn), "y =", body)
         rn = "y"
     if rn not in vs:                     # 返回变量同时也是形参时（`function x = f(x)`）不重复声明
-        ann.append("%% @m2c shape %s %d" % (rn, y_dim))
+        ann.append("%% @m2c shape %s %s" % (rn, y_shape2 or y_dim))
     return ("function %s = %s(%s)\n%s\n  %s\nend\n"
             % (rn, name, ", ".join(vs), "\n".join(ann), body))
 

@@ -936,7 +936,20 @@ mlc_status mlc_op_size_dim(const mlc_array *a, int64_t dim,
         return MLC_ERR;
     }
     /* MATLAB 语义：超出 ndim 的维度，长度对非空数组为 1、对空数组为 0 */
-    if (dim > a->ndim) {
+    if (a->ndim == 1) {
+        /* ⚠ **与 `mlc_op_size_all` 保持一致**（R893）：本运行时的一维数组
+         * 在 `size_all` 里是按**行向量**（1×n）理解的 ——
+         *     `sh[0] = 1; sh[1] = a->shape[0];`
+         * 而这里原先走 `dim > ndim → 1`，于是同一个数组
+         *     `size(x)`   → [1 3]
+         *     `size(x,2)` → 1        ← 自相矛盾
+         * 实测（R892 数值比对）：这正是 `op_size_*` 两个"真不同"的成因。
+         */
+        n = (dim == 2) ? a->shape[0] : 1;
+        if (mlc_array_numel(a) == 0) {
+            n = 0;
+        }
+    } else if (dim > a->ndim) {
         n = (mlc_array_numel(a) == 0) ? 0 : 1;
     } else {
         n = a->shape[dim - 1];
