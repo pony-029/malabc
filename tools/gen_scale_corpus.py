@@ -309,7 +309,11 @@ def main(argv=None):
 
     num = None
     if ns.numeric:
-        got = numeric_compare(base, os.path.dirname(os.path.join(gen, "")))
+        # `gen` 是 `<root>/src/gen`（.c 所在），而 `numeric_compare` 要的是
+        # `<root>`（下面有 `src/` 与 `include/`）—— 这里少上溯一级就会
+        # 找不到 `gen.c` / `main.c`，表现为"缺 m2c / 编译失败"（R901 实测）。
+        gen_root = os.path.dirname(os.path.dirname(gen))
+        got = numeric_compare(base, gen_root)
         if got is None:
             print("[numeric] 跳过：缺 m2c / project.mir / gcc 编译失败")
         else:

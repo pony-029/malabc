@@ -3,6 +3,14 @@
   "full": 165,
   "rate": 100.0,
   "bad": 0,
-  "head": "17abfb61807e",
-  "ts": "2026-11-16 23:37:33"
+  "numeric": {
+    "common": 155,
+    "identical": 139,
+    "fmt_only": 16,
+    "mismatch": 0,
+    "c_error": 0,
+    "rate": 100.0
+  },
+  "head": "bd29a5c22e21",
+  "ts": "2026-11-17 00:22:40"
 }
