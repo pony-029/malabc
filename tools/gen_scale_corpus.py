@@ -94,6 +94,17 @@ def make_func(op_id, sample, n, idx):
             % (name, ", ".join(vs), "\n".join(ann), sample.strip()))
 
 
+def _head():
+    """当前提交号（取不到就给空串 —— 读数比提交号重要）。"""
+    try:
+        r = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT,
+                           stdin=subprocess.DEVNULL, timeout=60,
+                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        return r.stdout.decode("utf-8", "replace").strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
 def generate(out_dir):
     if os.path.isdir(out_dir):
         shutil.rmtree(out_dir)
@@ -147,6 +158,24 @@ def main(argv=None):
     ok = len(cs) - len(bad)
     print("生成 .c: %d ｜ **完全实现 %d (%.1f%%)** ｜ 残缺 %d"
           % (len(cs), ok, 100.0 * ok / max(1, len(cs)), len(bad)))
+
+    # 落盘读数：`project_status.build()` 会读它，进状态历史。
+    # 带 `head` 是为了让"这个数是哪个提交量的"永远可查 —— 否则它和
+    # 那些会自然过期的指标一样，看起来成立、实际早已对不上代码。
+    try:
+        import json
+        import time
+        rel = os.path.join(ROOT, "flow", "scale.json")
+        io.open(rel, "w", encoding="utf-8", newline="\n").write(
+            json.dumps({"total": len(cs), "full": ok,
+                        "rate": round(100.0 * ok / max(1, len(cs)), 1),
+                        "bad": len(bad),
+                        "head": _head()[:12],
+                        "ts": time.strftime("%Y-%m-%d %H:%M:%S")},
+                       ensure_ascii=False, indent=2) + "\n")
+        print("读数已写入 flow/scale.json")
+    except OSError as e:
+        print("写 flow/scale.json 失败：%s" % e, file=sys.stderr)
     for f in bad[:6]:
         why = ""
         s = io.open(os.path.join(gen, f), encoding="utf-8", errors="replace").read()

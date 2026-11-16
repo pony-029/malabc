@@ -340,11 +340,34 @@ def figures():
     return dist
 
 
+#: 规模读数文件：由 `tools/gen_scale_corpus.py` 写出。
+#:
+#: 为什么不让 `build()` 现算：跑一次语料要 40 秒以上（生成 + 转换 + 统计），
+#: 而 `build()` 会被首页、历史、门禁反复调用。写成"跑完就落盘、状态只读盘"，
+#: 才能既便宜又有数 —— 也顺带迫使它带 `head`，好知道这个数是在哪个提交量的。
+SCALE_FILE = os.path.join(ROOT, "flow", "scale.json")
+
+
+def scale():
+    """最近一次规模测量的读数（**完全实现率**）：`{total, full, rate, head, ts}`。
+
+    缺文件返回 `None` —— "还没量过"与"量了是 0%"完全不同，不能混成一个数。
+    """
+    import json
+    if not os.path.isfile(SCALE_FILE):
+        return None
+    try:
+        return json.load(io.open(SCALE_FILE, encoding="utf-8"))
+    except (ValueError, OSError):
+        return None
+
+
 def build():
     return {"phases": phases(), "modules": modules(), "figures": figures(),
             "domain_tests": domain_coverage()[0],
             "domain_files": domain_coverage()[1],
-            "gx2_tests": len(_gx2_tests()), "head": _head()[:12]}
+            "gx2_tests": len(_gx2_tests()), "head": _head()[:12],
+            "scale": scale()}
 
 
 HISTORY = os.path.join(ROOT, "flow", "status-history.jsonl")
@@ -383,6 +406,11 @@ def _snapshot(st):
         # 已经攒了 9 个提交（lag 9，随时会掉档）。差值要靠这个数才看得见。
         "fig_max_lag": f.get("max_lag", 0),
         "gx2": st.get("gx2_tests", 0),
+        # **完全实现率**进历史：编译通过率回答不了"翻译成功了吗"——
+        # 桩函数照样编得过（R878 实测：169 个文件全编译通过，其中 75 个残缺）。
+        # 缺读数时记 None，而不是 0 —— "没量过"与"量了是 0"必须分开。
+        "scale_full": (st.get("scale") or {}).get("full"),
+        "scale_total": (st.get("scale") or {}).get("total"),
     }
 
 
