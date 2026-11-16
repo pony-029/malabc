@@ -185,6 +185,86 @@ def generate(out_dir, limit=0):
     return made
 
 
+def numeric_compare(base, gen_root):
+    """**按函数名**对齐 VM 与编译产物，返回 (一致率, 统计 dict) 或 None。
+
+    为什么不能按行号比：C 驱动会跳过/报错某些函数（`skipped (no shape)`），
+    而 VM 全跑 —— 两边的行不是同一批对象，按行号对齐从第一个差异起就全错位
+    （R889 实测只得到 24.5% 的假读数）。
+
+    为什么按**数值**比而不是字符串：VM 用最短往返表示（`0.5403023058681398`）、
+    C 用 `%.17g`（`0.54030230586813977`），同一个数会被判成不同 ——
+    R890 实测：字符串口径 79.1%，数值口径 89.5%，差的 16 个全是格式。
+    """
+    m2c = os.path.join(ROOT, "rust", "m2c", "target", "release", "m2c.exe")
+    mir = os.path.join(base, "build", ".m2c", "project.mir")
+    if not (os.path.isfile(m2c) and os.path.isfile(mir)):
+        return None
+    g = os.path.join(gen_root, "src")
+    inc = os.path.join(gen_root, "include")
+    rt = os.path.join(ROOT, "c_runtime", "src")
+    exe = os.path.join(base, "numapp.exe")
+    cc = subprocess.run(["gcc", "-std=c99", "-O1", "-o", exe,
+                         os.path.join(g, "gen.c"), os.path.join(g, "main.c"),
+                         os.path.join(rt, "mlc_runtime.c"),
+                         os.path.join(rt, "mlc_ops.c"),
+                         "-I", inc, "-I", os.path.join(ROOT, "c_runtime", "include")],
+                        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT, timeout=900)
+    if cc.returncode != 0:
+        return None
+
+    vm = subprocess.run([m2c, "run", "--tag-func", "--mir", mir],
+                        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT, timeout=900).stdout.decode(
+                            "utf-8", "replace")
+    run = subprocess.run([exe], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                         stderr=subprocess.STDOUT, timeout=600).stdout.decode(
+                             "utf-8", "replace")
+
+    def parse(txt):
+        out = {}
+        for ln in txt.splitlines():
+            m = re.match(r"^\s*([A-Za-z_]\w*):\s*(.*)$", ln)
+            if not m:
+                continue
+            name, val = m.group(1), m.group(2).strip()
+            if name == "n" or "assumed" in val or "skipped" in val:
+                continue
+            out.setdefault(name, val)
+        return out
+
+    A, B = parse(vm), parse(run)
+    common = sorted(set(A) & set(B))
+    same = fmt = bad = cerr = 0
+    for n in common:
+        if B[n].startswith("error"):
+            cerr += 1
+            continue
+        try:
+            a = [float(x) for x in A[n].replace(",", " ").split()]
+            b = [float(x) for x in B[n].replace(",", " ").split()]
+        except ValueError:
+            if A[n] == B[n]:
+                same += 1
+            else:
+                bad += 1
+            continue
+        if len(a) != len(b):
+            bad += 1
+        elif all(abs(x - y) <= 1e-9 * max(1.0, abs(y)) for x, y in zip(a, b)):
+            if A[n] == B[n]:
+                same += 1
+            else:
+                fmt += 1          # 数值相同、仅打印精度差
+        else:
+            bad += 1
+    total = len(common)
+    rate = 100.0 * (same + fmt) / total if total else 0.0
+    return rate, {"common": total, "identical": same, "fmt_only": fmt,
+                  "mismatch": bad, "c_error": cerr}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="规模语料：MATLAB → C 完全实现率")
     ap.add_argument("--keep", action="store_true", help="保留产物目录")
@@ -193,6 +273,8 @@ def main(argv=None):
                     help="只取前 N 个算子（给门禁用的小样本，0=全部）")
     ap.add_argument("--no-record", action="store_true",
                     help="不写 flow/scale.json（小样本不该冒充全量读数）")
+    ap.add_argument("--numeric", action="store_true",
+                    help="额外跑「VM vs 编译产物」的**按名数值比对**（需要 gcc，约 1 分钟）")
     ns = ap.parse_args(argv)
 
     base = ns.out or tempfile.mkdtemp(prefix="m2c_scale_")
@@ -225,6 +307,20 @@ def main(argv=None):
     print("生成 .c: %d ｜ **完全实现 %d (%.1f%%)** ｜ 残缺 %d"
           % (len(cs), ok, 100.0 * ok / max(1, len(cs)), len(bad)))
 
+    num = None
+    if ns.numeric:
+        got = numeric_compare(base, os.path.dirname(os.path.join(gen, "")))
+        if got is None:
+            print("[numeric] 跳过：缺 m2c / project.mir / gcc 编译失败")
+        else:
+            rate, st = got
+            num = st
+            print("[numeric] 按名比对 %d 个函数 ｜ **数值一致率 %.1f%%**"
+                  " ｜ 字面同 %d ｜ 仅格式差 %d ｜ 真不同 %d ｜ C 侧 error %d"
+                  % (st["common"], rate, st["identical"], st["fmt_only"],
+                     st["mismatch"], st["c_error"]))
+            num["rate"] = round(rate, 1)
+
     if ns.no_record:
         print("（--no-record：不写 flow/scale.json）")
         if not ns.keep:
@@ -242,6 +338,9 @@ def main(argv=None):
             json.dumps({"total": len(cs), "full": ok,
                         "rate": round(100.0 * ok / max(1, len(cs)), 1),
                         "bad": len(bad),
+                        # 两个后端的一致性也是读数的一部分（R899 入仓）：
+                        # 只看"完全实现"会漏掉"两边算得不一样"这件事。
+                        "numeric": num,
                         "head": _head()[:12],
                         "ts": time.strftime("%Y-%m-%d %H:%M:%S")},
                        ensure_ascii=False, indent=2) + "\n")
