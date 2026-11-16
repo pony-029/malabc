@@ -178,10 +178,10 @@
         <th style="padding:4px 8px">文件数</th><th style="padding:4px 8px">判据条数 / 文件数</th>
         <th style="padding:4px 8px">判据文件 : 源文件</th>
         <th style="padding:4px 8px">包含</th></tr>
-      <tr><td>图与文档</td><td>3</td><td>475</td><td>565 / 12</td><td>12 : 475</td><td><code>flow/ m2c-site/ docs/</code></td></tr>
-      <tr><td>判据</td><td>1</td><td>279</td><td>567 / 9</td><td>9 : 279</td><td><code>tests/</code></td></tr>
-      <tr><td>转换侧</td><td>3</td><td>162</td><td>703 / 62</td><td>62 : 162</td><td><code>translate/ rust/m2c/ frontends/</code></td></tr>
-      <tr><td>工具与门禁</td><td>3</td><td>159</td><td>587 / 20</td><td>20 : 159</td><td><code>tools/ harness/ ci-examples/</code></td></tr>
+      <tr><td>图与文档</td><td>3</td><td>475</td><td>566 / 13</td><td>13 : 475</td><td><code>flow/ m2c-site/ docs/</code></td></tr>
+      <tr><td>判据</td><td>1</td><td>283</td><td>567 / 9</td><td>9 : 283</td><td><code>tests/</code></td></tr>
+      <tr><td>转换侧</td><td>3</td><td>163</td><td>705 / 63</td><td>63 : 163</td><td><code>translate/ rust/m2c/ frontends/</code></td></tr>
+      <tr><td>工具与门禁</td><td>3</td><td>159</td><td>588 / 21</td><td>21 : 159</td><td><code>tools/ harness/ ci-examples/</code></td></tr>
       <tr><td>运行时</td><td>2</td><td>96</td><td>65 / 30</td><td>30 : 96</td><td><code>c_runtime/ malabc-rt/</code></td></tr>
       <tr><td>分析侧</td><td>3</td><td>75</td><td>571 / 17</td><td>17 : 75</td><td><code>analyzer/ binfmt/ renderers/</code></td></tr>
       <tr><td>入口与流水线</td><td>1</td><td>23</td><td>609 / 23</td><td>23 : 23</td><td><code>./</code></td></tr>
@@ -198,11 +198,11 @@
       已过时 <b>16</b> ｜ 历史(登记) <b>4</b>。
       历史档是不随代码重渲染的旧 schema 图（重渲染会丢语义），不是欠账。</p>
     <p class="q"><b>距上次刷新</b>：最大滞后 <span style="background:#ffe0b2;padding:0 4px;border-radius:3px">(已过时)</span>
-      <b>13</b> 个提交（超过 10 转"已过时"，
+      <b>30</b> 个提交（超过 10 转"已过时"，
       超过 40 触发主干图腐烂判据）。这个数字每次提交都会自己变大 ——
       它是唯一能说明"离下一次变红还有多远"的读数。</p>
-    <p class="q">门禁与测试覆盖：GX2 引用 <b>118</b> 个测试文件 ｜ HEAD <code>e8884f63d762</code>。</p>
-    <p class="q">主线<b>完全实现率</b>：<b>100.0%</b>（165/165 个函数 —— 生成物里不含 <code>MLC_UNIMPLEMENTED</code> 的比例；编译通过率回答不了这个问题）<br><span style="background:#fff3cd;padding:0 4px;border-radius:3px">读数落后</span>：量于 <code>26ee0e4</code>，当前 <code>e8884f6</code> —— 代码已变，建议重跑。</p>
+    <p class="q">门禁与测试覆盖：GX2 引用 <b>120</b> 个测试文件 ｜ HEAD <code>81f8737b9dec</code>。</p>
+    <p class="q">主线<b>完全实现率</b>：<b>100.0%</b>（165/165 个函数 —— 生成物里不含 <code>MLC_UNIMPLEMENTED</code> 的比例；编译通过率回答不了这个问题） ｜ <b>数值一致率</b>：<b>100.0%</b>（VM ⇄ 编译产物，155 个同名函数；真不同 0、C 侧 error 0）<br><span style="background:#fff3cd;padding:0 4px;border-radius:3px">读数落后</span>：量于 <code>bd29a5c</code>，当前 <code>81f8737</code> —— 代码已变，建议重跑。</p>
     <details class="q"><summary>怎么自己验一遍（两条命令）</summary>
       <pre><code># 1) 41 道快/中门（约 3~4 分钟）
 python tools/check_all.py --skip check_generated_compiles
@@ -213,7 +213,7 @@ python tools/check_generated_compiles.py</code></pre>
       分开后各自有结论，失败也知道落在哪一半。GX2 会逐行转发 pytest 输出 ——
       看不到进度时，先判断是"慢"还是"沉默"。</p>
     </details>
-    <p class="q">上次记录 <code>2026-11-16T22:27:13</code> ｜ 变化：<b>图最大滞后 12→13 个提交</b> ｜ 历史共 <b>59</b> 条</p>
+    <p class="q">上次记录 <code>2026-11-17T00:08:57</code> ｜ 变化：<b>图最大滞后 28→30 个提交</b> ｜ 历史共 <b>64</b> 条</p>
   </section>
 <!-- STATUS:END -->
   <!-- STATS:BEGIN -->
@@ -223,9 +223,9 @@ python tools/check_generated_compiles.py</code></pre>
     <span class="stat"><b>36</b>步可追踪</span>
     <span class="stat"><b>36/36</b>追踪通过</span>
     <span class="stat"><b>0</b>脚本 / 外链</span>
-    <span class="stat"><b>57/57</b>HIR 接管</span>
-    <span class="stat"><b>57/57</b>HIR 恒等</span>
-    <span class="stat"><b>58/58</b>由 HIR 产出（默认）</span>
+    <span class="stat"><b>58/58</b>HIR 接管</span>
+    <span class="stat"><b>58/58</b>HIR 恒等</span>
+    <span class="stat"><b>59/59</b>由 HIR 产出（默认）</span>
     <span class="stat"><b>100%</b>行号对齐</span>
   </div>
 <!-- STATS:END -->
@@ -253,7 +253,7 @@ python tools/check_generated_compiles.py</code></pre>
     <b>控制流/数据流</b>、<b>输入→输出摘要</b>（sha256 前 12 位）与<b>它是怎么变的</b>；
     摘要相等即证明“上一步的输出真的进了这一步”。</p>
   <p class="q">**HIR 已在链上**：`mir.py --via-hir` 每次生成后强制往返一次，
-    接管 57/57、恒等 57。第 3 步（S3）就是它；`--hir-emit` 还能让 MIR **由 HIR 产出**。</p>
+    接管 58/58、恒等 58。第 3 步（S3）就是它；`--hir-emit` 还能让 MIR **由 HIR 产出**。</p>
   <details class="case" open><summary><b>colmax_loop</b><span class="case-meta">9 步 · 通过 9 · 链路完整</span></summary><div class="steps"><article class="step S1"><div class="step-h"><span class="sid">S1</span><span class="smod">front</span><span class="kind dat">数据流</span><span class="ms">0 ms</span><span class="st ok">ok</span></div><div class="step-b"><div class="how">读入源码，按行切成语句序列</div><div class="io"><code>-</code> → <code>a203b18776d7</code><span class="delta">磁盘上的 .m 文本 → 内存里的行数组（附行数）</span></div><div class="act">读源码 colmax_loop.m</div><div class="det">lines=11</div></div></article>
 <article class="step S2"><div class="step-h"><span class="sid">S2</span><span class="smod">mir</span><span class="kind ctl">控制流</span><span class="ms">156 ms</span><span class="st ok">ok</span></div><div class="step-b"><div class="how">逐语句匹配、降级成三地址</div><div class="io"><code>a203b18776d7</code> → <code>c1591e6d751c</code><span class="delta">源码文本 → MIR 行（`op:` / `const:` / `setb:`）</span></div><div class="act">MATLAB → MIR</div><div class="det">ops=3 · unmapped=0</div></div></article>
 <article class="step S3"><div class="step-h"><span class="sid">S3</span><span class="smod">hir</span><span class="kind dat">数据流</span><span class="ms">9 ms</span><span class="st ok">ok</span></div><div class="step-b"><div class="how">把三地址折回表达式树再降级</div><div class="io"><code>c1591e6d751c</code> → <code>c1591e6d751c</code><span class="delta">MIR op 序列 → HIR 树 → 同构的 MIR（算子多重集必须相等）</span></div><div class="act">MIR → HIR → MIR 恒等</div><div class="det">mapped=True · identical=True</div></div></article>

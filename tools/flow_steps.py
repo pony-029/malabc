@@ -250,6 +250,14 @@ def _scale_line(st):
     txt = ("主线<b>完全实现率</b>：<b>%s%%</b>（%s/%s 个函数 —— 生成物里不含 "
            "<code>MLC_UNIMPLEMENTED</code> 的比例；编译通过率回答不了这个问题）"
            % (rate, full, total))
+    # 数值一致率（R902）：**两个执行后端**在同一批函数上算出来是否相同。
+    # 只报"完全实现"会漏掉"两边都实现了但算得不一样"——那是更隐蔽的一类错。
+    num = s.get("numeric") or {}
+    if num.get("rate") is not None:
+        txt += (" ｜ <b>数值一致率</b>：<b>%s%%</b>（VM ⇄ 编译产物，%d 个同名函数；"
+                "真不同 %d、C 侧 error %d）"
+                % (num.get("rate"), num.get("common", 0),
+                   num.get("mismatch", 0), num.get("c_error", 0)))
     sh = (s.get("head") or "")[:7]
     hh = (st.get("head") or "")[:7]
     if sh and hh and sh != hh:
