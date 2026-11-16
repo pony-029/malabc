@@ -76,6 +76,29 @@ def is_scalar(nm, op_id):
     return nm in SCALARS or (op_id in INDEXY and nm in ("a", "b", "i", "j"))
 
 
+#: 会**改变结果长度**的算子：返回元素的个数不等于 n。
+#:
+#: * 拼接：`[a b]` / `[a; b]` 各取 n 个 → 2n；
+#: * 集合运算 / 查找：结果 ≤ n（按 n 声明不会越界）；
+#: * 标量结果：`size(x,dim)`、`x(2)` 都只给一个数；
+#: * 列切片：`A(:,2:end)` 在 A 是 2×2 时取第 2 列 → 2 个元素。
+Y_LEN = {"OP-HCAT": lambda n: 2 * n, "OP-VCAT": lambda n: 2 * n,
+         "OP-CAT": lambda n: 2 * n, "OP-SETDIFF": lambda n: n,
+         "OP-FIND": lambda n: n, "OP-FIND2": lambda n: n, "OP-FIND3": lambda n: n,
+         "OP-INDEX": lambda n: 1, "OP-SIZE": lambda n: 1,
+         "OP-COLRANGE": lambda n: 2}
+
+
+def retname(sample):
+    """样本里的**被赋值变量**就是函数的返回变量（`i = find(...)` 返回的是 `i`）。
+
+    早前一律按 `y` 声明形状：`find` 这类样本的返回变量是 `i`，
+    于是形状注解落在了一个不存在的 `y` 上，而 `i` 没有形状 → C 侧报错。
+    """
+    m = re.match(r"^\s*([A-Za-z]\w*)\s*=", sample)
+    return m.group(1) if m else "y"
+
+
 def make_func(op_id, sample, n, idx):
     name = "%s_%d_%d" % (op_id.lower().replace("-", "_"), n, idx)
     vs = varnames(sample)
@@ -89,13 +112,22 @@ def make_func(op_id, sample, n, idx):
             ann.append("%% @m2c shape %s 3" % v)        # 边界 1:2 需要 3 个元素
         else:
             ann.append("%% @m2c shape %s %d" % (v, n))
-    # `size(x, dim)` 的样本是**带维度参数**的形式，返回**标量**（那一维的长度）。
-    # 按 n 声明会让 C 侧写进 n 格数组（`3 0 0`）而 VM 给 `3` —— 长度对不上，
-    # 看起来像数值不一致，其实是语料把结果形状写错了。
-    y_dim = 1 if op_id == "OP-SIZE" else max(n, 3 if op_id in SLICEY else n)
-    ann.append("%% @m2c shape y %d" % y_dim)
-    return ("function y = %s(%s)\n%s\n  %s\nend\n"
-            % (name, ", ".join(vs), "\n".join(ann), sample.strip()))
+    # 结果长度按算子族给（见 `Y_LEN`）—— 拼接是 2n、标量是 1、集合类 ≤ n。
+    y_dim = Y_LEN.get(op_id, lambda k: max(k, 3 if op_id in SLICEY else k))(n)
+    # **把 lhs 统一改写成 `y`**：`find` 的样本是 `i = find(...)`，而 `i` 会被
+    # 发射器当成"循环变量/i64 标量"（`is_loop_var`），于是返回变量 `i` 被按
+    # 整型指针传，gcc 报 `incompatible type for argument 4 of mlc_op_find_alloc`。
+    # 改名字不影响语义（`y = find(x>1)` 与 `i = find(x>1)` 等价），
+    # 但避开了这条名字启发式。
+    rn = retname(sample)
+    body = sample.strip()
+    if rn != "y":
+        body = re.sub(r"^\s*%s\s*=" % re.escape(rn), "y =", body)
+        rn = "y"
+    if rn not in vs:                     # 返回变量同时也是形参时（`function x = f(x)`）不重复声明
+        ann.append("%% @m2c shape %s %d" % (rn, y_dim))
+    return ("function %s = %s(%s)\n%s\n  %s\nend\n"
+            % (rn, name, ", ".join(vs), "\n".join(ann), body))
 
 
 def _head():
