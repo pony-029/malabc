@@ -555,9 +555,15 @@ impl Vm {
             // 判定类：MATLAB 返回逻辑矩阵，本仓统一用 0/1 的 f64 表示
             "OP-ISNAN" => unary(|x| if x.is_nan() { 1.0 } else { 0.0 }),
             "OP-ISINF" => unary(|x| if x.is_infinite() { 1.0 } else { 0.0 }),
-            // 数值类型恒为真（本仓只有 f64/i64，没有复数/字符串矩阵）
-            "OP-ISNUMERIC" => unary(|_| 1.0),
-            "OP-ISREAL" => unary(|_| 1.0),
+            // **`isnumeric` / `isreal` 返回 1×1 标量**，不是逐元素结果。
+            //
+            // R890 数值比对实测：C 侧（`mlc_pred_f64(a, out, 3|4)`）往 1×1
+            // 输出写一个 1，而 VM 我最初写成 `unary(|_| 1.0)`（逐元素），
+            // 于是 3 元素的输入算出 `1 1 1` vs C 的 `1` —— 6 个"真不同"里
+            // 有 4 个是这一处语义错。
+            // MATLAB 的语义确实是标量：`isreal([1 2 3])` 判的是**整体**。
+            "OP-ISNUMERIC" => Ok(Val::scalar(1.0)),
+            "OP-ISREAL" => Ok(Val::scalar(1.0)),
             // MATLAB `mod` 取**除数**的符号（Rust `%` 取被除数），且 `mod(x,0)=x`
             "OP-MOD" => binary(|x, y| if y == 0.0 { x } else { x - y * (x / y).floor() }),
             // ---- 归约：沿列（MATLAB 默认）----

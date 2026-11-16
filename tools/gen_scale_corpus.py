@@ -89,7 +89,11 @@ def make_func(op_id, sample, n, idx):
             ann.append("%% @m2c shape %s 3" % v)        # 边界 1:2 需要 3 个元素
         else:
             ann.append("%% @m2c shape %s %d" % (v, n))
-    ann.append("%% @m2c shape y %d" % max(n, 3 if op_id in SLICEY else n))
+    # `size(x, dim)` 的样本是**带维度参数**的形式，返回**标量**（那一维的长度）。
+    # 按 n 声明会让 C 侧写进 n 格数组（`3 0 0`）而 VM 给 `3` —— 长度对不上，
+    # 看起来像数值不一致，其实是语料把结果形状写错了。
+    y_dim = 1 if op_id == "OP-SIZE" else max(n, 3 if op_id in SLICEY else n)
+    ann.append("%% @m2c shape y %d" % y_dim)
     return ("function y = %s(%s)\n%s\n  %s\nend\n"
             % (name, ", ".join(vs), "\n".join(ann), sample.strip()))
 
