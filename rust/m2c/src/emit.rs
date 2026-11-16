@@ -498,6 +498,20 @@ fn out_shape(f: &Func, op: &Op) -> Option<Vec<i64>> {
     if op.id == "OP-MASK" || op.id == "OP-FIND" {
         return None;   /* 长度数据相关：由算子分配，运行时才知道 */
     }
+    // 水平拼接 `[a b]`：长度 = 两侧之和 —— **不是广播**。
+    //
+    // 这里原先没有分支，于是掉进函数末尾的广播兜底：`bcast([3],[3]) = [3]`，
+    // 而 `mlc_op_hcat` 需要 6，运行时 `numel(out) != sh` → MLC_ERR。
+    // 更糟的是它会**覆盖显式注解**（`% @m2c shape y 6` 被改成 3 并只留一句 WARN）——
+    // R894 的三个 `op_hcat_*` C 侧 error 就是这么来的。
+    if op.id == "OP-HCAT" && op.args.len() == 2 {
+        let sa = resolved_shape(f, &op.args[0])?;
+        let sb = resolved_shape(f, &op.args[1])?;
+        if sa.len() == 1 && sb.len() == 1 {
+            return Some(vec![sa[0] + sb[0]]);
+        }
+        return None;          // 2-D 的 `[a b]` 是"按列拼"，与 1-D 不是一件事
+    }
     // 切片：1-D，长度 = to - from + 1（边界是字面量才算得出）
     if op.id == "OP-SLICE" && op.args.len() == 3 {
         let sa = resolved_shape(f, &op.args[0])?;
