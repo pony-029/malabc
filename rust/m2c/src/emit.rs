@@ -1661,6 +1661,15 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
                     f.name, ret.name, declared, inferred);
             }
         }
+        // **推断优先，声明兜底** —— 这个顺序不要轻易反过来。
+        //
+        // R895 试过「声明优先」（理由：注解是用户契约，不该被一个得出 3 的推断
+        // 覆盖掉 `% @m2c shape y 6`）。实测代价：C 侧 error 从 **4 涨到 47** ——
+        // 因为绝大多数算子的声明本来就是按 n 写的近似值（ANY/ALL/COL/FLATTEN
+        // 的结果其实是标量或另一形状），推断才是对的那个。
+        //
+        // 所以真正该修的是 **HCAT 的推断本身**（它会给出 3 而不是 6），
+        // 而不是把两者的优先级整体调换。
         let shape = match out_shape_for(f, &ret.name, known)
             .or_else(|| f.var_shape(&ret.name))
         {
