@@ -990,10 +990,23 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
         // args = (右值, 下标)；目标数组就是 dst（就地写，不分配）
         let val = arg_ref(f, &op.args[0]);
         let idx = &op.args[1];
-        let idx_c = if is_int_literal(idx) {
-            format!("(int64_t){}", idx)
-        } else {
-            ident(idx)
+        // 下标一律走 `idx_operand`（它认得字面量 / i64 标量 / **f64 数组的 [0]**）。
+        // 原来这里只写 `ident(idx)`，而下标常常是前端降级出来的 `__h1`
+        // —— 那是个 `mlc_array` 临时量，于是生成
+        // `mlc_op_setidx(y, &v, __h1)`，gcc: incompatible type for argument 3
+        //（R886 规模实测：3 个 `op_setidx_*` 编不过）。
+        let idx_c = match idx_operand(f, idx) {
+            Some(e) => e,
+            None => {
+                out.push(format!(
+                    "{}/* TODO(OP-SETIDX): 下标 {}/{} 不是 i64 标量 */",
+                    pad,
+                    sanitize_comment(&op.args[0]),
+                    sanitize_comment(idx)
+                ));
+                out.push(format!("{}return MLC_UNIMPLEMENTED;", pad));
+                return out;
+            }
         };
         out.push(format!(
             "{}st = mlc_op_setidx({}, {}, {});", pad, dst, val, idx_c));
