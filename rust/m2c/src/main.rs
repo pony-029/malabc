@@ -40,6 +40,8 @@ fn main() -> ExitCode {
     let mut name = String::from("gen");
     let mut expect_path: Option<PathBuf> = None;
     let mut case_args: Vec<(PathBuf, PathBuf)> = Vec::new();
+    // `--tag-func`：`run` 的输出前置函数名（默认关闭，保持历史格式）
+    let mut tag_func = false;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -107,6 +109,10 @@ fn main() -> ExitCode {
             // 而错误发生在 `run` 分支之前，看起来像"run 没实现这个开关"。
             "--shape" => {
                 i += 1;
+            }
+            // `m2c run` 输出前置函数名：给"VM vs C 按名比对"用。
+            "--tag-func" => {
+                tag_func = true;
             }
             other => {
                 eprintln!("不认识的参数：{}", other);
@@ -192,7 +198,15 @@ fn main() -> ExitCode {
                             let s: Vec<String> =
                                 v.data.iter().map(|x| fmt_num(*x)).collect();
                             if !s.is_empty() {
-                                println!("{}: {}", r.name, s.join(" "));
+                                // **默认格式不变**（历史 `.expected` 逐字比对依赖它）。
+                                // `--tag-func` 才前置函数名 —— 那是"两个后端按名对齐"
+                                // 需要的形态：C 驱动打印 `fname: …`，而 VM 只打
+                                // 返回变量名（`y: …`），按行号对齐会立刻错位。
+                                if tag_func {
+                                    println!("{}: {}", f.name, s.join(" "));
+                                } else {
+                                    println!("{}: {}", r.name, s.join(" "));
+                                }
                             }
                         }
                     }
