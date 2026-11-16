@@ -108,9 +108,9 @@ def make_func(op_id, sample, n, idx):
             continue
         if v.isupper():
             ann.append("%% @m2c shape %s 2,2" % v)      # 二维对象
-        elif op_id in ("OP-HCAT", "OP-VCAT", "OP-TRANSPOSE"):
-            # 这三类要求入参是**二维**：`mlc_op_hcat` 读 `a->rows`，
-            # 一维数组的 rows/cols 语义与它不符（实测 C 侧 error）。
+        elif op_id in ("OP-VCAT", "OP-TRANSPOSE"):
+            # `[a; b]` 与 `x.'` 的结果是**二维**，入参也跟着按行向量声明；
+            # 而 `OP-HCAT` **不在其列** —— 它的 C 实现只认一维（见上）。
             ann.append("%% @m2c shape %s 1,%d" % (v, n))
         elif op_id in SLICEY and n < 3:
             ann.append("%% @m2c shape %s 3" % v)        # 边界 1:2 需要 3 个元素
@@ -121,7 +121,18 @@ def make_func(op_id, sample, n, idx):
     # 这几类的结果是**二维**的（拼接/转置/整列切片），声明成一维会让目标数组
     # 装不下（`mlc_array_init(y, 1, {6})` 之后再写 rows=1,cols=6 → MLC_ERR）。
     # R893 实测：`op_hcat_*/op_transpose_*/op_colrange_*` 的 C 侧 error 就是这个。
-    y_shape2 = {"OP-HCAT": "1,%d" % (2 * n), "OP-VCAT": "2,%d" % n,
+    # `mlc_op_hcat` 明确**只做一维**（`a->ndim != 1 → MLC_ERR`，注释写着
+    # "2-D 的 `[a b]` 是按列拼，与这里不是一件事"）—— 所以它**不能**给二维
+    # 声明，否则必错。R893 我曾把它改成 `1,6`，反而把它弄坏了。
+    #
+    # ⚠ **未解的产品缺陷**（R894 定位，待修）：即使按一维声明 `y 6`，生成物仍是
+    #     /* WARN(shape): y 声明 [6] 与推断 [3] 不一致，按推断执行 */
+    #     mlc_array_init(y, MLC_F64, 1, (int64_t[]){3});
+    # 而 `emit.rs` 里 OP-HCAT 的推断写的是 `x[0] + y[0]`（= 6），不该得出 3。
+    # 也就是说：**显式注解被"推断"覆盖**，而那个推断在拼接这一格上错了。
+    # 结果 `mlc_op_hcat` 看到 `numel(out)=3 != sh=6` → MLC_ERR（C 侧 error 的成因）。
+    # 修这里之前，`op_hcat_*` 的三个 C 侧 error 会一直在。
+    y_shape2 = {"OP-VCAT": "2,%d" % n,
                 "OP-TRANSPOSE": "%d,1" % n, "OP-COLRANGE": "2,1"}.get(op_id)
     # **把 lhs 统一改写成 `y`**：`find` 的样本是 `i = find(...)`，而 `i` 会被
     # 发射器当成"循环变量/i64 标量"（`is_loop_var`），于是返回变量 `i` 被按
