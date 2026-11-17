@@ -140,7 +140,20 @@ def split_functions(source):
     depth = 0
     for raw_no, raw in enumerate((source or "").splitlines(), 1):
         m = _FUNC_RE.match(raw)
-        if m and depth == 0:
+        # **顶格的 `function` 永远是新的函数开头**（R928）。
+        #
+        # 原来只认 `depth == 0`，而 MATLAB 允许一个文件里的函数**省略 `end`**
+        # （yalmiptest.m 就是这样：主函数有 `end`，后面 15 个辅助函数没有）。
+        # 于是一个没有 `end` 的函数把 depth 卡在 1，**后面所有 `function` 都被
+        # 当成当前函数体内的语句吞掉** —— 实测 18 个函数只解析出 3 个
+        # （yalmiptest:1、test_core:308、test_semidefinite_programming:400），
+        # 进而 yalmip 全工程 2781 个函数只生成 1206 个。
+        #
+        # 判据用"顶格"（行首无空白）：MATLAB 的嵌套函数惯例缩进，顶格的
+        # `function` 一定是新函数的开始。这是启发式，但它与真实写法一致，
+        # 且比"永远不切"更接近正确。
+        at_col0 = raw[:1] not in (" ", "\t")
+        if m and (depth == 0 or at_col0):
             outs = m.group("outs")
             if outs is not None:
                 rets = [x.strip() for x in outs.split(",") if x.strip()]
