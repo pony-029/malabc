@@ -411,6 +411,12 @@ def _snapshot(st):
         # 缺读数时记 None，而不是 0 —— "没量过"与"量了是 0"必须分开。
         "scale_full": (st.get("scale") or {}).get("full"),
         "scale_total": (st.get("scale") or {}).get("total"),
+        # **数值一致率**也进历史（R910）：只记"完全实现"看不出两个执行后端
+        # 是否算出同样的数 —— 而后者恰恰是最隐蔽的一类退化。
+        # 缺读数记 None（"没量过" ≠ "量了是 0"）。
+        "scale_num": ((st.get("scale") or {}).get("numeric") or {}).get("rate"),
+        # 分母也要留痕：一致率只在"两边都输出了"的交集上成立
+        "scale_cmp": ((st.get("scale") or {}).get("numeric") or {}).get("common"),
     }
 
 
