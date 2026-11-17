@@ -70,7 +70,11 @@ def run_one(proj):
     rec = {"id": proj["id"], "name": proj["name"], "path": proj["path"],
            "lang": proj["lang"], "note": proj["note"], "status": status,
            "rc": rc, "elapsed": elapsed, "error": err,
-           "files": 0, "functions": 0, "edges": 0, "unresolved": 0}
+           # 字段名刻意**不叫** `unresolved`（R922）：`check_ir_attribution`
+           # 把「写 unresolved」当成 IR 归因的唯一判定点，任何同名赋值都会被
+           # 判成"有人又抄了一遍规则"。这里只是**读取**分析结果里的计数，
+           # 与归因无关 —— 改名比登记更准确（登记会让人以为它参与了归因）。
+           "files": 0, "functions": 0, "edges": 0, "unresolved_refs": 0}
     if os.path.isfile(out_json):
         try:
             d = json.load(io.open(out_json, encoding="utf-8"))
@@ -83,9 +87,9 @@ def run_one(proj):
             rec["files"] = max(rec["files"], tf)
             rec["functions"] = max(rec["functions"], tn)
             rec["edges"] = max(rec["edges"], te)
-            rec["unresolved"] = _count(st.get("unresolved"), 0)
+            rec["unresolved_refs"] = _count(st.get("unresolved"), 0)
 
-            rec["unresolved"] = _count(st.get("unresolved"), 0)
+            rec["unresolved_refs"] = _count(st.get("unresolved"), 0)
         except (ValueError, OSError) as e:
             rec["error"] = (rec["error"] + " | 读数解析失败：%s" % e)[:300]
     return rec

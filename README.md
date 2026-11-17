@@ -1277,6 +1277,11 @@ Three-link regression report: `python tools/three_links_report.py <dirs> -o <out
 - `tools/project_budget.py` — computes the static memory peak from a MIR (elements × dtype width) and writes `budget.json`; with `--pool N` it fails and names the function/variable when over budget
 - `tools/config_suggest.py` — P4: for every module/source in the project config, report **what to configure** (annotation / config key) and how many stalls it would clear; `--selftest` proves the mapping
 - `tools/project_status.py` — whole-project status **computed** from the repo: plan phases P0–P6 (evidence file must exist **and** be wired into GX2), module sizes, and figure freshness distribution
+- `tools/bench_toc.py` — **MATLAB→C conversion bench**: runs `matlabc_toc.py` over several projects and reports source `.m` / generated `.c` / fully-implemented / sampled compile, emitting `flow/toc_bench.html`
+- `tools/bench_mapping.py` — **project-level mapping check**: verifies the conservation "N `.m` → N `.c`, M functions → M functions" and traces every generated `m2c_*` back to its source file
+- `tools/map_suggest.py` — **semantic mapping suggester**: proposes which `.m` files should share one `.c` (package/directory boundaries + call connectivity + name prefixes), emitting `mode:"ai"` JSON with a `why` per group
+- `tools/flow_monitor.py` — **pipeline monitor**: times and counts six stages (scan → MIR → mapping → C generation → compile → run), rendering `flow/flow_monitor.html`
+- `tools/bench_projects.py` — runs the **structural analysis** over several large real-world trees and renders `flow/bench.html`
 - `tools/gen_scale_corpus.py` — generates a 165-function MATLAB corpus from the operator table (`% @m2c shape` annotations), runs the **mainline** `matlabc_toc.py`, and prints the **full-implementation rate** — the share of generated `.c` files with no `MLC_UNIMPLEMENTED`. Compile rate cannot answer that: a stub still compiles.
 - `tools/figures_refresh.py` — re-renders `flow/figures` at the current HEAD (skips `meta.status=historical`; writes `candidate.json` with CRLF); `--dry-run` / `--only` / `--selftest`
 - `tools/trace_demo.py` — records a real pipeline run step by step into JSONL (sha256 digests per step); `tools/trace_view.py` renders it as a static HTML trace page
