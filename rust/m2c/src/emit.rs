@@ -1315,7 +1315,13 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                         // 此前一律落进下面的 TODO —— 而这属于最基础的操作之一。
                         let rhs_is_array = f.args.iter().any(|a| &a.name == value)
                             || f.rets.iter().any(|r| &r.name == value)
-                            || f.var_shape(value).is_some();
+                            || f.var_shape(value).is_some()
+                            // **上一跳的产出**（R913）：`p = clip(x, 0, 3); y = p;`
+                            // 里 `p` 由前一条 `call` 产出，既不是形参也不是返回值，
+                            // 而 `var_shape` 对 `call` 的 lhs 返回 None —— 三条都不认，
+                            // 于是整条 `y = p` 落 TODO(set)（kern 实测：
+                            // `saturate` 因此残缺）。`declared()` 收的正是这类名字。
+                            || f.declared().iter().any(|d| d == value);
                         if rhs_is_array {
                             let dst = if f.rets.iter().any(|r| &r.name == lhs) {
                                 ident(lhs)
@@ -1422,6 +1428,9 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                 // 实测（kern 工程）：`moving_avg(x, 2)` 的 2 配的是**数组形参**，
                 // 消息却把人引去查"函数为什么找不到"。
                 let mut skip_why: Option<String> = None;
+                // 实参落临时量的前置语句 / 调用后的清理（R913）
+                let mut prelude: Vec<String> = Vec::new();
+                let mut cleanup: Vec<String> = Vec::new();
                 // 形参一律**按值**（`mlc_array x` / `int64_t i`），
                 // 所以实参直接写名字；只有"输出参数"才取地址。
                 for (argi, a) in args.iter().enumerate() {
@@ -1444,16 +1453,23 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                             if formal_scalar && is_num_literal(a) {
                                 call_args.push(a.clone());
                             } else if is_num_literal(a) {
-                                // 字面量配数组形参：需要先落临时量，不猜
-                                ok = false;
-                                let pn = callee
-                                    .and_then(|c| c.args.get(argi))
-                                    .map(|p| p.name.clone())
-                                    .unwrap_or_else(|| "?".to_string());
-                                skip_why = Some(format!(
-                                    "实参 {} 是字面量，而形参 {} 是数组（需先落 1×1 临时量）",
-                                    a, pn));
-                                call_args.push(ident(a));
+                                // 字面量配数组形参：**落一个 1×1 临时量**再传（R913）。
+                                //
+                                // 这是 kern 工程里最常见的一种写法：`moving_avg(x, 2)`、
+                                // `clip(a, 0, 4)` —— 窗口长度/上下界在 MATLAB 里就是标量，
+                                // 而转换后形参是 `mlc_array`（按值传），必须有个真实对象。
+                                // 此前直接 `ok=false` 报 TODO，于是 `pipeline`/`saturate`
+                                // 两个函数整段残缺（实测 6/10 里的 2 个）。
+                                let tn = format!("__c{}_{}", ident(lhs), argi + 1);
+                                prelude.push(format!("{}mlc_array {} = {{0}};", indent, tn));
+                                prelude.push(format!(
+                                    "{}if (mlc_array_init(&{}, MLC_F64, 1, (int64_t[]){{1}}) != MLC_OK) {{ return MLC_ERR; }}",
+                                    indent, tn));
+                                prelude.push(format!(
+                                    "{}((double *){}.data)[0] = (double)({});",
+                                    indent, tn, a));
+                                call_args.push(tn.clone());
+                                cleanup.push(format!("{}mlc_array_free(&{});", indent, tn));
                             } else if f.declared().iter().any(|d| d == a) {
                                 // **上一跳的产出**（`t = scale(a,2); y = addc(t,1);`）：
                                 // `t` 不是形参也没有 `var:` 声明，但它由前一条 `call`/`op`
@@ -1477,12 +1493,14 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                     ok = false;
                 }
                 if ok {
+                    out.extend(prelude);          // 实参临时量先建好
                     out.push(format!(
                         "{}st = m2c_{}({});",
                         indent,
                         ident(func),
                         call_args.join(", ")
                     ));
+                    out.extend(cleanup);          // 调用完立刻释放（早于出错返回）
                     out.push(format!("{}if (st != MLC_OK) {{ return st; }}", indent));
                 } else {
                     let why = match sig_err {
