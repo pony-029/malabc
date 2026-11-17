@@ -146,6 +146,15 @@ def make_func(op_id, sample, n, idx):
     if rn != "y":
         body = re.sub(r"^\s*%s\s*=" % re.escape(rn), "y =", body)
         rn = "y"
+    # `y(2) = 3` 这类样本**没有入参**，而 C 驱动的构造器需要"输入形状"才能建出
+    # 被写的数组 —— 于是它打印 `skipped (no shape)`，这 6 个函数从未被比较过
+    # （R905 实测：仅 VM 3 个 + 仅 C 3 个）。补一行初始化让目标先有形状，
+    # 这也是真实 MATLAB 代码的写法（先用 zeros 建数组再按下标写）。
+    # ⚠ 试过给 `y(2)=3` 补一行 `y = zeros(1,4)` 让驱动能构造目标（R905）：
+    # 效果是"未比对"从 6 降到 3，但立刻多出 3 个 C 侧 error（`setidx2` 的
+    # 语义与 zeros 建出来的目标对不上），净收益为负，已回退。
+    # 要让这 6 个真正进入比对，得改**驱动构造器**（按返回变量生成初值），
+    # 而不是在语料里假装它已经初始化过。
     if rn not in vs:                     # 返回变量同时也是形参时（`function x = f(x)`）不重复声明
         ann.append("%% @m2c shape %s %s" % (rn, y_shape2 or y_dim))
     return ("function %s = %s(%s)\n%s\n  %s\nend\n"
@@ -235,6 +244,22 @@ def numeric_compare(base, gen_root):
         return out
 
     A, B = parse(vm), parse(run)
+
+    # **空结果的打印约定不同**（R905 实测）：
+    # * C 驱动：`printf("名字:")` 后无元素 → 输出一行 `名字:`（值串为空）
+    # * VM：`if !s.is_empty() { println! }` —— **空结果干脆不打印**
+    # 于是 `find` 无命中、`setdiff` 无差集这类函数在一侧"消失"，
+    # 被误记成"未参与比对"。它们其实**两边都算出了空**，应当算一致。
+    #
+    # 归一：某一侧缺失、而另一侧的值是空串 → 视为双方都是空结果。
+    empty_ok = 0
+    for nm in sorted(set(A) ^ set(B)):
+        present = A.get(nm) if nm in A else B.get(nm)
+        if (present or "").strip() == "":
+            empty_ok += 1
+            A.setdefault(nm, "")
+            B.setdefault(nm, "")
+
     common = sorted(set(A) & set(B))
     same = fmt = bad = cerr = 0
     for n in common:
@@ -268,6 +293,7 @@ def numeric_compare(base, gen_root):
     only_c = sorted(set(B) - set(A))
     return rate, {"common": total, "identical": same, "fmt_only": fmt,
                   "mismatch": bad, "c_error": cerr,
+                  "empty_both": empty_ok,
                   "only_vm": len(only_vm), "only_c": len(only_c),
                   "only_vm_names": only_vm[:5], "only_c_names": only_c[:5]}
 
@@ -330,6 +356,9 @@ def main(argv=None):
                   " ｜ 字面同 %d ｜ 仅格式差 %d ｜ 真不同 %d ｜ C 侧 error %d"
                   % (st["common"], rate, st["identical"], st["fmt_only"],
                      st["mismatch"], st["c_error"]))
+            if st.get("empty_both"):
+                print("  （其中 %d 个两边都是**空结果**：C 打印 `名字:`、VM 不打印空行 —— "
+                      "已按一致处理）" % st["empty_both"])
             if st.get("only_vm") or st.get("only_c"):
                 print("  ⚠ 未参与比对：仅 VM 有 %d 个 %r ｜ 仅 C 有 %d 个 %r"
                       "（这些函数**从未被比较过**，一致率不含它们）"
