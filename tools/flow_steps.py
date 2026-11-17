@@ -258,6 +258,13 @@ def _scale_line(st):
                 "真不同 %d、C 侧 error %d）"
                 % (num.get("rate"), num.get("common", 0),
                    num.get("mismatch", 0), num.get("c_error", 0)))
+        # **分母要自我说明**（R906）：一致率只在"两边都输出了"的交集上成立。
+        # 不报"有多少个没被比到"，读者（包括我自己）会把它当成"全部都验过了"。
+        miss = num.get("only_vm", 0) + num.get("only_c", 0)
+        if miss:
+            txt += ("；<span style=\"background:#fff3cd;padding:0 4px;border-radius:3px\">"
+                    "另有 %d 个未参与比对</span>（仅 VM %d / 仅 C %d）"
+                    % (miss, num.get("only_vm", 0), num.get("only_c", 0)))
     sh = (s.get("head") or "")[:7]
     hh = (st.get("head") or "")[:7]
     if sh and hh and sh != hh:

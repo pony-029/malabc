@@ -198,11 +198,11 @@
       已过时 <b>0</b> ｜ 历史(登记) <b>4</b>。
       历史档是不随代码重渲染的旧 schema 图（重渲染会丢语义），不是欠账。</p>
     <p class="q"><b>距上次刷新</b>：最大滞后 <span style="">(正常)</span>
-      <b>0</b> 个提交（超过 10 转"已过时"，
+      <b>5</b> 个提交（超过 10 转"已过时"，
       超过 40 触发主干图腐烂判据）。这个数字每次提交都会自己变大 ——
       它是唯一能说明"离下一次变红还有多远"的读数。</p>
-    <p class="q">门禁与测试覆盖：GX2 引用 <b>120</b> 个测试文件 ｜ HEAD <code>a40443af2dc8</code>。</p>
-    <p class="q">主线<b>完全实现率</b>：<b>100.0%</b>（165/165 个函数 —— 生成物里不含 <code>MLC_UNIMPLEMENTED</code> 的比例；编译通过率回答不了这个问题） ｜ <b>数值一致率</b>：<b>100.0%</b>（VM ⇄ 编译产物，155 个同名函数；真不同 0、C 侧 error 0）<br><span style="background:#fff3cd;padding:0 4px;border-radius:3px">读数落后</span>：量于 <code>bd29a5c</code>，当前 <code>a40443a</code> —— 代码已变，建议重跑。</p>
+    <p class="q">门禁与测试覆盖：GX2 引用 <b>120</b> 个测试文件 ｜ HEAD <code>cc4adf458ddf</code>。</p>
+    <p class="q">主线<b>完全实现率</b>：<b>100.0%</b>（165/165 个函数 —— 生成物里不含 <code>MLC_UNIMPLEMENTED</code> 的比例；编译通过率回答不了这个问题） ｜ <b>数值一致率</b>：<b>100.0%</b>（VM ⇄ 编译产物，159 个同名函数；真不同 0、C 侧 error 0）；<span style="background:#fff3cd;padding:0 4px;border-radius:3px">另有 6 个未参与比对</span>（仅 VM 3 / 仅 C 3）<br><span style="background:#fff3cd;padding:0 4px;border-radius:3px">读数落后</span>：量于 <code>c4e2819</code>，当前 <code>cc4adf4</code> —— 代码已变，建议重跑。</p>
     <details class="q"><summary>怎么自己验一遍（两条命令）</summary>
       <pre><code># 1) 41 道快/中门（约 3~4 分钟）
 python tools/check_all.py --skip check_generated_compiles
@@ -213,7 +213,7 @@ python tools/check_generated_compiles.py</code></pre>
       分开后各自有结论，失败也知道落在哪一半。GX2 会逐行转发 pytest 输出 ——
       看不到进度时，先判断是"慢"还是"沉默"。</p>
     </details>
-    <p class="q">上次记录 <code>2026-11-17T00:08:57</code> ｜ 变化：<b>可维护图 0→16；已过时图 16→0；图最大滞后 28→0 个提交</b> ｜ 历史共 <b>64</b> 条</p>
+    <p class="q">上次记录 <code>2026-11-17T00:28:34</code> ｜ 变化：<b>图最大滞后 2→5 个提交</b> ｜ 历史共 <b>65</b> 条</p>
   </section>
 <!-- STATUS:END -->
   <!-- STATS:BEGIN -->
