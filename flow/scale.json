@@ -4,26 +4,22 @@
   "rate": 100.0,
   "bad": 0,
   "numeric": {
-    "common": 159,
+    "common": 162,
     "identical": 143,
     "fmt_only": 16,
-    "mismatch": 0,
-    "c_error": 0,
+    "mismatch": 2,
+    "c_error": 1,
     "empty_both": 4,
-    "only_vm": 3,
+    "only_vm": 0,
     "only_c": 3,
-    "only_vm_names": [
-      "op_setidx_1_0",
-      "op_setidx_3_1",
-      "op_setidx_7_2"
-    ],
+    "only_vm_names": [],
     "only_c_names": [
       "op_setidx2_2_0",
       "op_setidx2_3_1",
       "op_setidx2_7_2"
     ],
-    "rate": 100.0
+    "rate": 98.1
   },
-  "head": "c4e2819257dd",
-  "ts": "2026-11-17 21:49:52"
+  "head": "142af82de492",
+  "ts": "2026-11-17 22:31:54"
 }

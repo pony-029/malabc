@@ -45,8 +45,13 @@ fn drivable(f: &Func, known: &[Func]) -> bool {
     if f.reject.is_some() {
         return false;      // 可变参数：签名无法表达，不参与驱动
     }
-    // 数组入参**不要求**有形状注解：没有就按默认形状 [4] 驱动（并在输出里写明）
-    !arrays.is_empty()
+    // 数组入参**不要求**有形状注解：没有就按默认形状 [4] 驱动（并在输出里写明）。
+    //
+    // **无入参也可以驱动**（R907）：`y(2) = 3` 这类函数没有任何形参，而它们
+    // 照样能跑 —— 生成物里函数自己会 `mlc_array_init(y, …)`。前提是每个返回
+    // 都**声明了形状**，否则连"结果多大"都不知道，那才是真的没法驱动。
+    (!arrays.is_empty()
+        || (!f.rets.is_empty() && f.rets.iter().all(|r| !r.shape.is_empty())))
         && scalars.len() == f.args.len() - arrays.len()
         && !f.rets.is_empty()
         && f.rets.iter().all(|r| {
@@ -169,7 +174,18 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
         }
         let arrays: Vec<&crate::mir::Var> =
             f.args.iter().filter(|a| a.dtype == "f64").collect();
-        let arr = arrays[0];
+        // **无数组入参**的函数（`y(2)=3` 这类）也要能被驱动（R907）：
+        // 生成物里每个函数开头都会自己 `mlc_array_init(y, …)`，所以没有入参时
+        // 什么都不用构造，直接调用即可。此前 `arrays[0]` 直接索引，而
+        // `drivable()` 又要求至少一个数组入参 —— 于是这类函数一律打印
+        // `skipped (no shape)`，**从未参与过数值比对**（实测 6 个）。
+        let dt = "MLC_F64";              // 入参按 f64 过滤，dtype 恒为 f64
+        // 每个被驱动函数的 C 块 `{ … }`：**开块必须无条件发**，
+        // 因为配对的 `}` 在下面是无条件发的。R907 第一次改时把开块留在了
+        // `if let Some(arr)` 里面，于是无入参的函数"只有闭括号"，
+        // 生成物结构错位（gcc: initializer element is not constant）。
+        out.push("    {".to_string());
+        if let Some(arr) = arrays.first() {
         // 没有注解就假设一维 4 元素 —— 显式打印，不当作注解
         let assumed = arr.shape.is_empty();
         let dims: Vec<String> = if assumed {
@@ -177,10 +193,8 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
         } else {
             arr.shape.iter().map(|d| d.to_string()).collect()
         };
-        let dt = c_dtype_name(&arr.dtype).unwrap_or("MLC_F64");
         let shape_lit = format!("(int64_t[]){{{}}}", dims.join(", "));
         let an = ident(&arr.name);
-        out.push("    {".to_string());
         out.push(format!("        mlc_array {};", an));
         if assumed {
             out.push(format!(
@@ -208,6 +222,7 @@ fn emit_main(funcs: &[Func], name: &str) -> String {
             an, an
         ));
         out.push("        }".to_string());
+        }                                // `if let Some(arr)` 结束
         for s in f.args.iter().filter(|a| a.dtype == "i64") {
             let sn = ident(&s.name);
             out.push(format!(
