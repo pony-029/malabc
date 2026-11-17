@@ -1277,6 +1277,7 @@ Three-link regression report: `python tools/three_links_report.py <dirs> -o <out
 - `tools/project_budget.py` — computes the static memory peak from a MIR (elements × dtype width) and writes `budget.json`; with `--pool N` it fails and names the function/variable when over budget
 - `tools/config_suggest.py` — P4: for every module/source in the project config, report **what to configure** (annotation / config key) and how many stalls it would clear; `--selftest` proves the mapping
 - `tools/project_status.py` — whole-project status **computed** from the repo: plan phases P0–P6 (evidence file must exist **and** be wired into GX2), module sizes, and figure freshness distribution
+- `tools/bench_all.py` — **full-corpus bench**: verifies every directory under `E:\temp\matlabc` holding `.m` files (large projects one by one, single-file projects aggregated, identical copies marked `dup` instead of re-counted), emitting `flow/bench_all.html`
 - `tools/bench_toc.py` — **MATLAB→C conversion bench**: runs `matlabc_toc.py` over several projects and reports source `.m` / generated `.c` / fully-implemented / sampled compile, emitting `flow/toc_bench.html`
 - `tools/bench_mapping.py` — **project-level mapping check**: verifies the conservation "N `.m` → N `.c`, M functions → M functions" and traces every generated `m2c_*` back to its source file
 - `tools/map_suggest.py` — **semantic mapping suggester**: proposes which `.m` files should share one `.c` (package/directory boundaries + call connectivity + name prefixes), emitting `mode:"ai"` JSON with a `why` per group
