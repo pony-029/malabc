@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MATLAB→C 工程级映射 · matlabc</title>
+<style>
+  :root{--bg:#f6f8fa;--fg:#1f2328;--mut:#57606a;--card:#fff;--line:#d0d7de}
+  @media (prefers-color-scheme:dark){
+    :root{--bg:#0d1117;--fg:#e6edf3;--mut:#8b949e;--card:#161b22;--line:#30363d}
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:34px 20px;background:var(--bg);color:var(--fg);
+       font:15px/1.65 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+  .wrap{max-width:1120px;margin:0 auto}
+  h1{font-size:27px;margin:0 0 6px;letter-spacing:-.01em}
+  .sub{color:var(--mut);margin:0 0 24px}
+  .hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+        gap:12px;margin:0 0 24px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;
+       padding:16px 18px}
+  .kpi b{display:block;font-size:25px;font-variant-numeric:tabular-nums;
+         letter-spacing:-.02em}
+  .kpi span{color:var(--mut);font-size:12.5px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+        padding:18px 20px;margin:0 0 16px}
+  .card h2{font-size:17px;margin:0 0 6px;display:flex;align-items:center;gap:10px}
+  .badge{color:#fff;font-size:11.5px;padding:2px 9px;border-radius:999px;
+         font-weight:600}
+  .meta{color:var(--mut);font-size:13px;margin:0 0 4px}
+  .note{color:var(--mut);font-size:13px;margin:0 0 10px;font-style:italic}
+  .ok{color:#2ea043;font-weight:600}
+  .no{color:#cf222e;font-weight:600}
+  table{width:100%;border-collapse:collapse;margin-top:8px}
+  th{text-align:left;font-size:12px;color:var(--mut);font-weight:600;
+     border-bottom:1px solid var(--line);padding:6px 4px}
+  td{padding:5px 4px;font-size:13px;border-top:1px solid var(--line)}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;width:52px}
+  td.names{color:var(--mut);font-size:12px}
+  .err{margin:10px 0 0;padding:8px 10px;border-radius:8px;font-size:12.5px;
+       background:rgba(207,34,46,.08);color:#cf222e;word-break:break-all}
+  footer{color:var(--mut);font-size:12.5px;margin-top:22px;text-align:center}
+</style></head><body><div class="wrap">
+  <h1>MATLAB → C 工程级映射</h1>
+  <p class="sub">多个 MATLAB 函数 ⇄ 一个 C 文件（以及反向）的守恒验证 ｜ 2026-11-18 00:22 ｜ 3 个工程</p>
+  <div class="hero">
+    <div class="kpi"><b>107</b><span>源 .m 文件</span></div>
+    <div class="kpi"><b>107</b><span>生成 .c 文件</span></div>
+    <div class="kpi"><b>114</b><span>源函数</span></div>
+    <div class="kpi"><b>114</b><span>生成函数</span></div>
+    <div class="kpi"><b>✔</b><span>函数总数守恒</span></div>
+  </div>
+  
+    <section class="card">
+      <header>
+        <h2>multi_fn（一文件多函数） <span class="badge" style="background:#2ea043">转换成功</span></h2>
+        <p class="meta"><code>E:/matlabc/malabc/translate/examples/multi_fn</code> ｜ 0.5 s ｜
+           <b>4</b> 个 .m → <b>4</b> 个 .c ｜
+           <b>11</b> 个函数 → <b>11</b> 个 ｜ 编译 4/4</p>
+        <p class="note">4 个 .m / 11 个函数：5+3+2+1 分布，验证「多个 MATLAB 函数 → 一个 C 文件」 ｜ <span class='ok'>文件数守恒 ✔</span> <span class='ok'>函数数守恒 ✔</span></p>
+      </header>
+      <table class="map">
+        <tr><th>源文件</th><th>函数</th><th></th><th>C 文件</th><th>函数</th><th>生成的 m2c_*</th></tr>
+        <tr><td><code>scores.m</code></td><td class='num'>5</td><td>→</td><td><code>scores_m.c</code></td><td class='num'>5 ✔</td><td class='names'>m2c_scores, m2c_normalize, m2c_scale, m2c_shift, m2c_clamp</td></tr>
+        <tr><td><code>pair.m</code></td><td class='num'>3</td><td>→</td><td><code>pair_m.c</code></td><td class='num'>3 ✔</td><td class='names'>m2c_pair, m2c_twice, m2c_dot2</td></tr>
+        <tr><td><code>orphan.m</code></td><td class='num'>2</td><td>→</td><td><code>orphan_m.c</code></td><td class='num'>2 ✔</td><td class='names'>m2c_orphan_use, m2c_orphan_inner</td></tr>
+        <tr><td><code>solo.m</code></td><td class='num'>1</td><td>→</td><td><code>solo_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_solo</td></tr>
+      </table>
+      
+    </section>
+
+    <section class="card">
+      <header>
+        <h2>kern（真实风格数值库） <span class="badge" style="background:#2ea043">转换成功</span></h2>
+        <p class="meta"><code>E:/matlabc/malabc/translate/examples/kern</code> ｜ 0.6 s ｜
+           <b>10</b> 个 .m → <b>10</b> 个 .c ｜
+           <b>10</b> 个函数 → <b>10</b> 个 ｜ 编译 8/10</p>
+        <p class="note">10 个 .m / 10 个函数：一进一出的对照组 ｜ <span class='ok'>文件数守恒 ✔</span> <span class='ok'>函数数守恒 ✔</span></p>
+      </header>
+      <table class="map">
+        <tr><th>源文件</th><th>函数</th><th></th><th>C 文件</th><th>函数</th><th>生成的 m2c_*</th></tr>
+        <tr><td><code>clip.m</code></td><td class='num'>1</td><td>→</td><td><code>clip_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_clip</td></tr>
+        <tr><td><code>dot_norm.m</code></td><td class='num'>1</td><td>→</td><td><code>dot_norm_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_dot_norm</td></tr>
+        <tr><td><code>energy.m</code></td><td class='num'>1</td><td>→</td><td><code>energy_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_energy</td></tr>
+        <tr><td><code>grade.m</code></td><td class='num'>1</td><td>→</td><td><code>grade_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_grade</td></tr>
+        <tr><td><code>lerp.m</code></td><td class='num'>1</td><td>→</td><td><code>lerp_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_lerp</td></tr>
+        <tr><td><code>moving_avg.m</code></td><td class='num'>1</td><td>→</td><td><code>moving_avg_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_moving_avg</td></tr>
+        <tr><td><code>pipeline.m</code></td><td class='num'>1</td><td>→</td><td><code>pipeline_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_pipeline</td></tr>
+        <tr><td><code>relu.m</code></td><td class='num'>1</td><td>→</td><td><code>relu_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_relu</td></tr>
+        <tr><td><code>saturate.m</code></td><td class='num'>1</td><td>→</td><td><code>saturate_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_saturate</td></tr>
+        <tr><td><code>spread.m</code></td><td class='num'>1</td><td>→</td><td><code>spread_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_spread</td></tr>
+      </table>
+      <p class='err'>编译：E:\temp\matlabc\_map_bench\kern\build\gen\src\gen\clip_m.c:30:35: error: passing argument 2 of 'mlc_op_setidx' makes pointer from integer without a ca</p>
+    </section>
+
+    <section class="card">
+      <header>
+        <h2>annot3（真实工程） <span class="badge" style="background:#2ea043">转换成功</span></h2>
+        <p class="meta"><code>E:/temp/matlabc/annot3</code> ｜ 0.8 s ｜
+           <b>93</b> 个 .m → <b>93</b> 个 .c ｜
+           <b>93</b> 个函数 → <b>93</b> 个 ｜ 编译 92/93</p>
+        <p class="note">93 个 .m 的外部工程，函数分布不均匀 ｜ <span class='ok'>文件数守恒 ✔</span> <span class='ok'>函数数守恒 ✔</span></p>
+      </header>
+      <table class="map">
+        <tr><th>源文件</th><th>函数</th><th></th><th>C 文件</th><th>函数</th><th>生成的 m2c_*</th></tr>
+        <tr><td><code>addEquality.m</code></td><td class='num'>1</td><td>→</td><td><code>addequality_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_addEquality</td></tr>
+        <tr><td><code>addTrivialActivationCuts.m</code></td><td class='num'>1</td><td>→</td><td><code>addtrivialactivationcuts_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_addTrivialActivationCuts</td></tr>
+        <tr><td><code>adjustMaxTime.m</code></td><td class='num'>1</td><td>→</td><td><code>adjustmaxtime_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_adjustMaxTime</td></tr>
+        <tr><td><code>any.m</code></td><td class='num'>1</td><td>→</td><td><code>any_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_any</td></tr>
+        <tr><td><code>binary.m</code></td><td class='num'>1</td><td>→</td><td><code>binary_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_binary</td></tr>
+        <tr><td><code>brutepersp.m</code></td><td class='num'>1</td><td>→</td><td><code>brutepersp_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_brutepersp</td></tr>
+        <tr><td><code>callnone.m</code></td><td class='num'>1</td><td>→</td><td><code>callnone_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_callnone</td></tr>
+        <tr><td><code>cfg_use.m</code></td><td class='num'>1</td><td>→</td><td><code>cfg_use_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_cfg_use</td></tr>
+        <tr><td><code>classifyrows.m</code></td><td class='num'>1</td><td>→</td><td><code>classifyrows_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_classifyrows</td></tr>
+        <tr><td><code>clean_bounds.m</code></td><td class='num'>1</td><td>→</td><td><code>clean_bounds_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_clean_bounds</td></tr>
+        <tr><td><code>clearconic.m</code></td><td class='num'>1</td><td>→</td><td><code>clearconic_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_clearconic</td></tr>
+        <tr><td><code>clearconicinfo.m</code></td><td class='num'>1</td><td>→</td><td><code>clearconicinfo_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_clearconicinfo</td></tr>
+        <tr><td><code>clearcreationtime.m</code></td><td class='num'>1</td><td>→</td><td><code>clearcreationtime_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_clearcreationtime</td></tr>
+        <tr><td><code>cleardual.m</code></td><td class='num'>1</td><td>→</td><td><code>cleardual_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_cleardual</td></tr>
+      </table>
+      <p class='err'>编译：E:\temp\matlabc\_map_bench\annot3\build\gen\src\gen\integer_relax_m.c:22:27: error: 'relaxed_p' undeclared (first use in this function)</p>
+    </section>
+  <footer>由 <code>tools/bench_mapping.py</code> 生成 — 映射关系逐文件比对，不是估算</footer>
+</div></body></html>
