@@ -261,8 +261,15 @@ def numeric_compare(base, gen_root):
             bad += 1
     total = len(common)
     rate = 100.0 * (same + fmt) / total if total else 0.0
+    # **没被比到的函数也要数出来**（R904）。`100%` 只是在"两边都输出了"的
+    # 交集上成立；若某一侧压根没打印，那个函数就**从未被比较过** ——
+    # 不把这件事报出来，读数会显得比实际更强。
+    only_vm = sorted(set(A) - set(B))
+    only_c = sorted(set(B) - set(A))
     return rate, {"common": total, "identical": same, "fmt_only": fmt,
-                  "mismatch": bad, "c_error": cerr}
+                  "mismatch": bad, "c_error": cerr,
+                  "only_vm": len(only_vm), "only_c": len(only_c),
+                  "only_vm_names": only_vm[:5], "only_c_names": only_c[:5]}
 
 
 def main(argv=None):
@@ -323,6 +330,11 @@ def main(argv=None):
                   " ｜ 字面同 %d ｜ 仅格式差 %d ｜ 真不同 %d ｜ C 侧 error %d"
                   % (st["common"], rate, st["identical"], st["fmt_only"],
                      st["mismatch"], st["c_error"]))
+            if st.get("only_vm") or st.get("only_c"):
+                print("  ⚠ 未参与比对：仅 VM 有 %d 个 %r ｜ 仅 C 有 %d 个 %r"
+                      "（这些函数**从未被比较过**，一致率不含它们）"
+                      % (st.get("only_vm", 0), st.get("only_vm_names"),
+                         st.get("only_c", 0), st.get("only_c_names")))
             num["rate"] = round(rate, 1)
 
     if ns.no_record:

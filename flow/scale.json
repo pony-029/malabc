@@ -9,8 +9,22 @@
     "fmt_only": 16,
     "mismatch": 0,
     "c_error": 0,
+    "only_vm": 3,
+    "only_c": 7,
+    "only_vm_names": [
+      "op_setidx_1_0",
+      "op_setidx_3_1",
+      "op_setidx_7_2"
+    ],
+    "only_c_names": [
+      "op_find_1_0",
+      "op_setdiff_1_0",
+      "op_setdiff_3_1",
+      "op_setdiff_7_2",
+      "op_setidx2_2_0"
+    ],
     "rate": 100.0
   },
-  "head": "bd29a5c22e21",
-  "ts": "2026-11-17 00:22:40"
+  "head": "58a9ef31b9bd",
+  "ts": "2026-11-17 21:46:08"
 }
