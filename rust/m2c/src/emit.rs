@@ -1002,7 +1002,24 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
         out.push(format!("{}st = mlc_op_row({}, {}, {});", pad, arg0, idx_c, dst));
     } else if op.id == "OP-SETIDX" && op.args.len() == 2 {
         // args = (右值, 下标)；目标数组就是 dst（就地写，不分配）
-        let val = arg_ref(f, &op.args[0]);
+        //
+        // **右值也要桥接**（R924）：`y(i) = lo` 里 `lo` 是 i64 标量，
+        // 而 C 原型要 `const mlc_array*`。R886 只修了**下标**那一侧，
+        // 于是 `clip_m.c` 报 `passing argument 2 of 'mlc_op_setidx'
+        // makes pointer from integer`（真实工程实测）。
+        let mut bridge: Vec<String> = Vec::new();
+        let val = if is_scalar_name(f, &op.args[0]) {
+            let t = format!("__sv_{}", op.src);
+            bridge.push(format!("{}mlc_array {};", pad, t));
+            bridge.push(format!(
+                "{}if (mlc_array_init(&{}, MLC_F64, 1, (int64_t[]){{1}}) != MLC_OK) {{ return MLC_ERR; }}",
+                pad, t));
+            bridge.push(format!("{}((double *){}.data)[0] = (double){};",
+                                pad, t, ident(&op.args[0])));
+            format!("&{}", t)
+        } else {
+            arg_ref(f, &op.args[0])
+        };
         let idx = &op.args[1];
         // 下标一律走 `idx_operand`（它认得字面量 / i64 标量 / **f64 数组的 [0]**）。
         // 原来这里只写 `ident(idx)`，而下标常常是前端降级出来的 `__h1`
@@ -1022,6 +1039,7 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
                 return out;
             }
         };
+        out.extend(bridge);          // 桥接必须在调用之前
         out.push(format!(
             "{}st = mlc_op_setidx({}, {}, {});", pad, dst, val, idx_c));
     } else if op.args.len() == 2 {
