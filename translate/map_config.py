@@ -204,6 +204,30 @@ def apply_to_mir(text, spec):
     return "".join(out), report
 
 
+def validate_report(report, spec):
+    """核对"配置是否真的生效" —— 返回问题列表（空 = 通过）。
+
+    三条判据（都是"配置写错了但没人告诉你"的情形）：
+
+    1. 某个组**一个函数都没收到** → `sources` 里写的文件名对不上（拼错/路径错），
+       而转换会**静默**成功（那组不产出任何 .c）。
+    2. `unmatched="drop"` 却丢了函数 → 是**有意的**，但必须显式看到数量。
+    3. 总函数数为 0 → MIR 本身没有函数（上游 mir.py 出错）。
+    """
+    problems = []
+    for name, g in (report.get("groups") or {}).items():
+        if g["functions"] == 0:
+            problems.append(
+                "组 %r 没有收到任何函数 —— sources 里的 %r 与 MIR 中的 srcfile 对不上"
+                % (name, g["sources"]))
+    if report.get("dropped"):
+        problems.append("unmatched=drop 丢掉了 %d 个函数（有意为之，但请确认）"
+                        % report["dropped"])
+    if report.get("functions", 0) == 0:
+        problems.append("MIR 里没有任何函数（上游 mir.py 可能失败了）")
+    return problems
+
+
 def load_and_apply(mir_path, spec_path):
     """就地改写 MIR 文件（`run_build` 在 mir.py 之后、m2c 之前调用它）。"""
     spec = load(spec_path)

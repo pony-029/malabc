@@ -1,0 +1,119 @@
+{
+  "src": "E:\\matlabc\\malabc\\translate\\examples\\multi_fn",
+  "stages": [
+    {
+      "name": "① 扫描 .m",
+      "status": "ok",
+      "elapsed": 0.0,
+      "metrics": [
+        [
+          "源文件",
+          4
+        ],
+        [
+          "函数",
+          11
+        ]
+      ],
+      "artifact": "E:\\matlabc\\malabc\\translate\\examples\\multi_fn",
+      "note": ""
+    },
+    {
+      "name": "② 解析成 MIR",
+      "status": "ok",
+      "elapsed": 0.3,
+      "metrics": [
+        [
+          "函数",
+          11
+        ],
+        [
+          "算子",
+          18
+        ],
+        [
+          "未映射",
+          0
+        ]
+      ],
+      "artifact": "E:\\temp\\matlabc\\_mon1\\.m2c\\project.mir",
+      "note": ""
+    },
+    {
+      "name": "③ 映射分组",
+      "status": "ok",
+      "elapsed": 0.0,
+      "metrics": [
+        [
+          "组",
+          2
+        ],
+        [
+          "已归组函数",
+          11
+        ],
+        [
+          "丢弃",
+          0
+        ]
+      ],
+      "artifact": "translate\\examples\\multi_fn\\map_explicit.json",
+      "note": ""
+    },
+    {
+      "name": "④ 生成 C",
+      "status": "ok",
+      "elapsed": 0.0,
+      "metrics": [
+        [
+          ".c 文件",
+          3
+        ],
+        [
+          "完全实现",
+          2
+        ],
+        [
+          "桩",
+          1
+        ]
+      ],
+      "artifact": "E:\\temp\\matlabc\\_mon1\\build\\gen\\src\\gen",
+      "note": ""
+    },
+    {
+      "name": "⑤ 编译",
+      "status": "ok",
+      "elapsed": 0.4,
+      "metrics": [
+        [
+          "抽样",
+          3
+        ],
+        [
+          "通过",
+          3
+        ]
+      ],
+      "artifact": "E:\\temp\\matlabc\\_mon1\\build\\gen\\src\\gen",
+      "note": ""
+    },
+    {
+      "name": "⑥ 运行",
+      "status": "ok",
+      "elapsed": 0.1,
+      "metrics": [
+        [
+          "退出码",
+          0
+        ],
+        [
+          "输出行",
+          11
+        ]
+      ],
+      "artifact": "E:\\temp\\matlabc\\_mon1\\proj.exe",
+      "note": ""
+    }
+  ]
+}
