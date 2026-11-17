@@ -1,6 +1,7 @@
 function y = moving_avg(x, w)
 
 % @m2c shape x 6
+% @m2c i64 w
 % @m2c shape y 6
 % 长度 w 的滑动平均，边界处用原值（不是补零）。
 n = length(x);
