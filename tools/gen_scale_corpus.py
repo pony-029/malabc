@@ -248,6 +248,8 @@ def numeric_compare(base, gen_root):
         return out
 
     A, B = parse(vm), parse(run)
+    _bad_names = []          # 真不同的函数名（R909：只报计数等于没报）
+    _cerr_names = []         # C 侧 error 的函数名
 
     # **空结果的打印约定不同**（R905 实测）：
     # * C 驱动：`printf("名字:")` 后无元素 → 输出一行 `名字:`（值串为空）
@@ -269,6 +271,7 @@ def numeric_compare(base, gen_root):
     for n in common:
         if B[n].startswith("error"):
             cerr += 1
+            _cerr_names.append(n)
             continue
         try:
             a = [float(x) for x in A[n].replace(",", " ").split()]
@@ -278,9 +281,11 @@ def numeric_compare(base, gen_root):
                 same += 1
             else:
                 bad += 1
+                _bad_names.append(n)
             continue
         if len(a) != len(b):
             bad += 1
+            _bad_names.append(n)
         elif all(abs(x - y) <= 1e-9 * max(1.0, abs(y)) for x, y in zip(a, b)):
             if A[n] == B[n]:
                 same += 1
@@ -288,6 +293,7 @@ def numeric_compare(base, gen_root):
                 fmt += 1          # 数值相同、仅打印精度差
         else:
             bad += 1
+            _bad_names.append(n)
     total = len(common)
     rate = 100.0 * (same + fmt) / total if total else 0.0
     # **没被比到的函数也要数出来**（R904）。`100%` 只是在"两边都输出了"的
@@ -298,6 +304,9 @@ def numeric_compare(base, gen_root):
     return rate, {"common": total, "identical": same, "fmt_only": fmt,
                   "mismatch": bad, "c_error": cerr,
                   "empty_both": empty_ok,
+                  # 名字比计数有用：只知道"有 2 个不同"没法开工（R909）
+                  "mismatch_names": _bad_names[:8],
+                  "c_error_names": _cerr_names[:8],
                   "only_vm": len(only_vm), "only_c": len(only_c),
                   "only_vm_names": only_vm[:5], "only_c_names": only_c[:5]}
 

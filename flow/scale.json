@@ -5,11 +5,13 @@
   "bad": 0,
   "numeric": {
     "common": 162,
-    "identical": 144,
+    "identical": 146,
     "fmt_only": 16,
-    "mismatch": 2,
+    "mismatch": 0,
     "c_error": 0,
     "empty_both": 4,
+    "mismatch_names": [],
+    "c_error_names": [],
     "only_vm": 0,
     "only_c": 3,
     "only_vm_names": [],
@@ -18,8 +20,8 @@
       "op_setidx2_3_1",
       "op_setidx2_7_2"
     ],
-    "rate": 98.8
+    "rate": 100.0
   },
-  "head": "29fe0157854d",
-  "ts": "2026-11-17 22:44:57"
+  "head": "05674eb3d3bf",
+  "ts": "2026-11-17 22:58:36"
 }

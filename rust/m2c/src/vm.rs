@@ -108,6 +108,12 @@ pub struct Vm {
     program: Vec<Func>,
     /// 调用深度上限的计数器（递归 MIR 会让 VM 栈无限增长）。
     depth: usize,
+    /// **当前被跑函数的返回声明**（R909）。`OP-SETIDX` 遇到"目标还没写过"时，
+    /// 要按**声明形状**开数组，而不是按下标撑到几格：
+    ///     y 声明 [3]，执行 `y(2)=3`  →  期望 `0 3 0`
+    /// 而按下标撑开只有 `0 3`（实测：C 侧给 `0 3 0`、VM 给 `0 3`，
+    /// 于是被判成"两个后端算得不一样"）。
+    rets: Vec<crate::mir::Var>,
 }
 
 /// 单次运行的调用深度上限。超过就报错而不是栈溢出 —— 栈溢出会把整个进程带走，
@@ -120,6 +126,7 @@ impl Vm {
             env: HashMap::new(),
             program: Vec::new(),
             depth: 0,
+            rets: Vec::new(),
         }
     }
 
@@ -139,6 +146,7 @@ impl Vm {
         shapes: &HashMap<String, Vec<i64>>,
     ) -> Result<HashMap<String, Val>, String> {
         self.env.clear();
+        self.rets = f.rets.clone();
         let mut effective = Vec::new();
         for a in &f.args {
             let sh = shapes.get(&a.name).cloned().unwrap_or_else(|| a.shape.clone());
@@ -266,10 +274,20 @@ impl Vm {
                     // 而不是猜一个形状。
                     let cur = match self.env.get(&op.lhs).cloned() {
                         Some(c) => c,
-                        // 没写过 ⇒ 按 MATLAB 语义读作 0，按下标撑开。
-                        // （`VmL` 里拿不到"这个名字是不是返回值"，而两种情形
-                        //  的语义要求一样：未写入的位置都是 0。）
-                        None => Val::from_vec(vec![0.0; k.max(1) as usize]),
+                        // 没写过 ⇒ 按 MATLAB 语义读作 0。
+                        // **长度取声明形状**（`rets` 里能查到就用它），因为
+                        // "没写过"不等于"只有到下标这么长"：`y` 声明 [3]、
+                        // 执行 `y(2)=3` 的结果是 `0 3 0`，不是 `0 3`。
+                        None => {
+                            let declared = self
+                                .rets
+                                .iter()
+                                .find(|r| r.name == op.lhs)
+                                .map(|r| r.shape.iter().product::<i64>().max(1) as usize)
+                                .unwrap_or(0);
+                            let n = declared.max(k.max(1) as usize);
+                            Val::from_vec(vec![0.0; n])
+                        }
                     };
                     if k < 1 || (k as usize) > cur.numel() {
                         return Err(format!("setidx 越界：{} / {}", k, cur.numel()));
