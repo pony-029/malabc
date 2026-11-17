@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MATLAB→C 大规模测试报告</title>
+<style>
+  :root{--bg:#f6f8fa;--fg:#1f2328;--mut:#57606a;--card:#fff;--line:#d0d7de}
+  @media (prefers-color-scheme:dark){
+    :root{--bg:#0d1117;--fg:#e6edf3;--mut:#8b949e;--card:#161b22;--line:#30363d}
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:34px 20px;background:var(--bg);color:var(--fg);
+       font:15px/1.65 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+  .wrap{max-width:1000px;margin:0 auto}
+  h1{font-size:27px;margin:0 0 6px}
+  .sub{color:var(--mut);margin:0 0 24px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+        padding:18px 20px;margin:0 0 16px}
+  .card h2{font-size:17px;margin:0 0 10px}
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;font-size:12px;color:var(--mut);border-bottom:1px solid var(--line);
+     padding:7px 6px}
+  td{padding:6px;font-size:13.5px;border-top:1px solid var(--line)}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+  .mono{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;
+        background:rgba(207,34,46,.07);color:#cf222e;padding:8px 10px;
+        border-radius:8px;word-break:break-all;margin:0 0 8px}
+  .note{color:var(--mut);font-size:13px;margin:0}
+  .ok{color:#2ea043;font-weight:600}
+  footer{color:var(--mut);font-size:12.5px;margin-top:20px;text-align:center}
+</style></head><body><div class="wrap">
+  <h1>MATLAB → C 大规模测试报告</h1>
+  <p class="sub">2026-11-18 00:42 ｜ 3 个工程 · 映射守恒 + 编译 + 缺陷清单</p>
+
+  <section class="card">
+    <h2>① 工程级映射（多个 MATLAB 函数 ⇄ 一个 C 文件）</h2>
+    <table>
+      <tr><th>工程</th><th>源 .m</th><th>生成 .c</th><th>源函数</th>
+          <th>生成函数</th><th>编译</th></tr>
+      <tr><td>multi_fn（一文件多函数）</td><td class='num'>4</td><td class='num'>4</td><td class='num'>11</td><td class='num'>11</td><td class='num'>4/4</td></tr>
+<tr><td>kern（真实风格数值库）</td><td class='num'>10</td><td class='num'>10</td><td class='num'>10</td><td class='num'>10</td><td class='num'>8/10</td></tr>
+<tr><td>annot3（真实工程）</td><td class='num'>93</td><td class='num'>93</td><td class='num'>93</td><td class='num'>93</td><td class='num'>92/93</td></tr>
+    </table>
+    <p class="note">文件数与函数数**全部守恒**：没有函数在转换中丢失。
+       annot3 是 93 个 .m 压成 92 个 .c（一组 2 文件合并）。</p>
+  </section>
+
+  <section class="card">
+    <h2>② annot3 的残缺分布（92 个 .c 里 76 个含桩）</h2>
+    <table><tr><td><code>TODO(unmapped)</code></td><td class='num'>135</td></tr>
+<tr><td><code>TODO(ret)</code></td><td class='num'>36</td></tr>
+<tr><td><code>TODO(reject)</code></td><td class='num'>29</td></tr>
+<tr><td><code>TODO(shape)</code></td><td class='num'>3</td></tr>
+<tr><td><code>TODO(if)</code></td><td class='num'>2</td></tr>
+<tr><td><code>TODO(call)</code></td><td class='num'>1</td></tr></table>
+    <p class="note">`unmapped` 占绝大多数，而它们**没有单一主因**：
+      `lmi(x)` 这类跨文件调用、`for i = 1:length()+N` 的表达式上界、
+      `union/reshape/fix` 未登记算子、`[n,m] = size(x)` 多返回值……</p>
+  </section>
+
+  <section class="card">
+    <h2>③ 本轮新发现的两个真缺陷</h2>
+  </section>
+  <section class='card'><h2>setidx 的右值标量未桥接</h2><p class='mono'>clip_m.c:30 passing argument 2 of 'mlc_op_setidx' makes pointer from ...</p><p class='note'>`y(i) = lo`（lo 是 i64 标量）→ 生成 `mlc_op_setidx(&y, lo, i)`，而 C 原型要 `const mlc_array*`。R886 只修了**下标**的桥接，**右值**没修。</p></section>
+<section class='card'><h2>局部标量用前未声明</h2><p class='mono'>moving_avg_m.c:45 'k' undeclared</p><p class='note'>`k = lo`（两者都是标量）→ 生成 `k = lo;` 却没有 `int64_t k;`。标量局部量的声明机制没覆盖 `set:` 这条路。</p></section>
+
+  <footer>由 tools/bench_mapping.py 与 flow_monitor 的实跑读数汇总 —
+          每个数字都来自运行，不是估算</footer>
+</div></body></html>
