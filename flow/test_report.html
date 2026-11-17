@@ -29,7 +29,7 @@
   footer{color:var(--mut);font-size:12.5px;margin-top:20px;text-align:center}
 </style></head><body><div class="wrap">
   <h1>MATLAB → C 大规模测试报告</h1>
-  <p class="sub">2026-11-18 00:42 ｜ 3 个工程 · 映射守恒 + 编译 + 缺陷清单</p>
+  <p class="sub">2026-11-18 00:46 ｜ 3 个工程 · 映射守恒 + 编译 + 缺陷清单</p>
 
   <section class="card">
     <h2>① 工程级映射（多个 MATLAB 函数 ⇄ 一个 C 文件）</h2>
@@ -37,8 +37,8 @@
       <tr><th>工程</th><th>源 .m</th><th>生成 .c</th><th>源函数</th>
           <th>生成函数</th><th>编译</th></tr>
       <tr><td>multi_fn（一文件多函数）</td><td class='num'>4</td><td class='num'>4</td><td class='num'>11</td><td class='num'>11</td><td class='num'>4/4</td></tr>
-<tr><td>kern（真实风格数值库）</td><td class='num'>10</td><td class='num'>10</td><td class='num'>10</td><td class='num'>10</td><td class='num'>8/10</td></tr>
-<tr><td>annot3（真实工程）</td><td class='num'>93</td><td class='num'>93</td><td class='num'>93</td><td class='num'>93</td><td class='num'>92/93</td></tr>
+<tr><td>kern（真实风格数值库）</td><td class='num'>10</td><td class='num'>10</td><td class='num'>10</td><td class='num'>10</td><td class='num'>10/10</td></tr>
+<tr><td>annot3（真实工程）</td><td class='num'>93</td><td class='num'>93</td><td class='num'>93</td><td class='num'>93</td><td class='num'>93/93</td></tr>
     </table>
     <p class="note">文件数与函数数**全部守恒**：没有函数在转换中丢失。
        annot3 是 93 个 .m 压成 92 个 .c（一组 2 文件合并）。</p>
@@ -58,7 +58,7 @@
   </section>
 
   <section class="card">
-    <h2>③ 本轮新发现的两个真缺陷</h2>
+    <h2>③ 本轮修复的两个真缺陷（已在 R924/R925 落地）</h2>
   </section>
   <section class='card'><h2>setidx 的右值标量未桥接</h2><p class='mono'>clip_m.c:30 passing argument 2 of 'mlc_op_setidx' makes pointer from ...</p><p class='note'>`y(i) = lo`（lo 是 i64 标量）→ 生成 `mlc_op_setidx(&y, lo, i)`，而 C 原型要 `const mlc_array*`。R886 只修了**下标**的桥接，**右值**没修。</p></section>
 <section class='card'><h2>局部标量用前未声明</h2><p class='mono'>moving_avg_m.c:45 'k' undeclared</p><p class='note'>`k = lo`（两者都是标量）→ 生成 `k = lo;` 却没有 `int64_t k;`。标量局部量的声明机制没覆盖 `set:` 这条路。</p></section>

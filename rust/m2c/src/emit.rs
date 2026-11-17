@@ -1811,6 +1811,8 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
     let mut consts: Vec<(String, String, i64)> = Vec::new();
     // 多维常量：(名字, 形状, 值, 源行)
     let mut fills: Vec<(String, Vec<i64>, String, i64)> = Vec::new();
+    // `set:` 目标里"需要声明但不需要初始化"的数组名（R925，见下方 Set 分支）
+    let mut set_arrays: Vec<String> = Vec::new();
     walk_stmts(&f.body, &mut |s| match s {
         Stmt::Const { name, value, src } => {
             let n = ident(name);
@@ -1822,6 +1824,34 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
             let n = ident(name);
             if !fills.iter().any(|(x, _, _, _)| x == &n) {
                 fills.push((n, dims.clone(), value.clone(), *src));
+            }
+        }
+        // **`k = lo` 这类"整份拷贝"的目标要声明**（R925）。
+        //
+        // `lo` 由前一条 `op:` 产出（既不是形参、不是返回值、也没 `var:` 行），
+        // 于是 `set:k:lo` 的 lhs `k` **三处判定都不认** —— 既不当标量（没有 dtype），
+        // 也没被声明成数组，而 R913 又让它可以走整体拷贝，结果生成
+        // `mlc_op_copy(&lo, &k)` 而 `k` 从未声明：
+        // `moving_avg_m.c:45: 'k' undeclared`（kern 工程实测，8/10 里的那 1 个）。
+        //
+        // 这里只**声明不初始化**：拷贝算子自己会按源数组的尺寸分配。
+        // （把它放进 `temps` 不行 —— 那条路无条件 init 成 1 元素，尺寸会不对。）
+        Stmt::Set { lhs, value, .. } => {
+            let n = ident(lhs);
+            let v = ident(value);
+            let rhs_is_array = f.args.iter().any(|a| ident(&a.name) == v)
+                || f.rets.iter().any(|r| ident(&r.name) == v)
+                || consts.iter().any(|(x, _, _)| x == &v)
+                || fills.iter().any(|(x, _, _, _)| x == &v)
+                || temps.iter().any(|(x, _, _)| x == &v);
+            let known = f.args.iter().any(|a| ident(&a.name) == n)
+                || f.rets.iter().any(|r| ident(&r.name) == n)
+                || f.locals.iter().any(|l| ident(&l.name) == n)
+                || consts.iter().any(|(x, _, _)| x == &n)
+                || fills.iter().any(|(x, _, _, _)| x == &n)
+                || temps.iter().any(|(x, _, _)| x == &n);
+            if rhs_is_array && !known && !set_arrays.contains(&n) {
+                set_arrays.push(n);
             }
         }
         _ => {}
@@ -1985,6 +2015,15 @@ pub fn emit_func(f: &Func, known: &[Func]) -> Result<String, String> {
             "    for (int64_t i = 0; i < {}; ++i) {{ ((double *){})[i] = {}; }}",
             numel, access, v));
         if bound.is_none() { need_free.push(n.clone()); }
+    }
+    // `set:` 的整份拷贝目标：**只声明**（尺寸由拷贝算子按源分配），声明后计入待释放
+    for n in &set_arrays {
+        if declared.contains(n) {
+            continue;
+        }
+        out.push(format!("    mlc_array {} = {{0}};", n));
+        declared.insert(n.clone());
+        need_free.push(n.clone());
     }
 
     for l in &f.locals {

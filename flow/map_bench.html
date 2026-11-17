@@ -40,7 +40,7 @@
   footer{color:var(--mut);font-size:12.5px;margin-top:22px;text-align:center}
 </style></head><body><div class="wrap">
   <h1>MATLAB → C 工程级映射</h1>
-  <p class="sub">多个 MATLAB 函数 ⇄ 一个 C 文件（以及反向）的守恒验证 ｜ 2026-11-18 00:42 ｜ 3 个工程</p>
+  <p class="sub">多个 MATLAB 函数 ⇄ 一个 C 文件（以及反向）的守恒验证 ｜ 2026-11-18 00:46 ｜ 3 个工程</p>
   <div class="hero">
     <div class="kpi"><b>107</b><span>源 .m 文件</span></div>
     <div class="kpi"><b>107</b><span>生成 .c 文件</span></div>
@@ -52,7 +52,7 @@
     <section class="card">
       <header>
         <h2>multi_fn（一文件多函数） <span class="badge" style="background:#2ea043">转换成功</span></h2>
-        <p class="meta"><code>E:/matlabc/malabc/translate/examples/multi_fn</code> ｜ 0.6 s ｜
+        <p class="meta"><code>E:/matlabc/malabc/translate/examples/multi_fn</code> ｜ 0.5 s ｜
            <b>4</b> 个 .m → <b>4</b> 个 .c ｜
            <b>11</b> 个函数 → <b>11</b> 个 ｜ 编译 4/4</p>
         <p class="note">4 个 .m / 11 个函数：5+3+2+1 分布，验证「多个 MATLAB 函数 → 一个 C 文件」 ｜ <span class='ok'>文件数守恒 ✔</span> <span class='ok'>函数数守恒 ✔</span></p>
@@ -70,9 +70,9 @@
     <section class="card">
       <header>
         <h2>kern（真实风格数值库） <span class="badge" style="background:#2ea043">转换成功</span></h2>
-        <p class="meta"><code>E:/matlabc/malabc/translate/examples/kern</code> ｜ 0.6 s ｜
+        <p class="meta"><code>E:/matlabc/malabc/translate/examples/kern</code> ｜ 0.5 s ｜
            <b>10</b> 个 .m → <b>10</b> 个 .c ｜
-           <b>10</b> 个函数 → <b>10</b> 个 ｜ 编译 8/10</p>
+           <b>10</b> 个函数 → <b>10</b> 个 ｜ 编译 10/10</p>
         <p class="note">10 个 .m / 10 个函数：一进一出的对照组 ｜ <span class='ok'>文件数守恒 ✔</span> <span class='ok'>函数数守恒 ✔</span></p>
       </header>
       <table class="map">
@@ -88,15 +88,15 @@
         <tr><td><code>saturate.m</code></td><td class='num'>1</td><td>→</td><td><code>saturate_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_saturate</td></tr>
         <tr><td><code>spread.m</code></td><td class='num'>1</td><td>→</td><td><code>spread_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_spread</td></tr>
       </table>
-      <p class='err'>编译：E:\temp\matlabc\_map_bench\kern\build\gen\src\gen\clip_m.c:30:35: error: passing argument 2 of 'mlc_op_setidx' makes pointer from integer without a ca</p>
+      
     </section>
 
     <section class="card">
       <header>
         <h2>annot3（真实工程） <span class="badge" style="background:#2ea043">转换成功</span></h2>
-        <p class="meta"><code>E:/temp/matlabc/annot3</code> ｜ 0.7 s ｜
+        <p class="meta"><code>E:/temp/matlabc/annot3</code> ｜ 0.6 s ｜
            <b>93</b> 个 .m → <b>93</b> 个 .c ｜
-           <b>93</b> 个函数 → <b>93</b> 个 ｜ 编译 92/93</p>
+           <b>93</b> 个函数 → <b>93</b> 个 ｜ 编译 93/93</p>
         <p class="note">93 个 .m 的外部工程，函数分布不均匀 ｜ <span class='ok'>文件数守恒 ✔</span> <span class='ok'>函数数守恒 ✔</span></p>
       </header>
       <table class="map">
@@ -116,7 +116,7 @@
         <tr><td><code>clearcreationtime.m</code></td><td class='num'>1</td><td>→</td><td><code>clearcreationtime_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_clearcreationtime</td></tr>
         <tr><td><code>cleardual.m</code></td><td class='num'>1</td><td>→</td><td><code>cleardual_m.c</code></td><td class='num'>1 ✔</td><td class='names'>m2c_cleardual</td></tr>
       </table>
-      <p class='err'>编译：E:\temp\matlabc\_map_bench\annot3\build\gen\src\gen\integer_relax_m.c:22:27: error: 'relaxed_p' undeclared (first use in this function)</p>
+      
     </section>
   <footer>由 <code>tools/bench_mapping.py</code> 生成 — 映射关系逐文件比对，不是估算</footer>
 </div></body></html>
