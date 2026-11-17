@@ -1633,6 +1633,15 @@ def _lower_setidx(out, code, counter, known_ops):
     if not m:
         return False
     lhs, idx, rhs = m.group(1), m.group(2), m.group(3).strip()
+    # **MIR 用 `:` 分隔字段，而 MATLAB 的 `:` 是普通语法**（`a(i,:)` / `v(:)`）。
+    # 右值或下标里带冒号时，拼出来的 `op:` 行会被切成更多段 —— 校验器看到
+    # "3 个输入"，整棵树**中止**（R917 实测：yalmip 1682 个 .m 全部转不出来，
+    # 报的正是 `OP-SETIDX:gain:prod(W.^local_monom(i,:)):i`）。
+    #
+    # 这种表达式本来也降不了（`prod(...)` 未映射），所以**不进 `op:`**，
+    # 交给 `unmapped:` —— 那才是"我降不了"的诚实通道，且只影响这一条语句。
+    if ":" in rhs or ":" in idx:
+        return False
     if "OP-INDEX" in known_ops:
         mc = _RHS_CALL.match(rhs)
         if mc:

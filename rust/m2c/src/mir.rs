@@ -303,10 +303,19 @@ fn parse_op(rest: &str, src: i64) -> Result<Op, String> {
     // 未知 op-id 不在这里判 —— 那是"算子未登记"的另一种病，由别的门管。
     if let Some(&(id, lo, hi)) = OP_ARITY.iter().find(|(id, _, _)| *id == parts[0]) {
         if args.len() < lo || args.len() > hi {
-            return Err(format!(
-                "算子 {} 接受 {}..={} 个输入，实际给了 {} 个（生成物会被 C 原型拒绝）：{}",
-                id, lo, hi, args.len(), rest
-            ));
+            // **不中止整份 MIR**（R918）：实参个数不符说明"这一条降级错了"，
+            // 而不是"这份工程不合法"。原来直接 Err，于是**一个语句**让整棵树
+            // 1682 个文件全部转不出来（R917 实测 yalmip）。
+            // 改成把它记成**未知算子**：发射器会发 `TODO(op)` + `MLC_UNIMPLEMENTED`，
+            // 于是"这一个函数残缺、其余照常产出"，而生成的 C 仍然合法。
+            let mut a = args.clone();
+            a.retain(|x| !x.is_empty());
+            return Ok(Op {
+                id: "OP-ARITY-ERROR".to_string(),
+                lhs: parts[1].to_string(),
+                args: a,
+                src,
+            });
         }
     }
     Ok(Op { id: parts[0].to_string(), lhs: parts[1].to_string(),
