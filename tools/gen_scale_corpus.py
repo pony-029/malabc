@@ -139,7 +139,12 @@ def make_func(op_id, sample, n, idx):
     # 结果 `mlc_op_hcat` 看到 `numel(out)=3 != sh=6` → MLC_ERR（C 侧 error 的成因）。
     # 修这里之前，`op_hcat_*` 的三个 C 侧 error 会一直在。
     y_shape2 = {"OP-VCAT": "2,%d" % n,
-                "OP-TRANSPOSE": "%d,1" % n, "OP-COLRANGE": "2,1"}.get(op_id)
+                "OP-TRANSPOSE": "%d,1" % n, "OP-COLRANGE": "2,1",
+                # `A(i,j)=v` 改的是**入参**，样本本身从不给返回变量赋值 ——
+                # 于是函数返回一个从未写过的 `y`，两侧都没意义可比
+                # （实测：C 侧 error、VM 干脆不打印 → 3 个函数"从未被比较"）。
+                # 补一句 `y = A;` 才是真实写法：写完再返回。
+                "OP-SETIDX2": "2,2"}.get(op_id)
     # **把 lhs 统一改写成 `y`**：`find` 的样本是 `i = find(...)`，而 `i` 会被
     # 发射器当成"循环变量/i64 标量"（`is_loop_var`），于是返回变量 `i` 被按
     # 整型指针传，gcc 报 `incompatible type for argument 4 of mlc_op_find_alloc`。
@@ -154,6 +159,8 @@ def make_func(op_id, sample, n, idx):
     # 被写的数组 —— 于是它打印 `skipped (no shape)`，这 6 个函数从未被比较过
     # （R905 实测：仅 VM 3 个 + 仅 C 3 个）。补一行初始化让目标先有形状，
     # 这也是真实 MATLAB 代码的写法（先用 zeros 建数组再按下标写）。
+    if op_id == "OP-SETIDX2":
+        body = "%s\n  y = A;" % body
     # ⚠ 试过给 `y(2)=3` 补一行 `y = zeros(1,4)` 让驱动能构造目标（R905）：
     # 效果是"未比对"从 6 降到 3，但立刻多出 3 个 C 侧 error（`setidx2` 的
     # 语义与 zeros 建出来的目标对不上），净收益为负，已回退。
