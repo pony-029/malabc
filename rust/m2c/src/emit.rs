@@ -1416,6 +1416,12 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                 let known_names = callee.is_some() && sig_err.is_none();
                 let mut call_args: Vec<String> = Vec::new();
                 let mut ok = known_names;
+                // **拒绝的具体理由**（R912）。此前字面量配数组形参时只把
+                // `ok` 置 false、不留原因，于是外层一律报
+                // 「X 不是本文件里已生成的函数」—— 而 X 明明就在同一份 MIR 里。
+                // 实测（kern 工程）：`moving_avg(x, 2)` 的 2 配的是**数组形参**，
+                // 消息却把人引去查"函数为什么找不到"。
+                let mut skip_why: Option<String> = None;
                 // 形参一律**按值**（`mlc_array x` / `int64_t i`），
                 // 所以实参直接写名字；只有"输出参数"才取地址。
                 for (argi, a) in args.iter().enumerate() {
@@ -1440,6 +1446,13 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                             } else if is_num_literal(a) {
                                 // 字面量配数组形参：需要先落临时量，不猜
                                 ok = false;
+                                let pn = callee
+                                    .and_then(|c| c.args.get(argi))
+                                    .map(|p| p.name.clone())
+                                    .unwrap_or_else(|| "?".to_string());
+                                skip_why = Some(format!(
+                                    "实参 {} 是字面量，而形参 {} 是数组（需先落 1×1 临时量）",
+                                    a, pn));
                                 call_args.push(ident(a));
                             } else if f.declared().iter().any(|d| d == a) {
                                 // **上一跳的产出**（`t = scale(a,2); y = addc(t,1);`）：
@@ -1474,8 +1487,13 @@ fn emit_block(f: &Func, stmts: &[Stmt], indent: &str,
                 } else {
                     let why = match sig_err {
                         Some(e) => format!("TODO(call): {}", e),
-                        None => format!("TODO(call): {} 不是本文件里已生成的函数",
-                                        func),
+                        // 有具体理由就用它 —— 否则「不是本文件里已生成的函数」
+                        // 会把"实参形态不对"误报成"函数不存在"（R912）
+                        None => match skip_why {
+                            Some(w) => format!("TODO(call): {}", w),
+                            None => format!("TODO(call): {} 不是本文件里已生成的函数",
+                                            func),
+                        },
                     };
                     out.push(format!("{}{}*/", indent, format!("/* {} ", why)));
                     out.push(format!("{}return MLC_UNIMPLEMENTED;", indent));
