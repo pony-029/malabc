@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "mode": "explicit",
+  "groups": [
+    {
+      "name": "numeric_core",
+      "sources": [
+        "scores.m",
+        "pair.m"
+      ]
+    },
+    {
+      "name": "misc",
+      "sources": [
+        "solo.m"
+      ]
+    }
+  ],
+  "unmatched": "own"
+}

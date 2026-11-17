@@ -32,7 +32,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CFG = os.path.join(HERE, "translate", "examples", "m2c.project.json")
 
 
-def run_to_c(src_dir, out_dir=None, cfg_path=None):
+def run_to_c(src_dir, out_dir=None, cfg_path=None, map_file=None):
     """执行转换，返回退出码。逻辑与 R874 里那份一致，只是搬到了本文件。"""
     src = os.path.abspath(src_dir)
     if not os.path.isdir(src):
@@ -59,7 +59,7 @@ def run_to_c(src_dir, out_dir=None, cfg_path=None):
     cfg["matlab"]["root"] = src
     print("[to-c] 源：%s" % src, flush=True)
     print("[to-c] 出：%s" % out, flush=True)
-    rc, _log, text = PM.run_build(cfg, out, cfgs)
+    rc, _log, text = PM.run_build(cfg, out, cfgs, map_spec=map_file)
     if text:
         sys.stdout.write(text if text.endswith("\n") else text + "\n")
     gen = os.path.join(out, cfg["c"]["root"])
@@ -81,8 +81,11 @@ def main(argv=None):
                     help="产物目录（默认 <src>/_m2c_build）")
     ap.add_argument("--config", metavar="FILE",
                     help="工程配置（默认 translate/examples/m2c.project.json）")
+    ap.add_argument("--map", metavar="FILE",
+                    help="映射配置 JSON：指定哪些 .m 合成一个 .c"
+                         "（格式见 translate/map_config.py）")
     ns = ap.parse_args(argv)
-    return run_to_c(ns.src, ns.output, ns.config)
+    return run_to_c(ns.src, ns.output, ns.config, ns.map)
 
 
 if __name__ == "__main__":

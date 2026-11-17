@@ -786,8 +786,13 @@ def cflags_string(fl, base_dir):
     return " ".join(parts)
 
 
-def run_build(cfg, base, cfg_path, m2c=None, python=None):
-    """真的执行：mir.py -> m2c build。返回 (rc, 命令列表, 输出)。"""
+def run_build(cfg, base, cfg_path, m2c=None, python=None, map_spec=None):
+    """真的执行：mir.py -> [映射分组] -> m2c build。返回 (rc, 命令列表, 输出)。
+
+    `map_spec`：映射配置 JSON 的路径（见 `translate/map_config.py`）。
+    传了就**在 mir.py 之后、m2c 之前**改写 MIR 的 `# srcfile:` 标注 ——
+    生成器本来就按它切翻译单元，所以"多个 .m 合成一个 .c"不需要改 C 侧一行。
+    """
     import subprocess
     import sys
 
@@ -816,13 +821,23 @@ def run_build(cfg, base, cfg_path, m2c=None, python=None):
             "--out", os.path.join(base, fl["c_root"])] + cflags_string(fl, base).split()
 
     log = []
-    for cmd in (cmd1, cmd2):
+    map_report = None
+    for idx, cmd in enumerate((cmd1, cmd2)):
         log.append(" ".join(cmd))
         r = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                            stderr=subprocess.STDOUT, timeout=900)
         out = r.stdout.decode("utf-8", "replace")
         if r.returncode != 0:
             return r.returncode, log, out
+        # **映射分组**：必须在 mir.py 产出之后、m2c 读它之前（R919）
+        if idx == 0 and map_spec:
+            try:
+                import map_config as _mc
+                _, map_report = _mc.load_and_apply(mir, map_spec)
+                log.append("# 映射分组：%r" % (map_report,))
+            except Exception as e:            # noqa: BLE001
+                log.append("# 映射配置无效：%s" % e)
+                return 2, log, "映射配置无效：%s" % e
 
     # —— 生成期预算（P2）：**构建成功之后立刻算**，并把结果写进产物 ——
     # 之所以放在这里而不是留给板子：嵌入式最差的交付形态是"能编过、一跑就崩"。
