@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MATLAB → C 转换实测 · matlabc</title>
+<style>
+  :root{--bg:#f6f8fa;--fg:#1f2328;--mut:#57606a;--card:#fff;--line:#d0d7de}
+  @media (prefers-color-scheme:dark){
+    :root{--bg:#0d1117;--fg:#e6edf3;--mut:#8b949e;--card:#161b22;--line:#30363d}
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:34px 20px;background:var(--bg);color:var(--fg);
+       font:15px/1.65 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+  .wrap{max-width:1060px;margin:0 auto}
+  h1{font-size:27px;margin:0 0 6px;letter-spacing:-.01em}
+  .sub{color:var(--mut);margin:0 0 24px}
+  .hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));
+        gap:12px;margin:0 0 24px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;
+       padding:16px 18px}
+  .kpi b{display:block;font-size:25px;font-variant-numeric:tabular-nums;
+         letter-spacing:-.02em}
+  .kpi span{color:var(--mut);font-size:12.5px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+        padding:18px 20px;margin:0 0 16px}
+  .card h2{font-size:17px;margin:0 0 6px;display:flex;align-items:center;gap:10px}
+  .badge{color:#fff;font-size:11.5px;padding:2px 9px;border-radius:999px;
+         font-weight:600}
+  .meta{color:var(--mut);font-size:13px;margin:0 0 4px}
+  .note{color:var(--mut);font-size:13px;margin:0 0 10px;font-style:italic}
+  table{width:100%;border-collapse:collapse;margin-top:6px}
+  td{padding:6px 0;font-size:13.5px;border-top:1px solid var(--line)}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;width:130px;
+         font-weight:600}
+  .bar{height:7px;background:var(--line);border-radius:999px;overflow:hidden}
+  .bar span{display:block;height:100%;border-radius:999px;opacity:.85}
+  .err{margin:10px 0 0;padding:8px 10px;border-radius:8px;font-size:12.5px;
+       background:rgba(207,34,46,.08);color:#cf222e;word-break:break-all}
+  footer{color:var(--mut);font-size:12.5px;margin-top:22px;text-align:center}
+</style></head><body><div class="wrap">
+  <h1>MATLAB → C 转换实测</h1>
+  <p class="sub">对多个 .m 工程跑主线 <code>matlabc_toc.py</code> ｜ 2026-11-18 00:15 ｜ 4 个工程（成功 2）</p>
+  <div class="hero">
+    <div class="kpi"><b>1,954</b><span>源 .m 文件</span></div>
+    <div class="kpi"><b>179</b><span>生成 .c</span></div>
+    <div class="kpi"><b>57.5%</b><span>完全实现率</span></div>
+    <div class="kpi"><b>9.8 s</b><span>合计耗时</span></div>
+  </div>
+  
+    <section class="card">
+      <header>
+        <h2>YALMIP（真实 MATLAB 工程） <span class="badge" style="background:#cf222e">转换失败</span></h2>
+        <p class="meta"><code>E:/temp/matlabc/yalmip</code> ｜ 耗时 <b>6.3 s</b></p>
+        <p class="note">1682 个 .m：优化建模工具箱，跨文件调用最密的一类</p>
+      </header>
+      <table><tr><td>源 .m 文件</td><td class='num'>1,682</td><td><div class='bar'><span style='width:86.1%;background:#cf222e'></span></div></td></tr><tr><td>生成 .c</td><td class='num'>0</td><td><div class='bar'><span style='width:1.2%;background:#cf222e'></span></div></td></tr><tr><td>完全实现</td><td class='num'>0（0.0%）</td><td><div class='bar'><span style='width:1.2%;background:#cf222e'></span></div></td></tr></table>
+      <p class='err'>MIR 不合法：算子 OP-SETIDX 接受 2..=2 个输入，实际给了 3 个（生成物会被 C 原型拒绝）：OP-SETIDX:gain:prod(W.^local_monom(i,:)):i</p>
+    </section>
+
+    <section class="card">
+      <header>
+        <h2>规模语料 scale_m <span class="badge" style="background:#2ea043">转换成功</span></h2>
+        <p class="meta"><code>E:/temp/matlabc/scale_m</code> ｜ 耗时 <b>1.9 s</b></p>
+        <p class="note">169 个函数：55 算子 × 3 体量 + 4 控制流</p>
+      </header>
+      <table><tr><td>源 .m 文件</td><td class='num'>169</td><td><div class='bar'><span style='width:8.6%;background:#2ea043'></span></div></td></tr><tr><td>生成 .c</td><td class='num'>169</td><td><div class='bar'><span style='width:94.4%;background:#2ea043'></span></div></td></tr><tr><td>完全实现</td><td class='num'>94（55.6%）</td><td><div class='bar'><span style='width:55.6%;background:#2ea043'></span></div></td></tr><tr><td>抽样编译（前 60 个）</td><td class='num'>60 / 60</td><td><div class='bar'><span style='width:100.0%;background:#2ea043'></span></div></td></tr></table>
+      
+    </section>
+
+    <section class="card">
+      <header>
+        <h2>annot3 <span class="badge" style="background:#cf222e">转换失败</span></h2>
+        <p class="meta"><code>E:/temp/matlabc/annot3</code> ｜ 耗时 <b>1.1 s</b></p>
+        <p class="note">93 个 .m 的中等工程</p>
+      </header>
+      <table><tr><td>源 .m 文件</td><td class='num'>93</td><td><div class='bar'><span style='width:4.8%;background:#cf222e'></span></div></td></tr><tr><td>生成 .c</td><td class='num'>0</td><td><div class='bar'><span style='width:1.2%;background:#cf222e'></span></div></td></tr><tr><td>完全实现</td><td class='num'>0（0.0%）</td><td><div class='bar'><span style='width:1.2%;background:#cf222e'></span></div></td></tr></table>
+      <p class='err'>MIR 不合法：算子 OP-SETIDX 接受 2..=2 个输入，实际给了 3 个（生成物会被 C 原型拒绝）：OP-SETIDX:p_ub:min([p_ub(col) U./-val(:)],[],2):col</p>
+    </section>
+
+    <section class="card">
+      <header>
+        <h2>kern 数值库（真实风格） <span class="badge" style="background:#2ea043">转换成功</span></h2>
+        <p class="meta"><code>E:/matlabc/malabc/translate/examples/kern</code> ｜ 耗时 <b>0.5 s</b></p>
+        <p class="note">10 个文件：多文件 + 跨文件调用，按人写的方式组织</p>
+      </header>
+      <table><tr><td>源 .m 文件</td><td class='num'>10</td><td><div class='bar'><span style='width:1.2%;background:#2ea043'></span></div></td></tr><tr><td>生成 .c</td><td class='num'>10</td><td><div class='bar'><span style='width:5.6%;background:#2ea043'></span></div></td></tr><tr><td>完全实现</td><td class='num'>9（90.0%）</td><td><div class='bar'><span style='width:90.0%;background:#2ea043'></span></div></td></tr><tr><td>抽样编译（前 10 个）</td><td class='num'>8 / 10</td><td><div class='bar'><span style='width:80.0%;background:#2ea043'></span></div></td></tr></table>
+      <p class='err'>编译：E:\temp\matlabc\_toc_bench\kern\build\gen\src\gen\clip_m.c:30:35: error: passing argument 2 of 'mlc_op_setidx' makes pointer from integer without a cast [-Wint-</p>
+    </section>
+  <footer>由 <code>tools/bench_toc.py</code> 生成 — 数字全部来自实跑；失败与超时如实记录，并写明原因</footer>
+</div></body></html>

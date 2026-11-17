@@ -1,0 +1,62 @@
+[
+  {
+    "id": "yalmip",
+    "name": "YALMIP（真实 MATLAB 工程）",
+    "path": "E:\\temp\\matlabc\\yalmip",
+    "note": "1682 个 .m：优化建模工具箱，跨文件调用最密的一类",
+    "status": "fail",
+    "error": "MIR 不合法：算子 OP-SETIDX 接受 2..=2 个输入，实际给了 3 个（生成物会被 C 原型拒绝）：OP-SETIDX:gain:prod(W.^local_monom(i,:)):i",
+    "elapsed": 6.3,
+    "mfiles": 1682,
+    "cfiles": 0,
+    "full": 0,
+    "compile_ok": 0,
+    "compile_total": 0,
+    "compile_err": ""
+  },
+  {
+    "id": "scale_m",
+    "name": "规模语料 scale_m",
+    "path": "E:\\temp\\matlabc\\scale_m",
+    "note": "169 个函数：55 算子 × 3 体量 + 4 控制流",
+    "status": "ok",
+    "error": "",
+    "elapsed": 1.9,
+    "mfiles": 169,
+    "cfiles": 169,
+    "full": 94,
+    "compile_ok": 60,
+    "compile_total": 60,
+    "compile_err": ""
+  },
+  {
+    "id": "annot3",
+    "name": "annot3",
+    "path": "E:\\temp\\matlabc\\annot3",
+    "note": "93 个 .m 的中等工程",
+    "status": "fail",
+    "error": "MIR 不合法：算子 OP-SETIDX 接受 2..=2 个输入，实际给了 3 个（生成物会被 C 原型拒绝）：OP-SETIDX:p_ub:min([p_ub(col) U./-val(:)],[],2):col",
+    "elapsed": 1.1,
+    "mfiles": 93,
+    "cfiles": 0,
+    "full": 0,
+    "compile_ok": 0,
+    "compile_total": 0,
+    "compile_err": ""
+  },
+  {
+    "id": "kern",
+    "name": "kern 数值库（真实风格）",
+    "path": "E:\\matlabc\\malabc\\translate\\examples\\kern",
+    "note": "10 个文件：多文件 + 跨文件调用，按人写的方式组织",
+    "status": "ok",
+    "error": "",
+    "elapsed": 0.5,
+    "mfiles": 10,
+    "cfiles": 10,
+    "full": 9,
+    "compile_ok": 8,
+    "compile_total": 10,
+    "compile_err": "E:\\temp\\matlabc\\_toc_bench\\kern\\build\\gen\\src\\gen\\clip_m.c:30:35: error: passing argument 2 of 'mlc_op_setidx' makes pointer from integer without a cast [-Wint-"
+  }
+]
