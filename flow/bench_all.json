@@ -1,0 +1,113 @@
+{
+  "recs": [
+    {
+      "name": "yalmip",
+      "path": "E:\\temp\\matlabc\\yalmip",
+      "status": "ok",
+      "error": "",
+      "elapsed": 4.2,
+      "m_files": 1682,
+      "m_funcs": 2781,
+      "c_files": 1104,
+      "c_funcs": 1206,
+      "full": 0,
+      "compile_ok": 20,
+      "compile_total": 20,
+      "compile_err": ""
+    },
+    {
+      "name": "scale_m",
+      "path": "E:\\temp\\matlabc\\scale_m",
+      "status": "ok",
+      "error": "",
+      "elapsed": 2.8,
+      "m_files": 169,
+      "m_funcs": 169,
+      "c_files": 169,
+      "c_funcs": 169,
+      "full": 0,
+      "compile_ok": 20,
+      "compile_total": 20,
+      "compile_err": ""
+    },
+    {
+      "name": "sd",
+      "path": "E:\\temp\\matlabc\\sd",
+      "status": "ok",
+      "error": "",
+      "elapsed": 2.6,
+      "m_files": 166,
+      "m_funcs": 166,
+      "c_files": 166,
+      "c_funcs": 166,
+      "full": 0,
+      "compile_ok": 20,
+      "compile_total": 20,
+      "compile_err": ""
+    },
+    {
+      "name": "s6",
+      "path": "E:\\temp\\matlabc\\s6",
+      "status": "ok",
+      "error": "",
+      "elapsed": 1.3,
+      "m_files": 165,
+      "m_funcs": 165,
+      "c_files": 165,
+      "c_funcs": 165,
+      "full": 0,
+      "compile_ok": 20,
+      "compile_total": 20,
+      "compile_err": ""
+    },
+    {
+      "name": "single(3707 个单文件工程)",
+      "path": "E:\\temp\\matlabc\\_bench_all\\_single_agg_src",
+      "status": "ok",
+      "error": "",
+      "elapsed": 6.2,
+      "m_files": 3707,
+      "m_funcs": 3707,
+      "c_files": 13,
+      "c_funcs": 13,
+      "full": 0,
+      "compile_ok": 13,
+      "compile_total": 13,
+      "compile_err": ""
+    }
+  ],
+  "dups": [
+    {
+      "name": "s7",
+      "dup_of": "s6",
+      "n": 165
+    },
+    {
+      "name": "s8",
+      "dup_of": "s6",
+      "n": 165
+    },
+    {
+      "name": "s9",
+      "dup_of": "s6",
+      "n": 165
+    },
+    {
+      "name": "sa",
+      "dup_of": "s6",
+      "n": 165
+    },
+    {
+      "name": "sb",
+      "dup_of": "s6",
+      "n": 165
+    },
+    {
+      "name": "sc",
+      "dup_of": "s6",
+      "n": 165
+    }
+  ],
+  "total_dirs": 4259,
+  "ts": "2026-11-18 00:49"
+}
