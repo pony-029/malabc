@@ -2574,10 +2574,28 @@ def main(argv=None):
             for f in fs:
                 names.add(f["name"])
         if skipped:
-            print("[warn] 跳过 %d 个重名文件（MATLAB 允许多目录同名，C 里不行）："
-                  % len(skipped))
-            for p, nm in skipped[:5]:
+            # **按函数计数**，不只报文件数（R930）：`@sdpvar/` 这类包里
+            # `cos.m`、`sort.m` 与别的类同名，整份文件被跳过 —— 那是**有意的**
+            # （C 里不能重载），但它必须**可对账**：否则"源 2781 → MIR 1535"
+            # 看起来像 bug，实际是"丢弃"，两种东西混在一个数字里没法排查。
+            _lost = 0
+            for p, _nm in skipped:
+                try:
+                    _lost += len(split_functions(
+                        io.open(p, encoding="utf-8", errors="replace").read()))
+                except (IOError, OSError):
+                    pass
+            print("[warn] 跳过 %d 个重名文件（合计 %d 个函数；MATLAB 允许多目录"
+                  "同名，C 里不行）：" % (len(skipped), _lost))
+            for p, nm in skipped[:3]:
                 print("        %s -> %s" % (p, nm))
+            print("[mir] 对账：源函数 %d = 已收录 %d + 重名丢弃 %d"
+                  % (sum(len(split_functions(
+                      io.open(p, encoding="utf-8", errors="replace").read()))
+                      for p in kept) + _lost,
+                     sum(len(split_functions(
+                         io.open(p, encoding="utf-8", errors="replace").read()))
+                         for p in kept), _lost))
         files = kept
         if not files:
             print("目录里没有 .m 文件：%s" % args.source)
