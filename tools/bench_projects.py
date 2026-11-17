@@ -75,26 +75,17 @@ def run_one(proj):
         try:
             d = json.load(io.open(out_json, encoding="utf-8"))
             st = d.get("stats") or d
+            rec["files"], rec["functions"], rec["edges"] = _metrics(st)
+            # `stats` 与顶层**各有一部分**：MATLAB 的 `edges` 在顶层、
+            # `functions` 在 `stats` 里（R915 实测 kern 的边数一直是 0）。
+            # 两边都取、按最大值合并，比"猜哪一层"可靠。
+            tf, tn, te = _metrics(d)
+            rec["files"] = max(rec["files"], tf)
+            rec["functions"] = max(rec["functions"], tn)
+            rec["edges"] = max(rec["edges"], te)
+            rec["unresolved"] = _count(st.get("unresolved"), 0)
 
-            def _n(key, *alts):
-                """读数可能是**计数**也可能是**名字列表** —— 两种都要能算。
-
-                实测（R915）：`stats.files` 是文件路径列表，直接 `%d` 会抛
-                `TypeError: %d format: a real number is required, not list`。
-                """
-                for k in (key,) + alts:
-                    v = st.get(k)
-                    # 列表（名字表）与字典（`{调用者: [被调者]}`）都按长度算
-                    if isinstance(v, (list, dict)):
-                        return len(v)
-                    if isinstance(v, int):
-                        return v
-                return 0
-
-            rec["files"] = _n("files", "file_count")
-            rec["functions"] = _n("functions", "funcs")
-            rec["edges"] = _n("edges", "calls")
-            rec["unresolved"] = _n("unresolved")
+            rec["unresolved"] = _count(st.get("unresolved"), 0)
         except (ValueError, OSError) as e:
             rec["error"] = (rec["error"] + " | 读数解析失败：%s" % e)[:300]
     return rec
@@ -115,42 +106,85 @@ def _bar(v, vmax, color):
             % (max(pct, 1.5), color))
 
 
+def _count(v, default=0):
+    """把"计数 / 名字表 / {调用者: [被调者]}"三种形态统一成数。"""
+    if isinstance(v, dict):
+        # `call_graph` 这类：值是列表，边数 = 各列表长度之和
+        return sum(len(x) if isinstance(x, (list, dict)) else 1
+                   for x in v.values())
+    if isinstance(v, list):
+        return len(v)
+    if isinstance(v, int):
+        return v
+    return default
+
+
+def _metrics(st):
+    """从分析结果里取三个数（键名随语言不同，逐个兜底）。"""
+    files = _count(st.get("files"), 0) or _count(st.get("file_count"), 0)
+    funcs = 0
+    for k in ("functions", "funcs", "function_files"):
+        funcs = _count(st.get(k), 0)
+        if funcs:
+            break
+    edges = 0
+    for k in ("edges", "calls", "call_graph"):
+        edges = _count(st.get(k), 0)
+        if edges:
+            break
+    return files, funcs, edges
+
+
 def render(recs):
-    """生成自包含 HTML（无外部依赖，深浅色自适应）。"""
+    """生成自包含 HTML（无外部依赖、深浅色自适应）。
+
+    用 `string.Template`（`$name`）而不是 `%`：样式表里的 `100%` 与
+    `%` 格式化天然冲突，前两轮为此改坏过两次别处代码。
+    """
+    from string import Template
+
     ok = [r for r in recs if r["status"] == "ok"]
-    fmax = max([r["files"] for r in recs] or [1])
-    nmax = max([r["functions"] for r in recs] or [1])
-    emax = max([r["edges"] for r in recs] or [1])
+    fmax = max([r["files"] for r in recs] or [1]) or 1
+    nmax = max([r["functions"] for r in recs] or [1]) or 1
+    emax = max([r["edges"] for r in recs] or [1]) or 1
     total_files = sum(r["files"] for r in recs)
     total_funcs = sum(r["functions"] for r in recs)
     total_edges = sum(r["edges"] for r in recs)
+    total_time = sum(r["elapsed"] for r in recs)
+
+    def bar(v, vmax, color):
+        pct = 0.0 if not vmax else 100.0 * v / vmax
+        return ('<div class="bar"><span style="width:$w%;background:$c"></span></div>'
+                .replace("$w", "%.1f" % max(pct, 1.5)).replace("$c", color))
 
     cards = []
     for r in recs:
         color = {"ok": "#2ea043", "timeout": "#d29922", "fail": "#cf222e"}[r["status"]]
         badge = {"ok": "跑通", "timeout": "超时", "fail": "失败"}[r["status"]]
-        rows = [
-            ("扫描文件", "%d" % r["files"], _bar(r["files"], fmax, color)),
-            ("函数", "%d" % r["functions"], _bar(r["functions"], nmax, color)),
-            ("调用边", "%d" % r["edges"], _bar(r["edges"], emax, color)),
-        ]
-        tr = "".join("<tr><td>%s</td><td class='num'>%s</td><td>%s</td></tr>"
-                     % (k, v, b) for k, v, b in rows)
-        err = ("<p class='err'>%s</p>" % r["error"].replace("<", "&lt;")
+        rows = [("扫描文件", "{}".format(format(r["files"], ",")),
+                 bar(r["files"], fmax, color)),
+                ("函数", format(r["functions"], ","),
+                 bar(r["functions"], nmax, color)),
+                ("调用边", format(r["edges"], ","),
+                 bar(r["edges"], emax, color))]
+        tr = "".join("<tr><td>{}</td><td class='num'>{}</td><td>{}</td></tr>"
+                     .format(k, v, b) for k, v, b in rows)
+        err = ("<p class='err'>{}</p>".format(r["error"].replace("<", "&lt;"))
                if r["error"] else "")
         cards.append("""
     <section class="card">
       <header>
-        <h2>%s <span class="badge" style="background:%s">%s</span></h2>
-        <p class="meta"><code>%s</code> ｜ 语言 <b>%s</b> ｜ 耗时 <b>%s s</b></p>
-        <p class="note">%s</p>
+        <h2>{name} <span class="badge" style="background:{color}">{badge}</span></h2>
+        <p class="meta"><code>{path}</code> ｜ 语言 <b>{lang}</b> ｜ 耗时 <b>{elapsed} s</b></p>
+        <p class="note">{note}</p>
       </header>
-      <table>%s</table>
-      %s
-    </section>""" % (r["name"], color, badge, r["path"].replace("\\", "/"),
-                     r["lang"], r["elapsed"], r["note"], tr, err))
+      <table>{tr}</table>
+      {err}
+    </section>""".format(name=r["name"], color=color, badge=badge,
+                         path=r["path"].replace(chr(92), "/"), lang=r["lang"],
+                         elapsed=r["elapsed"], note=r["note"], tr=tr, err=err))
 
-    return """<!DOCTYPE html>
+    tpl = Template("""<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>大规模实测报告 · matlabc</title>
@@ -160,49 +194,54 @@ def render(recs):
     :root{--bg:#0d1117;--fg:#e6edf3;--mut:#8b949e;--card:#161b22;--line:#30363d}
   }
   *{box-sizing:border-box}
-  body{margin:0;padding:32px 20px;background:var(--bg);color:var(--fg);
+  body{margin:0;padding:34px 20px;background:var(--bg);color:var(--fg);
        font:15px/1.65 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
   .wrap{max-width:1080px;margin:0 auto}
-  h1{font-size:26px;margin:0 0 6px;letter-spacing:-.01em}
+  h1{font-size:27px;margin:0 0 6px;letter-spacing:-.01em}
   .sub{color:var(--mut);margin:0 0 26px}
   .hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
         gap:12px;margin:0 0 26px}
   .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;
        padding:16px 18px}
-  .kpi b{display:block;font-size:24px;font-variant-numeric:tabular-nums}
+  .kpi b{display:block;font-size:25px;font-variant-numeric:tabular-nums;
+         letter-spacing:-.02em}
   .kpi span{color:var(--mut);font-size:12.5px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
         padding:18px 20px;margin:0 0 16px}
   .card h2{font-size:17px;margin:0 0 6px;display:flex;align-items:center;gap:10px}
   .badge{color:#fff;font-size:11.5px;padding:2px 9px;border-radius:999px;
-         font-weight:600;letter-spacing:.02em}
+         font-weight:600}
   .meta{color:var(--mut);font-size:13px;margin:0 0 4px}
   .note{color:var(--mut);font-size:13px;margin:0 0 10px;font-style:italic}
-  table{width:100%%;border-collapse:collapse;margin-top:6px}
+  table{width:100%;border-collapse:collapse;margin-top:6px}
   td{padding:6px 0;font-size:13.5px;border-top:1px solid var(--line)}
-  td.num{text-align:right;font-variant-numeric:tabular-nums;width:96px;
+  td.num{text-align:right;font-variant-numeric:tabular-nums;width:100px;
          font-weight:600}
   .bar{height:7px;background:var(--line);border-radius:999px;overflow:hidden}
-  .bar span{display:block;height:100%%;border-radius:999px;opacity:.85}
+  .bar span{display:block;height:100%;border-radius:999px;opacity:.85}
   .err{margin:10px 0 0;padding:8px 10px;border-radius:8px;font-size:12.5px;
        background:rgba(207,34,46,.08);color:#cf222e;word-break:break-all}
   footer{color:var(--mut);font-size:12.5px;margin-top:22px;text-align:center}
 </style></head><body><div class="wrap">
   <h1>大规模实测报告</h1>
-  <p class="sub">对真实大工程跑一遍分析链路 ｜ %s ｜ %d 个项目（跑通 %d）</p>
+  <p class="sub">对真实大工程跑一遍分析链路 ｜ $when ｜ $n 个项目（跑通 $nok）</p>
   <div class="hero">
-    <div class="kpi"><b>%s</b><span>累计扫描文件</span></div>
-    <div class="kpi"><b>%s</b><span>累计函数</span></div>
-    <div class="kpi"><b>%s</b><span>累计调用边</span></div>
-    <div class="kpi"><b>%%.1f s</b><span>合计耗时</span></div>
+    <div class="kpi"><b>$kf</b><span>累计扫描文件</span></div>
+    <div class="kpi"><b>$kn</b><span>累计函数</span></div>
+    <div class="kpi"><b>$ke</b><span>累计调用边</span></div>
+    <div class="kpi"><b>$kt s</b><span>合计耗时</span></div>
   </div>
-  %s
+  $cards
   <footer>由 <code>tools/bench_projects.py</code> 生成 — 数字全部来自实跑，超时/失败如实记录</footer>
 </div></body></html>
-""" %% (time.strftime("%%Y-%%m-%d %%H:%%M"), len(recs), len(ok),
-       format(total_files, ","), format(total_funcs, ","),
-       format(total_edges, ","), sum(r["elapsed"] for r in recs),
-       "\n".join(cards))
+""")
+    return tpl.substitute(when=time.strftime("%Y-%m-%d %H:%M"),
+                          n=len(recs), nok=len(ok),
+                          kf=format(total_files, ","),
+                          kn=format(total_funcs, ","),
+                          ke=format(total_edges, ","),
+                          kt="%.1f" % total_time,
+                          cards="\n".join(cards))
 
 
 def main(argv=None):
@@ -218,10 +257,10 @@ def main(argv=None):
                 if not ns.only or p["id"] in ns.only]
         done = {r["id"]: r for r in recs}
         for p in todo:
-            print("[bench] %s …" %% p["name"], flush=True)
+            print("[bench] %s …" % p["name"], flush=True)
             r = run_one(p)
             print("[bench] %s -> %s ｜ %s s ｜ %d 文件 / %d 函数 / %d 边"
-                  %% (p["name"], r["status"], r["elapsed"], r["files"],
+                  % (p["name"], r["status"], r["elapsed"], r["files"],
                      r["functions"], r["edges"]), flush=True)
             done[r["id"]] = r
         recs = [done[p["id"]] for p in PROJECTS if p["id"] in done]
@@ -230,7 +269,7 @@ def main(argv=None):
 
     if recs:
         io.open(HTML, "w", encoding="utf-8", newline="\n").write(render(recs))
-        print("[bench] HTML -> %s" %% HTML)
+        print("[bench] HTML -> %s" % HTML)
     else:
         print("[bench] 没有读数（先跑一次，不要只加 --html-only）")
         return 2

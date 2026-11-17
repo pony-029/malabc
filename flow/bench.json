@@ -7,7 +7,7 @@
     "note": "2 千文件的中等工程",
     "status": "ok",
     "rc": 0,
-    "elapsed": 0.5,
+    "elapsed": 0.7,
     "error": "",
     "files": 20,
     "functions": 0,
@@ -22,11 +22,11 @@
     "note": "按人写的方式组织：多文件 + 跨文件调用",
     "status": "ok",
     "rc": 0,
-    "elapsed": 0.4,
+    "elapsed": 0.6,
     "error": "",
     "files": 10,
     "functions": 10,
-    "edges": 0,
+    "edges": 4,
     "unresolved": 0
   }
 ]
