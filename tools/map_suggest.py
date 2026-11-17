@@ -122,7 +122,8 @@ def group(info, max_files=DEFAULT_MAX_FILES):
 
         for _, members in clusters.items():
             members.sort()
-            # 太大的簇再按文件名前缀切（`yalmip2cplex` / `yalmip2gurobi` …）
+            # 太大的簇先按文件名前缀切（`yalmip2cplex` / `yalmip2gurobi` …）
+            buckets = []
             if len(members) > max_files:
                 pref = {}
                 for f in members:
@@ -130,15 +131,31 @@ def group(info, max_files=DEFAULT_MAX_FILES):
                     key = (m.group(1).lower() if m else "_")[:12]
                     pref.setdefault(key, []).append(f)
                 for k, v in pref.items():
+                    buckets.append((v, "模块 %s 内同前缀 %r（%d 个文件）"
+                                    % (mod, k, len(v))))
+            else:
+                buckets.append((members, "模块 %s 内互相调用连通（%d 个文件）"
+                                % (mod, len(members))))
+
+            # **`--max-files` 必须真的生效**（R921）：前缀切完仍可能超限
+            # （yalmip 里 `test_global*` 有 82 个文件全部同前缀，切了等于没切）。
+            # 超限的桶按文件名顺序**分块**，每块 ≤ max_files ——
+            # 分块是"少信息"的做法，但比"一个 .c 装 82 个函数"更可维护，
+            # 且理由会写在 `why` 里（人能看到它为什么被拆开）。
+            for v, why in buckets:
+                if len(v) <= max_files:
                     groups.append({"name": _uniq(v[0], len(groups)),
-                                   "sources": v,
-                                   "why": "模块 %s 内同前缀 %r（%d 个文件）"
-                                          % (mod, k, len(v))})
-                continue
-            groups.append({"name": _uniq(members[0], len(groups)),
-                           "sources": members,
-                           "why": "模块 %s 内互相调用连通（%d 个文件）"
-                                  % (mod, len(members))})
+                                   "sources": v, "why": why})
+                    continue
+                for start in range(0, len(v), max_files):
+                    chunk = v[start:start + max_files]
+                    groups.append({
+                        "name": _uniq(chunk[0], len(groups)),
+                        "sources": chunk,
+                        "why": "%s；因超过 max-files=%d，按名序分块（%d/%d）"
+                               % (why.split("（")[0], max_files,
+                                  start // max_files + 1,
+                                  (len(v) + max_files - 1) // max_files)})
 
     groups.sort(key=lambda g: (-len(g["sources"]), g["name"]))
     return groups

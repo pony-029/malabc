@@ -64,3 +64,6 @@
 {"head": "5978f2ff98b2", "phases_done": 7, "phases_total": 7, "fig_live": 0, "fig_stale": 16, "fig_hist": 4, "fig_max_lag": 28, "gx2": 120, "scale_full": 165, "scale_total": 165, "ts": "2026-11-17T00:08:57+08:00"}
 {"head": "85854e25c8d4", "phases_done": 7, "phases_total": 7, "fig_live": 16, "fig_stale": 0, "fig_hist": 4, "fig_max_lag": 2, "gx2": 120, "scale_full": 165, "scale_total": 165, "ts": "2026-11-17T00:28:34+08:00"}
 {"head": "2ad75e7711cb", "phases_done": 7, "phases_total": 7, "fig_live": 16, "fig_stale": 0, "fig_hist": 4, "fig_max_lag": 6, "gx2": 120, "scale_full": 165, "scale_total": 165, "ts": "2026-11-17T22:16:10+08:00"}
+{"head": "29fe0157854d", "phases_done": 7, "phases_total": 7, "fig_live": 16, "fig_stale": 0, "fig_hist": 4, "fig_max_lag": 8, "gx2": 120, "scale_full": 165, "scale_total": 165, "ts": "2026-11-17T22:32:06+08:00"}
+{"head": "db8c5c1e7b56", "phases_done": 7, "phases_total": 7, "fig_live": 16, "fig_stale": 0, "fig_hist": 4, "fig_max_lag": 10, "gx2": 120, "scale_full": 165, "scale_total": 165, "ts": "2026-11-17T22:58:52+08:00"}
+{"head": "612fc74636af", "phases_done": 7, "phases_total": 7, "fig_live": 0, "fig_stale": 16, "fig_hist": 4, "fig_max_lag": 16, "gx2": 120, "scale_full": 165, "scale_total": 165, "scale_num": 100.0, "scale_cmp": 165, "ts": "2026-11-18T00:04:40+08:00"}
