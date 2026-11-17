@@ -178,12 +178,12 @@ def render(recs):
          font-weight:600;letter-spacing:.02em}
   .meta{color:var(--mut);font-size:13px;margin:0 0 4px}
   .note{color:var(--mut);font-size:13px;margin:0 0 10px;font-style:italic}
-  table{width:100%;border-collapse:collapse;margin-top:6px}
+  table{width:100%%;border-collapse:collapse;margin-top:6px}
   td{padding:6px 0;font-size:13.5px;border-top:1px solid var(--line)}
   td.num{text-align:right;font-variant-numeric:tabular-nums;width:96px;
          font-weight:600}
   .bar{height:7px;background:var(--line);border-radius:999px;overflow:hidden}
-  .bar span{display:block;height:100%;border-radius:999px;opacity:.85}
+  .bar span{display:block;height:100%%;border-radius:999px;opacity:.85}
   .err{margin:10px 0 0;padding:8px 10px;border-radius:8px;font-size:12.5px;
        background:rgba(207,34,46,.08);color:#cf222e;word-break:break-all}
   footer{color:var(--mut);font-size:12.5px;margin-top:22px;text-align:center}
@@ -194,12 +194,12 @@ def render(recs):
     <div class="kpi"><b>%s</b><span>累计扫描文件</span></div>
     <div class="kpi"><b>%s</b><span>累计函数</span></div>
     <div class="kpi"><b>%s</b><span>累计调用边</span></div>
-    <div class="kpi"><b>%.1f s</b><span>合计耗时</span></div>
+    <div class="kpi"><b>%%.1f s</b><span>合计耗时</span></div>
   </div>
   %s
   <footer>由 <code>tools/bench_projects.py</code> 生成 — 数字全部来自实跑，超时/失败如实记录</footer>
 </div></body></html>
-""" % (time.strftime("%Y-%m-%d %H:%M"), len(recs), len(ok),
+""" %% (time.strftime("%%Y-%%m-%d %%H:%%M"), len(recs), len(ok),
        format(total_files, ","), format(total_funcs, ","),
        format(total_edges, ","), sum(r["elapsed"] for r in recs),
        "\n".join(cards))
@@ -218,10 +218,10 @@ def main(argv=None):
                 if not ns.only or p["id"] in ns.only]
         done = {r["id"]: r for r in recs}
         for p in todo:
-            print("[bench] %s …" % p["name"], flush=True)
+            print("[bench] %s …" %% p["name"], flush=True)
             r = run_one(p)
             print("[bench] %s -> %s ｜ %s s ｜ %d 文件 / %d 函数 / %d 边"
-                  % (p["name"], r["status"], r["elapsed"], r["files"],
+                  %% (p["name"], r["status"], r["elapsed"], r["files"],
                      r["functions"], r["edges"]), flush=True)
             done[r["id"]] = r
         recs = [done[p["id"]] for p in PROJECTS if p["id"] in done]
@@ -230,7 +230,7 @@ def main(argv=None):
 
     if recs:
         io.open(HTML, "w", encoding="utf-8", newline="\n").write(render(recs))
-        print("[bench] HTML -> %s" % HTML)
+        print("[bench] HTML -> %s" %% HTML)
     else:
         print("[bench] 没有读数（先跑一次，不要只加 --html-only）")
         return 2
