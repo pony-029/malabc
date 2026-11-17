@@ -42,8 +42,12 @@ TOC = os.path.join(ROOT, "matlabc_toc.py")
 #: 拿标量当下标的算子：它们的 a/b 是下标，不是向量
 #: 只收**真正拿标量当下标**的算子。`OP-INDEX` 也在此列：它的样本是 `x(2)`，
 #: 用 n=1 的尺寸会越界（C 侧 MLC_ERR、VM 报"下标越界"）—— 那是样本非法。
-INDEXY = {"OP-INDEX", "OP-IDX2", "OP-IDX3", "OP-SLICE", "OP-MASK", "OP-SETIDX2",
-          "OP-SETIDX3", "OP-SETSLICE"}
+#: 注意 `OP-SETIDX` 也在此列：它的样本是 `y(2) = 3`，用 n=1 的尺寸会让
+#: **写**越界（C 侧 MLC_ERR、VM 按 0 撑开到 2 格）—— 那是样本非法。
+#: R897 漏了 `OP-INDEX`、R908 又漏了 `OP-SETIDX`：同一个类的错误犯了两次，
+#: 所以这里按"样本里出现数字下标"逐条核对，而不是凭印象挑。
+INDEXY = {"OP-INDEX", "OP-IDX2", "OP-IDX3", "OP-SLICE", "OP-MASK",
+          "OP-SETIDX", "OP-SETIDX2", "OP-SETIDX3", "OP-SETSLICE"}
 #: 名字本身就是标量的（循环变量、维度、阈值）
 SCALARS = {"i", "j", "k", "n", "dim", "k2", "v", "s", "m"}
 #: `x(a:b)` 的边界：用 1..3，所以 `x` 至少要有 3 个元素，否则边界越界

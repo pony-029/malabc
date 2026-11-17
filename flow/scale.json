@@ -5,10 +5,10 @@
   "bad": 0,
   "numeric": {
     "common": 162,
-    "identical": 143,
+    "identical": 144,
     "fmt_only": 16,
     "mismatch": 2,
-    "c_error": 1,
+    "c_error": 0,
     "empty_both": 4,
     "only_vm": 0,
     "only_c": 3,
@@ -18,8 +18,8 @@
       "op_setidx2_3_1",
       "op_setidx2_7_2"
     ],
-    "rate": 98.1
+    "rate": 98.8
   },
-  "head": "142af82de492",
-  "ts": "2026-11-17 22:31:54"
+  "head": "29fe0157854d",
+  "ts": "2026-11-17 22:44:57"
 }
