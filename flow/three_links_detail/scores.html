@@ -1,0 +1,353 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>scores — 三段链路</title><style>
+:root{--bg:#f5f7fb;--card:#fff;--fg:#0f172a;--mut:#64748b;--bd:#e2e8f0;
+ --ok:#059669;--okbg:#ecfdf5;--fail:#dc2626;--failbg:#fef2f2;
+ --skip:#94a3b8;--skipbg:#f1f5f9;--accent:#2563eb}
+[data-theme="dark"]{--bg:#0b1120;--card:#111827;--fg:#e5e7eb;--mut:#94a3b8;
+ --bd:#1f2937;--ok:#34d399;--okbg:#052e2b;--fail:#f87171;--failbg:#3f1212;
+ --skip:#64748b;--skipbg:#1e293b;--accent:#60a5fa}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+ font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}
+header{padding:26px 30px 16px;background:var(--card);border-bottom:1px solid var(--bd)}
+h1{margin:0 0 6px;font-size:19px;font-weight:680;letter-spacing:.2px}
+.sub{color:var(--mut);font-size:12.5px}
+.wrap{padding:20px 30px 70px;max-width:1240px;margin:0 auto}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+ gap:12px;margin:6px 0 22px}
+.kpi{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px 16px}
+.kpi .v{font:660 26px/1.15 ui-monospace,Consolas,monospace}
+.kpi .k{color:var(--mut);font-size:11.5px;margin-top:4px;letter-spacing:.03em}
+.bar{height:8px;border-radius:999px;background:color-mix(in srgb,var(--fg) 8%,transparent);
+ overflow:hidden;display:flex;margin-top:9px}
+.bar i{display:block;height:100%}
+h2{font-size:14.5px;margin:26px 0 8px;font-weight:660}
+table{width:100%;border-collapse:collapse;background:var(--card);
+ border:1px solid var(--bd);border-radius:14px;overflow:hidden}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--bd);font-size:13px}
+th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);font-weight:640}
+tr:last-child td{border-bottom:none}
+.mono{font-family:ui-monospace,Consolas,monospace}
+.b{display:inline-block;min-width:52px;text-align:center;font-size:11.5px;
+ font-weight:660;padding:2px 8px;border-radius:999px}
+.b.ok{color:var(--ok);background:var(--okbg)}
+.b.fail{color:var(--fail);background:var(--failbg)}
+.b.skip{color:var(--skip);background:var(--skipbg)}
+a{color:var(--accent);text-decoration:none;font-weight:600}
+a:hover{text-decoration:underline}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+button{background:var(--card);color:var(--fg);border:1px solid var(--bd);
+ border-radius:9px;padding:7px 13px;cursor:pointer;font-size:12.5px}
+button.on{border-color:var(--accent);color:var(--accent)}
+pre{background:var(--card);border:1px solid var(--bd);border-radius:12px;
+ padding:12px 14px;overflow:auto;font:12px/1.6 ui-monospace,Consolas,monospace;
+ max-height:420px;white-space:pre-wrap;word-break:break-word}
+.note{color:var(--mut);font-size:12px}
+</style></head><body>
+<header><h1>scores</h1><div class="sub">源：scores.m</div></header>
+<div class="wrap">
+<h2>① MATLAB → MIR　（算子 11 ｜ 未映射 0）</h2><pre>version 3
+# source_sha256:7ea806d8af9e0fa7cbb74164779bd426faee00fb4eb565dd03d036373b677d99
+func:scores
+arg:x:f64:6
+ret:y:f64:6
+# @m2c hir-emitted（算子区由 HIR 降级产出，逐行 src 注释已折入表达式树）
+# src:6
+call:a:normalize:x
+# src:7
+call:b:scale:a
+# src:8
+call:c:shift:b
+# src:9
+call:y:clamp:c
+# source_sha256:7ea806d8af9e0fa7cbb74164779bd426faee00fb4eb565dd03d036373b677d99
+end
+func:normalize
+arg:x:f64:6
+ret:y:f64:6
+# src:15
+op:OP-LENGTH:n:x
+# src:16
+const:s:0
+# src:17
+for:i:1:n
+# src:18
+op:OP-INDEX:__t2:x:i
+# src:18
+op:OP-INDEX:__t3:x:i
+# src:18
+op:OP-MUL:__e1:__t2:__t3
+# src:18
+op:OP-ADD:s:s:__e1
+# src:19
+end
+# src:20
+op:OP-SQRT:r:s
+# src:21
+set:y:x
+# src:22
+for:i:1:n
+# src:23
+op:OP-SETIDX:y:x(i) / r:i
+# src:24
+end
+end
+# source_sha256:7ea806d8af9e0fa7cbb74164779bd426faee00fb4eb565dd03d036373b677d99
+func:scale
+arg:x:f64:6
+ret:y:f64:6
+# src:30
+set:y:x
+# src:31
+for:i:1:6
+# src:32
+op:OP-SETIDX:y:x(i) * 2:i
+# src:33
+end
+end
+# source_sha256:7ea806d8af9e0fa7cbb74164779bd426faee00fb4eb565dd03d036373b677d99
+func:shift
+arg:x:f64:6
+ret:y:f64:6
+# src:39
+set:y:x
+# src:40
+for:i:1:6
+# src:41
+op:OP-SETIDX:y:x(i) + 1:i
+# src:42
+end
+end
+# source_sha256:7ea806d8af9e0fa7cbb74164779bd426faee00fb4eb565dd03d036373b677d99
+func:clamp
+arg:x:f64:6
+ret:y:f64:6
+# @m2c hir-emitted（算子区由 HIR 降级产出，逐行 src 注释已折入表达式树）
+# src:48
+set:y:x
+# src:49
+for:i:1:6
+# src:50
+op:OP-INDEX:__t4:x:i
+if:__t4:gt:1
+# src:51
+const:__k5:1
+op:OP-SETIDX:y:__k5:i
+# src:52
+end
+# src:53
+end
+end</pre>
+<h2>② 生成的 C</h2><pre>/* scores —— 由 m2c 生成，勿手改 */
+#include &quot;scores.h&quot;
+
+/* 由 m2c 从 MIR 生成 —— 勿手改；来源函数：scores */
+/* @m2c source_sha256:7ea806d8af9e0fa7cbb74164779bd426faee00fb4eb565dd03d036373b677d99 */
+/* @m2c arg-shape x 6 */
+/* @m2c ret-shape y 6 */
+mlc_status m2c_scores(mlc_array x, mlc_array *y) {
+    mlc_status st = MLC_OK;
+    (void)st;
+    if (mlc_array_init(y, MLC_F64, 1, (int64_t[]){6}) != MLC_OK) { return MLC_ERR; }
+    mlc_array a = {0};
+    if (mlc_array_init(&amp;a, MLC_F64, 1, (int64_t[]){6}) != MLC_OK) { return MLC_ERR; }
+    mlc_array b = {0};
+    if (mlc_array_init(&amp;b, MLC_F64, 1, (int64_t[]){6}) != MLC_OK) { return MLC_ERR; }
+    mlc_array c = {0};
+    if (mlc_array_init(&amp;c, MLC_F64, 1, (int64_t[]){6}) != MLC_OK) { return MLC_ERR; }
+    /* @m2c src:6 */
+    st = m2c_normalize(x, &amp;a);
+    if (st != MLC_OK) { return st; }
+    /* @m2c src:7 */
+    st = m2c_scale(a, &amp;b);
+    if (st != MLC_OK) { return st; }
+    /* @m2c src:8 */
+    st = m2c_shift(b, &amp;c);
+    if (st != MLC_OK) { return st; }
+    /* @m2c src:9 */
+    st = m2c_clamp(c, y);
+    if (st != MLC_OK) { return st; }
+    mlc_array_free(&amp;a);
+    mlc_array_free(&amp;b);
+    mlc_array_free(&amp;c);
+    return st;
+}
+
+/* 由 m2c 从 MIR 生成 —— 勿手改；来源函数：normalize */
+/* @m2c source_sha256:7ea806d8af9e0fa7cbb74164779bd426faee00fb4eb565dd03d036373b677d99 */
+/* @m2c arg-shape x 6 */
+/* @m2c ret-shape y 6 */
+mlc_status m2c_normalize(mlc_array x, mlc_array *y) {
+    mlc_status st = MLC_OK;
+    (void)st;
+    if (mlc_array_init(y, MLC_F64, 1, (int64_t[]){6}) != MLC_OK) { return MLC_ERR; }
+    mlc_array n = {0};
+    if (mlc_array_init(&amp;n, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) { return MLC_ERR; }
+    mlc_array __t2 = {0};
+    if (mlc_array_init(&amp;__t2, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) { return MLC_ERR; }
+    mlc_array __t3 = {0};
+    if (mlc_array_init(&amp;__t3, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) { return MLC_ERR; }
+    mlc_array __e1 = {0};
+    if (mlc_array_init(&amp;__e1, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) { return MLC_ERR; }
+    mlc_array s = {0};
+    if (mlc_array_init(&amp;s, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) { return MLC_ERR; }
+    mlc_array r = {0};
+    if (mlc_array_init(&amp;r, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) { return MLC_ERR; }
+    /* @m2c src:16 */
+    ((double *)s.data)[0] = 0;
+    /* @m2c src:15 */
+    st = mlc_op_length(&amp;x, &amp;n);
+    if (st != MLC_OK) { return st; }
+    /* @m2c src:17 */
+    for (int64_t i = 1; i &lt;= (int64_t)(((const double *)n.data)[0]); ++i) {
+        /* @m2c src:18 */
+        st = mlc_op_index(&amp;x, i, &amp;__t2);
+        if (st != MLC_OK) { return st; }
+        /* @m2c src:18 */
+        st = mlc_op_index(&amp;x, i, &amp;__t3);
+        if (st != MLC_OK) { return st; }
+        /* @m2c src:18 */
+        st = mlc_op_mul(&amp;__t2, &amp;__t3, &amp;__e1);
+        if (st != MLC_OK) { return st; }
+        /* @m2c src:18 */
+        st = mlc_op_add(&amp;s, &amp;__e1, &amp;s);
+        if (st != MLC_OK) { return st; }
+    }
+    /* @m2c src:20 */
+    st = mlc_op_sqrt(&amp;s, &amp;r);
+    if (st != MLC_OK) { return st; }
+    /* @m2c src:21 */
+    st = mlc_op_copy(&amp;x, y);
+    if (st != MLC_OK) { return st; }
+    /* @m2c src:22 */
+    for (int64_t i = 1; i &lt;= (int64_t)(((const double *)n.data)[0]); ++i) {
+        /* @m2c src:23 */
+        /* TODO(arg): x(i) / r 不在作用域内（参数/返回值/已映射输出里都没有）*/
+        return MLC_UNIMPLEMENTED;
+    }
+}
+
+/* 由 m2c 从 MIR 生成 —— 勿手改；来源函数：scale */
+/* @m2c source_sha256:7ea806d8af9e0fa7cbb74164779bd426faee00fb4eb565dd03d036373b677d99 */
+/* @m2c arg-shape x 6 */
+/* @m2c ret-shape y 6 */
+mlc_status m2c_scale(mlc_array x, mlc_array *y) {
+    mlc_status st = MLC_OK;
+    (void)st;
+    if (mlc_array_init(y, MLC_F64, 1, (int64_t[]){6}) != MLC_OK) { return MLC_ERR; }
+    /* @m2c src:30 */
+    st = mlc_op_copy(&amp;x, y);
+    if (st != MLC_OK) { return st; }
+    /* @m2c src:31 */
+    for (int64_t i = 1; i &lt;= 6; ++i) {
+        /* @m2c src:32 */
+        /* TODO(arg): x(i) * 2 不在作用域内（参数/返回值/已映射输出里都没有）*/
+        return MLC_UNIMPLEMENTED;
+    }
+}
+
+/* 由 m2c 从 MIR 生成 —— 勿手改；来源函数：shift */
+/* @m2c source_sha256:7ea806d8af9e0fa7cbb74164779bd426faee00fb4eb565dd03d036373b677d99 */
+/* @m2c arg-shape x 6 */
+/* @m2c ret-shape y 6 */
+mlc_status m2c_shift(mlc_array x, mlc_array *y) {
+    mlc_status st = MLC_OK;
+    (void)st;
+    if (mlc_array_init(y, MLC_F64, 1, (int64_t[]){6}) != MLC_OK) { return MLC_ERR; }
+    /* @m2c src:39 */
+    st = mlc_op_copy(&amp;x, y);
+    if (st != MLC_OK) { return st; }
+    /* @m2c src:40 */
+    for (int64_t i = 1; i &lt;= 6; ++i) {
+        /* @m2c src:41 */
+        /* TODO(arg): x(i) + 1 不在作用域内（参数/返回值/已映射输出里都没有）*/
+        return MLC_UNIMPLEMENTED;
+    }
+}
+
+/* 由 m2c 从 MIR 生成 —— 勿手改；来源函数：clamp */
+/* @m2c source_sha256:7ea806d8af9e0fa7cbb74164779bd426faee00fb4eb565dd03d036373b677d99 */
+/* @m2c arg-shape x 6 */
+/* @m2c ret-shape y 6 */
+mlc_status m2c_clamp(mlc_array x, mlc_array *y) {
+    mlc_status st = MLC_OK;
+    (void)st;
+    if (mlc_array_init(y, MLC_F64, 1, (int64_t[]){6}) != MLC_OK) { return MLC_ERR; }
+    mlc_array __t4 = {0};
+    if (mlc_array_init(&amp;__t4, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) { return MLC_ERR; }
+    /* @m2c src:51 */
+    mlc_array __k5;
+    if (mlc_array_init(&amp;__k5, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) { return MLC_ERR; }
+    ((double *)__k5.data)[0] = 1;
+    /* @m2c src:48 */
+    st = mlc_op_copy(&amp;x, y);
+    if (st != MLC_OK) { return st; }
+    /* @m2c src:49 */
+    for (int64_t i = 1; i &lt;= 6; ++i) {
+        /* @m2c src:50 */
+        st = mlc_op_index(&amp;x, i, &amp;__t4);
+        if (st != MLC_OK) { return st; }
+        if (((const double *)__t4.data)[0] &gt; 1) {
+            st = mlc_op_setidx(y, &amp;__k5, i);
+            if (st != MLC_OK) { return st; }
+        }
+    }
+    mlc_array_free(&amp;__t4);
+    mlc_array_free(&amp;__k5);
+    return st;
+}
+
+</pre>
+<h2>② 运行输出</h2><pre>scores: unimplemented
+normalize: unimplemented
+scale: unimplemented
+shift: unimplemented
+clamp: 1 1 1 1 1 1</pre>
+<h2>③ C → MIR（反推）</h2><pre>version 3
+func:scores
+arg:x:f64:6
+ret:y:f64:6
+var:a:f64:6
+var:b:f64:6
+var:c:f64:6
+var:n:f64:1
+var:__t2:f64:1
+var:__t3:f64:1
+var:__e1:f64:1
+var:s:f64:1
+var:r:f64:1
+var:__t4:f64:1
+var:__k5:f64:1
+call:a:normalize:x
+call:b:scale:a
+call:c:shift:b
+call:y:clamp:c
+const:s:0
+op:OP-LENGTH:n:x
+# loop: for (int64_t i = 1; i &lt;= (int64_t)(((const double *)n.data)[
+op:OP-INDEX:__t2:x:i
+op:OP-INDEX:__t3:x:i
+op:OP-MUL:__e1:__t2:__t3
+op:OP-ADD:s:s:__e1
+op:OP-SQRT:r:s
+op:OP-COPY:y:x
+# loop: for (int64_t i = 1; i &lt;= (int64_t)(((const double *)n.data)[
+op:OP-COPY:y:x
+for:i:1:6
+end
+op:OP-COPY:y:x
+for:i:1:6
+end
+const:__k5:1
+op:OP-COPY:y:x
+for:i:1:6
+op:OP-INDEX:__t4:x:i
+if:__t4:gt:1
+op:OP-SETIDX:y:__k5:i
+end
+end
+end
+</pre>
+<p class="note">口径：不生成 mlc_op_* 调用而由发射器内联展开的算子
+（MASK / FIND2 / FIND3 / ISEQUAL / COPY / SETIDX），在 ③ 里不计为差异。</p>
+</div></body></html>

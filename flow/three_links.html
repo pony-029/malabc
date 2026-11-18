@@ -1,0 +1,96 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>三段链路大规模测试</title><style>
+:root{--bg:#f5f7fb;--card:#fff;--fg:#0f172a;--mut:#64748b;--bd:#e2e8f0;
+ --ok:#059669;--okbg:#ecfdf5;--fail:#dc2626;--failbg:#fef2f2;
+ --skip:#94a3b8;--skipbg:#f1f5f9;--accent:#2563eb}
+[data-theme="dark"]{--bg:#0b1120;--card:#111827;--fg:#e5e7eb;--mut:#94a3b8;
+ --bd:#1f2937;--ok:#34d399;--okbg:#052e2b;--fail:#f87171;--failbg:#3f1212;
+ --skip:#64748b;--skipbg:#1e293b;--accent:#60a5fa}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+ font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}
+header{padding:26px 30px 16px;background:var(--card);border-bottom:1px solid var(--bd)}
+h1{margin:0 0 6px;font-size:19px;font-weight:680;letter-spacing:.2px}
+.sub{color:var(--mut);font-size:12.5px}
+.wrap{padding:20px 30px 70px;max-width:1240px;margin:0 auto}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+ gap:12px;margin:6px 0 22px}
+.kpi{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px 16px}
+.kpi .v{font:660 26px/1.15 ui-monospace,Consolas,monospace}
+.kpi .k{color:var(--mut);font-size:11.5px;margin-top:4px;letter-spacing:.03em}
+.bar{height:8px;border-radius:999px;background:color-mix(in srgb,var(--fg) 8%,transparent);
+ overflow:hidden;display:flex;margin-top:9px}
+.bar i{display:block;height:100%}
+h2{font-size:14.5px;margin:26px 0 8px;font-weight:660}
+table{width:100%;border-collapse:collapse;background:var(--card);
+ border:1px solid var(--bd);border-radius:14px;overflow:hidden}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--bd);font-size:13px}
+th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);font-weight:640}
+tr:last-child td{border-bottom:none}
+.mono{font-family:ui-monospace,Consolas,monospace}
+.b{display:inline-block;min-width:52px;text-align:center;font-size:11.5px;
+ font-weight:660;padding:2px 8px;border-radius:999px}
+.b.ok{color:var(--ok);background:var(--okbg)}
+.b.fail{color:var(--fail);background:var(--failbg)}
+.b.skip{color:var(--skip);background:var(--skipbg)}
+a{color:var(--accent);text-decoration:none;font-weight:600}
+a:hover{text-decoration:underline}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+button{background:var(--card);color:var(--fg);border:1px solid var(--bd);
+ border-radius:9px;padding:7px 13px;cursor:pointer;font-size:12.5px}
+button.on{border-color:var(--accent);color:var(--accent)}
+pre{background:var(--card);border:1px solid var(--bd);border-radius:12px;
+ padding:12px 14px;overflow:auto;font:12px/1.6 ui-monospace,Consolas,monospace;
+ max-height:420px;white-space:pre-wrap;word-break:break-word}
+.note{color:var(--mut);font-size:12px}
+</style></head><body>
+<header>
+  <h1>三段链路大规模测试：MATLAB → MIR → C → MIR</h1>
+  <div class="sub">14 个函数 ｜ 每段的通过都有客观依据（未映射计数 / gcc 退出码 / 算子多重集）</div>
+</header>
+<div class="wrap">
+  <div class="kpis"><div class="kpi"><div class="v">14</div><div class="k">函数总数</div></div><div class="kpi"><div class="v" style="color:var(--ok)">12 <span class='note'>(86%)</span></div><div class="k">① MATLAB → MIR 通过</div></div><div class="kpi"><div class="v" style="color:var(--ok)">12 <span class='note'>(86%)</span></div><div class="k">② MIR → C 编译并跑出数</div></div><div class="kpi"><div class="v" style="color:var(--ok)">11 <span class='note'>(79%)</span></div><div class="k">③ C → MIR 算子守恒</div></div><div class="kpi"><div class="v" style="color:var(--accent)">11 <span class='note'>(79%)</span></div><div class="k">三段全通</div></div></div>
+  <div class="bar"><i style="width:85.7%;background:var(--ok)"></i><i style="width:85.7%;background:var(--accent)"></i><i style="width:14.3%;background:var(--fail)"></i></div>
+  
+  <h2>① 阶段失败原因（按卡点类型聚合，共 4 条）</h2>
+  <table><tr><th>卡点</th><th>条数</th><th>占比</th></tr><tr><td><span class="mono">call2</span></td><td class="mono">3</td><td><div class="bar"><i style="width:75.0%;background:var(--fail)"></i></div></td></tr><tr><td><span class="mono">other</span></td><td class="mono">1</td><td><div class="bar"><i style="width:25.0%;background:var(--fail)"></i></div></td></tr></table>
+
+  <h2>逐函数结果</h2>
+  <div class="filters">
+    <button data-f onclick="filt('all',this)" class="on">全部</button>
+    <button data-f onclick="filt('ok',this)">三段全通</button>
+    <button data-f onclick="filt('fail',this)">含失败</button>
+    <button onclick="setTheme()">明暗切换</button>
+  </div>
+  <table>
+    <tr><th>函数</th><th>未映射</th><th>算子</th>
+        <th>① MIR</th><th>② C</th><th>③ 反推</th><th>说明</th><th></th></tr>
+    <tr data-s="ok ok ok"><td><b>clip</b></td><td class="mono">0</td><td class="mono">5</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/clip.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>dot_norm</b></td><td class="mono">0</td><td class="mono">6</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/dot_norm.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>energy</b></td><td class="mono">0</td><td class="mono">2</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/energy.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>grade</b></td><td class="mono">0</td><td class="mono">0</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/grade.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>lerp</b></td><td class="mono">0</td><td class="mono">3</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/lerp.html">详情 →</a></td></tr>
+<tr data-s="ok ok fail"><td><b>moving_avg</b></td><td class="mono">0</td><td class="mono">5</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b fail">失败</span></td><td class="note">算子序列变化：({&#x27;OP-INDEX&#x27;: 1, &#x27;OP-ADD&#x27;: 1}, {})</td><td><a href="detail/moving_avg.html">详情 →</a></td></tr>
+<tr data-s="fail skip skip"><td><b>pipeline</b></td><td class="mono">3</td><td class="mono">0</td><td><span class="b fail">失败</span></td><td><span class="b skip">跳过</span></td><td><span class="b skip">跳过</span></td><td class="note">3 条未映射</td><td><a href="detail/pipeline.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>relu</b></td><td class="mono">0</td><td class="mono">2</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/relu.html">详情 →</a></td></tr>
+<tr data-s="fail skip skip"><td><b>saturate</b></td><td class="mono">1</td><td class="mono">0</td><td><span class="b fail">失败</span></td><td><span class="b skip">跳过</span></td><td><span class="b skip">跳过</span></td><td class="note">1 条未映射</td><td><a href="detail/saturate.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>spread</b></td><td class="mono">0</td><td class="mono">3</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/spread.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>orphan</b></td><td class="mono">0</td><td class="mono">1</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/orphan.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>pair</b></td><td class="mono">0</td><td class="mono">5</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/pair.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>scores</b></td><td class="mono">0</td><td class="mono">11</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/scores.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>solo</b></td><td class="mono">0</td><td class="mono">1</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/solo.html">详情 →</a></td></tr>
+  </table>
+  <p class="note" style="margin-top:16px">
+  ②「通过」= m2c 构建成功 + gcc 编译通过 + 生成的 exe 真的跑出输出（不只是"能生成"）。<br>
+  ③「通过」= 从生成的 C 反推出的算子 id 多重集与源 MIR 相等。
+  </p>
+</div>
+<script>
+function setTheme(){var r=document.documentElement;
+ r.dataset.theme=r.dataset.theme==='dark'?'':'dark';}
+function filt(k,btn){document.querySelectorAll('button[data-f]').forEach(function(b){
+ b.classList.toggle('on', b===btn);});
+ document.querySelectorAll('tr[data-s]').forEach(function(tr){
+ tr.style.display=(k==='all'||tr.dataset.s.indexOf(k)>=0)?'':'none';});}
+</script></body></html>

@@ -1,0 +1,149 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>dot_norm — 三段链路</title><style>
+:root{--bg:#f5f7fb;--card:#fff;--fg:#0f172a;--mut:#64748b;--bd:#e2e8f0;
+ --ok:#059669;--okbg:#ecfdf5;--fail:#dc2626;--failbg:#fef2f2;
+ --skip:#94a3b8;--skipbg:#f1f5f9;--accent:#2563eb}
+[data-theme="dark"]{--bg:#0b1120;--card:#111827;--fg:#e5e7eb;--mut:#94a3b8;
+ --bd:#1f2937;--ok:#34d399;--okbg:#052e2b;--fail:#f87171;--failbg:#3f1212;
+ --skip:#64748b;--skipbg:#1e293b;--accent:#60a5fa}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+ font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}
+header{padding:26px 30px 16px;background:var(--card);border-bottom:1px solid var(--bd)}
+h1{margin:0 0 6px;font-size:19px;font-weight:680;letter-spacing:.2px}
+.sub{color:var(--mut);font-size:12.5px}
+.wrap{padding:20px 30px 70px;max-width:1240px;margin:0 auto}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+ gap:12px;margin:6px 0 22px}
+.kpi{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px 16px}
+.kpi .v{font:660 26px/1.15 ui-monospace,Consolas,monospace}
+.kpi .k{color:var(--mut);font-size:11.5px;margin-top:4px;letter-spacing:.03em}
+.bar{height:8px;border-radius:999px;background:color-mix(in srgb,var(--fg) 8%,transparent);
+ overflow:hidden;display:flex;margin-top:9px}
+.bar i{display:block;height:100%}
+h2{font-size:14.5px;margin:26px 0 8px;font-weight:660}
+table{width:100%;border-collapse:collapse;background:var(--card);
+ border:1px solid var(--bd);border-radius:14px;overflow:hidden}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--bd);font-size:13px}
+th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);font-weight:640}
+tr:last-child td{border-bottom:none}
+.mono{font-family:ui-monospace,Consolas,monospace}
+.b{display:inline-block;min-width:52px;text-align:center;font-size:11.5px;
+ font-weight:660;padding:2px 8px;border-radius:999px}
+.b.ok{color:var(--ok);background:var(--okbg)}
+.b.fail{color:var(--fail);background:var(--failbg)}
+.b.skip{color:var(--skip);background:var(--skipbg)}
+a{color:var(--accent);text-decoration:none;font-weight:600}
+a:hover{text-decoration:underline}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+button{background:var(--card);color:var(--fg);border:1px solid var(--bd);
+ border-radius:9px;padding:7px 13px;cursor:pointer;font-size:12.5px}
+button.on{border-color:var(--accent);color:var(--accent)}
+pre{background:var(--card);border:1px solid var(--bd);border-radius:12px;
+ padding:12px 14px;overflow:auto;font:12px/1.6 ui-monospace,Consolas,monospace;
+ max-height:420px;white-space:pre-wrap;word-break:break-word}
+.note{color:var(--mut);font-size:12px}
+</style></head><body>
+<header><h1>dot_norm</h1><div class="sub">源：dot_norm.m</div></header>
+<div class="wrap">
+<h2>① MATLAB → MIR　（算子 6 ｜ 未映射 0）</h2><pre>version 3
+# source_sha256:40589e1d299d69f806d84c3648ec4ab8c5617372dcc6f781cd86d67c9837d361
+func:dot_norm
+arg:x:f64:6
+ret:r:f64:1
+# @m2c hir-emitted（算子区由 HIR 降级产出，逐行 src 注释已折入表达式树）
+# src:6
+op:OP-LENGTH:n:x
+# src:7
+const:s:0
+# src:8
+for:i:1:n
+# src:9
+op:OP-INDEX:__h1:x:i
+# src:9
+op:OP-INDEX:__h2:x:i
+# src:9
+op:OP-MUL:__e1:__h1:__h2
+# src:9
+op:OP-ADD:s:s:__e1
+# src:10
+end
+# src:11
+op:OP-SQRT:r:s
+end</pre>
+<h2>② 生成的 C</h2><pre>/* dot_norm —— 由 m2c 生成，勿手改 */
+#include &quot;dot_norm.h&quot;
+
+/* 由 m2c 从 MIR 生成 —— 勿手改；来源函数：dot_norm */
+/* @m2c source_sha256:40589e1d299d69f806d84c3648ec4ab8c5617372dcc6f781cd86d67c9837d361 */
+/* @m2c arg-shape x 6 */
+/* @m2c ret-shape r 1 */
+mlc_status m2c_dot_norm(mlc_array x, mlc_array *r) {
+    mlc_status st = MLC_OK;
+    (void)st;
+    if (mlc_array_init(r, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) { return MLC_ERR; }
+    mlc_array n = {0};
+    if (mlc_array_init(&amp;n, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) { return MLC_ERR; }
+    mlc_array __h1 = {0};
+    if (mlc_array_init(&amp;__h1, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) { return MLC_ERR; }
+    mlc_array __h2 = {0};
+    if (mlc_array_init(&amp;__h2, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) { return MLC_ERR; }
+    mlc_array __e1 = {0};
+    if (mlc_array_init(&amp;__e1, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) { return MLC_ERR; }
+    mlc_array s = {0};
+    if (mlc_array_init(&amp;s, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) { return MLC_ERR; }
+    /* @m2c src:7 */
+    ((double *)s.data)[0] = 0;
+    /* @m2c src:6 */
+    st = mlc_op_length(&amp;x, &amp;n);
+    if (st != MLC_OK) { return st; }
+    /* @m2c src:8 */
+    for (int64_t i = 1; i &lt;= (int64_t)(((const double *)n.data)[0]); ++i) {
+        /* @m2c src:9 */
+        st = mlc_op_index(&amp;x, i, &amp;__h1);
+        if (st != MLC_OK) { return st; }
+        /* @m2c src:9 */
+        st = mlc_op_index(&amp;x, i, &amp;__h2);
+        if (st != MLC_OK) { return st; }
+        /* @m2c src:9 */
+        st = mlc_op_mul(&amp;__h1, &amp;__h2, &amp;__e1);
+        if (st != MLC_OK) { return st; }
+        /* @m2c src:9 */
+        st = mlc_op_add(&amp;s, &amp;__e1, &amp;s);
+        if (st != MLC_OK) { return st; }
+    }
+    /* @m2c src:11 */
+    st = mlc_op_sqrt(&amp;s, r);
+    if (st != MLC_OK) { return st; }
+    mlc_array_free(&amp;n);
+    mlc_array_free(&amp;__h1);
+    mlc_array_free(&amp;__h2);
+    mlc_array_free(&amp;__e1);
+    mlc_array_free(&amp;s);
+    return st;
+}
+
+</pre>
+<h2>② 运行输出</h2><pre>dot_norm: 9.5393920141694561</pre>
+<h2>③ C → MIR（反推）</h2><pre>version 3
+func:dot_norm
+arg:x:f64:6
+ret:r:f64:1
+var:n:f64:1
+var:__h1:f64:1
+var:__h2:f64:1
+var:__e1:f64:1
+var:s:f64:1
+const:s:0
+op:OP-LENGTH:n:x
+# loop: for (int64_t i = 1; i &lt;= (int64_t)(((const double *)n.data)[
+op:OP-INDEX:__h1:x:i
+op:OP-INDEX:__h2:x:i
+op:OP-MUL:__e1:__h1:__h2
+op:OP-ADD:s:s:__e1
+op:OP-SQRT:r:s
+end
+</pre>
+<p class="note">口径：不生成 mlc_op_* 调用而由发射器内联展开的算子
+（MASK / FIND2 / FIND3 / ISEQUAL / COPY / SETIDX），在 ③ 里不计为差异。</p>
+</div></body></html>

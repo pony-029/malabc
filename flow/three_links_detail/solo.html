@@ -1,0 +1,86 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>solo — 三段链路</title><style>
+:root{--bg:#f5f7fb;--card:#fff;--fg:#0f172a;--mut:#64748b;--bd:#e2e8f0;
+ --ok:#059669;--okbg:#ecfdf5;--fail:#dc2626;--failbg:#fef2f2;
+ --skip:#94a3b8;--skipbg:#f1f5f9;--accent:#2563eb}
+[data-theme="dark"]{--bg:#0b1120;--card:#111827;--fg:#e5e7eb;--mut:#94a3b8;
+ --bd:#1f2937;--ok:#34d399;--okbg:#052e2b;--fail:#f87171;--failbg:#3f1212;
+ --skip:#64748b;--skipbg:#1e293b;--accent:#60a5fa}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+ font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}
+header{padding:26px 30px 16px;background:var(--card);border-bottom:1px solid var(--bd)}
+h1{margin:0 0 6px;font-size:19px;font-weight:680;letter-spacing:.2px}
+.sub{color:var(--mut);font-size:12.5px}
+.wrap{padding:20px 30px 70px;max-width:1240px;margin:0 auto}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+ gap:12px;margin:6px 0 22px}
+.kpi{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px 16px}
+.kpi .v{font:660 26px/1.15 ui-monospace,Consolas,monospace}
+.kpi .k{color:var(--mut);font-size:11.5px;margin-top:4px;letter-spacing:.03em}
+.bar{height:8px;border-radius:999px;background:color-mix(in srgb,var(--fg) 8%,transparent);
+ overflow:hidden;display:flex;margin-top:9px}
+.bar i{display:block;height:100%}
+h2{font-size:14.5px;margin:26px 0 8px;font-weight:660}
+table{width:100%;border-collapse:collapse;background:var(--card);
+ border:1px solid var(--bd);border-radius:14px;overflow:hidden}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--bd);font-size:13px}
+th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);font-weight:640}
+tr:last-child td{border-bottom:none}
+.mono{font-family:ui-monospace,Consolas,monospace}
+.b{display:inline-block;min-width:52px;text-align:center;font-size:11.5px;
+ font-weight:660;padding:2px 8px;border-radius:999px}
+.b.ok{color:var(--ok);background:var(--okbg)}
+.b.fail{color:var(--fail);background:var(--failbg)}
+.b.skip{color:var(--skip);background:var(--skipbg)}
+a{color:var(--accent);text-decoration:none;font-weight:600}
+a:hover{text-decoration:underline}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+button{background:var(--card);color:var(--fg);border:1px solid var(--bd);
+ border-radius:9px;padding:7px 13px;cursor:pointer;font-size:12.5px}
+button.on{border-color:var(--accent);color:var(--accent)}
+pre{background:var(--card);border:1px solid var(--bd);border-radius:12px;
+ padding:12px 14px;overflow:auto;font:12px/1.6 ui-monospace,Consolas,monospace;
+ max-height:420px;white-space:pre-wrap;word-break:break-word}
+.note{color:var(--mut);font-size:12px}
+</style></head><body>
+<header><h1>solo</h1><div class="sub">源：solo.m</div></header>
+<div class="wrap">
+<h2>① MATLAB → MIR　（算子 1 ｜ 未映射 0）</h2><pre>version 3
+# source_sha256:cb0dc60faaa363b01230e257eb004e5c86389c9a5df26cdebd371c69e1426512
+func:solo
+arg:x:f64:6
+ret:r:f64:1
+# @m2c hir-emitted（算子区由 HIR 降级产出，逐行 src 注释已折入表达式树）
+# src:5
+op:OP-SUM:r:x
+end</pre>
+<h2>② 生成的 C</h2><pre>/* solo —— 由 m2c 生成，勿手改 */
+#include &quot;solo.h&quot;
+
+/* 由 m2c 从 MIR 生成 —— 勿手改；来源函数：solo */
+/* @m2c source_sha256:cb0dc60faaa363b01230e257eb004e5c86389c9a5df26cdebd371c69e1426512 */
+/* @m2c arg-shape x 6 */
+/* @m2c ret-shape r 1 */
+mlc_status m2c_solo(mlc_array x, mlc_array *r) {
+    mlc_status st = MLC_OK;
+    (void)st;
+    if (mlc_array_init(r, MLC_F64, 1, (int64_t[]){1}) != MLC_OK) { return MLC_ERR; }
+    /* @m2c src:5 */
+    st = mlc_op_sum(&amp;x, r);
+    if (st != MLC_OK) { return st; }
+    return st;
+}
+
+</pre>
+<h2>② 运行输出</h2><pre>solo: 21</pre>
+<h2>③ C → MIR（反推）</h2><pre>version 3
+func:solo
+arg:x:f64:6
+ret:r:f64:1
+op:OP-SUM:r:x
+end
+</pre>
+<p class="note">口径：不生成 mlc_op_* 调用而由发射器内联展开的算子
+（MASK / FIND2 / FIND3 / ISEQUAL / COPY / SETIDX），在 ③ 里不计为差异。</p>
+</div></body></html>
