@@ -261,6 +261,16 @@
       "witness": "tools/full_report.py",
       "status": "fixed",
       "commit": "R965"
+    },
+    {
+      "id": "F027",
+      "title": "yalmip 不是可翻译目标：两轮抽样都是 0/30 属预期",
+      "symptom": "full_report 三段表全红、环形图 0%，看起来像能力归零",
+      "root_cause": "yalmip 是符号建模工具箱：函数体大量使用 x.basis / isa(X,'sdpvar') / getvariables / varargin 分派，属类对象内部表示，C 侧无对应物；抽样把它当数值库来量",
+      "rule": "规模读数前先确认语料是否在'可翻译目标'内；否则 0% 会诱导去支持永远用不到的语法",
+      "witness": "tools/sample_numeric.py",
+      "status": "fixed",
+      "commit": "R967"
     }
   ]
 }

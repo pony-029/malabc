@@ -202,6 +202,9 @@ CSS = """
  .miss{color:var(--bad);font-size:13px}
  code{font:12px ui-monospace,Consolas,monospace;
       background:color-mix(in srgb,var(--fg) 6%,transparent);padding:1px 4px;border-radius:4px}
+ .banner{margin:10px 0 0;padding:9px 12px;border-radius:10px;font-size:13px;
+           background:color-mix(in srgb,var(--warn) 12%,transparent);
+           border:1px solid color-mix(in srgb,var(--warn) 40%,transparent)}
  .delta{font:600 12px ui-monospace,Consolas,monospace}
 """
 
@@ -370,6 +373,11 @@ def render(bench, links, c2m, hir, brief, src, delta):
     dl = ", ".join("%s %+d" % (k, v) for k, v in list(delta.items())[:6]) \
         if delta else "首次生成（无可比基线）"
 
+    # 顶部横幅：如果 unmapped.json 里有 verdict（抽样适用性结论），必须最先看到
+    verdict = (un or {}).get("verdict") if un else None
+    banner = ("<div class='banner'><b>读数说明：</b>%s</div>"
+              % verdict.replace("<", "&lt;")) if verdict else ""
+
     tpl = Template("""<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -378,6 +386,7 @@ def render(bench, links, c2m, hir, brief, src, delta):
 <h1>MATLAB ⇄ C 总报告</h1>
 <p class="sub">生成于 <b>$now</b> ｜ 八个章节的全部数字均来自工具产物，无一手填<br>
 <span class="delta">较上次：$dl</span></p>
+$banner
 </div></header>
 <nav class="toc"><div class="wrap">
 <a href="#s1">① 规模</a><a href="#s2">② 三段链路</a><a href="#s3">③ C→MATLAB</a>
@@ -399,7 +408,7 @@ def render(bench, links, c2m, hir, brief, src, delta):
 """)
     return tpl.substitute(css=CSS, now=now, dl=dl, kpis=kpi_html, sec1=sec1,
                           sec2=sec2, sec3=sec3, sec4=sec4, sec5=sec5, sec6=sec6,
-                          sec7=sec7, sec8=sec8)
+                          sec7=sec7, sec8=sec8, banner=banner)
 
 
 def main(argv=None):
