@@ -271,6 +271,16 @@
       "witness": "tools/sample_numeric.py",
       "status": "fixed",
       "commit": "R967"
+    },
+    {
+      "id": "F028",
+      "title": "Octave 的 ## 注释被当成语句，占未映射 52%",
+      "symptom": "真实工程 gnu-octave/statistics 上 other 类 2691 条，样本是 '## Check number of input arguments'",
+      "root_cause": "_clean 只按 % 截断，Octave 风格注释 ## / # 未被识别",
+      "rule": "解析前先把'该语言的注释语法'列全（MATLAB % 、Octave # 与 ##），漏一种就等于把注释当代码",
+      "witness": "translate/mir.py",
+      "status": "fixed",
+      "commit": "R968"
     }
   ]
 }

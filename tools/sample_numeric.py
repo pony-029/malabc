@@ -51,7 +51,18 @@ STUB_MARKS = ("switch class(", "InstantiateElementWise", "CreateBasicOperator",
 
 def is_numeric(src):
     """返回 (是否数值函数, 排除理由或空)。"""
-    head = src.lstrip()
+    # **必须先跳过注释/空行**（R968）：Octave 的函数文件普遍以 `## 标题` 或
+    # `% 说明` 开头，而 `function` 在第 20~60 行。原来要求首行就是 function，
+    # 于是整个 Octave statistics 包 777 个文件被误判成「非函数文件」。
+    lines = src.splitlines()
+    body_start = 0
+    for i, ln in enumerate(lines):
+        t = ln.strip()
+        if not t or t.startswith("%") or t.startswith("#"):
+            continue
+        body_start = i
+        break
+    head = "\n".join(lines[body_start:]).lstrip()
     if not head.startswith("function"):
         return False, "非函数文件"
     first = head.splitlines()[0]

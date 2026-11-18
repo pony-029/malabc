@@ -120,10 +120,16 @@ def _has_string_literal(t):
     return False
 
 def _clean(line):
-    """去掉行内注释（`%` 之后），保留字符串里的 %（本版无字符串常量）。"""
+    """去掉行内注释：MATLAB 用 `%`，**Octave 还用 `#` / `##`**。
+
+    R968：原来只截 `%`，于是 Octave 风格的整行注释（`## Check number of
+    input arguments`）被当成**语句**，落进 `unmapped:other` ——
+    在真实工程（gnu-octave/statistics，777 个函数）上，这类"注释当语句"
+    占了未映射的 **52%**。修这一处，未映射立刻少一半。
+    """
     out = []
     for ch_i, ch in enumerate(line):
-        if ch == "%":
+        if ch == "%" or ch == "#":
             break
         out.append(ch)
     return "".join(out).rstrip()

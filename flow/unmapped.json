@@ -1,19 +1,17 @@
 {
-  "source": "E:\\temp\\matlabc\\yalm_num",
-  "files": 30,
-  "total": 574,
+  "source": "E:\\temp\\matlabc\\oct_num",
+  "files": 40,
+  "total": 3931,
   "kinds": {
-    "struct": 124,
-    "strlit": 110,
-    "call2": 109,
-    "cell": 74,
-    "other": 71,
-    "cond": 33,
-    "nested": 19,
-    "control": 16,
-    "sideeffect": 10,
-    "idx2": 1
-  },
-  "note": "<b>已核实（R967）</b>：两轮抽样（含排除分派桩后只取数值函数）都是 0/30。卡点集中在 <code>x.basis</code>、<code>isa(X,'sdpvar')</code>、<code>getvariables(...)</code>、<code>varargin{i}</code> —— 这些是 YALMIP <b>符号对象</b>的内部表示，C 侧没有对应物，<b>本质上不该翻译成数值 C</b>。所以 0/30 是「目标不匹配」，不是「能力缺失」；要量真实能力，需换<b>纯数值工程</b>做语料。",
-  "verdict": "yalmip 是符号建模工具箱，不是数值库；用它做 MATLAB→C 的规模读数不具代表性。"
+    "other": 1589,
+    "call2": 676,
+    "cond": 625,
+    "strlit": 317,
+    "cell": 313,
+    "struct": 159,
+    "nested": 128,
+    "control": 69,
+    "idx2": 21,
+    "blockmarker": 5
+  }
 }
