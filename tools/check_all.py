@@ -228,7 +228,9 @@ GUARD_TIMEOUT = 600.0
 # R-行尾1：新增 check_eol_convention.py（EO1–EO3，CRLF/LF 约定），故 23 → 24。
 # R432：新增 check_translate_port.py（TP1–TP4，ABI/适配器/算子/保真/台账），
 #       故 33 → 34。门数只许升（删门/漏登记都会红）。
-MIN_GUARDS = 42
+# R951：新增 check_failures / check_mir_split / check_brain_growth 三道，42 -> 45。
+# 门数只许升；自证 ⑦ 会核对"这个数 == 本目录真实护栏数"。
+MIN_GUARDS = 45
 
 
 def _write_help(text):
