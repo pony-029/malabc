@@ -32,7 +32,9 @@ import io
 import json
 import os
 import re
+import shutil
 import sys
+import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REG = os.path.join(ROOT, "flow", "failures.json")
@@ -87,7 +89,70 @@ def audit(path=REG):
     return problems
 
 
+#: 质量门表里那一行的签名（`check_readme_parity` 的 P5 要求声明它，
+#: 否则"文档里的那一行"没有可逐字核对的对手方）
+ROW_SIGNATURE = "F1–F5"
+
+
+def _selftest():
+    """自证：**正向能过、反向能红** —— 只验"干净样本通过"不算自证，
+    因为一个永远返回 OK 的门也能通过那一项。"""
+    bad = good = 0
+    d = tempfile.mkdtemp(prefix="fail-probe-")
+    try:
+        def _mk(name, obj):
+            p = os.path.join(d, name + ".json")
+            io.open(p, "w", encoding="utf-8", newline="\n").write(
+                json.dumps(obj, ensure_ascii=False))
+            return p
+
+        base = {"version": 1, "entries": [{
+            "id": "F001", "title": "t", "symptom": "s", "root_cause": "r",
+            "rule": "u", "witness": "tools/check_failures.py",
+            "status": "fixed", "commit": "abc"}]}
+
+        # ① 干净样本必须通过
+        if not audit(_mk("ok", base)):
+            good += 1
+        else:
+            bad += 1
+            print("  [selftest] 干净样本被误伤")
+
+        # ② witness 不存在必须红
+        b2 = json.loads(json.dumps(base))
+        b2["entries"][0]["witness"] = "tools/nope_not_here.py"
+        if any("witness" in p for p in audit(_mk("badwit", b2))):
+            good += 1
+        else:
+            bad += 1
+            print("  [selftest] witness 不存在没红")
+
+        # ③ fixed 无 commit 必须红
+        b3 = json.loads(json.dumps(base))
+        b3["entries"][0]["commit"] = ""
+        if any("commit" in p for p in audit(_mk("badcm", b3))):
+            good += 1
+        else:
+            bad += 1
+            print("  [selftest] fixed 无 commit 没红")
+
+        # ④ 重复 id 必须红
+        b4 = json.loads(json.dumps(base))
+        b4["entries"].append(dict(base["entries"][0]))
+        if any("重复" in p for p in audit(_mk("dup", b4))):
+            good += 1
+        else:
+            bad += 1
+            print("  [selftest] 重复 id 没红")
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+    print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
+    return 0 if bad == 0 else 1
+
+
 def main(argv=None):
+    if argv and "--selftest" in argv or "--selftest" in sys.argv:
+        return _selftest()
     problems = audit()
     if problems:
         for p in problems:

@@ -142,7 +142,49 @@ def run():
     return problems
 
 
+ROW_SIGNATURE = "MS1–MS5"
+
+
+def _ms5(text):
+    """MS5 的独立实现（自证要能**双向**验：好的通过、坏的变红）。"""
+    depth = 0
+    for ln in text.splitlines():
+        if ln.startswith("func:"):
+            if depth != 0:
+                return ["上一个 func 块没有以 end 收束"]
+            depth = 1          # `func:` 开块 —— 少了这一步，缺 end 永远测不出来
+        elif ln.strip() == "end":
+            depth = 0
+    return [] if depth == 0 else ["文末仍有未收束的 func 块"]
+
+
+def _selftest():
+    bad = good = 0
+    # ① 完整 MIR 通过
+    if not _ms5("version 3\nfunc:a\nend\n"):
+        good += 1
+    else:
+        bad += 1
+        print("  [selftest] 完整 MIR 被误伤")
+    # ② 末尾缺 end 必须红
+    if _ms5("version 3\nfunc:a\n"):
+        good += 1
+    else:
+        bad += 1
+        print("  [selftest] 缺 end 没红")
+    # ③ 真跑一遍 run()（对当前 mir.py 全绿）
+    if not run():
+        good += 1
+    else:
+        bad += 1
+        print("  [selftest] run() 对当前代码不是全绿")
+    print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
+    return 0 if bad == 0 else 1
+
+
 def main(argv=None):
+    if "--selftest" in sys.argv:
+        return _selftest()
     problems = run()
     if problems:
         for p in problems:
