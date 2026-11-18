@@ -251,6 +251,16 @@
       "witness": "translate/cmir.py",
       "status": "fixed",
       "commit": "R961"
+    },
+    {
+      "id": "F026",
+      "title": "yalmip 的 cell 类未映射其实是 varargin/varargout",
+      "symptom": "cell 类别 154 条看似元胞数组，实际形态多为 switch class(varargin{1}) / varargout{2} = operator / varargout{1} = []",
+      "root_cause": "MATLAB 用 cell 实现可变参数；转换器把任何含花括号的语句一律归为 unmapped:cell，没有区分'可变参数惯用法'与'真元胞数组'",
+      "rule": "分类粒度决定攻关顺序：把 unmapped 类再按语句形态细分，才不会把'可变参数'当'元胞数组'去支持",
+      "witness": "tools/full_report.py",
+      "status": "fixed",
+      "commit": "R965"
     }
   ]
 }
