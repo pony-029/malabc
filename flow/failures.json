@@ -231,6 +231,16 @@
       "witness": "rust/m2c/src/emit.rs",
       "status": "fixed",
       "commit": "R958"
+    },
+    {
+      "id": "F024",
+      "title": "把生成的 HTML 也转成 CRLF",
+      "symptom": "check_eol_convention 报 4 项：full_report.html 48 个 CRLF、three_links_detail 三个文件各 1-4 个",
+      "root_cause": "我在收尾时把 flow/*.html 一起丢进 to_crlf.py，而规则是'生成物保留渲染器原始字节（LF）'",
+      "rule": "改行尾前先按'手写物 CRLF / 生成物 LF'分类；**生成物永远不进 to_crlf**",
+      "witness": "tools/check_eol_convention.py",
+      "status": "fixed",
+      "commit": "R959"
     }
   ]
 }
