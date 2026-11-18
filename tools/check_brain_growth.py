@@ -106,10 +106,11 @@ def audit(reg=REG, growth=GROWTH, usage=USAGE, check_senses=True):
     n_usage = 0
     if os.path.isfile(usage):
         n_usage = sum(1 for ln in io.open(usage, encoding="utf-8") if ln.strip())
-    if snap_for_usage := (snaps[-1].get("usage") if snaps else 0):
-        if n_usage and n_usage < snap_for_usage:
-            problems.append("BG4 咨询次数倒退：快照记 %d 次，实际 %d 条"
-                            % (snap_for_usage, n_usage))
+    # ⚠ 不用海象运算符：本仓承诺 Python 3.6.5（check_py36_clean 会红）
+    snap_usage = snaps[-1].get("usage") if snaps else 0
+    if snap_usage and n_usage and n_usage < snap_usage:
+        problems.append("BG4 咨询次数倒退：快照记 %d 次，实际 %d 条"
+                        % (snap_usage, n_usage))
     if n_usage == 0:
         problems.append("BG4 大脑从未被咨询过（%s 为空）—— 知识库没人读等于墓志铭"
                         % _rel(usage))
