@@ -141,6 +141,26 @@
       "witness": "translate/mir.py",
       "status": "fixed",
       "commit": "149d732"
+    },
+    {
+      "id": "F015",
+      "title": "使用留痕写在 CLI 里，而实际调用走的是函数",
+      "symptom": "brain-usage.jsonl 恒为空，因为 flow_monitor 直接 import 调 advise()，不经 CLI",
+      "root_cause": "留痕放在了 CLI 分支而不是 advise() 内部；最有价值的调用（每阶段自动咨询）反而不留痕",
+      "rule": "埋点要放在**被调用函数**里，不要放在某个入口分支里",
+      "witness": "tools/brain.py",
+      "status": "fixed",
+      "commit": ""
+    },
+    {
+      "id": "F016",
+      "title": "账本漏算没有 srcfile 标注的函数",
+      "symptom": "MS4 报 functions=1 而各项之和=0",
+      "root_cause": "unmatched 只记文件名列表，而 src 为空串时不会 append，于是这些函数在账本里凭空消失",
+      "rule": "计数与名单要分开存：能被计数的不一定在名单里",
+      "witness": "tools/check_mir_split.py",
+      "status": "fixed",
+      "commit": ""
     }
   ]
 }

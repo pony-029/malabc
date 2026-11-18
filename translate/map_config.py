@@ -173,8 +173,12 @@ def apply_to_mir(text, spec):
         for s in g["sources"]:
             by_src[s] = g["name"]
 
-    out, report = [], {"groups": {}, "unmatched": [], "dropped": 0,
-                       "functions": 0}
+    # `unmatched_funcs` 是**函数**计数，`unmatched` 只是**文件名**列表 ——
+    # 两者都要：没有 `# srcfile:` 标注的函数在文件名列表里看不见
+    # （src 为空串，不会 append），于是账本会少算（MS4 实测抓到：
+    # functions=1 而各项之和=0）。
+    out, report = [], {"groups": {}, "unmatched": [], "unmatched_funcs": 0,
+                       "dropped": 0, "functions": 0}
     for g in spec["groups"]:
         report["groups"][g["name"]] = {"sources": list(g["sources"]),
                                        "functions": 0}
@@ -198,6 +202,7 @@ def apply_to_mir(text, spec):
             report["functions"] += 1
         else:
             out.append(block)
+            report["unmatched_funcs"] += 1
             if src and src not in report["unmatched"]:
                 report["unmatched"].append(src)
             report["functions"] += 1
