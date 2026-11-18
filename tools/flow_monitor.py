@@ -59,8 +59,22 @@ def monitor(src, out_dir, map_file=None):
     stages = []
 
     def add(name, status, elapsed, metrics, artifact="", note=""):
+        # **每进一个阶段，先问大脑**（R935）：它按阶段名检索历史上同类的坑，
+        # 把最相关的一条规则挂在阶段卡上。这是"大脑参与全流程"的最小实现 ——
+        # 不靠人记得去查，而是流程走到哪就问一句。
+        hint = ""
+        try:
+            sys.path.insert(0, os.path.join(ROOT, "tools"))
+            import brain as _brain
+            hits = _brain.advise(name, k=1)
+            if hits:
+                _s, _e = hits[0]
+                hint = "%s：%s" % (_e["id"], _e["rule"])
+        except Exception:                      # noqa: BLE001
+            pass                               # 大脑不可用不该阻断监控
         stages.append({"name": name, "status": status, "elapsed": elapsed,
-                       "metrics": metrics, "artifact": artifact, "note": note})
+                       "metrics": metrics, "artifact": artifact, "note": note,
+                       "hint": hint})
 
     # ① 扫描
     t0 = time.time()
@@ -186,6 +200,8 @@ def render(stages, src):
                if s["artifact"] else "")
         note = ("<p class='err'>{}</p>".format(s["note"].replace("<", "&lt;"))
                 if s["note"] else "")
+        hint = ("<p class='hint'>🧠 {}</p>".format(s["hint"].replace("<", "&lt;"))
+                if s.get("hint") else "")
         cards.append("""
     <section class="stage">
       <div class="dot" style="background:{c}"></div>
@@ -194,11 +210,11 @@ def render(stages, src):
             <span class="t">{el} s</span></h2>
         <div class="bar"><span style="width:{w}%;background:{c}"></span></div>
         <table>{rows}</table>
-        {art}{note}
+        {art}{note}{hint}
       </div>
     </section>""".format(c=color[s["status"]], name=s["name"],
                          lab=label[s["status"]], el=s["elapsed"], w=width,
-                         rows=rows, art=art, note=note))
+                         rows=rows, art=art, note=note, hint=hint))
 
     total = sum(s["elapsed"] for s in stages)
     reached = sum(1 for s in stages if s["status"] in ("ok", "warn"))
@@ -241,6 +257,8 @@ def render(stages, src):
   .art{margin:6px 0 0;font-size:12px;color:var(--mut);word-break:break-all}
   .err{margin:8px 0 0;padding:7px 9px;border-radius:8px;font-size:12.5px;
        background:rgba(207,34,46,.08);color:#cf222e;word-break:break-all}
+  .hint{margin:8px 0 0;padding:6px 9px;border-radius:8px;font-size:12.5px;
+        background:rgba(110,64,201,.08);color:#8250df;word-break:break-all}
   footer{color:var(--mut);font-size:12.5px;margin-top:20px;text-align:center}
 </style></head><body><div class="wrap">
   <h1>转换流程监控</h1>

@@ -80,11 +80,16 @@ def _score(query, e):
     return s
 
 
-def advise(text, k=5):
+def advise(text, k=5, log=True):
     d = load()
     ranked = sorted(((_score(text, e), e) for e in d["entries"]),
                     key=lambda x: -x[0])
-    return [(s, e) for s, e in ranked if s > 0][:k]
+    hits = [(s, e) for s, e in ranked if s > 0][:k]
+    # **留痕在 advise 里**，不在 CLI 里（R935）：流程监控是直接调函数的，
+    # 若只在 CLI 记录，那条最有价值的调用（每阶段自动咨询）反而不会留痕。
+    if log:
+        _append_usage("advise", text, hits)
+    return hits
 
 
 def record(title, symptom, root_cause, rule, witness, status="fixed",
@@ -239,9 +244,55 @@ def render(d=None):
                           sug=sug_html, cards="\n".join(cards))
 
 
+def check():
+    """**作为门执行**：有未闭条目、或条目缺合法见证 → 非零。
+
+    为什么让大脑当门：知识库只有被**流程强制读取**时才真的起作用。
+    放在这里而不是只做 `report`，是为了让"有未闭条目"这件事**卡住提交**，
+    而不是躺在一个没人打开的页面里。
+    """
+    d = load()
+    es = d["entries"]
+    bad = []
+    for e in es:
+        w = (e.get("witness") or "").strip()
+        if not w or not os.path.exists(os.path.join(ROOT, w)):
+            bad.append("%s 的 witness 不成立：%r（没有见证 = 没做防复发）"
+                       % (e["id"], w))
+        if e.get("status") == "open":
+            bad.append("%s 未闭合：%s（规则：%s）"
+                       % (e["id"], e["title"], e.get("rule", "")))
+    if bad:
+        for b in bad:
+            print("- %s" % b)
+        print("brain check: %d 处未处理" % len(bad))
+        return 1
+    print("brain check: OK（%d 条，全部闭合且见证成立）" % len(es))
+    return 0
+
+
+#: 使用痕迹：每次 `advise` 命中都记一行，证明"大脑真的被读过"。
+#: 没有它，"接进流程"只是口头承诺 —— 和登记表没人读是同一类问题。
+USAGE = os.path.join(ROOT, "flow", "brain-usage.jsonl")
+
+
+def _append_usage(cmd, query, hits):
+    try:
+        line = json.dumps({"ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+                           "cmd": cmd, "query": (query or "")[:120],
+                           "hits": [e["id"] for _, e in hits]},
+                          ensure_ascii=False)
+        f = io.open(USAGE, "a", encoding="utf-8", newline="\n")
+        with f:
+            f.write(line + "\n")
+    except (IOError, OSError):
+        pass
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="项目大脑：失败知识 + 反馈")
-    ap.add_argument("cmd", choices=("advise", "record", "report", "status"))
+    ap.add_argument("cmd", choices=("advise", "record", "report", "status",
+                                    "check"))
     ap.add_argument("text", nargs="?", help="advise 的任务描述")
     ap.add_argument("--title"), ap.add_argument("--symptom")
     ap.add_argument("--root-cause", dest="root_cause")
@@ -256,8 +307,11 @@ def main(argv=None):
               % (h["total"], h["fixed"], h["open"], h["coverage"]))
         return 0
 
+    if ns.cmd == "check":
+        return check()
+
     if ns.cmd == "advise":
-        hits = advise(ns.text or "")
+        hits = advise(ns.text or "")   # 留痕在 advise 内部统一记
         if not hits:
             print("[brain] 没有历史条目与这次任务相关 —— 但请动手后回来 record")
             return 0
