@@ -356,6 +356,15 @@ def render(bench, links, c2m, hir, brief, src, delta):
             for k, v in list(un["kinds"].items())[:10])
         sec7 = ("<div class='kpis'><div class='kpi'><b>%d</b>"
                 "<span>抽样函数文件</span></div><div class='kpi'><b>%d</b>"
+                "<span>未映射语句</span></div>"
+                "<div class='kpi'><b>%.1f%%</b><span>平均降级率"
+                "（1 - 未映射/(未映射+算子)）</span></div>"
+                "<div class='kpi'><b>%d</b><span>≥90%% 的文件</span></div></div>"
+                % (un.get("files") or 0, un.get("total_unmapped")
+                   or un.get("total") or 0,
+                   100.0 * (un.get("avg_rate") or 0), un.get("files_over_90") or 0)
+                + "<div class='kpis'><div class='kpi'><b>%d</b>"
+                "<span>抽样函数文件</span></div><div class='kpi'><b>%d</b>"
                 "<span>未映射语句</span></div></div>"
                 "<table><tr><th>类别</th><th>条数</th><th>占比</th><th></th></tr>"
                 "%s</table><p class='note'>来源 <code>%s</code>。%s</p>"

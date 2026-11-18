@@ -281,6 +281,16 @@
       "witness": "translate/mir.py",
       "status": "fixed",
       "commit": "R968"
+    },
+    {
+      "id": "F029",
+      "title": "Octave 的 endif/带括号条件被当成未知语句",
+      "symptom": "other 类里大量 endif；cond 类里 if (n == 0) 不匹配 _IF_RE",
+      "root_cause": "方言没认全：Octave 的 endif/endfor/endwhile 等价 end，且条件常被整体括号包裹",
+      "rule": "解析前把'该方言的等价写法'列全：注释(##)、块结束(endif)、括号包裹条件——三处都吃过亏",
+      "witness": "translate/mir.py",
+      "status": "fixed",
+      "commit": "R970"
     }
   ]
 }

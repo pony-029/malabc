@@ -119,6 +119,26 @@ def _has_string_literal(t):
         return True                      # 字符串起点
     return False
 
+def _strip_outer_parens(s):
+    """若一对括号正好包住整段，剥掉一层；否则原样返回。
+
+    `if (n == 0)` -> `n == 0`（Octave/老式写法）；
+    `if (a) && (b)` -> 原样（括号没有覆盖整段，剥了会破坏语法）。
+    """
+    s = (s or "").strip()
+    if len(s) < 3 or not s.startswith("(") or not s.endswith(")"):
+        return s
+    depth = 0
+    for i, ch in enumerate(s):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0 and i != len(s) - 1:
+                return s          # 提前闭合，说明括号没包住整段
+    return s[1:-1].strip()
+
+
 def _clean(line):
     """去掉行内注释：MATLAB 用 `%`，**Octave 还用 `#` / `##`**。
 
@@ -1924,6 +1944,23 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             if _NOOP_RE.match(code):
                 n_noop[0] += 1
                 continue
+            # **Octave 方言归一**（R970）：`endif` / `endfor` / `endwhile` /
+            # `endfunction` / `endswitch` / `endtry` 等价于 `end`；`until` 等价
+            # 于 `end`（do-until 的收尾）。
+            # 不归一它们，每个 if/for 块都会多出一条未映射 —— 实测 Octave
+            # statistics 里这类占了 `other` 类的一大块，等于把"块结束"当成
+            # "不认识的语句"。这和 R968 的 `##` 注释是同一类问题：**方言没认全**。
+            _m_oct = re.match(r"^(end(if|for|while|function|switch|try)|until)\b",
+                              code)
+            if _m_oct:
+                code = "end"
+            # **剥掉条件外的整体括号**（R970）：Octave/老式写法 `if (n == 0)`，
+            # 而 `_IF_RE` 认的是 `if n == 0`。只在"这一对括号**正好包住整段**"
+            # 时剥，避免把 `if (a) && (b)` 误剥成 `if a) && (b`。
+            _kw_m = re.match(r"^(if|elseif|while)\s+(.*)$", code)
+            if _kw_m:
+                _rest = _strip_outer_parens(_kw_m.group(2).strip())
+                code = "%s %s" % (_kw_m.group(1), _rest)
             # `full(x)` 在稠密表示下是恒等（YALMIP 84 次）：剥掉，别挡住真正的语义
             code = _strip_full_call(code)
             # 下标算术：必须在**所有**降级分支之前 —— 否则 `y = A((i+0))` 会先被
