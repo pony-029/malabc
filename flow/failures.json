@@ -191,6 +191,16 @@
       "witness": "tools/brain_agent.py",
       "status": "fixed",
       "commit": "agent"
+    },
+    {
+      "id": "F020",
+      "title": "报告里忘写脑状态：靠记性必然复发",
+      "symptom": "R953/R954 两轮报告完全没有脑状态三段，用户第二次提醒'你又忘了'",
+      "root_cause": "脑状态是'报告的一部分'，而报告是每轮临时手写的，没有任何门检查它是否包含脑状态",
+      "rule": "凡'每轮都该出现的东西'，必须由收尾工具一次生成（round_close）+ 门校验其与知识库一致（BG7），不能靠记性",
+      "witness": "tools/round_close.py",
+      "status": "fixed",
+      "commit": "R955"
     }
   ]
 }

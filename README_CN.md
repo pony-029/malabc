@@ -833,7 +833,7 @@ python tools/check_all.py        # 跑完 tools/check_*.py 全部护栏 + 各自
 | `check_flow_figures.py` | `FF1–FF7` — `flow/index.html` ⇄ `flow/figures/` ⇄ `figures/*/candidate.json` **三向对齐**（FF1–FF7，每一对都双向）：索引里的死链、没人引用的产物、候选推不出的产物、编号重复、索引页含脚本或外链，都必须红。单语交互图（F14–F24）走这条门；中英双版 + 独立 SVG 的既有体系仍由 `check_flow_diagrams.py` 的 D1–D12 守 |
 | `check_facts_replay.py` | `FT1–FT3` — `facts.py` 把 `--json` 的报表拆成**位置级事实**，再要求**重放**出同一批计数（FTD1 五类计数逐项相等、FTD2 每条事实都有 `loc.file`、FTD3 `kind` 封闭防拼错静默漏计）。没有它，「同一批读数，另一种排版」只是一句自述 —— 加一条、少一条、拼错一个 kind，都不会有人说话 |
 | `check_eol_convention.py` | `EO1–EO3` — 行尾约定：手写物（`.py/.md/.mmd` 与 `candidate*.json`）必须 CRLF，生成物（`.html/.svg`）必须 LF，扫描面不得少于下界。起因是 R110 一次 `newline="\n"` 把 6 个文件变成 LF，三行真实改动被放大成 **68,456 行** diff；字节差 34,228 恰好是行数，就是它现形的信号 |
-| `check_brain_growth.py` | `BG1–BG6` — 大脑成长：有快照、条数单调不减、**最新快照必须等于知识库条数**（加了条目却没记快照就红）、咨询次数 > 0（知识库没人读 = 墓志铭）、见证 100% |
+| `check_brain_growth.py` | `BG1–BG7` — 大脑成长：有快照、条数单调不减、**最新快照必须等于知识库条数**（加了条目却没记快照就红）、咨询次数 > 0（知识库没人读 = 墓志铭）、见证 100% |
 | `check_failures.py` | `FR1–FR5` — 失败登记表：必填字段齐、`id` 唯一且 `F###`、**`witness` 必须存在**（没有见证 = 没做防复发）、`status=fixed` 必须带 `commit`、状态只能是 fixed/open。起因：同类错反复犯（新工具没进 README 两次、`%` 格式化三次），教训写在对话里没人会读 |
 | `check_mir_split.py` | `MS1–MS5` — 解析/切分：无 `end` 的函数也要切开（F014：yalmiptest 18→3）、嵌套块不破坏边界、改写后 `version` 头仍在、账本闭合（源 = 组内 + 丢弃 + 未归组）、每个 `func:` 块都以 `end` 收束 |
 | `check_hir_two_paths.py` | `TP9a–TP9d` —— 直出与 `--hir-emit` 必须逐函数等价（函数集合 / 算子多重集 / `# src` 集合 / 数值），让验证者不随默认值漂移 |
@@ -1212,6 +1212,7 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 - `tools/harness.py` —— **自改进 harness**：跑分组检查 → 把失败入库（`flow/problems.jsonl`）→ 用向量库反查历史同类错 → 按「重复次数 + 有无历史解法」排出下一步。它**不自动改代码**，只做发现/归因/排序
 - `tools/brain_db.py` —— **问题记录向量库**：哈希特征向量（md5 定维、256 维、L2 归一、余弦检索），离线确定、可解释；换真 embedder 只需替换 `embed()`（存储里带 `model/dim`，混用会被拒）。CLI：`build` / `add` / `query` / `stats`
 - `tools/check_mir_split.py` —— **解析/切分判据库**（MS1–MS5）：无 `end` 切分、嵌套边界、`version` 头、账本闭合、块收束
+- `tools/round_close.py` —— **轮次收尾**：一条命令完成「刷新感知 → 记成长快照 → 写 `flow/rounds.jsonl`（目标/结果/条数/新增教训数/脑状态三段）→ 打印三段」。配 `check_brain_growth` 的 **BG7**：不跑它、或跑了但没带脑状态三段，都会红 —— 于是"每轮报告带脑状态"不再靠记性
 - `tools/brain_agent.py` —— **小脑 ↔ 大模型协议层**：`pack` 把任务 + 历史同类错（规则/见证）打成上下文；`ask --cmd "<任意命令>"` 把 prompt 喂给任意模型（stdin→stdout，换模型只换一条命令）；`ingest` 把回复**校验后**入库（witness 必须真实存在，否则只落待办 —— 这条会被模型钻空子）；`fanout` 同一问题发多家、只并列各自独有的发现
 - `tools/brain.py` —— **项目大脑**：`advise` 动手前检索历史同类错误并返回「规则 + 见证」；`record` 处置后追加（强制校验 witness 存在）；`report` 出 `flow/brain.html`（统计 + 聚类 + 由登记内容推出的下一步建议）。知识库是 `flow/failures.json`，校验门是 `tools/check_failures.py`
 - `tools/check_failures.py` —— **失败登记门**：F1 必填字段、F2 id 唯一、F3 **witness 必须存在**（没有见证 = 没做防复发）、F4 `fixed` 必须有 commit、F5 状态枚举

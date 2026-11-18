@@ -38,7 +38,7 @@ REG = os.path.join(ROOT, "flow", "failures.json")
 GROWTH = os.path.join(ROOT, "flow", "brain-growth.jsonl")
 USAGE = os.path.join(ROOT, "flow", "brain-usage.jsonl")
 
-ROW_SIGNATURE = "BG1–BG6"
+ROW_SIGNATURE = "BG1–BG7"
 
 
 def _snaps(path=GROWTH):
@@ -121,6 +121,39 @@ def audit(reg=REG, growth=GROWTH, usage=USAGE, check_senses=True):
                    ROOT, (e.get("witness") or "").strip()))]
     if missing:
         problems.append("BG5 %d 条没有成立的见证：%r" % (len(missing), missing[:4]))
+    # BG7：**每轮收尾必须留痕**（用户提过两次"你又忘了"）。
+    # 判据：flow/rounds.jsonl 最后一条的 entries == 当前条数，且带
+    # goal/result 与脑状态三段。不跑 round_close → 库变了而记录没变 → 红。
+    rp = os.path.join(ROOT, "flow", "rounds.jsonl")
+    if check_senses:                       # 自证用临时目录，跳过真实路径检查
+        last = None
+        if os.path.isfile(rp):
+            for ln in io.open(rp, encoding="utf-8"):
+                ln = ln.strip()
+                if not ln:
+                    continue
+                try:
+                    last = json.loads(ln)
+                except ValueError:
+                    continue
+        if last is None:
+            problems.append("BG7 没有轮次记录（%s）—— 收尾必须跑 "
+                            "tools/round_close.py" % _rel(rp))
+        else:
+            if entries and last.get("entries") != len(entries):
+                problems.append(
+                    "BG7 轮次记录落后：最后一条记 %s 条，实际 %d 条 —— "
+                    "加了条目却没跑 round_close" % (last.get("entries"),
+                                                   len(entries)))
+            for k in ("goal", "result"):
+                if not (last.get(k) or "").strip():
+                    problems.append("BG7 轮次记录缺 %s（记了什么必须能读出来）" % k)
+            br = last.get("brief") or {}
+            if not all((br.get(k) or "").strip()
+                       for k in ("senses", "knowledge", "growth")):
+                problems.append("BG7 轮次记录里没有完整的脑状态三段"
+                                "（感知/知识/成长）")
+
     # BG6：**感知不许比事实旧**。知识库管"以前踩过什么"，感知管"现在什么状态"；
     # 读数文件改过却没重跑 `brain senses`，小脑就会拿旧感觉做判断。
     if check_senses:
