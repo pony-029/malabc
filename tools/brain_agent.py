@@ -125,6 +125,7 @@ def ask(task, cmds, timeout=300):
             # 用 `input=` 喂 prompt：它同时把 stdin 设成 PIPE（不会继承父进程的
             # stdin —— 否则某些 CLI 会等键盘输入而挂死，S1 明确要求）。
             r = subprocess.run(cmd, shell=True, input=prompt.encode("utf-8"),
+                               stdin=subprocess.PIPE,
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                timeout=timeout, cwd=ROOT)
             raw = r.stdout.decode("utf-8", "replace")
