@@ -658,6 +658,36 @@ def _lower_binary(lhs, left, op, right, fnames, emit, counter, src_line=0,
             return False
         sides.append(side)
 
+    # **两侧都是 i64 标量 → 走 `setb:`，不要发 `op:OP-SUB`**（R946）。
+    #
+    # `lo = i - w`（i 是循环变量、w 被 `% @m2c i64` 标注）发成
+    # `op:OP-SUB:lo:i:w` 后，`lo` 是个**算子产物**：既没有 `var:lo:i64`，
+    # 也就不会被当成标量。于是紧接着的
+    #     if lo < 1 … / k = lo / while k <= i
+    # 全被判成"数组 vs 整数比较"，整个函数残缺（kern 的 moving_avg 就是这样，
+    # 实测 9/10 里唯一的那一个）。
+    #
+    # 判据：左值两侧都是**已知的 i64**（`types` 标注或 `locals`），
+    # 或一侧是整数字面量。数组参与的算术不走这条（那才是 OP-*）。
+    def _is_i64(name):
+        f = _CUR_F or {}
+        if (f.get("types") or {}).get(name) == "i64":
+            return True
+        return name in (f.get("locals") or [])
+
+    def _side_is_i64(side):
+        if side[0] == "num":
+            return re.match(r"^-?\d+$", side[1]) is not None
+        if side[0] == "name":
+            return _is_i64(side[1])
+        return False
+
+    if op in ("+", "-", "*", "/") and all(_side_is_i64(s) for s in sides):
+        _emit("var:%s:i64" % lhs)          # 先声明：否则发射器不知道它是标量
+        _emit("setb:%s:%s:%s:%s"
+              % (lhs, _BIN_OP[op], sides[0][1], sides[1][1]))
+        return True
+
     operands = []
     for side in sides:
         if side[0] == "call":
