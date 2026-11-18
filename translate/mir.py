@@ -2294,6 +2294,30 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                     # `setb` 生成的是 `int64_t x = ...`，只能用**标量**左值。
                     # `r = v * 2` 里的 r 是数组 —— 早先它被误判成标量赋值，
                     # 生成的 C 里出现 `r = v * 2;`（mlc_array 不能这么算）。
+                    # **`lo = i - w` 这类：左值是**新名字**，但两侧都是 i64 标量**
+                    # （R953）。原来只认 `lhs in scalars`，于是新名字落到
+                    # `_lower_expr` → `op:OP-SUB`，`lo` 成了算子产物、被当数组，
+                    # 后面 `if lo < 1` / `k = lo` / `while k <= i` 全被判成
+                    # "数组 vs 整数比较"，整个函数残缺（kern 唯一那 1 个，
+                    # 也连带让三段链路的 ③ 反推失败 —— 因为 C 体里没有算子可反推）。
+                    def _i64(n):
+                        n = (n or "").strip()
+                        return (n in scalars
+                                or (f.get("types") or {}).get(n) == "i64"
+                                or n in (f.get("loopvars") or ())
+                                or n in (f.get("locals") or [])
+                                or bool(re.match(r"^-?\d+$", n)))
+
+                    # ⚠ `f["args"]` 是**字符串列表**（形参名），不是 dict ——
+                    # R953 第一版写成 a.get("name")，整个转换崩在 AttributeError。
+                    _is_arr = (lhs in (f.get("shapes") or {})
+                               or (lhs in (f.get("args") or [])
+                                   and (f.get("types") or {}).get(lhs) != "i64"))
+                    if bm and _i64(bm.group(1)) and _i64(bm.group(3)) \
+                            and lhs not in scalars and not _is_arr:
+                        # 新名字：先声明成 i64，再记进 scalars（后续语句才认得它）
+                        out.append("var:%s:i64" % lhs)
+                        scalars.add(lhs)
                     if bm and lhs in scalars and bm.group(1) in scalars \
                             and (bm.group(3).isdigit() or bm.group(3) in scalars):
                         out.append("setb:%s:%s:%s:%s"
