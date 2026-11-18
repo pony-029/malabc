@@ -77,10 +77,12 @@ def _seen(title):
     return n
 
 
-def run(only=None):
+def run(only=None, skip=None):
     rows = []
     for name, cmd in GROUPS:
         if only and only not in name:
+            continue
+        if skip and skip in name:
             continue
         rc, out = _run(cmd)
         ok = rc == 0
@@ -151,7 +153,24 @@ def main(argv=None):
     if ns.cmd == "plan":
         return plan()
 
-    rows = run(ns.only)
+    # **顺序有讲究**（R949）：BG6 要求"感知不比事实旧"，而感知要在 gates.json
+    # 写完之后才能刷。于是「大脑成长」这一组必须**最后跑** —— 否则它会拿着
+    # 上一轮的感知去判"kern.json 比感知新"，自己把自己判红（实测踩过）。
+    rows = run(ns.only, skip="大脑成长")
+
+    # **把复查结果落盘**（R949）：小脑要能"感知到门绿不绿"。
+    # 不写进 check_all（那是 42 门的正式结论、改造风险高），这里记的是
+    # **harness 这一次复查**的结果 —— 名字如实，别让人误读成"全门绿"。
+    try:
+        io.open(os.path.join(ROOT, "flow", "gates.json"), "w",
+                encoding="utf-8", newline="\n").write(json.dumps(
+                    {"ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+                     "scope": "harness 分组复查（不是全部 42 门）",
+                     "groups": [{"name": r["group"], "ok": r["ok"]} for r in rows],
+                     "passed": sum(1 for r in rows if r["ok"]),
+                     "total": len(rows)}, ensure_ascii=False, indent=2) + "\n")
+    except (IOError, OSError):
+        pass
 
     # **复查完就记一次成长快照**（R944）：机制不能靠"记得去记"。
     # `brain growth` 会写 flow/brain-growth.jsonl，而 check_brain_growth 的 BG3
@@ -161,8 +180,14 @@ def main(argv=None):
         import brain as _brain
         cur, _prev, delta = _brain.growth()
         print("[harness] 脑快照：%d 条%s" % (cur["total"], (" " + delta) if delta else ""))
+        # 感知放在**写 gates.json 之后**，否则 BG6 会判"感知比事实旧"
+        _brain.senses()
+        print("[harness] 脑感知：已刷新（含复查结果）")
     except Exception as e:                       # noqa: BLE001
         print("[harness] 脑快照失败（不阻断检查）：%s" % e)
+
+    # 感知刷新之后再复查「大脑成长」—— 它在前面被刻意跳过
+    rows += run(only="大脑成长")
 
     bad = [r for r in rows if not r["ok"]]
     if not bad:

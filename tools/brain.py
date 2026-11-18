@@ -315,6 +315,8 @@ SOURCES = {
     "kern": os.path.join(ROOT, "flow", "kern.json"),
     "figures": os.path.join(ROOT, "flow", "status.json"),
     "registry": os.path.join(ROOT, "flow", "failures.json"),
+    # 最近一次 harness 分组复查的结果（不是全部 42 门 —— 文件名别骗人）
+    "checks": os.path.join(ROOT, "flow", "gates.json"),
 }
 
 
@@ -333,6 +335,7 @@ def senses(write=True):
     num = sc.get("numeric") or {}
     kn = _read_json(SOURCES["kern"]) or {}
     fg = _read_json(SOURCES["figures"]) or {}
+    ck = _read_json(SOURCES["checks"]) or {}
     d = load()
     h = health(d)
 
@@ -346,6 +349,9 @@ def senses(write=True):
         "figures": {"current": (fg.get("figures") or {}).get("current"),
                     "stale": (fg.get("figures") or {}).get("stale"),
                     "max_lag": (fg.get("figures") or {}).get("max_lag")},
+        # 门禁：最近一次 harness 复查（passed/total），没有就是 None
+        "checks": {"passed": ck.get("passed"), "total": ck.get("total"),
+                   "at": ck.get("ts"), "scope": ck.get("scope")},
         "brain": {"total": h["total"], "open": h["open"],
                   "coverage": round(h["coverage"], 1)},
     }
@@ -393,9 +399,12 @@ def brief(multi=False):
     def _p(v, unit=""):
         return "未量" if v is None else ("%s%s" % (v, unit))
 
-    line1 = ("感知：合成语料 %s/%s 完全实现、一致率 %s%%；kern %s/%s、编译 %s"
+    chk = st.get("checks") or {}
+    line1 = ("感知：合成语料 %s/%s 完全实现、一致率 %s%%；kern %s/%s、编译 %s；"
+             "复查 %s/%s 组"
              % (_p(sc["full"]), _p(sc["total"]), _p(sc["rate"]),
-                _p(kn["full"]), _p(kn["total"]), _p(kn["compile_ok"])))
+                _p(kn["full"]), _p(kn["total"]), _p(kn["compile_ok"]),
+                _p(chk.get("passed")), _p(chk.get("total"))))
     line2 = ("知识：%d 条（已修 %d / 未闭 %d）｜见证覆盖 %.0f%%｜咨询 %d 次"
              "｜重复规则 %d 条"
              % (h["total"], h["fixed"], h["open"], h["coverage"],
