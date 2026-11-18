@@ -1,11 +1,11 @@
 {
  "source": "E:\\temp\\matlabc\\oct_num",
  "files": 40,
- "total_unmapped": 2693,
+ "total_unmapped": 2648,
  "kinds": {
   "call2": 673,
   "other": 605,
-  "cond": 378,
+  "cond": 333,
   "strlit": 317,
   "cell": 313,
   "struct": 159,
@@ -14,7 +14,7 @@
   "idx2": 21,
   "blockmarker": 3
  },
- "avg_rate": 0.189,
+ "avg_rate": 0.203,
  "files_over_90": 0,
  "files_zero": 0,
  "per_file": [
@@ -56,9 +56,9 @@
   },
   {
    "file": "statset.m",
-   "unmapped": 246,
-   "ops": 6,
-   "rate": 0.024
+   "unmapped": 245,
+   "ops": 7,
+   "rate": 0.028
   },
   {
    "file": "clusterdata.m",
@@ -67,28 +67,16 @@
    "rate": 0.03
   },
   {
-   "file": "standardizeMissing.m",
-   "unmapped": 28,
-   "ops": 1,
-   "rate": 0.034
-  },
-  {
    "file": "evalclusters.m",
    "unmapped": 83,
    "ops": 3,
    "rate": 0.035
   },
   {
-   "file": "rmmissing.m",
-   "unmapped": 21,
-   "ops": 2,
-   "rate": 0.087
-  },
-  {
-   "file": "fillmissing.m",
-   "unmapped": 470,
-   "ops": 62,
-   "rate": 0.117
+   "file": "standardizeMissing.m",
+   "unmapped": 26,
+   "ops": 3,
+   "rate": 0.103
   },
   {
    "file": "spectralcluster.m",
@@ -97,7 +85,19 @@
    "rate": 0.118
   },
   {
+   "file": "fillmissing.m",
+   "unmapped": 467,
+   "ops": 65,
+   "rate": 0.122
+  },
+  {
    "file": "cholcov.m",
+   "unmapped": 20,
+   "ops": 3,
+   "rate": 0.13
+  },
+  {
+   "file": "rmmissing.m",
    "unmapped": 20,
    "ops": 3,
    "rate": 0.13
@@ -109,76 +109,64 @@
    "rate": 0.143
   },
   {
-   "file": "normalise_distribution.m",
-   "unmapped": 36,
-   "ops": 6,
-   "rate": 0.143
-  },
-  {
    "file": "inconsistent.m",
    "unmapped": 17,
    "ops": 3,
    "rate": 0.15
   },
   {
-   "file": "fitgmdist.m",
-   "unmapped": 179,
-   "ops": 35,
-   "rate": 0.164
-  },
-  {
-   "file": "dbscan.m",
-   "unmapped": 30,
-   "ops": 6,
+   "file": "normalise_distribution.m",
+   "unmapped": 35,
+   "ops": 7,
    "rate": 0.167
   },
   {
-   "file": "cohenKappa.m",
-   "unmapped": 54,
-   "ops": 11,
-   "rate": 0.169
+   "file": "fitgmdist.m",
+   "unmapped": 172,
+   "ops": 39,
+   "rate": 0.185
   },
   {
    "file": "optimalleaforder.m",
-   "unmapped": 86,
-   "ops": 19,
-   "rate": 0.181
+   "unmapped": 85,
+   "ops": 20,
+   "rate": 0.19
   },
   {
-   "file": "kmeans.m",
-   "unmapped": 116,
-   "ops": 28,
+   "file": "dbscan.m",
+   "unmapped": 29,
+   "ops": 7,
    "rate": 0.194
   },
   {
-   "file": "crosstab.m",
-   "unmapped": 64,
-   "ops": 16,
-   "rate": 0.2
+   "file": "robustcov.m",
+   "unmapped": 281,
+   "ops": 73,
+   "rate": 0.206
   },
   {
-   "file": "robustcov.m",
-   "unmapped": 284,
-   "ops": 71,
-   "rate": 0.2
+   "file": "crosstab.m",
+   "unmapped": 63,
+   "ops": 17,
+   "rate": 0.213
+  },
+  {
+   "file": "kmeans.m",
+   "unmapped": 111,
+   "ops": 32,
+   "rate": 0.224
+  },
+  {
+   "file": "cohenKappa.m",
+   "unmapped": 50,
+   "ops": 15,
+   "rate": 0.231
   },
   {
    "file": "kmedoids.m",
-   "unmapped": 77,
+   "unmapped": 76,
    "ops": 24,
-   "rate": 0.238
-  },
-  {
-   "file": "ismissing.m",
-   "unmapped": 22,
-   "ops": 7,
-   "rate": 0.241
-  },
-  {
-   "file": "combnk.m",
-   "unmapped": 12,
-   "ops": 4,
-   "rate": 0.25
+   "rate": 0.24
   },
   {
    "file": "grp2idx.m",
@@ -187,16 +175,22 @@
    "rate": 0.261
   },
   {
+   "file": "ismissing.m",
+   "unmapped": 21,
+   "ops": 8,
+   "rate": 0.276
+  },
+  {
    "file": "linkage.m",
-   "unmapped": 66,
-   "ops": 24,
-   "rate": 0.267
+   "unmapped": 65,
+   "ops": 25,
+   "rate": 0.278
   },
   {
    "file": "tiedrank.m",
-   "unmapped": 44,
+   "unmapped": 41,
    "ops": 16,
-   "rate": 0.267
+   "rate": 0.281
   },
   {
    "file": "statget.m",
@@ -211,22 +205,22 @@
    "rate": 0.298
   },
   {
+   "file": "combnk.m",
+   "unmapped": 11,
+   "ops": 5,
+   "rate": 0.312
+  },
+  {
    "file": "dummyvar.m",
-   "unmapped": 37,
-   "ops": 17,
-   "rate": 0.315
+   "unmapped": 36,
+   "ops": 18,
+   "rate": 0.333
   },
   {
    "file": "cluster.m",
-   "unmapped": 42,
-   "ops": 20,
-   "rate": 0.323
-  },
-  {
-   "file": "randsample.m",
-   "unmapped": 18,
-   "ops": 10,
-   "rate": 0.357
+   "unmapped": 41,
+   "ops": 21,
+   "rate": 0.339
   },
   {
    "file": "multiway.m",
@@ -241,16 +235,22 @@
    "rate": 0.384
   },
   {
-   "file": "makima.m",
-   "unmapped": 69,
-   "ops": 43,
-   "rate": 0.384
-  },
-  {
    "file": "cl_multinom.m",
    "unmapped": 19,
    "ops": 12,
    "rate": 0.387
+  },
+  {
+   "file": "makima.m",
+   "unmapped": 65,
+   "ops": 43,
+   "rate": 0.398
+  },
+  {
+   "file": "randsample.m",
+   "unmapped": 16,
+   "ops": 12,
+   "rate": 0.429
   },
   {
    "file": "cophenet.m",

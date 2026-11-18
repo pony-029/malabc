@@ -1961,6 +1961,12 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             if _kw_m:
                 _rest = _strip_outer_parens(_kw_m.group(2).strip())
                 code = "%s %s" % (_kw_m.group(1), _rest)
+            # **逻辑非的方言归一**（R971）：Octave 用 `!x`，MATLAB 用 `~x`。
+            # 只在**不是 `!=`**（C 风格不等，MATLAB 里不存在但别误伤）时替换。
+            # 实测真实工程里 `if (! isvector (x))` / `x = x(! isnan (x))` 大量出现，
+            # 而解析器只认 `~` —— 这类语句整条落 unmapped。
+            if "!" in code:
+                code = re.sub(r"!(?!=)", "~", code)
             # `full(x)` 在稠密表示下是恒等（YALMIP 84 次）：剥掉，别挡住真正的语义
             code = _strip_full_call(code)
             # 下标算术：必须在**所有**降级分支之前 —— 否则 `y = A((i+0))` 会先被
