@@ -2589,13 +2589,22 @@ def main(argv=None):
                   "同名，C 里不行）：" % (len(skipped), _lost))
             for p, nm in skipped[:3]:
                 print("        %s -> %s" % (p, nm))
+            _kept_n = sum(len(split_functions(
+                io.open(p, encoding="utf-8", errors="replace").read()))
+                for p in kept)
             print("[mir] 对账：源函数 %d = 已收录 %d + 重名丢弃 %d"
-                  % (sum(len(split_functions(
-                      io.open(p, encoding="utf-8", errors="replace").read()))
-                      for p in kept) + _lost,
-                     sum(len(split_functions(
-                         io.open(p, encoding="utf-8", errors="replace").read()))
-                         for p in kept), _lost))
+                  % (_kept_n + _lost, _kept_n, _lost))
+            # **落盘一份账本**（R933）：报告工具（bench_all）读不到本进程的
+            # stdout —— 上一轮我加了列却全是 0，正是因为两个进程之间没接通。
+            # 写 sidecar 文件，谁都能读，也不再依赖输出被谁捕获。
+            try:
+                import json as _json
+                io.open(args.out + ".ledger.json", "w", encoding="utf-8",
+                        newline="\n").write(_json.dumps(
+                            {"src": _kept_n + _lost, "kept": _kept_n,
+                             "dup": _lost}, ensure_ascii=False) + "\n")
+            except (IOError, OSError):
+                pass
         files = kept
         if not files:
             print("目录里没有 .m 文件：%s" % args.source)

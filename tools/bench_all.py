@@ -138,8 +138,19 @@ def run_proj(name, path, out, timeout=1800):
     # —— 没有它，"源 2781 → 生成 1535"看起来像 bug，实际是"重名丢弃"。
     # 把三个数一起记下来，报告里就能逐项对上。
     src_n = kept_n = dup_n = partial_n = 0
+    # **优先读 sidecar**（R933）：mir.py 的 stdout 会被后续命令覆盖，
+    # 上一轮我因此加了两个恒为 0 的列。账本落盘成
+    # `<out>/.m2c/project.mir.ledger.json`，与谁捕获输出无关。
+    side = os.path.join(out, ".m2c", "project.mir.ledger.json")
+    if os.path.isfile(side):
+        try:
+            ld = json.load(io.open(side, encoding="utf-8"))
+            src_n, kept_n, dup_n = (ld.get("src", 0), ld.get("kept", 0),
+                                    ld.get("dup", 0))
+        except (ValueError, OSError):
+            pass
     m = LEDGER.search(txt)
-    if m:
+    if m and not src_n:
         src_n, kept_n, dup_n = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
     mp = PARTIAL.search(txt)
     if mp:

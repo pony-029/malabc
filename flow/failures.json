@@ -1,0 +1,146 @@
+{
+  "version": 1,
+  "note": "本项目**真实犯过的错**登记表。每条必须带 witness（能拦住它的判据/工具）—— 没有见证的错误只算'故事'，不算'机制'。由 tools/check_failures.py 校验。",
+  "entries": [
+    {
+      "id": "F001",
+      "title": "分派写在 cli_entry 里，破坏 (args, ap) 契约",
+      "symptom": "转换全部成功，收尾却 TypeError: cannot unpack non-iterable int object，退出码 1",
+      "root_cause": "main() 里是 args, ap = cli_entry(argv)；在 cli_entry 内提前 return 0 让它返回 int",
+      "rule": "退出码与产物计数必须同时成立才算通过；'成功字样'不作为判据",
+      "witness": "matlabc_toc.py",
+      "status": "fixed",
+      "commit": "5ea2665"
+    },
+    {
+      "id": "F002",
+      "title": "语料把函数名当变量",
+      "symptom": "生成 abs = [1]; y = abs(x); —— 调用语义消失，完全实现率 56%",
+      "root_cause": "生成器把 `y = abs(x)` 里的 abs 当成待声明的变量",
+      "rule": "造语料时把内建函数名与变量名分开；否则测的是自己的错",
+      "witness": "tools/gen_scale_corpus.py",
+      "status": "fixed",
+      "commit": "c5b3f5f"
+    },
+    {
+      "id": "F003",
+      "title": "用 arguments 块声明形状（转换路径不认）",
+      "symptom": "整函数 unmapped，完全实现率 0%",
+      "root_cause": "arguments 块只在分析路径被处理，转换路径未接",
+      "rule": "给一个系统造输入前，先读它**已有能通过的样本**（% @m2c shape）",
+      "witness": "translate/mir.py",
+      "status": "fixed",
+      "commit": "1a2c9e4"
+    },
+    {
+      "id": "F004",
+      "title": "HTML 模板用 % 格式化（与 CSS 的 100% 冲突）",
+      "symptom": "ValueError: unsupported format character ';'；随后两次'修'又改坏 strftime 与收尾 %(",
+      "root_cause": "用 % 格式化去套含 CSS 的模板；修法是转义，而转义会误伤别处",
+      "rule": "同一处改两轮还不好 → 换机制（string.Template 的 $var），不再打补丁",
+      "witness": "tools/bench_toc.py",
+      "status": "fixed",
+      "commit": "aa0f1e7"
+    },
+    {
+      "id": "F005",
+      "title": "批量把生成物也转成 CRLF",
+      "symptom": "check_eol_convention 报 4 处：flow/*.html 有 69~122 个 CRLF",
+      "root_cause": "规则是'源文件 CRLF、生成物保持渲染器原始字节（LF）'，我用一个批量动作统一处理",
+      "rule": "批量改一类文件前，先确认这一类是否真的同一种东西",
+      "witness": "tools/check_eol_convention.py",
+      "status": "fixed",
+      "commit": "19e7ac5"
+    },
+    {
+      "id": "F006",
+      "title": "字段名 unresolved 撞上 IR 归因登记制",
+      "symptom": "check_ir_attribution 报'未登记的写点 bench_projects.py::run_one——规则又被抄了一遍'",
+      "root_cause": "新工具里一个只读计数的字段叫 unresolved，与'唯一判定点'的保留名同名",
+      "rule": "门说'你抄了一遍 X'时先分辨行为重复还是名字撞车；名字撞车应改名，补登记会让门以后说谎",
+      "witness": "tools/check_ir_attribution.py",
+      "status": "fixed",
+      "commit": "a96ba93"
+    },
+    {
+      "id": "F007",
+      "title": "新增工具没进 README（TD1），犯了两次",
+      "symptom": "check_tool_discoverability 报 5 个工具没人提到；两天后再报 bench_all.py",
+      "root_cause": "加工具时只关心它能跑，没关心它能否被找到",
+      "rule": "新增 tools/*.py 必须同提交更新两侧 README",
+      "witness": "tools/check_tool_discoverability.py",
+      "status": "fixed",
+      "commit": "75f5be0"
+    },
+    {
+      "id": "F008",
+      "title": "--max-files 形同虚设",
+      "symptom": "传 --max-files 12，最大组仍是 82 个文件",
+      "root_cause": "同前缀的桶本身超限，切了等于没切；修复动作没有验证",
+      "rule": "参数落地后要用一个**已知会被约束**的输入验证",
+      "witness": "tools/map_suggest.py",
+      "status": "fixed",
+      "commit": "19e7ac5"
+    },
+    {
+      "id": "F009",
+      "title": "MIR 切块按行尾 end 切（嵌套块也用 end）",
+      "symptom": "MIR 不合法：第 41 行 func 未以 end 收束",
+      "root_cause": "_split_blocks 见 end 就收，而 if/for/while 也用 end 收尾",
+      "rule": "按'配对符号'切结构前，先确认这个符号是否也用于内层结构",
+      "witness": "translate/map_config.py",
+      "status": "fixed",
+      "commit": "c4080bf"
+    },
+    {
+      "id": "F010",
+      "title": "改写 MIR 时丢了 version 头",
+      "symptom": "MIR 不合法：缺少 version 行",
+      "root_cause": "只保留 func: 块，第一个 func: 之前的内容被丢弃",
+      "rule": "改写结构化文本时，**前言/头**与正片要分开处理",
+      "witness": "translate/map_config.py",
+      "status": "fixed",
+      "commit": "c4080bf"
+    },
+    {
+      "id": "F011",
+      "title": "arity 校验改宽松，推翻既有判据的核心断言",
+      "symptom": "GX2 2 failed：test_op_arity / test_vm_calls 要求'解析期必须拒绝且说清个数'",
+      "root_cause": "为让 1682 文件的树不中止，把'解析期拒绝'永久关掉",
+      "rule": "修复让既有判据变红时，先问它保护的是**谁的需求**；不同场景应做默认值，而不是推翻判据",
+      "witness": "tests/test_op_arity.py",
+      "status": "fixed",
+      "commit": "625c2b6"
+    },
+    {
+      "id": "F012",
+      "title": "TODO(call) 的报错文案与真因脱钩",
+      "symptom": "报'X 不是本文件里已生成的函数'，而 X 就在同一份 MIR 里",
+      "root_cause": "字面量配数组形参时只置 ok=false、不留原因，外层退回兜底文案",
+      "rule": "TODO(类别) 里的词是'在哪一段失败'，不是'为什么'；兜底文案是垃圾桶，不代表真相",
+      "witness": "rust/m2c/src/emit.rs",
+      "status": "fixed",
+      "commit": "d6d63e9"
+    },
+    {
+      "id": "F013",
+      "title": "给报告加列但数据源未接通（列全 0）",
+      "symptom": "bench_all 的'丢弃(重名/部分)'两列恒为 0，而实际 yalmip 丢了 790 个",
+      "root_cause": "mir.py 的对账行打在 cmd1 的 stdout，run_build 只返回 cmd2 的输出",
+      "rule": "加字段后必须用一个**已知非零**的样本验证它显示出非零",
+      "witness": "translate/mir.py",
+      "status": "fixed",
+      "commit": "R933（账本改为 sidecar 落盘，bench_all 读文件）"
+    },
+    {
+      "id": "F014",
+      "title": "split_functions 只认 depth==0 的 function",
+      "symptom": "yalmiptest.m 18 个函数只解析出 3 个；yalmip 全工程 2781 个只进 1206",
+      "root_cause": "MATLAB 允许函数省略 end，一个无 end 的函数把 depth 卡住，后面的 function 被当语句吞掉",
+      "rule": "用配对符号记账时，先问这个配对在语言里是否**可选**",
+      "witness": "translate/mir.py",
+      "status": "fixed",
+      "commit": "149d732"
+    }
+  ]
+}
