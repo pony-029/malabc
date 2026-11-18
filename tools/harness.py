@@ -41,6 +41,8 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 #: 检查组：每组 = (名字, 命令)。命令返回非零即记为一次失败。
 GROUPS = [
     ("失败登记", [PY, os.path.join(ROOT, "tools", "check_failures.py")]),
+    # 大脑自身的成长也要被复查 —— 否则"机制在监督别人、没人监督机制"
+    ("大脑成长", [PY, os.path.join(ROOT, "tools", "check_brain_growth.py")]),
     ("解析切分", [PY, os.path.join(ROOT, "tools", "check_mir_split.py")]),
     ("编码约定", [PY, os.path.join(ROOT, "tools", "check_eol_convention.py")]),
     ("工具发现性", [PY, os.path.join(ROOT, "tools", "check_tool_discoverability.py")]),
@@ -150,6 +152,18 @@ def main(argv=None):
         return plan()
 
     rows = run(ns.only)
+
+    # **复查完就记一次成长快照**（R944）：机制不能靠"记得去记"。
+    # `brain growth` 会写 flow/brain-growth.jsonl，而 check_brain_growth 的 BG3
+    # 要求"最新快照 == 知识库条数" —— 于是"跑了 harness"和"记了快照"绑在一起。
+    try:
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import brain as _brain
+        cur, _prev, delta = _brain.growth()
+        print("[harness] 脑快照：%d 条%s" % (cur["total"], (" " + delta) if delta else ""))
+    except Exception as e:                       # noqa: BLE001
+        print("[harness] 脑快照失败（不阻断检查）：%s" % e)
+
     bad = [r for r in rows if not r["ok"]]
     if not bad:
         print("\n[harness] 全部检查通过（%d 组）" % len(rows))

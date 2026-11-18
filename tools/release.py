@@ -45,6 +45,9 @@ GATES = ("check_version_scheme", "check_eol_convention", "check_readme_parity",
          "check_figure_glyphs",
          # 一道门写了却不进发版清单，等于只给自己看的笔记
          "check_release_gates",
+         # 失败知识库 / 解析切分 / 大脑成长 —— 这三道是"机制本身"的门，
+         # 发版时更要跑：它们守着"同类错不再犯"，而发版正是最容易松劲的时刻。
+         "check_failures", "check_mir_split", "check_brain_growth",
          # 越界的符号行号会让大纲永远转圈
          "check_symbol_ranges",
          # 工具的自证需要有人执行，否则等于没写
