@@ -822,10 +822,16 @@ def run_build(cfg, base, cfg_path, m2c=None, python=None, map_spec=None):
 
     log = []
     map_report = None
+    # 批量转换开启**宽松实参校验**（R931）：真实工程里一条降级错的语句
+    # 不该让整棵树 0 产出（R917 实测 yalmip 1682 个文件全灭）。
+    # 宽松模式下那条语句变成 `OP-ARITY-ERROR`（发射器发 TODO+UNIMPLEMENTED），
+    # 其余照常产出；而 CLI 单文件转换仍是严格模式，保留解析期的明确报错。
+    _env = dict(os.environ)
+    _env["M2C_LENIENT_ARITY"] = "1"
     for idx, cmd in enumerate((cmd1, cmd2)):
         log.append(" ".join(cmd))
         r = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                           stderr=subprocess.STDOUT, timeout=900)
+                           stderr=subprocess.STDOUT, timeout=900, env=_env)
         out = r.stdout.decode("utf-8", "replace")
         if r.returncode != 0:
             return r.returncode, log, out

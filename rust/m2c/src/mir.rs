@@ -303,19 +303,33 @@ fn parse_op(rest: &str, src: i64) -> Result<Op, String> {
     // 未知 op-id 不在这里判 —— 那是"算子未登记"的另一种病，由别的门管。
     if let Some(&(id, lo, hi)) = OP_ARITY.iter().find(|(id, _, _)| *id == parts[0]) {
         if args.len() < lo || args.len() > hi {
-            // **不中止整份 MIR**（R918）：实参个数不符说明"这一条降级错了"，
-            // 而不是"这份工程不合法"。原来直接 Err，于是**一个语句**让整棵树
-            // 1682 个文件全部转不出来（R917 实测 yalmip）。
-            // 改成把它记成**未知算子**：发射器会发 `TODO(op)` + `MLC_UNIMPLEMENTED`，
-            // 于是"这一个函数残缺、其余照常产出"，而生成的 C 仍然合法。
-            let mut a = args.clone();
-            a.retain(|x| !x.is_empty());
-            return Ok(Op {
-                id: "OP-ARITY-ERROR".to_string(),
-                lhs: parts[1].to_string(),
-                args: a,
-                src,
-            });
+            // 两种契约，**由环境变量选**（R931）：
+            //
+            // * 默认（严格）：报错返回 —— 判据 `test_op_arity` / `test_vm_calls`
+            //   钉的就是这条："实参个数不符必须在解析期被拒，且说清个数"。
+            // * `M2C_LENIENT_ARITY=1`（宽松）：降级成未知算子
+            //   `OP-ARITY-ERROR`，发射器发 `TODO(op)`+`MLC_UNIMPLEMENTED`，
+            //   于是"这一个函数残缺、其余照常产出"。批量转换一棵 1682 文件的
+            //   真实工程时用它 —— 否则**一条坏语句**让整棵树 0 产出（R917）。
+            //
+            // 为什么不做成默认宽松：那等于把"解析期能不能发现降级错误"这件事
+            // 永久关掉，而 CLI 单文件转换最需要的恰恰是这句明确报错。
+            let lenient = std::env::var("M2C_LENIENT_ARITY")
+                .map(|v| v == "1").unwrap_or(false);
+            if lenient {
+                let mut a = args.clone();
+                a.retain(|x| !x.is_empty());
+                return Ok(Op {
+                    id: "OP-ARITY-ERROR".to_string(),
+                    lhs: parts[1].to_string(),
+                    args: a,
+                    src,
+                });
+            }
+            return Err(format!(
+                "算子 {} 接受 {}..={} 个输入，实际给了 {} 个（生成物会被 C 原型拒绝）：{}",
+                id, lo, hi, args.len(), rest
+            ));
         }
     }
     Ok(Op { id: parts[0].to_string(), lhs: parts[1].to_string(),
