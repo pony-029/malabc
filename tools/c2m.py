@@ -39,6 +39,7 @@ MIR 里表达不了的东西**不会凭空猜**：
 import argparse
 import glob
 import io
+import json
 import os
 import re
 import sys
@@ -177,6 +178,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="C → MATLAB（经 MIR 反推）")
     ap.add_argument("paths", nargs="+", help=".c 文件或目录")
     ap.add_argument("-o", "--out", required=True)
+    ap.add_argument("--json", help="把逐文件统计写成 JSON（供 full_report 读取）")
     ns = ap.parse_args(argv)
 
     files = _cs(ns.paths)
@@ -187,6 +189,7 @@ def main(argv=None):
 
     tot = {"funcs": 0, "ops": 0, "todo": 0}
     bad = 0
+    recs = []
     for p in files:
         name = os.path.splitext(os.path.basename(p))[0]
         text = io.open(p, encoding="utf-8", errors="replace").read()
@@ -194,12 +197,19 @@ def main(argv=None):
         matlab, st = mir_to_matlab(mir, name)
         io.open(os.path.join(ns.out, name + ".m"), "w",
                 encoding="utf-8", newline="\n").write(matlab)
+        recs.append({"file": name, "funcs": st["funcs"],
+                     "ops": st["ops"], "todo": st["todo"]})
         for k in tot:
             tot[k] += st[k]
         if st["todo"]:
             bad += 1
         print("[c2m] %-28s 函数 %d ｜ ops %d ｜ todo %d"
               % (name, st["funcs"], st["ops"], st["todo"]))
+    if ns.json:
+        io.open(ns.json, "w", encoding="utf-8", newline="\n").write(
+            json.dumps({"files": recs, "total": tot, "bad": bad,
+                        "n_files": len(files)}, ensure_ascii=False, indent=2)
+            + "\n")
     print("[c2m] 合计：函数 %d ｜ ops %d ｜ todo %d ｜ 含 TODO 的文件 %d/%d"
           % (tot["funcs"], tot["ops"], tot["todo"], bad, len(files)))
     return 0 if bad == 0 else 1
