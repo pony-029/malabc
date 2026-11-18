@@ -150,7 +150,7 @@
       "rule": "埋点要放在**被调用函数**里，不要放在某个入口分支里",
       "witness": "tools/brain.py",
       "status": "fixed",
-      "commit": ""
+      "commit": "R935"
     },
     {
       "id": "F016",
@@ -160,7 +160,7 @@
       "rule": "计数与名单要分开存：能被计数的不一定在名单里",
       "witness": "tools/check_mir_split.py",
       "status": "fixed",
-      "commit": ""
+      "commit": "R936"
     }
   ]
 }
