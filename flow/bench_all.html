@@ -31,28 +31,28 @@
   footer{color:var(--mut);font-size:12.5px;margin-top:18px;text-align:center}
 </style></head><body><div class="wrap">
   <h1>全量工程实测</h1>
-  <p class="sub"><code>E:/temp/matlabc</code> ｜ 2026-11-18 00:49 ｜ 含 .m 的目录 4259 个 ｜ 实跑 5 个（成功 5）｜ 去重跳过 6 个</p>
+  <p class="sub"><code>E:/temp/matlabc</code> ｜ 2026-11-18 21:25 ｜ 含 .m 的目录 4315 个 ｜ 实跑 5 个（成功 5）｜ 去重跳过 4 个</p>
   <div class="kpis">
-    <div class="kpi"><b>5,889</b><span>源 .m 文件</span></div>
-    <div class="kpi"><b>1,617</b><span>生成 .c 文件</span></div>
-    <div class="kpi"><b>1,719</b><span>生成函数</span></div>
-    <div class="kpi"><b>93/93</b><span>抽样编译</span></div>
+    <div class="kpi"><b>5,939</b><span>源 .m 文件</span></div>
+    <div class="kpi"><b>1,658</b><span>生成 .c 文件</span></div>
+    <div class="kpi"><b>2,095</b><span>生成函数</span></div>
+    <div class="kpi"><b>100/100</b><span>抽样编译</span></div>
   </div>
   <section class="card">
     <h2>① 逐工程读数（函数数 ✔/✘ = 与源函数数是否守恒）</h2>
     <table>
       <tr><th>工程</th><th>.m</th><th>.c</th><th>源函数</th><th>生成函数</th>
-          <th>耗时 s</th><th>编译</th><th>状态</th></tr>
-      <tr><td><code>yalmip</code></td><td class='num'>1682</td><td class='num'>1104</td><td class='num'>2781</td><td class='num'>1206 ✘</td><td class='num'>4.2</td><td class='num'>20/20</td><td><span class='badge' style='background:#2ea043'>通</span></td></tr>
-<tr><td><code>scale_m</code></td><td class='num'>169</td><td class='num'>169</td><td class='num'>169</td><td class='num'>169 ✔</td><td class='num'>2.8</td><td class='num'>20/20</td><td><span class='badge' style='background:#2ea043'>通</span></td></tr>
-<tr><td><code>sd</code></td><td class='num'>166</td><td class='num'>166</td><td class='num'>166</td><td class='num'>166 ✔</td><td class='num'>2.6</td><td class='num'>20/20</td><td><span class='badge' style='background:#2ea043'>通</span></td></tr>
-<tr><td><code>s6</code></td><td class='num'>165</td><td class='num'>165</td><td class='num'>165</td><td class='num'>165 ✔</td><td class='num'>1.3</td><td class='num'>20/20</td><td><span class='badge' style='background:#2ea043'>通</span></td></tr>
-<tr><td><code>single(3707 个单文件工程)</code></td><td class='num'>3707</td><td class='num'>13</td><td class='num'>3707</td><td class='num'>13 ✘</td><td class='num'>6.2</td><td class='num'>13/13</td><td><span class='badge' style='background:#2ea043'>通</span></td></tr>
+          <th>丢弃(重名/部分)</th><th>耗时 s</th><th>编译</th><th>状态</th></tr>
+      <tr><td><code>yalmip</code></td><td class='num'>1682</td><td class='num'>1118</td><td class='num'>2781</td><td class='num'>1538 ✘</td><td class='num'>642/0</td><td class='num'>5.0</td><td class='num'>20/20</td><td><span class='badge' style='background:#2ea043'>通</span></td></tr>
+<tr><td><code>scale_m</code></td><td class='num'>169</td><td class='num'>169</td><td class='num'>169</td><td class='num'>169 ✔</td><td class='num'>0/0</td><td class='num'>0.7</td><td class='num'>20/20</td><td><span class='badge' style='background:#2ea043'>通</span></td></tr>
+<tr><td><code>sd</code></td><td class='num'>166</td><td class='num'>166</td><td class='num'>166</td><td class='num'>166 ✔</td><td class='num'>0/0</td><td class='num'>0.6</td><td class='num'>20/20</td><td><span class='badge' style='background:#2ea043'>通</span></td></tr>
+<tr><td><code>s6</code></td><td class='num'>165</td><td class='num'>165</td><td class='num'>165</td><td class='num'>165 ✔</td><td class='num'>0/0</td><td class='num'>0.7</td><td class='num'>20/20</td><td><span class='badge' style='background:#2ea043'>通</span></td></tr>
+<tr><td><code>single(3757 个单文件工程)</code></td><td class='num'>3757</td><td class='num'>40</td><td class='num'>3757</td><td class='num'>57 ✘</td><td class='num'>3744/0</td><td class='num'>8.7</td><td class='num'>20/20</td><td><span class='badge' style='background:#2ea043'>通</span></td></tr>
     </table>
   </section>
   <section class="card">
     <h2>② 去重跳过（内容相同的副本，不重复计数）</h2>
-    <table><tr><td><code>s7</code></td><td class='num'>165</td><td>与 <code>s6</code> 内容相同</td></tr><tr><td><code>s8</code></td><td class='num'>165</td><td>与 <code>s6</code> 内容相同</td></tr><tr><td><code>s9</code></td><td class='num'>165</td><td>与 <code>s6</code> 内容相同</td></tr><tr><td><code>sa</code></td><td class='num'>165</td><td>与 <code>s6</code> 内容相同</td></tr><tr><td><code>sb</code></td><td class='num'>165</td><td>与 <code>s6</code> 内容相同</td></tr><tr><td><code>sc</code></td><td class='num'>165</td><td>与 <code>s6</code> 内容相同</td></tr></table>
+    <table><tr><td><code>s7</code></td><td class='num'>165</td><td>与 <code>s6</code> 内容相同</td></tr><tr><td><code>s8</code></td><td class='num'>165</td><td>与 <code>s6</code> 内容相同</td></tr><tr><td><code>s9</code></td><td class='num'>165</td><td>与 <code>s6</code> 内容相同</td></tr><tr><td><code>sa</code></td><td class='num'>165</td><td>与 <code>s6</code> 内容相同</td></tr></table>
   </section>
   <footer>由 <code>tools/bench_all.py</code> 生成 — 每个数字都来自实跑；副本明确标出，不假装跑过</footer>
 </div></body></html>

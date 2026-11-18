@@ -51,6 +51,10 @@ def survey(root):
     """返回 [(dir, n_m, sig)]，sig 用于去重（文件数 + 首个文件大小）。"""
     out = []
     for name in sorted(os.listdir(root)):
+        # 跳过本工具自己的产物目录（`_bench_all*` 等）—— 否则下一轮会把
+        # 上一轮的生成物当成"新工程"再测一遍，读数里凭空多出一行。
+        if name.startswith("_"):
+            continue
         p = os.path.join(root, name)
         if not os.path.isdir(p):
             continue
@@ -204,10 +208,12 @@ def main(argv=None):
 
         # 单文件工程：聚合成一个合成工程一起跑
         if single:
-            agg = os.path.join(OUTBASE, "_single_agg_src")
-            if os.path.isdir(agg):
-                shutil.rmtree(agg)
-            os.makedirs(agg)
+            # 每轮用**新目录**，不删旧的（R937）：`shutil.rmtree` 一次删 3707 个
+            # 文件会被环境的安全策略拦下（`SAFE_DELETE_BULK_CONFIRM_REQUIRED`），
+            # 而这一步在写 JSON **之前** —— 于是整轮读数全丢、报告停在旧数据上，
+            # 表面看却是"跑完了"。改成追加式：不删、只换名字。
+            agg = os.path.join(OUTBASE, "_single_agg_src_%d" % int(time.time()))
+            os.makedirs(agg, exist_ok=True)
             for i, x in enumerate(single):
                 ms = []
                 for base, dirs, files in os.walk(x["path"]):
