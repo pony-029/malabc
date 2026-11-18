@@ -1957,10 +1957,14 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             # **剥掉条件外的整体括号**（R970）：Octave/老式写法 `if (n == 0)`，
             # 而 `_IF_RE` 认的是 `if n == 0`。只在"这一对括号**正好包住整段**"
             # 时剥，避免把 `if (a) && (b)` 误剥成 `if a) && (b`。
-            _kw_m = re.match(r"^(if|elseif|while)\s+(.*)$", code)
-            if _kw_m:
-                _rest = _strip_outer_parens(_kw_m.group(2).strip())
-                code = "%s %s" % (_kw_m.group(1), _rest)
+            # ⚠ **不剥条件外的括号**（R972 回退）。R970 曾把 `if (n == 0)` 归一成
+            # `if n == 0`，降级率因此 +4.6pp；但 GX2 的
+            # `test_blocked_file_points_at_real_lines` 立刻红了：
+            # 诊断报 `if ~isoctavemesh && jdhasjava`，源码是
+            # `if (~isoctavemesh && jdhasjava)` —— **报告的行文本必须逐字等于源码**，
+            # 否则用户按行号回看时对不上。
+            # 正解是"解析用归一化、报告用原文"两套文本，但那要改 `_emit_unmapped`
+            # 的全部调用点；在没做之前，宁可少这 4.6pp，也不要一份对不上源码的诊断。
             # **逻辑非的方言归一**（R971）：Octave 用 `!x`，MATLAB 用 `~x`。
             # 只在**不是 `!=`**（C 风格不等，MATLAB 里不存在但别误伤）时替换。
             # 实测真实工程里 `if (! isvector (x))` / `x = x(! isnan (x))` 大量出现，
