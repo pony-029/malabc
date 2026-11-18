@@ -170,7 +170,7 @@
       "rule": "门的诊断信息路径要能跨盘：relpath 包一层 try/except 退回原路径",
       "witness": "tools/check_brain_growth.py",
       "status": "fixed",
-      "commit": ""
+      "commit": "R941"
     },
     {
       "id": "F018",
@@ -180,7 +180,7 @@
       "rule": "改计数型散文字面前，先 grep 出所有措辞变体并核对各自的值，不要只替换一个数字",
       "witness": "matlabc_help.py",
       "status": "fixed",
-      "commit": ""
+      "commit": "R941"
     }
   ]
 }

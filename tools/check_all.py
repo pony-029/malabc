@@ -7,6 +7,9 @@
         │
         ├─▶ check_baseline.py             公平基线：按 nodeid 集合比失败（--full 才真跑）
         ├─▶ check_binfmt_fixtures.py      合成夹具 + 契约 C1..C15 + 两向自证
+        ├─▶ check_failures.py              失败登记表 FR1-FR5（必填字段 / id 唯一 / witness 存在 / fixed 有 commit / 状态枚举）
+        ├─▶ check_mir_split.py             解析/切分判据 MS1-MS5（无 end 切分 / 嵌套边界 / version 头 / 账本闭合 / 块收束）
+        ├─▶ check_brain_growth.py          大脑成长 BG1-BG5（有快照 / 条数不减 / 快照与知识库一致 / 被咨询过 / 见证全覆盖）
         ├─▶ check_doc_flags.py            文档/帮助里写的 CLI 开关必须真的存在
         ├─▶ check_flow_diagrams.py        图的引用 ↔ 文件 ↔ 候选声明，两两对齐且双向
         ├─▶ check_help_contract.py        退出码在代码↔帮助双向一致；示例能真跑
