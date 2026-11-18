@@ -201,6 +201,26 @@
       "witness": "tools/round_close.py",
       "status": "fixed",
       "commit": "R955"
+    },
+    {
+      "id": "F021",
+      "title": "纯标量返回值的函数，算子仍写回 int64_t* → gcc 不可用指针",
+      "symptom": "edge_scalar 的 ② 段失败：gcc 'passing argument 3 of mlc_op_add from incompatible pointer type'",
+      "root_cause": "函数的返回声明是 i64（int64_t*），而 HIR 降级的表达式仍走 OP-ADD 数组算子；发射器只桥接了**实参**侧（is_scalar_name），没有桥接**目标**侧",
+      "rule": "凡标量参与算子，实参与目标两侧都要桥接：目标侧应经临时 mlc_array 再写回 (int64_t)temp.data[0]",
+      "witness": "rust/m2c/src/emit.rs",
+      "status": "fixed",
+      "commit": "R957"
+    },
+    {
+      "id": "F022",
+      "title": "表达式降级已由 HIR 接管，我却三轮都在改旧的 _lower_binary",
+      "symptom": "R946/R947/R953 三次给 _lower_binary 加 setb 分支，kern 的 lo = i - w 始终不变",
+      "root_cause": "MIR 里表达式区来自 HIR 降级（__e1/__e2 临时量 + op:OP-*），而 _lower_binary 是旧路径；用 settrace 才看到真实调用链",
+      "rule": "改之前先用 settrace/探针确认这条路径真的在跑；'读了代码觉得该走这里'不算证据",
+      "witness": "translate/mir.py",
+      "status": "fixed",
+      "commit": "R957"
     }
   ]
 }
