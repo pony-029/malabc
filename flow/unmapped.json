@@ -1,0 +1,17 @@
+{
+  "source": "E:\\temp\\matlabc\\yalm_fn_sample",
+  "files": 30,
+  "total": 533,
+  "kinds": {
+    "cell": 154,
+    "struct": 94,
+    "strlit": 92,
+    "call2": 83,
+    "other": 59,
+    "cond": 14,
+    "nested": 14,
+    "sideeffect": 10,
+    "control": 8,
+    "idx2": 1
+  }
+}
