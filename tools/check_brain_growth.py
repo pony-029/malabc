@@ -38,7 +38,7 @@ REG = os.path.join(ROOT, "flow", "failures.json")
 GROWTH = os.path.join(ROOT, "flow", "brain-growth.jsonl")
 USAGE = os.path.join(ROOT, "flow", "brain-usage.jsonl")
 
-ROW_SIGNATURE = "BG1–BG5"
+ROW_SIGNATURE = "BG1–BG6"
 
 
 def _snaps(path=GROWTH):
@@ -78,7 +78,7 @@ def _rel(p):
         return p
 
 
-def audit(reg=REG, growth=GROWTH, usage=USAGE):
+def audit(reg=REG, growth=GROWTH, usage=USAGE, check_senses=True):
     """返回问题列表；空 = 通过。路径可注入，便于自证。"""
     problems = []
     entries = _registry(reg)
@@ -120,6 +120,17 @@ def audit(reg=REG, growth=GROWTH, usage=USAGE):
                    ROOT, (e.get("witness") or "").strip()))]
     if missing:
         problems.append("BG5 %d 条没有成立的见证：%r" % (len(missing), missing[:4]))
+    # BG6：**感知不许比事实旧**。知识库管"以前踩过什么"，感知管"现在什么状态"；
+    # 读数文件改过却没重跑 `brain senses`，小脑就会拿旧感觉做判断。
+    if check_senses:
+        try:
+            sys.path.insert(0, os.path.join(ROOT, "tools"))
+            import brain as _b
+            stale = _b.stale_senses()
+        except Exception as e:                   # noqa: BLE001
+            stale = ["感知模块不可用：%s" % e]
+        if stale:
+            problems.append("BG6 " + stale[0])
     return problems
 
 
@@ -151,7 +162,7 @@ def _selftest():
 
         # ① 干净：3 条、两次快照递增、咨询 2 次
         _setup(3, [{"total": 2, "usage": 1}, {"total": 3, "usage": 2}], 2)
-        probs = audit(reg, gro, use)
+        probs = audit(reg, gro, use, check_senses=False)
         if not probs:
             good += 1
         else:
@@ -160,7 +171,7 @@ def _selftest():
 
         # ② 快照与知识库不一致 → BG3 必红
         _setup(3, [{"total": 2, "usage": 2}], 2)
-        if any("BG3" in p for p in audit(reg, gro, use)):
+        if any("BG3" in p for p in audit(reg, gro, use, check_senses=False)):
             good += 1
         else:
             bad += 1
@@ -168,7 +179,7 @@ def _selftest():
 
         # ③ 条数倒退 → BG2 必红
         _setup(3, [{"total": 5, "usage": 1}, {"total": 3, "usage": 2}], 2)
-        if any("BG2" in p for p in audit(reg, gro, use)):
+        if any("BG2" in p for p in audit(reg, gro, use, check_senses=False)):
             good += 1
         else:
             bad += 1
@@ -176,7 +187,7 @@ def _selftest():
 
         # ④ 从未咨询 → BG4 必红
         _setup(3, [{"total": 3, "usage": 0}], 0)
-        if any("BG4" in p for p in audit(reg, gro, use)):
+        if any("BG4" in p for p in audit(reg, gro, use, check_senses=False)):
             good += 1
         else:
             bad += 1

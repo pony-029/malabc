@@ -1,0 +1,26 @@
+{
+  "ts": "2026-11-18 22:26:18",
+  "scale": {
+    "full": 165,
+    "total": 165,
+    "rate": 100.0,
+    "compared": 165,
+    "mismatch": 0,
+    "c_error": 0
+  },
+  "kern": {
+    "full": 9,
+    "total": 10,
+    "compile_ok": 10
+  },
+  "figures": {
+    "current": 0,
+    "stale": 0,
+    "max_lag": 5
+  },
+  "brain": {
+    "total": 19,
+    "open": 0,
+    "coverage": 100.0
+  }
+}

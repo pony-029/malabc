@@ -304,14 +304,110 @@ def growth(write=True):
     return cur, prev, delta
 
 
-def brief():
-    """一行状态，供每轮报告直接引用。"""
+#: **小脑的"感觉"**：把项目当前读数抓成一份快照。
+#: 知识库回答"以前踩过什么坑"，感知回答"现在是什么状态" —— 两者缺一，
+#: 小脑就只能凭记忆说话（而记忆里的读数往往是几轮之前的）。
+STATE = os.path.join(ROOT, "flow", "brain-state.json")
+
+#: 感知的**来源**：字段名 -> 相对路径。BG6 用它判"感觉是否比事实旧"。
+SOURCES = {
+    "scale": os.path.join(ROOT, "flow", "scale.json"),
+    "kern": os.path.join(ROOT, "flow", "kern.json"),
+    "figures": os.path.join(ROOT, "flow", "status.json"),
+    "registry": os.path.join(ROOT, "flow", "failures.json"),
+}
+
+
+def _read_json(p):
+    if not os.path.isfile(p):
+        return None
+    try:
+        return json.load(io.open(p, encoding="utf-8"))
+    except (ValueError, OSError):
+        return None
+
+
+def senses(write=True):
+    """抓一次项目现状。缺读数记 None —— "没量过"不等于"量了是 0"。"""
+    sc = _read_json(SOURCES["scale"]) or {}
+    num = sc.get("numeric") or {}
+    kn = _read_json(SOURCES["kern"]) or {}
+    fg = _read_json(SOURCES["figures"]) or {}
+    d = load()
+    h = health(d)
+
+    st = {
+        "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "scale": {"full": sc.get("full"), "total": sc.get("total"),
+                  "rate": num.get("rate"), "compared": num.get("common"),\
+                  "mismatch": num.get("mismatch"), "c_error": num.get("c_error")},
+        "kern": {"full": kn.get("full"), "total": kn.get("total"),
+                 "compile_ok": kn.get("compile_ok")},
+        "figures": {"current": (fg.get("figures") or {}).get("current"),
+                    "stale": (fg.get("figures") or {}).get("stale"),
+                    "max_lag": (fg.get("figures") or {}).get("max_lag")},
+        "brain": {"total": h["total"], "open": h["open"],
+                  "coverage": round(h["coverage"], 1)},
+    }
+    if write:
+        io.open(STATE, "w", encoding="utf-8", newline="\n").write(
+            json.dumps(st, ensure_ascii=False, indent=2) + "\n")
+    return st
+
+
+def _stem(p):
+    return os.path.relpath(p, ROOT) if os.path.isfile(p) else None
+
+
+def stale_senses(state_path=STATE, sources=None):
+    """**感知是否比事实旧** —— 返回过期项列表（空 = 新鲜）。
+
+    判据：`brain-state.json` 的 mtime 必须晚于每个来源文件的 mtime。
+    为什么不是"时间差小于 N 分钟"：来源文件什么时候改是没有节奏的，
+    真正要防的是"改了读数却没重新感知" —— 那和间隔多久无关。
+    """
+    src = sources or SOURCES
+    if not os.path.isfile(state_path):
+        return ["%s 不存在（从未感知过）" % _stem(state_path) or state_path]
+    t_state = os.path.getmtime(state_path)
+    out = []
+    for name, p in src.items():
+        if os.path.isfile(p) and os.path.getmtime(p) > t_state + 1e-6:
+            out.append("%s 比感知新（%s 改过之后没重跑 brain senses）"
+                       % (_stem(p), name))
+    return out
+
+
+def brief(multi=False):
+    """状态摘要：**感知 / 知识 / 成长** 三段。
+
+    只有一段（"多少条"）时，读的人不知道"这些条目管着什么样的现状"；
+    三段合起来才是一幅可判断的图：现在什么状态 → 库里有啥 → 有没有在长。
+    """
     d = load()
     h = health(d)
     s = snapshot()
-    return ("脑：%d 条（已修 %d / 未闭 %d）｜见证覆盖 %.0f%%｜累计咨询 %d 次"
-            "｜重复规则 %d 条" % (h["total"], h["fixed"], h["open"],
-                                h["coverage"], s["usage"], s["dups"]))
+    st = senses(write=False)
+    sc, kn, fg = st["scale"], st["kern"], st["figures"]
+
+    def _p(v, unit=""):
+        return "未量" if v is None else ("%s%s" % (v, unit))
+
+    line1 = ("感知：合成语料 %s/%s 完全实现、一致率 %s%%；kern %s/%s、编译 %s"
+             % (_p(sc["full"]), _p(sc["total"]), _p(sc["rate"]),
+                _p(kn["full"]), _p(kn["total"]), _p(kn["compile_ok"])))
+    line2 = ("知识：%d 条（已修 %d / 未闭 %d）｜见证覆盖 %.0f%%｜咨询 %d 次"
+             "｜重复规则 %d 条"
+             % (h["total"], h["fixed"], h["open"], h["coverage"],
+                s["usage"], s["dups"]))
+    stale = stale_senses()
+    line3 = ("成长：快照 %d 次%s"
+             % (len([1 for ln in (io.open(GROWTH, encoding="utf-8")
+                                  if os.path.isfile(GROWTH) else []) if ln.strip()]),
+                "" if not stale else "｜**感知已过期**：%s" % stale[0]))
+    if multi:
+        return "%s\n%s\n%s" % (line1, line2, line3)
+    return line2
 
 
 def check():
@@ -362,7 +458,7 @@ def _append_usage(cmd, query, hits):
 def main(argv=None):
     ap = argparse.ArgumentParser(description="项目大脑：失败知识 + 反馈")
     ap.add_argument("cmd", choices=("advise", "record", "report", "status",
-                                    "check", "growth", "brief"))
+                                    "check", "growth", "brief", "senses"))
     ap.add_argument("text", nargs="?", help="advise 的任务描述")
     ap.add_argument("--title"), ap.add_argument("--symptom")
     ap.add_argument("--root-cause", dest="root_cause")
@@ -377,8 +473,19 @@ def main(argv=None):
               % (h["total"], h["fixed"], h["open"], h["coverage"]))
         return 0
 
+    if ns.cmd == "senses":
+        st = senses()
+        print("[brain] 感知 -> %s" % os.path.relpath(STATE, ROOT))
+        print("        合成语料 %s/%s ｜ 一致率 %s%% ｜ kern %s/%s"
+              % (st["scale"]["full"], st["scale"]["total"],
+                 st["scale"]["rate"], st["kern"]["full"], st["kern"]["total"]))
+        bad = stale_senses()
+        if bad:
+            print("        ⚠ %s" % bad[0])
+        return 0
+
     if ns.cmd == "brief":
-        print(brief())
+        print(brief(multi=True))
         return 0
 
     if ns.cmd == "growth":

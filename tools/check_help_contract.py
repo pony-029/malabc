@@ -231,7 +231,7 @@ GUARD_CONTRACT = {
         2: "缺输入（flow/failures.json 不存在或不是合法 JSON）",
     },
     "tools/check_brain_growth.py": {
-        0: "大脑成长判据 BG1–BG5 全绿（有快照 / 条数不减 / 快照与知识库一致 / "
+        0: "大脑成长判据 BG1–BG6 全绿（有快照 / 条数不减 / 快照与知识库一致 / "
            "被咨询过 / 见证全覆盖）",
         1: "成长机制失效（没记快照、条数倒退、快照落后、从未咨询、见证缺失）",
         2: "缺输入（failures.json 或 brain-growth.jsonl 不存在）",

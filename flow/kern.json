@@ -1,0 +1,6 @@
+{
+  "full": 9,
+  "total": 10,
+  "compile_ok": 10,
+  "by": "measure_kern (转换 + 完全实现 + gcc)"
+}
