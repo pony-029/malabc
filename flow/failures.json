@@ -241,6 +241,16 @@
       "witness": "tools/check_eol_convention.py",
       "status": "fixed",
       "commit": "R959"
+    },
+    {
+      "id": "F025",
+      "title": "cmir 把标量形参整批丢掉",
+      "symptom": "C→MATLAB 生成 function y = edge_scalar（无参数），体内却引用 a/b",
+      "root_cause": "cmir 的形参分派只有两个分支：含 * 的当返回值、mlc_array 开头的当数组；int64_t a 两边都不落",
+      "rule": "分支覆盖不完整时，加一条'其余情况'的记录而不是静默丢弃 —— 静默丢弃会让下游生成器无从发现",
+      "witness": "translate/cmir.py",
+      "status": "fixed",
+      "commit": "R961"
     }
   ]
 }

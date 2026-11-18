@@ -251,11 +251,19 @@ def c_to_mir(text, fname):
         # 函数名以 **C 签名**为准（文件名只是兜底）：
         # 之前用 `fname`（文件 stem），反推出的 MIR 全叫 `func:gen`，与源码函数名无关。
         fname = sig.group(1)
+        scalars = []
         for a in _split_args(sig.group(2)):
-            if "*" in a:                       # `mlc_array *y` -> 返回值
+            if "*" in a:                       # `mlc_array *y` / `int64_t *y` -> 返回值
                 rets.append(_strip_ref(a.split("*")[-1]))
             elif a.startswith("mlc_array "):
                 args.append(_strip_ref(a.split(None, 1)[1]))
+            elif re.match(r"^\s*(const\s+)?(int64_t|long|int|double|float|size_t)\b",
+                          a):
+                # **标量形参**（R961）：`int64_t a` 既不含 `*` 也不是 `mlc_array`，
+                # 原来两个分支都不落 —— 形参被**整批丢掉**，反推出的 MIR 里
+                # `setb:__e1:mul:a:b` 引用了根本没声明的 a/b，
+                # 于是 C→MATLAB 只能生成 `function y = f`（无参数）。
+                scalars.append(_strip_ref(a.split()[-1]))
 
     # 形状元数据（生成器写在函数头前的注释里）
     shapes = {}
@@ -267,6 +275,8 @@ def c_to_mir(text, fname):
     for a in args:
         sh = shapes.get(a)
         out.append("arg:%s:f64:%s" % (a, sh) if sh else "arg:%s:f64" % a)
+    for a in scalars:
+        out.append("arg:%s:i64" % a)
     for r in rets:
         sh = shapes.get(r)
         out.append("ret:%s:f64:%s" % (r, sh) if sh else "ret:%s:f64" % r)
