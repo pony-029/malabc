@@ -1,5 +1,5 @@
 {
-  "ts": "2026-11-18 23:21:20",
+  "ts": "2026-11-18 23:31:26",
   "scale": {
     "full": 165,
     "total": 165,
@@ -14,9 +14,9 @@
     "compile_ok": 10
   },
   "figures": {
-    "current": 0,
+    "current": 16,
     "stale": 0,
-    "max_lag": 5
+    "max_lag": 0
   },
   "checks": {
     "passed": 4,

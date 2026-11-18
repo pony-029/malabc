@@ -16,7 +16,8 @@
         ]
       ],
       "artifact": "E:\\matlabc\\malabc\\translate\\examples\\multi_fn",
-      "note": ""
+      "note": "",
+      "hint": ""
     },
     {
       "name": "② 解析成 MIR",
@@ -36,8 +37,9 @@
           0
         ]
       ],
-      "artifact": "E:\\temp\\matlabc\\_mon1\\.m2c\\project.mir",
-      "note": ""
+      "artifact": "E:\\temp\\matlabc\\_mon937\\.m2c\\project.mir",
+      "note": "",
+      "hint": "F010：改写结构化文本时，**前言/头**与正片要分开处理"
     },
     {
       "name": "③ 映射分组",
@@ -58,7 +60,8 @@
         ]
       ],
       "artifact": "translate\\examples\\multi_fn\\map_explicit.json",
-      "note": ""
+      "note": "",
+      "hint": ""
     },
     {
       "name": "④ 生成 C",
@@ -78,8 +81,9 @@
           1
         ]
       ],
-      "artifact": "E:\\temp\\matlabc\\_mon1\\build\\gen\\src\\gen",
-      "note": ""
+      "artifact": "E:\\temp\\matlabc\\_mon937\\build\\gen\\src\\gen",
+      "note": "",
+      "hint": "F002：造语料时把内建函数名与变量名分开；否则测的是自己的错"
     },
     {
       "name": "⑤ 编译",
@@ -95,8 +99,9 @@
           3
         ]
       ],
-      "artifact": "E:\\temp\\matlabc\\_mon1\\build\\gen\\src\\gen",
-      "note": ""
+      "artifact": "E:\\temp\\matlabc\\_mon937\\build\\gen\\src\\gen",
+      "note": "",
+      "hint": ""
     },
     {
       "name": "⑥ 运行",
@@ -112,8 +117,9 @@
           11
         ]
       ],
-      "artifact": "E:\\temp\\matlabc\\_mon1\\proj.exe",
-      "note": ""
+      "artifact": "E:\\temp\\matlabc\\_mon937\\proj.exe",
+      "note": "",
+      "hint": ""
     }
   ]
 }

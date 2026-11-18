@@ -86,7 +86,7 @@
       "path": "translate/",
       "duty": "MATLAB → MIR / HIR / C（转换侧主体）",
       "status": "ok",
-      "files": 139,
+      "files": 162,
       "gx2_tests": 120,
       "group": "转换侧"
     },
@@ -94,7 +94,7 @@
       "path": "rust/m2c/",
       "duty": "MIR → C 工程（发射器与装配）",
       "status": "ok",
-      "files": 18,
+      "files": 19,
       "gx2_tests": 120,
       "group": "转换侧"
     },
@@ -150,7 +150,7 @@
       "path": "tools/",
       "duty": "门禁、状态、追踪、预算等工具",
       "status": "ok",
-      "files": 144,
+      "files": 164,
       "gx2_tests": 120,
       "group": "工具与门禁"
     },
@@ -174,7 +174,7 @@
       "path": "flow/",
       "duty": "流程图与目录页",
       "status": "ok",
-      "files": 198,
+      "files": 236,
       "gx2_tests": 120,
       "group": "图与文档"
     },
@@ -212,63 +212,57 @@
     }
   ],
   "figures": {
-    "current": 0,
-    "recent": 16,
+    "current": 16,
+    "recent": 0,
     "stale": 0,
     "unknown": 0,
     "historical": 4,
     "count": 20,
-    "max_lag": 5
+    "max_lag": 0
   },
   "domain_tests": {
-    "入口与流水线": 609,
-    "转换侧": 705,
-    "判据": 567,
-    "运行时": 65,
     "工具与门禁": 588,
-    "图与文档": 566,
     "分析侧": 571,
-    "编辑器": 65
+    "图与文档": 566,
+    "判据": 567,
+    "转换侧": 705,
+    "入口与流水线": 609,
+    "编辑器": 65,
+    "运行时": 65
   },
   "domain_files": {
-    "入口与流水线": 23,
-    "转换侧": 63,
-    "判据": 9,
-    "运行时": 30,
     "工具与门禁": 21,
-    "图与文档": 13,
     "分析侧": 17,
-    "编辑器": 4
+    "图与文档": 13,
+    "判据": 9,
+    "转换侧": 63,
+    "入口与流水线": 23,
+    "编辑器": 4,
+    "运行时": 30
   },
   "gx2_tests": 120,
-  "head": "cc4adf458ddf",
+  "head": "99782e0fc801",
   "scale": {
     "total": 165,
     "full": 165,
     "rate": 100.0,
     "bad": 0,
     "numeric": {
-      "common": 159,
-      "identical": 143,
+      "common": 165,
+      "identical": 149,
       "fmt_only": 16,
       "mismatch": 0,
       "c_error": 0,
       "empty_both": 4,
-      "only_vm": 3,
-      "only_c": 3,
-      "only_vm_names": [
-        "op_setidx_1_0",
-        "op_setidx_3_1",
-        "op_setidx_7_2"
-      ],
-      "only_c_names": [
-        "op_setidx2_2_0",
-        "op_setidx2_3_1",
-        "op_setidx2_7_2"
-      ],
+      "mismatch_names": [],
+      "c_error_names": [],
+      "only_vm": 0,
+      "only_c": 0,
+      "only_vm_names": [],
+      "only_c_names": [],
       "rate": 100.0
     },
-    "head": "c4e2819257dd",
-    "ts": "2026-11-17 21:49:52"
+    "head": "0dac0664cfcc",
+    "ts": "2026-11-18 23:06:30"
   }
 }

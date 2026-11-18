@@ -6,7 +6,7 @@
     "note": "4 个 .m / 11 个函数：5+3+2+1 分布，验证「多个 MATLAB 函数 → 一个 C 文件」",
     "status": "ok",
     "error": "",
-    "elapsed": 0.5,
+    "elapsed": 0.6,
     "m_files": 4,
     "m_funcs": 11,
     "c_files": 4,
