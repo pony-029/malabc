@@ -228,16 +228,19 @@ GUARD_CONTRACT = {
            "fixed 有 commit / 状态枚举）",
         1: "登记表有不合规条目（缺字段、id 重复或格式错、witness 不存在、"
            "fixed 无 commit、状态非法）",
+        2: "缺输入（flow/failures.json 不存在或不是合法 JSON）",
     },
     "tools/check_brain_growth.py": {
         0: "大脑成长判据 BG1–BG5 全绿（有快照 / 条数不减 / 快照与知识库一致 / "
            "被咨询过 / 见证全覆盖）",
         1: "成长机制失效（没记快照、条数倒退、快照落后、从未咨询、见证缺失）",
+        2: "缺输入（failures.json 或 brain-growth.jsonl 不存在）",
     },
     "tools/check_mir_split.py": {
         0: "解析/切分判据 MS1–MS5 全绿（无 end 切分 / 嵌套边界 / version 头 / "
            "账本闭合 / 块收束）",
         1: "解析或切分有退化（MS1–MS5 任一条不成立）",
+        2: "缺输入（自证要用的临时目录都建不出来）",
     },
     "tools/check_hir_two_paths.py": {
         0: "契约 TP9a–TP9d 全部通过（两条 MIR 生成路径逐函数等价）",

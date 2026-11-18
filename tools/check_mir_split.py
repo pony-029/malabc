@@ -19,6 +19,11 @@
 
 前四条各自对应一条**真实发生过的**错误，所以这不是"想象的判据"，
 而是把已有的教训钉成一次可复跑的检查。
+
+退出码：
+    0 = MS1–MS5 全部成立
+    1 = 任一条不成立（打印是哪一条、期望什么、实际什么）
+    2 = 缺输入（连自证要用的临时目录都建不出来）
 """
 import io
 import os
@@ -185,7 +190,12 @@ def _selftest():
 def main(argv=None):
     if "--selftest" in sys.argv:
         return _selftest()
-    problems = run()
+    try:
+        problems = run()
+    except OSError as e:
+        # 自证要建临时目录；建不出来属"缺输入"（2），不是"判据不成立"（1）
+        print("check_mir_split: 缺输入（临时目录不可用：%s）" % e)
+        return 2
     if problems:
         for p in problems:
             print("- %s" % p)

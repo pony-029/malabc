@@ -22,6 +22,11 @@
 
 BG3 是最关键的一条：它把"我加了 3 条错"和"机制记录了这次成长"绑在一起 ——
 只做前者会被它抓住。
+
+退出码：
+    0 = BG1–BG5 全部成立
+    1 = 成长机制失效（没记快照 / 条数倒退 / 快照落后 / 从未咨询 / 见证缺失）
+    2 = 缺输入（flow/failures.json 或 flow/brain-growth.jsonl 不存在）
 """
 import io
 import json
@@ -186,6 +191,10 @@ def _selftest():
 def main(argv=None):
     if "--selftest" in sys.argv:
         return _selftest()
+    # 缺输入（知识库/快照文件都不在）→ 2；机制失效 → 1
+    if not os.path.isfile(REG) and not os.path.isfile(GROWTH):
+        print("check_brain_growth: 缺输入（%s 与 %s 都不存在）" % (REG, GROWTH))
+        return 2
     problems = audit()
     if problems:
         for p in problems:

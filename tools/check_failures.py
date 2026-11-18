@@ -31,6 +31,11 @@
 
 如果某条错误找不到这样的见证，说明它的**防复发措施还没做** ——
 那就该在 `status` 里写 `open`，而不是编一个文件名。
+
+退出码：
+    0 = FR1–FR5 全部成立（登记表合法）
+    1 = 登记表有不合规条目（缺字段 / id 重复 / witness 不存在 / fixed 无 commit / 状态非法）
+    2 = 缺输入（flow/failures.json 不存在或不是合法 JSON）
 """
 import io
 import json
@@ -71,24 +76,24 @@ def audit(path=REG):
         # F1
         for k in REQUIRED:
             if not (e.get(k) or "").strip():
-                problems.append("%s 缺字段 %s" % (tag, k))
+                problems.append("FR1 %s 缺字段 %s" % (tag, k))
         # F2
         if not ID_RE.match(str(e.get("id") or "")):
-            problems.append("%s 的 id 不是 F### 形式" % tag)
+            problems.append("FR2 %s 的 id 不是 F### 形式" % tag)
         if tag in seen:
-            problems.append("%s 重复（复制粘贴时最容易出）" % tag)
+            problems.append("FR2 %s 重复（复制粘贴时最容易出）" % tag)
         seen.add(tag)
         # F5
         st = e.get("status")
         if st not in STATUS:
-            problems.append("%s 的 status 不是 %r 之一：%r" % (tag, STATUS, st))
+            problems.append("FR5 %s 的 status 不是 %r 之一：%r" % (tag, STATUS, st))
         # F4
         if st == "fixed" and not (e.get("commit") or "").strip():
-            problems.append("%s 标了 fixed 却没有 commit（'修过'是自称的）" % tag)
+            problems.append("FR4 %s 标了 fixed 却没有 commit（'修过'是自称的）" % tag)
         # F3
         w = (e.get("witness") or "").strip()
         if w and not os.path.exists(os.path.join(ROOT, w)):
-            problems.append("%s 的 witness 不存在：%s（没有见证 = 没做防复发）"
+            problems.append("FR3 %s 的 witness 不存在：%s（没有见证 = 没做防复发）"
                             % (tag, w))
     return problems
 
@@ -157,6 +162,16 @@ def _selftest():
 def main(argv=None):
     if argv and "--selftest" in argv or "--selftest" in sys.argv:
         return _selftest()
+    # **缺输入与有违规是两件事**（G1 要求登记的退出码有依据）：
+    # 登记表不存在/读不了 → 2；读到了但有不合规条目 → 1。
+    if not os.path.isfile(REG):
+        print("check_failures: 缺输入（%s 不存在）" % REG)
+        return 2
+    try:
+        json.load(io.open(REG, encoding="utf-8"))
+    except ValueError as e:
+        print("check_failures: 缺输入（不是合法 JSON：%s）" % e)
+        return 2
     problems = audit()
     if problems:
         for p in problems:
