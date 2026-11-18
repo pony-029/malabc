@@ -221,6 +221,19 @@ ENTRY_SCRIPTS = tuple(sorted(CONTRACT))
 #     护栏的「示例能跑」由 check_all.py 的聚合运行来证明，职责不重复。
 # ---------------------------------------------------------------------------
 GUARD_CONTRACT = {
+    # R940：两个新门补登记 —— 描述里**逐字含**各自的 ROW_SIGNATURE，
+    # 否则 H1 判定"描述陈旧"（这正是这道门存在的理由：描述只写不读）。
+    "tools/check_failures.py": {
+        0: "失败登记表合法：FR1–FR5 全过（必填字段 / id 唯一 / witness 存在 / "
+           "fixed 有 commit / 状态枚举）",
+        1: "登记表有不合规条目（缺字段、id 重复或格式错、witness 不存在、"
+           "fixed 无 commit、状态非法）",
+    },
+    "tools/check_mir_split.py": {
+        0: "解析/切分判据 MS1–MS5 全绿（无 end 切分 / 嵌套边界 / version 头 / "
+           "账本闭合 / 块收束）",
+        1: "解析或切分有退化（MS1–MS5 任一条不成立）",
+    },
     "tools/check_hir_two_paths.py": {
         0: "契约 TP9a–TP9d 全部通过（两条 MIR 生成路径逐函数等价）",
         1: "有差异（函数集合 / 算子 / 行号 / 数值任一不等）",

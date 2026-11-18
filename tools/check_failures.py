@@ -91,7 +91,7 @@ def audit(path=REG):
 
 #: 质量门表里那一行的签名（`check_readme_parity` 的 P5 要求声明它，
 #: 否则"文档里的那一行"没有可逐字核对的对手方）
-ROW_SIGNATURE = "F1–F5"
+ROW_SIGNATURE = "FR1–FR5"
 
 
 def _selftest():
