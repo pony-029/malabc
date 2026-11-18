@@ -37,7 +37,7 @@
       padding:1px 4px;border-radius:4px}
 </style></head><body><div class="wrap">
 <h1>MATLAB ⇄ C 总报告</h1>
-<p class="sub">生成于 2026-11-18 23:42 ｜ 七个章节的全部数字均来自工具产物，无一手填</p>
+<p class="sub">生成于 2026-11-18 23:44 ｜ 七个章节的全部数字均来自工具产物，无一手填</p>
 <div class="kpis"><div class='kpi'><b>5</b><span>工程（全量）</span></div><div class='kpi'><b>5964</b><span>源 .m</span></div><div class='kpi'><b>1670</b><span>生成 .c</span></div><div class='kpi'><b>2107 / 7063</b><span>生成 / 源函数</span></div><div class='kpi'><b>0 / 30</b><span>三段全通</span></div><div class='kpi'><b>100%</b><span>HIR 参与率</span></div></div>
 
 <h2>① 规模：全量目录实测</h2>
@@ -56,8 +56,11 @@
 <div class="panel"><div class='kpis'><div class='kpi'><b>9</b><span>函数数</span></div><div class='kpi'><b>9</b><span>HIR 降级产出</span></div><div class='kpi'><b>100%</b><span>参与率</span></div></div><p class='note'>判据：MIR 里每个函数前是否有 <code># @m2c hir-emitted</code>。这是 HIR 真参与、而不是被绕过的直接证据。</p></div>
 
 <h2>⑥ 脑状态（感知 / 知识 / 成长）</h2>
-<div class="panel"><p class='brain'>感知：合成语料 165/165 完全实现、一致率 100.0%；kern 9/10、编译 10；复查 4/4 组</p><p class='brain'>知识：25 条（已修 25 / 未闭 0）｜见证覆盖 100%｜咨询 9 次｜重复规则 0 条</p><p class='brain'>成长：快照 28 次</p></div>
+<div class="panel"><p class='brain'>感知：合成语料 165/165 完全实现、一致率 100.0%；kern 9/10、编译 10；复查 4/4 组</p><p class='brain'>知识：25 条（已修 25 / 未闭 0）｜见证覆盖 100%｜咨询 9 次｜重复规则 0 条</p><p class='brain'>成长：快照 29 次</p></div>
 
-<h2>⑦ 数据来源与复现</h2>
+<h2>⑦ 未映射类别（真实工程的主要障碍）</h2>
+<div class="panel"><div class='kpis'><div class='kpi'><b>30</b><span>抽样函数文件</span></div><div class='kpi'><b>533</b><span>未映射语句</span></div></div><table><tr><th>类别</th><th>条数</th><th>占比</th><th></th></tr><tr><td><code>cell</code></td><td class='n'>154</td><td class='n'>29%</td><td><div class='bar'><i style='width:29%;background:var(--bad)'></i></div></td></tr><tr><td><code>struct</code></td><td class='n'>94</td><td class='n'>18%</td><td><div class='bar'><i style='width:18%;background:var(--bad)'></i></div></td></tr><tr><td><code>strlit</code></td><td class='n'>92</td><td class='n'>17%</td><td><div class='bar'><i style='width:17%;background:var(--bad)'></i></div></td></tr><tr><td><code>call2</code></td><td class='n'>83</td><td class='n'>16%</td><td><div class='bar'><i style='width:16%;background:var(--bad)'></i></div></td></tr><tr><td><code>other</code></td><td class='n'>59</td><td class='n'>11%</td><td><div class='bar'><i style='width:11%;background:var(--bad)'></i></div></td></tr><tr><td><code>cond</code></td><td class='n'>14</td><td class='n'>3%</td><td><div class='bar'><i style='width:3%;background:var(--bad)'></i></div></td></tr><tr><td><code>nested</code></td><td class='n'>14</td><td class='n'>3%</td><td><div class='bar'><i style='width:3%;background:var(--bad)'></i></div></td></tr><tr><td><code>sideeffect</code></td><td class='n'>10</td><td class='n'>2%</td><td><div class='bar'><i style='width:2%;background:var(--bad)'></i></div></td></tr><tr><td><code>control</code></td><td class='n'>8</td><td class='n'>2%</td><td><div class='bar'><i style='width:2%;background:var(--bad)'></i></div></td></tr><tr><td><code>idx2</code></td><td class='n'>1</td><td class='n'>0%</td><td><div class='bar'><i style='width:0%;background:var(--bad)'></i></div></td></tr></table><p class='note'>来源 <code>E:\temp\matlabc\yalm_fn_sample</code>。<b>cell / struct / strlit 合计占了绝大多数</b> —— 真实工程的障碍是<b>非数值类型</b>，而不是数值算子（后者在合成语料上已 100%）。</p></div>
+
+<h2>⑧ 数据来源与复现</h2>
 <div class="panel"><table><tr><th>本节</th><th>数据来源</th><th>复现命令</th></tr><tr><td>① 规模</td><td><code>flow/bench_all.json</code></td><td><code>python tools/bench_all.py --max-big 8</code></td></tr><tr><td>② 三段链路</td><td><code>E:\temp\matlabc\_tl_yalm2/index.html</code></td><td><code>python tools/three_links_report.py <目录> -o <目录> --limit 40</code></td></tr><tr><td>③ C→MATLAB</td><td><code>E:\temp\matlabc\c2m961.json</code></td><td><code>python tools/c2m.py <C 目录> -o <目录> --json <文件></code></td></tr><tr><td>⑤ HIR</td><td><code>E:\temp\matlabc\edge961\.m2c\project.mir</code></td><td><code>python matlabc_toc.py <目录> -o <目录>  # 看 .m2c/project.mir</code></td></tr><tr><td>⑥ 脑状态</td><td><code>flow/brain-state.json + flow/failures.json</code></td><td><code>python tools/brain.py senses</code></td></tr></table></div>
 </div></body></html>

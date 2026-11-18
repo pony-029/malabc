@@ -266,7 +266,30 @@ def render(bench, links, c2m, hir, brief, src):
     sec6 = ("".join("<p class='brain'>%s</p>" % b.replace("<", "&lt;")
                     for b in brief) or "<p class='miss'>未量</p>")
 
-    # ---- ⑦ 来源 ----
+    # ---- ⑦ 未映射类别（真实工程的主要障碍）----
+    un = _json(os.path.join(ROOT, "flow", "unmapped.json"))
+    if un and un.get("kinds"):
+        base = float(un.get("total") or 1)
+        rows = "".join(
+            "<tr><td><code>%s</code></td><td class='n'>%d</td>"
+            "<td class='n'>%.0f%%</td><td><div class='bar'>"
+            "<i style='width:%.0f%%;background:var(--bad)'></i></div></td></tr>"
+            % (k, v, 100.0 * v / base, 100.0 * v / base)
+            for k, v in list(un["kinds"].items())[:10])
+        sec8 = ("<div class='kpis'><div class='kpi'><b>%d</b>"
+                "<span>抽样函数文件</span></div>"
+                "<div class='kpi'><b>%d</b><span>未映射语句</span></div></div>"
+                "<table><tr><th>类别</th><th>条数</th><th>占比</th><th></th></tr>"
+                "%s</table>"
+                "<p class='note'>来源 <code>%s</code>。"
+                "<b>cell / struct / strlit 合计占了绝大多数</b> —— 真实工程的障碍是"
+                "<b>非数值类型</b>，而不是数值算子（后者在合成语料上已 100%%）。</p>"
+                % (un.get("files") or 0, un.get("total") or 0, rows,
+                   un.get("source") or "?"))
+    else:
+        sec8 = "<p class='miss'>未量（缺 flow/unmapped.json）</p>"
+
+    # ---- ⑧ 来源 ----
     sec7 = "<table><tr><th>本节</th><th>数据来源</th><th>复现命令</th></tr>" + "".join(
         "<tr><td>%s</td><td><code>%s</code></td><td><code>%s</code></td></tr>"
         % (a, b, c) for a, b, c in src) + "</table>"
@@ -297,12 +320,16 @@ def render(bench, links, c2m, hir, brief, src):
 <h2>⑥ 脑状态（感知 / 知识 / 成长）</h2>
 <div class="panel">$sec6</div>
 
-<h2>⑦ 数据来源与复现</h2>
+<h2>⑦ 未映射类别（真实工程的主要障碍）</h2>
+<div class="panel">$sec8</div>
+
+<h2>⑧ 数据来源与复现</h2>
 <div class="panel">$sec7</div>
 </div></body></html>
 """)
     return tpl.substitute(css=CSS, now=now, kpis=kpi_html, sec1=sec1, sec2=sec2,
-                          sec3=sec3, sec4=sec4, sec5=sec5, sec6=sec6, sec7=sec7)
+                          sec3=sec3, sec4=sec4, sec5=sec5, sec6=sec6, sec7=sec7,
+                          sec8=sec8)
 
 
 def main(argv=None):
