@@ -700,7 +700,31 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
         out.push(format!("{}/* @m2c src:{} */", pad, op.src));
     }
     let lhs = ident(&op.lhs);
-    let dst = if out_is_ptr { lhs.clone() } else { format!("&{}", lhs) };
+    // **目标侧桥接**（R958）：返回值声明成 i64 时，C 原型是 `int64_t *y`，
+    // 而算子要 `mlc_array*`。R886/R924 只桥接了**实参**侧（`is_scalar_name`），
+    // 目标侧一直直接把裸标量指针传进去 —— 实测 `edge_scalar` 生成物
+    // `st = mlc_op_add(&__s0_6, &__s1_6, y);` 直接 gcc 报
+    // `passing argument 3 of 'mlc_op_add' from incompatible pointer type`，
+    // 整个 ② 段（编译+跑数）失败。
+    // 做法：先算到一个 1×1 临时数组，再写回标量。
+    let lhs_is_scalar_out = out_is_ptr && is_scalar_name(f, &op.lhs);
+    let out_tmp = if lhs_is_scalar_out {
+        Some(format!("__so_{}", op.src))
+    } else {
+        None
+    };
+    if let Some(t) = &out_tmp {
+        out.push(format!("{}mlc_array {};", pad, t));
+        out.push(format!(
+            "{}if (mlc_array_init(&{}, MLC_F64, 1, (int64_t[]){{1}}) != MLC_OK) {{ return MLC_ERR; }}",
+            pad, t
+        ));
+    }
+    let dst = match (&out_tmp, out_is_ptr) {
+        (Some(t), _) => format!("&{}", t),
+        (None, true) => lhs.clone(),
+        (None, false) => format!("&{}", lhs),
+    };
 
     // 矩阵乘的约束在**生成时**就校验：留给运行时报错等于把问题推迟到用户那边，
     // 而这里形状是已知的 —— 已知就该拒绝。
@@ -1096,6 +1120,20 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
         return out;
     }
     out.push(format!("{}if (st != MLC_OK) {{ return st; }}", pad));
+    // 目标侧桥接的收尾：把临时数组的第 0 个元素写回 i64 标量。
+    // 返回变量是**指针形参**（`int64_t *y`）时必须解引用 —— 否则 gcc 报
+    // `assignment to 'int64_t *' from 'int64_t'`（R958 实测第二跳）。
+    if let Some(t) = &out_tmp {
+        let target = if out_is_ptr {
+            format!("*{}", lhs)
+        } else {
+            lhs.clone()
+        };
+        out.push(format!(
+            "{}{} = (int64_t)((double *){}.data)[0];",
+            pad, target, t
+        ));
+    }
     out
 }
 

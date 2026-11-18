@@ -221,6 +221,16 @@
       "witness": "translate/mir.py",
       "status": "fixed",
       "commit": "R957"
+    },
+    {
+      "id": "F023",
+      "title": "标量返回值桥接写回时要解引用",
+      "symptom": "加了目标侧桥接后 gcc 报 assignment to 'int64_t *' from 'int64_t'",
+      "root_cause": "返回值是指针形参 int64_t *y，写回时我用了 y 而不是 *y；桥接的正确形态是 init 临时数组 -> 算 -> *y = temp.data[0]",
+      "rule": "桥接分两跳：传入用 &temp，写回用 *dst —— 两跳都要按形参是不是指针分别处理",
+      "witness": "rust/m2c/src/emit.rs",
+      "status": "fixed",
+      "commit": "R958"
     }
   ]
 }
