@@ -283,9 +283,11 @@ def render(bench, links, c2m, hir, brief, src):
                 "%s</table>"
                 "<p class='note'>来源 <code>%s</code>。"
                 "<b>cell / struct / strlit 合计占了绝大多数</b> —— 真实工程的障碍是"
-                "<b>非数值类型</b>，而不是数值算子（后者在合成语料上已 100%%）。</p>"
+                "<b>非数值类型</b>，而不是数值算子（后者在合成语料上已 100%%）。"
+                "%s</p>"
                 % (un.get("files") or 0, un.get("total") or 0, rows,
-                   un.get("source") or "?"))
+                   un.get("source") or "?",
+                   ("<br><b>进一步：</b>" + un["note"]) if un.get("note") else ""))
     else:
         sec8 = "<p class='miss'>未量（缺 flow/unmapped.json）</p>"
 

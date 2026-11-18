@@ -13,5 +13,6 @@
     "sideeffect": 10,
     "control": 8,
     "idx2": 1
-  }
+  },
+  "note": "cell 类里多数不是通用元胞数组，而是 <code>varargin{i}</code> / <code>varargout{i}</code> 的可变参数惯用法（switch class(varargin{1})、varargout{1} = [] 等）—— 先把「可变参数」与「真元胞」分开，再决定支持哪一个。"
 }
