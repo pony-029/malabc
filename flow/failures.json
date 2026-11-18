@@ -181,6 +181,16 @@
       "witness": "matlabc_help.py",
       "status": "fixed",
       "commit": "R941"
+    },
+    {
+      "id": "F019",
+      "title": "小脑入库必须有真见证",
+      "symptom": "agent 回复里的 witness 指向 tools/check_hang.py，而该文件在仓库里并不存在",
+      "root_cause": "模型会给出看起来合理但仓库里没有的路径；不校验就入库会污染知识库",
+      "rule": "任何外部（模型/agent）产出的条目，witness 必须用 os.path.exists 校验后才允许入库",
+      "witness": "tools/brain_agent.py",
+      "status": "fixed",
+      "commit": "agent"
     }
   ]
 }

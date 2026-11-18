@@ -1,0 +1,29 @@
+你在协助一个 MATLAB→C 编译器项目做**问题归因**。
+任务：门的自证超时怎么修
+
+约束：
+- 只提出**能落到见证**的发现：witness 必须是仓库里真实存在的文件路径
+- 不要建议'加测试'这类没有具体落点的话
+- 每条 rule 要能在下次重犯时被某条判据拦住
+
+历史上同类错误（优先复用它们的规则，不要重复发明）：
+- [F017] 自证用 relpath 跨盘符直接崩
+    现象：check_brain_growth --selftest 抛 ValueError: path is on mount 'C:', start on mount 'E:'
+    根因：自证在系统临时目录造样本，而门里用 os.path.relpath(p, ROOT) 打印相对路径
+    规则：门的诊断信息路径要能跨盘：relpath 包一层 try/except 退回原路径
+    见证：tools/check_brain_growth.py
+
+只输出 JSON，结构如下：
+{
+  "findings": [
+    {
+      "title": "一句话标题",
+      "symptom": "看到什么现象",
+      "root_cause": "真正的原因",
+      "rule": "下次怎么避免（一句可执行的话）",
+      "witness": "tools/check_xxx.py 或 tests/test_xxx.py（必须真实存在）",
+      "severity": "high|medium|low"
+    }
+  ],
+  "notes": "可选：不适合入库的观察"
+}

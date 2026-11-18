@@ -1212,6 +1212,7 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 - `tools/harness.py` —— **自改进 harness**：跑分组检查 → 把失败入库（`flow/problems.jsonl`）→ 用向量库反查历史同类错 → 按「重复次数 + 有无历史解法」排出下一步。它**不自动改代码**，只做发现/归因/排序
 - `tools/brain_db.py` —— **问题记录向量库**：哈希特征向量（md5 定维、256 维、L2 归一、余弦检索），离线确定、可解释；换真 embedder 只需替换 `embed()`（存储里带 `model/dim`，混用会被拒）。CLI：`build` / `add` / `query` / `stats`
 - `tools/check_mir_split.py` —— **解析/切分判据库**（MS1–MS5）：无 `end` 切分、嵌套边界、`version` 头、账本闭合、块收束
+- `tools/brain_agent.py` —— **小脑 ↔ 大模型协议层**：`pack` 把任务 + 历史同类错（规则/见证）打成上下文；`ask --cmd "<任意命令>"` 把 prompt 喂给任意模型（stdin→stdout，换模型只换一条命令）；`ingest` 把回复**校验后**入库（witness 必须真实存在，否则只落待办 —— 这条会被模型钻空子）；`fanout` 同一问题发多家、只并列各自独有的发现
 - `tools/brain.py` —— **项目大脑**：`advise` 动手前检索历史同类错误并返回「规则 + 见证」；`record` 处置后追加（强制校验 witness 存在）；`report` 出 `flow/brain.html`（统计 + 聚类 + 由登记内容推出的下一步建议）。知识库是 `flow/failures.json`，校验门是 `tools/check_failures.py`
 - `tools/check_failures.py` —— **失败登记门**：F1 必填字段、F2 id 唯一、F3 **witness 必须存在**（没有见证 = 没做防复发）、F4 `fixed` 必须有 commit、F5 状态枚举
 - `tools/bench_all.py` —— **全量工程实测**：把 `E:\temp\matlabc` 下所有含 `.m` 的目录都验一遍（大工程逐个、单文件聚合、内容相同的副本明确标 dup 不重复计数），出 `flow/bench_all.html`

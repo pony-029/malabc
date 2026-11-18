@@ -1,2 +1,4 @@
 {"id": "H9096", "ts": "2026-11-18 21:38:16", "group": "失败登记", "title": "失败登记 检查失败（2 项）", "text": "- F015 标了 fixed 却没有 commit（'修过'是自称的） - F016 标了 fixed 却没有 commit（'修过'是自称的）", "meta": {"check": "check_failures.py", "rc": 1}}
 {"id": "H9133", "ts": "2026-11-18 21:38:53", "group": "工具发现性", "title": "工具发现性 检查失败（1 项）", "text": "  [FAIL] TD1 工具在 README 里能找到              没被任何 README 提到：['brain_db.py', 'harness.py']（工具存在但没人知道）\r\ncheck_tool_discoverability: 1 项不一致\r\n", "meta": {"check": "check_tool_discoverability.py", "rc": 1}}
+{"ts": "2026-11-18 22:12:25", "title": "门的自证在负载下会超时被判挂死", "text": "check_tool_selftests 报 check_hang.py 的 --selftest 3s 内没退出 / check_hang 用固定 3s 阈值判挂死，而 selftest 会拉起其它进程，机器繁忙时合法耗时也会超过阈值", "meta": {"from": "agent", "witness": "tools/check_hang.py", "severity": "medium"}}
+{"ts": "2026-11-18 22:12:25", "title": "建议整体提高测试覆盖率", "text": "覆盖率还可以更高 / 未具体分析", "meta": {"from": "agent", "witness": "", "severity": "low"}}
