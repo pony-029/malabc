@@ -776,6 +776,12 @@ def oid0_is_slice(oid):
 
 
 #: unmapped 的原因分类（顺序即优先级：先判更"硬"的语义）。
+#: 可安全丢弃的空操作语句（R969）：参数个数断言与环境指令。
+#: 它们不产生计算、不影响结果，而 C 的签名已把元数固定在编译期。
+_NOOP_RE = re.compile(
+    r"^(narginchk|nargoutchk|pkg\s+load|more\s+off|format\s+\w+|beep|clc)")
+
+
 _KIND_RULES = (
     ("cell", lambda t: "{" in t or "}" in t),
     # 结构体：`a.b` / `a.(e)`；排除 `.*` `./` `.\\` `.'` 与小数（它们也带点）
@@ -1897,6 +1903,7 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                 scalar_names.add(_n)
         scalars = scalar_names        # 同一个集合的别名，不再维护两份
         blocks = []                    # 块栈："for" / "if"
+        n_noop = [0]                   # 被安全丢弃的空操作条数（R969）
         # elseif 去糖后多压的 if 层数：{块深度: 层数}，由 `end` 处补弹（R877）
         extras = {}
         # switch 上下文（R878）：`switch` 不开块，第一个 `case` 才开 if
@@ -1905,6 +1912,17 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             src_line = (f.get("line_nos") or [0] * len(f["lines"]))[line_i]
             code = _clean(line).strip()
             if not code:
+                continue
+            # **可安全丢弃的空操作**（R969）。
+            #
+            # `narginchk/nargoutchk` 是**参数个数断言**：C 的函数签名已经把元数
+            # 固定在编译期，运行期再断言一次没有意义 —— 它们在真实工程里出现频率
+            # 很高（Octave statistics 抽样里几乎每个函数都有），却既不产生计算
+            # 也不影响结果。留成 unmapped 只会把"降级能力"的读数压低。
+            #
+            # `pkg load` / `more off` / `format …` 同理：Octave/MATLAB 的环境指令。
+            if _NOOP_RE.match(code):
+                n_noop[0] += 1
                 continue
             # `full(x)` 在稠密表示下是恒等（YALMIP 84 次）：剥掉，别挡住真正的语义
             code = _strip_full_call(code)

@@ -1212,6 +1212,8 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 - `tools/harness.py` —— **自改进 harness**：跑分组检查 → 把失败入库（`flow/problems.jsonl`）→ 用向量库反查历史同类错 → 按「重复次数 + 有无历史解法」排出下一步。它**不自动改代码**，只做发现/归因/排序
 - `tools/brain_db.py` —— **问题记录向量库**：哈希特征向量（md5 定维、256 维、L2 归一、余弦检索），离线确定、可解释；换真 embedder 只需替换 `embed()`（存储里带 `model/dim`，混用会被拒）。CLI：`build` / `add` / `query` / `stats`
 - `tools/check_mir_split.py` —— **解析/切分判据库**（MS1–MS5）：无 `end` 切分、嵌套边界、`version` 头、账本闭合、块收束
+- `tools/unmapped_stats.py` —— **降级率统计**：按文件算 `1 - 未映射/(未映射+算子数)`，给 `avg_rate`、`≥90%` 个数与逐文件榜；三段链路的 ① 是二值判据（真实代码永远有边角），这个给出**可读的分布**
+- `tools/sample_numeric.py` —— **只抽可翻译目标**：排除算子重载桩（`varargout` 分派 / `CreateBasicOperator` / `switch class(`），并把排除理由与条数全部打印（不静默过滤）
 - `tools/c2m.py` —— **C → MATLAB**（补齐反向链路）：`C 源码 → cmir.c_to_mir → MIR → .m`。每个文件带 `% @c2m ... todo=N` 统计头，**认不出的算子落 `% TODO` 而不是瞎猜**；退出码 0 表示全部文件 todo=0（完整往返）
 - `tools/full_report.py` —— **总报告**：把全量目录实测（`flow/bench_all.json`）、三段链路（解析 three_links 的 `index.html`）、**HIR 参与率**（数 MIR 里的 `# @m2c hir-emitted`）、脑状态汇成一页 `flow/full_report.html`。**四个数字来源都是工具产物，无一手填**
 - `tools/round_close.py` —— **轮次收尾**：一条命令完成「刷新感知 → 记成长快照 → 写 `flow/rounds.jsonl`（目标/结果/条数/新增教训数/脑状态三段）→ 打印三段」。配 `check_brain_growth` 的 **BG7**：不跑它、或跑了但没带脑状态三段，都会红 —— 于是"每轮报告带脑状态"不再靠记性
