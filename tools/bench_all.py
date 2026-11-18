@@ -115,19 +115,35 @@ def _compile(gen, cs, limit=20):
     return ok, min(limit, len(cs)), first
 
 
+LEDGER = re.compile(r"\[mir\] 对账：源函数 (\d+) = 已收录 (\d+) \+ 重名丢弃 (\d+)")
+PARTIAL = re.compile(r"同名函数已丢弃 (\d+) 个")
+
+
 def run_proj(name, path, out, timeout=1800):
     t0 = time.time()
     status, err = "ok", ""
+    txt = ""
     try:
         r = subprocess.run([PY, TOC, path, "-o", out], cwd=ROOT,
                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                            stderr=subprocess.STDOUT, timeout=timeout)
+        txt = r.stdout.decode("utf-8", "replace")
         if r.returncode != 0:
             status = "fail"
-            txt = r.stdout.decode("utf-8", "replace")
             err = (txt.strip().splitlines() or [""])[-1][:180]
     except subprocess.TimeoutExpired:
         status, err = "timeout", "超过 %d 秒" % timeout
+
+    # **账本**（R932）：`[mir] 对账：源函数 A = 已收录 B + 重名丢弃 C`
+    # —— 没有它，"源 2781 → 生成 1535"看起来像 bug，实际是"重名丢弃"。
+    # 把三个数一起记下来，报告里就能逐项对上。
+    src_n = kept_n = dup_n = partial_n = 0
+    m = LEDGER.search(txt)
+    if m:
+        src_n, kept_n, dup_n = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    mp = PARTIAL.search(txt)
+    if mp:
+        partial_n = int(mp.group(1))
     el = round(time.time() - t0, 1)
     gen = os.path.join(out, "build", "gen")
     nc, ncf, cs = _cfacts(gen)
@@ -135,6 +151,8 @@ def run_proj(name, path, out, timeout=1800):
     return {"name": name, "path": path, "status": status, "error": err,
             "elapsed": el, "m_files": 0, "m_funcs": _mfuncs(path),
             "c_files": nc, "c_funcs": ncf, "full": 0,
+            "ledger_src": src_n, "ledger_kept": kept_n,
+            "ledger_dup": dup_n, "ledger_partial": partial_n,
             "compile_ok": cok, "compile_total": ctot, "compile_err": cerr}
 
 
@@ -232,12 +250,15 @@ def render(recs, dups, total_dirs, ts):
         rows.append(
             "<tr><td><code>{n}</code></td><td class='num'>{mf}</td>"
             "<td class='num'>{cf}</td><td class='num'>{mn}</td>"
-            "<td class='num'>{cn} {mk}</td><td class='num'>{el}</td>"
+            "<td class='num'>{cn} {mk}</td>"
+            "<td class='num'>{dup}/{par}</td><td class='num'>{el}</td>"
             "<td class='num'>{cok}/{ct}</td>"
             "<td><span class='badge' style='background:{c}'>{s}</span></td></tr>"
             .format(n=r["name"], mf=r["m_files"], cf=r["c_files"],
                     mn=r["m_funcs"], cn=r["c_funcs"],
-                    mk="✔" if conserve else "✘", el=r["elapsed"],
+                    mk="✔" if conserve else "✘",
+                    dup=r.get("ledger_dup", 0), par=r.get("ledger_partial", 0),
+                    el=r["elapsed"],
                     cok=r["compile_ok"], ct=r["compile_total"], c=color,
                     s={"ok": "通", "fail": "失败", "timeout": "超时"}[r["status"]]))
     dup_rows = "".join("<tr><td><code>{}</code></td><td class='num'>{}</td>"
@@ -288,7 +309,7 @@ def render(recs, dups, total_dirs, ts):
     <h2>① 逐工程读数（函数数 ✔/✘ = 与源函数数是否守恒）</h2>
     <table>
       <tr><th>工程</th><th>.m</th><th>.c</th><th>源函数</th><th>生成函数</th>
-          <th>耗时 s</th><th>编译</th><th>状态</th></tr>
+          <th>丢弃(重名/部分)</th><th>耗时 s</th><th>编译</th><th>状态</th></tr>
       $rows
     </table>
   </section>
