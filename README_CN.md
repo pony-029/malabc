@@ -1212,6 +1212,7 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 - `tools/harness.py` —— **自改进 harness**：跑分组检查 → 把失败入库（`flow/problems.jsonl`）→ 用向量库反查历史同类错 → 按「重复次数 + 有无历史解法」排出下一步。它**不自动改代码**，只做发现/归因/排序
 - `tools/brain_db.py` —— **问题记录向量库**：哈希特征向量（md5 定维、256 维、L2 归一、余弦检索），离线确定、可解释；换真 embedder 只需替换 `embed()`（存储里带 `model/dim`，混用会被拒）。CLI：`build` / `add` / `query` / `stats`
 - `tools/check_mir_split.py` —— **解析/切分判据库**（MS1–MS5）：无 `end` 切分、嵌套边界、`version` 头、账本闭合、块收束
+- `tools/full_report.py` —— **总报告**：把全量目录实测（`flow/bench_all.json`）、三段链路（解析 three_links 的 `index.html`）、**HIR 参与率**（数 MIR 里的 `# @m2c hir-emitted`）、脑状态汇成一页 `flow/full_report.html`。**四个数字来源都是工具产物，无一手填**
 - `tools/round_close.py` —— **轮次收尾**：一条命令完成「刷新感知 → 记成长快照 → 写 `flow/rounds.jsonl`（目标/结果/条数/新增教训数/脑状态三段）→ 打印三段」。配 `check_brain_growth` 的 **BG7**：不跑它、或跑了但没带脑状态三段，都会红 —— 于是"每轮报告带脑状态"不再靠记性
 - `tools/brain_agent.py` —— **小脑 ↔ 大模型协议层**：`pack` 把任务 + 历史同类错（规则/见证）打成上下文；`ask --cmd "<任意命令>"` 把 prompt 喂给任意模型（stdin→stdout，换模型只换一条命令）；`ingest` 把回复**校验后**入库（witness 必须真实存在，否则只落待办 —— 这条会被模型钻空子）；`fanout` 同一问题发多家、只并列各自独有的发现
 - `tools/brain.py` —— **项目大脑**：`advise` 动手前检索历史同类错误并返回「规则 + 见证」；`record` 处置后追加（强制校验 witness 存在）；`report` 出 `flow/brain.html`（统计 + 聚类 + 由登记内容推出的下一步建议）。知识库是 `flow/failures.json`，校验门是 `tools/check_failures.py`

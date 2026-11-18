@@ -5,7 +5,7 @@
       "path": "E:\\temp\\matlabc\\yalmip",
       "status": "ok",
       "error": "",
-      "elapsed": 5.0,
+      "elapsed": 23.5,
       "m_files": 1682,
       "m_funcs": 2781,
       "c_files": 1118,
@@ -24,7 +24,7 @@
       "path": "E:\\temp\\matlabc\\scale_m",
       "status": "ok",
       "error": "",
-      "elapsed": 0.7,
+      "elapsed": 2.4,
       "m_files": 169,
       "m_funcs": 169,
       "c_files": 169,
@@ -43,7 +43,7 @@
       "path": "E:\\temp\\matlabc\\sd",
       "status": "ok",
       "error": "",
-      "elapsed": 0.6,
+      "elapsed": 1.6,
       "m_files": 166,
       "m_funcs": 166,
       "c_files": 166,
@@ -62,7 +62,7 @@
       "path": "E:\\temp\\matlabc\\s6",
       "status": "ok",
       "error": "",
-      "elapsed": 0.7,
+      "elapsed": 1.1,
       "m_files": 165,
       "m_funcs": 165,
       "c_files": 165,
@@ -78,10 +78,10 @@
     },
     {
       "name": "single(3757 个单文件工程)",
-      "path": "E:\\temp\\matlabc\\_bench_all\\_single_agg_src_1795008307",
+      "path": "E:\\temp\\matlabc\\_bench_all\\_single_agg_src_1795013905",
       "status": "ok",
       "error": "",
-      "elapsed": 8.7,
+      "elapsed": 6.0,
       "m_files": 3757,
       "m_funcs": 3757,
       "c_files": 40,
@@ -119,5 +119,5 @@
     }
   ],
   "total_dirs": 4315,
-  "ts": "2026-11-18 21:25"
+  "ts": "2026-11-18 22:58"
 }
