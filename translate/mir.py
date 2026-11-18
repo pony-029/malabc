@@ -673,7 +673,21 @@ def _lower_binary(lhs, left, op, right, fnames, emit, counter, src_line=0,
         f = _CUR_F or {}
         if (f.get("types") or {}).get(name) == "i64":
             return True
-        return name in (f.get("locals") or [])
+        if name in (f.get("locals") or []):
+            return True
+        # `for i = 1:n` 的循环变量（R947）：它是 i64，但不在 `locals` 里
+        # （在那里会与 `for (int64_t i = …)` 重复声明）。
+        if name in (f.get("loopvars") or ()):
+            return True
+        # **不能只靠 `loopvars`**：它是"发射 `for:` 那一趟"才填的，而
+        # `lo = i - w` 的降级发生在**更早**的一趟 —— 那时 `loopvars` 还是空的，
+        # 于是这条 setb 路径永远不触发（R947 实测：读数一动不动）。
+        # 直接从函数语句表里认循环变量。
+        pat = r"^for\s+%s\s*=" % re.escape(name)
+        for ln in (f.get("lines") or []):
+            if re.match(pat, ln.strip()):
+                return True
+        return False
 
     def _side_is_i64(side):
         if side[0] == "num":
@@ -2012,6 +2026,11 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                 continue
             fm = _FOR_RE.match(code)
             if fm:
+                # **循环变量是 i64 标量**（R947）：登记在 `loopvars` 里，
+                # 供 `_lower_binary` 判定"纯标量算术"用。
+                # 刻意**不**塞进 `locals` —— 那会让 MIR 多发一条 `var:i:i64`，
+                # 而发射器又会写 `for (int64_t i = …)`，两处声明直接冲突。
+                f.setdefault("loopvars", set()).add(fm.group("var"))
                 out.append("for:%s:%s:%s" % (fm.group("var"), fm.group("a"),
                                              fm.group("b")))
                 blocks.append("for")
