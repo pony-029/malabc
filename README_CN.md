@@ -558,7 +558,7 @@ flowchart TD
 `ci-examples/` 提供开箱即用的 GitHub Actions / GitLab CI 模板，复制即可用。
 
 **本仓库在 Windows 上跑自己的门禁**（`ci.yml`，`windows-latest`）：3.6 语法门、
-回归套件、44 道静态门、LSP/MCP 行为判据、60 个端到端场景、变异抽样。
+回归套件、45 道静态门、LSP/MCP 行为判据、60 个端到端场景、变异抽样。
 
 ```bash
 python tools/ci_local.py        # 同一条流水线，在 E:\ci\matlabc 的干净克隆里跑
@@ -833,6 +833,7 @@ python tools/check_all.py        # 跑完 tools/check_*.py 全部护栏 + 各自
 | `check_flow_figures.py` | `FF1–FF7` — `flow/index.html` ⇄ `flow/figures/` ⇄ `figures/*/candidate.json` **三向对齐**（FF1–FF7，每一对都双向）：索引里的死链、没人引用的产物、候选推不出的产物、编号重复、索引页含脚本或外链，都必须红。单语交互图（F14–F24）走这条门；中英双版 + 独立 SVG 的既有体系仍由 `check_flow_diagrams.py` 的 D1–D12 守 |
 | `check_facts_replay.py` | `FT1–FT3` — `facts.py` 把 `--json` 的报表拆成**位置级事实**，再要求**重放**出同一批计数（FTD1 五类计数逐项相等、FTD2 每条事实都有 `loc.file`、FTD3 `kind` 封闭防拼错静默漏计）。没有它，「同一批读数，另一种排版」只是一句自述 —— 加一条、少一条、拼错一个 kind，都不会有人说话 |
 | `check_eol_convention.py` | `EO1–EO3` — 行尾约定：手写物（`.py/.md/.mmd` 与 `candidate*.json`）必须 CRLF，生成物（`.html/.svg`）必须 LF，扫描面不得少于下界。起因是 R110 一次 `newline="\n"` 把 6 个文件变成 LF，三行真实改动被放大成 **68,456 行** diff；字节差 34,228 恰好是行数，就是它现形的信号 |
+| `check_brain_growth.py` | `BG1–BG5` — 大脑成长：有快照、条数单调不减、**最新快照必须等于知识库条数**（加了条目却没记快照就红）、咨询次数 > 0（知识库没人读 = 墓志铭）、见证 100% |
 | `check_failures.py` | `FR1–FR5` — 失败登记表：必填字段齐、`id` 唯一且 `F###`、**`witness` 必须存在**（没有见证 = 没做防复发）、`status=fixed` 必须带 `commit`、状态只能是 fixed/open。起因：同类错反复犯（新工具没进 README 两次、`%` 格式化三次），教训写在对话里没人会读 |
 | `check_mir_split.py` | `MS1–MS5` — 解析/切分：无 `end` 的函数也要切开（F014：yalmiptest 18→3）、嵌套块不破坏边界、改写后 `version` 头仍在、账本闭合（源 = 组内 + 丢弃 + 未归组）、每个 `func:` 块都以 `end` 收束 |
 | `check_hir_two_paths.py` | `TP9a–TP9d` —— 直出与 `--hir-emit` 必须逐函数等价（函数集合 / 算子多重集 / `# src` 集合 / 数值），让验证者不随默认值漂移 |
@@ -952,7 +953,7 @@ python matlabc.py <root> --ai-context "modules/global/compileQuadratic.m:compile
 
 ## 全场景扫测（手工跑，118 条判据）
 
-上面 44 道门是静态的、快的。这一套不是——它要起子进程与 LSP 服务端，所以**不进 `check_all`**，靠手工跑：
+上面 45 道门是静态的、快的。这一套不是——它要起子进程与 LSP 服务端，所以**不进 `check_all`**，靠手工跑：
 
 ```powershell
 python tools/sweep_cli.py              # 118 条 / 9 组 / 约 85 秒
@@ -1028,7 +1029,7 @@ python matlabc_flow.py --help     # 修复闭环：五站点流水线图 + 五�
 python matlabc_ask.py --help      # 问答式理解：事实底座如何装配成答案
 python matlabc_mcp.py --help      # MCP 服务：五个工具 + 「为什么 stdin 必须切断」
 python gui.py --help              # 图形界面：表单每一格等价于哪个命令行开关
-python tools/check_all.py --help  # 护栏总纲：44 道门各自拦什么
+python tools/check_all.py --help  # 护栏总纲：45 道门各自拦什么
 ```
 
 这不是口头承诺，而是被 `check_help_contract.py` 与 `check_doc_flags.py` 同时盯着的 ——

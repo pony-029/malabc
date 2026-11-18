@@ -13,7 +13,11 @@
 
 | 判据 | 拦什么 |
 |---|---|
-| **F1** 必填字段齐 | `id / title / symptom / root_cause / rule / witness / status` |
+这里的编号就是对外签名 **FR1–FR5**（逐个写出，便于核对）：
+**FR1** 必填字段齐 ｜ **FR2** id 唯一且形如 `F###` ｜ **FR3** witness 必须存在
+｜ **FR4** `status=fixed` 必须带 commit ｜ **FR5** status 只能是 fixed / open
+
+| **FR1** 必填字段齐 | `id / title / symptom / root_cause / rule / witness / status` |
 | **F2** id 唯一且形如 `F###` | 复制粘贴时会重复 |
 | **F3** witness 必须存在 | 指向一个真文件（判据/工具）。**没有见证的错误不会被任何人拦住** |
 | **F4** `status=fixed` 必须带 commit | 否则"修过"是自称的 |

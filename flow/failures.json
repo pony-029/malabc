@@ -161,6 +161,26 @@
       "witness": "tools/check_mir_split.py",
       "status": "fixed",
       "commit": "R936"
+    },
+    {
+      "id": "F017",
+      "title": "自证用 relpath 跨盘符直接崩",
+      "symptom": "check_brain_growth --selftest 抛 ValueError: path is on mount 'C:', start on mount 'E:'",
+      "root_cause": "自证在系统临时目录造样本，而门里用 os.path.relpath(p, ROOT) 打印相对路径",
+      "rule": "门的诊断信息路径要能跨盘：relpath 包一层 try/except 退回原路径",
+      "witness": "tools/check_brain_growth.py",
+      "status": "fixed",
+      "commit": ""
+    },
+    {
+      "id": "F018",
+      "title": "散文里的门数有多个措辞变体，只改一种会漏",
+      "symptom": "把 44 改成 45 后，matlabc_help.py 的「42 道登记制护栏」仍红（它写的是 42 不是 44）",
+      "root_cause": "同一事实在文档里有 4 种措辞：44 道门 / （44 道， / 44 道静态门 / 42 道登记制护栏，数值本身就不同步",
+      "rule": "改计数型散文字面前，先 grep 出所有措辞变体并核对各自的值，不要只替换一个数字",
+      "witness": "matlabc_help.py",
+      "status": "fixed",
+      "commit": ""
     }
   ]
 }

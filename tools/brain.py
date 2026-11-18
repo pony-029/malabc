@@ -244,6 +244,76 @@ def render(d=None):
                           sug=sug_html, cards="\n".join(cards))
 
 
+#: **成长快照**：每轮追加一行。大脑要能被看出来在长，否则它只是"一次性的笔记"。
+GROWTH = os.path.join(ROOT, "flow", "brain-growth.jsonl")
+
+
+def _usage_count():
+    n = 0
+    if os.path.isfile(USAGE):
+        for ln in io.open(USAGE, encoding="utf-8"):
+            if ln.strip():
+                n += 1
+    return n
+
+
+def snapshot():
+    """当前大脑的四个可观测维度。
+
+    * `total` / `fixed` / `open` —— 知识量
+    * `coverage` —— 有多少条真的带"会变红的见证"
+    * `usage` —— 被读取过多少次（知识库没人读 = 墓志铭）
+    * `dups` —— 同一规则被记了几次（重复本身是"该自动化"的信号）
+    """
+    d = load()
+    h = health(d)
+    rules = {}
+    for e in d["entries"]:
+        r = (e.get("rule") or "").strip()
+        if r:
+            rules[r] = rules.get(r, 0) + 1
+    return {"ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "total": h["total"], "fixed": h["fixed"], "open": h["open"],
+            "coverage": round(h["coverage"], 1), "usage": _usage_count(),
+            "dups": sum(1 for v in rules.values() if v > 1)}
+
+
+def growth(write=True):
+    """追加一次快照并返回 (本次, 上次, 趋势说明)。
+
+    **为什么每轮都要记**：只看当前条数无法区分"这轮长了 3 条"和"这轮什么都没记"。
+    趋势才是机制在起作用的证据。
+    """
+    cur = snapshot()
+    prev = None
+    if os.path.isfile(GROWTH):
+        lines = [ln for ln in io.open(GROWTH, encoding="utf-8") if ln.strip()]
+        if lines:
+            try:
+                prev = json.loads(lines[-1])
+            except ValueError:
+                prev = None
+    if write:
+        io.open(GROWTH, "a", encoding="utf-8", newline="\n").write(
+            json.dumps(cur, ensure_ascii=False) + "\n")
+    delta = ""
+    if prev:
+        dt = cur["total"] - prev.get("total", 0)
+        du = cur["usage"] - prev.get("usage", 0)
+        delta = "（较上次：条目 %+d，咨询 %+d）" % (dt, du)
+    return cur, prev, delta
+
+
+def brief():
+    """一行状态，供每轮报告直接引用。"""
+    d = load()
+    h = health(d)
+    s = snapshot()
+    return ("脑：%d 条（已修 %d / 未闭 %d）｜见证覆盖 %.0f%%｜累计咨询 %d 次"
+            "｜重复规则 %d 条" % (h["total"], h["fixed"], h["open"],
+                                h["coverage"], s["usage"], s["dups"]))
+
+
 def check():
     """**作为门执行**：有未闭条目、或条目缺合法见证 → 非零。
 
@@ -292,7 +362,7 @@ def _append_usage(cmd, query, hits):
 def main(argv=None):
     ap = argparse.ArgumentParser(description="项目大脑：失败知识 + 反馈")
     ap.add_argument("cmd", choices=("advise", "record", "report", "status",
-                                    "check"))
+                                    "check", "growth", "brief"))
     ap.add_argument("text", nargs="?", help="advise 的任务描述")
     ap.add_argument("--title"), ap.add_argument("--symptom")
     ap.add_argument("--root-cause", dest="root_cause")
@@ -305,6 +375,19 @@ def main(argv=None):
         h = health()
         print("brain: %d 条（已修 %d / 未闭 %d）｜见证覆盖 %.0f%%"
               % (h["total"], h["fixed"], h["open"], h["coverage"]))
+        return 0
+
+    if ns.cmd == "brief":
+        print(brief())
+        return 0
+
+    if ns.cmd == "growth":
+        cur, prev, delta = growth()
+        print("[brain] 快照 %s" % delta if delta else "[brain] 首次快照")
+        print("        %d 条 ｜ 已修 %d ｜ 未闭 %d ｜ 见证 %.0f%% ｜ 咨询 %d 次"
+              % (cur["total"], cur["fixed"], cur["open"], cur["coverage"],
+                 cur["usage"]))
+        print("        -> %s" % os.path.relpath(GROWTH, ROOT))
         return 0
 
     if ns.cmd == "check":
