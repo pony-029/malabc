@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>项目大脑 · 失败知识与反馈</title>
+<style>
+  :root{--bg:#f6f8fa;--fg:#1f2328;--mut:#57606a;--card:#fff;--line:#d0d7de}
+  @media (prefers-color-scheme:dark){
+    :root{--bg:#0d1117;--fg:#e6edf3;--mut:#8b949e;--card:#161b22;--line:#30363d}
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:34px 20px;background:var(--bg);color:var(--fg);
+       font:15px/1.7 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+  .wrap{max-width:960px;margin:0 auto}
+  h1{font-size:26px;margin:0 0 6px}
+  .sub{color:var(--mut);margin:0 0 22px}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+        gap:12px;margin:0 0 22px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;
+       padding:14px 16px}
+  .kpi b{display:block;font-size:23px;font-variant-numeric:tabular-nums}
+  .kpi span{color:var(--mut);font-size:12.5px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;
+         padding:16px 20px;margin:0 0 16px}
+  .panel h2{font-size:16px;margin:0 0 10px}
+  .panel ol{margin:0;padding-left:22px}
+  .panel li{margin:4px 0;font-size:13.5px}
+  .e{background:var(--card);border:1px solid var(--line);border-radius:12px;
+     padding:14px 18px;margin:0 0 10px}
+  .e h3{font-size:15px;margin:0 0 8px;display:flex;align-items:center;gap:9px}
+  .id{font:12px ui-monospace,Consolas,monospace;color:var(--mut)}
+  .badge{color:#fff;font-size:11px;padding:1px 8px;border-radius:999px;
+         font-weight:600;margin-left:auto}
+  .e p{margin:3px 0;font-size:13.5px}
+  .e b{color:var(--mut);font-weight:600;margin-right:6px}
+  .rule{background:rgba(46,160,67,.07);border-radius:8px;padding:7px 10px}
+  .wit{color:var(--mut);font-size:12.5px}
+  footer{color:var(--mut);font-size:12.5px;margin-top:20px;text-align:center}
+</style></head><body><div class="wrap">
+  <h1>项目大脑 · 失败知识与反馈</h1>
+  <p class="sub">14 条真实错误 ｜ 每条都带"下次再犯会红的见证" ｜ 生成于 2026-11-18 21:16</p>
+  <div class="kpis">
+    <div class="kpi"><b>14</b><span>登记条目</span></div>
+    <div class="kpi"><b>14</b><span>已修</span></div>
+    <div class="kpi"><b>0</b><span>未闭</span></div>
+    <div class="kpi"><b>100%</b><span>见证覆盖率</span></div>
+  </div>
+  <section class="panel">
+    <h2>给项目的下一步建议（由登记内容推出）</h2>
+    <ol><li>「解析/切分」类已犯 5 次 —— 该为它加一条**自动判据**，而不是继续靠记性</li><li>「登记/记账」类已犯 4 次 —— 该为它加一条**自动判据**，而不是继续靠记性</li><li>「契约/默认值」类已犯 2 次 —— 该为它加一条**自动判据**，而不是继续靠记性</li><li>「报错文案」类已犯 2 次 —— 该为它加一条**自动判据**，而不是继续靠记性</li></ol>
+  </section>
+  
+    <section class="e">
+      <h3><span class="id">F001</span> 分派写在 cli_entry 里，破坏 (args, ap) 契约
+          <span class="badge" style="background:#2ea043">已修</span></h3>
+      <p><b>现象</b> 转换全部成功，收尾却 TypeError: cannot unpack non-iterable int object，退出码 1</p>
+      <p><b>根因</b> main() 里是 args, ap = cli_entry(argv)；在 cli_entry 内提前 return 0 让它返回 int</p>
+      <p class="rule"><b>规则</b> 退出码与产物计数必须同时成立才算通过；'成功字样'不作为判据</p>
+      <p class="wit"><b>见证</b> <code>matlabc_toc.py</code> ｜ 修复 5ea2665</p>
+    </section>
+
+    <section class="e">
+      <h3><span class="id">F002</span> 语料把函数名当变量
+          <span class="badge" style="background:#2ea043">已修</span></h3>
+      <p><b>现象</b> 生成 abs = [1]; y = abs(x); —— 调用语义消失，完全实现率 56%</p>
+      <p><b>根因</b> 生成器把 `y = abs(x)` 里的 abs 当成待声明的变量</p>
+      <p class="rule"><b>规则</b> 造语料时把内建函数名与变量名分开；否则测的是自己的错</p>
+      <p class="wit"><b>见证</b> <code>tools/gen_scale_corpus.py</code> ｜ 修复 c5b3f5f</p>
+    </section>
+
+    <section class="e">
+      <h3><span class="id">F003</span> 用 arguments 块声明形状（转换路径不认）
+          <span class="badge" style="background:#2ea043">已修</span></h3>
+      <p><b>现象</b> 整函数 unmapped，完全实现率 0%</p>
+      <p><b>根因</b> arguments 块只在分析路径被处理，转换路径未接</p>
+      <p class="rule"><b>规则</b> 给一个系统造输入前，先读它**已有能通过的样本**（% @m2c shape）</p>
+      <p class="wit"><b>见证</b> <code>translate/mir.py</code> ｜ 修复 1a2c9e4</p>
+    </section>
+
+    <section class="e">
+      <h3><span class="id">F004</span> HTML 模板用 % 格式化（与 CSS 的 100% 冲突）
+          <span class="badge" style="background:#2ea043">已修</span></h3>
+      <p><b>现象</b> ValueError: unsupported format character ';'；随后两次'修'又改坏 strftime 与收尾 %(</p>
+      <p><b>根因</b> 用 % 格式化去套含 CSS 的模板；修法是转义，而转义会误伤别处</p>
+      <p class="rule"><b>规则</b> 同一处改两轮还不好 → 换机制（string.Template 的 $var），不再打补丁</p>
+      <p class="wit"><b>见证</b> <code>tools/bench_toc.py</code> ｜ 修复 aa0f1e7</p>
+    </section>
+
+    <section class="e">
+      <h3><span class="id">F005</span> 批量把生成物也转成 CRLF
+          <span class="badge" style="background:#2ea043">已修</span></h3>
+      <p><b>现象</b> check_eol_convention 报 4 处：flow/*.html 有 69~122 个 CRLF</p>
+      <p><b>根因</b> 规则是'源文件 CRLF、生成物保持渲染器原始字节（LF）'，我用一个批量动作统一处理</p>
+      <p class="rule"><b>规则</b> 批量改一类文件前，先确认这一类是否真的同一种东西</p>
+      <p class="wit"><b>见证</b> <code>tools/check_eol_convention.py</code> ｜ 修复 19e7ac5</p>
+    </section>
+
+    <section class="e">
+      <h3><span class="id">F006</span> 字段名 unresolved 撞上 IR 归因登记制
+          <span class="badge" style="background:#2ea043">已修</span></h3>
+      <p><b>现象</b> check_ir_attribution 报'未登记的写点 bench_projects.py::run_one——规则又被抄了一遍'</p>
+      <p><b>根因</b> 新工具里一个只读计数的字段叫 unresolved，与'唯一判定点'的保留名同名</p>
+      <p class="rule"><b>规则</b> 门说'你抄了一遍 X'时先分辨行为重复还是名字撞车；名字撞车应改名，补登记会让门以后说谎</p>
+      <p class="wit"><b>见证</b> <code>tools/check_ir_attribution.py</code> ｜ 修复 a96ba93</p>
+    </section>
+
+    <section class="e">
+      <h3><span class="id">F007</span> 新增工具没进 README（TD1），犯了两次
+          <span class="badge" style="background:#2ea043">已修</span></h3>
+      <p><b>现象</b> check_tool_discoverability 报 5 个工具没人提到；两天后再报 bench_all.py</p>
+      <p><b>根因</b> 加工具时只关心它能跑，没关心它能否被找到</p>
+      <p class="rule"><b>规则</b> 新增 tools/*.py 必须同提交更新两侧 README</p>
+      <p class="wit"><b>见证</b> <code>tools/check_tool_discoverability.py</code> ｜ 修复 75f5be0</p>
+    </section>
+
+    <section class="e">
+      <h3><span class="id">F008</span> --max-files 形同虚设
+          <span class="badge" style="background:#2ea043">已修</span></h3>
+      <p><b>现象</b> 传 --max-files 12，最大组仍是 82 个文件</p>
+      <p><b>根因</b> 同前缀的桶本身超限，切了等于没切；修复动作没有验证</p>
+      <p class="rule"><b>规则</b> 参数落地后要用一个**已知会被约束**的输入验证</p>
+      <p class="wit"><b>见证</b> <code>tools/map_suggest.py</code> ｜ 修复 19e7ac5</p>
+    </section>
+
+    <section class="e">
+      <h3><span class="id">F009</span> MIR 切块按行尾 end 切（嵌套块也用 end）
+          <span class="badge" style="background:#2ea043">已修</span></h3>
+      <p><b>现象</b> MIR 不合法：第 41 行 func 未以 end 收束</p>
+      <p><b>根因</b> _split_blocks 见 end 就收，而 if/for/while 也用 end 收尾</p>
+      <p class="rule"><b>规则</b> 按'配对符号'切结构前，先确认这个符号是否也用于内层结构</p>
+      <p class="wit"><b>见证</b> <code>translate/map_config.py</code> ｜ 修复 c4080bf</p>
+    </section>
+
+    <section class="e">
+      <h3><span class="id">F010</span> 改写 MIR 时丢了 version 头
+          <span class="badge" style="background:#2ea043">已修</span></h3>
+      <p><b>现象</b> MIR 不合法：缺少 version 行</p>
+      <p><b>根因</b> 只保留 func: 块，第一个 func: 之前的内容被丢弃</p>
+      <p class="rule"><b>规则</b> 改写结构化文本时，**前言/头**与正片要分开处理</p>
+      <p class="wit"><b>见证</b> <code>translate/map_config.py</code> ｜ 修复 c4080bf</p>
+    </section>
+
+    <section class="e">
+      <h3><span class="id">F011</span> arity 校验改宽松，推翻既有判据的核心断言
+          <span class="badge" style="background:#2ea043">已修</span></h3>
+      <p><b>现象</b> GX2 2 failed：test_op_arity / test_vm_calls 要求'解析期必须拒绝且说清个数'</p>
+      <p><b>根因</b> 为让 1682 文件的树不中止，把'解析期拒绝'永久关掉</p>
+      <p class="rule"><b>规则</b> 修复让既有判据变红时，先问它保护的是**谁的需求**；不同场景应做默认值，而不是推翻判据</p>
+      <p class="wit"><b>见证</b> <code>tests/test_op_arity.py</code> ｜ 修复 625c2b6</p>
+    </section>
+
+    <section class="e">
+      <h3><span class="id">F012</span> TODO(call) 的报错文案与真因脱钩
+          <span class="badge" style="background:#2ea043">已修</span></h3>
+      <p><b>现象</b> 报'X 不是本文件里已生成的函数'，而 X 就在同一份 MIR 里</p>
+      <p><b>根因</b> 字面量配数组形参时只置 ok=false、不留原因，外层退回兜底文案</p>
+      <p class="rule"><b>规则</b> TODO(类别) 里的词是'在哪一段失败'，不是'为什么'；兜底文案是垃圾桶，不代表真相</p>
+      <p class="wit"><b>见证</b> <code>rust/m2c/src/emit.rs</code> ｜ 修复 d6d63e9</p>
+    </section>
+
+    <section class="e">
+      <h3><span class="id">F013</span> 给报告加列但数据源未接通（列全 0）
+          <span class="badge" style="background:#2ea043">已修</span></h3>
+      <p><b>现象</b> bench_all 的'丢弃(重名/部分)'两列恒为 0，而实际 yalmip 丢了 790 个</p>
+      <p><b>根因</b> mir.py 的对账行打在 cmd1 的 stdout，run_build 只返回 cmd2 的输出</p>
+      <p class="rule"><b>规则</b> 加字段后必须用一个**已知非零**的样本验证它显示出非零</p>
+      <p class="wit"><b>见证</b> <code>translate/mir.py</code> ｜ 修复 R933（账本改为 sidecar 落盘，bench_all 读文件）</p>
+    </section>
+
+    <section class="e">
+      <h3><span class="id">F014</span> split_functions 只认 depth==0 的 function
+          <span class="badge" style="background:#2ea043">已修</span></h3>
+      <p><b>现象</b> yalmiptest.m 18 个函数只解析出 3 个；yalmip 全工程 2781 个只进 1206</p>
+      <p><b>根因</b> MATLAB 允许函数省略 end，一个无 end 的函数把 depth 卡住，后面的 function 被当语句吞掉</p>
+      <p class="rule"><b>规则</b> 用配对符号记账时，先问这个配对在语言里是否**可选**</p>
+      <p class="wit"><b>见证</b> <code>translate/mir.py</code> ｜ 修复 149d732</p>
+    </section>
+  <footer>由 <code>tools/brain.py report</code> 生成 — 建议不是写死的文案，
+          而是按"未闭条目 + 高频类别"算出来的</footer>
+</div></body></html>

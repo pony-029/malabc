@@ -1206,6 +1206,8 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 - `tools/project_budget.py` —— 从 MIR 算**静态内存峰值**（元素数 × 类型宽度）并写出 `budget.json`；给 `--pool N` 时超限即报错并指名函数/变量
 - `tools/config_suggest.py` —— P4：对配置里的每个模块/源文件给出**该配什么**（注解或配置键）以及能消掉几处卡点；`--selftest` 自证映射
 - `tools/project_status.py` —— **算出来的**项目整体状态：计划阶段 P0–P6（证据文件必须存在**且**已接入 GX2）、子模块规模、流程图新鲜度分布
+- `tools/brain.py` —— **项目大脑**：`advise` 动手前检索历史同类错误并返回「规则 + 见证」；`record` 处置后追加（强制校验 witness 存在）；`report` 出 `flow/brain.html`（统计 + 聚类 + 由登记内容推出的下一步建议）。知识库是 `flow/failures.json`，校验门是 `tools/check_failures.py`
+- `tools/check_failures.py` —— **失败登记门**：F1 必填字段、F2 id 唯一、F3 **witness 必须存在**（没有见证 = 没做防复发）、F4 `fixed` 必须有 commit、F5 状态枚举
 - `tools/bench_all.py` —— **全量工程实测**：把 `E:\temp\matlabc` 下所有含 `.m` 的目录都验一遍（大工程逐个、单文件聚合、内容相同的副本明确标 dup 不重复计数），出 `flow/bench_all.html`
 - `tools/bench_toc.py` —— **MATLAB→C 转换实测**：多工程批量跑 `matlabc_toc.py`，量「源 .m / 生成 .c / 完全实现 / 抽样编译」并出 `flow/toc_bench.html`
 - `tools/bench_mapping.py` —— **工程级映射验证**：核对「N 个 .m → N 个 .c、M 个函数 → M 个函数」的守恒，每行可追溯到源文件与生成的 `m2c_*`
