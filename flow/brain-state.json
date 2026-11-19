@@ -1,11 +1,11 @@
 {
-  "ts": "2026-11-20 00:41:49",
+  "ts": "2026-11-20 00:43:52",
   "scale": {
-    "full": 165,
-    "total": 165,
-    "rate": 100.0,
-    "compared": 165,
-    "mismatch": 0,
+    "full": 168,
+    "total": 168,
+    "rate": 98.2,
+    "compared": 168,
+    "mismatch": 3,
     "c_error": 0
   },
   "kern": {
@@ -19,13 +19,13 @@
     "max_lag": 0
   },
   "checks": {
-    "passed": 4,
-    "total": 6,
-    "at": "2026-11-20 00:41:49",
+    "passed": 5,
+    "total": 7,
+    "at": "2026-11-20 00:41:50",
     "scope": "harness 分组复查（不是全部 42 门）"
   },
   "brain": {
-    "total": 43,
+    "total": 44,
     "open": 0,
     "coverage": 100.0
   }

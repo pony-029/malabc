@@ -431,6 +431,16 @@
       "witness": "rust/m2c/src/emit.rs",
       "status": "fixed",
       "commit": "R992"
+    },
+    {
+      "id": "F044",
+      "title": "登记算子样例会立刻生成语料用例，前端未实现就掉分",
+      "symptom": "在 operators.py 登记 sample: y = 1:n 后，语料从 165/165 掉到 165/168，多出 3 个 op_range_* 用例失败",
+      "root_cause": "语料生成器按 operators.py 的 sample 造用例，而我登记时前端还不支持；登记=承诺",
+      "rule": "登记算子样例前先让前端能产出它，否则语料会立刻把'已登记未实现'变成红",
+      "witness": "translate/operators.py",
+      "status": "fixed",
+      "commit": "R993"
     }
   ]
 }

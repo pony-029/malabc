@@ -250,6 +250,16 @@ def _apply_op(oid, args):
         sh = args[0].shape or [len(args[0].data)]
         val = sh[dim - 1] if dim <= len(sh) else (1 if args[0].data else 0)
         return Arr([float(val)], [1])
+    if oid == "OP-RANGE":
+        # 参考实现：`lo:hi` 生成 [lo, lo+1, …, hi]（步长 1），列向量。
+        # 与 C 侧 `mlc_op_range` 同语义 —— 两边都实现，规模比对才有一致的
+        # 参照物；只在一侧实现会让"真不同"变成噪音（R993 实测 3 个 mismatch）。
+        lo = int(round(args[0].data[0]))
+        hi = int(round(args[1].data[0]))
+        if hi < lo:
+            return Arr([], [0, 0])
+        n = hi - lo + 1
+        return Arr([float(lo + k) for k in range(n)], [n, 1])
     if oid == "OP-NUMEL":
         return Arr([float(len(args[0].data))], [1])
     if oid == "OP-LENGTH":

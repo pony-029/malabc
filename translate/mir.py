@@ -1735,6 +1735,30 @@ def _lower_hcat(out, code, idx_counter):
     return True
 
 
+#: `y = lo:hi` —— **生成**等差序列（步长 1），两端为字面量或标量名
+_RANGE_RE = re.compile(r"^([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*|\d+)\s*:\s*"
+                       r"([A-Za-z_]\w*|\d+)\s*;?\s*$")
+
+
+def _lower_range(out, code, known_ops):
+    """`y = lo:hi` -> `op:OP-RANGE:y:lo:hi`；成功返回 True。
+
+    **与 `_lower_col_slice` 语义不同，别混**（R990 的教训）：
+    * `A(:,p:q)` 是在**已有数组**上取第 p..q 列 → `OP-COLRANGE`；
+    * `lo:hi` 是从零**生成** `[lo, lo+1, …, hi]` → `OP-RANGE`。
+
+    只支持步长 1 且两端是字面量或标量名；步长写法和表达式端点一律放弃
+    （返回 False，照旧落 unmapped），不猜。
+    """
+    if "OP-RANGE" not in known_ops:
+        return False
+    m = _RANGE_RE.match(code)
+    if not m:
+        return False
+    out.append("op:OP-RANGE:%s:%s:%s" % (m.group(1), m.group(2), m.group(3)))
+    return True
+
+
 def _lower_setidx(out, code, counter, known_ops):
     """`y(i) = v` -> OP-SETIDX；右值是 `x(j)` 时先取出来放临时量。"""
     if "OP-SETIDX" not in known_ops:
@@ -2252,6 +2276,9 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                 continue
             if _lower_col_slice(out, code, f.get("shapes") or {}, idx_counter,
                                 known_ops):
+                continue
+            # 生成序列（`y = 1:n`）—— 放在切片之后，避免抢 `A(:,p:q)` 的分支
+            if _lower_range(out, code, known_ops):
                 continue
             if _lower_reduce_col(out, code, f.get("shapes") or {},
                                  idx_counter, known_ops):
