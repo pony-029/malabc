@@ -301,6 +301,16 @@
       "witness": "tools/c2m.py",
       "status": "fixed",
       "commit": "R973"
+    },
+    {
+      "id": "F031",
+      "title": "静态池 64KB 是多文件工程的硬上限，失败信息却只报 rc=1",
+      "symptom": "octave-stat 777 文件产出 745 .c 且编译 20/20，但 bench 状态是 fail，错误文本只有一句 '[to-c] 失败（rc=1）'",
+      "root_cause": "project_map 的内存预算检查（需要 72496 字节 vs 静态池 65536）返回 1，但 bench_all 只取 stdout 最后一行，真正原因在倒数第 8 行",
+      "rule": "失败信息要取'说得清原因'的那一行（含超预算/错误/error），不要盲取最后一行",
+      "witness": "tools/bench_all.py",
+      "status": "fixed",
+      "commit": "R974"
     }
   ]
 }

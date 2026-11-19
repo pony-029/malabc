@@ -134,7 +134,15 @@ def run_proj(name, path, out, timeout=1800):
         txt = r.stdout.decode("utf-8", "replace")
         if r.returncode != 0:
             status = "fail"
-            err = (txt.strip().splitlines() or [""])[-1][:180]
+            # **优先取"说得清原因"的那一行**（R974）：原来只取最后一行，
+            # 于是 octave-stat 的失败显示成一句无信息量的
+            # `[to-c] 失败（rc=1）`，而真正原因在倒数第 8 行：
+            # `**超预算**：需要 72496 字节，池只有 65536（差 6960）`。
+            # 失败原因说不清，等于没有失败信息 —— 报告上看起来都叫 fail。
+            _lines = txt.strip().splitlines() or [""]
+            _key = [ln for ln in _lines
+                    if ("超预算" in ln or "错误" in ln or "error" in ln.lower())]
+            err = (_key[0] if _key else _lines[-1])[:180]
     except subprocess.TimeoutExpired:
         status, err = "timeout", "超过 %d 秒" % timeout
 
