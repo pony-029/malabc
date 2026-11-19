@@ -321,6 +321,16 @@
       "witness": "translate/project_map.py",
       "status": "fixed",
       "commit": "R975"
+    },
+    {
+      "id": "F033",
+      "title": "第三次把生成的 HTML 转成 CRLF（F024 已有记录仍重犯）",
+      "symptom": "check_eol_convention 报 EO2 flow/bench_all.html 有 59 个 CRLF",
+      "root_cause": "收尾时把 flow/*.html 一起丢进 to_crlf.py；而登记表里 F024 早就写明了'生成物永远不进 to_crlf'，但收尾时我没有先查大脑",
+      "rule": "收尾批量转行尾前必须跑 brain advise '改行尾'；生成物（flow/*.html、*.svg）一律只转 LF",
+      "witness": "tools/check_eol_convention.py",
+      "status": "fixed",
+      "commit": "R975"
     }
   ]
 }
