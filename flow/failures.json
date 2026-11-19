@@ -481,6 +481,16 @@
       "witness": "tools/check_runtime_static.py",
       "status": "fixed",
       "commit": "R998"
+    },
+    {
+      "id": "F049",
+      "title": "树行格式差一个箭头就算漏写；判据前缀必须是字面量",
+      "symptom": "H2e 报'树里没有 check_ane.py'，而我明明插了一行；H2b 报 AN2-AN6 发不出，而 detail 里运行时拼了前缀",
+      "root_cause": "_TREE_ROW_RE 要求 [├└]─▶ 带箭头，我插的是 ├─；_JUDGE_LIT_RE 只认源码里以引号开头的字面量，运行时拼接看不见",
+      "rule": "写给人看的散文（树/签名）必须有一个按形态解析它的门；形态差一个字符就等于没写",
+      "witness": "tools/check_help_contract.py",
+      "status": "fixed",
+      "commit": "R999"
     }
   ]
 }
