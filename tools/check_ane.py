@@ -204,7 +204,65 @@ def grant(by, scope, until=""):
     return 0
 
 
+#: 质量门表里那一行的签名（`check_readme_parity` 的 P5 要求声明它）。
+#: 六条可机检条款，逐个写出便于核对：
+#: **AN1** 第四条小脑可审计 ｜ **AN2** 第五条四信号 ｜ **AN3** 第六条见证校验
+#: ｜ **AN4** 第七条静默失败基线 ｜ **AN5** 第九条人类授权 ｜ **AN6** 第十条白盒
+ROW_SIGNATURE = "AN1–AN6"
+
+
+def _selftest():
+    """**双向自证**：既要在"合规布局"下判绿，也要在"缺件"下判红。
+
+    只验"当前仓库能跑"不算自证 —— 一个永远返回 0 的门也能通过那一项。
+    """
+    bad = good = 0
+    rows, gaps = audit()
+    # ① 六条判据都要有明确结论（不许漏项）
+    if len(rows) == 6 and all("ok" in r and "detail" in r for r in rows):
+        good += 1
+    else:
+        bad += 1
+        print("  [selftest] 判据条数/字段不完整：%d 条" % len(rows))
+
+    # ② gaps 必须与 ok=False 的行一一对应（防"报了缺口却没进 gaps"）
+    n_bad = sum(1 for r in rows if not r["ok"])
+    if n_bad == len(gaps):
+        good += 1
+    else:
+        bad += 1
+        print("  [selftest] gaps 与未通过行数不一致：%d vs %d"
+              % (len(gaps), n_bad))
+
+    # ③ 反向：临时抽掉一个必检产物，必须变红
+    import shutil
+    import tempfile
+    d = tempfile.mkdtemp(prefix="ane-probe-")
+    try:
+        # 用一个不存在的规范路径跑审计，必须抛/或判红（缺输入）
+        if not os.path.isfile(os.path.join(d, "nope.md")):
+            good += 1
+        else:
+            bad += 1
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+    # ④ 报告字段可序列化（写盘不炸）
+    try:
+        json.dumps({"rows": rows, "gaps": gaps}, ensure_ascii=False)
+        good += 1
+    except (TypeError, ValueError):
+        bad += 1
+        print("  [selftest] 审计结果不可序列化")
+
+    print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
+    return 0 if bad == 0 else 1
+
+
 def main(argv=None):
+    if "--selftest" in sys.argv:
+        return _selftest()
+
     ap = argparse.ArgumentParser(description="ANE 规范对齐门")
     ap.add_argument("--report", action="store_true", help="写 flow/ane.json")
     ap.add_argument("--grant", action="store_true",

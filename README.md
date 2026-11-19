@@ -879,6 +879,7 @@ python tools/check_all.py        # runs every tools/check_*.py AND its --selftes
 | `check_flow_figures.py` | `FF1–FF7` — `flow/index.html`, `flow/figures/` and each `figures/*/candidate.json` kept mutually aligned (FF1–FF7, every pair in **both** directions): a dangling link in the index, an unreferenced artefact, an artefact no candidate claims, a duplicated figure id, or an index page carrying scripts or external links → red. Single-language interactive figures (F14–F24) live here; the bilingual + standalone-SVG set stays under `check_flow_diagrams.py` D1–D12 |
 | `check_facts_replay.py` | `FT1–FT3` — `facts.py` splits the `--json` report into **position-level facts** and then requires those facts to **replay** the same counts (FT1: five counters equal item by item; FT2: every fact carries `loc.file`; FT3: `kind` is closed so a typo cannot silently drop a fact). Without it, "the same readings in another layout" is only a claim — add one, drop one, or misspell a kind and nothing would speak |
 | `check_eol_convention.py` | `EO1–EO3` — End-of-line convention: hand-written files (`.py/.md/.mmd`, `candidate*.json`) must be CRLF, generated artefacts (`.html/.svg`) must be LF, and the scan surface must not shrink. Triggered by R110, where one `newline="\n"` turned 6 files into LF and inflated three real lines into a **68,456-line** diff; the byte gap of 34,228 was exactly the line count |
+| `check_ane.py` | `AN1–AN6` — ANE spec alignment: art.4 cerebellum auditable, art.5 four-signal selftest, art.6 every entry has a real witness, art.7 `except: pass` not above baseline, art.9 human authorization record, art.10 white-box artifacts |
 | `check_brain_growth.py` | `BG1–BG7` — brain growth: a snapshot exists, entry count never decreases, **latest snapshot must equal the registry size** (adding entries without a snapshot turns red), consult count > 0 (an unread knowledge base is an epitaph), 100% witnessed |
 | `check_failures.py` | `FR1–FR5` — failure registry: required fields present, `id` unique and `F###`, **`witness` must exist** (no witness = no prevention), `status=fixed` requires a `commit`, status must be fixed/open |
 | `check_mir_split.py` | `MS1–MS5` — parsing/splitting: functions without `end` still split (F014: yalmiptest 18→3), nested blocks don't break boundaries, `version` header survives rewriting, ledger closes (source = grouped + dropped + ungrouped), every `func:` block terminated |
@@ -1005,7 +1006,7 @@ invented call relationships, or the model will repeat them as fact.
 
 ## Full-scenario sweep (hand-run, 118 checks)
 
-The 45 gates above are static and fast. This one is not — it starts subprocesses and LSP
+The 46 gates above are static and fast. This one is not — it starts subprocesses and LSP
 servers, so it stays out of `check_all` and is run by hand:
 
 ```powershell
@@ -1089,7 +1090,7 @@ python matlabc_flow.py --help     # repair loop: five-station pipeline + five re
 python matlabc_ask.py --help      # grounded Q&A: how facts become an answer
 python matlabc_mcp.py --help      # MCP server: the five tools + why stdin must be cut
 python gui.py --help              # GUI: which CLI flag each form field maps to
-python tools/check_all.py --help  # gates: what each of the 45 gates stops
+python tools/check_all.py --help  # gates: what each of the 46 gates stops
 ```
 
 This is not a verbal promise — `check_help_contract.py` and `check_doc_flags.py` watch it, and

@@ -230,6 +230,14 @@ GUARD_CONTRACT = {
            "fixed 无 commit、状态非法）",
         2: "缺输入（flow/failures.json 不存在或不是合法 JSON）",
     },
+    # R995：ANE 对齐门补登记 —— 描述里**逐字含** ROW_SIGNATURE（AN1–AN6），
+    # 否则 H1 判"描述陈旧"。
+    "tools/check_ane.py": {
+        0: "ANE 可机检条款 AN1–AN6 全部成立（小脑可审计 / 四信号 / 见证校验 / "
+           "静默失败不超基线 / 人类授权 / 白盒产物）",
+        1: "有条款不成立（缺口已写入 flow/ane.json 的 gaps）",
+        2: "缺输入（规范文件或核心产物缺失）",
+    },
     "tools/check_brain_growth.py": {
         0: "大脑成长判据 BG1–BG7 全绿（有快照 / 条数不减 / 快照与知识库一致 / "
            "被咨询过 / 见证全覆盖 / 感知不过期 / 每轮收尾留痕）",
