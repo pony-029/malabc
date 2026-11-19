@@ -379,6 +379,28 @@ def render(bench, links, c2m, hir, brief, src, delta):
     else:
         sec7 = "<p class='miss'>未量（缺 flow/unmapped.json）</p>"
 
+    # ---- ⑨ 缺口归因（能不能修，比"剩多少"更重要）----
+    gp = _json(os.path.join(ROOT, "flow", "gap.json"))
+    if gp and gp.get("cats"):
+        rows = "".join(
+            "<tr><td><code>%s</code></td><td class='n'>%d</td>"
+            "<td class='n'>%.1f%%</td><td>%s</td>"
+            "<td style='text-align:left'><code>%s</code></td></tr>"
+            % (c["kind"], c["n"], c["pct"], c["cost"],
+               (c.get("sample") or "").replace("<", "&lt;"))
+            for c in gp["cats"])
+        sec9 = ("<div class='kpis'><div class='kpi'><b>%d</b>"
+                "<span>未映射语句</span></div>"
+                "<div class='kpi'><b>%d</b><span>缺口类别</span></div></div>"
+                "<table><tr><th>缺口类别</th><th>条数</th><th>占比</th>"
+                "<th>攻关成本</th><th>样本</th></tr>%s</table>"
+                "<p class='note'>这张表回答的不是「还剩多少」，而是"
+                "<b>剩下的能不能修</b>：标「语法（低）」的改解析器即可，"
+                "标「需运行时（高）」的必须先在 C 侧建对应类型。</p>"
+                % (gp.get("total") or 0, len(gp["cats"]), rows))
+    else:
+        sec9 = "<p class='miss'>未量（缺 flow/gap.json）</p>"
+
     # ---- ⑧ 来源 ----
     sec8 = ("<table><tr><th>本节</th><th>数据来源</th><th>复现命令</th></tr>"
             + "".join("<tr><td>%s</td><td><code>%s</code></td>"
@@ -441,12 +463,14 @@ $banner
 <h2 id="s5">⑤ HIR 是否真的参与</h2><div class="panel">$sec5</div>
 <h2 id="s6">⑥ 脑状态（感知 / 知识 / 成长）</h2><div class="panel">$sec6</div>
 <h2 id="s7">⑦ 未映射类别（真实工程的主要障碍）</h2><div class="panel">$sec7</div>
+<h2 id="s9">⑨ 缺口归因（能修 / 不能修）</h2><div class="panel">$sec9</div>
 <h2 id="s8">⑧ 数据来源与复现</h2><div class="panel">$sec8</div>
 </div></body></html>
 """)
     return tpl.substitute(css=CSS, now=now, dl=dl, kpis=kpi_html, sec1=sec1,
                           sec2=sec2, sec3=sec3, sec4=sec4, sec5=sec5, sec6=sec6,
-                          sec7=sec7, sec8=sec8, sec0=sec0, banner=banner)
+                          sec7=sec7, sec8=sec8, sec0=sec0, sec9=sec9,
+                          banner=banner)
 
 
 def main(argv=None):
