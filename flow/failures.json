@@ -341,6 +341,16 @@
       "witness": "tools/brain_llm.py",
       "status": "fixed",
       "commit": "R976"
+    },
+    {
+      "id": "F035",
+      "title": "归一化与诊断文本必须两套，回退是错误取舍",
+      "symptom": "R972 为了让诊断逐字等于源码，回退了条件括号归一，降级率从 20.3% 掉到 14.3%；而 45% 的未映射正是 if (n == 0) 这类",
+      "root_cause": "当时只有一套文本：要么解析用归一化(诊断失真)、要么保真(能力回退)；两难是因为改动点集中在 _emit_unmapped",
+      "rule": "遇到'保真 vs 能力'的二选一时，先问能不能两套文本并存；单向回退是把成本转给用户",
+      "witness": "translate/mir.py",
+      "status": "fixed",
+      "commit": ""
     }
   ]
 }

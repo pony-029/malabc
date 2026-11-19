@@ -978,12 +978,26 @@ def _unmapped_kind(text):
     return "other"
 
 
+#: 当前行的"原文"与"归一化文本"（R978）。
+#:
+#: 这两者必须分开：**解析**用归一化文本（`if (n == 0)` → `if n == 0`），
+#: **诊断**用原文（用户按行号回看时，报告里的那句话必须和源码逐字一致）。
+#: R970 只做了前者，GX2 的 `test_blocked_file_points_at_real_lines` 立刻红；
+#: R972 于是整体回退 —— 代价是真实工程 45% 的未映射（`if (n == 0)` 这类）
+#: 又回来了。这一版把两套文本分开，两头都满足。
+_CUR_LINE = {"raw": "", "norm": ""}
+
+
 def _emit_unmapped(out, kinds, text):
-    """写一条 unmapped，并记下它的原因（分类只影响报告，不影响语义）。"""
+    """写一条 unmapped。分类用归一化文本，**展示用原文**。"""
     kind = _unmapped_kind(text)
+    shown = text
+    if (_CUR_LINE["norm"] and text == _CUR_LINE["norm"]
+            and _CUR_LINE["raw"]):
+        shown = _CUR_LINE["raw"]
     out.append("# why:%s" % kind)
     kinds[kind] = kinds.get(kind, 0) + 1
-    out.append("unmapped:%s" % text)
+    out.append("unmapped:%s" % shown)
 
 
 #: `A(i,j)`：两维下标（i/j 为字面量或标量名）
@@ -1944,6 +1958,8 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             if _NOOP_RE.match(code):
                 n_noop[0] += 1
                 continue
+            # 记住**原文**：任何归一化都只用于解析，展示时回到这句话（R978）
+            _CUR_LINE["raw"] = code
             # **Octave 方言归一**（R970）：`endif` / `endfor` / `endwhile` /
             # `endfunction` / `endswitch` / `endtry` 等价于 `end`；`until` 等价
             # 于 `end`（do-until 的收尾）。
@@ -1957,20 +1973,24 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             # **剥掉条件外的整体括号**（R970）：Octave/老式写法 `if (n == 0)`，
             # 而 `_IF_RE` 认的是 `if n == 0`。只在"这一对括号**正好包住整段**"
             # 时剥，避免把 `if (a) && (b)` 误剥成 `if a) && (b`。
-            # ⚠ **不剥条件外的括号**（R972 回退）。R970 曾把 `if (n == 0)` 归一成
-            # `if n == 0`，降级率因此 +4.6pp；但 GX2 的
-            # `test_blocked_file_points_at_real_lines` 立刻红了：
-            # 诊断报 `if ~isoctavemesh && jdhasjava`，源码是
-            # `if (~isoctavemesh && jdhasjava)` —— **报告的行文本必须逐字等于源码**，
-            # 否则用户按行号回看时对不上。
-            # 正解是"解析用归一化、报告用原文"两套文本，但那要改 `_emit_unmapped`
-            # 的全部调用点；在没做之前，宁可少这 4.6pp，也不要一份对不上源码的诊断。
+            # **剥掉条件外的整体括号**（R978 恢复：解析用归一化、诊断用原文）。
+            # `if (n == 0)` 是 Octave/老式写法，而 `_IF_RE` 认的是 `if n == 0`。
+            # 实测这一条占真实工程未映射的 **45%**（1327/2940）—— 它是最大的单一缺口，
+            # 而 R972 为了诊断文本保真整体回退过它，代价正是这 45%。
+            # 现在 `_emit_unmapped` 会展示原文，所以保真不再冲突。
+            _kw_m = re.match(r"^(if|elseif|while)\s+(.*)$", code)
+            if _kw_m:
+                _rest = _strip_outer_parens(_kw_m.group(2).strip())
+                code = "%s %s" % (_kw_m.group(1), _rest)
             # **逻辑非的方言归一**（R971）：Octave 用 `!x`，MATLAB 用 `~x`。
             # 只在**不是 `!=`**（C 风格不等，MATLAB 里不存在但别误伤）时替换。
             # 实测真实工程里 `if (! isvector (x))` / `x = x(! isnan (x))` 大量出现，
             # 而解析器只认 `~` —— 这类语句整条落 unmapped。
             if "!" in code:
                 code = re.sub(r"!(?!=)", "~", code)
+            # 归一化到此结束 —— 记录"解析用的文本"，供 `_emit_unmapped` 判断
+            # 是否要把展示切回原文（R978）
+            _CUR_LINE["norm"] = code
             # `full(x)` 在稠密表示下是恒等（YALMIP 84 次）：剥掉，别挡住真正的语义
             code = _strip_full_call(code)
             # 下标算术：必须在**所有**降级分支之前 —— 否则 `y = A((i+0))` 会先被
