@@ -198,7 +198,12 @@ def main(argv=None):
         io.open(os.path.join(ns.out, name + ".m"), "w",
                 encoding="utf-8", newline="\n").write(matlab)
         recs.append({"file": name, "funcs": st["funcs"],
-                     "ops": st["ops"], "todo": st["todo"]})
+                     "ops": st["ops"], "todo": st["todo"],
+                     # **空壳判定**（R973）：`todo=0` 但 `ops=0` 不是"完整往返"，
+                     # 而是"没什么可往返" —— 源函数在 ② 段就没实现（C 体只有
+                     # `return MLC_UNIMPLEMENTED`）。不区分这两者，报告会把
+                     # 一批空壳算成"100% 通过"。
+                     "stub": st["funcs"] > 0 and st["ops"] == 0})
         for k in tot:
             tot[k] += st[k]
         if st["todo"]:
@@ -208,7 +213,9 @@ def main(argv=None):
     if ns.json:
         io.open(ns.json, "w", encoding="utf-8", newline="\n").write(
             json.dumps({"files": recs, "total": tot, "bad": bad,
-                        "n_files": len(files)}, ensure_ascii=False, indent=2)
+                        "n_files": len(files),
+                        "stub_files": sum(1 for r in recs if r.get("stub"))},
+                       ensure_ascii=False, indent=2)
             + "\n")
     print("[c2m] 合计：函数 %d ｜ ops %d ｜ todo %d ｜ 含 TODO 的文件 %d/%d"
           % (tot["funcs"], tot["ops"], tot["todo"], bad, len(files)))

@@ -291,6 +291,16 @@
       "witness": "translate/mir.py",
       "status": "fixed",
       "commit": "R970"
+    },
+    {
+      "id": "F030",
+      "title": "空壳文件的 todo=0 被当成完整往返",
+      "symptom": "c2m 对 40 个 C 文件报 todo=0/含 TODO 0 个，看似 100% 往返；实际 37 个函数的 C 体只有 return MLC_UNIMPLEMENTED",
+      "root_cause": "todo 只统计'认不出的算子'，没有统计'根本没有算子'；前者是能力缺口，后者是上游没实现，两者混在一起",
+      "rule": "指标要能区分'没做'与'做错'：ops=0 的文件必须单独计为空壳，不能计入通过",
+      "witness": "tools/c2m.py",
+      "status": "fixed",
+      "commit": "R973"
     }
   ]
 }

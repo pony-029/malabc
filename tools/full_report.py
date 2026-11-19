@@ -108,7 +108,9 @@ def _metrics(bench, links, c2m, hir):
     if c2m:
         m["c2m_files"] = c2m.get("n_files")
         m["c2m_ops"] = (c2m.get("total") or {}).get("ops")
-        m["c2m_ok"] = (c2m.get("n_files") or 0) - (c2m.get("bad") or 0)
+        # 与环形图同口径：空壳不算通过（R973）
+        m["c2m_ok"] = ((c2m.get("n_files") or 0) - (c2m.get("bad") or 0)
+                       - (c2m.get("stub_files") or 0))
     if hir:
         m["hir_funcs"] = hir["funcs"]
         m["hir_rate"] = round(hir["rate"], 1)
@@ -296,9 +298,13 @@ def render(bench, links, c2m, hir, brief, src, delta):
     # ---- ③ 反向 ----
     if c2m:
         t = c2m["total"]
-        okn = c2m["n_files"] - c2m["bad"]
-        dons = _donut(100.0 * okn / max(1, c2m["n_files"]), "完全往返",
-                      "%d/%d 文件" % (okn, c2m["n_files"]))
+        # **空壳不算通过**（R973）：`todo=0 且 ops=0` 的文件，其 C 体是
+        # `return MLC_UNIMPLEMENTED` —— 反推"成功"是因为没什么可反推。
+        stubn = c2m.get("stub_files") or 0
+        okn = c2m["n_files"] - c2m["bad"] - stubn
+        dons = _donut(100.0 * okn / max(1, c2m["n_files"]), "真实往返",
+                      "%d/%d 文件（另 %d 空壳）"
+                      % (okn, c2m["n_files"], stubn))
         dons += _donut(100.0 * t["ops"] / max(1, t["ops"] + t["todo"]),
                        "算子还原率", "%d/%d" % (t["ops"], t["ops"] + t["todo"]))
         rows = "".join(
