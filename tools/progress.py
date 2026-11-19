@@ -54,6 +54,7 @@ def collect():
     d["bench"] = (_j(os.path.join(ROOT, "flow", "bench_all.json")) or {}).get("recs")
     d["un"] = _j(os.path.join(ROOT, "flow", "unmapped.json"))
     d["gates"] = _j(os.path.join(ROOT, "flow", "gates.json"))
+    d["g41"] = _j(os.path.join(ROOT, "flow", "gates41.json"))
     # 反向链路：取最近一次 c2m 的 json（调用方用 -o 指定过路径的，这里找 flow 里那份）
     d["c2m"] = _j(os.path.join(ROOT, "flow", "c2m.json"))
     try:
@@ -102,14 +103,27 @@ def rows(d):
     else:
         out.append(("C→MATLAB 反向", "黄", "有实现（c2m），本次未量"))
 
-    # ④ 门禁
+    # ④ 门禁：**41 门 + harness 分组两条都要报**（R981）
     g = d["gates"] or {}
-    if g.get("total"):
+    g41 = d.get("g41") or {}
+    if g41.get("total"):
+        failed = g41.get("failed") or []
+        out.append(("门禁（41 道护栏）",
+                    "绿" if not failed else "红",
+                    "%d/%d 通过%s"
+                    % (g41.get("passed", 0), g41.get("total", 0),
+                       ("，红：" + "、".join(x.replace(".py", "") for x in failed[:3]))
+                       if failed else "")))
+    elif g.get("total"):
         out.append(("门禁（harness 分组）",
                     "绿" if g.get("passed") == g.get("total") else "红",
                     "%s/%s 组" % (g.get("passed"), g.get("total"))))
     else:
-        out.append(("门禁（harness 分组）", "黄", "未跑"))
+        out.append(("门禁", "黄", "未跑"))
+    if g.get("total"):
+        out.append(("harness 分组复查",
+                    "绿" if g.get("passed") == g.get("total") else "红",
+                    "%s/%s 组" % (g.get("passed"), g.get("total"))))
 
     # ⑤ 大脑
     br = d["brain"] or {}
