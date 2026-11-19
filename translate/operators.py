@@ -177,6 +177,12 @@ OPERATORS = (
      "sample": "y = A(:,2:end);"},
     {"id": "OP-RANGE", "matlab": "lo:hi", "c": "mlc_op_range",
      "kind": "range", "rules": ("RANGE-1",),
+     # `trigger: syntax`（R1001）：`1:n` **不是函数调用**，它由
+     # `mir.py::_lower_range` 按语句形态识别（放在 `_lower_col_slice` 之后，
+     # 免得抢 `A(:,p:q)` 的切片分支），从来不走 `operators.parse_line`。
+     # 门据此跳过"用 parse_line 解 sample"那一项 —— 这不是豁免真检查，
+     # 而是承认这一族算子的入口形态不同（门原有的正当分支）。
+     "trigger": "syntax",
      "sample": "y = 1:n;"},
     {"id": "OP-COL", "matlab": "A(:,k)", "c": "mlc_op_col",
      "kind": "slice", "rules": ("IDX-1",),
