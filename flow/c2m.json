@@ -1,0 +1,292 @@
+{
+  "files": [
+    {
+      "file": "cdfcalc_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "cholcov_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "cl_multinom_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "cluster_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "clusterdata_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "cohenkappa_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "combnk_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "cophenet_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "crosstab_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "datasample_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "dbscan_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "dummyvar_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "evalclusters_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "fillmissing_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "fitgmdist_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "grp2idx_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "iforest_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "inconsistent_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "ismissing_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "isoutlier_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "kmeans_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "kmedoids_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "linkage_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "loadmodel_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "lof_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "logit_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "makima_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "multiway_m",
+      "funcs": 1,
+      "ops": 5,
+      "todo": 0,
+      "stub": false
+    },
+    {
+      "file": "normalise_distribution_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "ocsvm_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "optimalleaforder_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "probit_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "randsample_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "rmmissing_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "robustcov_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "spectralcluster_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "standardizemissing_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "statget_m",
+      "funcs": 1,
+      "ops": 0,
+      "todo": 0,
+      "stub": true
+    },
+    {
+      "file": "statset_m",
+      "funcs": 1,
+      "ops": 9,
+      "todo": 0,
+      "stub": false
+    },
+    {
+      "file": "tiedrank_m",
+      "funcs": 1,
+      "ops": 6,
+      "todo": 0,
+      "stub": false
+    }
+  ],
+  "total": {
+    "funcs": 40,
+    "ops": 20,
+    "todo": 0
+  },
+  "bad": 0,
+  "n_files": 40,
+  "stub_files": 37
+}

@@ -43,6 +43,9 @@ GROUPS = [
     ("失败登记", [PY, os.path.join(ROOT, "tools", "check_failures.py")]),
     # 大脑自身的成长也要被复查 —— 否则"机制在监督别人、没人监督机制"
     ("大脑成长", [PY, os.path.join(ROOT, "tools", "check_brain_growth.py")]),
+    # **升级策略的自证**（R977）：四信号必须"该触发时触发、不该时沉默"。
+    # 不放进 harness 的话，策略退化（如 S4 恒真）不会有任何东西发现。
+    ("升级策略", [PY, os.path.join(ROOT, "tools", "brain_llm.py"), "--selftest"]),
     ("解析切分", [PY, os.path.join(ROOT, "tools", "check_mir_split.py")]),
     ("编码约定", [PY, os.path.join(ROOT, "tools", "check_eol_convention.py")]),
     ("工具发现性", [PY, os.path.join(ROOT, "tools", "check_tool_discoverability.py")]),
@@ -188,6 +191,20 @@ def main(argv=None):
 
     # 感知刷新之后再复查「大脑成长」—— 它在前面被刻意跳过
     rows += run(only="大脑成长")
+
+    # **补写一次 gates.json**（R977）：上面的写入发生在「大脑成长」之前，
+    # 于是落盘的分组数永远少 1（实测 6 组跑成 5/5），而 progress.py 读的正是它 ——
+    # 一个恒少 1 的分母，会让"门禁是否全绿"看起来永远成立。
+    try:
+        io.open(os.path.join(ROOT, "flow", "gates.json"), "w",
+                encoding="utf-8", newline="\n").write(json.dumps(
+                    {"ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+                     "scope": "harness 分组复查（不是全部 42 门）",
+                     "groups": [{"name": r["group"], "ok": r["ok"]} for r in rows],
+                     "passed": sum(1 for r in rows if r["ok"]),
+                     "total": len(rows)}, ensure_ascii=False, indent=2) + "\n")
+    except (IOError, OSError):
+        pass
 
     bad = [r for r in rows if not r["ok"]]
     if not bad:

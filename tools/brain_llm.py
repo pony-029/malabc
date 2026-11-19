@@ -146,11 +146,14 @@ def _problems():
     return out
 
 
-def escalate(query, extra_signals=None):
+def escalate(query, extra_signals=None, problems=None, entries=None, kinds=None):
     """判定"要不要上行"。返回 dict（need / reasons / signals / payload）。
 
     **纯函数式判定**：不读网络、不改文件，给同样输入必得同样输出 ——
     这样它才能被自证、被复算、被审计。
+
+    三个数据源可注入（`problems` / `entries` / `kinds`），只为止自证用：
+    自证要能构造"必然触发"与"必然不触发"两种样本，而读真实文件做不到。
     """
     hits = brain.advise(query, k=5, log=False)
     top = max([s for s, _e in hits], default=0.0)
@@ -160,7 +163,7 @@ def escalate(query, extra_signals=None):
 
     # S2 复发：同名问题在 problems.jsonl 里出现多次
     rep = {}
-    for p in _problems():
+    for p in (problems if problems is not None else _problems()):
         t = (p.get("title") or "").strip()
         if t:
             rep[t] = rep.get(t, 0) + 1
@@ -168,18 +171,22 @@ def escalate(query, extra_signals=None):
     s2 = worst >= REPEAT_MIN
 
     # S3 无见证可挂：库里存在"想记却记不住"的信号 —— 用 open 条目近似
-    d = brain.load()
-    open_items = [e for e in d["entries"] if e.get("status") == "open"]
+    if entries is None:
+        entries = brain.load()["entries"]
+    open_items = [e for e in entries if e.get("status") == "open"]
     s3 = len(open_items) > 0
 
     # S4 未归类：最近一次未映射统计里出现已知集合之外的 kind
-    un = {}
-    p = os.path.join(ROOT, "flow", "unmapped.json")
-    if os.path.isfile(p):
-        try:
-            un = json.load(io.open(p, encoding="utf-8")).get("kinds") or {}
-        except ValueError:
-            un = {}
+    if kinds is None:
+        un = {}
+        p = os.path.join(ROOT, "flow", "unmapped.json")
+        if os.path.isfile(p):
+            try:
+                un = json.load(io.open(p, encoding="utf-8")).get("kinds") or {}
+            except ValueError:
+                un = {}
+    else:
+        un = kinds
     unknown = [k for k in un if not _mir_produces(k)]
     s4 = bool(unknown)
 
@@ -324,7 +331,78 @@ def ingest(path):
     return 0
 
 
+def _selftest():
+    """**双向自证**：每个信号既要能"必然触发"，也要有"必然不触发"的基线。
+
+    只验"会触发"是不够的 —— 一个恒真的策略和没有策略在行为上一样
+    （R976 就踩过：S4 恒真，导致每次都"拿不准"）。
+    """
+    bad = good = 0
+    _hit = "给报告加一个统计列"          # 知识库里有先例（S1 应为假）
+    _miss = "zzz_qwerty_不存在的词组"     # 无先例（S1 应为真）
+    _clean_entries = [{"id": "X1", "title": "t", "rule": "r",
+                       "witness": "tools/brain.py", "status": "fixed"}]
+
+    # ① 基线：四个信号全假 -> 不上行
+    d = escalate(_hit, problems=[], entries=_clean_entries, kinds={})
+    if not d["need"] and not any(d["signals"][k] for k in
+                                 ("S1_no_precedent", "S2_recurs",
+                                  "S3_no_witness", "S4_unclassified")):
+        good += 1
+    else:
+        bad += 1
+        print("  [selftest] 基线（全假）却判了上行：%r" % (d["reasons"],))
+
+    # ② S1：无先例必须触发
+    d = escalate(_miss, problems=[], entries=_clean_entries, kinds={})
+    if d["need"] and d["signals"]["S1_no_precedent"]:
+        good += 1
+    else:
+        bad += 1
+        print("  [selftest] S1 无先例没触发")
+
+    # ③ S2：同名问题 3 次必须触发
+    d = escalate(_hit, problems=[{"title": "同名"}] * REPEAT_MIN,
+                 entries=_clean_entries, kinds={})
+    if d["need"] and d["signals"]["S2_recurs"]:
+        good += 1
+    else:
+        bad += 1
+        print("  [selftest] S2 复发没触发")
+
+    # ④ S3：有未闭条目必须触发
+    _open = [{"id": "X2", "title": "未闭", "rule": "r",
+              "witness": "tools/brain.py", "status": "open"}]
+    d = escalate(_hit, problems=[], entries=_open, kinds={})
+    if d["need"] and d["signals"]["S3_no_witness"]:
+        good += 1
+    else:
+        bad += 1
+        print("  [selftest] S3 无见证没触发")
+
+    # ⑤ S4：未知 kind 必须触发；已知 kind 必须**不**触发（这是 R976 的教训）
+    d = escalate(_hit, problems=[], entries=_clean_entries,
+                 kinds={"made_up_kind": 1})
+    ok1 = d["need"] and d["signals"]["S4_unclassified"]
+    d2 = escalate(_hit, problems=[], entries=_clean_entries,
+                  kinds={"cell": 10, "call2": 3, "other": 5})
+    ok2 = not d2["signals"]["S4_unclassified"]
+    if ok1 and ok2:
+        good += 1
+    else:
+        bad += 1
+        print("  [selftest] S4 双向不成立（未知 %s / 已知 %s）" % (ok1, ok2))
+
+    print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
+    return 0 if bad == 0 else 1
+
+
 def main(argv=None):
+    # `--selftest` 要在 argparse 之前拦：它以下划线开头，放进 choices 会
+    # 被当成选项而不是子命令（本仓 runner 认的正是 `--selftest` 这个拼写）。
+    if "--selftest" in sys.argv:
+        return _selftest()
+
     ap = argparse.ArgumentParser(description="大脑 ↔ 大模型：升级策略")
     ap.add_argument("cmd", choices=("ask", "ingest", "policy"))
     ap.add_argument("text", nargs="?")

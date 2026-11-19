@@ -1214,6 +1214,7 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 - `tools/check_mir_split.py` —— **解析/切分判据库**（MS1–MS5）：无 `end` 切分、嵌套边界、`version` 头、账本闭合、块收束
 - `tools/unmapped_stats.py` —— **降级率统计**：按文件算 `1 - 未映射/(未映射+算子数)`，给 `avg_rate`、`≥90%` 个数与逐文件榜；三段链路的 ① 是二值判据（真实代码永远有边角），这个给出**可读的分布**
 - `tools/sample_numeric.py` —— **只抽可翻译目标**：排除算子重载桩（`varargout` 分派 / `CreateBasicOperator` / `switch class(`），并把排除理由与条数全部打印（不静默过滤）
+- `tools/progress.py` —— **模块级完成度盘点**：读 `bench_all.json` / `unmapped.json` / `c2m.json` / `gates.json` / 大脑状态，输出红黄绿表（`--md` 出 markdown）。判据写死（绿=有门在守且当前绿、黄=能跑但指标低于可用线、红=缺失）—— 回答"到底完成了吗"
 - `tools/brain_llm.py` —— **大脑 ↔ 大模型的升级策略**：三层分工（本地大脑能判的绝不上行 / 升级策略把"拿不准"变成**可观测信号** / 模型只在 need=True 时被调用）。四信号：**S1 无先例**（`advise` 最高分 < 阈值）、**S2 复发**（同名问题 ≥3 次）、**S3 无见证可挂**（有未闭条目）、**S4 未归类**（kind 不由 `mir.py` 产出）；全假则零消耗。模型产出必须带**真实存在的 witness** 才能入库，它没有写代码的权限
 - `tools/c2m.py` —— **C → MATLAB**（补齐反向链路）：`C 源码 → cmir.c_to_mir → MIR → .m`。每个文件带 `% @c2m ... todo=N` 统计头，**认不出的算子落 `% TODO` 而不是瞎猜**；退出码 0 表示全部文件 todo=0（完整往返）
 - `tools/full_report.py` —— **总报告**：把全量目录实测（`flow/bench_all.json`）、三段链路（解析 three_links 的 `index.html`）、**HIR 参与率**（数 MIR 里的 `# @m2c hir-emitted`）、脑状态汇成一页 `flow/full_report.html`。**四个数字来源都是工具产物，无一手填**
