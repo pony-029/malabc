@@ -59,6 +59,12 @@ HIR_TO_MIR = {
     # 集合
     "set.setdiff": "OP-SETDIFF",
     # ---- 尺寸/谓词（R717 补：语料里 20 个函数因此可参与 HIR）----
+    # **范围表达式**（R989）：`1:n` / `a:b`。运行时 `mlc_op_colrange` 与
+    # emit.rs 的算子白名单里**早就有 OP-COLRANGE**，但 HIR 侧从未产出过
+    # 对应的 `range.colon` —— 于是 `y = 1:n` 一直落 unmapped。
+    # 这一行是"接通"的第一个必要环节；另一头（hir.py 把 `A:B` 解析成
+    # `range.colon`）本轮未做，所以现在还不生效。
+    "range.colon": "OP-COLRANGE",
     "shape.flatten": "OP-FLATTEN",
     "shape.size": "OP-SIZE",
     "pred.isempty": "OP-ISEMPTY",

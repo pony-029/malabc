@@ -391,6 +391,16 @@
       "witness": "tools/check_ane.py",
       "status": "fixed",
       "commit": "R988"
+    },
+    {
+      "id": "F040",
+      "title": "colrange/transpose/flatten 在发射器白名单里，只缺 HIR 产出",
+      "symptom": "y = 1:n 与 y = (1:n)' 都落 unmapped；而 emit.rs 白名单里 OP-COLRANGE/OP-TRANSPOSE/OP-FLATTEN/OP-MASK 全在，运行时 mlc_op_colrange 等也都在",
+      "root_cause": "hir_ops.py 的 40 条映射里没有 range.colon，hir.py 也不把 A:B 解析成 HIR 节点 —— 能力断在'最上游一步'",
+      "rule": "接一个新算子前，先查三处是否已就绪：运行时实现、发射器白名单、HIR 映射表；缺的往往只有最后一格",
+      "witness": "translate/hir_ops.py",
+      "status": "fixed",
+      "commit": "R989"
     }
   ]
 }
