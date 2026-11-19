@@ -59,12 +59,13 @@ HIR_TO_MIR = {
     # 集合
     "set.setdiff": "OP-SETDIFF",
     # ---- 尺寸/谓词（R717 补：语料里 20 个函数因此可参与 HIR）----
-    # **范围表达式**（R989）：`1:n` / `a:b`。运行时 `mlc_op_colrange` 与
-    # emit.rs 的算子白名单里**早就有 OP-COLRANGE**，但 HIR 侧从未产出过
-    # 对应的 `range.colon` —— 于是 `y = 1:n` 一直落 unmapped。
-    # 这一行是"接通"的第一个必要环节；另一头（hir.py 把 `A:B` 解析成
-    # `range.colon`）本轮未做，所以现在还不生效。
-    "range.colon": "OP-COLRANGE",
+    # ⚠ **不要在这里加 `"range.colon": "OP-COLRANGE"`**（R990 撤销）。
+    # `operators.py` 里 OP-COLRANGE 的 matlab 形式是 `A(:,p:q)` —— 它是
+    # **取某几列的切片**，不是"生成等差序列"。`1:n` 语义上需要的是
+    # `mlc_op_range`/arange 一类，**运行时里并没有**。
+    # R989 我曾加上这条映射，属于**语义错配**：一旦上游真的产出
+    # `range.colon`，就会把"生成 1..n"错误地编译成"取 A 的第 1..n 列"，
+    # 而 C 照样能编过、结果全错。撤销掉，另建正确算子再说。
     "shape.flatten": "OP-FLATTEN",
     "shape.size": "OP-SIZE",
     "pred.isempty": "OP-ISEMPTY",

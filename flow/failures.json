@@ -401,6 +401,16 @@
       "witness": "translate/hir_ops.py",
       "status": "fixed",
       "commit": "R989"
+    },
+    {
+      "id": "F041",
+      "title": "按算子名相似就接映射，造成语义错配（1:n 用成取列切片）",
+      "symptom": "R989 我在 hir_ops 加了 range.colon -> OP-COLRANGE，理由只是'白名单里有 COLRANGE'；实际 operators.py 里它的 matlab 形式是 A(:,p:q)",
+      "root_cause": "判断'能不能复用算子'时只看名字和存在性，没看它的语义定义（matlab 形式 / kind / 参数含义）",
+      "rule": "复用一个算子前必须先读它的 matlab 样例与 kind：名字像不等于语义同，接错了 C 照样编过、结果全错",
+      "witness": "translate/operators.py",
+      "status": "fixed",
+      "commit": "R990"
     }
   ]
 }
