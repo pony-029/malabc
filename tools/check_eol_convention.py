@@ -56,7 +56,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".workbuddy", ".archify",
-             "matlabc_browse", "_kernel"}
+             "matlabc_browse", "_kernel",
+             # `aistandard/` 是**外部规范原件**（用户提供的 ANE 规范 HTML/MD），
+             # 不是本仓的生成物也不是本仓手写物 —— 它的行尾由发布方决定，
+             # 本仓无权改写（R987：实测它带 1475 个 CRLF，曾把这道门顶红）。
+             "aistandard"}
 CRLF_EXTS = {".py": True, ".md": True, ".mmd": True}
 LF_EXTS = {".html": True, ".svg": True}
 

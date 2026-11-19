@@ -46,6 +46,9 @@ GROUPS = [
     # **升级策略的自证**（R977）：四信号必须"该触发时触发、不该时沉默"。
     # 不放进 harness 的话，策略退化（如 S4 恒真）不会有任何东西发现。
     ("升级策略", [PY, os.path.join(ROOT, "tools", "brain_llm.py"), "--selftest"]),
+    # **ANE 规范对齐**（R987）：把 `aistandard/` 的强制条款变成可核对判据。
+    # 不接进流程的话，规范就只是"说过要对齐"，没有任何东西核对过。
+    ("ANE 规范", [PY, os.path.join(ROOT, "tools", "check_ane.py")]),
     ("解析切分", [PY, os.path.join(ROOT, "tools", "check_mir_split.py")]),
     ("编码约定", [PY, os.path.join(ROOT, "tools", "check_eol_convention.py")]),
     ("工具发现性", [PY, os.path.join(ROOT, "tools", "check_tool_discoverability.py")]),
