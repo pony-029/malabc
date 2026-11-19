@@ -351,6 +351,16 @@
       "witness": "translate/mir.py",
       "status": "fixed",
       "commit": "R978"
+    },
+    {
+      "id": "F036",
+      "title": "反向链路的空壳来自正向的整函数放弃，而非形状标注",
+      "symptom": "octave-stat 40 个 .c 全部含 return MLC_UNIMPLEMENTED、0 个 mlc_op_ 调用；尾部写 TODO(ret) 推断不出 emsg 的形状",
+      "root_cause": "整函数放弃的真实触发是**字符串/元胞返回值**（emsg/eid 是字符串），不是形状；对照实验 t_noanno/t_anno 都产出 ops=1 且无 UNIMPLEMENTED",
+      "rule": "别把'推断不出形状'当成根因：先用两个只差标注的对照样本排除它，再去找真正的类型缺口",
+      "witness": "tools/gap_attrib.py",
+      "status": "fixed",
+      "commit": "R983"
     }
   ]
 }
