@@ -1098,17 +1098,23 @@ def main(argv):
     # 于是完成度表只能反映 harness 的 6 组、反映不了 41 门 —— 一行不完整的分母。
     try:
         import json as _json
+        import time as _time                  # 模块级没导入 time（R982 实测）
         _here = os.path.dirname(os.path.abspath(__file__))
         _out = os.path.join(os.path.dirname(_here), "flow", "gates41.json")
         io.open(_out, "w", encoding="utf-8", newline="\n").write(_json.dumps(
-            {"ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+            {"ts": _time.strftime("%Y-%m-%d %H:%M:%S"),
              "total": len(guards), "failed": list(bad),
              "passed": len(guards) - len(bad),
              "skipped": [x for x in ("check_generated_compiles",)
                          if "--skip" in " ".join(argv)]},
             ensure_ascii=False, indent=2) + "\n")
-    except Exception:                          # noqa: BLE001
-        pass                                   # 记录是旁路，不影响判据
+    except Exception as _e:                    # noqa: BLE001
+        # **不能 `pass`**（R982）：上一轮这里静默吞了异常，结果是
+        # 文件被 `open(..., "w")` **创建成空文件**，而 `os.path.isfile`
+        # 返回 True、`json.load` 抛错被上游当成"没有这个文件" ——
+        # "存在但为空"比"不存在"更难发现。
+        print("check_all: gates41.json 写入失败（%s: %s）"
+              % (type(_e).__name__, _e))
 
     if bad:
         print("check_all: %d 项失败：%s" % (len(bad), bad))

@@ -108,7 +108,9 @@ def rows(d):
     g41 = d.get("g41") or {}
     if g41.get("total"):
         failed = g41.get("failed") or []
-        out.append(("门禁（41 道护栏）",
+        # 标签**不要写死数字**（R982）：我原来写"41 道护栏"，而 check_all
+        # 实际发现 44 道 —— 写死的数字立刻变成假话。
+        out.append(("门禁（全量护栏）",
                     "绿" if not failed else "红",
                     "%d/%d 通过%s"
                     % (g41.get("passed", 0), g41.get("total", 0),

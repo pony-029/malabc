@@ -1,0 +1,11 @@
+{
+  "ts": "2026-11-19 23:33:14",
+  "total": 44,
+  "failed": [
+    "check_release_gates.py"
+  ],
+  "passed": 43,
+  "skipped": [
+    "check_generated_compiles"
+  ]
+}
