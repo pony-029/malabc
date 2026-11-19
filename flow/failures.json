@@ -361,6 +361,16 @@
       "witness": "tools/gap_attrib.py",
       "status": "fixed",
       "commit": "R983"
+    },
+    {
+      "id": "F037",
+      "title": "局部 struct 被 reject_reason 误判为整函数拒绝",
+      "symptom": "s.a=3; s.b=x; y=s.b+s.a 的 MIR 里扁平化已成功（s_a/s_b/op:OP-ADD），却多一行 reject:struct，发射器据此整函数返回 UNIMPLEMENTED",
+      "root_cause": "reject_reason 只查显式声明的 struct_fields，没查 _collect_struct_hosts 算出的可扁平化局部 host",
+      "rule": "两处判定同一件事时必须共用同一个真源：可扁平化的 host 集合应只算一次、两处都用",
+      "witness": "translate/mir.py",
+      "status": "fixed",
+      "commit": "R985"
     }
   ]
 }

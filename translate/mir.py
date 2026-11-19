@@ -917,7 +917,14 @@ def reject_reason(f, srcfile=""):
         why.append("cell")
     # **已声明的**参数 struct 不算拒绝理由：它们会被展开成独立形参。
     # 未声明的一律拒绝 —— 解析器分不清"结构体字段"和"对象属性"。
-    _sf = set(f.get("struct_fields") or {})
+    # **可扁平化的局部 struct 不应导致整函数被拒**（R985）。
+    # `_collect_struct_hosts` 已经算出了"只以 `host.field` 形式出现、从不整体流转"
+    # 的那些 host —— 它们会被 `_rewrite_struct_fields` 无损改写成 `host_field`。
+    # 但这里原先只查 `struct_fields`（显式声明的），于是**局部 struct 全被判死**：
+    # 实测 `s.a = 3; s.b = x; y = s.b + s.a;` 的 MIR 里扁平化其实已经成功
+    # （`s_a` / `s_b` / `op:OP-ADD`），却仍多出一行 `reject:struct`，
+    # 发射器据此把整个函数写成 `return MLC_UNIMPLEMENTED`。
+    _sf = set(f.get("struct_fields") or {}) | set(_collect_struct_hosts(f) or ())
     if _sf:
         # 占位符**不能带点**：`X.` 本身还是"字段访问"，会被 _has_struct_ref 再抓一次。
         _pat = re.compile(r"\b(?:%s)\s*\." % "|".join(sorted(_sf)))
