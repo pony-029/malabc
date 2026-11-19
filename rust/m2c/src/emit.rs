@@ -1077,8 +1077,14 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
             // `int64_t*`，与 `const mlc_array*` 不兼容（R875 规模实测：
             // 169 个生成文件里 4 个编译失败，`for_loop_m.c` 是其中之一）。
             let is_scalar_var = is_scalar_name(f, a);
-            if is_scalar_var {
+            // **数字字面量也要有真实对象**（R992）：`op:OP-RANGE:y:1:n` 里的
+            // `1` 会被 `arg_ref` 变成 `&_1`，而 `_1` 从未被声明 —— gcc 直接
+            // 报 `'_1' undeclared`。`is_scalar_name` 只认"名字"，字面量漏在
+            // 这条通道外。判据用 `parse::<f64>()`，不自己写正则。
+            let is_number = a.parse::<f64>().is_ok();
+            if is_scalar_var || is_number {
                 let t = format!("__s{}_{}", i, op.src);
+                let val = if is_number { a.clone() } else { ident(a) };
                 bridge.push(format!(
                     "{}mlc_array {};",
                     pad, t
@@ -1089,7 +1095,7 @@ fn emit_op(f: &Func, op: &Op, out_is_ptr: bool, indent: &str) -> Vec<String> {
                 ));
                 bridge.push(format!(
                     "{}((double *){}.data)[0] = (double){};",
-                    pad, t, ident(a)
+                    pad, t, val
                 ));
                 wraps[i] = Some(t);
             }

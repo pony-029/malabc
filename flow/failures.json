@@ -421,6 +421,16 @@
       "witness": "rust/m2c/src/emit.rs",
       "status": "fixed",
       "commit": "R991"
+    },
+    {
+      "id": "F043",
+      "title": "发射器对数字字面量参数不给声明，_1 悬空",
+      "symptom": "op:OP-RANGE:y:1:n 生成 mlc_op_range(&_1, &n, y)，gcc 报 undeclared；is_scalar_name 只认变量名",
+      "root_cause": "2 参算子的桥接循环只处理 is_scalar_name(f,a)，字面量走 arg_ref 直接拼成 &_1",
+      "rule": "桥接/包装类逻辑要按'值的种类'分支（变量/字面量/临时量），不能只按'名字'判断",
+      "witness": "rust/m2c/src/emit.rs",
+      "status": "fixed",
+      "commit": "R992"
     }
   ]
 }
