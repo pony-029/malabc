@@ -388,6 +388,27 @@ def render(bench, links, c2m, hir, brief, src, delta):
     dl = ", ".join("%s %+d" % (k, v) for k, v in list(delta.items())[:6]) \
         if delta else "首次生成（无可比基线）"
 
+    # **模块完成度**（R980）：直接复用 progress.py 的判定，避免两处口径漂移。
+    # 放在最前面 —— 读者第一个问题永远是"这东西到底完成没完成"。
+    try:
+        import progress as _pg
+        _prows = _pg.rows(_pg.collect())
+    except Exception:                      # noqa: BLE001
+        _prows = []
+    if _prows:
+        _cls = {"绿": "ok", "黄": "warn", "红": "bad"}
+        sec0 = ("<table><tr><th>模块</th><th>状态</th><th>依据</th></tr>"
+                + "".join(
+                    "<tr><td>%s</td><td class='c %s'><b>%s</b></td>"
+                    "<td style='text-align:left'>%s</td></tr>"
+                    % (n, _cls.get(c, ""), c, w) for n, c, w in _prows)
+                + "</table>"
+                "<p class='note'>判据写死在 <code>tools/progress.py</code>："
+                "绿=有门在守且当前绿；黄=能跑但关键指标低于可用线；红=缺失。"
+                "这张表由工具生成，不随叙述漂移。</p>")
+    else:
+        sec0 = "<p class='miss'>未量（progress.py 不可用）</p>"
+
     # 顶部横幅：如果 unmapped.json 里有 verdict（抽样适用性结论），必须最先看到
     verdict = (un or {}).get("verdict") if un else None
     banner = ("<div class='banner'><b>读数说明：</b>%s</div>"
@@ -404,12 +425,14 @@ def render(bench, links, c2m, hir, brief, src, delta):
 $banner
 </div></header>
 <nav class="toc"><div class="wrap">
-<a href="#s1">① 规模</a><a href="#s2">② 三段链路</a><a href="#s3">③ C→MATLAB</a>
+<a href="#s0">完成度</a><a href="#s1">① 规模</a><a href="#s2">② 三段链路</a><a href="#s3">③ C→MATLAB</a>
 <a href="#s4">④ 边界极限</a><a href="#s5">⑤ HIR</a><a href="#s6">⑥ 脑状态</a>
 <a href="#s7">⑦ 未映射</a><a href="#s8">⑧ 数据来源</a>
 </div></nav>
 <div class="wrap">
 <div class="kpis">$kpis</div>
+
+<h2 id="s0">完成度总览（模块级红黄绿）</h2><div class="panel">$sec0</div>
 
 <h2 id="s1">① 规模：全量目录实测</h2><div class="panel">$sec1</div>
 <h2 id="s2">② 三段链路：MATLAB → MIR → C → 反推 MIR</h2><div class="panel">$sec2</div>
@@ -423,7 +446,7 @@ $banner
 """)
     return tpl.substitute(css=CSS, now=now, dl=dl, kpis=kpi_html, sec1=sec1,
                           sec2=sec2, sec3=sec3, sec4=sec4, sec5=sec5, sec6=sec6,
-                          sec7=sec7, sec8=sec8, banner=banner)
+                          sec7=sec7, sec8=sec8, sec0=sec0, banner=banner)
 
 
 def main(argv=None):
