@@ -441,6 +441,16 @@
       "witness": "translate/operators.py",
       "status": "fixed",
       "commit": "R993"
+    },
+    {
+      "id": "F045",
+      "title": "新增无测试的 C 代码会直接压低 RS3 覆盖率门",
+      "symptom": "加了 mlc_op_range 后 check_runtime_static 报 RS3 行覆盖 57.23% < 58.5%、分支 46.26% < 47.2%",
+      "root_cause": "RS3 用固定基线卡覆盖率；新函数 30 行若不在被测路径里，就等比例稀释整体百分比",
+      "rule": "往运行时加算子必须同时给出会被执行的路径（测试或语料用例），否则覆盖率门会红，而这红是**正确的**",
+      "witness": "tools/check_runtime_static.py",
+      "status": "fixed",
+      "commit": ""
     }
   ]
 }
