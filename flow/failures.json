@@ -411,6 +411,16 @@
       "witness": "translate/operators.py",
       "status": "fixed",
       "commit": "R990"
+    },
+    {
+      "id": "F042",
+      "title": "OP-RANGE 四格接通了，卡在发射器不给字面量参数声明临时变量",
+      "symptom": "手工 MIR op:OP-RANGE:y:1:n -> emit 产出 mlc_op_range(&_1, &n, y)，但 _1 从未声明，gcc 报 undeclared",
+      "root_cause": "发射器把字面量 1 包成数组临时变量 _1，却只在表达式路径（__e 系列）里声明它；op: 直连路径没有补声明",
+      "rule": "给算子加端到端用例时必须构造**字面量参数**的样本：表达式路径能过不代表 op: 直连路径能过",
+      "witness": "rust/m2c/src/emit.rs",
+      "status": "fixed",
+      "commit": "R991"
     }
   ]
 }

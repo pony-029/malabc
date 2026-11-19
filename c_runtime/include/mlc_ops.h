@@ -157,6 +157,8 @@ mlc_status mlc_op_idx2(const mlc_array *a, int64_t row, int64_t col,
                        mlc_array *out);
 mlc_status mlc_op_fill_alloc(int64_t rows, int64_t cols, double value,
                             mlc_array *out);
+mlc_status mlc_op_range(const mlc_array *alo, const mlc_array *ahi,
+                        mlc_array *out);
 mlc_status mlc_op_setdiff_alloc(const mlc_array *a, const mlc_array *b,
                                   mlc_array *out);
 mlc_status mlc_op_copy(const mlc_array *a, mlc_array *out);

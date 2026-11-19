@@ -2099,3 +2099,54 @@ mlc_status mlc_op_matmul(const mlc_array *a, const mlc_array *b,
     }
     return MLC_OK;
 }
+
+
+/* 等差序列：`lo:hi`（步长 1）-> 列向量 [lo, lo+1, ..., hi]。
+ *
+ * **语义上与 OP-COLRANGE 不同**（R990 踩过的坑）：`mlc_op_colrange` 是
+ * `A(:,p:q)` 的**列切片**（在已有数组上取第 p..q 列）；这里是从零**生成**
+ * 一个序列，不涉及任何源数组。当时我只凭"名字像 + 白名单里有"就复用，
+ * 会把 `y = 1:n` 编成"取第 1..n 列"，C 编得过而结果全错。
+ *
+ * `hi < lo` 在 MATLAB 里得到空数组；本通道区分不了"空"与"算错"，
+ * 按 `mlc_op_fill_alloc` 的同一取舍返回 MLC_ERR。
+ */
+mlc_status mlc_op_range(const mlc_array *alo, const mlc_array *ahi, mlc_array *out)
+{
+    int64_t n, i;
+    int64_t sh[2];
+    double *po;
+
+    double lo, hi;
+
+    if (out == NULL || alo == NULL || ahi == NULL || alo->data == NULL
+        || ahi->data == NULL || mlc_array_numel((mlc_array *)alo) < 1
+        || mlc_array_numel((mlc_array *)ahi) < 1) {
+        return MLC_ERR;
+    }
+    lo = ((const double *)alo->data)[0];
+    hi = ((const double *)ahi->data)[0];
+    if (hi < lo) {
+        return MLC_ERR;
+    }
+    if (hi - lo > 1.0e7) {
+        return MLC_ERR;              /* 规模保护：别让一个笔误吃掉内存 */
+    }
+    n = (int64_t)(hi - lo) + 1;
+    if (n < 1) {
+        return MLC_ERR;
+    }
+    sh[0] = n;
+    sh[1] = 1;
+    if (mlc_array_init(out, MLC_F64, 2, sh) != MLC_OK) {
+        return MLC_ERR;
+    }
+    po = (double *)out->data;
+    if (po == NULL) {
+        return MLC_ERR;
+    }
+    for (i = 0; i < n; ++i) {
+        po[i] = lo + (double)i;
+    }
+    return MLC_OK;
+}
