@@ -331,6 +331,16 @@
       "witness": "tools/check_eol_convention.py",
       "status": "fixed",
       "commit": "R975"
+    },
+    {
+      "id": "F034",
+      "title": "升级策略的已知kind手抄清单必然漏",
+      "symptom": "S4 恒为真，有先例的任务也被判拿不准，等于每次都升级",
+      "root_cause": "手写 10 个 kind，先漏 blockmarker 再漏 call2/idx2；它们分散在 _KIND_RULES 表与 _unmapped_kind 的返回分支里",
+      "rule": "判是否已知时去问产出方（源码里有没有这个字面量），不要维护抄本",
+      "witness": "tools/brain_llm.py",
+      "status": "fixed",
+      "commit": "R976"
     }
   ]
 }
