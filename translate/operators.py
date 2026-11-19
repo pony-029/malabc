@@ -242,6 +242,10 @@ C_IMPLEMENTED = ("OP-ADD", "OP-SUB", "OP-MUL", "OP-DIV", "OP-HCAT",
                  "OP-SUM", "OP-MEAN", "OP-MAX", "OP-MIN", "OP-INDEX",
                  "OP-MATMUL", "OP-TRANSPOSE", "OP-SLICE",
                  "OP-FLATTEN", "OP-MASK", "OP-FIND", "OP-SETIDX", "OP-ROW", "OP-ISEMPTY", "OP-NUMEL", "OP-LENGTH", "OP-SIZE", "OP-COL", "OP-COLRANGE",
+    # R997：OP-RANGE 已由 mlc_ops.c 真实现（等差序列生成，与 COLRANGE 的
+    # 切片语义不同）。不登记在这里，TP8 会报"只在 Rust 有" —— 那份清单
+    # 是**两侧互为对手方**的，漏一边就等于没人核对。
+    "OP-RANGE",
     "OP-SQRT", "OP-ABS", "OP-EXP", "OP-LOG",
     "OP-SIN", "OP-COS", "OP-TAN", "OP-FLOOR", "OP-CEIL",
     "OP-ROUND", "OP-LOG2", "OP-LOG10",

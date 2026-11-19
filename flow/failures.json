@@ -461,6 +461,16 @@
       "witness": "tools/brain_llm.py",
       "status": "fixed",
       "commit": "R996"
+    },
+    {
+      "id": "F047",
+      "title": "登记算子时漏了 C_IMPLEMENTED 第二份清单",
+      "symptom": "TP8 报'只在 Rust 有 OP-RANGE'：我加了 emit.rs 的清单，没加 operators.C_IMPLEMENTED",
+      "root_cause": "已实现算子有**两份互为对手方**的清单（operators.C_IMPLEMENTED 与 emit.rs 的 C_IMPLEMENTED），我只改了其中一份",
+      "rule": "加算子要改的地方是**五处**：运行时实现/头文件/emit 白名单/emit 的 C_IMPLEMENTED/operators 的 OPERATORS+C_IMPLEMENTED",
+      "witness": "translate/operators.py",
+      "status": "fixed",
+      "commit": "R997"
     }
   ]
 }
