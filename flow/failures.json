@@ -350,7 +350,7 @@
       "rule": "遇到'保真 vs 能力'的二选一时，先问能不能两套文本并存；单向回退是把成本转给用户",
       "witness": "translate/mir.py",
       "status": "fixed",
-      "commit": ""
+      "commit": "R978"
     }
   ]
 }

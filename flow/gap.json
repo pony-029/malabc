@@ -1,0 +1,69 @@
+{
+ "source": "E:\\temp\\matlabc\\oct_num",
+ "total": 2648,
+ "cats": [
+  {
+   "kind": "other",
+   "n": 1233,
+   "pct": 46.6,
+   "cost": "待定",
+   "sample": "yCDF = (1:n)' / n;"
+  },
+  {
+   "kind": "index-assign",
+   "n": 415,
+   "pct": 15.7,
+   "cost": "需运行时（高）",
+   "sample": "x = x(! isnan (x));"
+  },
+  {
+   "kind": "cell",
+   "n": 270,
+   "pct": 10.2,
+   "cost": "需 cell 运行时（高）",
+   "sample": "C = varargin{1};"
+  },
+  {
+   "kind": "type-predicate",
+   "n": 197,
+   "pct": 7.4,
+   "cost": "有形状可折叠（中）",
+   "sample": "if (! isvector (x))"
+  },
+  {
+   "kind": "string-switch",
+   "n": 182,
+   "pct": 6.9,
+   "cost": "需 string 运行时（高）",
+   "sample": "case 'cochran'"
+  },
+  {
+   "kind": "string-assign",
+   "n": 125,
+   "pct": 4.7,
+   "cost": "需 string 运行时（高）",
+   "sample": "emsg = 'VectorRequired';"
+  },
+  {
+   "kind": "builtin-call",
+   "n": 120,
+   "pct": 4.5,
+   "cost": "需运行时/外部实现（高）",
+   "sample": "x = sort (x(:));"
+  },
+  {
+   "kind": "flatten",
+   "n": 63,
+   "pct": 2.4,
+   "cost": "语法+运行时（中）",
+   "sample": "keep_idx = [diff(x(:)); 1] > 0;"
+  },
+  {
+   "kind": "numeric-switch",
+   "n": 43,
+   "pct": 1.6,
+   "cost": "语法（低）",
+   "sample": "case {'previous', 'next', 'nearest'}"
+  }
+ ]
+}
