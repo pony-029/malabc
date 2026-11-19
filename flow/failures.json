@@ -471,6 +471,16 @@
       "witness": "translate/operators.py",
       "status": "fixed",
       "commit": "R997"
+    },
+    {
+      "id": "F048",
+      "title": "新算子不进语料就等于没测，覆盖率门会正确变红",
+      "symptom": "RS3 行覆盖 58.5%->57.23%；加了 rng_demo 用例仍不动，直到补上 hir_ops 的 range.colon->OP-RANGE 映射才回升到 59.01%",
+      "root_cause": "两因叠加：语料里没有 1:n 用例，且 HIR 映射表里没有 OP-RANGE（R990 撤销旧映射时一并没了），于是 mir.py 报'缺 HIR 名'并透传",
+      "rule": "加算子的完整清单是六处：C 实现/头文件/emit 白名单/emit 的 C_IMPLEMENTED/operators 的 OPERATORS+C_IMPLEMENTED/hir_ops 映射，外加一条语料用例",
+      "witness": "tools/check_runtime_static.py",
+      "status": "fixed",
+      "commit": "R998"
     }
   ]
 }

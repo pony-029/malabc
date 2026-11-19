@@ -59,6 +59,11 @@ HIR_TO_MIR = {
     # 集合
     "set.setdiff": "OP-SETDIFF",
     # ---- 尺寸/谓词（R717 补：语料里 20 个函数因此可参与 HIR）----
+    # **等差序列**（R998）：`1:n` -> OP-RANGE。R989 我曾把它错映射到
+    # OP-COLRANGE（那是 `A(:,p:q)` 切片，语义不同）并因此撤销；现在
+    # OP-RANGE 已是**真实算子**（mlc_ops.c 实现、emit 白名单、operators
+    # 两份清单都已登记），这条映射才成立。
+    "range.colon": "OP-RANGE",
     # ⚠ **不要在这里加 `"range.colon": "OP-COLRANGE"`**（R990 撤销）。
     # `operators.py` 里 OP-COLRANGE 的 matlab 形式是 `A(:,p:q)` —— 它是
     # **取某几列的切片**，不是"生成等差序列"。`1:n` 语义上需要的是
