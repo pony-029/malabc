@@ -450,7 +450,17 @@
       "rule": "往运行时加算子必须同时给出会被执行的路径（测试或语料用例），否则覆盖率门会红，而这红是**正确的**",
       "witness": "tools/check_runtime_static.py",
       "status": "fixed",
-      "commit": ""
+      "commit": "R996"
+    },
+    {
+      "id": "F046",
+      "title": "大脑↔模型请求体是自然语言，违反 ANE 第五条",
+      "symptom": "每次上行 1434 字节自然语言（含解释/约束/JSON schema 全文）",
+      "root_cause": "把'不变的协议内容'（约束、schema）每次都随请求重发，且用可读散文而非特征向量+错误码",
+      "rule": "上下文压缩的正解不是删掉约束，而是让不变的东西只在系统提示里下发一次",
+      "witness": "tools/brain_llm.py",
+      "status": "fixed",
+      "commit": "R996"
     }
   ]
 }

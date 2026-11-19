@@ -1,5 +1,5 @@
 {
-  "ts": "2026-11-20 00:55:06",
+  "ts": "2026-11-20 00:56:42",
   "rows": [
     {
       "clause": "第四条",
@@ -9,9 +9,9 @@
     },
     {
       "clause": "第五条",
-      "title": "战略性唤醒（四信号 + proposal）",
+      "title": "战略性唤醒（四信号 + proposal + 极简）",
       "ok": true,
-      "detail": "四信号自证 SELFTEST COUNTS {\"bad\": 0, \"good\": 5}"
+      "detail": "四信号自证 SELFTEST COUNTS {\"bad\": 0, \"good\": 5} ｜ 请求体 70 字节（限 200）"
     },
     {
       "clause": "第六条",

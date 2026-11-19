@@ -103,7 +103,26 @@ def audit():
         d5 = "四信号自证 %s" % (out5.strip().splitlines() or ["?"])[-1][:40]
     else:
         d5 = "缺 brain_llm.py"
-    rows.append({"clause": "第五条", "title": "战略性唤醒（四信号 + proposal）",
+    # ANE-5 的另一半：**请求体必须极简**（特征向量 + 错误码，< 200 字节）。
+    # 只查"有没有四信号"是不够的 —— 那管的是"何时唤醒"，这条管的是
+    # "唤醒时说多少话"，两者都在第五条里。
+    d5b = "未量"
+    try:
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import brain_llm as _bl
+        _dec = _bl.escalate("zzz_ane5_probe_不存在")
+        if _dec["need"]:
+            _n = len(_bl._render_ane5(_dec).encode("utf-8"))
+            ok5 = ok5 and _n <= 200
+            d5b = "请求体 %d 字节（限 200）" % _n
+        else:
+            ok5 = False
+            d5b = "探针未触发升级（策略可能失效）"
+    except Exception as _e:                # noqa: BLE001
+        ok5 = False
+        d5b = "探针异常：%s" % type(_e).__name__
+    d5 = "%s ｜ %s" % (d5, d5b)
+    rows.append({"clause": "第五条", "title": "战略性唤醒（四信号 + proposal + 极简）",
                  "ok": ok5, "detail": d5})
     if not ok5:
         gaps.append("第五条：%s" % d5)

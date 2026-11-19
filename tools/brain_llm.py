@@ -231,6 +231,59 @@ def escalate(query, extra_signals=None, problems=None, entries=None, kinds=None)
             "payload": payload}
 
 
+#: **ANE 第五条要求的极简协议**（R996）。
+#:
+#: 原文：「上下文必须压缩至极简，仅传递**特征向量与错误码**，以极低 Token
+#: 消耗换取高级智能辅助。」
+#:
+#: 改造前每次请求 1434 字节的自然语言（含解释、约束、JSON schema 全文）；
+#: 现在请求体只含四行：错误码 / 特征向量 / 任务短语 / 命中条目 id。
+#: **约束与回复 schema 不随请求变化，因此移到 `SYSTEM.md` 一次性下发** ——
+#: 这才是"极简"的正解：不是删掉约束，而是让不变的东西不重复发送。
+ANE5_SYSTEM = """# 系统提示（一次性配置，不随请求重复发送）
+
+你在协助一个 MATLAB→C 编译器做**问题归因**。请求体是 ANE-5 极简格式：
+
+    q=  任务短语（<60 字）
+    E=  触发升级的错误码，逗号分隔：S1 无先例 / S2 复发 / S3 无见证 / S4 未归类
+    V=  特征向量（竖线分隔）：S1 得分 | S2 重复次数 | S3 未闭条目数 | S4 未知类别数
+    K=  命中的历史条目 id（可空），复用它们，别重复发明
+
+只输出 JSON：
+{"findings":[{"title":"","symptom":"","root_cause":"","rule":"","witness":"","severity":"high|medium|low"}]}
+
+硬约束：
+1. 每条 finding 的 `witness` 必须是仓库内**真实存在**的路径，否则会被拒收；
+2. 不要提"加测试/提高覆盖率"这类没有落点的话；
+3. 如果是本仓既有的设计约束（静态池、C 不能重载、C 无字符串类型），
+   请明确指出而非当作缺陷。
+"""
+
+
+def _render_ane5(dec):
+    """把判定结果压成 ANE-5 极简请求体（目标 < 200 字节）。
+
+    只保留**模型无法自己算出**的东西：错误码、特征向量、任务短语、命中 id。
+    约束与 schema 在 `SYSTEM.md`，不重复发送。
+    """
+    s = dec["signals"]
+    codes = []
+    if s["S1_no_precedent"]:
+        codes.append("S1")
+    if s["S2_recurs"]:
+        codes.append("S2")
+    if s["S3_no_witness"]:
+        codes.append("S3")
+    if s["S4_unclassified"]:
+        codes.append("S4")
+    vec = "%s|%d|%d|%d" % (s["S1_top_score"], s["S2_repeat_max"],
+                           s["S3_open_items"], len(s["S4_unknown_kinds"]))
+    p = dec["payload"]
+    q = (p.get("query") or "").replace("\n", " ")[:60]
+    ids = ",".join(e["id"] for e in (p.get("local_evidence") or [])[:3])
+    return "ANE5\nq=%s\nE=%s\nV=%s\nK=%s\n" % (q, ",".join(codes), vec, ids)
+
+
 def _render(payload):
     """把 payload 渲染成给模型看的纯文本。"""
     lines = ["你在协助一个 MATLAB→C 编译器项目做**问题归因**。",
@@ -263,8 +316,18 @@ def ask(query, cmds, timeout=300):
         print("[policy] 本地就能判，不消耗模型调用")
         return 0, dec
 
-    prompt = _render(dec["payload"])
+    # **ANE 第五条**：请求体只含错误码 + 特征向量（< 200 字节）；
+    # 不变的约束与 schema 落在 SYSTEM.md，一次性下发、不重复计费。
+    prompt = _render_ane5(dec)
     os.makedirs(REQDIR, exist_ok=True)
+    sys_md = os.path.join(REQDIR, "SYSTEM.md")
+    if not os.path.isfile(sys_md):
+        io.open(sys_md, "w", encoding="utf-8", newline="\n").write(ANE5_SYSTEM)
+        print("[policy] 系统提示 -> %s（一次性）" % os.path.relpath(sys_md, ROOT))
+    _n = len(prompt.encode("utf-8"))
+    if _n > 200:
+        # 只警告不阻断：压缩不到位是**协议问题**，不该让本次请求失败
+        print("[policy] ⚠ 请求体 %d 字节 > 200（ANE 第五条目标）" % _n)
     # **文件名要唯一**（R976）：只到秒的时间戳会让连续两次 ask 互相覆盖
     # （实测两次调用落在同一秒，第二个请求把第一个冲掉了）。
     stamp = "%s-%d" % (time.strftime("%Y%m%d-%H%M%S"), os.getpid())
