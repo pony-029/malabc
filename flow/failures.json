@@ -371,6 +371,16 @@
       "witness": "translate/mir.py",
       "status": "fixed",
       "commit": "R985"
+    },
+    {
+      "id": "F038",
+      "title": "运行时早有 colrange/transpose/flatten/mask，前端没接",
+      "symptom": "y = (1:n)' 落 unmapped:call2，而 mlc_op_colrange / mlc_op_transpose / mlc_op_flatten / mlc_op_mask 都已存在",
+      "root_cause": "mir.py 里 OP-RANGE/OP-TRANSPOSE/OP-RESHAPE 计数全是 0 —— 前端从未把这几类表达式映射到已有算子，运行时白写了",
+      "rule": "做缺口归因前先盘一遍'运行时已有什么'：能力可能只差一层映射，而不是差一个类型系统",
+      "witness": "tools/gap_attrib.py",
+      "status": "fixed",
+      "commit": "R986"
     }
   ]
 }
