@@ -1215,6 +1215,7 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 - `tools/unmapped_stats.py` —— **降级率统计**：按文件算 `1 - 未映射/(未映射+算子数)`，给 `avg_rate`、`≥90%` 个数与逐文件榜；三段链路的 ① 是二值判据（真实代码永远有边角），这个给出**可读的分布**
 - `tools/sample_numeric.py` —— **只抽可翻译目标**：排除算子重载桩（`varargout` 分派 / `CreateBasicOperator` / `switch class(`），并把排除理由与条数全部打印（不静默过滤）
 - `tools/gap_attrib.py` —— **缺口归因**：把未映射语句按"缺口性质"分类（string-switch / cell / type-predicate / builtin-call / index-assign / flatten / numeric-switch / other），每类标**攻关成本**（语法低 / 需运行时高）。`unmapped_stats` 说"降级率多少"，这个说"**剩下的能不能修**"
+- `tools/check_ane.py` —— **ANE 规范对齐门**：把 `aistandard/ANE规范…md` 的强制条款变成**可机检判据**（第四条小脑可审计 / 第五条四信号自证 / 第六条见证校验 / 第七条 `except: pass` 不超基线 / 第九条人类授权 / 第十条白盒产物），产物 `flow/ane.json`。明确列出**收不进来的**条款（第八条自愈深度、D0–D3 分级、L0–L5 成熟度），不假装覆盖
 - `tools/progress.py` —— **模块级完成度盘点**：读 `bench_all.json` / `unmapped.json` / `c2m.json` / `gates.json` / 大脑状态，输出红黄绿表（`--md` 出 markdown）。判据写死（绿=有门在守且当前绿、黄=能跑但指标低于可用线、红=缺失）—— 回答"到底完成了吗"
 - `tools/brain_llm.py` —— **大脑 ↔ 大模型的升级策略**：三层分工（本地大脑能判的绝不上行 / 升级策略把"拿不准"变成**可观测信号** / 模型只在 need=True 时被调用）。四信号：**S1 无先例**（`advise` 最高分 < 阈值）、**S2 复发**（同名问题 ≥3 次）、**S3 无见证可挂**（有未闭条目）、**S4 未归类**（kind 不由 `mir.py` 产出）；全假则零消耗。模型产出必须带**真实存在的 witness** 才能入库，它没有写代码的权限
 - `tools/c2m.py` —— **C → MATLAB**（补齐反向链路）：`C 源码 → cmir.c_to_mir → MIR → .m`。每个文件带 `% @c2m ... todo=N` 统计头，**认不出的算子落 `% TODO` 而不是瞎猜**；退出码 0 表示全部文件 todo=0（完整往返）

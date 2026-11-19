@@ -178,10 +178,44 @@ def audit():
     return rows, gaps
 
 
+def grant(by, scope, until=""):
+    """写一份**人类授权记录**（第九条）。
+
+    **为什么必须由人执行**：规范第九条禁止 AI 在未经人类明确授权的情况下
+    修改主分支。如果 AI 自己写这张文件，授权就变成了自证 —— 完全失去意义。
+    所以这里只提供工具，**参数必须由人给**。
+
+    `scope` 是授权范围（例如 "main 分支直推" / "仅 tools/ 与 flow/"），
+    `until` 可选，写到期时间；空表示不定期。
+    """
+    if not by.strip():
+        print("grant: 必须给 --by（授权人），不能留空")
+        return 2
+    if not scope.strip():
+        print("grant: 必须给 --scope（授权范围），不能留空")
+        return 2
+    rec = {"granted_by": by.strip(), "scope": scope.strip(),
+           "until": until.strip(),
+           "ts": time.strftime("%Y-%m-%d %H:%M:%S")}
+    io.open(AUTH, "w", encoding="utf-8", newline="\n").write(
+        json.dumps(rec, ensure_ascii=False, indent=2) + "\n")
+    print("check_ane: 已记录授权 -> %s" % os.path.relpath(AUTH, ROOT))
+    print("         授权人 %r ｜ 范围 %r" % (rec["granted_by"], rec["scope"]))
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="ANE 规范对齐门")
     ap.add_argument("--report", action="store_true", help="写 flow/ane.json")
+    ap.add_argument("--grant", action="store_true",
+                    help="写人类授权记录（第九条），须同时给 --by 与 --scope")
+    ap.add_argument("--by", default="", help="授权人（人来填）")
+    ap.add_argument("--scope", default="", help="授权范围")
+    ap.add_argument("--until", default="", help="到期时间（可空）")
     ns = ap.parse_args(argv)
+
+    if ns.grant:
+        return grant(ns.by, ns.scope, ns.until)
 
     if not os.path.isfile(SPEC):
         print("check_ane: 缺输入（规范文件不存在）")

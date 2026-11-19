@@ -410,6 +410,24 @@ def render(bench, links, c2m, hir, brief, src, delta):
     dl = ", ".join("%s %+d" % (k, v) for k, v in list(delta.items())[:6]) \
         if delta else "首次生成（无可比基线）"
 
+    # **ANE 规范对齐**（R988）：把 check_ane 的判据结果放进报告 ——
+    # 规范放在仓库里却没人核对，是这类文档最典型的腐化方式。
+    ane = _json(os.path.join(ROOT, "flow", "ane.json"))
+    if ane and ane.get("rows"):
+        _rows = "".join(
+            "<tr><td><b>%s</b></td><td>%s</td><td class='c %s'>%s</td>"
+            "<td style='text-align:left'>%s</td></tr>"
+            % (r["clause"], r["title"], "ok" if r["ok"] else "bad",
+               "成立" if r["ok"] else "缺口", r["detail"])
+            for r in ane["rows"])
+        _unc = ane.get("uncovered") or []
+        secA = ("<table><tr><th>条款</th><th>要求</th><th>判定</th>"
+                "<th>依据</th></tr>%s</table>"
+                "<p class='note'>未纳入机检（不假装覆盖）：%s</p>"
+                % (_rows, "；".join(_unc) if _unc else "无"))
+    else:
+        secA = "<p class='miss'>未量（缺 flow/ane.json）</p>"
+
     # **模块完成度**（R980）：直接复用 progress.py 的判定，避免两处口径漂移。
     # 放在最前面 —— 读者第一个问题永远是"这东西到底完成没完成"。
     try:
@@ -463,6 +481,7 @@ $banner
 <h2 id="s5">⑤ HIR 是否真的参与</h2><div class="panel">$sec5</div>
 <h2 id="s6">⑥ 脑状态（感知 / 知识 / 成长）</h2><div class="panel">$sec6</div>
 <h2 id="s7">⑦ 未映射类别（真实工程的主要障碍）</h2><div class="panel">$sec7</div>
+<h2 id="sa">⑩ ANE 规范对齐（可机检条款）</h2><div class="panel">$secA</div>
 <h2 id="s9">⑨ 缺口归因（能修 / 不能修）</h2><div class="panel">$sec9</div>
 <h2 id="s8">⑧ 数据来源与复现</h2><div class="panel">$sec8</div>
 </div></body></html>
@@ -470,7 +489,7 @@ $banner
     return tpl.substitute(css=CSS, now=now, dl=dl, kpis=kpi_html, sec1=sec1,
                           sec2=sec2, sec3=sec3, sec4=sec4, sec5=sec5, sec6=sec6,
                           sec7=sec7, sec8=sec8, sec0=sec0, sec9=sec9,
-                          banner=banner)
+                          secA=secA, banner=banner)
 
 
 def main(argv=None):

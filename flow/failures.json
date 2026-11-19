@@ -381,6 +381,16 @@
       "witness": "tools/gap_attrib.py",
       "status": "fixed",
       "commit": "R986"
+    },
+    {
+      "id": "F039",
+      "title": "验授权工具时用测试数据写了真实授权文件，等于伪造",
+      "symptom": "为验证 check_ane --grant，我跑了 --by 测试 --scope 全仓，flow/ane-auth.json 被真实创建，第九条立刻由 GAP 转 OK",
+      "root_cause": "授权文件是**门读取的唯一输入**；我用它做功能测试，等于用被测对象自己证明自己；测完还差点忘了删",
+      "rule": "验证'授权类'机制必须用临时目录或 --dry-run，绝不在真实路径留产物；发现留下就立刻删并复验 GAP 恢复",
+      "witness": "tools/check_ane.py",
+      "status": "fixed",
+      "commit": "R988"
     }
   ]
 }
