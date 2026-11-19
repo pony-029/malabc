@@ -311,6 +311,16 @@
       "witness": "tools/bench_all.py",
       "status": "fixed",
       "commit": "R974"
+    },
+    {
+      "id": "F032",
+      "title": "静态池没有覆盖口，大工程只能得到一句超预算",
+      "symptom": "octave-stat 需要 72496 字节而池固定 65536，跑多少轮都只有 fail，量不出任何真实读数",
+      "root_cause": "pool_bytes 只来自工程配置，没有 CLI/环境变量覆盖；而 64KiB 是单 MCU 的合理约束，不该套到 777 文件的工具箱上",
+      "rule": "设计约束要留显式覆盖口（默认不变），否则'约束生效'和'能力为零'在读数上无法区分",
+      "witness": "translate/project_map.py",
+      "status": "fixed",
+      "commit": "R975"
     }
   ]
 }

@@ -851,16 +851,26 @@ def run_build(cfg, base, cfg_path, m2c=None, python=None, map_spec=None):
     try:
         import budget as _budget
         pf = _budget.parse(io.open(mir, encoding="utf-8", errors="replace").read())
-        ok_b, data, top = _budget.report(pf, fl.get("static_pool"))
+        # **池大小可被环境变量覆盖**（R975）：静态池是**设计约束**（嵌入式目标
+        # 的内存上限），默认 64 KiB 对单个 MCU 是合理的；但一个 777 文件的
+        # 工具箱（gnu-octave/statistics，需要 72 KB）本来就不该跑在 64 KiB 上。
+        # 不给覆盖口，这类工程永远只有一句"超预算"、量不出任何真实读数。
+        # 默认行为不变（仍用工程配置），只在显式设了 `M2C_POOL_BYTES` 时放宽。
+        _pool = fl.get("static_pool")
+        _ov = os.environ.get("M2C_POOL_BYTES")
+        if _ov and _ov.strip().isdigit():
+            _pool = int(_ov.strip())
+            log.append("budget: 池由 M2C_POOL_BYTES 覆盖为 %d 字节" % _pool)
+        ok_b, data, top = _budget.report(pf, _pool)
         bpath = os.path.join(base, fl["c_root"], "budget.json")
         os.makedirs(os.path.dirname(bpath), exist_ok=True)
         io.open(bpath, "w", encoding="utf-8", newline="\n").write(
             json.dumps(data, ensure_ascii=False, indent=2) + "\n")
         log.append("budget: %d 字节 / pool=%s → %s"
-                   % (data["total_bytes"], fl.get("static_pool"), bpath))
+                   % (data["total_bytes"], _pool, bpath))
         if not ok_b:
             msg = ("**超预算**：需要 %d 字节，池只有 %s（差 %d）\n"
-                   % (data["total_bytes"], fl.get("static_pool"), data["over_by"]))
+                   % (data["total_bytes"], _pool, data["over_by"]))
             for b, fn, name in top:
                 msg += "   %-16s %-14s %6d 字节\n" % (fn, name, b)
             return 1, log, out + msg
