@@ -95,6 +95,17 @@ def _gates():
     return re.findall(r'"([a-z0-9_]+)"', m.group(1))
 
 
+def _gates_sig(gates):
+    """当前 GATES 清单的指纹（12 位）。
+
+    用途：让 RG5 能分辨「这条历史墙钟是在**现在这套清单**下跑出来的」
+    还是「旧清单的遗留」。没有它，清单缩小后判据会一直红着旧数字。
+    """
+    import hashlib
+    return hashlib.sha256(
+        "\n".join(sorted(gates or ())).encode("utf-8")).hexdigest()[:12]
+
+
 def _files():
     return sorted(n[:-3] for n in os.listdir(HERE)
                   if n.startswith("check_") and n.endswith(".py"))
@@ -185,9 +196,19 @@ def check():
     except (IOError, OSError, ValueError):
         last = {}
     total = int(last.get("total_ms") or 0)
-    if total > BUDGET_MS:
+    # **样本必须对应当前配置**（R1014）：RG5 读的是历史某次的墙钟，
+    # 而 `GATES` 清单是会变的（R1013 就把 check_generated_compiles 挪到了
+    # CI_ONLY）。清单一变，那条历史就不再代表"现在跑一遍要多久"——
+    # 此时若继续判负，判据就从守卫变成**死锁**：要新样本必须发版，
+    # 而发版正被它拦着。历史上 RG5 正是这样永远红着。
+    # 判法：给清单算指纹写进历史；指纹不符 → 旧样本作废，只提示不判负。
+    sig_now = _gates_sig(gates)
+    sig_old = last.get("gates_sig")
+    if total > BUDGET_MS and sig_old == sig_now:
         problems.append(u"RG5 上次发版墙钟 %d ms > 预算 %d ms —— 超出后"
                         u"\"跑一遍全量\"这个习惯会先崩" % (total, BUDGET_MS))
+    elif total > BUDGET_MS:
+        stats["stale_sample"] = (sig_old, sig_now, total)
     stats["budget_ms"] = BUDGET_MS
     stats["last_total_ms"] = total
 
@@ -212,6 +233,13 @@ def main(argv=None):
         print("check_release_gates: %d 项不合规" % len(problems))
         return 1
 
+    # 旧样本作废时要**说出来**：否则读者看到"绿"，却不知道 RG5 这次
+    # 根本没判 —— 静默的"没判"和"判了且通过"必须能分辨。
+    _st = stats.get("stale_sample")
+    if _st:
+        print("  [提示] RG5 跳过：上次墙钟 %d ms 是**旧发版清单**（指纹 %r）"
+              "下跑的，与当前清单（%r）不符 —— 该样本作废，下次发版会重建"
+              % (_st[2], _st[0], _st[1]))
     print("check_release_gates: OK（RG1–RG5 全绿；%d 道门在发版清单里，"
           "%d 个豁免带理由，%d 个 check 脚本）"
           % (stats["gates"], stats["exempt"], stats["files"]))

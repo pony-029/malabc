@@ -290,8 +290,15 @@ def main(argv=None):
     # **趋势要留**：单次耗时说明不了退化，只有和"它自己以前"比才行。
     _hist = os.path.join(ROOT, "releases", "gates-history.jsonl")
     try:
+        # `gates_sig`：这次墙钟是在**哪套清单**下跑出来的（R1014）。
+        # RG5 靠它分辨"旧清单的遗留数字"与"当前配置的真实耗时"——
+        # 没有它，清单缩小后判据会一直红着旧数字，成为死锁。
+        import hashlib as _hl
+        _gsig = _hl.sha256("\n".join(sorted(GATES)).encode("utf-8")
+                           ).hexdigest()[:12]
         line = json.dumps({"at": time.strftime("%Y-%m-%dT%H:%M:%S"),
                            "total_ms": total_ms,
+                           "gates_sig": _gsig,
                            "hits": _hits,
                            "gates": dict((g, stamps[g]["ms"]) for g in GATES),
                            "detail": _gate_detail(_stats_dir)},
