@@ -435,9 +435,17 @@ def render(bench, links, c2m, hir, brief, src, delta):
         _prows = _pg.rows(_pg.collect())
     except Exception:                      # noqa: BLE001
         _prows = []
+    # **报告必须标出它对应哪个版本**（R1021）：否则读者无法判断这份数字
+    # 是 2.4.5 还是 2.4.6 跑出来的 —— 而发版会改版本号，报告不会自己变。
+    _ver = "未知"
+    _vj = _json(os.path.join(ROOT, "vscode", "package.json"))
+    if _vj and _vj.get("version"):
+        _ver = str(_vj["version"])
     if _prows:
         _cls = {"绿": "ok", "黄": "warn", "红": "bad"}
-        sec0 = ("<table><tr><th>模块</th><th>状态</th><th>依据</th></tr>"
+        sec0 = ("<p class='note'>本报告对应扩展版本 <b>%s</b>"
+                "（<code>vscode/package.json</code>）。</p>"
+                "<table><tr><th>模块</th><th>状态</th><th>依据</th></tr>" % _ver
                 + "".join(
                     "<tr><td>%s</td><td class='c %s'><b>%s</b></td>"
                     "<td style='text-align:left'>%s</td></tr>"
