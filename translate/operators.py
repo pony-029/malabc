@@ -417,6 +417,11 @@ PARSE_LINE_EXEMPT = {
     "OP-SETIDX2": "二维写回 `A(i, j) = v;`，由 mir.py 的 SETIDX2 分支处理",
     "OP-FILLA": "运行期维度造数组 `y = ones(m, n);`，由 mir.py 的 fill 分支处理",
     "OP-SETDIFF": "集合差 `y = setdiff(a, b);`，由 mir.py 的 setdiff 降级链处理",
+    # R1007：`1:4` 是**语句形态**，不是函数调用 —— 由 `mir.py::_lower_range`
+    # 按正则识别（放在 `_lower_col_slice` 之后，免得抢 `A(:,p:q)` 的切片分支）。
+    # 让 parse_line 再认一种"冒号表达式"等于重复实现，并会与切片语义抢入口。
+    # 与算子表里的 `trigger: "syntax"` 是同一件事的两种登记口径。
+    "OP-RANGE": "等差序列 `y = lo:hi;` 是语句形态，由 mir.py 的 _lower_range 分支处理",
 }
 
 
