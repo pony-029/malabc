@@ -176,8 +176,16 @@ def main(argv=None):
     if getattr(ns, "trend", False):
         return show_trend()
 
+    # **版本号自增必须排在门禁之后**（R1015）。
+    #
+    # 原先它在最前面，于是形成一个真循环：每次 `--apply` 先把 package.json
+    # 涨一格 -> `check_lsp_doc_parity` 的 LSP5a 要求 CHANGELOG 里有这一版
+    # -> 没有 -> 门红 -> 发版失败。可版本号**已经被改掉了**，下次再跑又涨一格。
+    # 实测：2.4.2 补完 CHANGELOG 后重跑，会直接要求 2.4.4。
+    #
+    # 正确顺序：门禁在**当前自洽的版本**上跑完（2.4.2 == 2.4.2 自洽），
+    # 全绿之后才升版本；升完提示"补 CHANGELOG"，由下一次门禁来核对。
     steps = [
-        ("版本号 +1", [py, "tools/bump_version.py", "--apply"], True),
         ("打包 vsix", [py, "tools/build_vsix.py"], True),
         ("重建版本表", [py, "tools/make_release.py"], True),
     ]
@@ -353,6 +361,16 @@ def main(argv=None):
              u"，%d 道增量命中" % _hits if _hits else u"", cpu_note))
     if bad:
         print("门没过就不该发版 —— 停在这里，包已经打好但先别推。")
+        return 1
+
+    # 门禁全绿之后才升版本号（R1015）：顺序反了会让"升版本"变成不可回退的
+    # 副作用 —— 门红一次，版本号已经涨了一格，下次再跑又涨一格。
+    print("[RUN ] 版本号 +1（门禁已全绿）")
+    _rc, _tail = run([py, "tools/bump_version.py", "--apply"])
+    print("  [%s] 版本号 +1" % ("OK  " if _rc == 0 else "FAIL"))
+    if _rc != 0:
+        for ln in (_tail or [])[-3:]:
+            print("         %s" % ln[:100])
         return 1
 
     if ns.install:
