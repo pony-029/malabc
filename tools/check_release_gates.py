@@ -196,6 +196,29 @@ def check():
     except (IOError, OSError, ValueError):
         last = {}
     total = int(last.get("total_ms") or 0)
+    # **预算按「同一套清单的历史中位数」推算**（R1016）。
+    #
+    # `BUDGET_MS=6000` 是 16 道门、实测 4.9s 时定的绝对值。现在 21 道门
+    # （多了 check_ane / check_tool_selftests 等），同指纹实测 10.7~13.5s ——
+    # 一个拍死的绝对值在门数变化后必然失准：要么永远红，要么被人悄悄调大。
+    #
+    # 改成：预算 = max(6000, 同指纹历史中位数 × 1.6)。它守的是
+    # 「**不要比这套清单自己以往的成绩慢 60%**」，而不是一个凭感觉的数字；
+    # 门数增加时预算自动跟上，而单门退化仍会被抓。
+    sig_now = _gates_sig(gates)
+    try:
+        _all_rows = [json.loads(x) for x in
+                     io.open(HISTORY, encoding="utf-8").read().splitlines()
+                     if x.strip()]
+    except (IOError, OSError, ValueError):
+        _all_rows = []
+    _same = [r.get("total_ms") for r in _all_rows
+             if r.get("gates_sig") == sig_now and r.get("total_ms")]
+    _same.sort()
+    _median = _same[len(_same) // 2] if _same else 0
+    _budget = max(BUDGET_MS, int(_median * 1.6))
+    stats["budget_source"] = ("同指纹 %d 条，中位 %d ms × 1.6" % (len(_same), _median)
+                              if _same else "无同指纹样本，用下限 %d ms" % BUDGET_MS)
     # **样本必须对应当前配置**（R1014）：RG5 读的是历史某次的墙钟，
     # 而 `GATES` 清单是会变的（R1013 就把 check_generated_compiles 挪到了
     # CI_ONLY）。清单一变，那条历史就不再代表"现在跑一遍要多久"——
@@ -204,12 +227,13 @@ def check():
     # 判法：给清单算指纹写进历史；指纹不符 → 旧样本作废，只提示不判负。
     sig_now = _gates_sig(gates)
     sig_old = last.get("gates_sig")
-    if total > BUDGET_MS and sig_old == sig_now:
-        problems.append(u"RG5 上次发版墙钟 %d ms > 预算 %d ms —— 超出后"
-                        u"\"跑一遍全量\"这个习惯会先崩" % (total, BUDGET_MS))
-    elif total > BUDGET_MS:
+    if total > _budget and sig_old == sig_now:
+        problems.append(u"RG5 上次发版墙钟 %d ms > 预算 %d ms（%s）—— 超出后"
+                        u"\"跑一遍全量\"这个习惯会先崩"
+                        % (total, _budget, stats["budget_source"]))
+    elif total > _budget:
         stats["stale_sample"] = (sig_old, sig_now, total)
-    stats["budget_ms"] = BUDGET_MS
+    stats["budget_ms"] = _budget
     stats["last_total_ms"] = total
 
     return problems, stats
