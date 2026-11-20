@@ -92,6 +92,9 @@ GROUPS = {
     "analyzer/": "分析侧",
     "binfmt/": "分析侧",
     "renderers/": "分析侧",
+    # R1010：ANE 规范原件（外部规范 v0.5.0 + 落地映射索引）。归到「判据」域，
+    # 因为它是 `tools/check_ane.py` 的**唯一真源** —— 没有它那道门就没得守。
+    "aistandard/": "判据",
     "tools/": "工具与门禁",
     "harness/": "工具与门禁",
     "ci-examples/": "工具与门禁",
