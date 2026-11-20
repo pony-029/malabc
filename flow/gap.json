@@ -1,11 +1,11 @@
 {
  "source": "E:\\temp\\matlabc\\oct_num",
- "total": 2648,
+ "total": 2645,
  "cats": [
   {
    "kind": "other",
-   "n": 1233,
-   "pct": 46.6,
+   "n": 1230,
+   "pct": 46.5,
    "cost": "待定",
    "sample": "yCDF = (1:n)' / n;"
   },

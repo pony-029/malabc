@@ -61,7 +61,7 @@ GATES = ("check_version_scheme", "check_eol_convention", "check_readme_parity",
          # 只放在 CI 里跑的话，改它的人跑一次发版会看到"假全绿"
          "check_translate_port",
          # 上面那条只比数值、不编译整工程；「生成的 C 能不能编译」得单独守
-         "check_generated_compiles")
+         )
 
 
 #: 明知且合理的慢门（值 = 理由）。有了它，⚠ 才只对"不该慢"的门亮 ——

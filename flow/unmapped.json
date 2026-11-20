@@ -1,10 +1,10 @@
 {
  "source": "E:\\temp\\matlabc\\oct_num",
  "files": 40,
- "total_unmapped": 2648,
+ "total_unmapped": 2645,
  "kinds": {
   "call2": 673,
-  "other": 605,
+  "other": 602,
   "cond": 333,
   "strlit": 317,
   "cell": 313,
@@ -14,7 +14,7 @@
   "idx2": 21,
   "blockmarker": 3
  },
- "avg_rate": 0.203,
+ "avg_rate": 0.204,
  "files_over_90": 0,
  "files_zero": 0,
  "per_file": [
@@ -127,16 +127,16 @@
    "rate": 0.185
   },
   {
-   "file": "optimalleaforder.m",
-   "unmapped": 85,
-   "ops": 20,
-   "rate": 0.19
-  },
-  {
    "file": "dbscan.m",
    "unmapped": 29,
    "ops": 7,
    "rate": 0.194
+  },
+  {
+   "file": "optimalleaforder.m",
+   "unmapped": 84,
+   "ops": 21,
+   "rate": 0.2
   },
   {
    "file": "robustcov.m",
@@ -218,9 +218,9 @@
   },
   {
    "file": "cluster.m",
-   "unmapped": 41,
-   "ops": 21,
-   "rate": 0.339
+   "unmapped": 39,
+   "ops": 23,
+   "rate": 0.371
   },
   {
    "file": "multiway.m",
