@@ -182,6 +182,12 @@ def check():
         # 硬比只会拿串行读数去比并行读数。等下一次发版写入字段后自动恢复。
         _peers = ([r for r in rows[:-1] if r.get("workers") == _w_now]
                   if _w_now is not None else [])
+        # **「不比」也要说出来**（R1020）：否则「因为样本不足没判」与
+        # 「判了且通过」在输出上完全一样，失效时无从分辨。
+        if len(_peers) < 2:
+            print(u"  [提示] RG4 跳过：同并行度的历史样本仅 %d 条"
+                  u"（需要 ≥2），不与不同负载的读数硬比"
+                  % (len(_peers) + (1 if _w_now is not None else 0)))
         if len(_peers) < 2:
             _peers = []          # 同并行度样本不足 → 不比，而不是乱比
         for g in gates:
