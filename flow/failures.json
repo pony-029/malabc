@@ -511,6 +511,16 @@
       "witness": "tools/check_all.py",
       "status": "fixed",
       "commit": "R1003"
+    },
+    {
+      "id": "F052",
+      "title": "加了一道门却没同步 MIN_GUARDS，自证因此红两轮",
+      "symptom": "check_tool_selftests 报 'check_all.py --selftest rc=1'，表面像 check_hang 挂死；实跑是 [selftest] MIN_GUARDS=45 与真实 46 不一致 + good=44<45",
+      "root_cause": "加 check_ane.py 后真实护栏 45->46，而 check_all.py 的 MIN_GUARDS 常量和自证 good 下界都没同步",
+      "rule": "加/删护栏后要同步三处：MIN_GUARDS、自证 good 下界、README/CONTRIBUTING 的散文数字；这三处都有门在守，漏一处就红",
+      "witness": "tools/check_all.py",
+      "status": "fixed",
+      "commit": "R1004"
     }
   ]
 }
