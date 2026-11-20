@@ -307,6 +307,11 @@ def main(argv=None):
         line = json.dumps({"at": time.strftime("%Y-%m-%dT%H:%M:%S"),
                            "total_ms": total_ms,
                            "gates_sig": _gsig,
+                           # **并行度必须记下来**（R1018）：同一道门在 1 路串行
+                           # 与 8 路并行下的耗时不可比（实测 check_py36_clean
+                           # 单跑 260ms、8 路时 5320ms —— 20 倍差距全是排队与
+                           # I/O 争用，不是门退化）。RG4 只该跟同并行度比。
+                           "workers": workers,
                            "hits": _hits,
                            "gates": dict((g, stamps[g]["ms"]) for g in GATES),
                            "detail": _gate_detail(_stats_dir)},

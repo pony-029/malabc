@@ -174,8 +174,18 @@ def check():
         rows = []
     if len(rows) >= 3:
         now = rows[-1].get("gates") or {}
+        # **只与同并行度的历史比**（R1018）：单跑 check_py36_clean 是 260ms，
+        # 8 路并行时 5320ms —— 那 20 倍是排队与 I/O 争用，不是门退化。
+        # 拿两种负载下的读数互相比较，只会让 RG4 每次都点名，然后没人看。
+        _w_now = rows[-1].get("workers")
+        # 最新记录缺 `workers`（旧格式）时**不比**：此时无法判断两边的负载，
+        # 硬比只会拿串行读数去比并行读数。等下一次发版写入字段后自动恢复。
+        _peers = ([r for r in rows[:-1] if r.get("workers") == _w_now]
+                  if _w_now is not None else [])
+        if len(_peers) < 2:
+            _peers = []          # 同并行度样本不足 → 不比，而不是乱比
         for g in gates:
-            series = [(r.get("gates") or {}).get(g) for r in rows[:-1]]
+            series = [(r.get("gates") or {}).get(g) for r in _peers]
             series = sorted(v for v in series if isinstance(v, int) and v > 0)
             cur = now.get(g)
             if not series or not isinstance(cur, int):
