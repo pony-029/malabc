@@ -415,7 +415,7 @@ def render(bench, links, c2m, hir, brief, src, delta):
     # 0/40（它们大量用 cell/string）。两层都必须出现在同一张表里，
     # 否则读者看到的不是"能力边界"，而是"一个 0"。
     sec_layer = ""
-    _layers = getattr(ns, "links_layer", None) or []
+    _layers = globals().get("_LINKS_LAYERS") or []
     if _layers:
         _rows = []
         for _item in _layers:
@@ -518,7 +518,7 @@ $banner
 <h2 id="s0">完成度总览（模块级红黄绿）</h2><div class="panel">$sec0</div>
 
 <h2 id="s1">① 规模：全量目录实测</h2><div class="panel">$sec1</div>
-<h2 id="s2">② 三段链路：MATLAB → MIR → C → 反推 MIR</h2><div class="panel">$sec2</div>
+<h2 id="s2">② 三段链路：MATLAB → MIR → C → 反推 MIR</h2><div class="panel">$sec_layer$sec2</div>
 <h2 id="s3">③ 反向链路：C → MATLAB</h2><div class="panel">$sec3</div>
 <h2 id="s4">④ 边界与极限用例</h2><div class="panel">$sec4</div>
 <h2 id="s5">⑤ HIR 是否真的参与</h2><div class="panel">$sec5</div>
@@ -531,19 +531,27 @@ $banner
 """)
     return tpl.substitute(css=CSS, now=now, dl=dl, kpis=kpi_html, sec1=sec1,
                           sec2=sec2, sec3=sec3, sec4=sec4, sec5=sec5, sec6=sec6,
-                          sec7=sec7, sec8=sec8, sec0=sec0, sec9=sec9,
+                          sec7=sec7, sec8=sec8, sec0=sec0, sec9=sec9, sec_layer=sec_layer,
                           secA=secA, banner=banner)
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="总报告")
     ap.add_argument("--links", help="three_links 输出目录")
+    # **分层对照**（R1026）：可重复。格式 `层名=目录`，例如
+    #   --links-layer 合成语料(60)=E:/temp/.../_tl_syn
+    #   --links-layer 真实工程(40)=E:/temp/.../_tl_oct
+    # 只放最难一层会让人误以为"全都不通"（实测合成 60/60、真实 0/40）。
+    ap.add_argument("--links-layer", action="append", default=[],
+                    metavar="层名=目录",
+                    help="多难度的三段结果，可重复；会并列成一张对照表")
     ap.add_argument("--mir", help="用于统计 HIR 参与率的 project.mir")
     ap.add_argument("--c2m", help="c2m --json 的输出")
     ap.add_argument("-o", "--out", default=os.path.join(ROOT, "flow", "full_report.html"))
     ap.add_argument("--no-history", action="store_true",
                     help="不往 report-history.jsonl 追加（调试用）")
     ns = ap.parse_args(argv)
+    globals()["_LINKS_LAYERS"] = ns.links_layer
 
     bench = _bench()
     links = _links(ns.links)
