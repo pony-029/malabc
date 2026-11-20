@@ -1,46 +1,44 @@
 {
-  "ts": "2026-11-20 00:56:42",
+  "ts": "2026-11-20 20:33:50",
   "rows": [
     {
       "clause": "第四条",
       "title": "小脑优先（本地裁决 + 可审计）",
       "ok": true,
-      "detail": "brain.py 存在；咨询留痕 10 条"
+      "detail": "AN1 brain.py 存在；咨询留痕 10 条"
     },
     {
       "clause": "第五条",
       "title": "战略性唤醒（四信号 + proposal + 极简）",
       "ok": true,
-      "detail": "四信号自证 SELFTEST COUNTS {\"bad\": 0, \"good\": 5} ｜ 请求体 70 字节（限 200）"
+      "detail": "AN2 四信号自证 SELFTEST COUNTS {\"bad\": 0, \"good\": 5} ｜ 请求体 70 字节（限 200）"
     },
     {
       "clause": "第六条",
       "title": "记忆护城河（结构化 + 见证校验）",
       "ok": true,
-      "detail": "45 条经验，无见证 0 条"
+      "detail": "AN3 52 条经验，无见证 0 条"
     },
     {
       "clause": "第七条",
       "title": "绝对防御（杜绝静默失败）",
       "ok": true,
-      "detail": "except:pass 184 处（基线 184）；最多：matlabc.py(44)、gui.py(28)"
+      "detail": "AN4 except:pass 184 处（基线 184）；最多：matlabc.py(44)、gui.py(28)"
     },
     {
       "clause": "第九条",
       "title": "一票否决（人类授权）",
-      "ok": false,
-      "detail": "无 flow/ane-auth.json（本轮未经显式授权）"
+      "ok": true,
+      "detail": "AN5 授权人 '用户（本次对话明确授权）' ｜ 范围 '执行 release.py --apply 与主分支直推；含 ANE 第九条人类授权记录'"
     },
     {
       "clause": "第十条",
       "title": "全景白盒（台账无黑盒）",
       "ok": true,
-      "detail": "full_report.html 有 ｜ progress.py 有"
+      "detail": "AN6 full_report.html 有 ｜ progress.py 有"
     }
   ],
-  "gaps": [
-    "第九条：无 flow/ane-auth.json（本轮未经显式授权）"
-  ],
+  "gaps": [],
   "uncovered": [
     "第八条（自愈深度无法用存在性判据）",
     "第三章 D0–D3 分级（需人工评级）",
