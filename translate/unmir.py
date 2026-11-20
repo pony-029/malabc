@@ -236,6 +236,13 @@ class Unmirror(object):
             # `op:OP-ROW:y:A:2` -> `y = A(2, :);`
             self._emit("%s = %s(%s, :);" % (dst, self._e(a[0]), self._e(a[1])))
             return
+        if oid == "OP-RANGE" and len(a) >= 2:
+            # `op:OP-RANGE:y:1:n` -> `y = 1:n;`（**生成**等差序列）。
+            # 与下面 OP-COLRANGE 的 `A(:, p:q)`（**取列切片**）是两种语义，
+            # 别合并 —— R990 曾只按名字相似复用，会把「生成 1..n」编成
+            # 「取第 1..n 列」，C 编得过而结果全错。
+            self._emit("%s = %s:%s;" % (dst, self._e(a[0]), self._e(a[1])))
+            return
         if oid == "OP-COLRANGE" and len(a) >= 3:
             # `op:OP-COLRANGE:y:A:2:-1` -> `y = A(:, 2:end);`（-1 表示 end）
             f = self._e(a[1])

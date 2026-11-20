@@ -270,6 +270,7 @@ pub const OP_ARITY: &[(&str, usize, usize)] = &[
     ("OP-NNZ", 1, 1),
     ("OP-NUMEL", 1, 1),
     ("OP-PROD", 1, 1),
+    ("OP-RANGE", 2, 2),
     ("OP-ROUND", 1, 1),
     ("OP-ROW", 2, 2),
     ("OP-SETDIFF", 2, 2),
