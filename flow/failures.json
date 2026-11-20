@@ -501,6 +501,16 @@
       "witness": "translate/examples/numeric/rng_demo.m",
       "status": "fixed",
       "commit": "R1002"
+    },
+    {
+      "id": "F051",
+      "title": "自证模式的收尾把主流程带进了临时目录",
+      "symptom": "check_tool_selftests 报 'check_all.py --selftest rc=1'，表面像 check_hang 挂死；实跑发现末句是 'check_all: 未找到任何 tools/check_*.py（缺输入 → 红）'",
+      "root_cause": "check_all 的 --selftest 在临时目录跑完样本护栏后，主流程继续执行并去 HERE 下找 tools/check_*.py，而环境已被切走",
+      "rule": "自证模式必须与主流程**互斥返回**：跑完样本就 return，不要继续走主流程",
+      "witness": "tools/check_all.py",
+      "status": "fixed",
+      "commit": "R1003"
     }
   ]
 }
