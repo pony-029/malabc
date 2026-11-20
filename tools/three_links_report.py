@@ -374,8 +374,12 @@ def main():
                     {"n": n, "l1": l1, "l2": l2, "l3": l3, "full": full,
                      "src": os.path.abspath(getattr(a, "src", "") or "")},
                     ensure_ascii=False, indent=1) + "\n")
-    except (IOError, OSError, ValueError):
-        pass          # 汇总文件是旁路产物，写不出不该让报告失败
+    except (IOError, OSError, ValueError) as _e:
+        # **不许静默**（R1029）：`links.json` 是旁路产物，写不出不该让报告失败，
+        # 但也不能一声不吭 —— ANE 第七条「杜绝静默失败」抓的正是这种"带 pass 的
+        # except"。写失败与写成功在输出上必须能分辨。
+        print("  [warn] links.json 未写出（%s）—— 下游的分层表会显示未量"
+              % type(_e).__name__)
     print("三段：① %d/%d ｜ ② %d/%d ｜ ③ %d/%d ｜ 三段全通 %d"
           % (l1, n, l2, n, l3, n, full))
     print("已写出 %s（%.1f KB）" % (p, os.path.getsize(p) / 1024.0))
