@@ -363,6 +363,19 @@ def main():
     else:
         kblock = ""
     p, (n, l1, l2, l3, full) = write_report(recs, a.out, kblock)
+    # **同时写一份机器可读的汇总**（R1027）：`full_report` 要做"多难度层对照"，
+    # 它原先是从 index.html 里用正则抠数字 —— 而那份 HTML 是**给人看的**，
+    # 数字被排版标签包着，随时会因改样式而静默失效。
+    # 与当初给 c2m 加 `--json` 同一个原则：人读的产物不当机器读的输入。
+    try:
+        import json as _json
+        io.open(os.path.join(a.out, "links.json"), "w",
+                encoding="utf-8", newline="\n").write(_json.dumps(
+                    {"n": n, "l1": l1, "l2": l2, "l3": l3, "full": full,
+                     "src": os.path.abspath(getattr(a, "src", "") or "")},
+                    ensure_ascii=False, indent=1) + "\n")
+    except (IOError, OSError, ValueError):
+        pass          # 汇总文件是旁路产物，写不出不该让报告失败
     print("三段：① %d/%d ｜ ② %d/%d ｜ ③ %d/%d ｜ 三段全通 %d"
           % (l1, n, l2, n, l3, n, full))
     print("已写出 %s（%.1f KB）" % (p, os.path.getsize(p) / 1024.0))

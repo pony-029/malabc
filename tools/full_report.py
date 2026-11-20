@@ -424,19 +424,31 @@ def render(bench, links, c2m, hir, brief, src, delta):
             if not os.path.isfile(_idx):
                 _idx = os.path.join(_dir, "index.html")
             _txt = ""
-            try:
-                _raw = io.open(_idx, encoding="utf-8", errors="replace").read()
-                _m = re.search(r"三段：①\s*(\d+)/(\d+)\s*｜\s*②\s*(\d+)/(\d+)"
-                               r"\s*｜\s*③\s*(\d+)/(\d+)", _raw)
-                if not _m:
+            # **优先读 links.json**（R1027）：three_links 现在会写一份机器可读
+            # 的汇总。HTML 只作为回退 —— 那是给人看的产物，数字被排版标签
+            # 包着，用正则抠它等于把样式细节当成数据契约。
+            _js = os.path.join(os.path.dirname(_idx), "links.json")
+            if os.path.isfile(_js):
+                try:
+                    _d = json.load(io.open(_js, encoding="utf-8"))
+                    _n = _d.get("n") or 0
+                    _txt = "① %s/%s ｜ ② %s/%s ｜ ③ %s/%s" % (
+                        _d.get("l1"), _n, _d.get("l2"), _n, _d.get("l3"), _n)
+                    if _d.get("full") is not None:
+                        _txt += "（全通 %s）" % _d["full"]
+                except (IOError, OSError, ValueError):
+                    _txt = "links.json 读不出"
+            elif os.path.isfile(_idx):
+                try:
+                    _raw = io.open(_idx, encoding="utf-8", errors="replace").read()
                     _m = re.search(r"①\s*(\d+)/(\d+)[^0-9]+②\s*(\d+)/(\d+)"
                                    r"[^0-9]+③\s*(\d+)/(\d+)", _raw)
-                if _m:
-                    _a, _b, _c, _d, _e, _f = _m.groups()
-                    _txt = "① %s/%s ｜ ② %s/%s ｜ ③ %s/%s" % (
-                        _a, _b, _c, _d, _e, _f)
-            except (IOError, OSError):
-                _txt = "读不到 index.html"
+                    if _m:
+                        _a, _b, _c, _d2, _e, _f = _m.groups()
+                        _txt = "① %s/%s ｜ ② %s/%s ｜ ③ %s/%s" % (
+                            _a, _b, _c, _d2, _e, _f)
+                except (IOError, OSError):
+                    _txt = "读不到 index.html"
             _rows.append("<tr><td>%s</td><td style='text-align:left'><code>%s</code></td></tr>"
                          % (_label, _txt or "未量"))
         if _rows:
