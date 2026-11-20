@@ -48,6 +48,11 @@ GATES = ("check_version_scheme", "check_eol_convention", "check_readme_parity",
          # 失败知识库 / 解析切分 / 大脑成长 —— 这三道是"机制本身"的门，
          # 发版时更要跑：它们守着"同类错不再犯"，而发版正是最容易松劲的时刻。
          "check_failures", "check_mir_split", "check_brain_growth",
+        # ANE 规范对齐（R1005）：它守的是"小脑可审计 / 四信号 / 见证校验 /
+        # 静默失败基线 / 人类授权 / 白盒产物"六条 —— 发版正是最该核对
+        # "人类授权"的时刻。此前它不在发版清单里，等于从没在发布时跑过
+        # （RG2 就是这么报出来的）。
+        "check_ane",
          # 越界的符号行号会让大纲永远转圈
          "check_symbol_ranges",
          # 工具的自证需要有人执行，否则等于没写
