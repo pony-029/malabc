@@ -410,6 +410,41 @@ def render(bench, links, c2m, hir, brief, src, delta):
     dl = ", ".join("%s %+d" % (k, v) for k, v in list(delta.items())[:6]) \
         if delta else "首次生成（无可比基线）"
 
+    # **分层三段对照**（R1025）：一份报告只放**最难的一层**会让人误以为
+    # "全都不通"。实测：合成语料 60/60 三段全通，而 octave-stat 真实函数
+    # 0/40（它们大量用 cell/string）。两层都必须出现在同一张表里，
+    # 否则读者看到的不是"能力边界"，而是"一个 0"。
+    sec_layer = ""
+    _layers = getattr(ns, "links_layer", None) or []
+    if _layers:
+        _rows = []
+        for _item in _layers:
+            _label, _dir = _item.split("=", 1) if "=" in _item else (_item, _item)
+            _idx = os.path.join(ROOT, _dir, "index.html")
+            if not os.path.isfile(_idx):
+                _idx = os.path.join(_dir, "index.html")
+            _txt = ""
+            try:
+                _raw = io.open(_idx, encoding="utf-8", errors="replace").read()
+                _m = re.search(r"三段：①\s*(\d+)/(\d+)\s*｜\s*②\s*(\d+)/(\d+)"
+                               r"\s*｜\s*③\s*(\d+)/(\d+)", _raw)
+                if not _m:
+                    _m = re.search(r"①\s*(\d+)/(\d+)[^0-9]+②\s*(\d+)/(\d+)"
+                                   r"[^0-9]+③\s*(\d+)/(\d+)", _raw)
+                if _m:
+                    _a, _b, _c, _d, _e, _f = _m.groups()
+                    _txt = "① %s/%s ｜ ② %s/%s ｜ ③ %s/%s" % (
+                        _a, _b, _c, _d, _e, _f)
+            except (IOError, OSError):
+                _txt = "读不到 index.html"
+            _rows.append("<tr><td>%s</td><td style='text-align:left'><code>%s</code></td></tr>"
+                         % (_label, _txt or "未量"))
+        if _rows:
+            sec_layer = ("<p class='note'>同一套链路在<b>不同难度层</b>上的表现 —— "
+                         "只看最下面那层会误判为「全都不通」。</p>"
+                         "<table><tr><th>层</th><th>三段（① MIR ｜ ② C ｜ ③ 反推）</th></tr>"
+                         + "".join(_rows) + "</table>")
+
     # **ANE 规范对齐**（R988）：把 check_ane 的判据结果放进报告 ——
     # 规范放在仓库里却没人核对，是这类文档最典型的腐化方式。
     ane = _json(os.path.join(ROOT, "flow", "ane.json"))
