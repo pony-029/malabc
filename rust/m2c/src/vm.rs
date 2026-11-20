@@ -608,6 +608,23 @@ impl Vm {
             } else {
                 0.0
             })),
+            // 等差序列 `lo:hi`（步长 1）-> 列向量（R1006）。
+            // 与 `OP-COLRANGE` 的列切片语义**不同**（R990 踩过：只按名字像
+            // 就复用会把"生成 1..n"编成"取第 1..n 列"）。
+            // 参考实现必须与 C 侧 `mlc_op_range` 同语义，否则规模比对里的
+            // "真不同"会变成噪音。
+            "OP-RANGE" => {
+                let lo = self.get(&args[0])?.data[0].round() as i64;
+                let hi = self.get(&args[1])?.data[0].round() as i64;
+                let mut v: Vec<f64> = Vec::new();
+                let mut k = lo;
+                while k <= hi {
+                    v.push(k as f64);
+                    k += 1;
+                }
+                let n = v.len();
+                Ok(Val { data: v, rows: n, cols: 1 })
+            }
             "OP-NUMEL" => Ok(Val::scalar(self.get(&args[0])?.numel() as f64)),
             "OP-LENGTH" => {
                 let a = self.get(&args[0])?;
