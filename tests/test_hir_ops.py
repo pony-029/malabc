@@ -42,6 +42,9 @@ SPEC = {
     "pred.isequal", "pred.isequalk",
     "search.find2", "search.find3",
     "idx.row", "idx.colrange",
+    # R1008：等差序列 `lo:hi` -> OP-RANGE。与 `idx.colrange`（`A(:,p:q)`
+    # 切片）是**两种语义**，别混（R990 踩过：只按名字像就复用会编错）。
+    "range.colon",
 }
 
 
