@@ -372,6 +372,14 @@ def main(argv=None):
         for ln in (_tail or [])[-3:]:
             print("         %s" % ln[:100])
         return 1
+    # **升完版本要把版本表再重建一次**（R1017）：`make_release` 在 steps 里，
+    # 那时版本号还是旧的，于是 releases/README.md 首行永远慢一格
+    # （实测：package.json 2.4.4 而版本表写 2.4.3，VS2 立刻红）。
+    _rc2, _tail2 = run([py, "tools/make_release.py"])
+    print("  [%s] 版本表重建（升版后）" % ("OK  " if _rc2 == 0 else "FAIL"))
+    if _rc2 != 0:
+        for ln in (_tail2 or [])[-3:]:
+            print("         %s" % ln[:100])
 
     if ns.install:
         vsix = [f for f in os.listdir(os.path.join(ROOT, "releases", "vsix"))
