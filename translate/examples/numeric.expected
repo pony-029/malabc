@@ -57,3 +57,4 @@ wheregt: 3 4 5
 while2d: 6
 while_acc: 10
 whilelt: 6
+rng_demo: 1 2 3 4

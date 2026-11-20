@@ -491,6 +491,16 @@
       "witness": "tools/check_help_contract.py",
       "status": "fixed",
       "commit": "R999"
+    },
+    {
+      "id": "F050",
+      "title": "运行期形状的用例进不了静态语料，会被静默跳过",
+      "symptom": "rng_demo 报 'skipped (no shape)'：y=1:n 的输出形状要运行期才知道，C 侧预分配不了",
+      "root_cause": "numeric 语料要求编译期可定形状；我按'最自然'的写法 y=1:n 加用例，而它恰好是形状不可静态推出的那一类",
+      "rule": "往静态语料加用例要用两端字面量的形式（1:4）；运行期形状的写法留着给 RS3 之外的通道，别混",
+      "witness": "translate/examples/numeric/rng_demo.m",
+      "status": "fixed",
+      "commit": "R1002"
     }
   ]
 }
