@@ -1,0 +1,525 @@
+{
+ "src": "E:\\temp\\matlabc\\oct_num",
+ "total": 40,
+ "blocked": 40,
+ "payoff": [
+  {
+   "kind": "other",
+   "only_files": 0,
+   "any_files": 38
+  },
+  {
+   "kind": "cond",
+   "only_files": 0,
+   "any_files": 36
+  },
+  {
+   "kind": "call2",
+   "only_files": 0,
+   "any_files": 35
+  },
+  {
+   "kind": "cell",
+   "only_files": 0,
+   "any_files": 30
+  },
+  {
+   "kind": "strlit",
+   "only_files": 0,
+   "any_files": 28
+  },
+  {
+   "kind": "nested",
+   "only_files": 0,
+   "any_files": 23
+  },
+  {
+   "kind": "idx2",
+   "only_files": 0,
+   "any_files": 15
+  },
+  {
+   "kind": "control",
+   "only_files": 0,
+   "any_files": 10
+  },
+  {
+   "kind": "struct",
+   "only_files": 0,
+   "any_files": 9
+  },
+  {
+   "kind": "blockmarker",
+   "only_files": 0,
+   "any_files": 2
+  }
+ ],
+ "files": [
+  {
+   "file": "cdfcalc.m",
+   "unmapped": 12,
+   "kinds": [
+    "call2",
+    "cond",
+    "nested",
+    "other",
+    "strlit"
+   ]
+  },
+  {
+   "file": "cholcov.m",
+   "unmapped": 20,
+   "kinds": [
+    "call2",
+    "cond",
+    "nested",
+    "other",
+    "strlit"
+   ]
+  },
+  {
+   "file": "cl_multinom.m",
+   "unmapped": 19,
+   "kinds": [
+    "call2",
+    "cond",
+    "nested",
+    "other",
+    "strlit"
+   ]
+  },
+  {
+   "file": "cluster.m",
+   "unmapped": 39,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "idx2",
+    "other",
+    "strlit"
+   ]
+  },
+  {
+   "file": "clusterdata.m",
+   "unmapped": 32,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "other",
+    "strlit"
+   ]
+  },
+  {
+   "file": "cohenKappa.m",
+   "unmapped": 50,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "nested",
+    "other",
+    "strlit"
+   ]
+  },
+  {
+   "file": "combnk.m",
+   "unmapped": 11,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "idx2",
+    "other"
+   ]
+  },
+  {
+   "file": "cophenet.m",
+   "unmapped": 11,
+   "kinds": [
+    "call2",
+    "cond",
+    "nested",
+    "other"
+   ]
+  },
+  {
+   "file": "crosstab.m",
+   "unmapped": 63,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "control",
+    "idx2",
+    "nested",
+    "other",
+    "struct"
+   ]
+  },
+  {
+   "file": "datasample.m",
+   "unmapped": 40,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "nested",
+    "other",
+    "strlit"
+   ]
+  },
+  {
+   "file": "dbscan.m",
+   "unmapped": 29,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "control",
+    "other",
+    "strlit"
+   ]
+  },
+  {
+   "file": "dummyvar.m",
+   "unmapped": 36,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "nested",
+    "other",
+    "strlit"
+   ]
+  },
+  {
+   "file": "evalclusters.m",
+   "unmapped": 83,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "nested",
+    "other",
+    "strlit"
+   ]
+  },
+  {
+   "file": "fillmissing.m",
+   "unmapped": 467,
+   "kinds": [
+    "blockmarker",
+    "call2",
+    "cell",
+    "cond",
+    "control",
+    "idx2",
+    "nested",
+    "other",
+    "strlit"
+   ]
+  },
+  {
+   "file": "fitgmdist.m",
+   "unmapped": 172,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "control",
+    "idx2",
+    "other",
+    "strlit",
+    "struct"
+   ]
+  },
+  {
+   "file": "grp2idx.m",
+   "unmapped": 51,
+   "kinds": [
+    "call2",
+    "cond",
+    "nested",
+    "other",
+    "strlit"
+   ]
+  },
+  {
+   "file": "iforest.m",
+   "unmapped": 4,
+   "kinds": [
+    "cell",
+    "other",
+    "struct"
+   ]
+  },
+  {
+   "file": "inconsistent.m",
+   "unmapped": 17,
+   "kinds": [
+    "call2",
+    "cond",
+    "idx2",
+    "other"
+   ]
+  },
+  {
+   "file": "ismissing.m",
+   "unmapped": 21,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "nested",
+    "other",
+    "strlit"
+   ]
+  },
+  {
+   "file": "isoutlier.m",
+   "unmapped": 178,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "nested",
+    "other",
+    "strlit"
+   ]
+  },
+  {
+   "file": "kmeans.m",
+   "unmapped": 111,
+   "kinds": [
+    "blockmarker",
+    "call2",
+    "cell",
+    "cond",
+    "idx2",
+    "nested",
+    "other",
+    "strlit",
+    "struct"
+   ]
+  },
+  {
+   "file": "kmedoids.m",
+   "unmapped": 76,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "control",
+    "idx2",
+    "other"
+   ]
+  },
+  {
+   "file": "linkage.m",
+   "unmapped": 65,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "idx2",
+    "nested",
+    "other",
+    "strlit"
+   ]
+  },
+  {
+   "file": "loadmodel.m",
+   "unmapped": 61,
+   "kinds": [
+    "cell",
+    "other",
+    "strlit",
+    "struct"
+   ]
+  },
+  {
+   "file": "lof.m",
+   "unmapped": 3,
+   "kinds": [
+    "cell",
+    "struct"
+   ]
+  },
+  {
+   "file": "logit.m",
+   "unmapped": 3,
+   "kinds": [
+    "call2",
+    "cond",
+    "other"
+   ]
+  },
+  {
+   "file": "makima.m",
+   "unmapped": 65,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "control",
+    "idx2",
+    "nested",
+    "other",
+    "strlit",
+    "struct"
+   ]
+  },
+  {
+   "file": "multiway.m",
+   "unmapped": 44,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "control",
+    "idx2",
+    "nested",
+    "other",
+    "strlit"
+   ]
+  },
+  {
+   "file": "normalise_distribution.m",
+   "unmapped": 35,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "other",
+    "strlit"
+   ]
+  },
+  {
+   "file": "ocsvm.m",
+   "unmapped": 4,
+   "kinds": [
+    "cell",
+    "other",
+    "struct"
+   ]
+  },
+  {
+   "file": "optimalleaforder.m",
+   "unmapped": 84,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "nested",
+    "other",
+    "strlit"
+   ]
+  },
+  {
+   "file": "probit.m",
+   "unmapped": 3,
+   "kinds": [
+    "cond",
+    "nested",
+    "other"
+   ]
+  },
+  {
+   "file": "randsample.m",
+   "unmapped": 16,
+   "kinds": [
+    "call2",
+    "cond",
+    "idx2",
+    "strlit"
+   ]
+  },
+  {
+   "file": "rmmissing.m",
+   "unmapped": 20,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "idx2",
+    "other"
+   ]
+  },
+  {
+   "file": "robustcov.m",
+   "unmapped": 281,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "control",
+    "idx2",
+    "nested",
+    "other"
+   ]
+  },
+  {
+   "file": "spectralcluster.m",
+   "unmapped": 97,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "control",
+    "nested",
+    "other",
+    "strlit"
+   ]
+  },
+  {
+   "file": "standardizeMissing.m",
+   "unmapped": 26,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "other",
+    "strlit"
+   ]
+  },
+  {
+   "file": "statget.m",
+   "unmapped": 10,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "other",
+    "strlit"
+   ]
+  },
+  {
+   "file": "statset.m",
+   "unmapped": 245,
+   "kinds": [
+    "call2",
+    "cell",
+    "cond",
+    "control",
+    "nested",
+    "other",
+    "strlit",
+    "struct"
+   ]
+  },
+  {
+   "file": "tiedrank.m",
+   "unmapped": 41,
+   "kinds": [
+    "call2",
+    "cond",
+    "idx2",
+    "nested",
+    "other",
+    "strlit"
+   ]
+  }
+ ]
+}

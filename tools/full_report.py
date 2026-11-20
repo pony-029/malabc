@@ -381,19 +381,32 @@ def render(bench, links, c2m, hir, brief, src, delta):
 
     # ---- ⑨ 缺口归因（能不能修，比"剩多少"更重要）----
     gp = _json(os.path.join(ROOT, "flow", "gap.json"))
+    # **「补它能不能救回文件」**（R1028）：按语句条数排序会误导 ——
+    # 某个类别语句很多，却可能只出现在少数巨型函数里；另一类语句不多，
+    # 却是大量文件的**唯一**卡点。payoff.json 的 only_files 才是决策依据。
+    _pay = _json(os.path.join(ROOT, "flow", "payoff.json"))
+    _only = {}
+    if _pay:
+        for _x in (_pay.get("payoff") or []):
+            _only[_x["kind"]] = _x.get("only_files", 0)
     if gp and gp.get("cats"):
         rows = "".join(
             "<tr><td><code>%s</code></td><td class='n'>%d</td>"
-            "<td class='n'>%.1f%%</td><td>%s</td>"
+            "<td class='n'>%.1f%%</td><td class='n'>%s</td><td>%s</td>"
             "<td style='text-align:left'><code>%s</code></td></tr>"
-            % (c["kind"], c["n"], c["pct"], c["cost"],
+            % (c["kind"], c["n"], c["pct"],
+               _only.get(c["kind"], "—") if _pay else "未量",
+               c["cost"],
                (c.get("sample") or "").replace("<", "&lt;"))
             for c in gp["cats"])
+        _note = ("<p class='note'>「独占文件」= 该类别是它<b>唯一</b>缺口的文件数 —— "
+                 "这才是「先做哪个」的依据。若全部为 0，说明没有任何单一运行时"
+                 "能救回文件，必须同时补多类。</p>")
         sec9 = ("<div class='kpis'><div class='kpi'><b>%d</b>"
                 "<span>未映射语句</span></div>"
                 "<div class='kpi'><b>%d</b><span>缺口类别</span></div></div>"
                 "<table><tr><th>缺口类别</th><th>条数</th><th>占比</th>"
-                "<th>攻关成本</th><th>样本</th></tr>%s</table>"
+                "<th>独占文件</th><th>攻关成本</th><th>样本</th></tr>%s</table>"
                 "<p class='note'>这张表回答的不是「还剩多少」，而是"
                 "<b>剩下的能不能修</b>：标「语法（低）」的改解析器即可，"
                 "标「需运行时（高）」的必须先在 C 侧建对应类型。</p>"
