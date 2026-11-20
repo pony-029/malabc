@@ -24,7 +24,7 @@
       "path": "E:\\temp\\matlabc\\octave-stat",
       "status": "fail",
       "error": "**超预算**：需要 72472 字节，池只有 65536（差 6936）",
-      "elapsed": 15.5,
+      "elapsed": 11.9,
       "m_files": 777,
       "m_funcs": 3585,
       "c_files": 745,
@@ -62,7 +62,7 @@
       "path": "E:\\temp\\matlabc\\sd",
       "status": "ok",
       "error": "",
-      "elapsed": 0.7,
+      "elapsed": 0.9,
       "m_files": 166,
       "m_funcs": 166,
       "c_files": 166,
@@ -81,7 +81,7 @@
       "path": "E:\\temp\\matlabc\\s6",
       "status": "ok",
       "error": "",
-      "elapsed": 0.7,
+      "elapsed": 0.8,
       "m_files": 165,
       "m_funcs": 165,
       "c_files": 165,
@@ -97,10 +97,10 @@
     },
     {
       "name": "single(4033 个单文件工程)",
-      "path": "E:\\temp\\matlabc\\_bench_all\\_single_agg_src_1795183824",
+      "path": "E:\\temp\\matlabc\\_bench_all\\_single_agg_src_1795184801",
       "status": "ok",
       "error": "",
-      "elapsed": 8.8,
+      "elapsed": 9.5,
       "m_files": 4033,
       "m_funcs": 4033,
       "c_files": 114,
@@ -132,6 +132,6 @@
       "n": 165
     }
   ],
-  "total_dirs": 4637,
-  "ts": "2026-11-20 22:10"
+  "total_dirs": 4638,
+  "ts": "2026-11-20 22:27"
 }
