@@ -1223,6 +1223,14 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 - `tools/mem_sections.py` —— **分段预算校验**：段个数/段名/每段容量/单数组上限全部由 profile 决定，按声明顺序 first-fit 分流（缺 `max_array_bytes` 的段视为能装任何大小）；口径是**逐函数求和再取函数间最大值**，并在返回值标 `scope: per-function`——它不是全局峰值，跨调用链仍会低估
 - `tools/cerebellum_bounds.py` —— **小脑硬边界机检**（ANE v0.9.0 §4.4）：① **离线可用率**＝小脑自决数 ÷ 总咨询数，下限 80%——咨询对象取自**产出方**（`mir.py` 的未映射类别 + `operators.py` 的 kind），不手抄清单；② **可生长**＝`operators` 与 `hir_ops` 的规则集合与基线相比**只增不减**，减少必须由人确认并更新基线。实测 15/15 自决（100%），规则只增不减
 - `tools/validate_ntp.py` —— **规范点名的校验器**（ANE v0.9.0 §43.9/§43.10）：校验转换台账（11 个必备字段 + 四条态约束 E1–E4）与 NTP 上行报文。E1/E2 专抓「state 与 exit_verified 不一致」——这两个字段人写台账时最容易改一个漏一个，而不一致会让「阶段已通过」这句话毫无意义。自证 5 条，四个反例各一条
+- `tools/ane_coverage.py` —— **规范覆盖表**（ANE v0.9.0 44 章）：逐章判断本仓有无判据，输出 COVERED / PARTIAL / NONE / N/A 四种状态。
+  `evidence` 列是可核对路径，**路径不存在就自动降级为 NONE**——否则这张表本身就会骗人。N/A 表示"本章不适用于本仓"，与"还没做"是两件事，需单独标出。
+- `tools/degradation_ratio.py` —— **降级比例**（ANE 第二十一章）：含 `MLC_UNIMPLEMENTED` 的调用点 ÷ 总调用点，上限默认 10%。
+  单个降级是诚实的（比返回"看起来对"的值好），但大量降级等于没实现——生成的 C 会编译通过、运行不报错、但什么都不做。
+  **无调用点时 ratio 记 0 但单独报 no_calls**，不能把"没有"算作"很好"。
+- `tools/sync_gate_count.py` —— **散文门数同步器**：直接**问门**要真数（主动跑 `check_help_contract` 从它输出取值），再扫白名单文档一次改齐。
+  为什么必须问门：门里可能有两个数（`GUARD_SCRIPTS` 与 N1 判据口径不同），只有判据自己算的那个才是它后面会拿去比的。
+  写完文件后调 `fix_eol.fix_one` 归一行尾——**不要在第二处再判断一遍 CRLF/LF**。
 - `tools/ntp.py` —— **神经调度协议 NTP**（ANE v0.9.0 第五章 5.2）：小脑→大脑的上行报文。`build()` 产出规范要求的完整结构（`tried_rules` / `memory_hits` / `constraints` / `budget_hint`），`compact()` 产出 ANE5 极简单行，两者**信息一致**由 `validate()` 交叉校验。强制「无推测」：`signal_type` 只能是 UNKNOWN/S1..S4，`tried_rules` 不能为空——一条都没试过就升级，等于小脑被绕过
 - `tools/hw_brain.py` —— **硬件映射的小脑与大脑**：小脑跑确定性推导（段用量/算子数/形状未知数），大脑只在四信号触发时升级，每项都带一个**可回答的问题**而非一句「请检查」。四信号（无先例/复发/无见证/未归类）只有一处定义，是 `brain_llm.escalate` 在本领域的适配器
 - `tools/verify_symbol_map.py` —— **宏重映射端到端验证**：生成 C 工程 → 出映射头 → gcc 编译 → `nm` 看符号是否真的换掉。判据是「只剩目标符号、无残留内置符号」——生成器的自证只能证明文本渲染对，证明不了编译器接受它，所以必须有消费方验证。缺 gcc/nm/m2c 时跳过并说明，不假装通过

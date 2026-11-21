@@ -1,13 +1,15 @@
 {
-  "ts": "2026-11-21 16:57:56",
-  "total": 46,
+  "ts": "2026-11-21 19:51:00",
+  "total": 47,
   "failed": [
     "check_ane.py",
+    "check_eol_convention.py",
     "check_release_gates.py",
+    "check_tool_discoverability.py",
     "check_tool_selftests.py",
     "check_tool_selftests.py(selftest)"
   ],
-  "passed": 42,
+  "passed": 41,
   "skipped": [
     "check_generated_compiles"
   ]
