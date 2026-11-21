@@ -31,6 +31,48 @@
       "text": "ok = all (isfinite ([T(:); S(:)]));",
       "expect": "up",
       "why": "嵌套调用 + 列向量拼接 + 类型谓词链，组合形态未见过，本地缺依据"
+    },
+    {
+      "kind": "strlit",
+      "text": "'full')(1 + window_size(2):end - window_size(1), :);",
+      "expect": "up",
+      "why": "动态切片 + end 关键字 + 字符串下标叠加，形态未见"
+    },
+    {
+      "kind": "nested",
+      "text": "med = (x(n/2) + x((n/2)+1))/2;",
+      "expect": "self",
+      "why": "动态索引算术，形态常见，已归 nested"
+    },
+    {
+      "kind": "cond",
+      "text": "if (iscellstr (s))",
+      "expect": "self",
+      "why": "类型谓词语义明确，本地可归类"
+    },
+    {
+      "kind": "control",
+      "text": "while (iter < maxiter)",
+      "expect": "self",
+      "why": "while 控制流属已知形态"
+    },
+    {
+      "kind": "cond",
+      "text": "if (numel (unique (klist)) != numel (klist))",
+      "expect": "self",
+      "why": "函数嵌套 + 等值比较，属 cond 已知形态"
+    },
+    {
+      "kind": "cond",
+      "text": "if (~ (isnumeric (value) && isreal (value) && isfloat (value)",
+      "expect": "self",
+      "why": "谓词链，语义明确"
+    },
+    {
+      "kind": "cond",
+      "text": "if (ischar (name) && isrow (name))",
+      "expect": "self",
+      "why": "类型谓词组合，形态常见"
     }
   ]
 }
