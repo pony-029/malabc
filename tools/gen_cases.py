@@ -103,7 +103,10 @@ def build_case(op, sa, sb, seed):
     if sb:
         vb = _values(_nslots(sb), seed + 31)
         lines.append("b = %s;" % (SHAPES[sb][0] % tuple(vb)))
-    lines.append("y = zeros(1);")
+    # **不要写 `y = zeros(1);`**（R1130）：zeros 当前未映射，
+    # 它会让解析在这里断掉，后续 `y = ...` 整行消失——
+    # 实测导致 300 个合成 case 三段全 0，而根因是生成器自己。
+    # 直接让模板里的赋值成为首次定义即可。
     lines.append(TPL_DICT[op][2])
     lines.append("end")
     return "\n".join(lines) + "\n"
