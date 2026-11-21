@@ -56,6 +56,52 @@ BASELINE = os.path.join(ROOT, "flow", "cerebellum-rules-baseline.json")
 OFFLINE_FLOOR = 0.80
 
 
+def feature_distribution(mir_path):
+    """**特征分布 + 口径对照**（R1070）。
+
+    R1069 那次错误结论的根源是：我拿「含 >=1 项特征」的 386 条，
+    去比「S5 判定 >=2 项」的实现，得出「漏判 3 倍」的假象。
+    两个口径都真实，错在它们不是同一个东西的测量值。
+
+    所以本函数**同时输出两个口径**，并在同一屏里写明 S5 用的是哪个，
+    下次再想比较时，数字和口径就在一起。
+    """
+    if not mir_path or not os.path.isfile(mir_path):
+        return None
+    import re as _re
+    cases = _sample_real_cases(mir_path, 100000)
+
+    def feats(d):
+        f = []
+        if "{" in d:
+            f.append("cell{}")
+        if _re.search(r"\bend\b", d):
+            f.append("end")
+        if _re.search(r"\[[^\]]*;", d):
+            f.append("拼接")
+        dep = mx = 0
+        for ch in d:
+            if ch == "(":
+                dep += 1
+                mx = max(mx, dep)
+            elif ch == ")":
+                dep = max(0, dep - 1)
+        if mx >= 2:
+            f.append("嵌套>=2")
+        return f
+
+    n = len(cases)
+    ge1 = sum(1 for _k, d in cases if len(feats(d)) >= 1)
+    ge2 = sum(1 for _k, d in cases if len(feats(d)) >= 2)
+    from collections import Counter
+    kinds = Counter(k for k, d in cases if len(feats(d)) >= 2)
+    return {"total": n, "ge1": ge1, "ge2": ge2,
+            "ge1_rate": round(100.0 * ge1 / n, 1) if n else 0,
+            "ge2_rate": round(100.0 * ge2 / n, 1) if n else 0,
+            "kinds": kinds.most_common(6),
+            "s5_uses": "ge2"}
+
+
 def _real_kinds():
     """**产出方全集**：解析器实际会产出的未映射类别。
 
@@ -336,6 +382,15 @@ def main(argv=None):
     if off["escalate"]:
         for k, why in off["escalate"][:5]:
             print("   上行：%-14s %s" % (k, why if isinstance(why, str) else ""))
+    dist = feature_distribution(mir)
+    if dist:
+        print("[特征分布] 全量 %d 条" % dist["total"])
+        print("  >=1 项：%d（%.1f%%）  ← 这是「含任一特征」，**不是** S5 的口径"
+              % (dist["ge1"], dist["ge1_rate"]))
+        print("  >=2 项：%d（%.1f%%）  ← **S5 实际用这个**"
+              % (dist["ge2"], dist["ge2_rate"]))
+        print("  >=2 项按类别：%s"
+              % "、".join("%s %d" % (k, v) for k, v in dist["kinds"]))
     print("[可生长] 规则集合 %s"
           % ("只增不减 OK" if grow["ok"] else "**有减少**"))
     for key, lost in (grow.get("shrunk") or []):
