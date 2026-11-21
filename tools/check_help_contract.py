@@ -233,6 +233,13 @@ GUARD_CONTRACT = {
     # R995：ANE 对齐门补登记 —— 描述里**逐字含** ROW_SIGNATURE（AN1–AN6），
     # 否则 H1 判"描述陈旧"。
     # R1072：小脑硬边界门 —— 描述里逐字含 ROW_SIGNATURE（CB1–CB4）
+    # R1091：双轨交叉比对门 —— 描述里逐字含 ROW_SIGNATURE（DT1–DT2）
+    "tools/check_dual_track.py": {
+        0: "双轨结果 DT1–DT2 成立（Python 参考轨与 C 轨逐值一致；"
+           "无 gcc 时如实跳过）",
+        1: "两轨结果不一致（差异已打印）",
+        2: "缺输入（无 gcc 且无法构造用例）",
+    },
     "tools/check_cerebellum.py": {
         0: "小脑硬边界 CB1–CB4 全绿（离线可用率 / 规则只增不减 / "
            "NTP 报文合规 / 无推测）",

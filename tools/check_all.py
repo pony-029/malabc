@@ -11,6 +11,7 @@
         ├─▶ check_mir_split.py             解析/切分判据 MS1-MS5（无 end 切分 / 嵌套边界 / version 头 / 账本闭合 / 块收束）
         ├─▶ check_ane.py        契约 AN1..AN6 —— ANE 规范对齐（小脑可审计/四信号/见证/静默基线/人类授权/白盒）
         ├─▶ check_cerebellum.py   契约 CB1..CB4 —— 小脑硬边界（离线率/可生长/NTP/无推测）
+        ├─▶ check_dual_track.py   契约 DT1..DT2 —— 双轨交叉比对（Python 参考 vs 现编现跑 C）
         ├─▶ check_brain_growth.py          大脑成长 BG1-BG5（有快照 / 条数不减 / 快照与知识库一致 / 被咨询过 / 见证全覆盖）
         ├─▶ check_doc_flags.py            文档/帮助里写的 CLI 开关必须真的存在
         ├─▶ check_flow_diagrams.py        图的引用 ↔ 文件 ↔ 候选声明，两两对齐且双向
