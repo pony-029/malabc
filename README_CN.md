@@ -1216,6 +1216,7 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 - `tools/unmapped_stats.py` —— **降级率统计**：按文件算 `1 - 未映射/(未映射+算子数)`，给 `avg_rate`、`≥90%` 个数与逐文件榜；三段链路的 ① 是二值判据（真实代码永远有边角），这个给出**可读的分布**
 - `tools/sample_numeric.py` —— **只抽可翻译目标**：排除算子重载桩（`varargout` 分派 / `CreateBasicOperator` / `switch class(`），并把排除理由与条数全部打印（不静默过滤）
 - `tools/gap_attrib.py` —— **缺口归因**：把未映射语句按"缺口性质"分类（string-switch / cell / type-predicate / builtin-call / index-assign / flatten / numeric-switch / other），每类标**攻关成本**（语法低 / 需运行时高）。`unmapped_stats` 说"降级率多少"，这个说"**剩下的能不能修**"
+- `tools/diagram_index.py` —— **架构图索引生成器**：扫描 `.archify/` 下**真实存在**的图，生成 `flow/diagrams.html`；并检测 `flow/index.html` 里指向已改名目录的死链。产出而无入口，等于没做
 - `tools/runtime_payoff.py` —— **运行时收益分析**：按「补齐某类能力能救回**多少个文件**」排序，而不是按未映射条数。判据：某文件只差这一类（`only_files`）才算能救回。实测 oct_num 40 个真实函数**全部独占数为 0** —— 每个都缺 ≥2 类，说明补任何单一运行时都救不回文件
 - `tools/fix_eol.py` —— **按约定统一行尾**：手写物 CRLF、生成物 LF、其余不处理。判据表从 `check_eol_convention.py` 读（单一真源），带 `--selftest` 两向自证。收进仓库的原因很具体：同一件行尾事故我犯过四次（都是把 `flow/*.html` 生成物转成了 CRLF），而"记住"没用 —— 错在**动作**，不在记忆
 - `tools/check_ane.py` —— **ANE 规范对齐门**：把 `aistandard/ANE规范…md` 的强制条款变成**可机检判据**（第四条小脑可审计 / 第五条四信号自证 / 第六条见证校验 / 第七条 `except: pass` 不超基线 / 第九条人类授权 / 第十条白盒产物），产物 `flow/ane.json`。明确列出**收不进来的**条款（第八条自愈深度、D0–D3 分级、L0–L5 成熟度），不假装覆盖
