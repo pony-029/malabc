@@ -86,6 +86,25 @@ NUM_RE = re.compile(
     r"|\s+(?:gates|guards)\b)")
 
 
+def _fix_eol_after_write(path):
+    """写完文件后把行尾归一到该扩展名的约定（R1094）。
+
+    **不要在这里自己判断 CRLF/LF** —— 那会形成第二套行尾逻辑，
+    与 `check_eol_convention` 的约定表迟早分叉。直接调 fix_eol。
+
+    上轮的教训：只该改 2 个字符的工具改动了 1932 行，因为
+    `newline=""` 让 Python 把 CRLF 读成 \n、写回成 LF，
+    **整份文件的行尾被静默改掉**，而工具自己的输出还说"改了 2 处"。
+    """
+    try:
+        import fix_eol
+        crlf, lf = fix_eol._tables()
+        fix_eol.fix_one(path, crlf, lf)
+        return True
+    except Exception:                      # noqa: BLE001
+        return False
+
+
 def true_count():
     """**问门**：它认定的护栏数。两条路都试，取门自己用的那个。"""
     import check_help_contract as H
@@ -126,6 +145,7 @@ def scan(apply_fix=False):
             for pos, num in reversed(wrong):
                 s = s[:pos] + str(n_true) + s[pos + len(num):]
             io.open(p, "w", encoding="utf-8", newline="").write(s)
+            _fix_eol_after_write(p)
             changed.append((rel, 0, len(wrong)))
 
     # 统计被跳过的历史文件里有多少处（只为诚实报告，不改）
