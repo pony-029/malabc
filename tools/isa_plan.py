@@ -119,12 +119,16 @@ def scan(src):
             if s.startswith("op:"):
                 parts = s.split(":")
                 if len(parts) >= 3:
-                    ops.append((parts[1], parts[2]))
+                    # 记下 dst 与所有实参：**判定要看被向量化的数据有多长**，
+                    # 而那段数据通常是**输入**（R1047）。
+                    ops.append((parts[1], parts[2], parts[3:]))
             if s == "end" and func:
-                for op_id, dst in ops:
-                    n = shapes.get(dst)
+                for op_id, dst, args in ops:
+                    # 输入侧的 numel 取最大（真正的向量宽度）；输出只作兜底
+                    cand = [shapes.get(a) for a in args] + [shapes.get(dst)]
+                    nums = [_prod(x) for x in cand if x]
                     calls.append((func, op_id, dst,
-                                  _prod(n) if n else None))
+                                  max(nums) if nums else None))
                 func = None
     return calls
 
