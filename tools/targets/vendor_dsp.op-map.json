@@ -1,13 +1,24 @@
 {
-  "_comment": "外部映射覆盖示例：把内置实现换成公司/第三方库。每条必须写 why —— 半年后有人看到 sum 变成了 hw_dsp_sum，没有一行说明就只能猜，而猜错等于换掉整个算子语义。",
+  "_comment": "外部加速库契约示例。每条必须写 why 与 dtype —— dtype 不是精度问题：本仓运行时是 f64，若声明 f32 而直传，会按 4 字节步长解释 8 字节元素，结果全错。",
   "overrides": {
     "OP-SUM": {
       "c": "hw_dsp_sum",
-      "why": "公司 DSP 库有专用归约指令，比标量循环快 4~6 倍"
+      "why": "公司 DSP 库有专用归约指令，比标量循环快 4~6 倍",
+      "dtype": "f64",
+      "header": "accel/dsp_sum.h",
+      "lib": "libs/libdsp.a",
+      "isa": "dsp",
+      "fallback": "mlc_op_sum"
     },
     "OP-MATMUL": {
-      "c": "cblas_dgemm",
-      "why": "目标板带 BLAS；矩阵乘交给库比生成的循环更稳"
+      "c": "accel_dgemm_neon",
+      "why": "目标板带 NEON；矩阵乘交给手写库比生成的循环稳（注意用 d 版，不是 sgemm）",
+      "dtype": "f64",
+      "header": "accelerator/matmul_neon.h",
+      "lib": "libs/libmatmul_neon.a",
+      "align": 64,
+      "isa": "neon",
+      "fallback": "mlc_op_matmul"
     }
   }
 }
