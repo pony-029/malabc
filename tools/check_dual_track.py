@@ -49,16 +49,32 @@ sys.path.insert(0, os.path.join(ROOT, "translate"))
 
 REL_TOL = 1e-12
 
-#: (op_id, [操作数列表], C 函数名, 期望的 mlc_op_ 调用形式)
+#: (op_id, [操作数], C 调用, 输出元素个数)
+#:
+#: R1084：**输出长度必须单独给**。归约算子（sum/mean/max/min）的输出是标量
+#: （1 个元素），而我上一版按输入长度 n 初始化输出并打印 n 个值，
+#: 于是 mlc_op_sum 返回 MLC_ERR —— 它要求 out 的形状与归约结果一致。
 CASES = [
-    ("OP-ADD", [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], "mlc_op_add",
-     "st = mlc_op_add(&a, &b, &y);"),
-    ("OP-SUB", [[10.0, 8.0, 6.0], [1.0, 2.0, 3.0]], "mlc_op_sub",
-     "st = mlc_op_sub(&a, &b, &y);"),
-    ("OP-MUL", [[2.0, 3.0, 4.0], [5.0, 6.0, 7.0]], "mlc_op_mul",
-     "st = mlc_op_mul(&a, &b, &y);"),
-    ("OP-SUM", [[1.0, 2.0, 3.0, 4.0]], "mlc_op_sum",
-     "st = mlc_op_sum(&a, &y);"),
+    ("OP-ADD", [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
+     "st = mlc_op_add(&a, &b, &y);", 3),
+    ("OP-SUB", [[10.0, 8.0, 6.0], [1.0, 2.0, 3.0]],
+     "st = mlc_op_sub(&a, &b, &y);", 3),
+    ("OP-MUL", [[2.0, 3.0, 4.0], [5.0, 6.0, 7.0]],
+     "st = mlc_op_mul(&a, &b, &y);", 3),
+    ("OP-DIV", [[8.0, 9.0, 10.0], [2.0, 3.0, 5.0]],
+     "st = mlc_op_div(&a, &b, &y);", 3),
+    ("OP-SUM", [[1.0, 2.0, 3.0, 4.0]],
+     "st = mlc_op_sum(&a, &y);", 1),
+    ("OP-MEAN", [[2.0, 4.0, 6.0, 8.0]],
+     "st = mlc_op_mean(&a, &y);", 1),
+    ("OP-MAX", [[3.0, 9.0, 1.0, 7.0]],
+     "st = mlc_op_max(&a, &y);", 1),
+    ("OP-MIN", [[3.0, 9.0, 1.0, 7.0]],
+     "st = mlc_op_min(&a, &y);", 1),
+    ("OP-ADD", [[0.5, -1.5], [1.5, 4.5]],
+     "st = mlc_op_add(&a, &b, &y);", 2),
+    ("OP-MUL", [[-2.0], [3.5]],
+     "st = mlc_op_mul(&a, &b, &y);", 1),
 ]
 
 
@@ -99,14 +115,15 @@ int main(void)
     double bd[8] = {%s};
     double yd[8] = {0};
     mlc_array a, b, y;
-    long na = %d, nb = %d;
+    long na = %d, nb = %d, ny = %d;
     mlc_status st;
     fill(&a, ad, na);
     fill(&b, bd, nb);
-    fill(&y, yd, na);
+    /* **输出按自己的长度初始化**：归约算子的 out 是标量，不是 len(a) */
+    fill(&y, yd, ny);
     %s
     if (st != MLC_OK) { printf("ERR %%d\n", (int)st); return 1; }
-    for (long i = 0; i < na; ++i) printf("%%.17g ", yd[i]);
+    for (long i = 0; i < ny; ++i) printf("%%.17g ", yd[i]);
     printf("\n");
     return 0;
 }
@@ -114,13 +131,13 @@ int main(void)
 
 
 def run_c_track(gcc, case, workdir):
-    op_id, args, _fn, call = case
+    op_id, args, call, nout = case
     a = args[0]
     b = args[1] if len(args) > 1 else [0.0]
     src = C_HARNESS % (
         ",".join("%.17g" % x for x in a),
         ",".join("%.17g" % x for x in b),
-        len(a), len(b), call)
+        len(a), len(b), nout, call)
     c = os.path.join(workdir, "%s.c" % op_id.replace("-", "_"))
     exe = c[:-2] + (".exe" if os.name == "nt" else "")
     io.open(c, "w", encoding="utf-8", newline="\n").write(src)
