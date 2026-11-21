@@ -204,6 +204,12 @@ def main(argv=None):
     if args.selftest:
         return _selftest()
 
+    # 缺输入时的退出码也要写成字面量（G1 判据按源码文本核对）
+    import cerebellum_bounds as _CB
+    if _find_mir() is None and _CB._real_kinds() is None:
+        print("check_cerebellum: 缺输入（既无真实 MIR 也无 kind 全集）")
+        return 2
+
     rows, ok, detail = audit()
     for prefix, verdict, note in rows:
         print("%s %-8s %s" % (prefix, verdict, note))
