@@ -1,0 +1,29 @@
+{
+ "ok": 156,
+ "fail": 144,
+ "errs": {
+  "expected identifier or '(' before numeric constant": 144
+ },
+ "samples": [
+  {
+   "file": "000008_add_vec8_vec8_v0.m",
+   "err": "expected identifier or '(' before numeric constant"
+  },
+  {
+   "file": "000009_add_vec8_vec8_v1.m",
+   "err": "expected identifier or '(' before numeric constant"
+  },
+  {
+   "file": "000010_add_vec8_vec8_v2.m",
+   "err": "expected identifier or '(' before numeric constant"
+  },
+  {
+   "file": "000011_add_vec8_vec8_v3.m",
+   "err": "expected identifier or '(' before numeric constant"
+  },
+  {
+   "file": "000012_add_vec16_vec16_v0.m",
+   "err": "expected identifier or '(' before numeric constant"
+  }
+ ]
+}
