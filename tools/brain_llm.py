@@ -271,6 +271,9 @@ def escalate(query, extra_signals=None, problems=None, entries=None, kinds=None)
         reasons.append("有 %d 条未闭合条目 —— 想登记却挂不上见证" % len(open_items))
     if s4:
         reasons.append("未归类错误形态：%r（分类学要扩）" % (unknown[:4],))
+    if s5:
+        reasons.append("复合未支持：单条语句叠加 %s，本地无先例"
+                       % "、".join(s5_hits))
 
     payload = None
     if reasons:
