@@ -779,7 +779,12 @@ def _lower_binary(lhs, left, op, right, fnames, emit, counter, src_line=0,
         elif side[0] == "num":
             # 立即数 → 形状 [1] 的 mlc_array（MATLAB 里标量就是 1×1）
             counter[0] += 1
-            tmp = "__k%d" % counter[0]
+            # **不要用 `__k%d`**（R1138）：GCC 在 x86-64 上把 `__k8` 及以后
+            # 当作 AVX-512 mask 寄存器名保留，而 `__k1`..`__k7` 恰好可用 ——
+            # 于是"前 7 个常量没事、第 8 个编译报 expected identifier before
+            # numeric constant"。实测 144/300 个合成用例的 gcc 失败全因这一处。
+            # 双下划线开头本就是保留区，换普通前缀。
+            tmp = "m2c_k%d" % counter[0]
             _emit("const:%s:%s" % (tmp, side[1]))
             operands.append(tmp)
         else:
@@ -1785,7 +1790,12 @@ def _lower_setidx(out, code, counter, known_ops):
             rhs = tmp
         elif re.match(r"^-?\d+(\.\d+)?$", rhs):
             counter[0] += 1
-            tmp = "__k%d" % counter[0]
+            # **不要用 `__k%d`**（R1138）：GCC 在 x86-64 上把 `__k8` 及以后
+            # 当作 AVX-512 mask 寄存器名保留，而 `__k1`..`__k7` 恰好可用 ——
+            # 于是"前 7 个常量没事、第 8 个编译报 expected identifier before
+            # numeric constant"。实测 144/300 个合成用例的 gcc 失败全因这一处。
+            # 双下划线开头本就是保留区，换普通前缀。
+            tmp = "m2c_k%d" % counter[0]
             out.append("const:%s:%s" % (tmp, rhs))
             rhs = tmp
     out.append("op:OP-SETIDX:%s:%s:%s" % (lhs, rhs, idx))
