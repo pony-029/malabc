@@ -81,9 +81,45 @@ def _shapes_from_mir(text):
     return shapes
 
 
-def classify(st, mir_text=""):
-    """按 MIR 文本给一个 case 定场景。返回类别名。"""
+def _shape_from_src(src, var):
+    """从 **原始 MATLAB 文本**里推断变量形状（R1128）。
+
+    MIR 只输出 op/call/unmapped 三类行，**不输出 shape**（R1127 实测）。
+    所以要判 scalar/vector/broadcast，只能回到源码里找赋值语句：
+        a = [1 2 3];      -> (1, 3)
+        a = [1 2 3; 4 5]; -> (2, 3)
+        a = 5;            -> (1, 1)
+    返回 (rows, cols) 或 None。
+    """
+    if not src:
+        return None
+    m = re.search(r"\b" + re.escape(var) + r"\s*=\s*\[([^\]]*)\]", src)
+    if m:
+        body = m.group(1).strip()
+        if not body:
+            return None
+        rows = [r for r in body.split(";") if r.strip()]
+        cols = len(rows[0].split())
+        return (len(rows), cols)
+    m2 = re.search(r"\b" + re.escape(var) +
+                   r"\s*=\s*([-+]?\d+(?:\.\d+)?)\s*;", src)
+    if m2:
+        return (1, 1)
+    return None
+
+
+def _numel(sh):
+    return None if not sh else sh[0] * sh[1]
+
+
+def classify(st, mir_text="", src=""):
+    """按 MIR 文本 + 源码给一个 case 定场景。返回类别名。
+
+    `src` 是原始 MATLAB 文本——形状只能从它推断（MIR 里没有）。
+    """
     ops = _ops_from_mir(mir_text) if mir_text else (st.get("ops_detail") or [])
+    if not src:
+        src = st.get("_src") or ""
     names = [o.get("op") if isinstance(o, dict) else str(o) for o in ops]
     shapes = _shapes_from_mir(mir_text) if mir_text else (st.get("shapes") or {})
 
@@ -98,7 +134,7 @@ def classify(st, mir_text=""):
     if UNARY & set(names):
         return "unary"
 
-    # 二元：看操作数长度决定 scalar / vector / broadcast
+    # 二元：看操作数 numel 决定 scalar / vector / broadcast
     bin_ops = [o for o in ops
                if isinstance(o, dict) and o.get("op") in BIN]
     if bin_ops:
@@ -106,8 +142,12 @@ def classify(st, mir_text=""):
         for o in bin_ops:
             for a in (o.get("args") or []):
                 sh = shapes.get(a)
-                if sh:
-                    lens.append(int(sh[0]) if len(sh) == 1 else -1)
+                if not sh:
+                    # MIR 没有 shape —— 回到源码推断（R1128）
+                    sh = _shape_from_src(src, a)
+                n = _numel(sh)
+                if n:
+                    lens.append(n)
         if lens and all(x == 1 for x in lens):
             return "scalar"
         if lens and len(set(lens)) > 1:
@@ -131,7 +171,7 @@ def scan(cases_path):
             _t, st = M.to_mir(text)
         except (OSError, ValueError):
             continue
-        cat = classify(st, _t)
+        cat = classify(st, _t, text)
         stat[cat] = stat.get(cat, 0) + 1
         n += 1
     return {"scanned": n, "stat": dict(sorted(stat.items(),
@@ -142,8 +182,9 @@ def _selftest():
     """两向自证：每类判据都要能命中，且总数守恒。"""
     good = bad = 0
 
-    def mk(ops_detail, shapes):
-        return {"ops_detail": ops_detail, "shapes": shapes}
+    def mk(ops_detail, shapes, src=""):
+        return {"ops_detail": ops_detail, "shapes": shapes,
+                "_src": src}
 
     cases = [
         (mk([{"op": "OP-MATMUL"}], {}), "matmul"),
@@ -151,12 +192,13 @@ def _selftest():
         (mk([{"op": "OP-INDEX"}], {}), "index"),
         (mk([{"op": "OP-HCAT"}], {}), "concat"),
         (mk([{"op": "OP-SQRT"}], {}), "unary"),
-        (mk([{"op": "OP-ADD", "args": ["x", "y"]}],
-            {"x": [1], "y": [1]}), "scalar"),
-        (mk([{"op": "OP-ADD", "args": ["x", "y"]}],
-            {"x": [4], "y": [4]}), "vector"),
-        (mk([{"op": "OP-ADD", "args": ["x", "y"]}],
-            {"x": [1], "y": [4]}), "broadcast"),
+        # 形状只能从源码推断（MIR 无 shape，R1127）
+        (mk([{"op": "OP-ADD", "args": ["x", "y"]}], {},
+            "x = 5; y = 3;"), "scalar"),
+        (mk([{"op": "OP-ADD", "args": ["x", "y"]}], {},
+            "x = [1 2 3 4]; y = [5 6 7 8];"), "vector"),
+        (mk([{"op": "OP-ADD", "args": ["x", "y"]}], {},
+            "x = 5; y = [1 2 3 4];"), "broadcast"),
     ]
     for st, want in cases:
         got = classify(st)
