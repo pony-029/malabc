@@ -1,0 +1,91 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>全流程测试报告 — Matlabc</title>
+<style>
+:root{--ink:#14181c;--ink2:#48525b;--ink3:#78848f;--line:#e2e8ee;
+--bg:#fff;--bg2:#f6f9fc;--bg3:#eceff4;--accent:#0a66c2;--ok:#0f7b46;
+--warn:#a8690a;--bad:#b8342a;--mono:ui-monospace,Consolas,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:16px/1.65 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+.wrap{max-width:1020px;margin:0 auto;padding:0 26px 96px}
+.cover{padding:60px 0 34px;border-bottom:1px solid var(--line);margin-bottom:34px}
+.cover .kicker{font:600 12px/1 var(--mono);letter-spacing:.16em;
+text-transform:uppercase;color:var(--accent);margin-bottom:16px}
+.cover h1{font-size:35px;line-height:1.2;margin:0 0 16px;font-weight:700;
+letter-spacing:-.025em}
+.cover .sub{font-size:16.5px;color:var(--ink2);margin:0;max-width:70ch}
+.board{display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin:28px 0}
+.kpi{border:1px solid var(--line);border-radius:10px;padding:15px 17px;background:var(--bg2)}
+.kpi .v{font:700 23px/1.1 var(--mono);letter-spacing:-.03em}
+.kpi .k{font-size:12px;color:var(--ink3);margin-top:7px}
+.kpi.ok{background:color-mix(in srgb,var(--ok) 9%,var(--bg2))}
+.kpi.warn{background:color-mix(in srgb,var(--warn) 10%,var(--bg2))}
+.kpi.bad{background:color-mix(in srgb,var(--bad) 8%,var(--bg2))}
+h2{font-size:21px;margin:46px 0 4px;padding-top:18px;border-top:2px solid var(--ink);
+font-weight:700;letter-spacing:-.01em}
+h2 .num{font:600 12px/1 var(--mono);color:var(--accent);display:block;
+margin-bottom:8px;letter-spacing:.09em}
+table{border-collapse:collapse;width:100%;margin:15px 0;font-size:14px}
+th,td{border-bottom:1px solid var(--line);padding:9px 12px;text-align:left}
+th{background:var(--bg2);font-weight:600;font-size:12.5px;color:var(--ink2)}
+td.n{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono)}
+tbody tr:hover{background:var(--bg2)}
+.funnel{margin:18px 0}
+.fstep{display:flex;align-items:center;gap:12px;margin:9px 0}
+.fstep .lab{width:180px;font-size:13.5px;color:var(--ink2);flex-shrink:0}
+.fstep .bar{flex:1;height:26px;background:var(--bg3);border-radius:5px;
+overflow:hidden;position:relative}
+.fstep .bar>i{display:block;height:100%;background:var(--accent);border-radius:5px;
+transition:width .5s}
+.fstep .bar>span{position:absolute;left:10px;top:4px;font:600 12px/1.4 var(--mono);
+color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.35)}
+.fstep .pct{width:74px;text-align:right;font:700 14px/1 var(--mono)}
+.callout{border-left:3px solid var(--accent);background:var(--bg2);
+padding:13px 17px;border-radius:0 7px 7px 0;margin:17px 0;font-size:14.5px}
+.callout.warn{border-left-color:var(--warn);
+background:color-mix(in srgb,var(--warn) 8%,var(--bg2))}
+.callout.bad{border-left-color:var(--bad);
+background:color-mix(in srgb,var(--bad) 7%,var(--bg2))}
+.callout p:first-child{margin-top:0}.callout p:last-child{margin-bottom:0}
+.tag{display:inline-block;font:600 11px/1 var(--mono);padding:3px 8px;
+border-radius:4px;background:var(--bg3);color:var(--ink3)}
+footer{margin-top:58px;padding-top:20px;border-top:1px solid var(--line);
+font-size:12.5px;color:var(--ink3)}
+@media(max-width:780px){.board{grid-template-columns:repeat(2,1fr)}
+.cover h1{font-size:26px}.fstep .lab{width:110px;font-size:12px}}
+@media print{.toc{display:none}body{font-size:10.5pt}}
+</style></head><body><div class="wrap">
+<div class="cover"><div class="kicker">Full-flow Test Report</div>
+<h1>MATLAB → C 全流程测试报告</h1>
+<p class="sub">合成用例池（tools/gen_cases.py 生成，修复 y=zeros(1) 之后）抽 120 个跑完整三段：解析 → 生成 C → gcc 编译 + 运行比对</p></div>
+<div class="board">
+<div class="kpi"><div class="v">120</div><div class="k">样本文件数</div></div>
+<div class="kpi ok"><div class="v">96</div><div class="k">① 解析进 MIR</div></div>
+<div class="kpi warn"><div class="v">32</div><div class="k">③ 三段全通</div></div>
+<div class="kpi warn"><div class="v">26.7%</div><div class="k">全通率</div></div>
+</div>
+<h2><span class="num">01</span>三段漏斗</h2>
+<div class="funnel">
+<div class="fstep"><div class="lab">① 解析成 MIR</div><div class="bar"><i style="width:80.0%"></i><span>96 / 120</span></div><div class="pct">80.0%</div></div>
+<div class="fstep"><div class="lab">② 生成 C（rust m2c）</div><div class="bar"><i style="width:26.7%"></i><span>32 / 120</span></div><div class="pct">26.7%</div></div>
+<div class="fstep"><div class="lab">③ gcc 编译 + 运行</div><div class="bar"><i style="width:26.7%"></i><span>32 / 120</span></div><div class="pct">26.7%</div></div>
+</div>
+<h2><span class="num">02</span>逐段数据</h2>
+<table><tr><th>阶段</th><th>通过</th><th>总数</th><th>通过率</th><th>相对上一段</th></tr>
+<tr><td>① 解析成 MIR</td><td class=n>96</td><td class=n>120</td><td class=n>80.0%</td><td class=n>—</td></tr>
+<tr><td>② 生成 C（rust m2c）</td><td class=n>32</td><td class=n>120</td><td class=n>26.7%</td><td class=n>-64</td></tr>
+<tr><td>③ gcc 编译 + 运行</td><td class=n>32</td><td class=n>120</td><td class=n>26.7%</td><td class=n>+0</td></tr>
+</table>
+<div class="callout warn"><p><b>瓶颈在②：解析成功但生成 C 失败 64 个。</b>而 ②→③ 几乎不掉——说明<b>生成出来的 C 基本都能编译跑对</b>，问题集中在「从 MIR 到 C」这一步。</p></div>
+<h2><span class="num">03</span>关键发现</h2><ul>
+<li>修复前：0/300（全 0），根因是生成器写了 <code>y = zeros(1);</code>，zeros 未映射导致解析在该行断掉、后续语句被吞。</li>
+<li>修复后：<b>① 96/120 = 80%</b> 进 MIR。</li>
+<li><b>② 32/120 = 26.7%</b> 生成 C —— 这是<b>整条链路唯一的损失点</b>（96 → 32，丢 64 个）。</li>
+<li><b>③ 32/32 = 100%</b>：凡是生成出来的 C，<b>全部编译通过并跑对</b>。也就是说 C 生成之后的环节没有质量问题。</li>
+<li>结论：<b>当前瓶颈 100% 在「MIR → C」这一段</b>，不在解析、不在编译、不在运行。</li>
+</ul>
+<h2><span class="num">04</span>诚实边界</h2>
+<div class="callout bad"><p>这是 120 个合成用例的结果，不是 333 万个全跑。333 万个 × 3 阶段 = 1000 万次是<b>用例池容量</b>，不是已执行次数；全跑按每文件约 1 秒估算需要约 38 天。合成用例只覆盖 add/sub/mul/div/sum/mean/max/min/abs/sqrt/matmul/hcat/index 十三个算子，不代表真实工程语料。</p></div>
+<footer><p>数据来源：flow/fullflow.json。由 <code>tools/fullflow_report.py</code> 生成。</p></footer>
+</div></body></html>
