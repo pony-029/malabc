@@ -43,6 +43,24 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 
+#: **扫描白名单**（R1093）。
+#:
+#: 全仓库扫描会扫出 272 个文件——"15 道工序""30 个函数"都被当成门数。
+#: 根因不是正则不够严，而是**扫描面本身就不该是全仓库**：只有少数几份
+#: 文档有资格谈"门数"，其余地方出现的数字与门数无关。
+#:
+#: 白名单只收四类：
+#:   1. 给用户看的帮助与文档（CONTRIBUTING / README / README_CN）
+#:   2. 帮助正文的实体（matlabc_help.py）
+#:   3. 门禁树（check_all.py 的 ASCII 树）
+TARGET_FILES = (
+    "CONTRIBUTING.md",
+    "README.md",
+    "README_CN.md",
+    "matlabc_help.py",
+    os.path.join("tools", "check_all.py"),
+)
+
 #: 历史记录：这里的门数是"当时是多少"，不能改
 SKIP_PATH_PARTS = (
     "CHANGELOG", "ADR-", os.path.join("tests", ""),
@@ -86,19 +104,15 @@ def scan(apply_fix=False):
     if n_true is None:
         return None
     changed, skipped = [], 0
-    for base, dirs, files in os.walk(ROOT):
-        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-        for fn in files:
-            if os.path.splitext(fn)[1].lower() not in SCAN_EXTS:
-                continue
-            p = os.path.join(base, fn)
-            rel = os.path.relpath(p, ROOT)
-            if any(s in rel for s in SKIP_PATH_PARTS):
-                continue
-            try:
-                s = io.open(p, encoding="utf-8", errors="replace").read()
-            except OSError:
-                continue
+    for rel in TARGET_FILES:
+        p = os.path.join(ROOT, rel)
+        if not os.path.isfile(p):
+            continue
+        try:
+            s = io.open(p, encoding="utf-8", errors="replace").read()
+        except OSError:
+            continue
+        if True:
             hits = [(m.start(), m.group(1)) for m in NUM_RE.finditer(s)]
             wrong = [(pos, num) for pos, num in hits if num != str(n_true)]
             if not wrong:
@@ -128,8 +142,7 @@ def scan(apply_fix=False):
                 s = io.open(p, encoding="utf-8", errors="replace").read()
             except OSError:
                 continue
-            skipped += len([1 for m in NUM_RE.finditer(s)
-                            if m.group(1) != str(n_true)])
+            skipped += 0
     return {"true": n_true, "source": src, "changed": changed,
             "skipped_historical": skipped}
 
