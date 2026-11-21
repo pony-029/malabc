@@ -34,7 +34,6 @@
     { "from": "seg", "to": "sig", "label": "段超限?" },
     { "from": "ops", "to": "sig", "label": "变体缺失?" },
     { "from": "prof", "to": "seg", "label": "段容量" },
-    { "from": "prof", "to": "ops", "label": "ISA 优先级" },
     { "from": "seg", "to": "emit", "label": "可自决" },
     { "from": "sig", "to": "emit", "label": "人/模型裁决后" }
   ],
