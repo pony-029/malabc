@@ -1231,6 +1231,8 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 - `tools/sync_gate_count.py` —— **散文门数同步器**：直接**问门**要真数（主动跑 `check_help_contract` 从它输出取值），再扫白名单文档一次改齐。
   为什么必须问门：门里可能有两个数（`GUARD_SCRIPTS` 与 N1 判据口径不同），只有判据自己算的那个才是它后面会拿去比的。
   写完文件后调 `fix_eol.fix_one` 归一行尾——**不要在第二处再判断一遍 CRLF/LF**。
+- `tools/bigtest_report.py` —— **大规模测试报告**：把全量解析结果（`flow/bigtest.json`）、小脑硬边界（`flow/cerebellum.json`）、门禁结论（`flow/gates41.json`）渲染成一个自包含 HTML，五节：规模/缺口归因/硬边界/门禁/**诚实边界**。
+  自证里有一条专测「缺数据时不能编造成功率」——**数据缺了就写缺了，不用空表糊弄**。
 - `tools/ntp.py` —— **神经调度协议 NTP**（ANE v0.9.0 第五章 5.2）：小脑→大脑的上行报文。`build()` 产出规范要求的完整结构（`tried_rules` / `memory_hits` / `constraints` / `budget_hint`），`compact()` 产出 ANE5 极简单行，两者**信息一致**由 `validate()` 交叉校验。强制「无推测」：`signal_type` 只能是 UNKNOWN/S1..S4，`tried_rules` 不能为空——一条都没试过就升级，等于小脑被绕过
 - `tools/hw_brain.py` —— **硬件映射的小脑与大脑**：小脑跑确定性推导（段用量/算子数/形状未知数），大脑只在四信号触发时升级，每项都带一个**可回答的问题**而非一句「请检查」。四信号（无先例/复发/无见证/未归类）只有一处定义，是 `brain_llm.escalate` 在本领域的适配器
 - `tools/verify_symbol_map.py` —— **宏重映射端到端验证**：生成 C 工程 → 出映射头 → gcc 编译 → `nm` 看符号是否真的换掉。判据是「只剩目标符号、无残留内置符号」——生成器的自证只能证明文本渲染对，证明不了编译器接受它，所以必须有消费方验证。缺 gcc/nm/m2c 时跳过并说明，不假装通过
