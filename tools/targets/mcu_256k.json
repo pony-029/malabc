@@ -2,6 +2,11 @@
   "_comment": "示例 target profile：一颗 256KB 快内存 + 外挂大内存的 MCU。段名/容量是**物理事实**，生成器只读它，不写死段名。",
   "name": "mcu_256k",
   "tcm_max_array": 65536,
+  "_isa_comment": "指令集优先级：op_backends 按 order 依次找 mlc_op_<name>_<isa>，都没有就退回标量 mlc_op_<name>。这一层让「同一份 MIR + 不同 profile」产出不同的 C 工程。",
+  "isa": {
+    "order": ["scalar", "simd128"],
+    "accel": false
+  },
   "sections": [
     {
       "name": "tcm",
