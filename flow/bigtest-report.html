@@ -1,0 +1,87 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>大规模测试报告 — Matlabc</title>
+<style>
+:root{--ink:#1a1d21;--ink2:#4a5158;--ink3:#767e87;--line:#e3e7ec;
+--bg:#fff;--bg2:#f7f9fb;--bg3:#eef2f6;--accent:#0b6bcb;--ok:#1a7f4b;
+--warn:#b8760f;--bad:#c23b32;--mono:ui-monospace,Consolas,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:16px/1.7 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+.wrap{max-width:1000px;margin:0 auto;padding:0 28px 100px}
+.cover{padding:56px 0 32px;border-bottom:1px solid var(--line);margin-bottom:32px}
+.cover .kicker{font:600 12px/1 var(--mono);letter-spacing:.14em;
+text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+.cover h1{font-size:34px;line-height:1.22;margin:0 0 14px;font-weight:700;
+letter-spacing:-.02em}
+.cover .sub{font-size:16.5px;color:var(--ink2);margin:0}
+.board{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:26px 0}
+.kpi{border:1px solid var(--line);border-radius:9px;padding:14px 16px;background:var(--bg2)}
+.kpi .v{font:700 22px/1.1 var(--mono);letter-spacing:-.02em}
+.kpi .k{font-size:12px;color:var(--ink3);margin-top:6px}
+.kpi.ok{background:color-mix(in srgb,var(--ok) 8%,var(--bg2))}
+.kpi.warn{background:color-mix(in srgb,var(--warn) 9%,var(--bg2))}
+h2{font-size:21px;margin:44px 0 4px;padding-top:16px;border-top:2px solid var(--ink);
+font-weight:700;letter-spacing:-.01em}
+h2 .num{font:600 12px/1 var(--mono);color:var(--accent);display:block;
+margin-bottom:7px;letter-spacing:.08em}
+table{border-collapse:collapse;width:100%;margin:14px 0;font-size:14px}
+th,td{border-bottom:1px solid var(--line);padding:8px 11px;text-align:left}
+th{background:var(--bg2);font-weight:600;font-size:12.5px;color:var(--ink2)}
+td.n{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono)}
+tbody tr:hover{background:var(--bg2)}
+.bar{height:7px;border-radius:4px;background:var(--bg3);overflow:hidden;
+position:relative;min-width:60px}
+.bar>i{display:block;height:100%;background:var(--accent);border-radius:4px}
+.callout{border-left:3px solid var(--accent);background:var(--bg2);
+padding:12px 16px;border-radius:0 6px 6px 0;margin:16px 0;font-size:14.5px}
+.callout.warn{border-left-color:var(--warn);
+background:color-mix(in srgb,var(--warn) 7%,var(--bg2))}
+.callout.bad{border-left-color:var(--bad);
+background:color-mix(in srgb,var(--bad) 6%,var(--bg2))}
+.callout p:first-child{margin-top:0}.callout p:last-child{margin-bottom:0}
+.tag{display:inline-block;font:600 11px/1 var(--mono);padding:3px 7px;
+border-radius:4px;background:var(--bg3);color:var(--ink3)}
+.tag.ok{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+.tag.warn{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.tag.bad{background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--bad)}
+footer{margin-top:56px;padding-top:18px;border-top:1px solid var(--line);
+font-size:12.5px;color:var(--ink3)}
+@media(max-width:760px){.board{grid-template-columns:repeat(2,1fr)}
+.cover h1{font-size:26px}.wrap{padding:0 18px 60px}}
+@media print{.toc{display:none}body{font-size:10.5pt}}
+</style></head><body><div class="wrap">
+<div class="cover"><div class="kicker">Large-scale Test Report</div>
+<h1>大规模转换测试报告</h1>
+<p class="sub">E:\temp\matlabc 全量语料的解析链路实测 — 不是抽样，是全量。</p></div>
+<div class="board">
+<div class="kpi ok"><div class="v">64,474</div><div class="k">文件总数（全量）</div></div>
+<div class="kpi ok"><div class="v">100.0%</div><div class="k">进 MIR 成功率</div></div>
+<div class="kpi warn"><div class="v">62.1%</div><div class="k">语句降级率</div></div>
+<div class="kpi"><div class="v">168.1s</div><div class="k">总耗时</div></div>
+</div>
+<h2><span class="num">01</span>规模与成功率</h2>
+<table><tr><th>指标</th><th>值</th><th>说明</th></tr>
+<tr><td>文件数</td><td class=n>64,474</td><td>全量扫描，未抽样</td></tr>
+<tr><td>解析成功</td><td class=n>64,474</td><td>进入 MIR</td></tr>
+<tr><td>解析失败</td><td class=n>0</td><td>抛异常或读失败</td></tr>
+<tr><td>估算行数</td><td class=n>631,346</td><td>按 40 字节/行折算</td></tr>
+<tr><td>算子总数</td><td class=n>78,161</td></tr>
+<tr><td>未映射条数</td><td class=n>128,273</td></tr>
+<tr><td>总耗时</td><td class=n>168.1s</td></tr>
+</table>
+<h2><span class="num">02</span>缺口归因</h2>
+<table><tr><th>未映射类别</th><th>条数</th><th>占比</th><th>分布</th></tr><tr><td><code>struct</code></td><td class=n>33,191</td><td class=n>26.4%</td><td><div class="bar"><i style="width:26.4%"></i></div></td></tr><tr><td><code>other</code></td><td class=n>21,969</td><td class=n>17.5%</td><td><div class="bar"><i style="width:17.5%"></i></div></td></tr><tr><td><code>call2</code></td><td class=n>18,224</td><td class=n>14.5%</td><td><div class="bar"><i style="width:14.5%"></i></div></td></tr><tr><td><code>strlit</code></td><td class=n>17,366</td><td class=n>13.8%</td><td><div class="bar"><i style="width:13.8%"></i></div></td></tr><tr><td><code>cell</code></td><td class=n>15,217</td><td class=n>12.1%</td><td><div class="bar"><i style="width:12.1%"></i></div></td></tr><tr><td><code>cond</code></td><td class=n>12,629</td><td class=n>10.0%</td><td><div class="bar"><i style="width:10.0%"></i></div></td></tr><tr><td><code>nested</code></td><td class=n>4,777</td><td class=n>3.8%</td><td><div class="bar"><i style="width:3.8%"></i></div></td></tr><tr><td><code>control</code></td><td class=n>1,524</td><td class=n>1.2%</td><td><div class="bar"><i style="width:1.2%"></i></div></td></tr><tr><td><code>blockmarker</code></td><td class=n>379</td><td class=n>0.3%</td><td><div class="bar"><i style="width:0.3%"></i></div></td></tr><tr><td><code>idx2</code></td><td class=n>347</td><td class=n>0.3%</td><td><div class="bar"><i style="width:0.3%"></i></div></td></tr><tr><td><code>sideeffect</code></td><td class=n>65</td><td class=n>0.1%</td><td><div class="bar"><i style="width:0.1%"></i></div></td></tr></table>
+<div class="callout warn"><p><b>struct + cell 是最大缺口族。</b>两个独立样本（yalmip 16.2% 与本次全量）都指向 struct，优先级高于任何零星语法。</p></div>
+<h2><span class="num">03</span>小脑硬边界</h2>
+<table><tr><th>判据</th><th>结论</th><th>说明</th></tr>
+<tr><td><code>CB1</code></td><td><span class="tag ok">OK</span></td><td>真实语料自决率 94.0%（>=80%，12 条上行）</td></tr>
+<tr><td><code>CB2</code></td><td><span class="tag ok">OK</span></td><td>规则集合只增不减（新增 0 条）</td></tr>
+<tr><td><code>CB3</code></td><td><span class="tag ok">OK</span></td><td>报文字段齐全，ANE5 与 NTP 一致（44 字节）</td></tr>
+<tr><td><code>CB4</code></td><td><span class="tag ok">OK</span></td><td>空 tried_rules 与非法 signal_type 均被拒绝</td></tr>
+</table>
+<h2><span class="num">04</span>门禁状态</h2>
+<div class="callout"><p>{"ts": "2026-11-21 22:20:08", "total": 47, "failed": ["check_eol_convention.py", "check_lsp_doc_parity.py"], "passed": 45, "skipped": ["check_generated_compiles"]}</p></div>
+<h2><span class="num">05</span>诚实边界</h2>
+<div class="callout bad"><p><b>本报告只覆盖「解析到 MIR」这一段。</b>64474 个文件按每文件约 1 秒估算，跑完生成 C + gcc 编译 + 运行需要十余小时，本轮没有做。<br><br>所以这里的 100% 只代表<b>能进 MIR</b>，<b>不代表能生成 C 并跑对</b>。要求「千万级」，而全仓实测只有 63.1 万行——这个差距如实写在这里，不用「大规模」含糊过去。</p></div>
+<footer><p>数据来源：flow/bigtest.json、flow/cerebellum.json、flow/gates41.json。由 <code>tools/bigtest_report.py</code> 生成。</p></footer></div></body></html>

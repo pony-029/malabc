@@ -1,0 +1,25 @@
+{
+ "files": 64474,
+ "parsed_ok": 64474,
+ "parse_fail": 0,
+ "parse_rate": 1.0,
+ "bytes": 25253870,
+ "lines_est": 631346,
+ "total_ops": 78161,
+ "total_unmapped": 128273,
+ "kinds": {
+  "struct": 33191,
+  "other": 21969,
+  "call2": 18224,
+  "strlit": 17366,
+  "cell": 15217,
+  "cond": 12629,
+  "nested": 4777,
+  "control": 1524,
+  "blockmarker": 379,
+  "idx2": 347,
+  "sideeffect": 65
+ },
+ "fail_samples": [],
+ "seconds": 168.1
+}
