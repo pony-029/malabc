@@ -1,0 +1,36 @@
+{
+  "_comment": "小脑离线自决的**标定集**（R1062）。每条都含人工判定 expect（self=本地应能自决 / up=必须上行）与理由。存在的理由：自证只能证明实现符合样本，而样本由同一作者写，可以一起错。只有人工判定过正确答案的样本，才是判据的尺子。",
+  "_source": "E:/temp/matlabc/octgen/.m2c/project.mir（2925 条未映射，均匀抽样 12 条后人工挑选 5 条）",
+  "cases": [
+    {
+      "kind": "cond",
+      "text": "if (~ isvector (x))",
+      "expect": "self",
+      "why": "类型谓词（isvector）语义明确，本地能判断「不支持该谓词」并归类，无需外部裁决"
+    },
+    {
+      "kind": "nested",
+      "text": "C = zeros (size (x));",
+      "expect": "self",
+      "why": "zeros(size(x)) 是动态形状，但形态常见且已归入 nested，本地有先例可循"
+    },
+    {
+      "kind": "control",
+      "text": "case \"numtrials\"",
+      "expect": "self",
+      "why": "switch 的字符串分支，属控制流已知形态，本地可归类"
+    },
+    {
+      "kind": "cell",
+      "text": "partition{min_idx}(end+1) = sorted_numbers(i);",
+      "expect": "up",
+      "why": "cell 动态扩容 + end 关键字 + cell 内索引，三重未支持能力叠加，本地无先例"
+    },
+    {
+      "kind": "call2",
+      "text": "ok = all (isfinite ([T(:); S(:)]));",
+      "expect": "up",
+      "why": "嵌套调用 + 列向量拼接 + 类型谓词链，组合形态未见过，本地缺依据"
+    }
+  ]
+}

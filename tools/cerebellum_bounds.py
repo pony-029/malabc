@@ -156,6 +156,40 @@ def measure_offline(mir_path=None, limit=60):
             "pass": rate >= OFFLINE_FLOOR}
 
 
+def measure_calibration(path):
+    """用**人工判定过正确答案**的标定集检验判据。
+
+    这是 R1062 的核心：上一轮 0% 与 100% 都不可信，因为它们只说明判据
+    偏向一边，没有正确答案可比。只有标定集能回答「判据判对了没有」。
+    """
+    if not os.path.isfile(path):
+        return None
+    d = json.load(io.open(path, encoding="utf-8"))
+    cases = d.get("cases") or []
+    if not cases:
+        return None
+    import brain_llm as B
+    rows = []
+    hit = 0
+    for c in cases:
+        query = "未映射（%s）：%s" % (c.get("kind", "other"), c.get("text", ""))
+        try:
+            dec = B.escalate(query)
+            need = (bool(dec.get("escalate")) or bool(dec.get("reasons"))
+                    if isinstance(dec, dict) else True)
+        except Exception:                      # noqa: BLE001
+            need = True
+        actual = "up" if need else "self"
+        ok = actual == c.get("expect")
+        if ok:
+            hit += 1
+        rows.append({"text": c.get("text", "")[:52], "expect": c.get("expect"),
+                     "actual": actual, "ok": ok,
+                     "why": c.get("why", "")[:40]})
+    return {"path": path, "total": len(cases), "hit": hit,
+            "rate": round(float(hit) / len(cases), 4), "rows": rows}
+
+
 def _rule_sets():
     """当前规则集合：算子 id 与 hir 映射 key。"""
     import hir_ops
@@ -248,10 +282,24 @@ def main(argv=None):
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--update-baseline", action="store_true",
                     help="把当前规则集合写成新基线（仅在确认减少是合法重构时用）")
+    ap.add_argument("--calibration",
+                    default=os.path.join(ROOT, "flow",
+                                         "cerebellum-calibration.json"),
+                    help="人工标定集（判断判据本身对不对）")
     ns = ap.parse_args(argv)
 
     if ns.selftest:
         return _selftest()
+
+    # 先看标定集：它回答「判据判对了没有」，比总体百分比有意义
+    cal = measure_calibration(ns.calibration)
+    if cal:
+        print("[标定集] %d 条 ｜ 判对 %d ｜ 准确率 %.0f%%"
+              % (cal["total"], cal["hit"], cal["rate"] * 100))
+        for row in cal["rows"]:
+            print("  %s 期望%-4s 实得%-4s %s"
+                  % ("✅" if row["ok"] else "❌", row["expect"],
+                     row["actual"], row["text"]))
 
     off = measure_offline()
     grow = check_growable(write=ns.update_baseline)
