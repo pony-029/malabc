@@ -44,7 +44,15 @@ tests/_t_xf_out/
 Thumbs.db
 
 # archify 交付产物（大 HTML + 浏览器证据侧车，不入库）
-.archify/
+.archify/**
+# **图的源要入库**（R1033）：`candidate.json` 是手写的图定义，不入库则换台机器
+# 图就没了，review 里也看不到它改了什么。被忽略的只是渲染产物与证据侧车
+# （每个 ~800KB）。
+#
+# 注意：Git 不允许用 `!` 重新包含**已被忽略目录内部**的文件，所以这里
+# **不能**写 `!.archify/**/candidate.json`（实测无效）。新增图时用：
+#     git add -f .archify/<dir>/candidate.json
+
 .debt_trend.json
 .matlabc_cache.pkl
 .matlabc_lsp_cache.json

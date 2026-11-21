@@ -1,0 +1,45 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "硬件约束方案：实施顺序",
+    "subtitle": "每步都有判据；顺序按依赖，不按功能清单",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": ".archify/workflow-hw-plan-20261121-093700/hw-plan.html"
+  },
+  "lanes": [
+    { "id": "done", "label": "已有 / 本轮完成" },
+    { "id": "next", "label": "下一步（有前置）" },
+    { "id": "accel", "label": "跨项目边界（归 Veriloom）" }
+  ],
+  "mainPath": ["matlab", "mir", "profile", "dist", "tiling"],
+  "nodes": [
+    { "id": "matlab", "lane": "done", "col": 0, "type": "frontend", "label": "MATLAB 源码", "sublabel": "无注释也能解析" },
+    { "id": "mir", "lane": "done", "col": 1, "type": "backend", "label": "MIR", "sublabel": "shape + op" },
+    { "id": "profile", "lane": "done", "col": 2, "type": "database", "label": "资源画像", "sublabel": "峰值 / vec_ratio" },
+    { "id": "dist", "lane": "next", "col": 3, "type": "backend", "label": "真实超限分布", "sublabel": "判据：有 over=true 的函数" },
+    { "id": "flow", "lane": "next", "col": 4, "type": "database", "label": "读写关系", "sublabel": "判据：能答「谁改了 A」" },
+    { "id": "tiling", "lane": "next", "col": 5, "type": "backend", "label": "Tiling", "sublabel": "判据：那个函数进得了 256KB" },
+    { "id": "mark", "lane": "accel", "col": 5, "type": "backend", "label": "加速器标记", "sublabel": "判据：桩函数可编译" }
+  ],
+  "edges": [
+    { "from": "matlab", "to": "mir", "label": "解析" },
+    { "from": "mir", "to": "profile", "label": "取形状" },
+    { "from": "profile", "to": "dist", "label": "跑全量" },
+    { "from": "mir", "to": "flow", "label": "取读写" },
+    { "from": "dist", "to": "tiling", "label": "选靶子" },
+    { "from": "flow", "to": "tiling", "label": "定切法" },
+    { "from": "profile", "to": "mark", "label": "按占比标" }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "为什么不一次做完",
+      "items": [
+        "Tiling 的前置是「已有一个真实超限函数」——现在一个都没有，写了也无处验证",
+        "DMA 与核绑定的前置是「读写关系」，它是 Tiling 之外另一条支线"
+      ]
+    }
+  ]
+}

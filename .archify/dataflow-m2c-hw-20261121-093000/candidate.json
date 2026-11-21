@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "Matlabc 硬件约束自动推导：数据流",
+    "subtitle": "从 MATLAB 源码到嵌入式 C / 加速器桩，每一步都只交付纯数据",
+    "locale": "zh-CN",
+    "output": ".archify/dataflow-m2c-hw-20261121-093000/m2c-hw.html",
+    "quality_profile": "showcase"
+  },
+  "stages": [
+    { "label": "源码" },
+    { "label": "MIR" },
+    { "label": "资源画像" },
+    { "label": "约束推导" },
+    { "label": "产出" }
+  ],
+  "nodes": [
+    { "id": "matlab", "type": "frontend", "label": "MATLAB 源码", "sublabel": "算法部门交付，无注释", "stage": 0, "row": 1, "tag": "输入" },
+    { "id": "mir", "type": "backend", "label": "MIR 中间表示", "sublabel": "shape + op + unmapped", "stage": 1, "row": 1, "tag": "已实现" },
+    { "id": "facts", "type": "database", "label": "scan_facts 画像", "sublabel": "形状/算子/句柄/标量", "stage": 2, "row": 0, "tag": "已实现" },
+    { "id": "mem", "type": "backend", "label": "mem_budget 峰值", "sublabel": "prod(shape)×8 求和", "stage": 2, "row": 2, "tag": "本轮新增" },
+    { "id": "decide", "type": "security", "label": "约束判定", "sublabel": "over / vec_ratio，只出数不决策", "stage": 3, "row": 1, "tag": "纯数据" },
+    { "id": "cgen", "type": "backend", "label": "C 工程", "sublabel": "经 emit.rs 生成", "stage": 4, "row": 0, "tag": "本仓" },
+    { "id": "ld", "type": "database", "label": ".ld 链接脚本", "sublabel": "大数组 section 指向", "stage": 4, "row": 1, "tag": "待做" },
+    { "id": "accel", "type": "backend", "label": "加速器桩函数", "sublabel": "route_to_accel 标记", "stage": 4, "row": 2, "tag": "边界" }
+  ],
+  "flows": [
+    { "id": "f1", "from": "matlab", "to": "mir", "label": "解析降级", "classification": "已实现", "variant": "emphasis" },
+    { "id": "f2", "from": "mir", "to": "facts", "label": "取形状+算子", "classification": "已实现", "variant": "default" },
+    { "id": "f3", "from": "mir", "to": "mem", "label": "取 shape 算峰值", "classification": "本轮新增", "variant": "emphasis" },
+    { "id": "f4", "from": "facts", "to": "decide", "label": "vec_ratio", "classification": "数据", "variant": "default" },
+    { "id": "f5", "from": "mem", "to": "decide", "label": "over 256KB", "classification": "数据", "variant": "default" },
+    { "id": "f6", "from": "decide", "to": "cgen", "label": "普通函数", "classification": "落地", "variant": "emphasis" },
+    { "id": "f7", "from": "decide", "to": "ld", "label": "大数组归区", "classification": "待做", "variant": "dashed" },
+    { "id": "f8", "from": "decide", "to": "accel", "label": "向量密集标记", "classification": "跨项目边界", "variant": "dashed" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "本仓边界",
+      "items": [
+        "Matlabc 只产出「纯数据 + 标记」，不做汇编排优、寄存器分配与指令流水线",
+        "所以本仓与 Veriloom 合并前后，这一层接口都不需要改"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "已知缺口",
+      "items": [
+        "数据流（读写关系）尚未分析 —— 它是 Tiling 与 DMA 的共同前置",
+        "真实工程的内存分布尚未统计，因此还没有一个真实超限函数可作为靶子"
+      ]
+    }
+  ]
+}
