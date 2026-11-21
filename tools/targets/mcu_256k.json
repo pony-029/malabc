@@ -1,0 +1,17 @@
+{
+  "_comment": "示例 target profile：一颗 256KB 快内存 + 外挂大内存的 MCU。段名/容量是**物理事实**，生成器只读它，不写死段名。",
+  "name": "mcu_256k",
+  "tcm_max_array": 65536,
+  "sections": [
+    {
+      "name": "tcm",
+      "capacity_bytes": 262144,
+      "note": "片上快内存 256KB，CPU 直连；放小数组与高频访问数据"
+    },
+    {
+      "name": "ddr",
+      "capacity_bytes": 67108864,
+      "note": "外挂大内存 64MB，需 DMA 搬运；放大矩阵"
+    }
+  ]
+}
