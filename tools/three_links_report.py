@@ -303,12 +303,26 @@ def write_report(recs, outdir, kind_block=""):
 
 
 def collect(paths, limit):
+    """收集待测 .m 文件，**递归进子目录**（R1106）。
+
+    原来用 `os.listdir(p)` 只扫顶层 —— yalmip 的 .m 全在子目录里，
+    于是"大规模测试"只测到 3 个文件（R1103/R1104 两次实测都栽在这里）。
+    unmapped_stats 已在 R1105 改成 os.walk，这里补上同样的口径。
+    """
     files = []
     for p in paths:
         if os.path.isfile(p) and p.endswith(".m"):
             files.append(p)
         elif os.path.isdir(p):
-            got = sorted(os.path.join(p, f) for f in os.listdir(p) if f.endswith(".m"))
+            got = []
+            for base, dirs, fns in os.walk(p):
+                dirs[:] = sorted(d for d in dirs
+                                 if d not in {".git", "target",
+                                              "__pycache__", ".m2c"})
+                for fn in sorted(fns):
+                    if fn.endswith(".m"):
+                        got.append(os.path.join(base, fn))
+            got.sort()
             files.extend(got[:limit] if limit else got)
     return files
 
