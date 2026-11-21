@@ -227,10 +227,36 @@ def escalate(query, extra_signals=None, problems=None, entries=None, kinds=None)
     unknown = [k for k in un if not _mir_produces(k)]
     s4 = bool(unknown)
 
+    # **S5 复合未支持**（R1063）：单条语句里**叠加多种**未支持能力时上行。
+    #
+    # 来源是标定集的两条错例（R1062）：它们都判成了"自决"，而人工判定是"该上行"：
+    #   partition{min_idx}(end+1) = sorted_numbers(i);   cell{} + end + 多层索引
+    #   ok = all (isfinite ([T(:); S(:)]));             嵌套 3 层 + 方括号拼接
+    # 共同点不是"某个能力没支持"，而是**多个未支持能力叠在同一条语句上**——
+    # 那种组合没有先例，本地没有可依据的判断。
+    s5, s5_hits = False, []
+    if "{" in query:
+        s5_hits.append("cell{}")
+    if re.search(r"\bend\b", query):
+        s5_hits.append("end")
+    if re.search(r"\[[^\]]*;", query):
+        s5_hits.append("拼接")
+    depth, mx = 0, 0
+    for ch in query:
+        if ch == "(":
+            depth += 1
+            mx = max(mx, depth)
+        elif ch == ")":
+            depth = max(0, depth - 1)
+    if mx >= 2:
+        s5_hits.append("嵌套>=2")
+    s5 = len(s5_hits) >= 2
+
     sig = {"S1_top_score": round(top, 2), "S1_no_precedent": s1,
            "S2_repeat_max": worst, "S2_recurs": s2,
            "S3_open_items": len(open_items), "S3_no_witness": s3,
-           "S4_unknown_kinds": unknown, "S4_unclassified": s4}
+           "S4_unknown_kinds": unknown, "S4_unclassified": s4,
+           "S5_complex_hits": s5_hits, "S5_compound": s5}
     if extra_signals:
         sig.update(extra_signals)
 
