@@ -106,15 +106,41 @@ def _fix_eol_after_write(path):
 
 
 def true_count():
-    """**问门**：它认定的护栏数。两条路都试，取门自己用的那个。"""
+    """**主动跑门，从它自己的输出取数**（R1095）。
+
+    上轮发现门里有两个数：`GUARD_SCRIPTS` 的 len 是 49，而 N1 判据
+    报的"真实护栏数"是 48。自己读常量不可靠——**只有判据自己算的那个，
+    才是它后面会拿去比的那个**。
+
+    所以这里不再猜常量：调用 `check_help_contract`，从输出里读 N。
+    这不是"被动等报错"（那是等它随机红了才改）；这里是主动调用判据、
+    把它当成一个取数函数。
+    """
+    import subprocess
+    for args in (["--selftest"], []):
+        try:
+            r = subprocess.run(
+                [sys.executable,
+                 os.path.join(ROOT, "tools", "check_help_contract.py")] + args,
+                cwd=ROOT, stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                timeout=300)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        txt = r.stdout.decode("utf-8", "replace")
+        m = re.search(r"真实护栏数是\s*(\d+)", txt)
+        if m:
+            return int(m.group(1)), "N1 判据输出"
+        # 全绿时没有那句；退回到常量
+        m2 = re.search(r"check_help_contract: OK\D*(\d+)\s*个\s*check", txt)
+        if m2:
+            return int(m2.group(1)), "N1 OK 输出"
+
+    # 两条路都不通才退回常量，并标明来源不可靠
     import check_help_contract as H
-    # 门内部用 GUARD_SCRIPTS（带过滤），优先取它
     gs = getattr(H, "GUARD_SCRIPTS", None)
     if gs is not None:
-        return len(gs), "GUARD_SCRIPTS"
-    gc = getattr(H, "GUARD_CONTRACT", None)
-    if gc is not None:
-        return len(gc), "GUARD_CONTRACT"
+        return len(gs), "GUARD_SCRIPTS（**可能与 N1 口径不一致**）"
     return None, "unknown"
 
 

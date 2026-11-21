@@ -225,7 +225,7 @@ GUARD_TIMEOUT = 600.0
 # R96 / Phase 1 / 槽 23：19 → 20。加的是**新闸门**（不是给既有门加判据族）——
 # 「能力对等」此前**一格判据都没有**（64 个格子里 16 个 `no`，缺口 > 0），
 # 正是 R85 那句「缺口为 0 时加闸 = churn」**不**适用的一类。
-# 全部 25 个 `check_*.py` = 24 道门 + 本 runner。
+# 全部 25 个 `check_*.py` = 48 道门 + 本 runner。
 # R-图1：新增 check_flow_figures.py（FF1–FF7，单语交互图 ⇄ index.html），故 21 → 22。
 # R-事实1：新增 check_facts_replay.py（FT1–FT3，事实重放 == 报表），故 22 → 23。
 # R-行尾1：新增 check_eol_convention.py（EO1–EO3，CRLF/LF 约定），故 23 → 24。
@@ -1146,7 +1146,7 @@ def main(argv):
           % (len(guards), MIN_GUARDS,
              "；**分批模式，未覆盖全部护栏**" if _filtered else ""))
     # R152：LSP 的判据**不在** runner 里 —— 它要起子进程 + 跑分析，放进来会把
-    # 24 道门从 2 分钟拖到 3 分钟。所以这里**只提示、不执行**：
+    # 48 道门从 2 分钟拖到 3 分钟。所以这里**只提示、不执行**：
     # 让「忘了跑」变得可见，而不是让门变慢。
     print("[提示] LSP 判据未纳入本 runner；改动 matlabc_lsp.py 或 vscode/ 后请手工跑：")
     print("       python tools/lsp_selftest.py   （11 条：诊断 / 定义 / 引用）")
