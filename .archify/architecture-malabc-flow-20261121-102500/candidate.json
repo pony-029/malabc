@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Malabc 全流程：从 MATLAB 到嵌入式 C（含硬件约束层）",
+    "subtitle": "横向为转换主链，上下为旁路：资源画像、门禁、运行时。Veriloom 在仓库外，只收纯数据。",
+    "locale": "zh-CN",
+    "output": ".archify/architecture-malabc-flow-20261121-102500/malabc-flow.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    { "id": "src", "type": "external", "label": "MATLAB 源码", "sublabel": "算法部门交付，无注释", "pos": [40, 300], "size": [130, 64] },
+    { "id": "mir_py", "type": "backend", "label": "translate/mir.py", "sublabel": "解析 + 降级判定", "pos": [220, 300], "size": [140, 64], "tag": "Python" },
+    { "id": "mir", "type": "database", "label": "MIR", "sublabel": "shape + op + unmapped", "pos": [410, 300], "size": [130, 64], "tag": "中间表示" },
+    { "id": "facts", "type": "backend", "label": "scan_facts", "sublabel": "形状 / 算子 / 句柄", "pos": [410, 140], "size": [130, 60] },
+    { "id": "mem", "type": "backend", "label": "mem_budget", "sublabel": "峰值上界 vs 256KB", "pos": [590, 140], "size": [130, 60], "tag": "本轮新增" },
+    { "id": "emit", "type": "backend", "label": "rust/m2c emit.rs", "sublabel": "MIR -> C 生成", "pos": [590, 300], "size": [140, 64], "tag": "Rust" },
+    { "id": "cgen", "type": "cloud", "label": "C 工程", "sublabel": "src / include / main", "pos": [770, 300], "size": [130, 64] },
+    { "id": "rt", "type": "database", "label": "c_runtime", "sublabel": "mlc_ops.c + mlc_runtime.c", "pos": [770, 440], "size": [140, 60], "tag": "手写 C" },
+    { "id": "gates", "type": "security", "label": "46 道门禁", "sublabel": "check_all + GX2 519", "pos": [590, 440], "size": [130, 60] },
+    { "id": "report", "type": "backend", "label": "full_report.html", "sublabel": "10 节 + 分层三段", "pos": [950, 140], "size": [140, 60] },
+    { "id": "veriloom", "type": "external", "label": "Veriloom", "sublabel": "另一项目：汇编排优", "pos": [950, 440], "size": [140, 64], "tag": "仓库外" }
+  ],
+  "connections": [
+    { "id": "c1", "from": "src", "to": "mir_py", "label": "读入", "variant": "emphasis" },
+    { "id": "c2", "from": "mir_py", "to": "mir", "label": "产出 MIR", "variant": "emphasis" },
+    { "id": "c3", "from": "mir", "to": "facts", "label": "取形状", "fromSide": "top", "toSide": "bottom" },
+    { "id": "c4", "from": "mir", "to": "emit", "label": "降维", "variant": "emphasis" },
+    { "id": "c5", "from": "facts", "to": "mem", "label": "算峰值" },
+    { "id": "c6", "from": "emit", "to": "cgen", "label": "生成", "variant": "emphasis" },
+    { "id": "c7", "from": "cgen", "to": "rt", "label": "链接", "fromSide": "bottom", "toSide": "top" },
+    { "id": "c8", "from": "emit", "to": "gates", "label": "被校验", "variant": "security", "fromSide": "bottom", "toSide": "top" },
+    { "id": "c9", "from": "gates", "to": "report", "label": "统计入报告", "variant": "dashed" },
+    { "id": "c10", "from": "mem", "to": "veriloom", "label": "纯数据 over / vec_ratio（跨项目边界）", "variant": "dashed" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "主链已通",
+      "items": [
+        "MATLAB -> MIR 全量可跑；合成语料 60/60 三段全通",
+        "MIR -> C 由 Rust 发射器完成，21/21 C 用例编译通过"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "画像层是新的",
+      "items": [
+        "scan_facts 原用于校验人写的配置，现在反用为「从代码推导」",
+        "mem_budget 给出每函数峰值上界；形状未知单独计数，不当作 0"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "边界",
+      "items": [
+        "Veriloom 在本仓之外，只接收 over / vec_ratio 等纯数据",
+        "本仓不做汇编排优、寄存器分配、指令流水线"
+      ]
+    }
+  ]
+}
