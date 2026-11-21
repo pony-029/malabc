@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ANE 规范 v0.9.0 · AI 原生软件生命体工程范式白皮书（正式发布版）</title>
+<title>ANE 规范 v0.11.0 · AI 原生软件生命体工程范式白皮书（正式发布版）</title>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <style>
   :root{
@@ -130,7 +130,7 @@
 <div class="layout">
 <aside>
   <div class="brand">AI Native Engineering</div>
-  <h1>ANE 规范 v0.9.0</h1>
+  <h1>ANE 规范 v0.11.0</h1>
   <div class="ver">AI 原生软件生命体工程范式 · 创建人 冯磊 · 正式发布版</div>
   <nav>
     <div class="grp">总纲</div>
@@ -196,7 +196,7 @@
 <main>
 <header class="hero">
   <div class="tagrow">
-    <span class="tag t-purple">ANE v0.9.0</span>
+    <span class="tag t-purple">ANE v0.11.0</span>
     <span class="tag t-blue">动静结合</span>
     <span class="tag t-teal">双脑协同</span>
     <span class="tag t-purple">记忆护城河</span>
@@ -209,7 +209,7 @@
   <p class="subtitle">ANE = <b>AI Native Engineering</b>。一套融合经典控制论（静态 / 小脑）与现代人工智能（动态 / 大脑）的通用范式。它把 AI 从"被使用"变为"被驾驭"，适用于一切构建 AI 原生软件的系统与团队，不绑定任何具体产品或框架。</p>
   <div class="meta">
     <span><b>创建人</b> 冯磊 · 原创范式与首席架构设计</span>
-    <span><b>版本</b> v0.9.0 · 正式发布版</span>
+    <span><b>版本</b> v0.11.0 · 正式发布版</span>
     <span><b>日期</b> 2026-11-21</span>
     <span><b>状态</b> 正式发布版</span>
   </div>
@@ -2845,6 +2845,301 @@ flowchart LR
 <p><b>【必须】</b> 满足以下条件才可宣布转换完成：① 目标模块全部通过本规范对应等级的符合性检查（26 章）；② 旧系统已退役或按 T3/T4 明确标注为外部能力/不可变核心；③ 转换期台账、证据与回退记录完整归档；④ 人类主权层书面确认。<b>【应当】</b> 转换完成后运行一个完整观察周期无重大降级再关闭转换台账。<b>【可选】</b> 输出对外可查的转换报告，供生态协作方核对能力边界（38 章）。</p>
 <p>### 43.8 本章必选/可选清单</p>
 <div class="tw"><table><tbody><tr><td>条目</td><td>等级</td><td>理由</td></tr><tr><td>不整体重写、先观测后改造</td><td>【必须】</td><td>控制风险面</td></tr><tr><td>存量适配分级（T1–T4）</td><td>【必须】</td><td>避免一刀切</td></tr><tr><td>五阶段手术 ①–⑤</td><td>【必须】</td><td>生命体骨架与主权底线</td></tr><tr><td>绞杀双轨 + 灰度 + 回滚</td><td>【必须】</td><td>切换安全</td></tr><tr><td>状态分层迁移、责任链连续</td><td>【必须】</td><td>记忆护城河与合规</td></tr><tr><td>自愈飞轮阶段 ⑥</td><td>【可选】</td><td>高风险，需免疫成熟</td></tr><tr><td>闭源核心经 IOP 接入</td><td>【可选】</td><td>视存量结构取舍</td></tr><tr><td>对外转换报告</td><td>【可选】</td><td>生态协作增强</td></tr></tbody></table></div>
+<p>### 43.9 转换台账（机器可读样例）</p>
+<p><b>【本文原创】</b> 43.2 要求"分级结论写入转换台账"，本节给出台账的机器可读样例与字段释义，使分级、退出验证、灰度决策与完成判据可被程序校验。契约定义见 <code>schemas/conversion-1.0.schema.json</code>，由 <code>tools/validate_ntp.py</code> 按载荷特征自动路由校验。</p>
+<p><b>【必须】</b> 转换台账必须通过转换台账 Schema 校验，且 <code>conversion_digest</code> 必须可按 ANS-1 规范化重算，否则不得作为符合性评估（ANE-CONF）的输入。</p>
+<pre style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto;font-size:12.5px;color:var(--ink2)"><code>{
+  "conversion_version": "1.0",
+  "conversion_id": "conv-legacy-core-01",
+  "organism_id": "org-legacy-7a31",
+  "fitness_tier": "T2",
+  "target_tier": "L4",
+  "stages": [
+    { "stage_id": "OBSERVE", "state": "EXIT_VERIFIED", "exit_verified": true, "evidence_ref": "trace:2026-11-20/core-path" },
+    { "stage_id": "BASE", "state": "EXIT_VERIFIED", "exit_verified": true, "evidence_ref": "test:suite-d0-invariants" },
+    { "stage_id": "CEREBELLUM", "state": "EXIT_VERIFIED", "exit_verified": true, "evidence_ref": "metric:local-intercept-92pct" },
+    { "stage_id": "MEMORY", "state": "IN_PROGRESS", "exit_verified": false, "evidence_ref": "review:memory-readonly-2026-11-21" },
+    { "stage_id": "SOVEREIGNTY", "state": "NOT_STARTED", "exit_verified": false, "evidence_ref": "pending:sovereignty-cutover" }
+  ],
+  "gray_release": { "mode": "SHADOW", "current_step": "SHADOW", "diff_ratio": 0.012, "rollback_ready": true, "daily_readout": true },
+  "data_migration": [
+    { "temperature": "HOT", "strategy": "rebuild-in-cerebellum", "forbidden": false },
+    { "temperature": "WARM", "strategy": "verified-digest-only", "forbidden": false },
+    { "temperature": "COLD", "strategy": "archive-append-only", "forbidden": false },
+    { "temperature": "FROZEN", "strategy": "register-reference-only", "forbidden": false }
+  ],
+  "non_convertible": [
+    { "component": "hard-real-time-loop", "disposition": "keep-in-deterministic-layer", "declared_external": false }
+  ],
+  "completion": { "conformity_passed": false, "old_retired_or_declared": false, "ledger_archived": false, "human_signoff": false, "observation_cycle_done": false },
+  "conversion_digest": "sha256:be5665230dccdff22f251cbb51f59cbc68e6f1e78aa25dc8442c891e07906434"
+}</code></pre>
+<div class="tw"><table><tbody><tr><td>字段</td><td>类型</td><td>白话解释</td><td>为什么必须有</td><td>取值来源</td></tr><tr><td><code>conversion_version</code></td><td>字符串</td><td>台账格式版本，固定 <code>1.0</code></td><td>契约演进时可判读旧台账</td><td>Schema <code>const</code></td></tr><tr><td><code>conversion_id</code></td><td>字符串</td><td>本次转换的稳定编号</td><td>多次转换不可混淆</td><td><code>conv-</code> + 小写标识</td></tr><tr><td><code>organism_id</code></td><td>字符串</td><td>被改造生命体的身份</td><td>责任链连续（41.3）</td><td>41 章身份登记</td></tr><tr><td><code>fitness_tier</code></td><td>枚举</td><td>存量适配分级 T1–T4</td><td>一刀切改造风险失控</td><td>43.2 分级结论</td></tr><tr><td><code>target_tier</code></td><td>枚举</td><td>目标成熟度 L0–L5 或保持原状</td><td>完成判据需可判定目标</td><td>26 章成熟度模型</td></tr><tr><td><code>stages</code></td><td>数组</td><td>五阶段改造状态与退出验证证据</td><td>阶段 ⑤ 未过禁止开 ⑥</td><td>43.3 退出验证</td></tr><tr><td><code>gray_release</code></td><td>对象</td><td>绞杀灰度当前台阶与差异率</td><td>差异超阈须停止放量</td><td>43.4 双轨纪律</td></tr><tr><td><code>data_migration</code></td><td>数组</td><td>热/温/冷/冻结四层策略与禁止项</td><td>防止运行时内存态被直接迁移</td><td>43.5 + 41.1</td></tr><tr><td><code>non_convertible</code></td><td>数组</td><td>不可转换成分与对外声明状态</td><td>T3/T4 不得伪装为已改造</td><td>43.6</td></tr><tr><td><code>completion</code></td><td>对象</td><td>五项完成判据布尔值</td><td>宣布完成需全部可核对</td><td>43.7</td></tr><tr><td><code>conversion_digest</code></td><td>字符串</td><td>全记录的 ANS-1 摘要</td><td>台账被篡改可被发现</td><td>ANS-1 重算</td></tr></tbody></table></div>
+<h3>43.10 转换台账生命周期三态示例</h3>
+<p><b>【本文原创】</b> 43.9 的单条样例只展示进行中状态；生命周期由字段组合判定，共三态：BLOCKED（阶段退出受阻）、ROLLED_BACK（灰度回退）、CLOSED（完成关闭）。三态均须满足跨字段语义约束，由 <code>tools/validate_ntp.py</code> 强制。</p>
+<p><b>【必须】</b> <code>BLOCKED</code> 阶段的 <code>exit_verified</code> 必须为 false；<code>EXIT_VERIFIED</code> 阶段的 <code>exit_verified</code> 必须为 true。</p>
+<p><b>【必须】</b> 灰度台阶为 <code>RETIRED</code> 时模式必须为 <code>RETIRED</code>；完成判据五项全为 true 时，所有阶段必须为 <code>EXIT_VERIFIED</code> 或 <code>SKIPPED</code>，且灰度模式必须为 <code>RETIRED</code>。</p>
+<div class="tw"><table><tbody><tr><td>态</td><td>判定字段组合</td><td>语义约束</td></tr><tr><td>BLOCKED</td><td>任一阶段 state=BLOCKED 且 exit_verified=false</td><td>不得放量；回退点必须就绪</td></tr><tr><td>ROLLED_BACK</td><td>current_step 回退至 SHADOW 且 diff_ratio 超阈</td><td>逐日差异小结必须为真，保留回退证据</td></tr><tr><td>CLOSED</td><td>全阶段 EXIT_VERIFIED 或 SKIPPED，completion 全 true</td><td>灰度模式 RETIRED，台账归档且人类主权确认</td></tr></tbody></table></div>
+<p><b>【必须】</b> 三态载荷必须通过 Schema 与跨字段语义校验；任一不满足即不得作为符合性评估输入。</p>
+<h4>43.10.1 阶段退化（BLOCKED）</h4>
+<pre style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto;font-size:12.5px;color:var(--ink2)"><code>{
+  "conversion_version": "1.0",
+  "conversion_id": "conv-legacy-core-blocked-01",
+  "organism_id": "org-legacy-7a31",
+  "fitness_tier": "T3",
+  "target_tier": "L2",
+  "stages": [
+    {
+      "stage_id": "OBSERVE",
+      "state": "EXIT_VERIFIED",
+      "exit_verified": true,
+      "evidence_ref": "trace:2026-11-20/core-path"
+    },
+    {
+      "stage_id": "BASE",
+      "state": "EXIT_VERIFIED",
+      "exit_verified": true,
+      "evidence_ref": "test:suite-d0-invariants"
+    },
+    {
+      "stage_id": "CEREBELLUM",
+      "state": "BLOCKED",
+      "exit_verified": false,
+      "evidence_ref": "block:determinism-boundary-unresolved"
+    },
+    {
+      "stage_id": "MEMORY",
+      "state": "NOT_STARTED",
+      "exit_verified": false,
+      "evidence_ref": "pending:memory-readonly"
+    },
+    {
+      "stage_id": "SOVEREIGNTY",
+      "state": "NOT_STARTED",
+      "exit_verified": false,
+      "evidence_ref": "pending:sovereignty-cutover"
+    }
+  ],
+  "gray_release": {
+    "mode": "SHADOW",
+    "current_step": "SHADOW",
+    "diff_ratio": 0.37,
+    "rollback_ready": true,
+    "daily_readout": true
+  },
+  "data_migration": [
+    {
+      "temperature": "HOT",
+      "strategy": "rebuild-in-cerebellum",
+      "forbidden": false
+    },
+    {
+      "temperature": "WARM",
+      "strategy": "verified-digest-only",
+      "forbidden": false
+    },
+    {
+      "temperature": "COLD",
+      "strategy": "archive-append-only",
+      "forbidden": false
+    },
+    {
+      "temperature": "FROZEN",
+      "strategy": "register-reference-only",
+      "forbidden": false
+    }
+  ],
+  "non_convertible": [
+    {
+      "component": "hard-real-time-loop",
+      "disposition": "keep-in-deterministic-layer",
+      "declared_external": false
+    }
+  ],
+  "completion": {
+    "conformity_passed": false,
+    "old_retired_or_declared": false,
+    "ledger_archived": false,
+    "human_signoff": false,
+    "observation_cycle_done": false
+  },
+  "conversion_digest": "sha256:43cf3369e6c6415c43fb5bc22e49c00ee3225b7e8969f3e8e163c3d90f03933e"
+}</code></pre>
+<h4>43.10.2 灰度回退（ROLLED_BACK）</h4>
+<pre style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto;font-size:12.5px;color:var(--ink2)"><code>{
+  "conversion_version": "1.0",
+  "conversion_id": "conv-legacy-core-rollback-01",
+  "organism_id": "org-legacy-7a31",
+  "fitness_tier": "T2",
+  "target_tier": "L3",
+  "stages": [
+    {
+      "stage_id": "OBSERVE",
+      "state": "EXIT_VERIFIED",
+      "exit_verified": true,
+      "evidence_ref": "trace:2026-11-20/core-path"
+    },
+    {
+      "stage_id": "BASE",
+      "state": "EXIT_VERIFIED",
+      "exit_verified": true,
+      "evidence_ref": "test:suite-d0-invariants"
+    },
+    {
+      "stage_id": "CEREBELLUM",
+      "state": "EXIT_VERIFIED",
+      "exit_verified": true,
+      "evidence_ref": "metric:local-intercept-92pct"
+    },
+    {
+      "stage_id": "MEMORY",
+      "state": "EXIT_VERIFIED",
+      "exit_verified": true,
+      "evidence_ref": "verify:memory-readonly-digest"
+    },
+    {
+      "stage_id": "SOVEREIGNTY",
+      "state": "BLOCKED",
+      "exit_verified": false,
+      "evidence_ref": "rollback:diff-ratio-above-threshold"
+    }
+  ],
+  "gray_release": {
+    "mode": "DUAL_TRACK",
+    "current_step": "SHADOW",
+    "diff_ratio": 0.42,
+    "rollback_ready": true,
+    "daily_readout": true
+  },
+  "data_migration": [
+    {
+      "temperature": "HOT",
+      "strategy": "rebuild-in-cerebellum",
+      "forbidden": false
+    },
+    {
+      "temperature": "WARM",
+      "strategy": "verified-digest-only",
+      "forbidden": false
+    },
+    {
+      "temperature": "COLD",
+      "strategy": "archive-append-only",
+      "forbidden": false
+    },
+    {
+      "temperature": "FROZEN",
+      "strategy": "register-reference-only",
+      "forbidden": false
+    }
+  ],
+  "non_convertible": [
+    {
+      "component": "hard-real-time-loop",
+      "disposition": "keep-in-deterministic-layer",
+      "declared_external": false
+    }
+  ],
+  "completion": {
+    "conformity_passed": false,
+    "old_retired_or_declared": false,
+    "ledger_archived": false,
+    "human_signoff": false,
+    "observation_cycle_done": false
+  },
+  "conversion_digest": "sha256:5d653ad8848c3a86358c0458b6ff0dac84ef91bc8554178267ba5fc15a0588bc"
+}</code></pre>
+<h4>43.10.3 完成关闭（CLOSED）</h4>
+<pre style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto;font-size:12.5px;color:var(--ink2)"><code>{
+  "conversion_version": "1.0",
+  "conversion_id": "conv-legacy-core-closed-01",
+  "organism_id": "org-legacy-7a31",
+  "fitness_tier": "T1",
+  "target_tier": "L4",
+  "stages": [
+    {
+      "stage_id": "OBSERVE",
+      "state": "EXIT_VERIFIED",
+      "exit_verified": true,
+      "evidence_ref": "trace:2026-11-20/core-path"
+    },
+    {
+      "stage_id": "BASE",
+      "state": "EXIT_VERIFIED",
+      "exit_verified": true,
+      "evidence_ref": "test:suite-d0-invariants"
+    },
+    {
+      "stage_id": "CEREBELLUM",
+      "state": "EXIT_VERIFIED",
+      "exit_verified": true,
+      "evidence_ref": "metric:local-intercept-92pct"
+    },
+    {
+      "stage_id": "MEMORY",
+      "state": "EXIT_VERIFIED",
+      "exit_verified": true,
+      "evidence_ref": "verify:memory-readonly-digest"
+    },
+    {
+      "stage_id": "SOVEREIGNTY",
+      "state": "EXIT_VERIFIED",
+      "exit_verified": true,
+      "evidence_ref": "audit:human-sovereignty-signoff"
+    },
+    {
+      "stage_id": "SELF_HEAL",
+      "state": "EXIT_VERIFIED",
+      "exit_verified": true,
+      "evidence_ref": "metric:flywheel-observation-cycle"
+    }
+  ],
+  "gray_release": {
+    "mode": "RETIRED",
+    "current_step": "RETIRED",
+    "diff_ratio": 0.0,
+    "rollback_ready": true,
+    "daily_readout": true
+  },
+  "data_migration": [
+    {
+      "temperature": "HOT",
+      "strategy": "rebuild-in-cerebellum",
+      "forbidden": false
+    },
+    {
+      "temperature": "WARM",
+      "strategy": "verified-digest-only",
+      "forbidden": false
+    },
+    {
+      "temperature": "COLD",
+      "strategy": "archive-append-only",
+      "forbidden": false
+    },
+    {
+      "temperature": "FROZEN",
+      "strategy": "register-reference-only",
+      "forbidden": false
+    }
+  ],
+  "non_convertible": [
+    {
+      "component": "hard-real-time-loop",
+      "disposition": "keep-in-deterministic-layer",
+      "declared_external": false
+    }
+  ],
+  "completion": {
+    "conformity_passed": true,
+    "old_retired_or_declared": true,
+    "ledger_archived": true,
+    "human_signoff": true,
+    "observation_cycle_done": true
+  },
+  "conversion_digest": "sha256:7369142daed52e2643b12905874b635bdf8333be70b6144687d2c3ca484e0889"
+}</code></pre>
+
 </section>
 
 <!-- ================= APPENDIX A ================= -->
@@ -2876,7 +3171,7 @@ flowchart LR
       <tr><td>RAG</td><td>按需取回过往经验，而非把全部资料塞进提示</td><td>引用</td><td>0.3 · 6.1</td><td>Retrieval-Augmented Generation</td></tr>
       <tr><td>MCP / A2A</td><td>工具与智能体之间的标准接入协议</td><td>引用（业界协议）</td><td>15.1 · 16.1</td><td>Model Context Protocol / Agent-to-Agent</td></tr>
       <tr><td>NIST RMF / EU AI Act / ISO 42001</td><td>外部治理与合规框架，ANE 将其内建为工程机制</td><td>引用（标准法规）</td><td>20.1 · 20.2</td><td>NIST AI RMF / EU AI Act / ISO/IEC 42001</td></tr>
-      <tr><td>FMEA / RACI</td><td>失效模式分析与责任矩阵，ANE 直接沿用</td><td>引用（工程方法）</td><td>21.2 · 20.3</td><td>FMEA / RACI</td></tr>
+      <tr><td>FMEA / RACI</td><td>失效模式分析与责任矩阵，ANE 直接沿用</td><td>引用（工程方法）</td><td>21.2 · 20.3</td><td>FMEA / RACI</td></tr><tr><td>转换台账</td><td>记录适配分级、阶段退出验证、灰度决策与完成判据的机器可读契约</td><td>本文原创（契约定义）</td><td>第四十三章 43.9 · <code>schemas/conversion-1.0.schema.json</code></td><td>Conversion Ledger</td></tr><tr><td>术语白名单</td><td>规范性条款中允许出现的技术标识清单，防止未经定义的新黑话</td><td>本文原创（门禁机制）</td><td><code>schemas/term-whitelist.json</code></td><td>Term Whitelist</td></tr><tr><td>一键门禁</td><td>把载荷、措辞、双格式、术语白名单四类校验收敛为单一命令与退出码</td><td>本文原创（工程实践）</td><td><code>tools/check_all.py</code></td><td>Unified Gate Entry</td></tr><tr><td>负向测试自检</td><td>在一次性沙箱中注入缺陷，证明门禁会真实拦下，避免门禁恒为绿</td><td>本文原创（工程实践）</td><td><code>tests/run_self_test.py</code></td><td>Negative Self-Test</td></tr><tr><td>跨字段语义校验</td><td>Schema 之外对字段组合施加的生命周期约束（BLOCKED / RETIRED / 完成判据）</td><td>本文原创（契约规则）</td><td><code>tools/validate_ntp.py</code> · §43.10</td><td>Cross-Field Semantic Validation</td></tr><tr><td>证据闭环</td><td>新术语须带来源标注与定位证据方可入册，否则拒绝</td><td>本文原创（门禁机制）</td><td><code>tools/check_term_whitelist.py --sync-from-evidence</code></td><td>Evidence Loop</td></tr><tr><td>分支保护</td><td>把 CI 检查设为分支合并前置条件，需管理员令牌实际设置</td><td>引用（GitHub 分支保护）+ 本文适配</td><td><code>tools/setup_branch_protection.py</code></td><td>Branch Protection</td></tr><tr><td>CI 实证回执</td><td>真实 API 查询得到的 workflow 运行记录与结论，而非本地仿真</td><td>本文原创（工程实践）</td><td>README · <code>tools/setup_branch_protection.py --check</code></td><td>CI Evidence Receipt</td></tr>
     </tbody>
   </table></div>
   <div class="callout quote"><span class="lbl">来源纪律</span>"本文原创"术语定义以本规范为准，引用时请注明 ANE；"引用"术语保留业界原义，本规范只规定其在生命体中的角色。</div>
@@ -2978,8 +3273,14 @@ flowchart LR
   <div class="callout quote" style="margin-top:24px"><span class="lbl">结语</span>当一个组织还在做"加法"——堆算力、堆模型、堆 Token——ANE 在做"减法与乘法"：给小脑定规则，给大脑画边界，给记忆筑护城河，给进化装免疫系统。<b>连这份规范自身也遵守它定下的规则——从单一真源投影出干净正式版，用门禁证明自己的纯粹。能管好自己的规范，才有资格治理生命体。</b></div>
 </section>
 
+<!-- ================= APPENDIX K ================= -->
+
+
+<!-- ================= APPENDIX L ================= -->
+
+
 <footer>
-  <div>《ANE 规范：AI 原生软件生命体工程范式》v0.9.0 · 创建人 冯磊 · 正式发布版</div>
+  <div>《ANE 规范：AI 原生软件生命体工程范式》v0.11.0 · 创建人 冯磊 · 正式发布版</div>
   <div style="margin-top:8px">ANE = AI Native Engineering · MD 与 HTML 双版本内容一致</div>
 </footer>
 </main>
