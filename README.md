@@ -1007,7 +1007,7 @@ invented call relationships, or the model will repeat them as fact.
 
 ## Full-scenario sweep (hand-run, 118 checks)
 
-The 46 gates above are static and fast. This one is not — it starts subprocesses and LSP
+The 47 gates above are static and fast. This one is not — it starts subprocesses and LSP
 servers, so it stays out of `check_all` and is run by hand:
 
 ```powershell
@@ -1091,7 +1091,7 @@ python matlabc_flow.py --help     # repair loop: five-station pipeline + five re
 python matlabc_ask.py --help      # grounded Q&A: how facts become an answer
 python matlabc_mcp.py --help      # MCP server: the five tools + why stdin must be cut
 python gui.py --help              # GUI: which CLI flag each form field maps to
-python tools/check_all.py --help  # gates: what each of the 46 gates stops
+python tools/check_all.py --help  # gates: what each of the 47 gates stops
 ```
 
 This is not a verbal promise — `check_help_contract.py` and `check_doc_flags.py` watch it, and
@@ -1292,6 +1292,7 @@ Three-link regression report: `python tools/three_links_report.py <dirs> -o <out
 - `tools/mem_callchain.py` — **call-chain peak**: fixes the under-count direction of `mem_sections`. `peak(A) = own(A) + sum(peak(callee))` — when A calls B both arrays are live, so per-function accounting underestimates. Recursion is never given a number (static expansion is impossible; a fake value is worse than none) and cycles are listed
 - `tools/mem_sections.py` — **section budget check**: section count, names, per-section capacity and per-array cap all come from the profile; arrays are routed first-fit in declaration order (a section without `max_array_bytes` accepts any size). The accounting is **per-function sums, then the max across functions**, and the result is labelled `scope: per-function` — it is not a global peak and still under-counts across call chains
 - `tools/cerebellum_bounds.py` — **machine check of the cerebellum hard bounds** (ANE v0.9.0 §4.4): (1) **offline rate** = self-decided ÷ total consultations, floor 80% — consultations are built from the **producers** (`mir.py` unmapped kinds + `operators.py` kinds), never a hand-copied list; (2) **growability** = the `operators` and `hir_ops` rule sets may only grow relative to the baseline, and any shrink must be confirmed by a human who updates the baseline. Measured 15/15 self-decided (100%), rules only grow
+- `tools/validate_ntp.py` — **the checker the spec names** (ANE v0.9.0 §43.9/§43.10): validates the conversion ledger (11 required fields plus four state constraints E1-E4) and NTP uplink messages. E1/E2 exist to catch "state and exit_verified disagree" — the two fields a human is most likely to update one without the other, and that inconsistency makes "stage passed" meaningless. Five selftest assertions, one per counter-example
 - `tools/ntp.py` — **Neural Transport Protocol** (ANE v0.9.0 §5.2): the uplink message from cerebellum to main brain. `build()` produces the full structure the spec requires (`tried_rules` / `memory_hits` / `constraints` / `budget_hint`), `compact()` produces the ANE5 one-liner, and `validate()` cross-checks that both carry the same information. Enforces "no speculation": `signal_type` is limited to UNKNOWN/S1..S4 and `tried_rules` may not be empty — escalating without trying anything means the cerebellum was bypassed
 - `tools/hw_brain.py` — **cerebellum + cerebrum for hardware mapping**: the cerebellum runs deterministic derivations (section usage, op counts, unknown-shape counts); the cerebrum escalates only on the four signals, and every escalation carries a **question that can be answered** rather than a vague "please check". The four signals (no-precedent / recurring / no-witness / unclassified) are defined in exactly one place — this is an adapter for `brain_llm.escalate`, not a second rulebook
 - `tools/verify_symbol_map.py` — **end-to-end check for the symbol remap**: build a real C project, emit the remap header, compile it, then read `nm` to see whether the symbols actually changed. The criterion is "only the target symbols remain, no builtin leftovers" — a generator's selftest can only prove the rendered text is right, never that a compiler accepts it, so a consumer-side check is mandatory. Skips with a clear message when gcc/nm/m2c are absent, never pretending to pass
