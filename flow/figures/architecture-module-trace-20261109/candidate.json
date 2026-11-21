@@ -10,7 +10,7 @@
       "url": "git@github.com:pony-029/malabc.git",
       "provider": "github",
       "link_mode": "local-only",
-      "revision": "99782e0fc8011750e18bc3164d2bb548c259d0a6"
+      "revision": "28844c9d9cdee2a5836a63a296674084d798df3b"
     }
   },
   "layout": {
@@ -274,7 +274,7 @@
     {
       "id": "gate",
       "type": "backend",
-      "label": "门禁 45 门",
+      "label": "门禁 46 门",
       "sublabel": "控: 判据",
       "tag": "未覆盖",
       "row": 2,
