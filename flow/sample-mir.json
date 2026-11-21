@@ -1,0 +1,18 @@
+{
+ "sampled": 10000,
+ "valid": 10000,
+ "invalid": 0,
+ "valid_rate": 1.0,
+ "ops_total": 77778,
+ "unmapped_total": 14501,
+ "degrade_rate": 0.1571,
+ "scenes": {
+  "concat": 4052,
+  "reduce": 2569,
+  "other": 1907,
+  "unary": 649,
+  "index": 479,
+  "matmul": 344
+ },
+ "fail_samples": []
+}
