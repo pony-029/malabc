@@ -223,7 +223,13 @@ def main(argv=None):
                                  for a, b, c in rows],
                         "detail": detail}, ensure_ascii=False, indent=1) + "\n")
         print("[report] -> %s" % os.path.relpath(p, ROOT))
-    return 0 if ok else 1
+    # **退出码要写成字面量**（R1075）：G1 判据要求「声明的退出码在源码里
+    # 找得到 return N / sys.exit(N)」。写成 `return 0 if ok else 1` 虽然
+    # 行为一样，但源码里没有 `return 1` 这个字面量，判据就会报缺口——
+    # 那不是判据死板，是它要保证「声明过的码确实被某条路径返回」。
+    if ok:
+        return 0
+    return 1
 
 
 if __name__ == "__main__":
