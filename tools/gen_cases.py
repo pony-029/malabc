@@ -139,8 +139,11 @@ def generate(n_target, outdir, variants=4):
                     sa = combo[0]
                     sb = combo[1] if len(combo) > 1 else None
                     code = build_case(name, sa, sb, seed)
-                    fn = "%s_%s_%s_v%d.m" % (
-                        name, sa, sb or "x", v)
+                    # **文件名必须含全局序号**（R1125）：原来只用
+                    # op_shape_v{v}，当 variants 增大时 v 会重复，
+                    # 后生成的把先生成的覆盖掉——生成 10 万个只落了 3524 个。
+                    fn = "%06d_%s_%s_%s_v%d.m" % (
+                        made, name, sa, sb or "x", v)
                     io.open(os.path.join(outdir, fn), "w",
                             encoding="utf-8", newline="\n").write(code)
                     manifest.append({"file": fn, "op": name,
