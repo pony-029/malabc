@@ -233,7 +233,7 @@ GUARD_TIMEOUT = 600.0
 #       故 33 → 34。门数只许升（删门/漏登记都会红）。
 # R951：新增 check_failures / check_mir_split / check_brain_growth 三道，42 -> 45。
 # 门数只许升；自证 ⑦ 会核对"这个数 == 本目录真实护栏数"。
-MIN_GUARDS = 46
+MIN_GUARDS = 48
 
 
 def _write_help(text):
