@@ -70,12 +70,39 @@ def collect(src, profile_path):
             unclassified.append("%s@%s" % (x["op"], isa))
     sig["S4_unknown_kinds"] = unclassified
 
-    # S2 复发：同一段超限（超过 1 个段同时超，或单段超幅 > 25%）
+    # S2 复发：段超限（超幅 > 25%）**或**跨调用链峰值超限。
+    #
+    # 后半条是 R1056 补的：`mem_sections` 只看「每个函数各自」，会低估——
+    # 函数 A 调 B 时两者数组同时活着。所以 S2 必须同时问一次调用链，
+    # 否则「各段都很宽裕」和「某条链已经爆了」可以同时成立，而小脑只看到前者。
     repeat = []
     for v in viol:
         ratio = float(v["over_by"]) / v["capacity"]
         if ratio > 0.25:
             repeat.append("%s 超 %.0f%%" % (v["section"], ratio * 100))
+    try:
+        import mem_callchain as MC
+        import mir as M
+        funcs, calls = {}, {}
+        for fn in sorted(os.listdir(src)):
+            if not fn.endswith(".m"):
+                continue
+            txt, _st = M.to_mir(io.open(os.path.join(src, fn),
+                                        encoding="utf-8",
+                                        errors="replace").read())
+            f1, c1 = MC.parse(txt)
+            funcs.update(f1)
+            calls.update(c1)
+        if funcs:
+            memo, _rec, _cyc = MC.peak_chain(funcs, calls)
+            limit = max(s["capacity_bytes"] for s in prof["sections"])
+            for f, p in memo.items():
+                if p is not None and p > limit:
+                    repeat.append("调用链 %s 峰值 %d B 超上限 %d B"
+                                  % (f, p, limit))
+    except Exception as e:                     # noqa: BLE001
+        # 不静默：拿不到跨链数字时要说出来，否则 S2 会"看起来查过了"
+        repeat.append("跨链峰值未取到（%s）" % type(e).__name__)
     sig["S2_repeat"] = repeat
 
     # S1 无先例：算子数 / 形状全部未知的函数（无从判断）
