@@ -47,7 +47,8 @@
 
 | 版本 | 日期 | 大小 | 主要变化 | 文件 |
 | --- | --- | --- | --- | --- |
-| 2.4.7（当前） | 2026-11-21 | 2583 KB | flow/full_report.html 被误转成 CRLF（生成物必须 LF），已转回；两处都是 check_eol_conve… | `vsix/matlabc-2.4.7.vsix` |
+| 2.4.8（当前） | — | — | — | — |
+| 2.4.7 | 2026-11-21 | 2583 KB | flow/full_report.html 被误转成 CRLF（生成物必须 LF），已转回；两处都是 check_eol_conve… | `vsix/matlabc-2.4.7.vsix` |
 
 ## 归档约定
 
