@@ -1,5 +1,5 @@
 {
- "scanned": 64659,
+ "scanned": 67239,
  "picked": [
   {
    "path": "_bench_all/_single_agg_src/s0000_f.m",
@@ -179078,6 +179078,852 @@
    "rate": 1.0
   },
   {
+   "path": "gh_cvx/builtins/@cvx/abs.m",
+   "ops": 3,
+   "unmapped": 35,
+   "rate": 0.0789
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/blkdiag.m",
+   "ops": 6,
+   "unmapped": 20,
+   "rate": 0.2308
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/cat.m",
+   "ops": 7,
+   "unmapped": 36,
+   "rate": 0.1628
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/conv.m",
+   "ops": 10,
+   "unmapped": 14,
+   "rate": 0.4167
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/ctranspose.m",
+   "ops": 1,
+   "unmapped": 11,
+   "rate": 0.0833
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/cumprod.m",
+   "ops": 1,
+   "unmapped": 34,
+   "rate": 0.0286
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/end.m",
+   "ops": 2,
+   "unmapped": 3,
+   "rate": 0.4
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/exp.m",
+   "ops": 5,
+   "unmapped": 50,
+   "rate": 0.0909
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/find.m",
+   "ops": 2,
+   "unmapped": 5,
+   "rate": 0.2857
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/hankel.m",
+   "ops": 2,
+   "unmapped": 13,
+   "rate": 0.1333
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/ipermute.m",
+   "ops": 1,
+   "unmapped": 9,
+   "rate": 0.1
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/kron.m",
+   "ops": 7,
+   "unmapped": 17,
+   "rate": 0.2917
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/log.m",
+   "ops": 11,
+   "unmapped": 62,
+   "rate": 0.1507
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/max.m",
+   "ops": 8,
+   "unmapped": 92,
+   "rate": 0.08
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/min.m",
+   "ops": 8,
+   "unmapped": 92,
+   "rate": 0.08
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/mtimes.m",
+   "ops": 28,
+   "unmapped": 137,
+   "rate": 0.1697
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/norm.m",
+   "ops": 6,
+   "unmapped": 47,
+   "rate": 0.1132
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/plus.m",
+   "ops": 9,
+   "unmapped": 48,
+   "rate": 0.1579
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/polyval.m",
+   "ops": 19,
+   "unmapped": 50,
+   "rate": 0.2754
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/power.m",
+   "ops": 3,
+   "unmapped": 38,
+   "rate": 0.0732
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/prod.m",
+   "ops": 1,
+   "unmapped": 39,
+   "rate": 0.025
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/size.m",
+   "ops": 1,
+   "unmapped": 11,
+   "rate": 0.0833
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/sqrt.m",
+   "ops": 2,
+   "unmapped": 30,
+   "rate": 0.0625
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/std.m",
+   "ops": 2,
+   "unmapped": 26,
+   "rate": 0.0714
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/subsasgn.m",
+   "ops": 3,
+   "unmapped": 4,
+   "rate": 0.4286
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/sum.m",
+   "ops": 2,
+   "unmapped": 5,
+   "rate": 0.2857
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/times.m",
+   "ops": 37,
+   "unmapped": 114,
+   "rate": 0.245
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/toeplitz.m",
+   "ops": 3,
+   "unmapped": 14,
+   "rate": 0.1765
+  },
+  {
+   "path": "gh_cvx/builtins/@cvx/transpose.m",
+   "ops": 1,
+   "unmapped": 11,
+   "rate": 0.0833
+  },
+  {
+   "path": "gh_cvx/examples/circuit_design/simple_step.m",
+   "ops": 4,
+   "unmapped": 5,
+   "rate": 0.4444
+  },
+  {
+   "path": "gh_cvx/examples/cvxbook/Ch07_statistical_estim/cheb.m",
+   "ops": 8,
+   "unmapped": 34,
+   "rate": 0.1905
+  },
+  {
+   "path": "gh_cvx/examples/cvxbook/Ch07_statistical_estim/cher.m",
+   "ops": 1,
+   "unmapped": 7,
+   "rate": 0.125
+  },
+  {
+   "path": "gh_cvx/examples/cvxbook/Ch07_statistical_estim/montecarlo.m",
+   "ops": 1,
+   "unmapped": 6,
+   "rate": 0.1429
+  },
+  {
+   "path": "gh_cvx/examples/cvxbook/Ch08_geometric_probs/floorplan.m",
+   "ops": 43,
+   "unmapped": 32,
+   "rate": 0.5733
+  },
+  {
+   "path": "gh_cvx/examples/filter_design/spectral_fact.m",
+   "ops": 6,
+   "unmapped": 10,
+   "rate": 0.375
+  },
+  {
+   "path": "gh_cvx/examples/graph_laplacian/best_const.m",
+   "ops": 2,
+   "unmapped": 8,
+   "rate": 0.2
+  },
+  {
+   "path": "gh_cvx/examples/graph_laplacian/fdla.m",
+   "ops": 1,
+   "unmapped": 12,
+   "rate": 0.0769
+  },
+  {
+   "path": "gh_cvx/examples/graph_laplacian/fmmc.m",
+   "ops": 1,
+   "unmapped": 14,
+   "rate": 0.0667
+  },
+  {
+   "path": "gh_cvx/examples/graph_laplacian/max_deg.m",
+   "ops": 2,
+   "unmapped": 6,
+   "rate": 0.25
+  },
+  {
+   "path": "gh_cvx/functions/@cvx/cvx_recip.m",
+   "ops": 3,
+   "unmapped": 21,
+   "rate": 0.125
+  },
+  {
+   "path": "gh_cvx/functions/@cvx/det_inv.m",
+   "ops": 1,
+   "unmapped": 22,
+   "rate": 0.0435
+  },
+  {
+   "path": "gh_cvx/functions/@cvx/det_rootn.m",
+   "ops": 1,
+   "unmapped": 17,
+   "rate": 0.0556
+  },
+  {
+   "path": "gh_cvx/functions/@cvx/geo_mean.m",
+   "ops": 1,
+   "unmapped": 44,
+   "rate": 0.0222
+  },
+  {
+   "path": "gh_cvx/functions/@cvx/lambda_max.m",
+   "ops": 1,
+   "unmapped": 6,
+   "rate": 0.1429
+  },
+  {
+   "path": "gh_cvx/functions/@cvx/lambda_sum_largest.m",
+   "ops": 1,
+   "unmapped": 8,
+   "rate": 0.1111
+  },
+  {
+   "path": "gh_cvx/functions/@cvx/log_normcdf.m",
+   "ops": 4,
+   "unmapped": 17,
+   "rate": 0.1905
+  },
+  {
+   "path": "gh_cvx/functions/@cvx/log_sum_exp.m",
+   "ops": 8,
+   "unmapped": 41,
+   "rate": 0.1633
+  },
+  {
+   "path": "gh_cvx/functions/@cvx/matrix_frac.m",
+   "ops": 1,
+   "unmapped": 6,
+   "rate": 0.1429
+  },
+  {
+   "path": "gh_cvx/functions/@cvx/norm_nuc.m",
+   "ops": 1,
+   "unmapped": 10,
+   "rate": 0.0909
+  },
+  {
+   "path": "gh_cvx/functions/@cvx/norms.m",
+   "ops": 6,
+   "unmapped": 41,
+   "rate": 0.1277
+  },
+  {
+   "path": "gh_cvx/functions/@cvx/prod_inv.m",
+   "ops": 2,
+   "unmapped": 12,
+   "rate": 0.1429
+  },
+  {
+   "path": "gh_cvx/functions/@cvx/quad_form.m",
+   "ops": 17,
+   "unmapped": 78,
+   "rate": 0.1789
+  },
+  {
+   "path": "gh_cvx/functions/@cvx/quad_over_lin.m",
+   "ops": 7,
+   "unmapped": 21,
+   "rate": 0.25
+  },
+  {
+   "path": "gh_cvx/functions/@cvx/rel_entr.m",
+   "ops": 8,
+   "unmapped": 38,
+   "rate": 0.1739
+  },
+  {
+   "path": "gh_cvx/functions/@cvx/square.m",
+   "ops": 8,
+   "unmapped": 25,
+   "rate": 0.2424
+  },
+  {
+   "path": "gh_cvx/functions/@cvx/sum_largest.m",
+   "ops": 3,
+   "unmapped": 14,
+   "rate": 0.1765
+  },
+  {
+   "path": "gh_cvx/functions/@cvx/trace_inv.m",
+   "ops": 1,
+   "unmapped": 9,
+   "rate": 0.1
+  },
+  {
+   "path": "gh_cvx/functions/@cvx/trace_sqrtm.m",
+   "ops": 1,
+   "unmapped": 9,
+   "rate": 0.1
+  },
+  {
+   "path": "gh_cvx/functions/avg_abs_dev.m",
+   "ops": 4,
+   "unmapped": 8,
+   "rate": 0.3333
+  },
+  {
+   "path": "gh_cvx/functions/avg_abs_dev_med.m",
+   "ops": 4,
+   "unmapped": 7,
+   "rate": 0.3636
+  },
+  {
+   "path": "gh_cvx/functions/berhu.m",
+   "ops": 2,
+   "unmapped": 11,
+   "rate": 0.1538
+  },
+  {
+   "path": "gh_cvx/functions/det_inv.m",
+   "ops": 2,
+   "unmapped": 10,
+   "rate": 0.1667
+  },
+  {
+   "path": "gh_cvx/functions/geo_mean.m",
+   "ops": 2,
+   "unmapped": 15,
+   "rate": 0.1176
+  },
+  {
+   "path": "gh_cvx/functions/huber_pos.m",
+   "ops": 2,
+   "unmapped": 12,
+   "rate": 0.1429
+  },
+  {
+   "path": "gh_cvx/functions/log_sum_exp.m",
+   "ops": 3,
+   "unmapped": 3,
+   "rate": 0.5
+  },
+  {
+   "path": "gh_cvx/functions/logsumexp_sdp.m",
+   "ops": 8,
+   "unmapped": 107,
+   "rate": 0.0696
+  },
+  {
+   "path": "gh_cvx/functions/norms.m",
+   "ops": 1,
+   "unmapped": 11,
+   "rate": 0.0833
+  },
+  {
+   "path": "gh_cvx/functions/norms_largest.m",
+   "ops": 1,
+   "unmapped": 4,
+   "rate": 0.2
+  },
+  {
+   "path": "gh_cvx/functions/poly_env.m",
+   "ops": 13,
+   "unmapped": 18,
+   "rate": 0.4194
+  },
+  {
+   "path": "gh_cvx/functions/polyval_trig.m",
+   "ops": 8,
+   "unmapped": 13,
+   "rate": 0.381
+  },
+  {
+   "path": "gh_cvx/functions/prod_inv.m",
+   "ops": 1,
+   "unmapped": 5,
+   "rate": 0.1667
+  },
+  {
+   "path": "gh_cvx/functions/quad_form.m",
+   "ops": 4,
+   "unmapped": 7,
+   "rate": 0.3636
+  },
+  {
+   "path": "gh_cvx/functions/quad_over_lin.m",
+   "ops": 5,
+   "unmapped": 8,
+   "rate": 0.3846
+  },
+  {
+   "path": "gh_cvx/functions/rel_entr.m",
+   "ops": 2,
+   "unmapped": 6,
+   "rate": 0.25
+  },
+  {
+   "path": "gh_cvx/functions/square_/square.m",
+   "ops": 1,
+   "unmapped": 0,
+   "rate": 1.0
+  },
+  {
+   "path": "gh_cvx/functions/sum_largest.m",
+   "ops": 3,
+   "unmapped": 17,
+   "rate": 0.15
+  },
+  {
+   "path": "gh_cvx/functions/sum_square.m",
+   "ops": 2,
+   "unmapped": 2,
+   "rate": 0.5
+  },
+  {
+   "path": "gh_cvx/functions/sum_square_abs.m",
+   "ops": 1,
+   "unmapped": 3,
+   "rate": 0.25
+  },
+  {
+   "path": "gh_cvx/functions/sym.m",
+   "ops": 1,
+   "unmapped": 2,
+   "rate": 0.3333
+  },
+  {
+   "path": "gh_cvx/functions/trace_inv.m",
+   "ops": 2,
+   "unmapped": 6,
+   "rate": 0.25
+  },
+  {
+   "path": "gh_cvx/functions/trace_sqrtm.m",
+   "ops": 2,
+   "unmapped": 6,
+   "rate": 0.25
+  },
+  {
+   "path": "gh_cvx/lib/@cvx/buncompress.m",
+   "ops": 1,
+   "unmapped": 4,
+   "rate": 0.2
+  },
+  {
+   "path": "gh_cvx/lib/@cvx/cvx_classify.m",
+   "ops": 8,
+   "unmapped": 28,
+   "rate": 0.2222
+  },
+  {
+   "path": "gh_cvx/lib/@cvx/cvx_isnonzero.m",
+   "ops": 1,
+   "unmapped": 3,
+   "rate": 0.25
+  },
+  {
+   "path": "gh_cvx/lib/@cvx/cvx_vexity.m",
+   "ops": 4,
+   "unmapped": 24,
+   "rate": 0.1429
+  },
+  {
+   "path": "gh_cvx/lib/@cvx/sparsify.m",
+   "ops": 12,
+   "unmapped": 57,
+   "rate": 0.1739
+  },
+  {
+   "path": "gh_cvx/lib/@cvx/type.m",
+   "ops": 4,
+   "unmapped": 21,
+   "rate": 0.16
+  },
+  {
+   "path": "gh_cvx/lib/@cvx/value.m",
+   "ops": 1,
+   "unmapped": 9,
+   "rate": 0.1
+  },
+  {
+   "path": "gh_cvx/lib/@cvxdual/type.m",
+   "ops": 5,
+   "unmapped": 23,
+   "rate": 0.1786
+  },
+  {
+   "path": "gh_cvx/lib/@cvxobj/length.m",
+   "ops": 2,
+   "unmapped": 1,
+   "rate": 0.6667
+  },
+  {
+   "path": "gh_cvx/lib/@cvxprob/cvxprob.m",
+   "ops": 2,
+   "unmapped": 77,
+   "rate": 0.0253
+  },
+  {
+   "path": "gh_cvx/lib/@cvxprob/eliminate.m",
+   "ops": 52,
+   "unmapped": 101,
+   "rate": 0.3399
+  },
+  {
+   "path": "gh_cvx/lib/@cvxprob/extract.m",
+   "ops": 20,
+   "unmapped": 115,
+   "rate": 0.1481
+  },
+  {
+   "path": "gh_cvx/lib/@cvxprob/newnonl.m",
+   "ops": 3,
+   "unmapped": 18,
+   "rate": 0.1429
+  },
+  {
+   "path": "gh_cvx/lib/@cvxprob/newvar.m",
+   "ops": 1,
+   "unmapped": 20,
+   "rate": 0.0476
+  },
+  {
+   "path": "gh_cvx/lib/@cvxprob/touch.m",
+   "ops": 2,
+   "unmapped": 13,
+   "rate": 0.1333
+  },
+  {
+   "path": "gh_cvx/lib/@cvxtuple/cvx_setdual.m",
+   "ops": 1,
+   "unmapped": 17,
+   "rate": 0.0556
+  },
+  {
+   "path": "gh_cvx/lib/cvx_accept_concave.m",
+   "ops": 2,
+   "unmapped": 9,
+   "rate": 0.1818
+  },
+  {
+   "path": "gh_cvx/lib/cvx_accept_convex.m",
+   "ops": 2,
+   "unmapped": 9,
+   "rate": 0.1818
+  },
+  {
+   "path": "gh_cvx/lib/cvx_basis.m",
+   "ops": 1,
+   "unmapped": 2,
+   "rate": 0.3333
+  },
+  {
+   "path": "gh_cvx/lib/cvx_c2r.m",
+   "ops": 8,
+   "unmapped": 35,
+   "rate": 0.186
+  },
+  {
+   "path": "gh_cvx/lib/cvx_check_dimlist.m",
+   "ops": 4,
+   "unmapped": 9,
+   "rate": 0.3077
+  },
+  {
+   "path": "gh_cvx/lib/cvx_class.m",
+   "ops": 46,
+   "unmapped": 25,
+   "rate": 0.6479
+  },
+  {
+   "path": "gh_cvx/lib/cvx_collapse.m",
+   "ops": 6,
+   "unmapped": 22,
+   "rate": 0.2143
+  },
+  {
+   "path": "gh_cvx/lib/cvx_default_dimension.m",
+   "ops": 2,
+   "unmapped": 1,
+   "rate": 0.6667
+  },
+  {
+   "path": "gh_cvx/lib/cvx_r2c.m",
+   "ops": 3,
+   "unmapped": 10,
+   "rate": 0.2308
+  },
+  {
+   "path": "gh_cvx/lib/cvx_reduce_size.m",
+   "ops": 5,
+   "unmapped": 12,
+   "rate": 0.2941
+  },
+  {
+   "path": "gh_cvx/lib/cvx_remap.m",
+   "ops": 2,
+   "unmapped": 62,
+   "rate": 0.0312
+  },
+  {
+   "path": "gh_cvx/lib/cvx_reshape.m",
+   "ops": 13,
+   "unmapped": 30,
+   "rate": 0.3023
+  },
+  {
+   "path": "gh_cvx/lib/cvx_subs2str.m",
+   "ops": 2,
+   "unmapped": 13,
+   "rate": 0.1333
+  },
+  {
+   "path": "gh_cvx/lib/cvx_use_sparse.m",
+   "ops": 15,
+   "unmapped": 7,
+   "rate": 0.6818
+  },
+  {
+   "path": "gh_cvx/lib/cvx_vexity.m",
+   "ops": 1,
+   "unmapped": 3,
+   "rate": 0.25
+  },
+  {
+   "path": "gh_cvx/sets/exponential.m",
+   "ops": 3,
+   "unmapped": 12,
+   "rate": 0.2
+  },
+  {
+   "path": "gh_cvx/shims/cvx_glpk.m",
+   "ops": 16,
+   "unmapped": 78,
+   "rate": 0.1702
+  },
+  {
+   "path": "gh_cvx/shims/cvx_gurobi.m",
+   "ops": 19,
+   "unmapped": 101,
+   "rate": 0.1583
+  },
+  {
+   "path": "gh_cvx/structures/cvx_orthog_structure.m",
+   "ops": 4,
+   "unmapped": 28,
+   "rate": 0.125
+  },
+  {
+   "path": "gh_cvx/structures/cvx_replicate_structure.m",
+   "ops": 10,
+   "unmapped": 6,
+   "rate": 0.625
+  },
+  {
+   "path": "gh_cvx/structures/cvx_s_banded.m",
+   "ops": 7,
+   "unmapped": 23,
+   "rate": 0.2333
+  },
+  {
+   "path": "gh_cvx/structures/cvx_s_hermitian.m",
+   "ops": 7,
+   "unmapped": 14,
+   "rate": 0.3333
+  },
+  {
+   "path": "gh_cvx/structures/cvx_s_sparse.m",
+   "ops": 4,
+   "unmapped": 18,
+   "rate": 0.1818
+  },
+  {
+   "path": "gh_cvx/structures/cvx_s_symmetric.m",
+   "ops": 3,
+   "unmapped": 8,
+   "rate": 0.2727
+  },
+  {
+   "path": "gh_cvx/structures/cvx_s_symmetric_ut.m",
+   "ops": 3,
+   "unmapped": 8,
+   "rate": 0.2727
+  },
+  {
+   "path": "gh_dlt/CAE/caeup.m",
+   "ops": 1,
+   "unmapped": 11,
+   "rate": 0.0833
+  },
+  {
+   "path": "gh_dlt/CAE/max3d.m",
+   "ops": 3,
+   "unmapped": 3,
+   "rate": 0.5
+  },
+  {
+   "path": "gh_dlt/CAE/scaesetup.m",
+   "ops": 3,
+   "unmapped": 32,
+   "rate": 0.0857
+  },
+  {
+   "path": "gh_dlt/CNN/cnnbp.m",
+   "ops": 1,
+   "unmapped": 30,
+   "rate": 0.0323
+  },
+  {
+   "path": "gh_dlt/CNN/cnnsetup.m",
+   "ops": 3,
+   "unmapped": 17,
+   "rate": 0.15
+  },
+  {
+   "path": "gh_dlt/CNN/cnntest.m",
+   "ops": 2,
+   "unmapped": 4,
+   "rate": 0.3333
+  },
+  {
+   "path": "gh_dlt/DBN/dbnsetup.m",
+   "ops": 1,
+   "unmapped": 10,
+   "rate": 0.0909
+  },
+  {
+   "path": "gh_dlt/NN/nnff.m",
+   "ops": 1,
+   "unmapped": 13,
+   "rate": 0.0714
+  },
+  {
+   "path": "gh_dlt/NN/nntest.m",
+   "ops": 2,
+   "unmapped": 3,
+   "rate": 0.4
+  },
+  {
+   "path": "gh_dlt/SAE/saesetup.m",
+   "ops": 1,
+   "unmapped": 1,
+   "rate": 0.5
+  },
+  {
+   "path": "gh_dlt/util/allcomb.m",
+   "ops": 6,
+   "unmapped": 12,
+   "rate": 0.3333
+  },
+  {
+   "path": "gh_dlt/util/expand.m",
+   "ops": 3,
+   "unmapped": 6,
+   "rate": 0.3333
+  },
+  {
+   "path": "gh_dlt/util/im2patches.m",
+   "ops": 1,
+   "unmapped": 6,
+   "rate": 0.1429
+  },
+  {
+   "path": "gh_dlt/util/makeLMfilters.m",
+   "ops": 2,
+   "unmapped": 5,
+   "rate": 0.2857
+  },
+  {
+   "path": "gh_dlt/util/patches2im.m",
+   "ops": 2,
+   "unmapped": 3,
+   "rate": 0.4
+  },
+  {
+   "path": "gh_dlt/util/randcorr.m",
+   "ops": 1,
+   "unmapped": 2,
+   "rate": 0.3333
+  },
+  {
+   "path": "gh_dlt/util/softmax.m",
+   "ops": 2,
+   "unmapped": 2,
+   "rate": 0.5
+  },
+  {
+   "path": "gh_dlt/util/whiten.m",
+   "ops": 1,
+   "unmapped": 4,
+   "rate": 0.2
+  },
+  {
+   "path": "gh_dlt/util/zscore.m",
+   "ops": 1,
+   "unmapped": 3,
+   "rate": 0.25
+  },
+  {
    "path": "gh_matlab_c/C_project/CS_GUI/M_Algorithm/filter_bode.m",
    "ops": 12,
    "unmapped": 28,
@@ -179100,6 +179946,2208 @@
    "ops": 12,
    "unmapped": 26,
    "rate": 0.3158
+  },
+  {
+   "path": "gh_matpower/lib/@opf_model/add_legacy_cost.m",
+   "ops": 2,
+   "unmapped": 19,
+   "rate": 0.0952
+  },
+  {
+   "path": "gh_matpower/lib/@opf_model/add_named_set.m",
+   "ops": 1,
+   "unmapped": 35,
+   "rate": 0.0278
+  },
+  {
+   "path": "gh_matpower/lib/@opf_model/eval_legacy_cost.m",
+   "ops": 2,
+   "unmapped": 17,
+   "rate": 0.1053
+  },
+  {
+   "path": "gh_matpower/lib/@opf_model/params_legacy_cost.m",
+   "ops": 10,
+   "unmapped": 83,
+   "rate": 0.1075
+  },
+  {
+   "path": "gh_matpower/lib/apply_changes.m",
+   "ops": 9,
+   "unmapped": 107,
+   "rate": 0.0776
+  },
+  {
+   "path": "gh_matpower/lib/bustypes.m",
+   "ops": 5,
+   "unmapped": 10,
+   "rate": 0.3333
+  },
+  {
+   "path": "gh_matpower/lib/calc_v_i_sum.m",
+   "ops": 31,
+   "unmapped": 36,
+   "rate": 0.4627
+  },
+  {
+   "path": "gh_matpower/lib/calc_v_pq_sum.m",
+   "ops": 34,
+   "unmapped": 34,
+   "rate": 0.5
+  },
+  {
+   "path": "gh_matpower/lib/calc_v_y_sum.m",
+   "ops": 36,
+   "unmapped": 39,
+   "rate": 0.48
+  },
+  {
+   "path": "gh_matpower/lib/case_info.m",
+   "ops": 23,
+   "unmapped": 397,
+   "rate": 0.0548
+  },
+  {
+   "path": "gh_matpower/lib/compare_case.m",
+   "ops": 3,
+   "unmapped": 110,
+   "rate": 0.0265
+  },
+  {
+   "path": "gh_matpower/lib/connected_components.m",
+   "ops": 16,
+   "unmapped": 13,
+   "rate": 0.5517
+  },
+  {
+   "path": "gh_matpower/lib/cpf_detect_events.m",
+   "ops": 5,
+   "unmapped": 60,
+   "rate": 0.0769
+  },
+  {
+   "path": "gh_matpower/lib/cpf_p.m",
+   "ops": 9,
+   "unmapped": 8,
+   "rate": 0.5294
+  },
+  {
+   "path": "gh_matpower/lib/cpf_p_jac.m",
+   "ops": 9,
+   "unmapped": 7,
+   "rate": 0.5625
+  },
+  {
+   "path": "gh_matpower/lib/cpf_plim_event.m",
+   "ops": 1,
+   "unmapped": 11,
+   "rate": 0.0833
+  },
+  {
+   "path": "gh_matpower/lib/cpf_predictor.m",
+   "ops": 2,
+   "unmapped": 5,
+   "rate": 0.2857
+  },
+  {
+   "path": "gh_matpower/lib/cpf_qlim_event.m",
+   "ops": 4,
+   "unmapped": 15,
+   "rate": 0.2105
+  },
+  {
+   "path": "gh_matpower/lib/cpf_register_callback.m",
+   "ops": 6,
+   "unmapped": 10,
+   "rate": 0.375
+  },
+  {
+   "path": "gh_matpower/lib/cpf_register_event.m",
+   "ops": 3,
+   "unmapped": 9,
+   "rate": 0.25
+  },
+  {
+   "path": "gh_matpower/lib/cpf_vlim_event.m",
+   "ops": 1,
+   "unmapped": 6,
+   "rate": 0.1429
+  },
+  {
+   "path": "gh_matpower/lib/d2Abr_dV2.m",
+   "ops": 1,
+   "unmapped": 6,
+   "rate": 0.1429
+  },
+  {
+   "path": "gh_matpower/lib/d2Ibr_dV2.m",
+   "ops": 1,
+   "unmapped": 5,
+   "rate": 0.1667
+  },
+  {
+   "path": "gh_matpower/lib/d2Imis_dV2.m",
+   "ops": 4,
+   "unmapped": 14,
+   "rate": 0.2222
+  },
+  {
+   "path": "gh_matpower/lib/d2Imis_dVdSg.m",
+   "ops": 2,
+   "unmapped": 13,
+   "rate": 0.1333
+  },
+  {
+   "path": "gh_matpower/lib/d2Sbr_dV2.m",
+   "ops": 9,
+   "unmapped": 11,
+   "rate": 0.45
+  },
+  {
+   "path": "gh_matpower/lib/d2Sbus_dV2.m",
+   "ops": 9,
+   "unmapped": 13,
+   "rate": 0.4091
+  },
+  {
+   "path": "gh_matpower/lib/dIbr_dV.m",
+   "ops": 5,
+   "unmapped": 10,
+   "rate": 0.3333
+  },
+  {
+   "path": "gh_matpower/lib/dImis_dV.m",
+   "ops": 9,
+   "unmapped": 15,
+   "rate": 0.375
+  },
+  {
+   "path": "gh_matpower/lib/dSbr_dV.m",
+   "ops": 22,
+   "unmapped": 39,
+   "rate": 0.3607
+  },
+  {
+   "path": "gh_matpower/lib/dSbus_dV.m",
+   "ops": 6,
+   "unmapped": 14,
+   "rate": 0.3
+  },
+  {
+   "path": "gh_matpower/lib/dcopf_solver.m",
+   "ops": 8,
+   "unmapped": 70,
+   "rate": 0.1026
+  },
+  {
+   "path": "gh_matpower/lib/e2i_data.m",
+   "ops": 2,
+   "unmapped": 15,
+   "rate": 0.1176
+  },
+  {
+   "path": "gh_matpower/lib/e2i_field.m",
+   "ops": 1,
+   "unmapped": 8,
+   "rate": 0.1111
+  },
+  {
+   "path": "gh_matpower/lib/ext2int.m",
+   "ops": 2,
+   "unmapped": 105,
+   "rate": 0.0187
+  },
+  {
+   "path": "gh_matpower/lib/extract_islands.m",
+   "ops": 14,
+   "unmapped": 77,
+   "rate": 0.1538
+  },
+  {
+   "path": "gh_matpower/lib/fdpf.m",
+   "ops": 6,
+   "unmapped": 56,
+   "rate": 0.0968
+  },
+  {
+   "path": "gh_matpower/lib/feval_w_path.m",
+   "ops": 1,
+   "unmapped": 11,
+   "rate": 0.0833
+  },
+  {
+   "path": "gh_matpower/lib/find_bridges.m",
+   "ops": 6,
+   "unmapped": 34,
+   "rate": 0.15
+  },
+  {
+   "path": "gh_matpower/lib/find_islands.m",
+   "ops": 2,
+   "unmapped": 11,
+   "rate": 0.1538
+  },
+  {
+   "path": "gh_matpower/lib/gausspf.m",
+   "ops": 5,
+   "unmapped": 29,
+   "rate": 0.1471
+  },
+  {
+   "path": "gh_matpower/lib/get_losses.m",
+   "ops": 11,
+   "unmapped": 32,
+   "rate": 0.2558
+  },
+  {
+   "path": "gh_matpower/lib/hasPQcap.m",
+   "ops": 8,
+   "unmapped": 27,
+   "rate": 0.2286
+  },
+  {
+   "path": "gh_matpower/lib/i2e_data.m",
+   "ops": 3,
+   "unmapped": 16,
+   "rate": 0.1579
+  },
+  {
+   "path": "gh_matpower/lib/i2e_field.m",
+   "ops": 1,
+   "unmapped": 11,
+   "rate": 0.0833
+  },
+  {
+   "path": "gh_matpower/lib/load2disp.m",
+   "ops": 6,
+   "unmapped": 47,
+   "rate": 0.1132
+  },
+  {
+   "path": "gh_matpower/lib/makeAang.m",
+   "ops": 7,
+   "unmapped": 15,
+   "rate": 0.3182
+  },
+  {
+   "path": "gh_matpower/lib/makeApq.m",
+   "ops": 7,
+   "unmapped": 25,
+   "rate": 0.2188
+  },
+  {
+   "path": "gh_matpower/lib/makeAvl.m",
+   "ops": 8,
+   "unmapped": 36,
+   "rate": 0.1818
+  },
+  {
+   "path": "gh_matpower/lib/makeAy.m",
+   "ops": 12,
+   "unmapped": 16,
+   "rate": 0.4286
+  },
+  {
+   "path": "gh_matpower/lib/makeB.m",
+   "ops": 2,
+   "unmapped": 23,
+   "rate": 0.08
+  },
+  {
+   "path": "gh_matpower/lib/makeBdc.m",
+   "ops": 8,
+   "unmapped": 17,
+   "rate": 0.32
+  },
+  {
+   "path": "gh_matpower/lib/makeJac.m",
+   "ops": 1,
+   "unmapped": 27,
+   "rate": 0.0357
+  },
+  {
+   "path": "gh_matpower/lib/makeLODF.m",
+   "ops": 4,
+   "unmapped": 15,
+   "rate": 0.2105
+  },
+  {
+   "path": "gh_matpower/lib/makePTDF.m",
+   "ops": 19,
+   "unmapped": 23,
+   "rate": 0.4524
+  },
+  {
+   "path": "gh_matpower/lib/makeSbus.m",
+   "ops": 9,
+   "unmapped": 13,
+   "rate": 0.4091
+  },
+  {
+   "path": "gh_matpower/lib/makeSdzip.m",
+   "ops": 2,
+   "unmapped": 13,
+   "rate": 0.1333
+  },
+  {
+   "path": "gh_matpower/lib/makeYbus.m",
+   "ops": 7,
+   "unmapped": 30,
+   "rate": 0.1892
+  },
+  {
+   "path": "gh_matpower/lib/make_vcorr.m",
+   "ops": 7,
+   "unmapped": 1,
+   "rate": 0.875
+  },
+  {
+   "path": "gh_matpower/lib/make_zpv.m",
+   "ops": 11,
+   "unmapped": 5,
+   "rate": 0.6875
+  },
+  {
+   "path": "gh_matpower/lib/margcost.m",
+   "ops": 4,
+   "unmapped": 15,
+   "rate": 0.2105
+  },
+  {
+   "path": "gh_matpower/lib/modcost.m",
+   "ops": 10,
+   "unmapped": 31,
+   "rate": 0.2439
+  },
+  {
+   "path": "gh_matpower/lib/mpoption.m",
+   "ops": 13,
+   "unmapped": 291,
+   "rate": 0.0428
+  },
+  {
+   "path": "gh_matpower/lib/mpver.m",
+   "ops": 1,
+   "unmapped": 127,
+   "rate": 0.0078
+  },
+  {
+   "path": "gh_matpower/lib/newtonpf.m",
+   "ops": 11,
+   "unmapped": 43,
+   "rate": 0.2037
+  },
+  {
+   "path": "gh_matpower/lib/newtonpf_I_cart.m",
+   "ops": 15,
+   "unmapped": 50,
+   "rate": 0.2308
+  },
+  {
+   "path": "gh_matpower/lib/newtonpf_I_hybrid.m",
+   "ops": 14,
+   "unmapped": 51,
+   "rate": 0.2154
+  },
+  {
+   "path": "gh_matpower/lib/newtonpf_I_polar.m",
+   "ops": 14,
+   "unmapped": 46,
+   "rate": 0.2333
+  },
+  {
+   "path": "gh_matpower/lib/newtonpf_S_cart.m",
+   "ops": 11,
+   "unmapped": 44,
+   "rate": 0.2
+  },
+  {
+   "path": "gh_matpower/lib/newtonpf_S_hybrid.m",
+   "ops": 10,
+   "unmapped": 47,
+   "rate": 0.1754
+  },
+  {
+   "path": "gh_matpower/lib/nlpopf_solver.m",
+   "ops": 20,
+   "unmapped": 115,
+   "rate": 0.1481
+  },
+  {
+   "path": "gh_matpower/lib/opf_branch_ang_fcn.m",
+   "ops": 2,
+   "unmapped": 9,
+   "rate": 0.1818
+  },
+  {
+   "path": "gh_matpower/lib/opf_branch_ang_hess.m",
+   "ops": 3,
+   "unmapped": 10,
+   "rate": 0.2308
+  },
+  {
+   "path": "gh_matpower/lib/opf_branch_flow_fcn.m",
+   "ops": 4,
+   "unmapped": 42,
+   "rate": 0.087
+  },
+  {
+   "path": "gh_matpower/lib/opf_branch_flow_hess.m",
+   "ops": 5,
+   "unmapped": 33,
+   "rate": 0.1316
+  },
+  {
+   "path": "gh_matpower/lib/opf_current_balance_fcn.m",
+   "ops": 2,
+   "unmapped": 24,
+   "rate": 0.0769
+  },
+  {
+   "path": "gh_matpower/lib/opf_current_balance_hess.m",
+   "ops": 5,
+   "unmapped": 22,
+   "rate": 0.1852
+  },
+  {
+   "path": "gh_matpower/lib/opf_gen_cost_fcn.m",
+   "ops": 4,
+   "unmapped": 7,
+   "rate": 0.3636
+  },
+  {
+   "path": "gh_matpower/lib/opf_legacy_user_cost_fcn.m",
+   "ops": 23,
+   "unmapped": 26,
+   "rate": 0.4694
+  },
+  {
+   "path": "gh_matpower/lib/opf_power_balance_fcn.m",
+   "ops": 3,
+   "unmapped": 25,
+   "rate": 0.1071
+  },
+  {
+   "path": "gh_matpower/lib/opf_power_balance_hess.m",
+   "ops": 8,
+   "unmapped": 16,
+   "rate": 0.3333
+  },
+  {
+   "path": "gh_matpower/lib/opf_veq_fcn.m",
+   "ops": 3,
+   "unmapped": 7,
+   "rate": 0.3
+  },
+  {
+   "path": "gh_matpower/lib/opf_veq_hess.m",
+   "ops": 2,
+   "unmapped": 4,
+   "rate": 0.3333
+  },
+  {
+   "path": "gh_matpower/lib/opf_vlim_fcn.m",
+   "ops": 2,
+   "unmapped": 10,
+   "rate": 0.1667
+  },
+  {
+   "path": "gh_matpower/lib/opf_vlim_hess.m",
+   "ops": 4,
+   "unmapped": 5,
+   "rate": 0.4444
+  },
+  {
+   "path": "gh_matpower/lib/opf_vref_fcn.m",
+   "ops": 3,
+   "unmapped": 7,
+   "rate": 0.3
+  },
+  {
+   "path": "gh_matpower/lib/opf_vref_hess.m",
+   "ops": 1,
+   "unmapped": 11,
+   "rate": 0.0833
+  },
+  {
+   "path": "gh_matpower/lib/order_radial.m",
+   "ops": 29,
+   "unmapped": 42,
+   "rate": 0.4085
+  },
+  {
+   "path": "gh_matpower/lib/pfsoln.m",
+   "ops": 9,
+   "unmapped": 52,
+   "rate": 0.1475
+  },
+  {
+   "path": "gh_matpower/lib/poly2pwl.m",
+   "ops": 18,
+   "unmapped": 11,
+   "rate": 0.6207
+  },
+  {
+   "path": "gh_matpower/lib/polycost.m",
+   "ops": 7,
+   "unmapped": 11,
+   "rate": 0.3889
+  },
+  {
+   "path": "gh_matpower/lib/pqcost.m",
+   "ops": 4,
+   "unmapped": 1,
+   "rate": 0.8
+  },
+  {
+   "path": "gh_matpower/lib/psse2mpc.m",
+   "ops": 4,
+   "unmapped": 21,
+   "rate": 0.16
+  },
+  {
+   "path": "gh_matpower/lib/psse_convert.m",
+   "ops": 9,
+   "unmapped": 93,
+   "rate": 0.0882
+  },
+  {
+   "path": "gh_matpower/lib/psse_convert_hvdc.m",
+   "ops": 26,
+   "unmapped": 13,
+   "rate": 0.6667
+  },
+  {
+   "path": "gh_matpower/lib/psse_convert_xfmr.m",
+   "ops": 78,
+   "unmapped": 84,
+   "rate": 0.4815
+  },
+  {
+   "path": "gh_matpower/lib/psse_parse.m",
+   "ops": 14,
+   "unmapped": 151,
+   "rate": 0.0848
+  },
+  {
+   "path": "gh_matpower/lib/psse_parse_line.m",
+   "ops": 6,
+   "unmapped": 41,
+   "rate": 0.1277
+  },
+  {
+   "path": "gh_matpower/lib/psse_parse_section.m",
+   "ops": 14,
+   "unmapped": 72,
+   "rate": 0.1628
+  },
+  {
+   "path": "gh_matpower/lib/psse_read.m",
+   "ops": 5,
+   "unmapped": 34,
+   "rate": 0.1282
+  },
+  {
+   "path": "gh_matpower/lib/radial_pf.m",
+   "ops": 9,
+   "unmapped": 37,
+   "rate": 0.1957
+  },
+  {
+   "path": "gh_matpower/lib/scale_load.m",
+   "ops": 34,
+   "unmapped": 61,
+   "rate": 0.3579
+  },
+  {
+   "path": "gh_matpower/lib/set_reorder.m",
+   "ops": 3,
+   "unmapped": 16,
+   "rate": 0.1579
+  },
+  {
+   "path": "gh_matpower/lib/t/generate_source_symlinks.m",
+   "ops": 5,
+   "unmapped": 34,
+   "rate": 0.1282
+  },
+  {
+   "path": "gh_matpower/lib/t/opf_nle_fcn1.m",
+   "ops": 2,
+   "unmapped": 5,
+   "rate": 0.2857
+  },
+  {
+   "path": "gh_matpower/lib/t/opf_nle_hess1.m",
+   "ops": 1,
+   "unmapped": 2,
+   "rate": 0.3333
+  },
+  {
+   "path": "gh_matpower/lib/t/t_auction_minopf.m",
+   "ops": 1,
+   "unmapped": 467,
+   "rate": 0.0021
+  },
+  {
+   "path": "gh_matpower/lib/t/t_auction_mips.m",
+   "ops": 1,
+   "unmapped": 469,
+   "rate": 0.0021
+  },
+  {
+   "path": "gh_matpower/lib/t/t_auction_tspopf_pdipm.m",
+   "ops": 1,
+   "unmapped": 474,
+   "rate": 0.0021
+  },
+  {
+   "path": "gh_matpower/lib/t/t_convert_1p_to_3p.m",
+   "ops": 8,
+   "unmapped": 123,
+   "rate": 0.0611
+  },
+  {
+   "path": "gh_matpower/lib/t/t_cpf.m",
+   "ops": 44,
+   "unmapped": 530,
+   "rate": 0.0767
+  },
+  {
+   "path": "gh_matpower/lib/t/t_dcline.m",
+   "ops": 10,
+   "unmapped": 231,
+   "rate": 0.0415
+  },
+  {
+   "path": "gh_matpower/lib/t/t_dmc_element.m",
+   "ops": 1,
+   "unmapped": 174,
+   "rate": 0.0057
+  },
+  {
+   "path": "gh_matpower/lib/t/t_feval_w_path/rithmaticker.m",
+   "ops": 6,
+   "unmapped": 3,
+   "rate": 0.6667
+  },
+  {
+   "path": "gh_matpower/lib/t/t_get_losses.m",
+   "ops": 3,
+   "unmapped": 92,
+   "rate": 0.0316
+  },
+  {
+   "path": "gh_matpower/lib/t/t_hessian.m",
+   "ops": 81,
+   "unmapped": 205,
+   "rate": 0.2832
+  },
+  {
+   "path": "gh_matpower/lib/t/t_jacobian.m",
+   "ops": 33,
+   "unmapped": 87,
+   "rate": 0.275
+  },
+  {
+   "path": "gh_matpower/lib/t/t_load2disp.m",
+   "ops": 10,
+   "unmapped": 136,
+   "rate": 0.0685
+  },
+  {
+   "path": "gh_matpower/lib/t/t_makeLODF.m",
+   "ops": 2,
+   "unmapped": 36,
+   "rate": 0.0526
+  },
+  {
+   "path": "gh_matpower/lib/t/t_makePTDF.m",
+   "ops": 19,
+   "unmapped": 90,
+   "rate": 0.1743
+  },
+  {
+   "path": "gh_matpower/lib/t/t_miqps_matpower.m",
+   "ops": 11,
+   "unmapped": 162,
+   "rate": 0.0636
+  },
+  {
+   "path": "gh_matpower/lib/t/t_mp_data_model.m",
+   "ops": 1,
+   "unmapped": 97,
+   "rate": 0.0102
+  },
+  {
+   "path": "gh_matpower/lib/t/t_mp_mapped_array.m",
+   "ops": 1,
+   "unmapped": 127,
+   "rate": 0.0078
+  },
+  {
+   "path": "gh_matpower/lib/t/t_mpoption.m",
+   "ops": 1,
+   "unmapped": 248,
+   "rate": 0.004
+  },
+  {
+   "path": "gh_matpower/lib/t/t_mpxt_legacy_dcline.m",
+   "ops": 10,
+   "unmapped": 242,
+   "rate": 0.0397
+  },
+  {
+   "path": "gh_matpower/lib/t/t_node_test.m",
+   "ops": 1,
+   "unmapped": 53,
+   "rate": 0.0185
+  },
+  {
+   "path": "gh_matpower/lib/t/t_off2case.m",
+   "ops": 10,
+   "unmapped": 285,
+   "rate": 0.0339
+  },
+  {
+   "path": "gh_matpower/lib/t/t_opf_dc_bpmpd.m",
+   "ops": 14,
+   "unmapped": 107,
+   "rate": 0.1157
+  },
+  {
+   "path": "gh_matpower/lib/t/t_opf_dc_clp.m",
+   "ops": 17,
+   "unmapped": 142,
+   "rate": 0.1069
+  },
+  {
+   "path": "gh_matpower/lib/t/t_opf_dc_cplex.m",
+   "ops": 17,
+   "unmapped": 117,
+   "rate": 0.1269
+  },
+  {
+   "path": "gh_matpower/lib/t/t_opf_dc_default.m",
+   "ops": 14,
+   "unmapped": 133,
+   "rate": 0.0952
+  },
+  {
+   "path": "gh_matpower/lib/t/t_opf_dc_glpk.m",
+   "ops": 17,
+   "unmapped": 130,
+   "rate": 0.1156
+  },
+  {
+   "path": "gh_matpower/lib/t/t_opf_dc_gurobi.m",
+   "ops": 18,
+   "unmapped": 123,
+   "rate": 0.1277
+  },
+  {
+   "path": "gh_matpower/lib/t/t_opf_dc_highs.m",
+   "ops": 17,
+   "unmapped": 133,
+   "rate": 0.1133
+  },
+  {
+   "path": "gh_matpower/lib/t/t_opf_dc_ipopt.m",
+   "ops": 14,
+   "unmapped": 112,
+   "rate": 0.1111
+  },
+  {
+   "path": "gh_matpower/lib/t/t_opf_dc_knitro.m",
+   "ops": 14,
+   "unmapped": 113,
+   "rate": 0.1102
+  },
+  {
+   "path": "gh_matpower/lib/t/t_opf_dc_mips.m",
+   "ops": 14,
+   "unmapped": 117,
+   "rate": 0.1069
+  },
+  {
+   "path": "gh_matpower/lib/t/t_opf_dc_mips_sc.m",
+   "ops": 14,
+   "unmapped": 115,
+   "rate": 0.1085
+  },
+  {
+   "path": "gh_matpower/lib/t/t_opf_dc_mosek.m",
+   "ops": 17,
+   "unmapped": 131,
+   "rate": 0.1149
+  },
+  {
+   "path": "gh_matpower/lib/t/t_opf_dc_osqp.m",
+   "ops": 14,
+   "unmapped": 134,
+   "rate": 0.0946
+  },
+  {
+   "path": "gh_matpower/lib/t/t_opf_dc_ot.m",
+   "ops": 18,
+   "unmapped": 140,
+   "rate": 0.1139
+  },
+  {
+   "path": "gh_matpower/lib/t/t_opf_default.m",
+   "ops": 28,
+   "unmapped": 312,
+   "rate": 0.0824
+  },
+  {
+   "path": "gh_matpower/lib/t/t_opf_fmincon.m",
+   "ops": 29,
+   "unmapped": 373,
+   "rate": 0.0721
+  },
+  {
+   "path": "gh_matpower/lib/t/t_opf_ipopt.m",
+   "ops": 29,
+   "unmapped": 374,
+   "rate": 0.072
+  },
+  {
+   "path": "gh_matpower/lib/t/t_opf_knitro.m",
+   "ops": 29,
+   "unmapped": 370,
+   "rate": 0.0727
+  },
+  {
+   "path": "gh_matpower/lib/t/t_opf_minopf.m",
+   "ops": 28,
+   "unmapped": 275,
+   "rate": 0.0924
+  },
+  {
+   "path": "gh_matpower/lib/t/t_opf_mips.m",
+   "ops": 29,
+   "unmapped": 381,
+   "rate": 0.0707
+  },
+  {
+   "path": "gh_matpower/lib/t/t_opf_tspopf_pdipm.m",
+   "ops": 28,
+   "unmapped": 309,
+   "rate": 0.0831
+  },
+  {
+   "path": "gh_matpower/lib/t/t_opf_tspopf_scpdipm.m",
+   "ops": 28,
+   "unmapped": 306,
+   "rate": 0.0838
+  },
+  {
+   "path": "gh_matpower/lib/t/t_opf_tspopf_tralm.m",
+   "ops": 28,
+   "unmapped": 249,
+   "rate": 0.1011
+  },
+  {
+   "path": "gh_matpower/lib/t/t_pf_radial.m",
+   "ops": 12,
+   "unmapped": 124,
+   "rate": 0.0882
+  },
+  {
+   "path": "gh_matpower/lib/t/t_port_inj_current_acc.m",
+   "ops": 68,
+   "unmapped": 164,
+   "rate": 0.2931
+  },
+  {
+   "path": "gh_matpower/lib/t/t_port_inj_current_acp.m",
+   "ops": 70,
+   "unmapped": 166,
+   "rate": 0.2966
+  },
+  {
+   "path": "gh_matpower/lib/t/t_port_inj_power_acc.m",
+   "ops": 68,
+   "unmapped": 164,
+   "rate": 0.2931
+  },
+  {
+   "path": "gh_matpower/lib/t/t_port_inj_power_acp.m",
+   "ops": 70,
+   "unmapped": 166,
+   "rate": 0.2966
+  },
+  {
+   "path": "gh_matpower/lib/t/t_psse.m",
+   "ops": 1,
+   "unmapped": 82,
+   "rate": 0.012
+  },
+  {
+   "path": "gh_matpower/lib/t/t_qps_matpower.m",
+   "ops": 11,
+   "unmapped": 125,
+   "rate": 0.0809
+  },
+  {
+   "path": "gh_matpower/lib/t/t_run_mp.m",
+   "ops": 1,
+   "unmapped": 53,
+   "rate": 0.0185
+  },
+  {
+   "path": "gh_matpower/lib/t/t_run_mp_3p.m",
+   "ops": 13,
+   "unmapped": 121,
+   "rate": 0.097
+  },
+  {
+   "path": "gh_matpower/lib/t/t_run_opf_default.m",
+   "ops": 24,
+   "unmapped": 255,
+   "rate": 0.086
+  },
+  {
+   "path": "gh_matpower/lib/t/t_scale_load.m",
+   "ops": 28,
+   "unmapped": 388,
+   "rate": 0.0673
+  },
+  {
+   "path": "gh_matpower/lib/t/t_total_load.m",
+   "ops": 20,
+   "unmapped": 755,
+   "rate": 0.0258
+  },
+  {
+   "path": "gh_matpower/lib/t/t_vdep_load.m",
+   "ops": 37,
+   "unmapped": 353,
+   "rate": 0.0949
+  },
+  {
+   "path": "gh_matpower/lib/t/test_matpower.m",
+   "ops": 1,
+   "unmapped": 150,
+   "rate": 0.0066
+  },
+  {
+   "path": "gh_matpower/lib/total_load.m",
+   "ops": 2,
+   "unmapped": 15,
+   "rate": 0.1176
+  },
+  {
+   "path": "gh_matpower/lib/totcost.m",
+   "ops": 5,
+   "unmapped": 13,
+   "rate": 0.2778
+  },
+  {
+   "path": "gh_matpower/lib/uopf.m",
+   "ops": 3,
+   "unmapped": 1,
+   "rate": 0.75
+  },
+  {
+   "path": "gh_matpower/lib/update_mupq.m",
+   "ops": 2,
+   "unmapped": 15,
+   "rate": 0.1176
+  },
+  {
+   "path": "gh_matpower/lib/zgausspf.m",
+   "ops": 15,
+   "unmapped": 33,
+   "rate": 0.3125
+  },
+  {
+   "path": "gh_matpower/mips/lib/mplinsolve.m",
+   "ops": 3,
+   "unmapped": 68,
+   "rate": 0.0423
+  },
+  {
+   "path": "gh_matpower/mips/lib/qps_mips.m",
+   "ops": 2,
+   "unmapped": 23,
+   "rate": 0.08
+  },
+  {
+   "path": "gh_matpower/mips/lib/t/t_mplinsolve.m",
+   "ops": 10,
+   "unmapped": 854,
+   "rate": 0.0116
+  },
+  {
+   "path": "gh_matpower/mips/lib/t/t_qps_mips.m",
+   "ops": 2,
+   "unmapped": 85,
+   "rate": 0.023
+  },
+  {
+   "path": "gh_matpower/most/examples/most_ex1_ed.m",
+   "ops": 6,
+   "unmapped": 39,
+   "rate": 0.1333
+  },
+  {
+   "path": "gh_matpower/most/examples/most_ex2_dcopf.m",
+   "ops": 6,
+   "unmapped": 37,
+   "rate": 0.1395
+  },
+  {
+   "path": "gh_matpower/most/examples/most_ex3_dcopf_w_uc.m",
+   "ops": 3,
+   "unmapped": 35,
+   "rate": 0.0789
+  },
+  {
+   "path": "gh_matpower/most/lib/addgen2mpc.m",
+   "ops": 1,
+   "unmapped": 29,
+   "rate": 0.0333
+  },
+  {
+   "path": "gh_matpower/most/lib/addstorage.m",
+   "ops": 4,
+   "unmapped": 30,
+   "rate": 0.1176
+  },
+  {
+   "path": "gh_matpower/most/lib/addwind.m",
+   "ops": 2,
+   "unmapped": 18,
+   "rate": 0.1
+  },
+  {
+   "path": "gh_matpower/most/lib/apply_profile.m",
+   "ops": 15,
+   "unmapped": 80,
+   "rate": 0.1579
+  },
+  {
+   "path": "gh_matpower/most/lib/getprofiles.m",
+   "ops": 6,
+   "unmapped": 6,
+   "rate": 0.5
+  },
+  {
+   "path": "gh_matpower/most/lib/loadmd.m",
+   "ops": 2,
+   "unmapped": 60,
+   "rate": 0.0323
+  },
+  {
+   "path": "gh_matpower/most/lib/loadstoragedata.m",
+   "ops": 3,
+   "unmapped": 50,
+   "rate": 0.0566
+  },
+  {
+   "path": "gh_matpower/most/lib/loadxgendata.m",
+   "ops": 9,
+   "unmapped": 49,
+   "rate": 0.1552
+  },
+  {
+   "path": "gh_matpower/most/lib/most_summary.m",
+   "ops": 6,
+   "unmapped": 100,
+   "rate": 0.0566
+  },
+  {
+   "path": "gh_matpower/most/lib/t/t_most_fixed_res.m",
+   "ops": 1,
+   "unmapped": 119,
+   "rate": 0.0083
+  },
+  {
+   "path": "gh_matpower/most/lib/t/test_most.m",
+   "ops": 1,
+   "unmapped": 26,
+   "rate": 0.037
+  },
+  {
+   "path": "gh_matpower/most/lib/t/uniformwindprofile.m",
+   "ops": 3,
+   "unmapped": 18,
+   "rate": 0.1429
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/@mp_idx_manager/get.m",
+   "ops": 1,
+   "unmapped": 3,
+   "rate": 0.25
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/@opt_model/add_nln_constraint.m",
+   "ops": 1,
+   "unmapped": 7,
+   "rate": 0.125
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/@opt_model/display.m",
+   "ops": 3,
+   "unmapped": 16,
+   "rate": 0.1579
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/@opt_model/display_soln.m",
+   "ops": 3,
+   "unmapped": 20,
+   "rate": 0.1304
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/@opt_model/parse_soln.m",
+   "ops": 4,
+   "unmapped": 11,
+   "rate": 0.2667
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/@opt_model/problem_type.m",
+   "ops": 1,
+   "unmapped": 28,
+   "rate": 0.0345
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/artelys_knitro_options.m",
+   "ops": 1,
+   "unmapped": 18,
+   "rate": 0.0526
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/clp_options.m",
+   "ops": 1,
+   "unmapped": 15,
+   "rate": 0.0625
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/convert_constraint_multipliers.m",
+   "ops": 5,
+   "unmapped": 8,
+   "rate": 0.3846
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/convert_lin_constraint.m",
+   "ops": 3,
+   "unmapped": 7,
+   "rate": 0.3
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/convert_quad_constraint.m",
+   "ops": 4,
+   "unmapped": 9,
+   "rate": 0.3077
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/cplex_options.m",
+   "ops": 1,
+   "unmapped": 24,
+   "rate": 0.04
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/glpk_options.m",
+   "ops": 1,
+   "unmapped": 13,
+   "rate": 0.0714
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/gurobi_options.m",
+   "ops": 1,
+   "unmapped": 24,
+   "rate": 0.04
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/have_feature_ipopt_auxdata.m",
+   "ops": 1,
+   "unmapped": 4,
+   "rate": 0.2
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/have_feature_optim.m",
+   "ops": 1,
+   "unmapped": 10,
+   "rate": 0.0909
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/have_feature_yalmip.m",
+   "ops": 1,
+   "unmapped": 8,
+   "rate": 0.1111
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/highs_options.m",
+   "ops": 1,
+   "unmapped": 14,
+   "rate": 0.0667
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/ipopt_options.m",
+   "ops": 1,
+   "unmapped": 24,
+   "rate": 0.04
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/miqcqps_master.m",
+   "ops": 16,
+   "unmapped": 63,
+   "rate": 0.2025
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/miqps_cplex.m",
+   "ops": 30,
+   "unmapped": 107,
+   "rate": 0.219
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/miqps_glpk.m",
+   "ops": 34,
+   "unmapped": 104,
+   "rate": 0.2464
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/miqps_gurobi.m",
+   "ops": 38,
+   "unmapped": 143,
+   "rate": 0.2099
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/miqps_highs.m",
+   "ops": 26,
+   "unmapped": 150,
+   "rate": 0.1477
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/miqps_master.m",
+   "ops": 45,
+   "unmapped": 224,
+   "rate": 0.1673
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/mpopt2nleqopt.m",
+   "ops": 1,
+   "unmapped": 7,
+   "rate": 0.125
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/mpopt2nlpopt.m",
+   "ops": 1,
+   "unmapped": 7,
+   "rate": 0.125
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/mpopt2qcqpopt.m",
+   "ops": 1,
+   "unmapped": 17,
+   "rate": 0.0556
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/mpopt2qpopt.m",
+   "ops": 1,
+   "unmapped": 11,
+   "rate": 0.0833
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/nested_struct_copy.m",
+   "ops": 6,
+   "unmapped": 52,
+   "rate": 0.1034
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/nleqs_gauss_seidel.m",
+   "ops": 1,
+   "unmapped": 17,
+   "rate": 0.0556
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/nleqs_newton.m",
+   "ops": 4,
+   "unmapped": 23,
+   "rate": 0.1481
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/nlp_hessfcn.m",
+   "ops": 7,
+   "unmapped": 23,
+   "rate": 0.2333
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/nlps_ipopt.m",
+   "ops": 30,
+   "unmapped": 129,
+   "rate": 0.1887
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/nlps_knitro.m",
+   "ops": 17,
+   "unmapped": 76,
+   "rate": 0.1828
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/nlps_master.m",
+   "ops": 2,
+   "unmapped": 47,
+   "rate": 0.0408
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/osqp_options.m",
+   "ops": 1,
+   "unmapped": 16,
+   "rate": 0.0588
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/pne_callback_nose.m",
+   "ops": 1,
+   "unmapped": 9,
+   "rate": 0.1
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/pne_callback_target_lam.m",
+   "ops": 1,
+   "unmapped": 31,
+   "rate": 0.0312
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/pne_detect_events.m",
+   "ops": 5,
+   "unmapped": 60,
+   "rate": 0.0769
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/pne_detected_event.m",
+   "ops": 2,
+   "unmapped": 1,
+   "rate": 0.6667
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/pne_pfcn_arc_len.m",
+   "ops": 3,
+   "unmapped": 2,
+   "rate": 0.6
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/pne_pfcn_natural.m",
+   "ops": 6,
+   "unmapped": 1,
+   "rate": 0.8571
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/pne_pfcn_pseudo_arc_len.m",
+   "ops": 4,
+   "unmapped": 0,
+   "rate": 1.0
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/pne_register_callbacks.m",
+   "ops": 7,
+   "unmapped": 10,
+   "rate": 0.4118
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/pne_register_events.m",
+   "ops": 6,
+   "unmapped": 14,
+   "rate": 0.3
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/qcqp_nlp_consfcn.m",
+   "ops": 8,
+   "unmapped": 36,
+   "rate": 0.1818
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/qcqp_nlp_costfcn.m",
+   "ops": 6,
+   "unmapped": 4,
+   "rate": 0.6
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/qcqp_nlp_hessfcn.m",
+   "ops": 7,
+   "unmapped": 8,
+   "rate": 0.4667
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/qcqps_gurobi.m",
+   "ops": 52,
+   "unmapped": 166,
+   "rate": 0.2385
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/qcqps_knitro.m",
+   "ops": 48,
+   "unmapped": 105,
+   "rate": 0.3137
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/qcqps_nlps.m",
+   "ops": 42,
+   "unmapped": 73,
+   "rate": 0.3652
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/qps_bpmpd.m",
+   "ops": 54,
+   "unmapped": 96,
+   "rate": 0.36
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/qps_clp.m",
+   "ops": 28,
+   "unmapped": 87,
+   "rate": 0.2435
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/qps_cplex.m",
+   "ops": 22,
+   "unmapped": 71,
+   "rate": 0.2366
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/qps_glpk.m",
+   "ops": 23,
+   "unmapped": 75,
+   "rate": 0.2347
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/qps_gurobi.m",
+   "ops": 27,
+   "unmapped": 119,
+   "rate": 0.1849
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/qps_highs.m",
+   "ops": 16,
+   "unmapped": 114,
+   "rate": 0.1231
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/qps_ipopt.m",
+   "ops": 24,
+   "unmapped": 78,
+   "rate": 0.2353
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/qps_knitro.m",
+   "ops": 17,
+   "unmapped": 44,
+   "rate": 0.2787
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/qps_osqp.m",
+   "ops": 27,
+   "unmapped": 52,
+   "rate": 0.3418
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/t/t_have_fcn/rithmaticker.m",
+   "ops": 6,
+   "unmapped": 3,
+   "rate": 0.6667
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/t/t_miqcqps_master.m",
+   "ops": 9,
+   "unmapped": 116,
+   "rate": 0.072
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/t/t_miqps_master.m",
+   "ops": 20,
+   "unmapped": 274,
+   "rate": 0.068
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/t/t_mm_solve_miqcqps.m",
+   "ops": 9,
+   "unmapped": 139,
+   "rate": 0.0608
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/t/t_mm_solve_pne.m",
+   "ops": 6,
+   "unmapped": 295,
+   "rate": 0.0199
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/t/t_nleqs_master.m",
+   "ops": 7,
+   "unmapped": 88,
+   "rate": 0.0737
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/t/t_nlps_master.m",
+   "ops": 17,
+   "unmapped": 174,
+   "rate": 0.089
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/t/t_om_solve_miqcqps.m",
+   "ops": 9,
+   "unmapped": 143,
+   "rate": 0.0592
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/t/t_om_solve_pne.m",
+   "ops": 6,
+   "unmapped": 295,
+   "rate": 0.0199
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/t/t_qcqps_master.m",
+   "ops": 34,
+   "unmapped": 222,
+   "rate": 0.1328
+  },
+  {
+   "path": "gh_matpower/mp-opt-model/lib/t/t_qps_master.m",
+   "ops": 14,
+   "unmapped": 138,
+   "rate": 0.0921
+  },
+  {
+   "path": "gh_matpower/mptest/lib/have_feature_matlab.m",
+   "ops": 1,
+   "unmapped": 8,
+   "rate": 0.1111
+  },
+  {
+   "path": "gh_matpower/mptest/lib/have_feature_octave.m",
+   "ops": 1,
+   "unmapped": 9,
+   "rate": 0.1
+  },
+  {
+   "path": "gh_matpower/mptest/lib/mp_warning.m",
+   "ops": 1,
+   "unmapped": 3,
+   "rate": 0.25
+  },
+  {
+   "path": "gh_matpower/mptest/lib/t/t_have_feature/rithmaticker.m",
+   "ops": 6,
+   "unmapped": 3,
+   "rate": 0.6667
+  },
+  {
+   "path": "gh_matpower/mptest/lib/t_is.m",
+   "ops": 13,
+   "unmapped": 66,
+   "rate": 0.1646
+  },
+  {
+   "path": "gh_matpower/mptest/lib/t_ok.m",
+   "ops": 3,
+   "unmapped": 9,
+   "rate": 0.25
+  },
+  {
+   "path": "gh_matpower/mptest/lib/t_run_tests.m",
+   "ops": 12,
+   "unmapped": 18,
+   "rate": 0.4
+  },
+  {
+   "path": "gh_matpower/mptest/lib/t_skip.m",
+   "ops": 2,
+   "unmapped": 8,
+   "rate": 0.2
+  },
+  {
+   "path": "gh_matpower/mptest/lib/t_str_match.m",
+   "ops": 1,
+   "unmapped": 9,
+   "rate": 0.1
+  },
+  {
+   "path": "gh_prmlt/chapter01/condEntropy.m",
+   "ops": 7,
+   "unmapped": 12,
+   "rate": 0.3684
+  },
+  {
+   "path": "gh_prmlt/chapter01/entropy.m",
+   "ops": 1,
+   "unmapped": 4,
+   "rate": 0.2
+  },
+  {
+   "path": "gh_prmlt/chapter01/jointEntropy.m",
+   "ops": 6,
+   "unmapped": 8,
+   "rate": 0.4286
+  },
+  {
+   "path": "gh_prmlt/chapter01/mutInfo.m",
+   "ops": 8,
+   "unmapped": 14,
+   "rate": 0.3636
+  },
+  {
+   "path": "gh_prmlt/chapter01/nmi.m",
+   "ops": 8,
+   "unmapped": 15,
+   "rate": 0.3478
+  },
+  {
+   "path": "gh_prmlt/chapter01/nvi.m",
+   "ops": 9,
+   "unmapped": 14,
+   "rate": 0.3913
+  },
+  {
+   "path": "gh_prmlt/chapter01/relatEntropy.m",
+   "ops": 6,
+   "unmapped": 11,
+   "rate": 0.3529
+  },
+  {
+   "path": "gh_prmlt/chapter02/logDirichlet.m",
+   "ops": 1,
+   "unmapped": 5,
+   "rate": 0.1667
+  },
+  {
+   "path": "gh_prmlt/chapter02/logGauss.m",
+   "ops": 2,
+   "unmapped": 5,
+   "rate": 0.2857
+  },
+  {
+   "path": "gh_prmlt/chapter02/logMvGamma.m",
+   "ops": 5,
+   "unmapped": 2,
+   "rate": 0.7143
+  },
+  {
+   "path": "gh_prmlt/chapter02/logSt.m",
+   "ops": 5,
+   "unmapped": 18,
+   "rate": 0.2174
+  },
+  {
+   "path": "gh_prmlt/chapter02/logVmf.m",
+   "ops": 6,
+   "unmapped": 3,
+   "rate": 0.6667
+  },
+  {
+   "path": "gh_prmlt/chapter02/logWishart.m",
+   "ops": 3,
+   "unmapped": 2,
+   "rate": 0.6
+  },
+  {
+   "path": "gh_prmlt/chapter03/linReg.m",
+   "ops": 2,
+   "unmapped": 16,
+   "rate": 0.1111
+  },
+  {
+   "path": "gh_prmlt/chapter03/linRegFp.m",
+   "ops": 9,
+   "unmapped": 27,
+   "rate": 0.25
+  },
+  {
+   "path": "gh_prmlt/chapter04/fda.m",
+   "ops": 3,
+   "unmapped": 11,
+   "rate": 0.2143
+  },
+  {
+   "path": "gh_prmlt/chapter04/logitBin.m",
+   "ops": 2,
+   "unmapped": 16,
+   "rate": 0.1111
+  },
+  {
+   "path": "gh_prmlt/chapter04/logitBinPred.m",
+   "ops": 1,
+   "unmapped": 3,
+   "rate": 0.25
+  },
+  {
+   "path": "gh_prmlt/chapter04/logitMn.m",
+   "ops": 11,
+   "unmapped": 35,
+   "rate": 0.2391
+  },
+  {
+   "path": "gh_prmlt/chapter04/softmax.m",
+   "ops": 2,
+   "unmapped": 3,
+   "rate": 0.4
+  },
+  {
+   "path": "gh_prmlt/chapter05/mlpClass.m",
+   "ops": 3,
+   "unmapped": 30,
+   "rate": 0.0909
+  },
+  {
+   "path": "gh_prmlt/chapter05/mlpClassPred.m",
+   "ops": 1,
+   "unmapped": 6,
+   "rate": 0.1429
+  },
+  {
+   "path": "gh_prmlt/chapter05/mlpReg.m",
+   "ops": 3,
+   "unmapped": 29,
+   "rate": 0.0938
+  },
+  {
+   "path": "gh_prmlt/chapter05/mlpRegPred.m",
+   "ops": 1,
+   "unmapped": 5,
+   "rate": 0.1667
+  },
+  {
+   "path": "gh_prmlt/chapter06/knCenter.m",
+   "ops": 6,
+   "unmapped": 3,
+   "rate": 0.6667
+  },
+  {
+   "path": "gh_prmlt/chapter06/knGauss.m",
+   "ops": 2,
+   "unmapped": 4,
+   "rate": 0.3333
+  },
+  {
+   "path": "gh_prmlt/chapter06/knKmeans.m",
+   "ops": 9,
+   "unmapped": 10,
+   "rate": 0.4737
+  },
+  {
+   "path": "gh_prmlt/chapter06/knKmeansPred.m",
+   "ops": 4,
+   "unmapped": 8,
+   "rate": 0.3333
+  },
+  {
+   "path": "gh_prmlt/chapter06/knPca.m",
+   "ops": 1,
+   "unmapped": 9,
+   "rate": 0.1
+  },
+  {
+   "path": "gh_prmlt/chapter06/knReg.m",
+   "ops": 2,
+   "unmapped": 14,
+   "rate": 0.125
+  },
+  {
+   "path": "gh_prmlt/chapter07/rvmBinFp.m",
+   "ops": 16,
+   "unmapped": 34,
+   "rate": 0.32
+  },
+  {
+   "path": "gh_prmlt/chapter07/rvmBinPred.m",
+   "ops": 2,
+   "unmapped": 4,
+   "rate": 0.3333
+  },
+  {
+   "path": "gh_prmlt/chapter07/rvmRegFp.m",
+   "ops": 9,
+   "unmapped": 32,
+   "rate": 0.2195
+  },
+  {
+   "path": "gh_prmlt/chapter07/rvmRegPred.m",
+   "ops": 1,
+   "unmapped": 11,
+   "rate": 0.0833
+  },
+  {
+   "path": "gh_prmlt/chapter07/rvmRegSeq.m",
+   "ops": 48,
+   "unmapped": 58,
+   "rate": 0.4528
+  },
+  {
+   "path": "gh_prmlt/chapter08/MRF/mrfBethe.m",
+   "ops": 4,
+   "unmapped": 7,
+   "rate": 0.3636
+  },
+  {
+   "path": "gh_prmlt/chapter08/MRF/mrfBp.m",
+   "ops": 5,
+   "unmapped": 20,
+   "rate": 0.2
+  },
+  {
+   "path": "gh_prmlt/chapter08/MRF/mrfGibbs.m",
+   "ops": 3,
+   "unmapped": 6,
+   "rate": 0.3333
+  },
+  {
+   "path": "gh_prmlt/chapter08/MRF/mrfIsGa.m",
+   "ops": 1,
+   "unmapped": 8,
+   "rate": 0.1111
+  },
+  {
+   "path": "gh_prmlt/chapter08/MRF/mrfMf.m",
+   "ops": 3,
+   "unmapped": 8,
+   "rate": 0.2727
+  },
+  {
+   "path": "gh_prmlt/chapter08/NaiveBayes/nbBern.m",
+   "ops": 2,
+   "unmapped": 5,
+   "rate": 0.2857
+  },
+  {
+   "path": "gh_prmlt/chapter08/NaiveBayes/nbGauss.m",
+   "ops": 4,
+   "unmapped": 7,
+   "rate": 0.3636
+  },
+  {
+   "path": "gh_prmlt/chapter08/NaiveBayes/nbGaussPred.m",
+   "ops": 3,
+   "unmapped": 8,
+   "rate": 0.2727
+  },
+  {
+   "path": "gh_prmlt/chapter09/kmeans.m",
+   "ops": 7,
+   "unmapped": 9,
+   "rate": 0.4375
+  },
+  {
+   "path": "gh_prmlt/chapter09/kmeansPred.m",
+   "ops": 1,
+   "unmapped": 1,
+   "rate": 0.5
+  },
+  {
+   "path": "gh_prmlt/chapter09/kmeansRnd.m",
+   "ops": 2,
+   "unmapped": 6,
+   "rate": 0.25
+  },
+  {
+   "path": "gh_prmlt/chapter09/kmedoids.m",
+   "ops": 4,
+   "unmapped": 10,
+   "rate": 0.2857
+  },
+  {
+   "path": "gh_prmlt/chapter09/kseeds.m",
+   "ops": 1,
+   "unmapped": 4,
+   "rate": 0.2
+  },
+  {
+   "path": "gh_prmlt/chapter09/linRegEm.m",
+   "ops": 9,
+   "unmapped": 30,
+   "rate": 0.2308
+  },
+  {
+   "path": "gh_prmlt/chapter09/mixBernRnd.m",
+   "ops": 1,
+   "unmapped": 5,
+   "rate": 0.1667
+  },
+  {
+   "path": "gh_prmlt/chapter09/mixGaussPred.m",
+   "ops": 5,
+   "unmapped": 14,
+   "rate": 0.2632
+  },
+  {
+   "path": "gh_prmlt/chapter09/mixGaussRnd.m",
+   "ops": 4,
+   "unmapped": 12,
+   "rate": 0.25
+  },
+  {
+   "path": "gh_prmlt/chapter09/rvmBinEm.m",
+   "ops": 16,
+   "unmapped": 34,
+   "rate": 0.32
+  },
+  {
+   "path": "gh_prmlt/chapter09/rvmRegEm.m",
+   "ops": 7,
+   "unmapped": 34,
+   "rate": 0.1707
+  },
+  {
+   "path": "gh_prmlt/chapter10/linRegVb.m",
+   "ops": 20,
+   "unmapped": 51,
+   "rate": 0.2817
+  },
+  {
+   "path": "gh_prmlt/chapter10/mixGaussEvidence.m",
+   "ops": 28,
+   "unmapped": 39,
+   "rate": 0.4179
+  },
+  {
+   "path": "gh_prmlt/chapter10/mixGaussVbPred.m",
+   "ops": 5,
+   "unmapped": 17,
+   "rate": 0.2273
+  },
+  {
+   "path": "gh_prmlt/chapter10/rvmRegVb.m",
+   "ops": 21,
+   "unmapped": 51,
+   "rate": 0.2917
+  },
+  {
+   "path": "gh_prmlt/chapter11/dirichletRnd.m",
+   "ops": 3,
+   "unmapped": 1,
+   "rate": 0.75
+  },
+  {
+   "path": "gh_prmlt/chapter11/mixDpGb.m",
+   "ops": 15,
+   "unmapped": 11,
+   "rate": 0.5769
+  },
+  {
+   "path": "gh_prmlt/chapter11/mixDpGbOl.m",
+   "ops": 8,
+   "unmapped": 9,
+   "rate": 0.4706
+  },
+  {
+   "path": "gh_prmlt/chapter11/mixGaussGb.m",
+   "ops": 2,
+   "unmapped": 13,
+   "rate": 0.1333
+  },
+  {
+   "path": "gh_prmlt/chapter11/mixGaussSample.m",
+   "ops": 2,
+   "unmapped": 5,
+   "rate": 0.2857
+  },
+  {
+   "path": "gh_prmlt/chapter12/fa.m",
+   "ops": 4,
+   "unmapped": 24,
+   "rate": 0.1429
+  },
+  {
+   "path": "gh_prmlt/chapter12/pca.m",
+   "ops": 2,
+   "unmapped": 7,
+   "rate": 0.2222
+  },
+  {
+   "path": "gh_prmlt/chapter12/ppcaEm.m",
+   "ops": 5,
+   "unmapped": 22,
+   "rate": 0.1852
+  },
+  {
+   "path": "gh_prmlt/chapter12/ppcaVb.m",
+   "ops": 16,
+   "unmapped": 44,
+   "rate": 0.2667
+  },
+  {
+   "path": "gh_prmlt/chapter13/HMM/hmmEm.m",
+   "ops": 12,
+   "unmapped": 21,
+   "rate": 0.3636
+  },
+  {
+   "path": "gh_prmlt/chapter13/HMM/hmmFilter.m",
+   "ops": 5,
+   "unmapped": 8,
+   "rate": 0.3846
+  },
+  {
+   "path": "gh_prmlt/chapter13/HMM/hmmRnd.m",
+   "ops": 1,
+   "unmapped": 10,
+   "rate": 0.0909
+  },
+  {
+   "path": "gh_prmlt/chapter13/HMM/hmmSmoother.m",
+   "ops": 7,
+   "unmapped": 9,
+   "rate": 0.4375
+  },
+  {
+   "path": "gh_prmlt/chapter13/HMM/hmmViterbi.m",
+   "ops": 5,
+   "unmapped": 10,
+   "rate": 0.3333
+  },
+  {
+   "path": "gh_prmlt/chapter13/LDS/kalmanFilter.m",
+   "ops": 20,
+   "unmapped": 17,
+   "rate": 0.5405
+  },
+  {
+   "path": "gh_prmlt/chapter13/LDS/kalmanSmoother.m",
+   "ops": 28,
+   "unmapped": 33,
+   "rate": 0.459
+  },
+  {
+   "path": "gh_prmlt/chapter13/LDS/ldsEm.m",
+   "ops": 5,
+   "unmapped": 27,
+   "rate": 0.1562
+  },
+  {
+   "path": "gh_prmlt/chapter13/LDS/ldsRnd.m",
+   "ops": 4,
+   "unmapped": 16,
+   "rate": 0.2
+  },
+  {
+   "path": "gh_prmlt/chapter14/adaboostBin.m",
+   "ops": 6,
+   "unmapped": 14,
+   "rate": 0.3
+  },
+  {
+   "path": "gh_prmlt/chapter14/adaboostBinPred.m",
+   "ops": 5,
+   "unmapped": 9,
+   "rate": 0.3571
+  },
+  {
+   "path": "gh_prmlt/chapter14/mixLinPred.m",
+   "ops": 2,
+   "unmapped": 11,
+   "rate": 0.1538
+  },
+  {
+   "path": "gh_prmlt/chapter14/mixLinReg.m",
+   "ops": 8,
+   "unmapped": 22,
+   "rate": 0.2667
+  },
+  {
+   "path": "gh_prmlt/chapter14/mixLinRnd.m",
+   "ops": 1,
+   "unmapped": 4,
+   "rate": 0.2
+  },
+  {
+   "path": "gh_prmlt/chapter14/mixLogitBin.m",
+   "ops": 10,
+   "unmapped": 23,
+   "rate": 0.303
+  },
+  {
+   "path": "gh_prmlt/chapter14/mixLogitBinPred.m",
+   "ops": 1,
+   "unmapped": 4,
+   "rate": 0.2
+  },
+  {
+   "path": "gh_prmlt/common/besseliLn.m",
+   "ops": 1,
+   "unmapped": 2,
+   "rate": 0.3333
+  },
+  {
+   "path": "gh_prmlt/common/gson.m",
+   "ops": 2,
+   "unmapped": 7,
+   "rate": 0.2222
+  },
+  {
+   "path": "gh_prmlt/common/ld.m",
+   "ops": 3,
+   "unmapped": 9,
+   "rate": 0.25
+  },
+  {
+   "path": "gh_prmlt/common/log1mexp.m",
+   "ops": 1,
+   "unmapped": 2,
+   "rate": 0.3333
+  },
+  {
+   "path": "gh_prmlt/common/log1pexp.m",
+   "ops": 1,
+   "unmapped": 3,
+   "rate": 0.25
+  },
+  {
+   "path": "gh_prmlt/common/loggmpdf.m",
+   "ops": 4,
+   "unmapped": 11,
+   "rate": 0.2667
+  },
+  {
+   "path": "gh_prmlt/common/lognormexp.m",
+   "ops": 1,
+   "unmapped": 3,
+   "rate": 0.25
+  },
+  {
+   "path": "gh_prmlt/common/logsumexp.m",
+   "ops": 2,
+   "unmapped": 5,
+   "rate": 0.2857
+  },
+  {
+   "path": "gh_prmlt/common/mgson.m",
+   "ops": 3,
+   "unmapped": 8,
+   "rate": 0.2727
+  },
+  {
+   "path": "gh_prmlt/common/normalize.m",
+   "ops": 1,
+   "unmapped": 3,
+   "rate": 0.25
+  },
+  {
+   "path": "gh_prmlt/common/plotgm.m",
+   "ops": 2,
+   "unmapped": 14,
+   "rate": 0.125
+  },
+  {
+   "path": "gh_prmlt/common/plotkde.m",
+   "ops": 2,
+   "unmapped": 16,
+   "rate": 0.1111
+  },
+  {
+   "path": "gh_prmlt/common/slice.m",
+   "ops": 5,
+   "unmapped": 9,
+   "rate": 0.3571
+  },
+  {
+   "path": "gh_prmlt/common/standardize.m",
+   "ops": 1,
+   "unmapped": 2,
+   "rate": 0.3333
+  },
+  {
+   "path": "gh_prmlt/common/sub.m",
+   "ops": 2,
+   "unmapped": 11,
+   "rate": 0.1538
   },
   {
    "path": "gh_sgd/gd_solver/backtracking_line_search.m",
@@ -274107,16 +277155,16 @@
   }
  ],
  "rejected": {
-  "no_ops": 18199,
-  "plot:可视化调用": 288,
-  "print:终端输出/交互": 270,
-  "classdef:类定义不在转换目标内": 134,
-  "io:文件 I/O 不在嵌入式目标内": 41,
-  "eval:eval 家族无静态语义": 31,
-  "gui:GUI 无 C 语义": 8,
-  "script_only": 4
+  "no_ops": 18764,
+  "script_only": 853,
+  "plot:可视化调用": 435,
+  "classdef:类定义不在转换目标内": 417,
+  "print:终端输出/交互": 357,
+  "eval:eval 家族无静态语义": 99,
+  "io:文件 I/O 不在嵌入式目标内": 93,
+  "gui:GUI 无 C 语义": 29
  },
  "parse_fail": 0,
  "root": "E:\\temp\\matlabc",
- "picked_count": 45684
+ "picked_count": 46192
 }
