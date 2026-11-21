@@ -149,17 +149,33 @@ def run_check(profile, op_map, workdir):
                 "why": "映射头里没有任何 #define（覆盖没生效）"}
 
     # 4. 编译 + nm
+    # **走产品路径**（R1054）：用 `-DM2C_USE_SYMBOL_MAP` 让 `mlc_ops.h` 自己
+    # 条件包含映射头，而不是靠 `-include` 硬塞。后者能过、前者过不了，
+    # 说明"开关没接上"——那才是真实使用时会踩的坑。
     obj = os.path.join(d, "gen_mapped.o")
     inc = [gen, os.path.join(gen, "include"),
            os.path.join(ROOT, "c_runtime", "include")]
-    cmd = [gcc, "-std=c99", "-O1", "-c", "-include", hdr]
+    cmd = [gcc, "-std=c99", "-O1", "-c", "-DM2C_USE_SYMBOL_MAP"]
     for i in inc:
         cmd += ["-I", i]
     cmd += [genc, "-o", obj]
     rc, out = _run(cmd)
-    steps.append(("gcc", rc, out[-300:]))
+    mode = "define"
+    if rc != 0:
+        # 回退到 -include，并记下"产品路径不通"——这不是通过，是降级
+        steps.append(("gcc_define", rc, out[-200:]))
+        cmd = [gcc, "-std=c99", "-O1", "-c", "-include", hdr]
+        for i in inc:
+            cmd += ["-I", i]
+        cmd += [genc, "-o", obj]
+        rc, out = _run(cmd)
+        mode = "include-fallback"
+    steps.append(("gcc(%s)" % mode, rc, out[-300:]))
     if rc != 0:
         return {"ok": False, "steps": steps}
+    if mode != "define":
+        steps.append(("product_path", 1,
+                      "M2C_USE_SYMBOL_MAP 未生效，退回 -include"))
 
     rc, out = _run([nm, "-u", obj])
     steps.append(("nm", rc, out[-300:]))

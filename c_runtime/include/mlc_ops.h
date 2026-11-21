@@ -16,6 +16,20 @@
 
 #include "mlc.h"
 
+/* **可选：目标符号重映射**（R1054）。
+ *
+ * 定义 `M2C_USE_SYMBOL_MAP` 后，本头会包含由 tools/gen_symbol_map.py 生成的
+ * `m2c_symbols.h`（内容形如 `#define mlc_op_sum hw_dsp_sum`）。于是生成器
+ * 一行不改，仅靠编译开关就能把调用点指向公司库或私有指令集实现。
+ *
+ * 为什么用显式开关、而不是 `__has_include`：
+ * 后者会让「碰巧存在一个同名头文件」**静默改变语义** —— 那正是最难查的一类
+ * 问题（换个编译目录，行为就变了）。这个开关必须被人明确打开。
+ */
+#ifdef M2C_USE_SYMBOL_MAP
+#include "m2c_symbols.h"
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
