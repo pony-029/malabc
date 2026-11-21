@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Rust VM 双轨架构（MCP 对外）",
+    "output": "C:/Users/ponyp/AppData/Local/Temp/m2carch/rust-vm-arch.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    { "id": "agent", "type": "external", "label": "AI Agent / CLI", "sublabel": "调用方", "pos": [30, 330], "size": [130, 60] },
+    { "id": "mcp", "type": "backend", "label": "MCP Server", "sublabel": "check / convert / roundtrip", "pos": [220, 330], "size": [150, 64] },
+    { "id": "reg", "type": "database", "label": "Capability Registry", "sublabel": "算子签名·唯一事实来源", "pos": [220, 175], "size": [150, 64] },
+    { "id": "front", "type": "backend", "label": "Frontend (Python)", "sublabel": "MATLAB → MIR", "pos": [430, 330], "size": [140, 60] },
+    { "id": "mir", "type": "database", "label": "MIR", "sublabel": "文本 IR，一条 op 一条记录", "pos": [620, 330], "size": [140, 64] },
+    { "id": "vm", "type": "backend", "label": "Rust VM (MLC-RT)", "sublabel": "直接执行 MIR", "pos": [820, 185], "size": [140, 64], "tag": "no C toolchain" },
+    { "id": "codegen", "type": "backend", "label": "C Emitter", "sublabel": "MIR → C99", "pos": [820, 460], "size": [140, 60] },
+    { "id": "octave", "type": "external", "label": "Octave / MATLAB", "sublabel": "参考真值", "pos": [1030, 185], "size": [140, 60] },
+    { "id": "target", "type": "external", "label": "Embedded Target", "sublabel": "静态内存 / q15", "pos": [1030, 460], "size": [140, 60] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "本仓进程内（无网络依赖）", "wraps": ["mcp", "reg", "front", "mir", "vm", "codegen"] }
+  ],
+  "connections": [
+    { "id": "agent-mcp", "from": "agent", "to": "mcp", "label": "MCP over stdio", "variant": "emphasis" },
+    { "id": "mcp-front", "from": "mcp", "to": "front", "label": "convert" },
+    { "id": "reg-front", "from": "reg", "to": "front", "label": "读签名表", "variant": "dashed", "fromSide": "bottom", "toSide": "top" },
+    { "id": "front-mir", "from": "front", "to": "mir", "label": "emit" },
+    { "id": "mir-vm", "from": "mir", "to": "vm", "label": "execute", "fromSide": "top", "toSide": "bottom", "labelDy": -60 },
+    { "id": "mir-codegen", "from": "mir", "to": "codegen", "label": "emit C", "fromSide": "bottom", "toSide": "top", "labelDy": 60 },
+    { "id": "vm-octave", "from": "vm", "to": "octave", "label": "比对真值", "variant": "dashed" },
+    { "id": "codegen-target", "from": "codegen", "to": "target", "label": "src/gen.c" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "为什么双轨", "items": ["C 生成保留嵌入式确定性（静态内存、q15）", "Rust VM 负责自证与动态特性", "两者共用同一份 MIR 与登记表"] },
+    { "dot": "emerald", "title": "Rust VM 解决什么", "items": ["不再依赖 Octave 才能得到真值", "cell/struct/varargin 由运行时支持而非翻译", "新增算子只写一次（不再 5~7 处）"] },
+    { "dot": "rose", "title": "代价与边界", "items": ["解释执行约比生成代码慢 2~20 倍", "进固件需 no_std 与内存策略", "现有 58/58 语料作为回归基线必须保绿"] }
+  ]
+}

@@ -1,0 +1,191 @@
+{
+ "schema_version": 1,
+ "diagram_type": "waterfall",
+ "meta": {
+  "title": "发版各门耗时（实测）",
+  "subtitle": "条长 = 该门实测毫秒；横向位置按耗时降序串行排布，仅为可读，实际发版 8 路并行（墙钟约 10 秒）。不含已移出清单的 check_generated_compiles（旧记录 382582ms）。",
+  "locale": "zh-CN",
+  "output": ".archify/waterfall-release-20261121-101500/release-timing.html",
+  "evidence": "measured",
+  "unit": "ms",
+  "quality_profile": "showcase"
+ },
+ "spans": [
+  {
+   "id": "release",
+   "name": "release.py --apply 全流程",
+   "service": "runner",
+   "start": 0,
+   "end": 27384,
+   "detail": "22 道门实测累计 27384 ms；其中 check_generated_compiles 已移出发版清单（旧记录 382582ms），本图不含它。"
+  },
+  {
+   "id": "g00",
+   "name": "tool_selftests",
+   "service": "gate",
+   "start": 0,
+   "duration": 9552,
+   "parent": "release"
+  },
+  {
+   "id": "g01",
+   "name": "help_contract",
+   "service": "gate",
+   "start": 9552,
+   "duration": 4869,
+   "parent": "release"
+  },
+  {
+   "id": "g02",
+   "name": "runtime_static",
+   "service": "gate",
+   "start": 14421,
+   "duration": 2734,
+   "parent": "release"
+  },
+  {
+   "id": "g03",
+   "name": "figure_glyphs",
+   "service": "gate",
+   "start": 17155,
+   "duration": 1677,
+   "parent": "release"
+  },
+  {
+   "id": "g04",
+   "name": "translate_port",
+   "service": "gate",
+   "start": 18832,
+   "duration": 1538,
+   "parent": "release"
+  },
+  {
+   "id": "g05",
+   "name": "ane",
+   "service": "gate",
+   "start": 20370,
+   "duration": 893,
+   "parent": "release"
+  },
+  {
+   "id": "g06",
+   "name": "symbol_ranges",
+   "service": "gate",
+   "start": 21263,
+   "duration": 601,
+   "parent": "release"
+  },
+  {
+   "id": "g07",
+   "name": "mir_split",
+   "service": "gate",
+   "start": 21864,
+   "duration": 492,
+   "parent": "release"
+  },
+  {
+   "id": "g08",
+   "name": "eol_convention",
+   "service": "gate",
+   "start": 22356,
+   "duration": 486,
+   "parent": "release"
+  },
+  {
+   "id": "g09",
+   "name": "subprocess_hygiene",
+   "service": "gate",
+   "start": 22842,
+   "duration": 454,
+   "parent": "release"
+  },
+  {
+   "id": "g10",
+   "name": "py36_clean",
+   "service": "gate",
+   "start": 23296,
+   "duration": 447,
+   "parent": "release"
+  },
+  {
+   "id": "g11",
+   "name": "brain_growth",
+   "service": "gate",
+   "start": 23743,
+   "duration": 410,
+   "parent": "release"
+  },
+  {
+   "id": "g12",
+   "name": "portability",
+   "service": "gate",
+   "start": 24153,
+   "duration": 407,
+   "parent": "release"
+  },
+  {
+   "id": "g13",
+   "name": "js_balance",
+   "service": "gate",
+   "start": 24560,
+   "duration": 383,
+   "parent": "release"
+  },
+  {
+   "id": "g14",
+   "name": "tool_discoverability",
+   "service": "gate",
+   "start": 24943,
+   "duration": 373,
+   "parent": "release"
+  },
+  {
+   "id": "g15",
+   "name": "failures",
+   "service": "gate",
+   "start": 25316,
+   "duration": 352,
+   "parent": "release"
+  },
+  {
+   "id": "g16",
+   "name": "lsp_doc_parity",
+   "service": "gate",
+   "start": 25668,
+   "duration": 350,
+   "parent": "release"
+  },
+  {
+   "id": "g17",
+   "name": "release_gates",
+   "service": "gate",
+   "start": 26018,
+   "duration": 349,
+   "parent": "release"
+  },
+  {
+   "id": "g18",
+   "name": "tour",
+   "service": "gate",
+   "start": 26367,
+   "duration": 349,
+   "parent": "release"
+  },
+  {
+   "id": "g19",
+   "name": "readme_parity",
+   "service": "gate",
+   "start": 26716,
+   "duration": 336,
+   "parent": "release"
+  },
+  {
+   "id": "g20",
+   "name": "version_scheme",
+   "service": "gate",
+   "start": 27052,
+   "duration": 332,
+   "parent": "release"
+  }
+ ]
+}

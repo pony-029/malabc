@@ -1,0 +1,301 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "malabc 模块交互与功能实现",
+    "locale": "zh-CN",
+    "output": "malabc-modules.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:pony-029/malabc.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "069fe5553a8939591a0c390f047854bf43d740d4"
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "cols": 6,
+    "cellW": 172,
+    "cellH": 88,
+    "gapX": 48,
+    "gapY": 64
+  },
+  "components": [
+    {
+      "id": "gui",
+      "type": "frontend",
+      "label": "GUI 表单",
+      "sublabel": "tkinter 表单",
+      "row": 0,
+      "col": 0,
+      "sources": [
+        { "path": "gui.py", "line": 184, "label": "build_cli_args" }
+      ]
+    },
+    {
+      "id": "cli",
+      "type": "frontend",
+      "label": "CLI 入口",
+      "sublabel": "argparse · 60+ 开关",
+      "icon": "start",
+      "row": 0,
+      "col": 1,
+      "sources": [
+        { "path": "matlabc.py", "line": 32242, "label": "--browse" },
+        { "path": "matlabc.py", "line": 32389, "label": "--gen-tests" }
+      ]
+    },
+    {
+      "id": "fe-matlab",
+      "type": "backend",
+      "label": "MATLAB 前端",
+      "sublabel": "函数 / 类 / 脚本",
+      "row": 0,
+      "col": 2,
+      "sources": [
+        { "path": "matlabc.py", "line": 3523, "label": "MatlabFunction" },
+        { "path": "frontends/matlab.py", "line": 32, "label": "unresolved_tuples" }
+      ]
+    },
+    {
+      "id": "callrel",
+      "type": "backend",
+      "label": "调用关系投影",
+      "sublabel": "两种身份口径",
+      "row": 0,
+      "col": 4,
+      "sources": [
+        { "path": "callrel.py", "line": 749, "label": "call_relations" },
+        { "path": "callrel.py", "line": 21, "label": "两种口径" }
+      ]
+    },
+    {
+      "id": "site",
+      "type": "cloud",
+      "label": "分页站点",
+      "sublabel": "file / rule / binaries",
+      "tag": "内联 SVG · 零 JS",
+      "row": 0,
+      "col": 5,
+      "sources": [
+        { "path": "renderers/csite.py", "line": 503, "label": "render_c_site" },
+        { "path": "renderers/csite.py", "line": 300, "label": "_graph_svg" }
+      ]
+    },
+    {
+      "id": "mcp",
+      "type": "external",
+      "label": "MCP Server",
+      "sublabel": "JSON-RPC · 5 tools",
+      "row": 1,
+      "col": 0,
+      "sources": [
+        { "path": "matlabc_mcp.py", "line": 9, "label": "工具清单" }
+      ]
+    },
+    {
+      "id": "orchestrator",
+      "type": "backend",
+      "label": "分析编排",
+      "sublabel": "matlabc.py · 31,889 行",
+      "tag": "单文件内核",
+      "row": 1,
+      "col": 1,
+      "sources": [
+        { "path": "matlabc.py", "line": 8990, "label": "FRONTEND_REGISTRY" },
+        { "path": "matlabc.py", "line": 8758, "label": "_parse_c_source" }
+      ]
+    },
+    {
+      "id": "fe-c",
+      "type": "backend",
+      "label": "C / C++ 前端",
+      "sublabel": "词法 + 括号配平",
+      "tag": "词法级",
+      "row": 1,
+      "col": 2,
+      "sources": [
+        { "path": "matlabc.py", "line": 7255, "label": "_c_lex" },
+        { "path": "matlabc.py", "line": 9469, "label": "_c_heuristic_checks" }
+      ]
+    },
+    {
+      "id": "fe-ir",
+      "type": "backend",
+      "label": "前端 IR",
+      "sublabel": "resolve_calls",
+      "tag": "edges / unresolved",
+      "row": 1,
+      "col": 3,
+      "sources": [
+        { "path": "frontends/ir.py", "line": 64, "label": "resolve_calls" },
+        { "path": "frontends/ir.py", "line": 93, "label": "call_sites_of_files" }
+      ]
+    },
+    {
+      "id": "ugraph",
+      "type": "backend",
+      "label": "统一图 + 守恒",
+      "sublabel": "5 类节点 · 6 类边",
+      "tag": "A1a A1b A4",
+      "row": 1,
+      "col": 4,
+      "sources": [
+        { "path": "unified_graph.py", "line": 184, "label": "UnifiedGraph" },
+        { "path": "unified_graph.py", "line": 337, "label": "conservation_problems" }
+      ]
+    },
+    {
+      "id": "ai",
+      "type": "external",
+      "label": "AI 层",
+      "sublabel": "ask · agent_loop",
+      "tag": "读报告 · 不判",
+      "row": 2,
+      "col": 0,
+      "sources": [
+        { "path": "matlabc_ask.py", "line": 1, "label": "问答" },
+        { "path": "agent_loop.py", "line": 1, "label": "循环" },
+        { "path": "analyzer_memory.py", "line": 1, "label": "记忆" }
+      ]
+    },
+    {
+      "id": "outputs",
+      "type": "database",
+      "label": "CLI 产物",
+      "sublabel": "JSON · SARIF · 补丁",
+      "row": 2,
+      "col": 1,
+      "sources": [
+        { "path": "renderers/sarif.py", "line": 10, "label": "render_sarif" },
+        { "path": "renderers/snapshot.py", "line": 129, "label": "快照报告" },
+        { "path": "matlabc.py", "line": 32729, "label": "--gen-apply-patch" }
+      ]
+    },
+    {
+      "id": "fe-pyjs",
+      "type": "backend",
+      "label": "Python / JS 前端",
+      "sublabel": "ast 优先 · 词法降级",
+      "row": 2,
+      "col": 2,
+      "sources": [
+        { "path": "pyast_frontend.py", "line": 17, "label": "ast 层" },
+        { "path": "matlabc.py", "line": 11467, "label": "扩展语言模式" }
+      ]
+    },
+    {
+      "id": "entity",
+      "type": "backend",
+      "label": "实体契约",
+      "sublabel": "kind / members / bases",
+      "row": 2,
+      "col": 3,
+      "sources": [
+        { "path": "entity_model.py", "line": 186, "label": "matlab_entities" },
+        { "path": "entity_model.py", "line": 258, "label": "c_entities" }
+      ]
+    },
+    {
+      "id": "binattr",
+      "type": "backend",
+      "label": "归因与依赖",
+      "sublabel": "SymbolIndex",
+      "tag": "library / gpu / missing",
+      "row": 2,
+      "col": 4,
+      "sources": [
+        { "path": "binfmt/attribute.py", "line": 59, "label": "SymbolIndex" },
+        { "path": "binfmt/resolve.py", "line": 470, "label": "resolve_graph" }
+      ]
+    },
+    {
+      "id": "dynlibs",
+      "type": "backend",
+      "label": "源码级库引用",
+      "sublabel": "dlopen / LoadLibrary",
+      "row": 2,
+      "col": 5,
+      "sources": [
+        { "path": "renderers/dynlibs.py", "line": 327, "label": "extract_dynlib_refs" }
+      ]
+    },
+    {
+      "id": "binfmt",
+      "type": "database",
+      "label": "二进制解析",
+      "sublabel": "PE / ELF / Mach-O / GPU",
+      "row": 3,
+      "col": 4,
+      "sources": [
+        { "path": "binfmt/container.py", "line": 67, "label": "parse" },
+        { "path": "binfmt/elf.py", "line": 127, "label": "ELF parse" }
+      ]
+    }
+  ],
+  "connections": [
+    { "id": "cli-orch", "from": "cli", "to": "orchestrator", "label": "argv / 配置", "variant": "emphasis" },
+    { "id": "gui-orch", "from": "gui", "to": "orchestrator", "label": "build_cli_args" },
+    { "id": "mcp-orch", "from": "mcp", "to": "orchestrator", "label": "JSON-RPC" },
+    { "id": "ai-orch", "from": "ai", "to": "orchestrator", "label": "问答 / 循环" },
+    { "id": "orch-outputs", "from": "orchestrator", "to": "outputs", "label": "落盘产物" },
+    { "id": "orch-matlab", "from": "orchestrator", "to": "fe-matlab", "label": "MATLAB 默认", "variant": "emphasis" },
+    { "id": "orch-c", "from": "orchestrator", "to": "fe-c", "label": "--lang c" },
+    { "id": "orch-pyjs", "from": "orchestrator", "to": "fe-pyjs", "label": "--lang py|js" },
+    { "id": "matlab-ir", "from": "fe-matlab", "to": "fe-ir", "label": "calls / unresolved" },
+    { "id": "c-ir", "from": "fe-c", "to": "fe-ir", "label": "calls / unresolved" },
+    { "id": "pyjs-ir", "from": "fe-pyjs", "to": "fe-ir", "label": "calls / unresolved" },
+    { "id": "c-entity", "from": "fe-c", "to": "entity", "label": "适配器归一化" },
+    { "id": "pyjs-entity", "from": "fe-pyjs", "to": "entity", "label": "适配器归一化" },
+    { "id": "ir-callrel", "from": "fe-ir", "to": "callrel", "label": "edges" },
+    { "id": "callrel-ugraph", "from": "callrel", "to": "ugraph", "label": "有界投影" },
+    { "id": "entity-ugraph", "from": "entity", "to": "ugraph", "label": "实体节点" },
+    { "id": "binfmt-attr", "from": "binfmt", "to": "binattr", "label": "容器读数" },
+    { "id": "attr-ugraph", "from": "binattr", "to": "ugraph", "label": "归因边" },
+    { "id": "callrel-site", "from": "callrel", "to": "site", "label": "调用图 / 交叉引用" },
+    { "id": "ugraph-site", "from": "ugraph", "to": "site", "label": "统一图" },
+    { "id": "dynlibs-site", "from": "dynlibs", "to": "site", "label": "源码想用谁", "variant": "dashed" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "三条入口，一个内核",
+      "items": [
+        "CLI 是唯一真入口；GUI 只是用 build_cli_args 拼参数再起子进程",
+        "MCP Server 用 stdio JSON-RPC 接 Agent，每次工具调用起一个 CLI 子进程",
+        "AI 层（ask / agent_loop / analyzer_memory）读产物做问答，不参与判定"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "前端与唯一判定点",
+      "items": [
+        "MATLAB 前端解析函数/类/脚本，带 arguments 块、结构体字段与全局状态",
+        "C 前端是词法 + 括号配平扫描器：定义可见，语义仍是文本级",
+        "所有语言的调用都走 frontends/ir.resolve_calls，一处判定",
+        "实体经 entity_model 归一，MATLAB/C/Python 三家同形"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "图、库与归因",
+      "items": [
+        "callrel 把边投影成有界输出，两种身份口径（名字 / 定义落点）并列",
+        "unified_graph 只回答图是否守恒：A1a/A1b 站点账 + A4 去重",
+        "binfmt 解析容器与内嵌 GPU；resolve_graph 沿依赖逐层下钻",
+        "attribute 把未解析名归到 library / gpu_kernel / missing 三态"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "产物、快照与门禁",
+      "items": [
+        "--json 是报表契约；--from-json 回放、--diff 双快照对比、--fingerprint 防篡改",
+        "--sarif 2.1.0 + 退出码 + 基线比对接 CI；--gen-apply-patch 产确定性补丁",
+        "--browse 站点服务端算 SVG，零 JS、零 CDN，断网可开",
+        "22 个 check_*.py 与 516 个测试守住上述每一条结论"
+      ]
+    }
+  ]
+}
