@@ -59,6 +59,8 @@ TARGET_FILES = (
     "README_CN.md",
     "matlabc_help.py",
     os.path.join("tools", "check_all.py"),
+    # R1112：白皮书也写着门数，和图一样会过期
+    os.path.join("flow", "whitepaper.html"),
 )
 
 #: 历史记录：这里的门数是"当时是多少"，不能改
