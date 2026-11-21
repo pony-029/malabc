@@ -187,6 +187,7 @@ footer{margin-top:70px;padding-top:22px;border-top:1px solid var(--line);font-si
 <nav class="toc">
   <h2>目录</h2>
   <ol>
+    <li><a href="#s0">项目速览（背景/模块/现状）</a></li>
     <li><a href="#s1">问题：四道墙</a></li>
     <li><a href="#s2">架构：四层分离</a></li>
     <li><a href="#s3">小脑：确定性的 90%</a></li>
@@ -200,6 +201,75 @@ footer{margin-top:70px;padding-top:22px;border-top:1px solid var(--line);font-si
     <li><a href="#s11">设计原则</a></li>
   </ol>
 </nav>
+
+<!-- 0 -->
+<h2 class="sec" id="s0"><span class="num">00</span>项目速览：这是什么、现在到哪一步</h2>
+
+<h3>0.1 背景与目标</h3>
+<p>
+算法团队用 MATLAB 写业务逻辑（矩阵运算、滤波、统计），但产品要跑在嵌入式板子上。
+人工翻译的代价是：<b>慢</b>（几千个函数）、<b>易错</b>（MATLAB 的隐式广播、动态尺寸在 C 里都要显式化）、
+<b>不可维护</b>（算法改一版，C 要跟着改一遍）。
+</p>
+<p>本项目要回答的问题只有一个：</p>
+<div class="callout">
+<p><b>能不能把 MATLAB 自动转成能编译、能跑对、能适配不同芯片的 C？</b>
+并且在转不动的时候<b>诚实地说出卡在哪</b>，而不是生成一堆编译通过但什么都不做的桩。</p>
+</div>
+
+<table>
+<tr><th>目标</th><th>衡量方式</th><th>现状</th></tr>
+<tr><td>能转（正向）</td><td>生成 .c 数量 / 函数守恒</td><td class="n">6 工程 · 3794 函数</td></tr>
+<tr><td>转得对（语义）</td><td>与 Octave 真值逐值比对</td><td class="n">合成语料 60/60</td></tr>
+<tr><td>能回来（反向）</td><td>C→MATLAB 往返</td><td class="n">3/40（真实工程）</td></tr>
+<tr><td>转不动要说清</td><td>解析降级率 + 缺口归因</td><td class="n">20.4%（可解释）</td></tr>
+<tr><td>能换硬件</td><td>同一 MIR + 不同 profile</td><td class="n">配置层完备，生成层未接</td></tr>
+<tr><td>自身可信</td><td>门禁 + 测试</td><td class="n">45 护栏 · 519 测试</td></tr>
+</table>
+
+<h3>0.2 模块关系（当前真实调用关系）</h3>
+<pre><code>MATLAB 源码
+   │  translate/mir.py        解析、降级判定、形状推断（Python）
+   ▼
+  MIR  ← 中间表示，唯一被上下游共同理解的东西
+   │
+   ├─ rust/m2c (emit.rs)   MIR → C 生成（Rust）──► C 工程
+   │                                              │
+   │                                              ▼
+   │                                      c_runtime/（手写 C）
+   │                                      mlc_ops.c · mlc_runtime.c
+   │
+   ├─ translate/mir_eval.py   MIR 参考解释器（用来验 C 侧的语义）
+   ├─ translate/unmir.py      MIR → MATLAB（反向链路）
+   │
+   └─ tools/  ← 90 个工具 + 45 道门禁
+        ├ 画像类   mem_budget · mem_sections · mem_callchain · scan_facts
+        ├ 决策类   op_backends · isa_plan · ext_contract · hw_brain
+        ├ 生成类   gen_symbol_map · full_report · diagram_index
+        └ 验证类   45 个 check_*.py（其中 GX2 含 519 条测试）</code></pre>
+
+<h3>0.3 三层验证，缺一不可</h3>
+<table>
+<tr><th>层</th><th>验什么</th><th>不验会怎样</th></tr>
+<tr><td>算子一致性</td><td>Python 参考实现 ⇄ C 实现 逐值比对</td><td>C 里算错了没人知道</td></tr>
+<tr><td>语料对拍</td><td>生成的 C 编译执行 ⇄ Octave 真值</td><td>“能编译”被当成“能算对”</td></tr>
+<tr><td>三段链路</td><td>MATLAB→MIR→C→反推，每段都过</td><td>某一段坏掉但整体看着正常</td></tr>
+</table>
+<div class="callout ok">
+<p><b>本项目最硬的一条纪律：</b>任何“通过”都必须有<b>独立的对手方</b>。
+算子表有 C 侧对手方、报告数字有门禁对手方、图层有 finalize 对手方。
+——因为“我检查过了”和“它是对的”是两件事。</p>
+</div>
+
+<h3>0.4 术语</h3>
+<table>
+<tr><th>词</th><th>含义</th></tr>
+<tr><td><b>MIR</b></td><td>中间表示。形如 <code>op:OP-SUM:y:x</code>、<code>func:f</code>、<code>call:ret:callee:args</code></td></tr>
+<tr><td><b>降级 / unmapped</b></td><td>某条 MATLAB 语句无法降级成算子，记一条 <code>unmapped</code> 并归类</td></tr>
+<tr><td><b>profile</b></td><td>目标硬件的物理事实：段、容量、ISA 优先级、私有指令集规则</td></tr>
+<tr><td><b>小脑 / 大脑</b></td><td>小脑=确定性推导（可复算、免费）；大脑=拿不准时升级（四信号）</td></tr>
+<tr><td><b>门禁</b></td><td>以 <code>check_*.py</code> 形式存在的自动判据，共 45 道</td></tr>
+</table>
 
 <!-- 1 -->
 <h2 class="sec" id="s1"><span class="num">01</span>问题：为什么“代码转代码”走不通</h2>
