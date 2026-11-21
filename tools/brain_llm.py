@@ -199,12 +199,18 @@ def escalate(query, extra_signals=None, problems=None, entries=None, kinds=None)
     # 所有 query 都升级。改为只看本次检索命中的那些条目。
     if entries is None:
         entries = brain.load()["entries"]
-    hit_ids = set()
-    for _score, e in hits:
-        if isinstance(e, dict) and e.get("id"):
-            hit_ids.add(e["id"])
-    open_items = [e for e in entries
-                  if e.get("status") == "open" and e.get("id") in hit_ids]
+    # 相关性判据与 S2 一致：用 query 的实词去匹配条目 title。
+    # （按 id 匹配 hits 不行：注入/新建的条目还没进知识库，hits 永远命不中。）
+    _words = [w for w in re.split(r"[^\w\u4e00-\u9fff]+", query)
+              if len(w) > 1]
+    open_items = []
+    for e in entries:
+        if e.get("status") != "open":
+            continue
+        t = (e.get("title") or "")
+        if not _words or any(w in t for w in _words) or any(
+                w in (e.get("rule") or "") for w in _words):
+            open_items.append(e)
     s3 = len(open_items) > 0
 
     # S4 未归类：最近一次未映射统计里出现已知集合之外的 kind
@@ -456,7 +462,10 @@ def _selftest():
         print("  [selftest] S1 无先例没触发")
 
     # ③ S2：同名问题 3 次必须触发
-    d = escalate(_hit, problems=[{"title": "同名"}] * REPEAT_MIN,
+    # **样本要与判定同源**（R1061）：判据现在是"与 query 相关"，样本就必须让
+    # title 与 query 有实质重合；用「同名」这种与 query 毫无关系的词，
+    # 测的其实是旧的全局判定。
+    d = escalate(_hit, problems=[{"title": _hit}] * REPEAT_MIN,
                  entries=_clean_entries, kinds={})
     if d["need"] and d["signals"]["S2_recurs"]:
         good += 1
@@ -465,7 +474,8 @@ def _selftest():
         print("  [selftest] S2 复发没触发")
 
     # ④ S3：有未闭条目必须触发
-    _open = [{"id": "X2", "title": "未闭", "rule": "r",
+    # 同理：S3 现在是"相关的 open 条目"，样本 title 必须与 query 重合。
+    _open = [{"id": "X2", "title": _hit, "rule": "r",
               "witness": "tools/brain.py", "status": "open"}]
     d = escalate(_hit, problems=[], entries=_open, kinds={})
     if d["need"] and d["signals"]["S3_no_witness"]:
