@@ -28,5 +28,30 @@
       "capacity_bytes": 134217728,
       "note": "外挂 128MB，DMA 搬运"
     }
-  ]
+  ],
+  "custom_isa": {
+    "rules": [
+      {
+        "op": "OP-MATMUL",
+        "c": "company_isa_mmul",
+        "header": "company_isa.h",
+        "condition": {
+          "min_len": 64,
+          "len_multiple": 8,
+          "require_align": 64
+        },
+        "fallback": "mlc_op_matmul"
+      },
+      {
+        "op": "OP-SUM",
+        "c": "company_isa_vreduce",
+        "header": "company_isa.h",
+        "condition": {
+          "min_len": 128,
+          "len_multiple": 16
+        },
+        "fallback": "mlc_op_sum"
+      }
+    ]
+  }
 }
