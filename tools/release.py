@@ -52,7 +52,11 @@ GATES = ("check_version_scheme", "check_eol_convention", "check_readme_parity",
         # 静默失败基线 / 人类授权 / 白盒产物"六条 —— 发版正是最该核对
         # "人类授权"的时刻。此前它不在发版清单里，等于从没在发布时跑过
         # （RG2 就是这么报出来的）。
-        "check_ane",
+        # R1098：小脑硬边界与双轨交叉比对也必须在发布时跑 ——
+    # 不在这里就等于"从没在发版时验证过"。
+    "check_cerebellum",
+    "check_dual_track",
+    "check_ane",
          # 越界的符号行号会让大纲永远转圈
          "check_symbol_ranges",
          # 工具的自证需要有人执行，否则等于没写
