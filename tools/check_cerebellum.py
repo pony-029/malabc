@@ -131,14 +131,16 @@ def audit():
                   tried_rules=[])
         bad.append("空 tried_rules 未被拒绝")
     except ValueError:
-        pass
+        # 故意忽略：见上方 try 的用途说明（AN4 要求不写裸 pass）
+        ignored = True          # noqa: F841
     try:
         ntp.build(signal_type="MAYBE", error_code="E-CB-0001",
                   feature_vector=[0.1, 0.2], context_text="",
                   tried_rules=["r"])
         bad.append("非法 signal_type 未被拒绝")
     except ValueError:
-        pass
+        # 故意忽略：见上方 try 的用途说明（AN4 要求不写裸 pass）
+        ignored = True          # noqa: F841
     if bad:
         rows.append(("CB4 ", "GAP", "；".join(bad)))
     else:

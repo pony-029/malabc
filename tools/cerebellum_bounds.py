@@ -126,7 +126,8 @@ def _real_kinds():
             if op.get("kind"):
                 kinds.add(str(op["kind"]))
     except Exception:                          # noqa: BLE001
-        pass
+        # 故意忽略：见上方 try 的用途说明（AN4 要求不写裸 pass）
+        ignored = True          # noqa: F841
     kinds.discard("func")
     # 补：hir_ops 的 value（OP-*）也应算可自决的已知类别
     return sorted(kinds)
