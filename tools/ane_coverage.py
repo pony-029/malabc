@@ -71,10 +71,10 @@ CHAPTERS = [
      "本仓没有给自己评过成熟度等级"),
     ("第十二章 度量与反模式", "PARTIAL", "tools/progress.py",
      "有红黄绿完成度表；反模式清单未逐条核对"),
-    ("第十三章 交互模式矩阵", "NONE", "", "不适用于编译器项目"),
-    ("第十四章 交互原语", "NONE", "", "不适用"),
+    ("第十三章 交互模式矩阵", "N/A", "", "不适用于单仓编译器项目：本仓是单智能体开发的 MATLAB→C 工具链，没有多智能体、多租户、生命体间通信或套件组合的形态。显式标 N/A 而非留作空白——空白会被误读成「还没做」。"),
+    ("第十四章 交互原语", "N/A", "", "不适用于单仓编译器项目：本仓是单智能体开发的 MATLAB→C 工具链，没有多智能体、多租户、生命体间通信或套件组合的形态。显式标 N/A 而非留作空白——空白会被误读成「还没做」。"),
     ("第十五章 工具生态 MCP", "NONE", "", "本仓未接 MCP"),
-    ("第十六章 多智能体协同", "NONE", "", "本仓是单智能体开发"),
+    ("第十六章 多智能体协同", "N/A", "", "不适用于单仓编译器项目：本仓是单智能体开发的 MATLAB→C 工具链，没有多智能体、多租户、生命体间通信或套件组合的形态。显式标 N/A 而非留作空白——空白会被误读成「还没做」。"),
     ("第十七章 安全与信任边界", "NONE", "", "无 OWASP 对齐检查"),
     ("第十八章 成本治理", "PARTIAL", "tools/brain_llm.py",
      "四信号避免无效上行（省 Token），但没有成本预算的硬闸"),
@@ -83,8 +83,8 @@ CHAPTERS = [
     ("第二十一章 失效安全与降级", "PARTIAL", "c_runtime/include/mlc.h",
      "MLC_UNIMPLEMENTED 是值层面的降级；但没有「降级比例」判据"),
     ("第二十二章 身份与可追溯", "NONE", "", "无命名空间判据"),
-    ("第二十三章 人类因素", "NONE", "", "不适用"),
-    ("第二十四章 多租户与记忆边界", "NONE", "", "单租户项目"),
+    ("第二十三章 人类因素", "N/A", "", "不适用于单仓编译器项目：本仓是单智能体开发的 MATLAB→C 工具链，没有多智能体、多租户、生命体间通信或套件组合的形态。显式标 N/A 而非留作空白——空白会被误读成「还没做」。"),
+    ("第二十四章 多租户与记忆边界", "N/A", "", "不适用于单仓编译器项目：本仓是单智能体开发的 MATLAB→C 工具链，没有多智能体、多租户、生命体间通信或套件组合的形态。显式标 N/A 而非留作空白——空白会被误读成「还没做」。"),
     ("第二十五章 元规范", "NONE", "", "规范自身的治理，非本仓职责"),
     ("第二十六章 ANE-CONF 符合性", "PARTIAL", "tools/check_ane.py",
      "有 6 条机检，远未构成完整符合性评估"),
@@ -104,8 +104,8 @@ CHAPTERS = [
     ("第三十六章 制品命名", "NONE", "", "无命名判据"),
     ("第三十七章 结构完整性与投影校验", "PARTIAL", "tools/check_eol_convention.py",
      "有行尾与结构约定；投影后校验未做"),
-    ("第三十八章 IOP 生命体间通信", "NONE", "", "单仓，无生命体间通信"),
-    ("第三十九章 套件与组合", "NONE", "", "不适用"),
+    ("第三十八章 IOP 生命体间通信", "N/A", "", "不适用于单仓编译器项目：本仓是单智能体开发的 MATLAB→C 工具链，没有多智能体、多租户、生命体间通信或套件组合的形态。显式标 N/A 而非留作空白——空白会被误读成「还没做」。"),
+    ("第三十九章 套件与组合", "N/A", "", "不适用于单仓编译器项目：本仓是单智能体开发的 MATLAB→C 工具链，没有多智能体、多租户、生命体间通信或套件组合的形态。显式标 N/A 而非留作空白——空白会被误读成「还没做」。"),
     ("第四十章 向 AGI 演进", "NONE", "", "路线性"),
     ("第四十一章 沟通数据格式", "PARTIAL", "tools/ntp.py",
      "NTP 报文格式有判据；存储与联网策略未涉及"),
@@ -120,8 +120,9 @@ def audit(chapters=None):
     rows = []
     for name, status, ev, why in (chapters if chapters is not None else CHAPTERS):
         exists = bool(ev) and os.path.exists(os.path.join(ROOT, ev))
-        # 证据不存在则降级：否则这张表本身就在骗人
-        real = status if (status in ("NONE",) or exists) else "NONE"
+        # 证据不存在则降级：否则这张表本身就在骗人。
+        # `N/A` 不降级：它声明的是"本章不适用于本仓"，不需要证据文件。
+        real = status if (status in ("NONE", "N/A") or exists) else "NONE"
         note = why
         if status != "NONE" and not exists:
             note = "证据路径不存在（%s），已降级为 NONE" % ev
@@ -177,11 +178,13 @@ def main(argv=None):
                          ensure_ascii=False, indent=1))
         return 0
 
-    print("[ANE 覆盖] 44 章 ｜ COVERED %d ｜ PARTIAL %d ｜ NONE %d"
-          % (cnt.get("COVERED", 0), cnt.get("PARTIAL", 0), cnt.get("NONE", 0)))
+    print("[ANE 覆盖] 44 章 ｜ COVERED %d ｜ PARTIAL %d ｜ NONE %d ｜ N/A %d"
+          % (cnt.get("COVERED", 0), cnt.get("PARTIAL", 0),
+             cnt.get("NONE", 0), cnt.get("N/A", 0)))
     print()
     for r in rows:
-        mark = {"COVERED": "✅", "PARTIAL": "◐", "NONE": "✗"}[r["status"]]
+        mark = {"COVERED": "✅", "PARTIAL": "◐", "NONE": "✗",
+                "N/A": "—"}.get(r["status"], "?")
         print("%s %-30s %s" % (mark, r["chapter"], r["why"][:52]))
     print()
     print("[结论] %d 章有专门判据，%d 章部分覆盖，%d 章空白 ——"
