@@ -86,26 +86,71 @@ def _real_kinds():
     return sorted(kinds)
 
 
-def measure_offline():
-    """构造真实咨询，统计小脑自决比例。"""
+def _sample_real_cases(mir_path, limit=60):
+    """从**真实 MIR** 里抽未映射条目（原文 + why 类别）。
+
+    R1059：上一轮是按 kind 自己造问题，于是 15/15 全自决、100% —— 那个数字
+    不可信，因为自造的问题一定挑自己答得上来的。真实条目长得多、也脏得多
+    （如 `x = x(~ isnan (x));`），才是该问的东西。
+    """
+    s = io.open(mir_path, encoding="utf-8", errors="replace").read()
+    out = []
+    why = None
+    for ln in s.splitlines():
+        if ln.startswith("# why:"):
+            why = ln[6:].strip()
+            continue
+        if ln.startswith("unmapped:"):
+            desc = ln[9:].strip()
+            if desc:
+                out.append((why or "other", desc))
+            why = None
+    # 均匀抽样，避免只取到文件开头（那里往往是同一类）
+    if len(out) > limit:
+        step = len(out) / float(limit)
+        out = [out[int(i * step)] for i in range(limit)]
+    return out
+
+
+def measure_offline(mir_path=None, limit=60):
+    """统计小脑自决比例。
+
+    * 给了 `mir_path` -> 用**真实未映射条目**（推荐，见 R1059 的教训）；
+    * 没给 -> 退化为按 kind 构造问题（会偏乐观，返回值里标 `basis`）。
+    """
     import brain_llm as B
-    kinds = _real_kinds()
-    if not kinds:
+    if mir_path and os.path.isfile(mir_path):
+        cases = _sample_real_cases(mir_path, limit)
+        basis = "real"
+    else:
+        cases = [("kind", "解析出现未映射类别 %s，是否需要外部裁决？" % k)
+                 for k in _real_kinds()]
+        basis = "synthetic"
+    if not cases:
         return None
-    decidable = []
-    escalate = []
-    for k in kinds:
-        query = "解析出现未映射类别 %s，是否需要外部裁决？" % k
+    decidable, escalate = [], []
+    for kind, desc in cases:
+        query = "未映射（%s）：%s" % (kind, desc)
         try:
             dec = B.escalate(query)
         except Exception as e:                 # noqa: BLE001
-            escalate.append((k, "escalate 抛错：%s" % type(e).__name__))
+            escalate.append((kind, "escalate 抛错：%s" % type(e).__name__))
             continue
-        need = bool(dec.get("escalate")) if isinstance(dec, dict) else True
-        (escalate if need else decidable).append(k)
-    total = len(kinds)
+        # **不能只看 escalate 字段**（R1059）：brain_llm.escalate 目前返回的
+        # `escalate` 是 None（不是布尔），而 `reasons` 里可能已经明确写着
+        # "复发：同名问题已记 7 次"。用 bool(None)=False 判"自决"会把
+        # **该升级的当成不需要升级**——那会让离线率虚高到 100%。
+        # 所以：任一条成立就算需要上行。
+        if not isinstance(dec, dict):
+            need = True
+        else:
+            need = bool(dec.get("escalate")) or bool(dec.get("reasons"))
+        (escalate if need else decidable).append(
+            (kind, (dec.get("why") or "；".join(dec.get("reasons") or []))
+             if need else desc))
+    total = len(cases)
     rate = float(len(decidable)) / total if total else 0.0
-    return {"kinds": kinds, "total": total,
+    return {"basis": basis, "total": total,
             "decidable": decidable, "escalate": escalate,
             "rate": round(rate, 4), "floor": OFFLINE_FLOOR,
             "pass": rate >= OFFLINE_FLOOR}
