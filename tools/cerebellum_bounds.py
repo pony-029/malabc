@@ -1,0 +1,240 @@
+# -*- coding: utf-8 -*-
+"""**小脑硬边界机检**（ANE v0.9.0 第四章 4.4）。
+
+    python tools/cerebellum_bounds.py
+    python tools/cerebellum_bounds.py --json
+    python tools/cerebellum_bounds.py --selftest
+
+## 规范要求的三条硬边界
+
+| 硬边界 | 规范原文要求 | 可机检的吗 |
+|---|---|---|
+| 离线可用 | 断网时靠本地规则完成 **≥80%** 的异常处理 | ✅ 能量：喂一批真实异常看多少不需要升级 |
+| 可生长 | 新增能力只能通过**追加规则**，不能改判定 | ✅ 能量：比对规则集合只增不减 |
+| 无推测 | 未命中时**必须**抛 UnknownSignal，禁止猜 | ✅ 已在 `ntp.py` 强制 |
+
+前两条本工具负责，第三条由 `tools/ntp.py` 负责（它强制 `signal_type`
+只能是 UNKNOWN/S1..S4 且 `tried_rules` 不能为空）。
+
+## 离线可用率怎么量（口径写死）
+
+对每个**真实存在的未映射类别**（来自 `operators.py` 与解析器能产出的 kind
+全集，而不是我手编的清单）构造一次咨询：
+
+* 若 `escalate()` 判定**不需升级** → 计为「小脑自决」；
+* 若判定需升级 → 计为「必须上行」。
+
+    离线可用率 = 小脑自决数 / 总咨询数
+
+**为什么用真实 kind 而不是自造问题**：自造的问题一定会挑自己答得上来的。
+用产出方的全集，才可能包含自己答不上来的。
+
+## 可生长怎么量
+
+比对 `translate/operators.py` 的算子 id 集合 与
+`translate/hir_ops.py` 的映射 key 集合：与 `flow/cerebellum-rules-baseline.json`
+里记录的基线相比，**只允许新增，不允许减少**。
+
+减少意味着「一条旧规则被删了」——那可能是重构，也可能是误删；无论哪种，
+都必须由人来确认并更新基线，而不是悄悄消失。
+
+退出码：0=全部满足 1=自证失败或边界不满足 2=缺输入
+"""
+import argparse
+import io
+import json
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+sys.path.insert(0, os.path.join(ROOT, "translate"))
+
+BASELINE = os.path.join(ROOT, "flow", "cerebellum-rules-baseline.json")
+
+#: 规范要求的离线可用下限
+OFFLINE_FLOOR = 0.80
+
+
+def _real_kinds():
+    """**产出方全集**：解析器实际会产出的未映射类别。
+
+    不从文档抄，而是问产出方 —— `mir.py` 的 `_emit_unmapped` 里出现的字面量。
+    抄清单必漏，这是本项目反复踩过的坑。
+    """
+    p = os.path.join(ROOT, "translate", "mir.py")
+    s = io.open(p, encoding="utf-8", errors="replace").read()
+    import re
+    kinds = set()
+    # 实际写法是 `unmapped_kinds[kind] += 1`，kind 由 _classify 决定；
+    # 这里抓 `_unmapped` 分类函数里返回的字面量（形如 return "cell"）。
+    for m in re.finditer(r'["\']([a-z][a-z0-9_\-]{1,24})["\']\s*#'
+                         r'|return\s+["\']([a-z][a-z0-9_\-]{1,24})["\']', s):
+        for g in m.groups():
+            if g:
+                kinds.add(g)
+    # 再补：operators.py 的 kind 字段（已知类别全集的一部分）
+    try:
+        import operators as O
+        for op in O.OPERATORS:
+            if op.get("kind"):
+                kinds.add(str(op["kind"]))
+    except Exception:                          # noqa: BLE001
+        pass
+    kinds.discard("func")
+    # 补：hir_ops 的 value（OP-*）也应算可自决的已知类别
+    return sorted(kinds)
+
+
+def measure_offline():
+    """构造真实咨询，统计小脑自决比例。"""
+    import brain_llm as B
+    kinds = _real_kinds()
+    if not kinds:
+        return None
+    decidable = []
+    escalate = []
+    for k in kinds:
+        query = "解析出现未映射类别 %s，是否需要外部裁决？" % k
+        try:
+            dec = B.escalate(query)
+        except Exception as e:                 # noqa: BLE001
+            escalate.append((k, "escalate 抛错：%s" % type(e).__name__))
+            continue
+        need = bool(dec.get("escalate")) if isinstance(dec, dict) else True
+        (escalate if need else decidable).append(k)
+    total = len(kinds)
+    rate = float(len(decidable)) / total if total else 0.0
+    return {"kinds": kinds, "total": total,
+            "decidable": decidable, "escalate": escalate,
+            "rate": round(rate, 4), "floor": OFFLINE_FLOOR,
+            "pass": rate >= OFFLINE_FLOOR}
+
+
+def _rule_sets():
+    """当前规则集合：算子 id 与 hir 映射 key。"""
+    import hir_ops
+    import operators as O
+    ops = set(op["id"] for op in O.OPERATORS)
+    hir = set()
+    for name in dir(hir_ops):
+        v = getattr(hir_ops, name)
+        if isinstance(v, dict):
+            hir |= set(v.keys())
+    return {"operator_ids": sorted(ops), "hir_keys": sorted(hir)}
+
+
+def check_growable(baseline_path=BASELINE, write=False):
+    """规则集合只允许新增。返回 dict。"""
+    cur = _rule_sets()
+    if not os.path.isfile(baseline_path):
+        if write:
+            io.open(baseline_path, "w", encoding="utf-8", newline="\n").write(
+                json.dumps(cur, ensure_ascii=False, indent=1) + "\n")
+            return {"ok": True, "created": True, "shrunk": []}
+        return {"ok": False, "missing_baseline": True, "shrunk": []}
+    try:
+        base = json.load(io.open(baseline_path, encoding="utf-8"))
+    except (IOError, OSError, ValueError) as e:
+        return {"ok": False, "read_error": type(e).__name__, "shrunk": []}
+    shrunk = []
+    added = []
+    for key in ("operator_ids", "hir_keys"):
+        b = set(base.get(key) or [])
+        c = set(cur.get(key) or [])
+        lost = sorted(b - c)
+        if lost:
+            shrunk.append((key, lost))
+        added.extend(sorted(c - b))
+    if write and not shrunk:
+        io.open(baseline_path, "w", encoding="utf-8", newline="\n").write(
+            json.dumps(cur, ensure_ascii=False, indent=1) + "\n")
+    return {"ok": not shrunk, "shrunk": shrunk, "added": len(added)}
+
+
+def _selftest():
+    """两向自证：满足下限要判过、低于下限要判不过、规则减少要判不过。"""
+    good = bad = 0
+
+    # 用假数据测判据本身（不依赖真实语料）
+    def judge(dec, tot, floor=OFFLINE_FLOOR):
+        return (float(dec) / tot if tot else 0.0) >= floor
+
+    if judge(8, 10):
+        good += 1
+    else:
+        bad += 1
+        print("  [selftest] 80% 应达标")
+
+    if not judge(7, 10):
+        good += 1
+    else:
+        bad += 1
+        print("  [selftest] 70% 不该达标")
+
+    # 可生长：规则减少必须被抓
+    import tempfile
+    d = tempfile.mkdtemp(prefix="cb_")
+    try:
+        cur = _rule_sets()
+        # 人为把基线造得比现在多一个，模拟"一条规则消失了"
+        fake = {"operator_ids": sorted(set(cur["operator_ids"]) | {"OP-GHOST"}),
+                "hir_keys": list(cur["hir_keys"])}
+        p = os.path.join(d, "base.json")
+        io.open(p, "w", encoding="utf-8").write(
+            json.dumps(fake, ensure_ascii=False))
+        r = check_growable(p)
+        if not r["ok"] and r["shrunk"]:
+            good += 1
+        else:
+            bad += 1
+            print("  [selftest] 规则减少未被抓到：%r" % (r,))
+    finally:
+        import shutil
+        shutil.rmtree(d, ignore_errors=True)
+
+    print('SELFTEST COUNTS {"bad": %d, "good": %d}' % (bad, good))
+    return 0 if bad == 0 else 1
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="小脑硬边界机检")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--update-baseline", action="store_true",
+                    help="把当前规则集合写成新基线（仅在确认减少是合法重构时用）")
+    ns = ap.parse_args(argv)
+
+    if ns.selftest:
+        return _selftest()
+
+    off = measure_offline()
+    grow = check_growable(write=ns.update_baseline)
+    if off is None:
+        print("cerebellum_bounds: 缺输入（取不到真实 kind 全集）")
+        return 2
+
+    r = {"offline": off, "growable": grow,
+         "ok": bool(off["pass"] and grow["ok"])}
+    if ns.json:
+        print(json.dumps(r, ensure_ascii=False, indent=1))
+        return 0 if r["ok"] else 1
+
+    print("[离线可用] 咨询 %d ｜ 小脑自决 %d ｜ 必须上行 %d ｜ 自决率 %.1f%%（下限 %.0f%%）"
+          % (off["total"], len(off["decidable"]), len(off["escalate"]),
+             off["rate"] * 100, off["floor"] * 100))
+    if off["escalate"]:
+        for k, why in off["escalate"][:5]:
+            print("   上行：%-14s %s" % (k, why if isinstance(why, str) else ""))
+    print("[可生长] 规则集合 %s"
+          % ("只增不减 OK" if grow["ok"] else "**有减少**"))
+    for key, lost in (grow.get("shrunk") or []):
+        print("   %s 少了 %d 条：%s" % (key, len(lost), ",".join(lost[:6])))
+    if grow.get("created"):
+        print("   已创建基线 %s" % os.path.relpath(BASELINE, ROOT))
+    print("[结论] %s" % ("两条硬边界均满足" if r["ok"] else "**未满足，见上**"))
+    return 0 if r["ok"] else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

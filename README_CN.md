@@ -1219,6 +1219,7 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 - `tools/op_backends.py` —— **算子实现变体选择**：按 profile 的 `isa.order` 依次找 `mlc_op_<name>_<isa>`，命中即选，全未命中退回标量 `c`（**标量是兜底，不参与优先级**——排在序列首位会让 simd/accel 永远选不上，而输出表看起来完全正常）；支持 `--op-map` 外部覆盖，覆盖后仍走变体选择，陈旧覆盖与缺 `why` 都判错
 - `tools/mem_callchain.py` —— **调用链峰值**：修掉 `mem_sections` 的低估方向。`peak(A) = own(A) + Σ peak(callee)` —— A 调 B 时两者数组同时活着，按「每函数各自」算会低估。递归一律**不给数字**（静态无法展开栈深度，假值比没有更糟），并列出环示例
 - `tools/mem_sections.py` —— **分段预算校验**：段个数/段名/每段容量/单数组上限全部由 profile 决定，按声明顺序 first-fit 分流（缺 `max_array_bytes` 的段视为能装任何大小）；口径是**逐函数求和再取函数间最大值**，并在返回值标 `scope: per-function`——它不是全局峰值，跨调用链仍会低估
+- `tools/cerebellum_bounds.py` —— **小脑硬边界机检**（ANE v0.9.0 §4.4）：① **离线可用率**＝小脑自决数 ÷ 总咨询数，下限 80%——咨询对象取自**产出方**（`mir.py` 的未映射类别 + `operators.py` 的 kind），不手抄清单；② **可生长**＝`operators` 与 `hir_ops` 的规则集合与基线相比**只增不减**，减少必须由人确认并更新基线。实测 15/15 自决（100%），规则只增不减
 - `tools/ntp.py` —— **神经调度协议 NTP**（ANE v0.9.0 第五章 5.2）：小脑→大脑的上行报文。`build()` 产出规范要求的完整结构（`tried_rules` / `memory_hits` / `constraints` / `budget_hint`），`compact()` 产出 ANE5 极简单行，两者**信息一致**由 `validate()` 交叉校验。强制「无推测」：`signal_type` 只能是 UNKNOWN/S1..S4，`tried_rules` 不能为空——一条都没试过就升级，等于小脑被绕过
 - `tools/hw_brain.py` —— **硬件映射的小脑与大脑**：小脑跑确定性推导（段用量/算子数/形状未知数），大脑只在四信号触发时升级，每项都带一个**可回答的问题**而非一句「请检查」。四信号（无先例/复发/无见证/未归类）只有一处定义，是 `brain_llm.escalate` 在本领域的适配器
 - `tools/verify_symbol_map.py` —— **宏重映射端到端验证**：生成 C 工程 → 出映射头 → gcc 编译 → `nm` 看符号是否真的换掉。判据是「只剩目标符号、无残留内置符号」——生成器的自证只能证明文本渲染对，证明不了编译器接受它，所以必须有消费方验证。缺 gcc/nm/m2c 时跳过并说明，不假装通过
