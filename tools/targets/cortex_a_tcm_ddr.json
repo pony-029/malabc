@@ -1,0 +1,32 @@
+{
+  "_comment": "第二个 target profile：三段内存 + 四级 ISA 优先级。用来验证 profile 是否真的通用（段个数、段名、ISA 顺序全可配）。",
+  "name": "cortex_a_tcm_ddr",
+  "tcm_max_array": 32768,
+  "isa": {
+    "order": [
+      "neon",
+      "sve",
+      "dsp"
+    ],
+    "accel": true
+  },
+  "sections": [
+    {
+      "name": "itcm",
+      "capacity_bytes": 65536,
+      "note": "指令紧耦合 64KB，放高频小循环的常驻数据",
+      "max_array_bytes": 4096
+    },
+    {
+      "name": "dtcm",
+      "capacity_bytes": 262144,
+      "note": "数据紧耦合 256KB，CPU 直连，单数组上限 32KB",
+      "max_array_bytes": 32768
+    },
+    {
+      "name": "ddr",
+      "capacity_bytes": 134217728,
+      "note": "外挂 128MB，DMA 搬运"
+    }
+  ]
+}

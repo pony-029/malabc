@@ -74,16 +74,26 @@ def load_profile(path):
 
 
 def classify(nbytes, profile):
-    """**可替换的分流策略**：大数组去大内存段，其余去第一个（快）段。
+    """**可替换的分流策略**：按段声明顺序 first-fit。
 
-    没有生命周期分析时这是最保守的可用规则。将来接入数据流分析，
-    只换这个函数 —— 调用方与输出格式都不用动。
+    规则（R1041）：
+      1. 段可以用可选的 `max_array_bytes` 声明「我能装下多大的单个数组」；
+      2. 按 profile 里的**声明顺序**找第一个「装得下」的段；
+      3. 没有 `max_array_bytes` 的段视为「能装下任何大小」（通常是最后的大内存）。
+
+    **为什么改掉旧版**：旧版只用 `sections[0]`（快段）和 `sections[-1]`（大段），
+    于是三段以上的 profile 里**中间段永远是 0** —— 实测 cortex_a_tcm_ddr
+    的 dtcm 用量恒为 0，而它是 256KB 的 CPU 直连内存，正是最该被用上的那段。
+    「可配置段个数」在数据格式上成立、在分流逻辑上不成立，等于没配。
+
+    仍然**不做生命周期分析**（没有数据流时这是诚实的天花板）：这里只保证
+    「每个声明的段都有机会被用到」，不保证「用得最省」。
     """
-    fast = profile["sections"][0]["name"]
-    big = profile["sections"][-1]["name"]
-    if len(profile["sections"]) == 1:
-        return fast
-    return big if nbytes > profile["tcm_max_array"] else fast
+    for s in profile["sections"]:
+        lim = s.get("max_array_bytes")
+        if lim is None or nbytes <= lim:
+            return s["name"]
+    return profile["sections"][-1]["name"]
 
 
 def scan_arrays(src):
@@ -149,8 +159,11 @@ def _selftest():
     而那恰好会让"大内存段永远为 0"，把溢出藏起来。
     """
     good = bad = 0
+    # 注意：首段必须声明 `max_array_bytes`，否则按新语义（缺省=能装任何）
+    # 它会吞下所有数组，末段恒为 0 —— 那正是旧 classify 的退化形态。
     prof = {"tcm_max_array": 1000,
-            "sections": [{"name": "tcm", "capacity_bytes": 2000},
+            "sections": [{"name": "tcm", "capacity_bytes": 2000,
+                          "max_array_bytes": 1000},
                          {"name": "ddr", "capacity_bytes": 100000}]}
     try:
         p = load_profile_from_obj(prof)
@@ -167,6 +180,25 @@ def _selftest():
         else:
             bad += 1
             print("  [selftest] 分流边界不对")
+
+        # **三段 profile 必须每段都能被用到**（R1041）：旧版只用首段与末段，
+        # 中间段恒为 0 —— 而它往往正是最该被用上的 CPU 直连内存。
+        p3 = load_profile_from_obj({
+            "tcm_max_array": 1024,
+            "sections": [
+                {"name": "itcm", "capacity_bytes": 100000,
+                 "max_array_bytes": 1000},
+                {"name": "dtcm", "capacity_bytes": 100000,
+                 "max_array_bytes": 10000},
+                {"name": "ddr", "capacity_bytes": 100000},
+            ]})
+        _m = {100: "itcm", 5000: "dtcm", 50000: "ddr"}
+        if all(classify(n, p3) == want for n, want in _m.items()):
+            good += 1
+        else:
+            bad += 1
+            print("  [selftest] 三段分流不对：%r"
+                  % {n: classify(n, p3) for n in _m})
 
         per, viol = check([(("f"), "a", 1500), ("f", "b", 600)], p)
         _t = [x for x in per if x["name"] == "tcm"][0]
