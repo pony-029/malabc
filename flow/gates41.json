@@ -1,8 +1,11 @@
 {
-  "ts": "2026-11-21 21:33:14",
+  "ts": "2026-11-21 22:20:08",
   "total": 47,
-  "failed": [],
-  "passed": 47,
+  "failed": [
+    "check_eol_convention.py",
+    "check_lsp_doc_parity.py"
+  ],
+  "passed": 45,
   "skipped": [
     "check_generated_compiles"
   ]

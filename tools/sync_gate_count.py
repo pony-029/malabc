@@ -108,47 +108,46 @@ def _fix_eol_after_write(path):
 
 
 def true_count():
-    """**主动跑门，从它自己的输出取数**（R1095）。
+    """**从 check_all 的汇总行取数**（R1113）。
 
-    上轮发现门里有两个数：`GUARD_SCRIPTS` 的 len 是 49，而 N1 判据
-    报的"真实护栏数"是 48。自己读常量不可靠——**只有判据自己算的那个，
-    才是它后面会拿去比的那个**。
+    前两版都栽在同一件事上：真源的**形态随门健康状态变化**。
+      R1094 读 `len(GUARD_SCRIPTS)`      -> 49（与 N1 的 48 不一致）
+      R1095 读 check_help_contract 报错  -> 门一全绿，那句报错就没了
+                                          -> 退回 49，又错
 
-    所以这里不再猜常量：调用 `check_help_contract`，从输出里读 N。
-    这不是"被动等报错"（那是等它随机红了才改）；这里是主动调用判据、
-    把它当成一个取数函数。
+    而 check_all 的汇总行在两种状态下都打印数字：
+      check_all: OK（**47 个护栏**，…；门数下限 48；**分批模式**）
+      check_all: 3 项失败：[…]        （失败时没有护栏数，此时如实返回 None）
+
+    返回 (n, source)；n 为 None 表示取不到，调用方必须据此中止，
+    **不能拿常量顶替**——那正是前两版错的地方。
     """
     import subprocess
-    for args in (["--selftest"], []):
-        try:
-            r = subprocess.run(
-                [sys.executable,
-                 os.path.join(ROOT, "tools", "check_help_contract.py")] + args,
-                cwd=ROOT, stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                timeout=300)
-        except (OSError, subprocess.SubprocessError):
-            continue
-        txt = r.stdout.decode("utf-8", "replace")
-        m = re.search(r"真实护栏数是\s*(\d+)", txt)
-        if m:
-            return int(m.group(1)), "N1 判据输出"
-        # 全绿时没有那句；退回到常量
-        m2 = re.search(r"check_help_contract: OK\D*(\d+)\s*个\s*check", txt)
-        if m2:
-            return int(m2.group(1)), "N1 OK 输出"
+    try:
+        r = subprocess.run(
+            [sys.executable,
+             os.path.join(ROOT, "tools", "check_all.py"),
+             "--skip", "check_generated_compiles"],
+            cwd=ROOT, stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=900)
+    except (OSError, subprocess.SubprocessError) as e:
+        return None, "check_all 跑不起来（%s）" % type(e).__name__
 
-    # 两条路都不通才退回常量，并标明来源不可靠
-    import check_help_contract as H
-    gs = getattr(H, "GUARD_SCRIPTS", None)
-    if gs is not None:
-        return len(gs), "GUARD_SCRIPTS（**可能与 N1 口径不一致**）"
-    return None, "unknown"
+    txt = r.stdout.decode("utf-8", "replace")
+    m = re.search(r"check_all:\s*OK[^\n]*?(\d+)\s*个护栏", txt)
+    if m:
+        mode = "分批模式" if "分批模式" in txt else "完整模式"
+        return int(m.group(1)), "check_all 汇总行（%s）" % mode
+    # 失败时没有护栏数：如实返回 None，不拿常量顶替
+    return None, "check_all 未给出护栏数（可能门未全绿）"
+
 
 
 def scan(apply_fix=False):
     n_true, src = true_count()
     if n_true is None:
+        print("[门数] 取不到真数：%s" % src)
+        print("  不拿常量顶替 —— 那会改出错误的值（R1112 踩过）")
         return None
     changed, skipped = [], 0
     for rel in TARGET_FILES:
