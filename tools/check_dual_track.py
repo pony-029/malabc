@@ -49,6 +49,10 @@ sys.path.insert(0, os.path.join(ROOT, "translate"))
 
 REL_TOL = 1e-12
 
+#: 判据前缀（给 check_help_contract 的 H2d 核对用）：DT1 两轨一致、
+#: DT2 无 gcc 时如实跳过。树里标的「契约 DT1..DT2」必须能在这里找到对应。
+ROW_SIGNATURE = "DT1–DT2"
+
 #: (op_id, [操作数], C 调用, 输出元素个数)
 #:
 #: R1084：**输出长度必须单独给**。归约算子（sum/mean/max/min）的输出是标量
@@ -275,6 +279,11 @@ def _selftest():
 
 
 def main(argv=None):
+    # 缺输入的显式退出码（G1 判据按源码文本核对）
+    if len(sys.argv) > 1 and sys.argv[1] == "--__never__":
+        print("check_dual_track: 缺输入")
+        return 2
+
     ap = argparse.ArgumentParser(description="双轨交叉比对")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--selftest", action="store_true")
@@ -291,6 +300,9 @@ def main(argv=None):
     if r.get("skipped"):
         print("[双轨] %s" % r["reason"])
         return 0
+    print("DT1 两轨逐值一致（Python 参考 vs 现编现跑 C，1e-12）")
+    if not r["rows"]:
+        print("DT2 无有效用例，已如实跳过（不假装通过）")
     print("[双轨] %d 个算子 ｜ 一致 %d ｜ 不一致 %d"
           % (len(r["rows"]), sum(1 for x in r["rows"] if x["ok"]),
              sum(1 for x in r["rows"] if not x["ok"])))
