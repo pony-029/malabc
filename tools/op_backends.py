@@ -77,15 +77,20 @@ def choose(op_c, isa_order, accel, have):
     `scalar` 就是 `c` 本身（参考实现）。
     """
     cands = []
+    # **`scalar` 是兜底，不参与优先级**（R1040）：早先把它当成 order 的第一项，
+    # 于是 next() 永远先命中它，simd128 / accel 永远选不上 —— 而输出表看起来
+    # 完全正常（56 个算子"都有实现"）。这正是「换了实现等于没换」的样子。
+    # 现在只把**加速类 ISA** 放进优先级序列，标量实现单独作为 fallback。
     for isa in isa_order:
         if isa == "scalar":
-            cands.append((isa, op_c, op_c in have))
             continue
         sym = "%s_%s" % (op_c, isa)
         cands.append((isa, sym, sym in have))
     if accel:
         sym = op_c + "_accel"
         cands.append(("accel", sym, sym in have))
+    # 兜底放最后：只有前面全未命中才会选到它
+    cands.append(("scalar", op_c, op_c in have))
     # **按 order 取第一个命中的**（R1039）：早先在每个分支里写
     # `if selected is None: selected = ...`，于是排在最前的 scalar
     # 先把 selected 占住，后面的 simd/accel 永远选不上 —— 表看起来正常，
@@ -125,10 +130,11 @@ def _selftest():
     而那张表会让"换成 SIMD"看起来已经做了。
     """
     good = bad = 0
-    have = {"mlc_op_sum", "mlc_op_sum_simd", "mlc_op_mul"}
+    # 符号名规则是 `<base>_<isa>`，所以 simd128 的符号是 mlc_op_sum_simd128
+    have = {"mlc_op_sum", "mlc_op_sum_simd128", "mlc_op_mul"}
 
     sel, cands, missing = choose("mlc_op_sum", ["scalar", "simd128"], False, have)
-    if sel == "mlc_op_sum_simd":
+    if sel == "mlc_op_sum_simd128":
         good += 1
     else:
         bad += 1

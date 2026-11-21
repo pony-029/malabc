@@ -1,0 +1,67 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "MATLAB → C 的自由转换：小脑推导 + 大脑升级",
+    "subtitle": "同一份 MIR + 不同 target profile → 不同 C 工程；小脑管 90% 可复算的，大脑只管拿不准的",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": ".archify/workflow-hw-brain-20261121-104500/hw-brain.html"
+  },
+  "lanes": [
+    { "id": "in", "label": "输入" },
+    { "id": "cereb", "label": "小脑（确定性，免费可审计）" },
+    { "id": "cereb2", "label": "小脑（分段与变体）" },
+    { "id": "brain", "label": "大脑（只处理拿不准的）" },
+    { "id": "out", "label": "产出" }
+  ],
+  "mainPath": ["src", "mir", "peak", "seg", "emit"],
+  "nodes": [
+    { "id": "src", "lane": "in", "col": 0, "type": "frontend", "label": "MATLAB 源码", "sublabel": "算法部门，无注释" },
+    { "id": "prof", "lane": "in", "col": 0, "type": "database", "label": "target profile", "sublabel": "段容量 / ISA / DMA", "yOffset": 90 },
+    { "id": "mir", "lane": "cereb", "col": 1, "type": "backend", "label": "MIR", "sublabel": "shape + op" },
+    { "id": "peak", "lane": "cereb", "col": 2, "type": "backend", "label": "mem_budget", "sublabel": "峰值上界" },
+    { "id": "seg", "lane": "cereb2", "col": 3, "type": "database", "label": "mem_sections", "sublabel": "逐段容量校验" },
+    { "id": "ops", "lane": "cereb2", "col": 3, "type": "database", "label": "op_backends", "sublabel": "算子→ISA 变体", "yOffset": 90 },
+    { "id": "sig", "lane": "brain", "col": 4, "type": "security", "label": "四信号判定", "sublabel": "S1 无先例 / S2 复发 / S3 无见证 / S4 未归类" },
+    { "id": "emit", "lane": "out", "col": 5, "type": "cloud", "label": "C 工程", "sublabel": "按选中符号名生成" }
+  ],
+  "edges": [
+    { "from": "src", "to": "mir", "label": "解析" },
+    { "from": "mir", "to": "peak", "label": "取形状" },
+    { "from": "peak", "to": "seg", "label": "算段用量" },
+    { "from": "mir", "to": "ops", "label": "取算子" },
+    { "from": "seg", "to": "sig", "label": "段超限?" },
+    { "from": "ops", "to": "sig", "label": "变体缺失?" },
+    { "from": "prof", "to": "seg", "label": "段容量" },
+    { "from": "prof", "to": "ops", "label": "ISA 优先级" },
+    { "from": "seg", "to": "emit", "label": "可自决" },
+    { "from": "sig", "to": "emit", "label": "人/模型裁决后" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "小脑负责什么",
+      "items": [
+        "数组多大、段容量多少、头文件里有没有这个符号 —— 全是可复算的",
+        "实测 numeric 语料：tcm 用 3112/262144 B，算式可复现"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "大脑负责什么",
+      "items": [
+        "只处理四类：无先例、复发、无见证、未归类",
+        "每项都给一个**可回答的问题**，不是一句「请检查」"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "自由转换的本质",
+      "items": [
+        "同一份 MIR + 不同 profile → 不同 C 工程，生成器一行不改",
+        "profile 是物理事实（只读），生成器是逻辑"
+      ]
+    }
+  ]
+}
