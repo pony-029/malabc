@@ -100,26 +100,65 @@ def choose(op_c, isa_order, accel, have):
     return selected, cands, missing
 
 
-def build(isa_order, accel, have):
-    """对全部算子做选择，返回结构化结果。"""
+def load_op_map(path):
+    """读外部映射覆盖文件。**每条必须写 why**（可审计）。
+
+    结构：
+        {"overrides": {"OP-SUM": {"c": "hw_dsp_sum", "why": "公司 DSP 库"}}}
+
+    为什么 `why` 必填：半年后有人看到 `sum` 变成了 `hw_dsp_sum`，
+    若没有一行说明，他只能去猜 —— 而猜错的代价是改错一行就换掉了整个算子语义。
+    """
+    if not path:
+        return {}
+    try:
+        d = json.load(io.open(path, encoding="utf-8"))
+    except (IOError, OSError, ValueError) as e:
+        raise ValueError("映射文件读不出（%s）" % type(e).__name__)
+    ov = d.get("overrides") or {}
+    if not isinstance(ov, dict):
+        raise ValueError("overrides 必须是对象")
+    for k, v in ov.items():
+        if not isinstance(v, dict) or not v.get("c"):
+            raise ValueError("%s 缺 c 字段" % k)
+        if not (v.get("why") or "").strip():
+            raise ValueError("%s 缺 why（覆盖必须写清理由，否则无人能审）" % k)
+    return ov
+
+
+def build(isa_order, accel, have, overrides=None):
+    """对全部算子做选择，返回结构化结果。
+
+    优先级（R1042）：**外部覆盖 > 内置 c**。覆盖之后仍然走变体选择，
+    所以「用公司 SUM + 该芯片的向量变体」是两件事各自的结论，不互相吞掉。
+    """
     import operators as O
+    overrides = overrides or {}
     rows = []
     fallback = []
+    known = set(op["id"] for op in O.OPERATORS)
+    stray = sorted(set(overrides) - known)
     for op in O.OPERATORS:
-        sel, cands, missing = choose(op["c"], isa_order, accel, have)
-        row = {"op": op["id"], "kind": op.get("kind", ""),
-               "base": op["c"], "selected": sel,
-               "selected_isa": (cands[0][0] if False else
-                                next((i for i, s, _ in cands if s == sel),
-                                     "scalar")),
-               "missing": missing}
-        rows.append(row)
-        # 首选不是标量却退回了标量 -> 记一笔"本可有向量实现但没有"
+        base = op["c"]
+        src = "builtin"
+        why = ""
+        if op["id"] in overrides:
+            base = overrides[op["id"]]["c"]
+            src = "override"
+            why = overrides[op["id"]].get("why", "")
+        sel, cands, missing = choose(base, isa_order, accel, have)
+        rows.append({"op": op["id"], "kind": op.get("kind", ""),
+                     "base": base, "base_source": src, "why": why,
+                     "selected": sel,
+                     "selected_isa": next((i for i, s, _ in cands
+                                           if s == sel), "scalar"),
+                     "missing": missing})
         want = [i for i in isa_order if i != "scalar"]
-        if want and sel == op["c"]:
+        if want and sel == base and src == "builtin":
             fallback.append({"op": op["id"], "wanted": want})
     return {"isa": isa_order, "accel": accel, "ops": rows,
-            "scalar_fallback": fallback,
+            "scalar_fallback": fallback, "overrides": len(overrides),
+            "stray_overrides": stray,
             "count": len(rows), "fallback_count": len(fallback)}
 
 
@@ -180,6 +219,7 @@ def missing_of(cands):
 def main(argv=None):
     ap = argparse.ArgumentParser(description="算子实现变体选择")
     ap.add_argument("--profile")
+    ap.add_argument("--op-map", help="外部映射覆盖文件（每条必须写 why）")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--selftest", action="store_true")
     ns = ap.parse_args(argv)
@@ -200,7 +240,17 @@ def main(argv=None):
         print("op_backends: 缺输入（mlc_ops.h 里没有 mlc_op_* 声明）")
         return 2
 
-    r = build(isa_order, accel, have)
+    try:
+        overrides = load_op_map(ns.op_map)
+    except ValueError as e:
+        print("op_backends: 映射文件不合法 —— %s" % e)
+        return 2
+
+    r = build(isa_order, accel, have, overrides)
+    if r["stray_overrides"]:
+        print("op_backends: 映射文件里有不存在的算子 %r（陈旧覆盖）"
+              % (r["stray_overrides"],))
+        return 2
     if ns.json:
         print(json.dumps(r, ensure_ascii=False, indent=1))
         return 1 if r["fallback_count"] else 0
