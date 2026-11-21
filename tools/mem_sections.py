@@ -131,24 +131,47 @@ def scan_arrays(src):
 
 
 def check(arrays, profile):
-    """返回 (per_section, violations)。"""
+    """返回 (per_section, violations)。
+
+    **口径：逐函数求和，再对函数取最大**（R1048）。
+
+    早先是把全工程的数组全加起来 —— 那会**系统性高估**：不同函数的数组
+    不会同时存在。高估的后果不是"更安全"，而是"该放下的放不下"，
+    配额被不存在的用量吃掉。
+
+    反过来，这也**不是真实峰值**：函数 A 调 B 时两者数组同时存在，
+    而本函数只按"每个函数各自"算，会**低估**跨调用链的情形。
+    两条缺口方向相反，所以这里只解决高估那一半，并在返回值里
+    明确标注 `scope: per-function`，不让读者以为这是全局峰值。
+    """
     cap = dict((s["name"], s["capacity_bytes"]) for s in profile["sections"])
-    used = dict((s["name"], 0) for s in profile["sections"])
+    per_func = {}          # func -> {sec: bytes}
     count = dict((s["name"], 0) for s in profile["sections"])
-    for _fn, _nm, nb in arrays:
+    for fn, _nm, nb in arrays:
         sec = classify(nb, profile)
-        used[sec] += nb
+        per_func.setdefault(fn, {})
+        per_func[fn][sec] = per_func[fn].get(sec, 0) + nb
         count[sec] += 1
+
+    used = dict((s["name"], 0) for s in profile["sections"])
+    worst = dict((s["name"], None) for s in profile["sections"])
+    for fn, bysec in per_func.items():
+        for sec, nb in bysec.items():
+            if nb > used[sec]:
+                used[sec] = nb
+                worst[sec] = fn
+
     per = []
     viol = []
     for s in profile["sections"]:
         n = s["name"]
         over = used[n] - cap[n]
         per.append({"name": n, "used": used[n], "capacity": cap[n],
-                    "arrays": count[n], "over_by": max(0, over)})
+                    "arrays": count[n], "worst_func": worst[n],
+                    "over_by": max(0, over)})
         if over > 0:
             viol.append({"section": n, "used": used[n], "capacity": cap[n],
-                         "over_by": over})
+                         "over_by": over, "worst_func": worst[n]})
     return per, viol
 
 

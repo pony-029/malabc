@@ -3,498 +3,512 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Matlabc 硬件映射白皮书：从 MATLAB 到嵌入式 C 的自由转换</title>
+<title>Matlabc 硬件映射白皮书 v1.1</title>
 <style>
 :root{
   --ink:#1a1d21; --ink2:#4a5158; --ink3:#767e87;
-  --line:#e3e7ec; --bg:#ffffff; --bg2:#f7f9fb;
-  --accent:#0b6bcb; --ok:#1a7f4b; --warn:#b8760f; --bad:#c23b32;
+  --line:#e3e7ec; --bg:#ffffff; --bg2:#f7f9fb; --bg3:#eef2f6;
+  --accent:#0b6bcb; --accent2:#0856a4;
+  --ok:#1a7f4b; --warn:#b8760f; --bad:#c23b32;
   --mono:ui-monospace,"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  --shadow:0 1px 3px rgba(0,0,0,.06),0 4px 12px rgba(0,0,0,.04);
+}
+html[data-theme="dark"]{
+  --ink:#e6edf3; --ink2:#a9b4bf; --ink3:#7d8894;
+  --line:#2b3238; --bg:#14181c; --bg2:#1b2025; --bg3:#222a30;
+  --accent:#4a9eff; --accent2:#77b8ff;
+  --ok:#45c98a; --warn:#e0a53d; --bad:#f0665a;
+  --shadow:0 1px 3px rgba(0,0,0,.4);
 }
 *{box-sizing:border-box}
-html{scroll-behavior:smooth}
+html{scroll-behavior:smooth;scroll-padding-top:80px}
 body{
-  margin:0; background:var(--bg); color:var(--ink);
-  font:16px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
-  -webkit-font-smoothing:antialiased;
+  margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased;transition:background .2s,color .2s;
 }
-.wrap{max-width:940px;margin:0 auto;padding:0 28px 120px}
+.wrap{max-width:980px;margin:0 auto;padding:0 28px 120px}
 
-/* ---------- 封面 ---------- */
-.cover{
-  padding:96px 0 56px; border-bottom:1px solid var(--line); margin-bottom:56px;
+/* ---- 顶栏 ---- */
+.topbar{
+  position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--bg) 88%,transparent);
+  backdrop-filter:blur(12px);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:14px;padding:10px 28px;margin:0 -28px 0;
 }
-.cover .kicker{
-  font:600 12px/1 var(--mono); letter-spacing:.14em; text-transform:uppercase;
-  color:var(--accent); margin-bottom:20px;
+.topbar .brand{font:650 13px/1 var(--mono);letter-spacing:.04em;color:var(--ink2);white-space:nowrap}
+.topbar input{
+  flex:1;max-width:280px;padding:7px 12px;border:1px solid var(--line);border-radius:7px;
+  background:var(--bg2);color:var(--ink);font-size:13.5px;outline:none;
 }
-.cover h1{
-  font-size:40px; line-height:1.22; margin:0 0 18px; letter-spacing:-.02em; font-weight:700;
+.topbar input:focus{border-color:var(--accent)}
+.topbar button{
+  padding:7px 12px;border:1px solid var(--line);border-radius:7px;background:var(--bg2);
+  color:var(--ink);font-size:13px;cursor:pointer;
 }
-.cover .sub{font-size:18px; color:var(--ink2); margin:0 0 32px; line-height:1.6}
-.meta{display:flex;flex-wrap:wrap;gap:28px;font-size:13px;color:var(--ink3)}
+.topbar button:hover{border-color:var(--accent);color:var(--accent)}
+.progress{height:2px;background:var(--accent);width:0;position:fixed;top:0;left:0;z-index:60;transition:width .1s}
+
+/* ---- 封面 ---- */
+.cover{padding:72px 0 44px;border-bottom:1px solid var(--line);margin-bottom:36px}
+.cover .kicker{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:18px}
+.cover h1{font-size:38px;line-height:1.22;margin:0 0 16px;letter-spacing:-.02em;font-weight:700}
+.cover .sub{font-size:17.5px;color:var(--ink2);margin:0 0 28px;line-height:1.62}
+.meta{display:flex;flex-wrap:wrap;gap:26px;font-size:13px;color:var(--ink3)}
 .meta b{display:block;color:var(--ink);font-weight:600;font-size:14px;margin-top:2px}
 
-/* ---------- 目录 ---------- */
-.toc{
-  background:var(--bg2); border:1px solid var(--line); border-radius:10px;
-  padding:22px 26px; margin-bottom:56px;
-}
-.toc h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);margin:0 0 14px;font-weight:600}
+/* ---- 状态看板 ---- */
+.board{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:26px 0 8px}
+.kpi{border:1px solid var(--line);border-radius:9px;padding:14px 16px;background:var(--bg2)}
+.kpi .v{font:700 24px/1.1 var(--mono);letter-spacing:-.02em}
+.kpi .k{font-size:12px;color:var(--ink3);margin-top:6px}
+.kpi.ok{background:color-mix(in srgb,var(--ok) 8%,var(--bg2))}
+.kpi.warn{background:color-mix(in srgb,var(--warn) 10%,var(--bg2))}
+.kpi.bad{background:color-mix(in srgb,var(--bad) 8%,var(--bg2))}
+
+/* ---- 目录 ---- */
+.toc{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:20px 24px;margin:28px 0 0}
+.toc h2{font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);margin:0 0 12px;font-weight:600}
 .toc ol{margin:0;padding-left:20px;columns:2;column-gap:40px}
-.toc li{margin:5px 0;font-size:14.5px}
+.toc li{margin:4px 0;font-size:14.5px}
 .toc a{color:var(--ink2);text-decoration:none;border-bottom:1px solid transparent}
-.toc a:hover{color:var(--accent);border-bottom-color:var(--accent)}
+.toc a:hover,.toc a.active{color:var(--accent);border-bottom-color:var(--accent)}
+.toc a.active{font-weight:600}
 
-/* ---------- 正文 ---------- */
-h2.sec{
-  font-size:25px;margin:64px 0 8px;letter-spacing:-.01em;font-weight:700;
-  padding-top:20px;border-top:2px solid var(--ink);
-}
+/* ---- 正文 ---- */
+h2.sec{font-size:24px;margin:60px 0 6px;letter-spacing:-.01em;font-weight:700;padding-top:18px;border-top:2px solid var(--ink)}
 h2.sec .num{font:600 13px/1 var(--mono);color:var(--accent);display:block;margin-bottom:8px;letter-spacing:.08em}
-h3{font-size:17.5px;margin:34px 0 10px;font-weight:650}
-p{margin:12px 0}
+h3{font-size:17px;margin:30px 0 8px;font-weight:650}
+p{margin:11px 0}
 a{color:var(--accent)}
-code{font:13.5px/1.5 var(--mono);background:var(--bg2);padding:1.5px 5px;border-radius:4px;border:1px solid var(--line)}
-pre{
-  background:#1e2329;color:#e6edf3;padding:16px 18px;border-radius:8px;
-  overflow:auto;font:13px/1.65 var(--mono);margin:16px 0;
+code{font:13px/1.5 var(--mono);background:var(--bg3);padding:1.5px 5px;border-radius:4px}
+pre{position:relative;background:#1e2329;color:#e6edf3;padding:15px 18px;border-radius:8px;overflow:auto;font:12.8px/1.65 var(--mono);margin:14px 0}
+pre code{background:none;padding:0;color:inherit}
+pre .copy{
+  position:absolute;top:8px;right:8px;padding:4px 9px;border-radius:5px;cursor:pointer;
+  background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);color:#c9d4de;font-size:11.5px;
 }
-pre code{background:none;border:none;padding:0;color:inherit}
-ul,ol{margin:12px 0;padding-left:24px}
-li{margin:6px 0}
+pre .copy:hover{background:rgba(255,255,255,.2)}
 
-/* ---------- 组件 ---------- */
-table{
-  border-collapse:collapse;width:100%;margin:18px 0;font-size:14.5px;
-}
-th,td{border-bottom:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top}
-th{background:var(--bg2);font-weight:600;font-size:13px;color:var(--ink2);white-space:nowrap}
-td.n{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:13.5px}
+ul,ol{margin:11px 0;padding-left:24px}
+li{margin:5px 0}
 
-.callout{
-  border-left:3px solid var(--accent); background:var(--bg2);
-  padding:14px 18px; border-radius:0 6px 6px 0; margin:20px 0; font-size:14.8px;
-}
-.callout.warn{border-left-color:var(--warn);background:#fffaf1}
-.callout.bad{border-left-color:var(--bad);background:#fff6f5}
-.callout.ok{border-left-color:var(--ok);background:#f4fbf7}
-.callout b{font-weight:650}
+table{border-collapse:collapse;width:100%;margin:16px 0;font-size:14px}
+th,td{border-bottom:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top}
+th{background:var(--bg2);font-weight:600;font-size:12.5px;color:var(--ink2);white-space:nowrap}
+tbody tr:hover{background:var(--bg2)}
+td.n{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:13px}
+
+.callout{border-left:3px solid var(--accent);background:var(--bg2);padding:13px 17px;border-radius:0 6px 6px 0;margin:18px 0;font-size:14.5px}
+.callout.warn{border-left-color:var(--warn);background:color-mix(in srgb,var(--warn) 7%,var(--bg2))}
+.callout.bad{border-left-color:var(--bad);background:color-mix(in srgb,var(--bad) 6%,var(--bg2))}
+.callout.ok{border-left-color:var(--ok);background:color-mix(in srgb,var(--ok) 6%,var(--bg2))}
 .callout p:first-child{margin-top:0}
 .callout p:last-child{margin-bottom:0}
 
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:22px 0}
-.card{
-  border:1px solid var(--line);border-radius:8px;padding:16px 18px;background:var(--bg);
-}
-.card h4{margin:0 0 8px;font-size:14.5px;font-weight:650}
-.card p{margin:6px 0;font-size:14px;color:var(--ink2)}
-.card .tag{
-  display:inline-block;font:600 11px/1 var(--mono);padding:3px 7px;border-radius:4px;
-  background:var(--bg2);color:var(--ink3);margin-bottom:10px;letter-spacing:.05em;
-}
-.tag.ok{background:#e8f6ee;color:var(--ok)}
-.tag.warn{background:#fdf2e0;color:var(--warn)}
-.tag.bad{background:#fdecea;color:var(--bad)}
+details{border:1px solid var(--line);border-radius:8px;padding:12px 16px;margin:14px 0;background:var(--bg2)}
+details summary{cursor:pointer;font-weight:600;font-size:14.5px;list-style:none}
+details summary::-webkit-details-marker{display:none}
+details summary::before{content:"▸ ";color:var(--accent);font-weight:700}
+details[open] summary::before{content:"▾ "}
+details[open]{padding-bottom:16px}
 
-.status{display:inline-block;font:600 12px/1 var(--mono);padding:2px 7px;border-radius:4px}
-.s-ok{background:#e8f6ee;color:var(--ok)}
-.s-half{background:#fdf2e0;color:var(--warn)}
-.s-no{background:#fdecea;color:var(--bad)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:20px 0}
+.card{border:1px solid var(--line);border-radius:8px;padding:15px 17px;background:var(--bg)}
+.card h4{margin:0 0 7px;font-size:14.5px;font-weight:650}
+.card p{margin:5px 0;font-size:13.8px;color:var(--ink2)}
+.tag{display:inline-block;font:600 11px/1 var(--mono);padding:3px 7px;border-radius:4px;background:var(--bg3);color:var(--ink3);margin-bottom:9px;letter-spacing:.05em}
+.tag.ok{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+.tag.warn{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.tag.bad{background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--bad)}
 
-figure{margin:26px 0}
-figure a{
-  display:block;border:1px solid var(--line);border-radius:10px;padding:18px 20px;
-  text-decoration:none;color:var(--ink);background:var(--bg2);
-  transition:border-color .15s,background .15s;
-}
-figure a:hover{border-color:var(--accent);background:#f2f7fd}
-figure .ft{font-weight:650;font-size:15px;margin-bottom:4px}
-figure .fd{font-size:13.5px;color:var(--ink3)}
-figcaption{font-size:12.5px;color:var(--ink3);margin-top:8px}
+figure{margin:22px 0}
+figure a{display:block;border:1px solid var(--line);border-radius:10px;padding:16px 18px;text-decoration:none;color:var(--ink);background:var(--bg2);transition:all .15s}
+figure a:hover{border-color:var(--accent);transform:translateY(-1px);box-shadow:var(--shadow)}
+figure .ft{font-weight:650;font-size:14.5px;margin-bottom:3px}
+figure .fd{font-size:13px;color:var(--ink3)}
+figcaption{font-size:12.5px;color:var(--ink3);margin-top:7px}
 
-footer{
-  margin-top:80px;padding-top:24px;border-top:1px solid var(--line);
-  font-size:13px;color:var(--ink3);
-}
+.hidden{display:none!important}
+footer{margin-top:70px;padding-top:22px;border-top:1px solid var(--line);font-size:12.5px;color:var(--ink3)}
 
-@media print{
-  body{font-size:11pt}
-  .wrap{max-width:none;padding:0}
-  h2.sec{page-break-after:avoid}
-  pre,table,.callout,figure{page-break-inside:avoid}
-  .toc{page-break-after:always}
-}
-@media(max-width:720px){
-  .cover h1{font-size:28px}
+@media(max-width:760px){
+  .cover h1{font-size:27px}
+  .board{grid-template-columns:repeat(2,1fr)}
   .toc ol{columns:1}
   .grid{grid-template-columns:1fr}
   .wrap{padding:0 18px 80px}
+  .topbar{margin:0 -18px;padding:10px 18px}
+  .topbar input{max-width:140px}
+}
+@media print{
+  .topbar,.toc,.progress{display:none}
+  body{font-size:10.5pt}
+  pre{background:#f5f5f5;color:#111;border:1px solid #ddd}
+  h2.sec{page-break-after:avoid}
 }
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="progress" id="prog"></div>
 
-<!-- ==================== 封面 ==================== -->
+<div class="wrap">
+<div class="topbar">
+  <span class="brand">MATLABC · 白皮书 v1.1</span>
+  <input id="q" type="search" placeholder="搜索全文（/ 聚焦）">
+  <button id="theme">深色</button>
+  <button id="expand">全展开</button>
+</div>
+
+<!-- 封面 -->
 <div class="cover">
-  <div class="kicker">Technical White Paper · v1.0</div>
+  <div class="kicker">Technical White Paper · v1.1</div>
   <h1>从 MATLAB 到嵌入式 C 的自由转换</h1>
   <p class="sub">
-    一份算法，多种硬件。目标物理参数进 <b>profile</b>，推导逻辑进 <b>小脑</b>，
+    一份算法，多种硬件。物理参数进 <b>profile</b>，推导交给 <b>小脑</b>，
     拿不准的升级给 <b>大脑</b>——生成器一行不改，换芯片只换配置。
   </p>
+
+  <div class="board">
+    <div class="kpi ok"><div class="v">6/6</div><div class="k">分段预算自证</div></div>
+    <div class="kpi ok"><div class="v">5/5</div><div class="k">算子变体自证</div></div>
+    <div class="kpi ok"><div class="v">4/4</div><div class="k">私有 ISA 自证</div></div>
+    <div class="kpi warn"><div class="v">0</div><div class="k">生成器接线</div></div>
+  </div>
+
   <div class="meta">
-    <div>版本<b>v1.0 / R1042</b></div>
+    <div>版本<b>v1.1 / R1048</b></div>
     <div>日期<b>2026-11-21</b></div>
     <div>代码库<b>e:\matlabc\malabc</b></div>
-    <div>状态<b>画像层与配置层已实现，代码生成层未接</b></div>
+    <div>状态<b>配置层完备，生成层未接</b></div>
   </div>
 </div>
 
-<!-- ==================== 目录 ==================== -->
+<!-- 目录 -->
 <nav class="toc">
   <h2>目录</h2>
   <ol>
-    <li><a href="#s1">问题：为什么"代码转代码"走不通</a></li>
-    <li><a href="#s2">总体架构：三层分离</a></li>
-    <li><a href="#s3">小脑：确定性能解决 90% 的事</a></li>
-    <li><a href="#s4">大脑：四信号与可回答的问题</a></li>
-    <li><a href="#s5">声明式配置：profile 是物理事实</a></li>
-    <li><a href="#s6">算子映射：三层路由与优先级</a></li>
-    <li><a href="#s7">实测数据</a></li>
-    <li><a href="#s8">已知缺口与落地路线</a></li>
-    <li><a href="#s9">设计原则（可复用的判断方法）</a></li>
+    <li><a href="#s1">问题：四道墙</a></li>
+    <li><a href="#s2">架构：四层分离</a></li>
+    <li><a href="#s3">小脑：确定性的 90%</a></li>
+    <li><a href="#s4">大脑：四信号</a></li>
+    <li><a href="#s5">配置：profile 即事实</a></li>
+    <li><a href="#s6">算子映射三层路由</a></li>
+    <li><a href="#s7">私有指令集</a></li>
+    <li><a href="#s8">实测数据</a></li>
+    <li><a href="#s9">缺口看板</a></li>
+    <li><a href="#s10">工具速查</a></li>
+    <li><a href="#s11">设计原则</a></li>
   </ol>
 </nav>
 
-<!-- ==================== 1 ==================== -->
-<h2 class="sec" id="s1"><span class="num">01</span>问题：为什么"代码转代码"走不通</h2>
-
-<p>
-MATLAB 是<b>动态大一统内存模型</b>：所有变量都是自动管理的多维数组，用户从不关心
-它在哪、多大、何时释放。嵌入式是<b>极其严苛的物理切片</b>：64KB 的片上紧耦合内存、
-外挂 DDR、DMA 通道、多核共享区——每一块内存的容量、延迟、访问权限都是硬约束。
-</p>
-
-<p>把前者编译成后者，如果只做"一行 MATLAB 对应一行 C"，会遇到四道墙：</p>
-
+<!-- 1 -->
+<h2 class="sec" id="s1"><span class="num">01</span>问题：为什么“代码转代码”走不通</h2>
+<p>MATLAB 是<b>动态、统一管理内存的模型</b>，嵌入式 C 则要求<b>严格的静态布局和物理切片</b>。只做“一行 MATLAB 对应一行 C”，会撞上四道墙：</p>
 <table>
 <tr><th>墙</th><th>表现</th><th>根因</th></tr>
-<tr><td>内存</td><td>512×512 的 double 矩阵就是 2MB，塞进 256KB 当场 HardFault</td><td>C 需要静态布局，MATLAB 不需要</td></tr>
-<tr><td>数据搬运</td><td>大数组在外存，CPU 只能访问片上</td><td>没有 DMA 就是纯拷贝，性能塌方</td></tr>
-<tr><td>算子实现</td><td>同一个 <code>sum</code>，不同芯片有不同指令</td><td>算子语义与指令实现被混在一个符号里</td></tr>
-<tr><td>平台接口</td><td><code>disp</code>/<code>fopen</code> 在裸机上不存在</td><td>语言运行时假设了操作系统</td></tr>
+<tr><td>内存</td><td>512×512 double = 2MB，塞进 256KB 当场 HardFault</td><td>C 需静态布局，MATLAB 不需要</td></tr>
+<tr><td>搬运</td><td>大数组在外存，CPU 只能访问片上</td><td>没有 DMA 就是纯拷贝</td></tr>
+<tr><td>算子</td><td>同一个 <code>sum</code>，不同芯片不同指令</td><td>语义与实现混在一个符号里</td></tr>
+<tr><td>平台</td><td><code>disp</code>/<code>fopen</code> 在裸机上不存在</td><td>语言运行时假设了 OS</td></tr>
 </table>
-
 <div class="callout bad">
-<p><b>核心判断：</b>这四道墙都不是"翻译得不够好"，而是<b>翻译这件事本身缺少一个中间层</b>——
-一层用来描述"目标硬件长什么样"的声明，和一层用来做"语义到实现"的选择。</p>
+<p><b>核心判断：</b>这四道墙都不是“翻译得不够好”，而是<b>翻译缺少一个中间层</b>——一层描述目标硬件是什么样，一层做“语义→实现”的选择。</p>
 </div>
 
-<!-- ==================== 2 ==================== -->
-<h2 class="sec" id="s2"><span class="num">02</span>总体架构：三层分离</h2>
-
+<!-- 2 -->
+<h2 class="sec" id="s2"><span class="num">02</span>架构：四层分离</h2>
 <div class="grid">
-  <div class="card">
-    <span class="tag ok">已实现</span>
-    <h4>① 画像层（MIR → 资源事实）</h4>
-    <p>从 MIR 的 <code>arg/ret</code> 形状算出每个函数峰值、每个数组字节数、每个算子用了什么。</p>
-    <p><code>mem_budget</code> / <code>mem_sections</code> / <code>op_backends</code></p>
-  </div>
-  <div class="card">
-    <span class="tag ok">已实现</span>
-    <h4>② 配置层（profile = 物理事实）</h4>
-    <p>段个数、段容量、单数组上限、ISA 优先级、加速器开关——全部来自一份 JSON。</p>
-    <p><code>tools/targets/*.json</code>（两份，结构不同）</p>
-  </div>
-  <div class="card">
-    <span class="tag warn">部分</span>
-    <h4>③ 判定层（小脑 + 大脑）</h4>
-    <p>小脑跑确定性推导；大脑只在四信号触发时升级，并给出可回答的问题。</p>
-    <p><code>hw_brain.py</code>（自证 3/3）</p>
-  </div>
-  <div class="card">
-    <span class="tag bad">未接</span>
-    <h4>④ 生成层（emit.rs）</h4>
-    <p>按选中的符号名生成 C、注入段属性、生成 <code>.ld</code> 与 glue code。</p>
-    <p>目前 <code>emit.rs</code> 仍只输出 <code>mlc_op_*</code>，不询问变体。</p>
-  </div>
+  <div class="card"><span class="tag ok">已实现</span><h4>① 画像层</h4><p>从 MIR 形状算峰值、数组字节、算子集合。</p><p><code>mem_budget</code> · <code>scan_facts</code></p></div>
+  <div class="card"><span class="tag ok">已实现</span><h4>② 配置层</h4><p>段个数/容量/单数组上限/ISA 优先级/私有 ISA 规则，全在 JSON。</p><p><code>tools/targets/*.json</code></p></div>
+  <div class="card"><span class="tag ok">已实现</span><h4>③ 判定层</h4><p>小脑跑确定性推导；大脑只在四信号触发时升级。</p><p><code>hw_brain</code> · <code>isa_plan</code> · <code>ext_contract</code></p></div>
+  <div class="card"><span class="tag bad">未接</span><h4>④ 生成层</h4><p>按选中符号生成 C、注入段属性、生成 <code>.ld</code>。</p><p><code>emit.rs</code> 仍只输出 <code>mlc_op_*</code></p></div>
 </div>
-
-<figure>
-  <a href="../.archify/architecture-malabc-flow-20261121-102500/malabc-flow.html">
-    <div class="ft">→ 图 1：全流程架构（可交互）</div>
-    <div class="fd">横向主链 + 上下旁路 + 跨项目边界，含三张说明卡</div>
-  </a>
-  <figcaption>数据来源：本仓 <code>.archify/</code>。所有图由 <code>archify</code> 渲染并通过四项校验。</figcaption>
-</figure>
-
+<figure><a href="../.archify/architecture-malabc-flow-20261121-102500/malabc-flow.html"><div class="ft">→ 图 1：全流程架构（可交互）</div><div class="fd">横向主链 + 上下旁路 + 跨项目边界</div></a></figure>
 <div class="callout ok">
-<p><b>自由转换的本质：</b>同一份 MIR + 不同 profile → 不同 C 工程，<b>生成器一行不改</b>。
-profile 是物理事实（只读），生成器是逻辑；两者分开，换芯片只换配置。</p>
+<p><b>自由转换的本质：</b>同一份 MIR + 不同 profile → 不同 C 工程，<b>生成器一行不改</b>。</p>
 </div>
 
-<!-- ==================== 3 ==================== -->
-<h2 class="sec" id="s3"><span class="num">03</span>小脑：确定性能解决 90% 的事</h2>
-
-<p>"这个数组多大""这个段还剩多少""头文件里有没有这个符号"——这些问题<b>全是可复算的</b>，
-不需要任何智能，只需要一个算得对的程序。</p>
-
-<h3>3.1 口径写死，不给自己留解释空间</h3>
-
+<!-- 3 -->
+<h2 class="sec" id="s3"><span class="num">03</span>小脑：确定性的 90%</h2>
 <pre><code>字节数 = prod(shape) × 8          # f64，与运行时 MLC_F64 一致
 函数峰值 = 该函数内所有数组之和     # 保守上界，不做活跃期分析
 形状未知 → 不计入峰值，但单独计数   # 不把"不知道"算成 0</code></pre>
 
-<div class="callout warn">
-<p><b>第三条是最重要的。</b>把"不知道"算成 0，会让预算校验<b>假通过</b>——
-报告好看，实际问题被藏起来。本仓在多个地方踩过这个坑，所以它现在是硬规则。</p>
-</div>
+<details>
+<summary>为什么把“不知道”算成 0 是最危险的（点击展开真实案例）</summary>
+<p>如果预算把未知形状当 0 字节，报告会显示“tcm 用量 1%，非常宽裕” ——
+而实际上有一批数组根本没被计入。等到运行时才发现溢出，
+而那时报告已经绿了好几轮。</p>
+<p>本仓在 <code>mem_budget</code>、<code>mem_sections</code>、<code>isa_plan</code>
+三处都执行这条规则：<b>未知单独计数，且不计入“够格”</b>。</p>
+</details>
 
-<h3>3.2 分段：从"一段"到"任意段"</h3>
-
-<p>初版只有单一静态池（65536 字节）——那其实是<b>退化的 TCM</b>。要做通用，
-段必须是配置出来的，而不是写死的：</p>
-
-<pre><code>{
-  "sections": [
-    {"name": "itcm", "capacity_bytes": 65536,  "max_array_bytes": 4096},
-    {"name": "dtcm", "capacity_bytes": 262144, "max_array_bytes": 32768},
-    {"name": "ddr",  "capacity_bytes": 134217728}
-  ]
-}</code></pre>
-
-<p>分流规则：<b>按声明顺序 first-fit</b>——找第一个"装得下这个数组"的段。
-不写 <code>max_array_bytes</code> 的段视为能装任何大小（通常是最后的大内存）。</p>
-
+<h3>3.1 分段：从固定一段到任意段</h3>
+<pre><code>{"sections": [
+  {"name":"itcm","capacity_bytes":65536, "max_array_bytes":4096},
+  {"name":"dtcm","capacity_bytes":262144,"max_array_bytes":32768},
+  {"name":"ddr", "capacity_bytes":134217728}
+]}</code></pre>
 <div class="callout bad">
-<p><b>这条规则是实测逼出来的。</b>初版只用首段与末段，于是三段以上的 profile 里
-<b>中间段永远为 0</b>——实测 <code>dtcm</code>（256KB 的 CPU 直连内存，最该被用上的那段）
-用量恒为 0。"可配置段个数"在数据格式上成立、在分流逻辑上不成立，<b>等于没配</b>。</p>
+<p><b>这条规则是被实测逼出来的。</b>初版只用首段与末段，三段 profile 里<b>中间段永远为 0</b>——
+而它往往是 256KB 的 CPU 直连内存，最该被用上。“可配置段个数”在数据格式上成立、
+在逻辑上不成立，<b>等于没配</b>。</p>
 </div>
 
-<!-- ==================== 4 ==================== -->
-<h2 class="sec" id="s4"><span class="num">04</span>大脑：四信号与可回答的问题</h2>
-
-<p>小脑能算的算完，剩下四类<b>不能猜</b>的，显式升级：</p>
-
+<h3>3.2 口径修正：从“全工程累加”到“逐函数取最大”</h3>
 <table>
-<tr><th>信号</th><th>在本场景的含义</th><th>为什么不能猜</th></tr>
-<tr><td><code>S1</code> 无先例</td><td>算子/形状组合在知识库没有先例</td><td>猜错会生成编不过的 C</td></tr>
-<tr><td><code>S2</code> 复发</td><td>同一段反复超限（如超幅 &gt; 25%）</td><td>说明当前分流规则对它不适用</td></tr>
-<tr><td><code>S3</code> 无见证</td><td>数组形状未知</td><td>当 0 会让预算假通过</td></tr>
-<tr><td><code>S4</code> 未归类</td><td>profile 没声明这个段 / 这个 ISA</td><td>生成器不知道往哪放</td></tr>
+<tr><th>口径</th><th>numeric 语料 tcm 用量</th><th>问题</th></tr>
+<tr><td>全工程累加（旧）</td><td class="n">3112 B</td><td><b>系统性高估</b>：不同函数的数组不会同时存在</td></tr>
+<tr><td>逐函数取最大（新）</td><td class="n">128 B</td><td>仍<b>低估</b>跨调用链（A 调 B 时两者同时存在）</td></tr>
 </table>
+<div class="callout warn">
+<p><b>两个方向相反，必须分开算。</b>新版只解决了“高估”那一半，
+返回值里明确标 <code>scope: per-function</code>，不让读者误以为这是全局峰值。</p>
+</div>
 
-<h3>4.1 每一信号必须带一个"可回答的问题"</h3>
-
+<!-- 4 -->
+<h2 class="sec" id="s4"><span class="num">04</span>大脑：四信号</h2>
+<table>
+<tr><th>信号</th><th>含义</th><th>为什么不能猜</th></tr>
+<tr><td><code>S1</code></td><td>算子/形状组合无先例</td><td>猜错会生成编不过的 C</td></tr>
+<tr><td><code>S2</code></td><td>同一段反复超限</td><td>说明分流规则对它不适用</td></tr>
+<tr><td><code>S3</code></td><td>数组形状未知</td><td>当 0 会让预算假通过</td></tr>
+<tr><td><code>S4</code></td><td>profile 没声明这个段/ISA</td><td>生成器不知道往哪放</td></tr>
+</table>
 <pre><code>[大脑] 必须升级 2 项
   S3  有 9 个数组没有形状标注，峰值的下界算不准
       问：这些数组的实际维度是多少？或者它们能否改成由常量初始化？
   S4  profile 声明了 56 个算子想要的 ISA 变体，但头文件里没有对应符号
       问：这些算子在本板子上是「没有向量实现」还是「符号名不同」？</code></pre>
-
 <div class="callout">
-<p><b>为什么必须是"问题"而不是"警告"：</b>警告只能让人知道出事了，
-问题才能让人<b>知道下一步做什么</b>。"S4 缺失"是警告；"是没有向量实现，还是符号名不同"是问题——
-后者当场就能回答，前者要重新调研一遍。</p>
+<p><b>必须是“问题”而不是“警告”：</b>警告只让人知道出事了，问题才让人知道<b>下一步做什么</b>。
+“S4 缺失”是警告；“是没有向量实现，还是符号名不同”是问题——后者当场能回答。</p>
 </div>
+<figure><a href="../.archify/workflow-hw-brain-20261121-104500/hw-brain.html"><div class="ft">→ 图 2：小脑推导 + 大脑升级</div><div class="fd">五条泳道：输入 / 小脑 / 分段与变体 / 大脑 / 产出</div></a></figure>
 
-<figure>
-  <a href="../.archify/workflow-hw-brain-20261121-104500/hw-brain.html">
-    <div class="ft">→ 图 2：小脑推导 + 大脑升级</div>
-    <div class="fd">五条泳道：输入 / 小脑 / 分段与变体 / 大脑 / 产出</div>
-  </a>
-  <figcaption>该图已通过 validate / deliver / check / browser-check 四项校验（R1043 修通了走廊重叠）。</figcaption>
-</figure>
-
-<!-- ==================== 5 ==================== -->
-<h2 class="sec" id="s5"><span class="num">05</span>声明式配置：profile 是物理事实</h2>
-
-<h3>5.1 两份结构不同的 profile（这才是"通用"的证明）</h3>
-
+<!-- 5 -->
+<h2 class="sec" id="s5"><span class="num">05</span>配置：profile 即物理事实</h2>
+<h3>5.1 两份结构不同的 profile（这才是“通用”的证明）</h3>
 <table>
 <tr><th>profile</th><th>段</th><th>ISA 优先级</th><th>用途</th></tr>
 <tr><td><code>mcu_256k</code></td><td>2 段（tcm 256KB + ddr 64MB）</td><td>scalar → simd128</td><td>简单 MCU</td></tr>
-<tr><td><code>cortex_a_tcm_ddr</code></td><td><b>3 段</b>（itcm 64K + dtcm 256K + ddr 128M）</td><td><b>neon → sve → dsp</b> + accel</td><td>异构 SoC</td></tr>
+<tr><td><code>cortex_a_tcm_ddr</code></td><td><b>3 段</b>（64K+256K+128M）</td><td><b>neon → sve → dsp</b> + accel</td><td>异构 SoC</td></tr>
 </table>
-
 <div class="callout warn">
-<p><b>只用一份 profile 验证"可配置"，永远不会暴露缺陷。</b>
-第一份配置往往是照着代码写的，结构上必然通过。只有换一份<b>结构不同</b>的
-（段数、顺序、层级都变），才能测出"逻辑是否真的跟着配置走"。</p>
+<p><b>只用一份 profile 验证“可配置”，永远不会暴露缺陷</b> —— 第一份往往是照着代码写的。
+必须换一份<b>结构不同</b>的，才能测出“逻辑是否真的跟着配置走”。</p>
 </div>
-
-<h3>5.2 配置项的边界</h3>
-
+<h3>5.2 可配 / 不可配的边界</h3>
 <table>
-<tr><th>可配</th><th>不可配</th></tr>
-<tr>
-<td>段个数 / 段名 / 每段总容量 / 每段单数组上限 / ISA 顺序 / 加速器开关 / 算子覆盖</td>
-<td>字节数算法（<code>prod(shape)×8</code>）/ "形状未知不计入"这条规则 / 四信号定义</td>
-</tr>
+<tr><th>可配</th><th>不可配（口径）</th></tr>
+<tr><td>段个数、段名、每段容量、单数组上限、ISA 顺序、加速器开关、算子覆盖、私有 ISA 规则</td><td>字节数算法、形状未知不计入、四信号定义</td></tr>
 </table>
+<p>右侧是<b>口径</b>。口径也配，等于允许每个项目自定义“什么算超限”——那就没有判据了。</p>
 
-<p>右边那一列是<b>口径</b>。口径也做成可配置，等于允许每个项目自己定义"什么算超限"——
-那就没有判据了。</p>
-
-<!-- ==================== 6 ==================== -->
-<h2 class="sec" id="s6"><span class="num">06</span>算子映射：三层路由与优先级</h2>
-
-<h3>6.1 现状：语义、实现、符号名被压在一个字段里</h3>
-
+<!-- 6 -->
+<h2 class="sec" id="s6"><span class="num">06</span>算子映射：三层路由</h2>
 <pre><code>{"id": "OP-SUM", "matlab": "sum(x)", "c": "mlc_op_sum", "kind": "reduction"}
-                                     ↑
-                        一个字段同时承担了三件事</code></pre>
-
-<p>后果：想换成 SIMD 或公司库，只能改 <code>c</code>——而那是<b>语义登记</b>，
-一改就连带 TP8 三处一致性判据一起晃。</p>
-
-<h3>6.2 拆成两层：变体选择 + 外部覆盖</h3>
-
+                                     ↑ 一个字段压了三件事</code></pre>
+<h3>6.1 拆成变体选择 + 外部覆盖</h3>
 <pre><code>候选 = [c_neon, c_sve, c_dsp, c_accel]   # 按 profile 的 ISA 顺序
       + [c]                              # 标量兜底，永远最后
 选中 = 第一个在 mlc_ops.h 里声明过的
 覆盖 = op-map 文件里声明的 c（优先级最高）</code></pre>
 
-<div class="callout bad">
-<p><b>这里出现过一次只有自证能抓到的 bug：</b><code>scalar</code> 被放在优先级序列第一位，
-<code>next()</code> 永远先命中它，<code>simd128</code> 与 <code>accel</code> <b>永远选不上</b>——
-而输出表看起来完全正常（56 个算子"都有实现"）。</p>
-<p>抓它的是自证里那句<b>"有 simd 实现时必须选中 simd"</b>。这句话在现实中毫无用途
-（那时还没有任何 simd 实现），它唯一的作用是<b>描述"正确的行为应该是什么样"</b>。</p>
-</div>
+<details>
+<summary>一个只有自证能抓到的 bug：优先级写反了</summary>
+<p><code>scalar</code> 排第一位，<code>next()</code> 永远先命中它，<code>simd</code>/<code>accel</code>
+<b>永远选不上</b> —— 而输出表看起来完全正常（56 个算子“都有实现”）。</p>
+<p>抓住它的是自证里那句<b>“有 simd 实现时必须选中 simd”</b>。这句话在现实中毫无用途
+（那时还没有任何 simd 实现），它唯一的作用是<b>描述“正确的行为应该是什么样”</b>。</p>
+</details>
 
-<h3>6.3 三层路由（修正后的优先级）</h3>
-
+<h3>6.2 优先级：覆盖在最先</h3>
 <table>
 <tr><th>层</th><th>来源</th><th>优先级</th><th>失败时</th></tr>
-<tr><td>1</td><td>项目映射文件 <code>--op-map</code></td><td><b>最高</b></td><td>缺 <code>why</code> 直接判文件不合法</td></tr>
-<tr><td>2</td><td>平台配置（profile）</td><td>次之</td><td>ISA 未声明则该层跳过</td></tr>
-<tr><td>3</td><td>内置字典（<code>operators.py</code>）</td><td>再次</td><td>算子不存在则解析期报错</td></tr>
-<tr><td>4</td><td>weak 桩</td><td>兜底</td><td><b>必须报桩比例</b>，见 §8</td></tr>
+<tr><td>1</td><td>项目映射文件 <code>--op-map</code></td><td><b>最高</b></td><td>缺 <code>why</code> 判文件不合法</td></tr>
+<tr><td>2</td><td>平台配置（profile）</td><td>次之</td><td>ISA 未声明则跳过</td></tr>
+<tr><td>3</td><td>内置字典</td><td>再次</td><td>算子不存在则报错</td></tr>
+<tr><td>4</td><td>weak 桩</td><td>兜底</td><td><b>必须报桩比例</b></td></tr>
 </table>
-
 <div class="callout warn">
-<p><b>顺序必须是这样，而不是"内置 → 配置 → 桩"。</b>配置的全部意义就是<b>覆盖内置</b>——
-公司想用自己的 <code>sum</code> 时必须能压过内置表。把配置排在后面，
-功能"看起来实现了却不生效"。</p>
+<p><b>顺序必须是这样。</b>配置的全部意义就是<b>覆盖内置</b>；把配置排在后面，
+功能“看起来实现了却不生效”。</p>
 </div>
 
-<h3>6.4 覆盖必须可审计</h3>
+<!-- 7 -->
+<h2 class="sec" id="s7"><span class="num">07</span>私有指令集</h2>
+<h3>7.1 条件必须结构化</h3>
+<table>
+<tr><th>写法</th><th>问题</th></tr>
+<tr><td><code>"is_vector &amp;&amp; length % 128 == 0"</code></td><td><b>没有任何东西会执行它</b>；要生效只能 eval（注入面 + 无法静态校验）</td></tr>
+<tr><td><code>{"min_len":128,"len_multiple":16,"require_align":64}</code></td><td>三个字段各自可校验，语义清晰</td></tr>
+</table>
 
-<pre><code>{"overrides": {
-  "OP-SUM": {"c": "hw_dsp_sum", "why": "公司 DSP 库有专用归约指令，快 4~6 倍"}
-}}</code></pre>
+<h3>7.2 判定用输入，不是输出</h3>
+<div class="callout bad">
+<p><b>这里出现过一个完备性缺口。</b>原先按<b>输出</b>数组判够不够格。对 <code>sum(x)</code>，
+输出是标量（numel=1），于是：</p>
+<pre><code>⤵ OP-SUM  big_sum  numel 1 &lt; min_len 128</code></pre>
+<p>也就是说<b>所有归约类算子（sum/max/mean）永远不可能走向量实现</b> ——
+而它们恰恰最该被向量化（树形归约）。改成取输入侧 numel 后：
+<br><code>✅ OP-SUM  big_sum  numel=1024 -> company_isa_vreduce</code></p>
+</div>
 
-<p><code>why</code> 必填，缺失即判文件不合法。理由：半年后有人看到 <code>sum</code> 变成了
-<code>hw_dsp_sum</code>，没有一行说明他就只能猜——而猜错的代价是<b>换掉整个算子语义</b>。</p>
+<pre><code>[isa] 规则 2 条 ｜ 命中 2 ｜ 够格 2 ｜ 退回通用 0
+✅ OP-MATMUL  big_mmul  numel=16384 -> company_isa_mmul
+✅ OP-SUM     big_sum   numel=1024  -> company_isa_vreduce</code></pre>
 
-<!-- ==================== 7 ==================== -->
-<h2 class="sec" id="s7"><span class="num">07</span>实测数据</h2>
+<h3>7.3 外部契约：dtype 是硬错误，不是精度</h3>
+<table>
+<tr><th>项</th><th>规则</th><th>为什么</th></tr>
+<tr><td><b>dtype</b></td><td>必须声明；非 <code>f64</code> 判<b>错误</b></td><td>本仓运行时是 f64；传 f32 会按 4 字节步长解释 8 字节元素 → <b>结果全错</b></td></tr>
+<tr><td>align</td><td>2 的幂且 ≤ 4096</td><td>写错会让向量指令崩</td></tr>
+<tr><td>header</td><td>必填，不含 <code>..</code></td><td>生成工程要能 include</td></tr>
+<tr><td>why</td><td>必填</td><td>覆盖必须可审计</td></tr>
+</table>
+<div class="callout bad">
+<p><b>不要把 dtype 错位和浮点舍入混成一件事。</b>舍入误差可以容忍；
+类型错位必须立刻中止。如果工具只报“结果不一致”，人就会去调容忍度——
+<b>而调容忍度对类型错位毫无用处</b>。</p>
+</div>
 
-<p>以下数字全部来自本仓实跑，可复算（命令附在每行右侧）。</p>
-
+<!-- 8 -->
+<h2 class="sec" id="s8"><span class="num">08</span>实测数据</h2>
+<p>全部可复算，命令附在行末。</p>
 <table>
 <tr><th>项目</th><th>结果</th><th>复现</th></tr>
 <tr><td>合成语料三段链路</td><td class="n">60/60 全通</td><td><code>three_links_report.py</code></td></tr>
 <tr><td>真实统计函数三段</td><td class="n">0/40</td><td>同上（cell/string 挡在 ①）</td></tr>
 <tr><td>解析降级率</td><td class="n">20.4%</td><td><code>unmapped_stats.py</code></td></tr>
-<tr><td>tcm 用量（numeric）</td><td class="n">3112 / 262144 B（1%）</td><td><code>mem_sections.py</code></td></tr>
+<tr><td>tcm 用量（逐函数峰值）</td><td class="n">128 / 262144 B</td><td><code>mem_sections.py</code></td></tr>
 <tr><td>算子数 / 退回标量</td><td class="n">56 / 56</td><td><code>op_backends.py</code></td></tr>
-<tr><td>形状未知数组</td><td class="n">9</td><td><code>mem_budget.py</code></td></tr>
+<tr><td>私有 ISA 够格</td><td class="n">2 / 2（大矩阵语料）</td><td><code>isa_plan.py</code></td></tr>
 <tr><td>发版墙钟</td><td class="n">10.8 s（21 门）</td><td><code>release.py --apply</code></td></tr>
 <tr><td>GX2 测试</td><td class="n">519 passed</td><td><code>check_generated_compiles.py</code></td></tr>
 </table>
+<figure><a href="../.archify/waterfall-release-20261121-101500/release-timing.html"><div class="ft">→ 图 3：发版各门耗时（实测）</div><div class="fd">条长 = 实测毫秒</div></a></figure>
+<figure><a href="../.archify/dataflow-m2c-hw-20261121-093000/m2c-hw.html"><div class="ft">→ 图 4：硬件约束数据流</div><div class="fd">源码 → MIR → 画像 → 约束 → 产出</div></a></figure>
 
-<figure>
-  <a href="../.archify/waterfall-release-20261121-101500/release-timing.html">
-    <div class="ft">→ 图 3：发版各门耗时（实测）</div>
-    <div class="fd">条长 = 实测毫秒；横向按耗时降序串行排布仅为可读</div>
-  </a>
-</figure>
-
-<figure>
-  <a href="../.archify/dataflow-m2c-hw-20261121-093000/m2c-hw.html">
-    <div class="ft">→ 图 4：硬件约束推导数据流</div>
-    <div class="fd">源码 → MIR → 资源画像 → 约束推导 → 产出</div>
-  </a>
-</figure>
-
-<!-- ==================== 8 ==================== -->
-<h2 class="sec" id="s8"><span class="num">08</span>已知缺口与落地路线</h2>
-
-<h3>8.1 缺口（不假装覆盖）</h3>
-
+<!-- 9 -->
+<h2 class="sec" id="s9"><span class="num">09</span>缺口看板</h2>
 <table>
-<tr><th>缺口</th><th>后果</th><th>状态</th></tr>
-<tr><td>无数据流（读写关系）</td><td>段分配只能按大小猜，中小数组全落错段</td><td><span class="status s-no">未做</span></td></tr>
-<tr><td><code>emit.rs</code> 未接 profile</td><td>"自由转换"差最后一环；生成器不询问变体</td><td><span class="status s-no">未做</span></td></tr>
-<tr><td>段属性注入</td><td>生成的 C 没有 <code>section</code> / <code>align</code></td><td><span class="status s-no">未做</span></td></tr>
-<tr><td>weak 桩比例守卫</td><td>大量 stub 会让 C 编译通过但什么都不做</td><td><span class="status s-no">未做</span></td></tr>
-<tr><td>DMA / <code>.ld</code> / Log 环形缓冲</td><td>方案提到的下游能力</td><td><span class="status s-no">未做</span></td></tr>
+<tr><th>缺口</th><th>偏差方向</th><th>后果</th><th>状态</th></tr>
+<tr><td>跨函数调用峰值未算</td><td><b>低估</b></td><td>运行时溢出</td><td>未做</td></tr>
+<tr><td>生成器未接 profile/isa_plan</td><td>—</td><td>“自由转换”差最后一环</td><td>未做</td></tr>
+<tr><td>align 未注入变量声明</td><td>—</td><td>向量指令可能崩</td><td>未做</td></tr>
+<tr><td>多返回值段分配</td><td>—</td><td>段归属不明</td><td>未做</td></tr>
+<tr><td>weak 桩比例守卫</td><td>—</td><td><b>静默降级</b></td><td>未做</td></tr>
+<tr><td>数据流（读写关系）</td><td>—</td><td>段分配只能按大小猜</td><td>未做</td></tr>
 </table>
-
 <div class="callout bad">
-<p><b>最危险的一条是"weak 桩"。</b>若 100 个函数里 60 个变成 stub，
-生成的 C <b>编译通过、运行不报错、但什么都不做</b>——这是静默降级。
-必须加一条<b>桩比例上限</b>（如 &gt;10% 即红），和本仓 <code>check_ane</code>
-对 <code>except: pass</code> 立基线是同一个思路。</p>
+<p><b>最危险的是 weak 桩。</b>若 100 个函数里 60 个变成 stub，
+生成的 C <b>编译通过、运行不报错、但什么都不做</b>。必须加桩比例上限。</p>
 </div>
 
-<h3>8.2 落地顺序（按依赖，不按模块编号）</h3>
+<!-- 10 -->
+<h2 class="sec" id="s10"><span class="num">10</span>工具速查</h2>
+<table>
+<tr><th>工具</th><th>回答什么问题</th><th>自证</th></tr>
+<tr><td><code>mem_budget.py</code></td><td>这个函数峰值多少字节、超没超 256KB</td><td class="n">4/4</td></tr>
+<tr><td><code>mem_sections.py</code></td><td>每个段各占多少、会不会溢出</td><td class="n">6/6</td></tr>
+<tr><td><code>op_backends.py</code></td><td>每个算子该用哪个实现变体</td><td class="n">5/5</td></tr>
+<tr><td><code>gen_symbol_map.py</code></td><td>生成宏重映射头，让 profile 影响产物</td><td class="n">3/3</td></tr>
+<tr><td><code>ext_contract.py</code></td><td>外部加速库契约合法吗（dtype/对齐）</td><td class="n">4/4</td></tr>
+<tr><td><code>isa_plan.py</code></td><td>哪些调用点够格走私有指令集</td><td class="n">4/4</td></tr>
+<tr><td><code>hw_brain.py</code></td><td>哪些结论确定、哪些必须升级</td><td class="n">3/3</td></tr>
+<tr><td><code>runtime_payoff.py</code></td><td>补哪类运行时能救回多少文件</td><td class="n">3/3</td></tr>
+</table>
 
-<pre><code>① profile + 段预算校验        ✅ 已完成（自证 6/6）
-② 算子变体 + 外部覆盖         ✅ 已完成（自证 5/5 + 手工验证覆盖）
-③ 小脑/大脑适配器             ✅ 已完成（自证 3/3）
-④ 数据流（读写关系）          ❌ ④⑤⑥ 的共同前置
-⑤ emit.rs 接 profile          ❌ 依赖 ④
-⑥ 段属性 + .ld + glue         ❌ 依赖 ⑤
-⑦ Log 环形缓冲 / weak 桩      ⏳ 与 ④⑤⑥ 独立，可并行
-⑧ 桩比例守卫                  ⏳ 与 ⑦ 同时做</code></pre>
-
-<p><b>④ 是所有后续的共同前置。</b>没有读写关系，"哪个数组该进 TCM"只能按大小猜——
-而按大小猜会让大矩阵全进 DDR、小数组全进 TCM，<b>看起来对，实际把高频小数组放到了最慢的地方</b>。</p>
-
-<!-- ==================== 9 ==================== -->
-<h2 class="sec" id="s9"><span class="num">09</span>设计原则（可复用的判断方法）</h2>
-
+<!-- 11 -->
+<h2 class="sec" id="s11"><span class="num">11</span>设计原则</h2>
 <div class="grid">
-  <div class="card">
-    <h4>口径不可配，参数全可配</h4>
-    <p>段容量、ISA 顺序、映射覆盖都是参数；字节数算法与"形状未知不计入"是口径。口径也配，就没有判据了。</p>
-  </div>
-  <div class="card">
-    <h4>自证要测"本该做到什么"</h4>
-    <p>只测"跑起来不出错"不够——优先级写反的实现照样能输出一张看着正常的表。</p>
-  </div>
-  <div class="card">
-    <h4>用结构不同的配置验证可配置</h4>
-    <p>第一份配置往往照着代码写，结构上必然通过。换 2 段→3 段才测出中间段恒为 0。</p>
-  </div>
-  <div class="card">
-    <h4>"不比"和"跳过"都要说出来</h4>
-    <p>静默的"没判"与"判了且通过"在输出上一模一样，失效时无从分辨。</p>
-  </div>
-  <div class="card">
-    <h4>覆盖必须写为什么</h4>
-    <p>没有理由的覆盖，半年后没人敢动，也没人敢删。</p>
-  </div>
-  <div class="card">
-    <h4>跨项目接口只交付纯数据</h4>
-    <p>合并前后都不需要改的接口，只能是不含策略的数据结构。</p>
-  </div>
+  <div class="card"><h4>口径不可配，参数全可配</h4><p>段容量可配，字节数算法不可配。口径也配，就没有判据了。</p></div>
+  <div class="card"><h4>自证要测“本该做到什么”</h4><p>只测“不出错”不够——优先级写反的实现照样输出正常的表。</p></div>
+  <div class="card"><h4>用结构不同的配置验证可配</h4><p>第一份往往照着代码写；换 2 段→3 段才测出中间段恒为 0。</p></div>
+  <div class="card"><h4>“不比”“跳过”都要说出来</h4><p>静默的“没判”与“判了且通过”输出一样，失效时无从分辨。</p></div>
+  <div class="card"><h4>筛出 0 个时先证明筛子看过</h4><p>“没命中”和“根本没看到”在计数上一样，原因毫不相干。</p></div>
+  <div class="card"><h4>跨项目接口只交付纯数据</h4><p>合并前后都不用改的接口，只能是不含策略的数据。</p></div>
 </div>
 
 <footer>
-  <p>
-    <b>Matlabc 硬件映射白皮书 v1.0</b>　·　2026-11-21　·　对应代码 R1042<br>
-    所有数字来自本仓实跑；所有图由 <code>archify</code> 渲染并通过 validate / deliver / check / browser-check 四项校验。
-    本文档未做人工目视复核的图已单独标注。
-  </p>
+  <p><b>Matlabc 硬件映射白皮书 v1.1</b> · 2026-11-21 · 对应代码 R1048<br>
+  所有数字来自本仓实跑；图由 <code>archify</code> 渲染并通过四项校验。未做人工目视复核的图已单独标注。</p>
 </footer>
-
 </div>
+
+<script>
+// 深色模式
+const root = document.documentElement;
+const btnTheme = document.getElementById('theme');
+const saved = localStorage.getItem('m2c-theme');
+if (saved) { root.dataset.theme = saved; btnTheme.textContent = saved === 'dark' ? '浅色' : '深色'; }
+btnTheme.onclick = () => {
+  const d = root.dataset.theme === 'dark' ? 'light' : 'dark';
+  root.dataset.theme = d;
+  localStorage.setItem('m2c-theme', d);
+  btnTheme.textContent = d === 'dark' ? '浅色' : '深色';
+};
+
+// 阅读进度
+const prog = document.getElementById('prog');
+addEventListener('scroll', () => {
+  const h = document.documentElement;
+  const p = h.scrollTop / (h.scrollHeight - h.clientHeight || 1);
+  prog.style.width = (p * 100) + '%';
+}, { passive: true });
+
+// 代码复制
+document.querySelectorAll('pre').forEach(pre => {
+  const b = document.createElement('button');
+  b.className = 'copy'; b.textContent = '复制';
+  b.onclick = () => {
+    const t = pre.querySelector('code')?.innerText || pre.innerText;
+    navigator.clipboard.writeText(t).then(() => {
+      b.textContent = '已复制'; setTimeout(() => b.textContent = '复制', 1200);
+    });
+  };
+  pre.appendChild(b);
+});
+
+// 全展开
+let expanded = false;
+const btnExp = document.getElementById('expand');
+btnExp.onclick = () => {
+  expanded = !expanded;
+  document.querySelectorAll('details').forEach(d => d.open = expanded);
+  btnExp.textContent = expanded ? '全折叠' : '全展开';
+};
+
+// 搜索：隐藏不匹配的块
+const q = document.getElementById('q');
+q.addEventListener('input', () => {
+  const kw = q.value.trim().toLowerCase();
+  const blocks = document.querySelectorAll('h2.sec, h3, p, table, pre, .callout, figure, .grid, details');
+  if (!kw) {
+    blocks.forEach(b => b.classList.remove('hidden'));
+    return;
+  }
+  blocks.forEach(b => {
+    b.classList.toggle('hidden', !b.innerText.toLowerCase().includes(kw));
+  });
+});
+addEventListener('keydown', e => {
+  if (e.key === '/' && document.activeElement !== q) { e.preventDefault(); q.focus(); }
+  if (e.key === 'Escape' && document.activeElement === q) { q.value = ''; q.dispatchEvent(new Event('input')); q.blur(); }
+});
+
+// 目录高亮
+const links = [...document.querySelectorAll('.toc a')];
+const secs = links.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+const io = new IntersectionObserver(es => {
+  es.forEach(e => {
+    if (e.isIntersecting) {
+      links.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + e.target.id));
+    }
+  });
+}, { rootMargin: '-20% 0px -70% 0px' });
+secs.forEach(s => io.observe(s));
+</script>
 </body>
 </html>
