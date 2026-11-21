@@ -286,7 +286,20 @@ def main(argv=None):
                     default=os.path.join(ROOT, "flow",
                                          "cerebellum-calibration.json"),
                     help="人工标定集（判断判据本身对不对）")
+    # **真实语料路径**（R1066）：不给时按"合成咨询"算，但那会得到 100%，
+    # 与真实语料实测的 90% 相差 10 个点。R1065 就出现过"报告里是 90%、
+    # 工具单独跑是 100%"的不一致——那种不一致不会报错，只会让人以为工具坏了。
+    # 所以这里优先自动找已知真实 MIR，并在输出里明写用的是哪一份。
+    ap.add_argument("--mir", help="真实 MIR 路径（不给则自动探测）")
     ns = ap.parse_args(argv)
+
+    mir = ns.mir
+    if not mir:
+        for cand in ("E:/temp/matlabc/octgen/.m2c/project.mir",
+                     "E:/temp/matlabc/oct_num/.m2c/project.mir"):
+            if os.path.isfile(cand):
+                mir = cand
+                break
 
     if ns.selftest:
         return _selftest()
@@ -301,7 +314,7 @@ def main(argv=None):
                   % ("✅" if row["ok"] else "❌", row["expect"],
                      row["actual"], row["text"]))
 
-    off = measure_offline()
+    off = measure_offline(mir, 200)
     grow = check_growable(write=ns.update_baseline)
     if off is None:
         print("cerebellum_bounds: 缺输入（取不到真实 kind 全集）")
@@ -313,7 +326,11 @@ def main(argv=None):
         print(json.dumps(r, ensure_ascii=False, indent=1))
         return 0 if r["ok"] else 1
 
-    print("[离线可用] 咨询 %d ｜ 小脑自决 %d ｜ 必须上行 %d ｜ 自决率 %.1f%%（下限 %.0f%%）"
+    _basis = ("真实语料 %s" % os.path.basename(mir)
+              if off.get("basis") == "real" else
+              "**合成咨询（按 kind 构造，会偏乐观）**")
+    print("[离线可用] 口径：%s" % _basis)
+    print("  咨询 %d ｜ 小脑自决 %d ｜ 必须上行 %d ｜ 自决率 %.1f%%（下限 %.0f%%）"
           % (off["total"], len(off["decidable"]), len(off["escalate"]),
              off["rate"] * 100, off["floor"] * 100))
     if off["escalate"]:
