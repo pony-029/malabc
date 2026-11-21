@@ -87,9 +87,9 @@ CASES = [
      "st = mlc_op_hcat(&a, &b, &y);", 2),
     # --- 序列：输出长度由两端值决定，与输入长度无关 ---
     ("OP-RANGE", [[1.0], [4.0]],
-     "st = mlc_op_range(&a, &b, &y);", 4),
+     "st = mlc_op_range(&a, &b, &y);", 4, True),
     ("OP-RANGE", [[-2.0], [2.0]],
-     "st = mlc_op_range(&a, &b, &y);", 5),
+     "st = mlc_op_range(&a, &b, &y);", 5, True),
     # --- 更多二元组合（负数/小数/不等长广播）---
     ("OP-SUB", [[0.5, -0.5, 2.5], [-0.5, 0.5, 1.0]],
      "st = mlc_op_sub(&a, &b, &y);", 3),
@@ -143,7 +143,21 @@ int main(void)
     mlc_status st;
     fill(&a, ad, na);
     fill(&b, bd, nb);
-    /* **输出按自己的长度初始化**：归约算子的 out 是标量，不是 len(a) */
+    if (%d) {
+        /* **分配型算子**（如 mlc_op_range）：输出由算子自己 mlc_array_init，
+         * 调用方**不能**预填 y.data —— 预填了之后 init 会把它覆盖成新块，
+         * 而调用方若还打印原来那块栈内存，看到的就是全 0。
+         * （R1086 实测踩到：长度对、值全 0，正是这个形态。） */
+        st = %s
+        if (st != MLC_OK) { printf("ERR %%d\n", (int)st); return 1; }
+        {
+            const double *po = (const double *)y.data;
+            long n = (long)mlc_array_numel(&y);
+            for (long i = 0; i < n; ++i) printf("%%.17g ", po[i]);
+        }
+        printf("\n");
+        return 0;
+    }
     fill(&y, yd, ny);
     %s
     if (st != MLC_OK) { printf("ERR %%d\n", (int)st); return 1; }
@@ -155,13 +169,16 @@ int main(void)
 
 
 def run_c_track(gcc, case, workdir):
-    op_id, args, call, nout = case
+    op_id, args, call, nout = case[:4]
+    alloc = bool(case[4]) if len(case) > 4 else False
     a = args[0]
     b = args[1] if len(args) > 1 else [0.0]
     src = C_HARNESS % (
         ",".join("%.17g" % x for x in a),
         ",".join("%.17g" % x for x in b),
-        len(a), len(b), nout, call)
+        len(a), len(b),
+        1 if alloc else 0,
+        call, call)
     c = os.path.join(workdir, "%s.c" % op_id.replace("-", "_"))
     exe = c[:-2] + (".exe" if os.name == "nt" else "")
     io.open(c, "w", encoding="utf-8", newline="\n").write(src)
