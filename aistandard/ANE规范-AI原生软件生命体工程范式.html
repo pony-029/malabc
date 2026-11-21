@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ANE 规范 v0.5.0 · AI 原生软件生命体工程范式白皮书（正式发布版）</title>
+<title>ANE 规范 v0.9.0 · AI 原生软件生命体工程范式白皮书（正式发布版）</title>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <style>
   :root{
@@ -130,7 +130,7 @@
 <div class="layout">
 <aside>
   <div class="brand">AI Native Engineering</div>
-  <h1>ANE 规范 v0.5.0</h1>
+  <h1>ANE 规范 v0.9.0</h1>
   <div class="ver">AI 原生软件生命体工程范式 · 创建人 冯磊 · 正式发布版</div>
   <nav>
     <div class="grp">总纲</div>
@@ -182,6 +182,12 @@
     <a href="#ch35">第三十五章 · 多语言与本地化治理</a>
     <a href="#ch36">第三十六章 · 制品命名与标识规范</a>
     <a href="#ch37">第三十七章 · 结构完整性与投影后校验</a>
+    <a href="#ch38">第三十八章 · 生命体间通信协议（IOP）</a>
+    <a href="#ch39">第三十九章 · 生命体套件与组合</a>
+    <a href="#ch40">第四十章 · 向 AGI 生命体的演进</a>
+    <a href="#ch41">第四十一章 · 数据格式、存储与联网</a>
+    <a href="#ch42">第四十二章 · 规范性等级与必选清单</a>
+    <a href="#ch43">第四十三章 · 传统软件向软件生命体的转换</a>
     <div class="grp">附录</div>
     <a href="#appa">附录 A · 术语表</a>
   </nav>
@@ -190,7 +196,7 @@
 <main>
 <header class="hero">
   <div class="tagrow">
-    <span class="tag t-purple">ANE v0.5.0</span>
+    <span class="tag t-purple">ANE v0.9.0</span>
     <span class="tag t-blue">动静结合</span>
     <span class="tag t-teal">双脑协同</span>
     <span class="tag t-purple">记忆护城河</span>
@@ -203,8 +209,8 @@
   <p class="subtitle">ANE = <b>AI Native Engineering</b>。一套融合经典控制论（静态 / 小脑）与现代人工智能（动态 / 大脑）的通用范式。它把 AI 从"被使用"变为"被驾驭"，适用于一切构建 AI 原生软件的系统与团队，不绑定任何具体产品或框架。</p>
   <div class="meta">
     <span><b>创建人</b> 冯磊 · 原创范式与首席架构设计</span>
-    <span><b>版本</b> v0.5.0 · 正式发布版</span>
-    <span><b>日期</b> 2026-11-20</span>
+    <span><b>版本</b> v0.9.0 · 正式发布版</span>
+    <span><b>日期</b> 2026-11-21</span>
     <span><b>状态</b> 正式发布版</span>
   </div>
 </header>
@@ -224,7 +230,10 @@
       <tr><td><b>治理底座</b></td><td>合规对齐 · 失效安全 · 身份追溯 · 人类因素 · 记忆边界 · 元治理。</td></tr>
       <tr><td><b>发布工程</b></td><td>制品化发布：规范以单一真源派生出对外视图，过程层零残留；信息三级分层（N/E/P）+ 发布门禁，让规范自身先做到白盒、可追溯、防自欺。</td></tr>
       <tr><td><b>国际化与制品治理</b></td><td>多语言治理（正本/权威译本/冻结术语/G7）· 制品命名规范（正式无后缀/开发带后缀/英文版）· 结构完整性校验（G6：编号连续/附录重编/锚点有效），修复正式版附录断裂。</td></tr>
-      <tr><td><b>冷启动与记忆治理</b></td><td>种子规则 + 探索/利用自适应切换（6.4）· 硬件拓扑感知与自适应排优（2.3/8.5）· 国内法规对齐（20.2）· 双折叠协同范式（13.4/14.3）· 升格审计防记忆投毒（17.2/24.3）。</td></tr>
+      <tr><td><b>冷启动与记忆治理</b></td><td>种子规则 + 探索/利用自适应切换（6.4）· 硬件拓扑感知与执行策略自适应优化（2.3/8.5）· 国内法规对齐（20.2）· 双折叠协同范式（13.4/14.3）· 升格审计防记忆投毒（24.3）。</td></tr>
+      <tr><td><b>演进速度与双脑协同</b></td><td>五步算法：删除→简化→优化→加速→自动化，顺序不可颠倒（10.4）· 执行纪律：结构化上报 / 异常当轮上报 / 高内聚融合 / 99% 即灰度（10.5）· 小脑三条硬边界含零推测（4.4）· 双脑硬边界与角色越界（5.3）· NTP 双向信道 + 四大铁律（5.4）· 通信状态机与信道仲裁（5.5）· 双脑极限态（21.3b）。</td></tr>
+      <tr><td><b>载体治理与工程闭环</b></td><td>模型载体治理：选型判据 / 模型卡 / 升级退役 / 载体可替换（5.6）· 提示词资产治理：模板版本化 + 注入防护 + 冻结术语接口（18.4）· 事件响应与无责复盘：异常当轮上报接成升格闭环（21.5）· ISO 42001 实质对齐（20.2）· NTP 超时与去重参数（5.5）· 仲裁可观测三指标（12.1）。</td></tr>
+      <tr><td><b>生命体生态与规范性</b></td><td>IOP 生命体间通信协议（38）· 套件声明式组合（39）· 向 AGI 演进 A0–A4 阶梯（40）· 数据温度分级与联网三态（41）· MUST/SHOULD/MAY 必选清单（42）；三条建议闭环：JSON Schema 门禁 + ANS-1 + 绑定凭证。</td></tr>
       <tr><td><b>如何落地</b></td><td>从 L2 小脑 + L3 记忆切入，免疫成熟后再上 L4 自愈。</td></tr>
       <tr><td><b>不可破红线</b></td><td>人类主权 · 防自欺（静默失败=0）· 全局熔断可随时停飞。</td></tr>
     </tbody>
@@ -237,11 +246,11 @@
   <h2 class="sec"><span class="num">序言</span>软件即生命</h2>
   <div class="lead">我们摒弃"软件是静态工具"的传统认知。在 AI 时代，优秀的软件系统是一个<b>具备新陈代谢、免疫自愈、持续进化能力的数字有机体</b>。</div>
   <div class="grid g3">
-    <div class="card purple"><div class="ic ic-purple">骨</div><h4>静态骨架</h4><p>分层中间表示是不可动摇的物理法则，决定"它是什么"。</p></div>
+    <div class="card purple"><div class="ic ic-purple">骨</div><h4>静态骨架</h4><p>分层语义底座是不可动摇的物理法则，决定"它是什么"。</p></div>
     <div class="card blue"><div class="ic ic-blue">脑</div><h4>双脑协同</h4><p>小脑管高频反射，大脑管未知复杂，决定"它如何思考"。</p></div>
     <div class="card teal"><div class="ic ic-teal">忆</div><h4>海马记忆</h4><p>经验存储与检索让每次成败成为永久记忆，决定"它是谁"。</p></div>
     <div class="card blue"><div class="ic ic-blue">免</div><h4>免疫系统</h4><p>多层质量门禁让未经证实的生成视为污染，决定"它如何保持纯净"。</p></div>
-    <div class="card amber"><div class="ic ic-amber">愈</div><h4>自愈引擎</h4><p>中间表示层微创修复让它在运行中就地自愈，决定"它如何带伤生存"。</p></div>
+    <div class="card amber"><div class="ic ic-amber">愈</div><h4>自愈引擎</h4><p>统一语义层微创修复让它在运行中就地自愈，决定"它如何带伤生存"。</p></div>
     <div class="card teal"><div class="ic ic-teal">人</div><h4>人类主权</h4><p>分级授权交互是它必须臣服的更高意志，决定"它该不该被允许进化"。</p></div>
   </div>
   <div class="callout quote"><span class="lbl">一句话概括</span>
@@ -274,6 +283,60 @@
       <tr><td>人在环路</td><td>细化为分级授权，兼顾安全与效率，避免人类成吞吐瓶颈</td></tr>
     </tbody>
   </table></div>
+  <h3>0.4 背景、阅读路径与"可查看性契约"</h3>
+  <div class="callout quote"><span class="lbl">给第一次读的人</span>读完本节你应能回答：为什么用生物作比喻、从哪里读起、任何一个说法去哪里查证。<b>看不懂是规范的缺陷，不是读者的缺陷。</b></div>
+  <p><b>为什么用"生命体"和器官作比喻</b>：传统软件像机器——坏了停机修；AI 原生系统更像生命体——边运行、边感知、边自修。七个器官名是<b>功能代号，不是生物学假设</b>：每个代号在第二章都有唯一职责、时延与实现锚点，在附录 A 都有白话解释与出处。读者只需把它们当模块名。</p>
+  <p><b>三条背景线</b>：① 软件工程提供静态基石（版本控制、测试、门禁、可追溯）——继承而不否定；② AI Agent 提供泛化推理与自然语言交互——约束而不神化；③ 边缘与异构环境提供物理约束（算力、存储、互连）——要求骨架感知环境，不假设无限资源。</p>
+  <div class="tw"><table>
+    <thead><tr><th>给小白的阅读路径</th><th>读完你能回答</th></tr></thead>
+    <tbody>
+      <tr><td>1 执行摘要（一页纸）</td><td>整套范式到底说什么</td></tr>
+      <tr><td>2 本节 0.4 + 附录 A.0 术语速查</td><td>每个代号翻译成人话</td></tr>
+      <tr><td>3 第一章七公理</td><td>哪些红线不可破</td></tr>
+      <tr><td>4 第二章器官表 + 第十四章原语表</td><td>系统由什么组成、能做哪些动作</td></tr>
+      <tr><td>5 第十三章交互规范</td><td>人如何协作、如何追溯、如何看见</td></tr>
+      <tr><td>6 需要落地时再看 31 经济性 / 27 迁移 / 26 符合性</td><td>怎么采用、怎么证明合规</td></tr>
+    </tbody>
+  </table></div>
+  <h4 style="font-size:14.5px;margin:18px 0 8px">可查看性契约</h4>
+  <div class="tw"><table>
+    <thead><tr><th>读者的问题</th><th>去哪里查</th><th>保证</th></tr></thead>
+    <tbody>
+      <tr><td>"这个词什么意思？"</td><td>附录 A（白话解释 + 首见出处 + 来源类型）</td><td>每个核心术语有且仅有一条权威定义</td></tr>
+      <tr><td>"这个动作做了什么？"</td><td>第十四章原语定义表</td><td>名称、语义、D 级、是否需授权齐全</td></tr>
+      <tr><td>"这一步我能看见吗？"</td><td>13.6 可视化阶段清单</td><td>展示内容、受众、出处齐全</td></tr>
+      <tr><td>"这件事后来怎样了？"</td><td>13.5 日志 + 22.1 trace-id</td><td>一键串联全过程</td></tr>
+      <tr><td>"这条要求依据什么？"</td><td>条款编号 + 第一章公理 + 附录 A.1</td><td>可回溯到公理或上位条款</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout quote"><span class="lbl">数值也可查</span>文中每个数字（80%、N≥3、99%、1–3 次、D0–D3、L0–L5、G1–G7 等）都在附录 A.1 给出含义、取值理由、来源与调整方式。<b>没有出处的数字不得进入规范性条款。</b></div>
+  <h3>0.5 第一性原理：所有设计从哪里推导出来</h3>
+  <div class="callout warn"><span class="lbl">设计纪律</span>本规范不接受"业界都这么做"作为理由。每一条公理、机制、术语与数值，都必须能回溯到下列第一性原理；<b>无法回溯的，不得进入规范性条款</b>。</div>
+  <div class="tw"><table>
+    <thead><tr><th>编号</th><th>第一性原理</th><th>学科来源</th><th>推导出的 ANE 设计</th></tr></thead>
+    <tbody>
+      <tr><td><b>P1</b></td><td>可证明的交给证明，不可证明的才交给推断</td><td>计算理论与形式化方法（引用）</td><td>公理一/二、骨架不可动、小脑确定性、D0/D1 禁止猜测、双轨验证</td></tr>
+      <tr><td><b>P2</b></td><td>智能与算力是稀缺资源，按确定性收益分配</td><td>资源分配与经济学（引用）</td><td>小脑优先、预算、仲裁排队、探索/利用切换、限频</td></tr>
+      <tr><td><b>P3</b></td><td>影响后续的决策必须留下可验证痕迹</td><td>审计学与信息论（引用）</td><td>公理六、attest、台账、三层日志、trace-id、无出处即污染</td></tr>
+      <tr><td><b>P4</b></td><td>最终责任只由能承担后果的主体持有，不随智能提升而转移</td><td>责任伦理与治理（引用）</td><td>公理五、分级授权、双折叠、大脑永不拥有 A、全局熔断、人类背书</td></tr>
+      <tr><td><b>P5</b></td><td>没有反馈就没有进化，闭环转速决定适应力</td><td>控制论与系统动力学（引用）</td><td>飞轮、经验升格、五步算法、异常当轮上报、灰度、复盘</td></tr>
+      <tr><td><b>P6</b></td><td>不确定时退到已知安全态，安全先于效率</td><td>安全工程与纵深防御（引用）</td><td>稳态第一、UnknownSignal、降级阶梯、单向收紧、沙盒、熔断</td></tr>
+      <tr><td><b>P7</b></td><td>接口必须与当前能力解耦，才能容纳更强智能</td><td>演进式架构与开放封闭（引用）</td><td>大脑=能力接口、角色稳定实现可换、D 级按风险而非模型能力</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout warn"><span class="lbl">使用纪律</span>① <b>回溯义务</b>：新增条款须标注 P 编号与推导链，缺标注不得进正文；② <b>冲突裁决</b>：P4 责任 &gt; P6 安全 &gt; P3 可追溯 &gt; P1 确定性，效率与成本不得压过责任与安全；③ <b>不可发明原理</b>：P1–P7 引用学科基础，ANE 原创在于把它们组织成可执行工程约束；④ <b>最终依据</b>：术语来源（A.0）与数值理由（A.1）都以 P 编号为根——"规范这么写"不是理由，"P3 要求可追溯"才是。</div>
+  <h3>0.6 演进兼容性：立足当前，容纳 AGI 与递归自我改进</h3>
+  <div class="callout quote"><span class="lbl">前瞻边界</span>规范必须解决今天的问题，同时不能堵死明天的路。<b>ANE 不是为某一代模型写死的技术说明，而是对"无论智能提升到什么程度都成立"的责任边界的定义。</b></div>
+  <div class="tw"><table>
+    <thead><tr><th>层次</th><th>当前要求</th><th>对未来更强智能 / 递归自我改进的兼容方式</th><th>出处</th></tr></thead>
+    <tbody>
+      <tr><td>接口层</td><td>大脑经统一能力接口接入，条款不出现具体模型名</td><td>载体升级或替换不改变 N 层条款，更强能力直接插拔</td><td>5.6 · P7</td></tr>
+      <tr><td>权限层</td><td>按 D0–D3 风险分级授权，不按"模型现在能做什么"授权</td><td>智能提升不改变权限边界；能力越强，D0 仍禁止触碰</td><td>第三章 · P4</td></tr>
+      <tr><td>改进层</td><td>飞轮允许经验升格与自愈，但须免疫验证 + 人类签名 + 台账</td><td>递归自我改进只能在门禁内递归；不得自我修改门禁、公理或授权链</td><td>24.3 · 25.5 · P4/P6</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout warn"><span class="lbl">四条前瞻纪律</span>① <b>能力无关</b>：角色/原语/权限按风险与责任定义，不按当前模型能力上限；② <b>可收紧默认</b>：默认取保守端点，放宽须人类显式授权；③ <b>递归有界</b>：自我改进须可回放、不越 D0、不改门禁与公理、有资源与时间收敛判据，否则视为越权变异；④ <b>主权不衰减</b>：智能与自治程度提高时，人类否决权、熔断与审计强度<b>同步提高而非降低</b>——"因为系统足够可靠所以取消复核"违反 P4，直接驳回。</div>
+  <div class="callout quote"><span class="lbl">一句话</span>本规范不是"当下模型的使用说明"，而是<b>无论大脑换成什么、变得多强，都不失效的责任与证据边界</b>：当前可实现性决定怎么落地，前瞻兼容性决定不被未来推翻。</div>
 </section>
 
 <!-- ================= CH1 ================= -->
@@ -282,7 +345,7 @@
   <p>本章是范式的最高法。所有后续条款皆为公理的展开，不得与公理冲突。</p>
   <div class="grid g2">
     <div class="card purple"><h4>公理一 · 静态是基石，动态是灵魂</h4><p>底层逻辑保持绝对静态与确定性（强类型、内存安全、状态机）；AI 只作用于表层逻辑、意图解析与代码建议，绝不动摇静态底座。</p></div>
-    <div class="card blue"><h4>公理二 · 动中有静，静中有动</h4><p>AI 每次生成须被静态规则约束，未证实视为污染；静态底座须能自愈，环境变化时驱动 AI 热加载优化补丁。</p></div>
+    <div class="card blue"><h4>公理二 · 动中有静，静中有动</h4><p>AI 每次生成须被静态规则约束，未证实视为污染；静态底座须能自愈，环境变化时驱动 AI 在线加载优化补丁。</p></div>
     <div class="card teal"><h4>公理三 · 小脑优先，大脑稀缺</h4><p>高频例行决策必须在小脑完成，不消耗大模型；大脑仅在本地规则与记忆都无法解决时唤醒，上下文压缩至极简。</p></div>
     <div class="card amber"><h4>公理四 · 记忆即护城河</h4><p>每次成功、失败、回滚都结构化沉淀；系统靠记忆自我迭代，没有记忆的 AI 只是无状态复读机。</p></div>
     <div class="card purple"><h4>公理五 · 人类拥有不可剥夺的主权</h4><p>触及静态底座或生产的进化必须经人类明确授权，人机分离、权责清晰。此条不可被任何效率理由绕过。</p></div>
@@ -305,9 +368,9 @@ flowchart TB
         HIPO["海马体 Hippocampus<br/>经验存储 检索增强"]
     end
     subgraph STA["静态确定侧"]
-        CEREB["小脑 Cerebellum<br/>规则 状态机 代价模型"]
+        CEREB["小脑 Cerebellum<br/>规则 状态机 确定性成本模型"]
         IMMU["免疫系统 Immune<br/>质量门禁 双轨验证"]
-        BASE["分层中间表示底座<br/>静态骨架 自愈载体"]
+        BASE["分层语义底座<br/>静态骨架 自愈载体"]
     end
     HUM -->|授权 否决| BRAIN
     HUM -->|裁决| IMMU
@@ -324,12 +387,12 @@ flowchart TB
   <div class="tw"><table>
     <thead><tr><th>器官</th><th>核心职责</th><th>时效</th><th>Token</th><th>典型实现形态</th></tr></thead>
     <tbody>
-      <tr><td><strong>骨架</strong></td><td>类型、内存、语义等价的确定性底座</td><td>常驻</td><td>否</td><td>分层中间表示与编译器后端</td></tr>
-      <tr><td><strong>小脑</strong></td><td>高频调度、指令排优、本地裁决</td><td>微秒~毫秒</td><td>否</td><td>本地规则库 + 状态机 + 代价模型</td></tr>
+      <tr><td><strong>骨架</strong></td><td>类型、内存、语义等价的确定性底座</td><td>常驻</td><td>否</td><td>分层语义底座与实现生成与适配层</td></tr>
+      <tr><td><strong>小脑</strong></td><td>高频调度、执行策略优化、本地裁决</td><td>微秒~毫秒</td><td>否</td><td>本地规则库 + 状态机 + 确定性成本模型</td></tr>
       <tr><td><strong>大脑</strong></td><td>未知复杂问题的深度推理</td><td>秒~分钟</td><td>受控</td><td>按需唤醒的大模型智能体</td></tr>
       <tr><td><strong>海马体</strong></td><td>经验沉淀与检索</td><td>持久</td><td>检索少量</td><td>经验向量存储 + 检索增强</td></tr>
-      <tr><td><strong>免疫</strong></td><td>门禁、一致性校验、回归、防自欺</td><td>编译期/合并前</td><td>否</td><td>多层质量门禁 + 全量回归验证</td></tr>
-      <tr><td><strong>自愈</strong></td><td>运行时热补丁与就地优化</td><td>运行时</td><td>视情况</td><td>中间表示层微创修复引擎</td></tr>
+      <tr><td><strong>免疫</strong></td><td>门禁、一致性校验、回归、防自欺</td><td>构建期/合并前</td><td>否</td><td>多层质量门禁 + 全量回归验证</td></tr>
+      <tr><td><strong>自愈</strong></td><td>运行时在线修复与就地优化</td><td>运行时</td><td>视情况</td><td>统一语义层微创修复引擎</td></tr>
       <tr><td><strong>主权</strong></td><td>授权、否决、目标设定</td><td>按需</td><td>否</td><td>分级授权交互界面</td></tr>
     </tbody>
   </table></div>
@@ -338,7 +401,7 @@ flowchart TB
     <div class="mermaid">
 flowchart LR
     subgraph DF["数据流 DFG"]
-        A["源代码 AST"] --> B["高层表示"] --> C["统一中间表示"] --> D["本地调度优化"] --> E["目标指令"]
+        A["源代码 AST"] --> B["高层表示"] --> C["统一语义层"] --> D["本地调度优化"] --> E["目标执行代码"]
     end
     subgraph CF["控制流 CFG"]
         F["异常信号"] --> G{"小脑可解"}
@@ -353,7 +416,7 @@ flowchart LR
     </div>
     <div class="cap">图 2 · 数据流（DFG）与控制流（CFG）双流耦合</div>
   </div>
-  <div class="callout"><span class="lbl">目标环境感知（对应 8.5）</span>骨架不止于逻辑正确，还须感知运行载体。上层表示向目标指令落地、以及运行时微创补丁生成时，必须结合目标环境的物理特征（指令集能力、加速单元规模、内存带宽等）做自适应排优——同一份中间表示在不同硬件上应得到不同的最优指令序列。此为 8.5"硬件拓扑感知"的架构层锚点。</div>
+  <div class="callout"><span class="lbl">目标环境感知（对应 8.5）</span>骨架不止于逻辑正确，还须感知运行载体。上层表示向可执行实现落地、以及运行时微创补丁生成时，必须结合目标环境的物理特征（处理器能力、加速单元规模、内存与存储特性等）做自适应优化——同一份语义层在不同硬件上应得到不同的最优执行方案。此为 8.5"硬件拓扑感知"的架构层锚点。</div>
 </section>
 
 <!-- ================= CH3 ================= -->
@@ -361,8 +424,8 @@ flowchart LR
   <h2 class="sec"><span class="num">第三章</span>确定性分级：D0–D3 权限光谱</h2>
   <p>核心机制，把"动静二元"公理落到可执行的权限边界——每层都有明确的"AI 可做什么"。</p>
   <div class="spectrum">
-    <div class="sp sp0"><div class="lv">D0 · 物理法则</div><div class="nm">禁止触碰</div><div class="ds">类型系统、内存模型、状态机、密码学原语；仅可读取，编译期强制不可变</div></div>
-    <div class="sp sp1"><div class="lv">D1 · 骨架逻辑</div><div class="nm">可提议+证明</div><div class="ds">调度策略、中间表示转换、优化过程；须形式化等价证明 + 人类复核</div></div>
+    <div class="sp sp0"><div class="lv">D0 · 物理法则</div><div class="nm">禁止触碰</div><div class="ds">类型系统、内存模型、状态机、密码学原语；仅可读取，构建期强制不可变</div></div>
+    <div class="sp sp1"><div class="lv">D1 · 骨架逻辑</div><div class="nm">可提议+证明</div><div class="ds">调度策略、语义层转换、优化过程；须形式化等价证明 + 人类复核</div></div>
     <div class="sp sp2"><div class="lv">D2 · 表层逻辑</div><div class="nm">可生成+回归</div><div class="ds">业务代码、胶水层、配置、接口适配；全量回归通过后门禁自动放行 + 审计</div></div>
     <div class="sp sp3"><div class="lv">D3 · 意图表达</div><div class="nm">AI 主导</div><div class="ds">需求解析、注释、测试生成、文档；无副作用，人类可审查但不阻断运行</div></div>
   </div>
@@ -374,30 +437,247 @@ flowchart LR
   <h2 class="sec"><span class="num">第四章</span>小脑规范（Cerebellum）</h2>
   <div class="clause"><span class="badge">第四条</span><p><strong>小脑优先。</strong>每个核心系统必须内置本地小脑模块，负责高频、快速、低能耗的本地调度与逻辑裁决。禁止把所有逻辑直接连到大模型。80% 的常规决策应在此终结。</p></div>
   <div class="grid g2">
-    <div class="card blue"><h4>必须具备</h4><p>本地规则库与优先级匹配 · 状态机与确定性转移 · 代价模型（如指令排优） · 经验向量的快速命中</p></div>
+    <div class="card blue"><h4>必须具备</h4><p>本地规则库与优先级匹配 · 状态机与确定性转移 · 确定性成本模型（如执行策略优化） · 经验向量的快速命中</p></div>
     <div class="card amber"><h4>严格禁止</h4><p>生成式自由创作 · 未经验证的动态执行 · 直接修改 D0 底座 · 静默吞掉无法处理的异常（须上报）</p></div>
   </div>
-  <p>小脑必须在<strong>无网络、无大模型</strong>的情况下仍可完成 D0/D1 的常规裁决，且决策必须可解释、可 replay、可审计。典型实现形态：本地指令调度与代价模型引擎——多种目标架构下成百上千条指令的排优由内置代价模型与状态机瞬间完成，不烧 Token、精准可复现。</p>
+  <p>小脑必须在<strong>无网络、无大模型</strong>的情况下仍可完成 D0/D1 的常规裁决，且决策必须可解释、可 replay、可审计。典型实现形态：本地执行调度与确定性成本模型引擎——多种目标架构下成百上千项底层操作的执行策略优化由内置确定性成本模型与状态机瞬间完成，零 Token 开销、精准可复现。</p>
+  <h3>4.4 小脑的绝对确定性：三条硬边界</h3>
+  <p>在工程上，小脑必须被定义为<strong>确定性的绝对捍卫者</strong>：它是"压缩后的历史经验"加"基于物理法则的确定性成本模型"，只认规则、状态机与硬件画像，不做价值判断，也不产生任何形式的创造。</p>
+  <div class="tw"><table>
+    <thead><tr><th>硬边界</th><th>要求</th><th>判定方式</th></tr></thead>
+    <tbody>
+      <tr><td><b>离网可用</b>（Offline Capability）</td><td>网络断开、大脑完全不可达时，凭本地规则库与已升格记忆仍须维持不低于 <b>80%</b> 的常规事务</td><td>定期"断网演练"：屏蔽远程调用后跑全量常规用例，通过率即为指标</td></tr>
+      <tr><td><b>可生长</b>（Growable）</td><td>规则不是写死的常量，只能通过海马体的<b>经验升格</b>长出新的"肌肉记忆"</td><td>每条规则可追溯到经验来源与升格审计记录（24.3）</td></tr>
+      <tr><td><b>零推测</b>（No Speculation）</td><td>本地规则未命中时<b>必须立刻举手</b>抛出 <code>UnknownSignal</code>，禁止猜测、近似替代或"试着跑一下"</td><td>台账中不得出现"无规则命中却产生判定"的记录，出现即判为污染</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout warn"><span class="lbl">角色越界</span>小脑的能力上限是"确定地处理已知"，不是"合理地处理未知"。把小脑写成一个"小号大模型"，等于既消耗了 Token 又丢了确定性——这是最昂贵的一种退化。</div>
 </section>
 
 <!-- ================= CH5 ================= -->
 <section id="ch5">
   <h2 class="sec"><span class="num">第五章</span>大脑规范与神经递质协议 NTP</h2>
   <div class="clause"><span class="badge">第五条</span><p><strong>战略性唤醒。</strong>当且仅当小脑遇到本地规则库与记忆库均无法解决的疑难时，才允许唤醒大模型 API。上下文必须压缩至极简，仅传递<strong>特征向量与错误码</strong>，以极低 Token 消耗换取高级智能辅助。大脑输出是"建议"，不是"指令"。</p></div>
-  <h3>神经递质协议 NTP（Neural Transmitter Protocol）</h3>
+  <h3>5.2 神经递质协议 NTP：基础载荷</h3>
   <p>小脑与大脑之间的上下文传递必须结构化，禁止把全量代码或日志一股脑塞给大模型：</p>
   <pre style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto;font-size:12.5px;color:var(--ink2)"><code>{
-  "ntp_version": "1.0",
-  "signal_type": "DEADLOCK | PERF_REGRESSION | UNKNOWN",
+  "ntp_version": "1.1",
+  "direction": "uplink",
+  "signal_type": "UNKNOWN",
   "error_code": "E-CORE-0427",
-  "feature_vector": [0.12, -0.88, 0.33, "...高维压缩特征..."],
-  "context_digest": "sha256:9f3a...（摘要，非全文）",
+  "feature_vector": [0.12, -0.88, 0.33, 0.57],
+  "context_digest": "sha256:afcd135cddc2ffc17db5c430579ff01cf7d0b648d43685d7b38066c51d1870a3",
   "tried_rules": ["rule_114", "rule_208"],
   "memory_hits": [],
-  "constraints": ["D0 不可变", "目标架构约束"],
-  "budget_hint": { "max_tokens": 1200, "max_latency_ms": 8000 }
+  "constraints": ["D0_IMMUTABLE", "TARGET_ENV_LIMITED"],
+  "budget_hint": {
+    "max_tokens": 1200,
+    "max_latency_ms": 8000,
+    "priority": "D1"
+  }
 }</code></pre>
+  <p>上方是<b>合法 JSON</b>：字段值只放真实取值，不写"枚举全集 / 字段说明 / 中文括注"这类解释文字；解释一律放在下表。示例中的哈希均由固定样例文本经 SHA-256 计算得到，可直接解析。</p>
+  <h4 style="font-size:14.5px;margin:22px 0 10px">字段释义表（每一个值都可查）</h4>
+  <div class="tw"><table>
+    <thead><tr><th>字段</th><th>类型</th><th>白话解释</th><th>为什么必须有</th><th>取值 / 来源</th></tr></thead>
+    <tbody>
+      <tr><td><code>ntp_version</code></td><td>字符串</td><td>协议版本</td><td>收发双方对字段的理解必须一致</td><td><code>主版本.次版本</code>，示例 <code>1.1</code>；本文 5.2 定义</td></tr>
+      <tr><td><code>direction</code></td><td>枚举</td><td>消息往哪个方向走</td><td>一条信道双向复用，接收方据此分派处理</td><td><code>uplink</code> / <code>downlink</code>；本文 5.4 定义</td></tr>
+      <tr><td><code>signal_type</code></td><td>枚举</td><td>出了哪一类问题</td><td>大脑据此判断该调用哪类知识</td><td><code>UNKNOWN</code> / <code>DEADLOCK</code> / <code>PERF_REGRESSION</code> / <code>SEMANTIC_CONFLICT</code>；本文 5.4 定义</td></tr>
+      <tr><td><code>error_code</code></td><td>字符串</td><td>故障的身份证号</td><td>精确定位故障点，便于检索历史经验</td><td><code>E-&lt;域&gt;-&lt;四位编号&gt;</code>，示例 <code>E-CORE-0427</code>；上报方生成</td></tr>
+      <tr><td><code>feature_vector</code></td><td>数字数组</td><td>压缩后的数字特征</td><td>用少量数字代替全量上下文，把 Token 压到最低</td><td>每项归一化到 <code>[-1, 1]</code>，维数由协议约定；由 <code>digest</code> 原语产出</td></tr>
+      <tr><td><code>context_digest</code></td><td>字符串</td><td>原文的指纹，不是原文</td><td>既能校验上下文一致，又不泄露全文</td><td><code>sha256:&lt;64 位十六进制&gt;</code>；由 <code>digest</code> 原语产出</td></tr>
+      <tr><td><code>tried_rules</code></td><td>字符串数组</td><td>本地已经试过哪些规则</td><td>防止大脑重复推荐已失败的路径</td><td>规则 ID 列表；空数组表示尚未尝试</td></tr>
+      <tr><td><code>memory_hits</code></td><td>字符串数组</td><td>记忆库检索到了哪些经验</td><td>让大脑知道哪些经验已被用过</td><td>经验记录 ID 列表；空数组表示无命中</td></tr>
+      <tr><td><code>constraints</code></td><td>枚举数组</td><td>不可突破的边界</td><td>大脑方案必须满足，否则一律驳回</td><td><code>D0_IMMUTABLE</code>（人类主权不可让渡）/ <code>TARGET_ENV_LIMITED</code>（目标环境受限）；第零章 D0–D3</td></tr>
+      <tr><td><code>budget_hint.max_tokens</code></td><td>整数</td><td>这次最多允许花多少 Token</td><td>防止一次求助拖垮全局成本</td><td>正整数，示例 <code>1200</code>；本文 5.3 代价敏感条款</td></tr>
+      <tr><td><code>budget_hint.max_latency_ms</code></td><td>整数</td><td>最多允许多久返回</td><td>防止求助拖慢主流程</td><td>正整数（毫秒），示例 <code>8000</code>；同上</td></tr>
+      <tr><td><code>budget_hint.priority</code></td><td>枚举</td><td>本次求助的确定性等级</td><td>决定排队与抢占次序</td><td><code>D0</code>–<code>D3</code>，示例 <code>D1</code>；第零章 D0–D3</td></tr>
+    </tbody>
+  </table></div>
   <div class="callout quote"><span class="lbl">设计意图</span>只传特征、错误码、约束与预算，把 Token 压到最低——这是"用减法对抗加法"的落点。</div>
+
+  <h3>5.3 双脑的硬边界：谁都不能替谁活</h3>
+  <p>小脑与大脑的界限如果不钉死，系统必然掉进两个深渊：<b>大脑抢小脑的活</b>（高频事务上调，Token 泄漏、延迟爆炸），或<b>小脑硬干大脑的活</b>（规则缺失时强行推断，幻觉直入主干、并发死锁）。</p>
+  <div class="tw"><table>
+    <thead><tr><th>维度</th><th>小脑 Cerebellum</th><th>大脑 Main Brain</th></tr></thead>
+    <tbody>
+      <tr><td><b>本质</b></td><td>压缩后的历史经验 + 物理确定性成本模型</td><td>泛化推理与模式重组的引擎：跨域知识的连接器</td></tr>
+      <tr><td><b>物理载体</b></td><td>本地 / 边缘进程</td><td>远端推理服务（大模型只是它的载体，不是它本身）</td></tr>
+      <tr><td><b>处理对象</b></td><td>已知、高频、可判定</td><td>长尾、未知组合、语义冲突</td></tr>
+      <tr><td><b>单位成本</b></td><td>近零 Token、微秒级</td><td>昂贵且稀缺、秒级延迟</td></tr>
+      <tr><td><b>输出形态</b></td><td>确定性判定（可直接落地）</td><td>候选策略 Proposal / 伪代码（不可直接落地）</td></tr>
+      <tr><td><b>原语权限</b></td><td>可调用确定性原语与受限 <code>patch</code>（须先通过免疫）</td><td><b>禁止</b>触碰 <code>invoke</code> / <code>patch</code> 等副作用原语</td></tr>
+      <tr><td><b>失败方式</b></td><td>抛 <code>UnknownSignal</code> 上交</td><td>被驳回、超时、判为不可用</td></tr>
+    </tbody>
+  </table></div>
+  <div class="grid g3">
+    <div class="card amber"><h4>绝不负责执行</h4><p>大脑只能产出候选策略、伪代码或未构建的补丁；任何"直接改生产"的通道都必须不存在（对齐公理五）。</p></div>
+    <div class="card amber"><h4>代价敏感</h4><p>每次唤醒必须携带并遵守 <code>budget_hint</code>（Token / 延迟 / 优先级）；超预算即中止并记负样本，不得"再试一次"。</p></div>
+    <div class="card amber"><h4>接受被驳回</h4><p>方案被小脑否决、被门禁驳回是常态而非异常；驳回率是质量指标，不是要掩盖的缺陷。</p></div>
+  </div>
+  <div class="callout quote"><span class="lbl">判定口诀</span>能判定就不用推；必须推就说明不知；不知就上报，不上报即污染。</div>
+
+  <h3>5.4 NTP 双向信道：上行求救与下行建议</h3>
+  <p>双脑之间传递的不是"文本对话"，而是<b>压缩特征与待验证假设</b>。信道必须双向、异步、带沙盒保护。上行触发条件（三者任一）：本地规则未命中（<code>UnknownSignal</code>）、连续三次重试失败、并发死锁或执行级崩溃。</p>
+  <pre style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto;font-size:12.5px;color:var(--ink2)"><code>{
+  "ntp_version": "1.1",
+  "direction": "uplink",
+  "signal_type": "UNKNOWN",
+  "error_code": "E-CORE-0427",
+  "feature_vector": [0.12, -0.88, 0.33, 0.57],
+  "context_digest": "sha256:afcd135cddc2ffc17db5c430579ff01cf7d0b648d43685d7b38066c51d1870a3",
+  "tried_rules": ["rule_114", "rule_208"],
+  "attempt_count": 3,
+  "env_profile": {
+    "processor_capability": "GENERIC_CPU_V3",
+    "accelerator_count": 2,
+    "memory_tier": "HBM_2TIER",
+    "interconnect": "MESH_2D"
+  },
+  "budget_hint": {
+    "max_tokens": 1200,
+    "max_latency_ms": 8000,
+    "priority": "D1"
+  }
+}</code></pre>
+  <h4 style="font-size:14.5px;margin:22px 0 10px">上行增量字段释义（公共字段见 5.2 字段释义表，取值含义相同）</h4>
+  <div class="tw"><table>
+    <thead><tr><th>字段</th><th>类型</th><th>白话解释</th><th>为什么必须有</th><th>取值 / 来源</th></tr></thead>
+    <tbody>
+      <tr><td><code>attempt_count</code></td><td>整数</td><td>本地已经重试了几次</td><td>达到阈值（默认 3 次）才允许唤醒大脑，防止一有风吹草动就消耗 Token</td><td>正整数，示例 <code>3</code>；本文 5.4 触发条件</td></tr>
+      <tr><td><code>env_profile.processor_capability</code></td><td>枚举</td><td>目标处理器能力族</td><td>方案必须匹配执行环境，但绝不绑定具体产品型号</td><td>抽象档位，示例 <code>GENERIC_CPU_V3</code>；第 8 章硬件感知</td></tr>
+      <tr><td><code>env_profile.accelerator_count</code></td><td>整数</td><td>可用加速单元数量</td><td>决定大脑能否推荐并行或专用方案</td><td>非负整数，示例 <code>2</code>；第 8 章</td></tr>
+      <tr><td><code>env_profile.memory_tier</code></td><td>枚举</td><td>内存与存储档位</td><td>决定方案的内存假设是否成立</td><td>抽象档位，示例 <code>HBM_2TIER</code>；第 8 章</td></tr>
+      <tr><td><code>env_profile.interconnect</code></td><td>枚举</td><td>互连拓扑特征</td><td>决定数据搬运成本假设</td><td>抽象档位，示例 <code>MESH_2D</code>；第 8 章</td></tr>
+    </tbody>
+  </table></div>
+  <pre style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto;font-size:12.5px;color:var(--ink2)"><code>{
+  "ntp_version": "1.1",
+  "direction": "downlink",
+  "proposal_id": "p-7f3c",
+  "candidate": {
+    "format": "SEMANTIC_PATCH",
+    "digest": "sha256:51ce14ac8674ef2c7c9a623d9f38160737652ff04fedba92d5fc9f991242676a"
+  },
+  "confidence": 0.62,
+  "rationale_digest": "sha256:c3c4c8e4a969b52d457a33f82caf95781519c7433ad6be072d74a3c89d02cb0d",
+  "assumptions": ["ENV_STABLE", "NO_CONCURRENT_WRITE"],
+  "budget_spent": {
+    "tokens": 980,
+    "latency_ms": 5400
+  },
+  "status": "PENDING_VERIFICATION",
+  "rationale_binding": {
+    "algorithm": "ANS-1+SHA-256",
+    "summary_ref": "sum-9a1e",
+    "digest": "sha256:f535948ab4faff07fe8828a6dd2d99040fb0fdd55c06a9cfd7736448b0f38c76"
+  }
+}</code></pre>
+  <h4 style="font-size:14.5px;margin:22px 0 10px">下行字段释义表（每一个值都可查）</h4>
+  <div class="tw"><table>
+    <thead><tr><th>字段</th><th>类型</th><th>白话解释</th><th>为什么必须有</th><th>取值 / 来源</th></tr></thead>
+    <tbody>
+      <tr><td><code>proposal_id</code></td><td>字符串</td><td>这次建议的编号</td><td>追踪、驳回、引用都要靠它</td><td><code>p-&lt;十六进制短码&gt;</code>，示例 <code>p-7f3c</code>；大脑生成</td></tr>
+      <tr><td><code>candidate.format</code></td><td>枚举</td><td>候选物的表达形式</td><td>明确它<b>不是</b>可执行物</td><td><code>SEMANTIC_PATCH</code>（语义层补丁）/ <code>PSEUDOCODE</code>（伪代码）；本文 5.3</td></tr>
+      <tr><td><code>candidate.digest</code></td><td>字符串</td><td>候选物的指纹，不是正文</td><td>大脑不内联内容，只给可校验引用；落地前必须从沙盒按指纹取回并重新验证</td><td><code>sha256:&lt;64 位十六进制&gt;</code>；第 8 章沙盒构建</td></tr>
+      <tr><td><code>confidence</code></td><td>数字</td><td>大脑自评的把握程度</td><td>用于排序与风险提示，<b>绝不用于授权</b></td><td><code>[0, 1]</code> 浮点，示例 <code>0.62</code>；本文 5.3</td></tr>
+      <tr><td><code>rationale_digest</code></td><td>字符串</td><td>推理摘要的指纹</td><td>人类可读摘要可另附于折一，此字段只放可校验指纹</td><td><code>sha256:&lt;64 位十六进制&gt;</code>；第 13 章折一认知摘要</td></tr>
+      <tr><td><code>assumptions</code></td><td>字符串数组</td><td>尚未验证的前提清单</td><td>让审查者一眼看到方案的脆弱点</td><td>假设标识列表，示例 <code>ENV_STABLE</code> / <code>NO_CONCURRENT_WRITE</code></td></tr>
+      <tr><td><code>budget_spent.tokens</code></td><td>整数</td><td>这次实际花掉多少 Token</td><td>度量大脑成本，用于限频</td><td>非负整数，示例 <code>980</code>；本文 5.5</td></tr>
+      <tr><td><code>budget_spent.latency_ms</code></td><td>整数</td><td>这次实际耗时</td><td>度量大脑延迟，用于限频</td><td>非负整数（毫秒），示例 <code>5400</code>；本文 5.5</td></tr>
+      <tr><td><code>status</code></td><td>枚举</td><td>永远是"待验证"</td><td>从协议层杜绝"大脑已批准"这种状态</td><td>固定为 <code>PENDING_VERIFICATION</code>；本文 5.4</td></tr>
+      <tr><td><code>rationale_binding</code></td><td>对象</td><td>把人类可读摘要与这条建议焊死的凭证</td><td>防止"批准 A、展示 B"式的摘要掉包</td><td>见下方 ANS-1 规范化序列化小节</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout quote"><span class="lbl">为什么候选只传指纹</span>如果大脑把补丁正文内联进消息，接收方就可能被绕过验证直接使用，等于给"幻觉直入主干"开了一道门。只传 <code>candidate.digest</code>，强制接收方先到沙盒按指纹取回并重新验证——这是公理三"可证明的交给证明"在协议层的落点。</div>
+  <h4 style="font-size:14.5px;margin:22px 0 10px">ANS-1 规范化序列化与摘要绑定（规范性）</h4>
+  <p>同一个对象在不同语言里序列化出的字节可能不同（键序、空白、Unicode 转义、数字写法），导致同一份数据算出不同摘要。因此凡进入 <code>*_digest</code> 与 <code>rationale_binding</code> 的哈希，必须先经 <b>ANS-1（ANE Normalized Serialization v1）</b> 规范化再取 SHA-256：</p>
+  <ol>
+    <li><b>键排序</b>：对象成员按键的 UTF-16 码元升序排列（与 RFC 8785 JCS 一致，<b>引用</b>）；</li>
+    <li><b>零空白</b>：不插入空格、缩进或换行；</li>
+    <li><b>字符串</b>：仅转义 JSON 控制字符，非 ASCII 字符直接以 UTF-8 输出，不展开为 <code>\uXXXX</code>；</li>
+    <li><b>数字</b>：整数按十进制原样输出；浮点数用定点有效位表示，禁止科学计数法与末尾零；非有限数禁止进入载荷；</li>
+    <li><b>数组</b>：保持原顺序，不排序。</li>
+  </ol>
+  <p>绑定摘要的输入固定为五个字段：<code>ANS-1({algorithm, proposal_id, rationale_digest, summary_ref, summary_text_canonical})</code>，结果写入 <code>rationale_binding.digest</code>。<b>权威文本是英文规范文本</b>：中文等译文必须携带 <code>translation_of: summary_ref</code>，不参与绑定计算——否则翻译差异会让同一条建议出现多个"合法"摘要。</p>
+  <div class="callout warn"><span class="lbl">规范性等级</span><b>【必须】</b> 所有 <code>sha256:</code> 摘要字段的生成都必须经过 ANS-1；<b>【必须】</b> 折一展示的认知摘要必须携带 <code>summary_ref</code> 与可重算的绑定摘要；<b>【可选】</b> 提供多语言摘要时，译文须标注 <code>translation_of</code>。机器可读契约见 <code>schemas/ntp-1.1.schema.json</code>；可运行工具见 <code>tools/validate_ntp.py</code>（<code>validate</code> 为 CI 门禁，<code>canonicalize</code> 输出 ANS-1 形式与摘要）。</div>
+  <div class="callout warn"><span class="lbl">关键语义</span>下行载荷<b>不是指令，而是一个待验证的假设</b>。<code>status</code> 永远是 <code>PENDING_VERIFICATION</code>，不存在"大脑已批准"这种状态。</div>
+  <h4 style="font-size:14.5px;margin:22px 0 10px">信道的四大铁律</h4>
+  <div class="tw"><table>
+    <thead><tr><th>铁律</th><th>要求</th><th>违反后果</th></tr></thead>
+    <tbody>
+      <tr><td><b>禁全量上下文</b></td><td>禁止把源码、日志、会话原文整体投喂；必须经 <code>digest</code> 压缩为特征向量、AST 摘要或错误栈摘要</td><td>Token 爆炸、延迟不可控、成本失控</td></tr>
+      <tr><td><b>异步非阻塞</b></td><td>上行发出后当前任务挂起为 <code>Pending</code>，小脑转去处理其他任务；大脑回调以中断方式唤醒</td><td>系统假死、吞吐归零</td></tr>
+      <tr><td><b>沙盒隔离</b></td><td>下行产物只能在沙盒或隔离验证环境中构建与双轨验证，绝不直接进入生产执行</td><td>污染直入主干，不可回滚</td></tr>
+      <tr><td><b>强制留痕</b></td><td>每一次上行的载荷、下行的回复、最终是否采纳，全量写入台账与记忆库</td><td>无法回溯、无法升格、无法复盘</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>5.5 通信状态机、信道仲裁与限频</h3>
+  <p>一条受控的双脑链路必须走完整状态机，不允许任何状态被跳过：</p>
+  <div class="diagram">
+    <div class="mermaid">
+stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> PENDING: 上行求救（挂起当前任务）
+    PENDING --> PROPOSAL: 收到下行建议
+    PENDING --> UNAVAILABLE: 超时 / 不可达
+    PROPOSAL --> VERIFYING: 进入沙盒双轨验证
+    VERIFYING --> APPLIED: 验证通过 + 授权链完整
+    VERIFYING --> ROLLBACK: 验证失败
+    APPLIED --> LEDGER: 写入台账与记忆
+    ROLLBACK --> LEDGER: 记录负样本
+    UNAVAILABLE --> DEGRADED: 切断 escalate，退入纯小脑态
+    LEDGER --> IDLE
+    DEGRADED --> IDLE
+    </div>
+    <div class="cap">图：双脑通信状态机——挂起、验证、回滚与降级都必须留痕</div>
+  </div>
+  <div class="tw"><table>
+    <thead><tr><th>状态</th><th>语义</th><th>禁止事项</th></tr></thead>
+    <tbody>
+      <tr><td><code>PENDING</code></td><td>已求助，等待中，任务让出执行权</td><td>禁止忙等阻塞；禁止重复上行同一信号（须先去重合并）</td></tr>
+      <tr><td><code>PROPOSAL</code></td><td>已收到建议，尚未验证</td><td>禁止直接执行候选</td></tr>
+      <tr><td><code>VERIFYING</code></td><td>沙盒内构建 + 双轨验证</td><td>禁止跳过回归直接放行</td></tr>
+      <tr><td><code>APPLIED</code></td><td>通过验证且授权完整</td><td>禁止无凭证写入</td></tr>
+      <tr><td><code>ROLLBACK</code></td><td>验证失败，回退并记负样本</td><td>禁止静默丢弃失败样本</td></tr>
+      <tr><td><code>DEGRADED</code></td><td>大脑不可用，纯小脑态</td><td>禁止在此期间接受任何突变类变更</td></tr>
+    </tbody>
+  </table></div>
+  <div class="grid g2">
+    <div class="card blue"><h4>信道仲裁：紧急度优先</h4><p>D0/D1 级异常（骨架与骨架逻辑受损）优先于 D2 级业务异常，D3 级生成类请求最低。</p></div>
+    <div class="card blue"><h4>信道仲裁：预算优先</h4><p>同等紧急度下按剩余 Token 配额与延迟上限排序；接近耗尽时只放行 D0/D1；配额耗尽即打回小脑保守规则并记账（不排队、不重试）。</p></div>
+  </div>
+  <div class="tw"><table>
+    <thead><tr><th>阶段</th><th>上行频率策略</th><th>目的</th></tr></thead>
+    <tbody>
+      <tr><td>探索模式 Explore</td><td>允许高频上行，直至样本覆盖率达到阈值</td><td>快速收集长尾样本，避免规则库长期空转</td></tr>
+      <tr><td>利用模式 Exploit</td><td>严格限频：单位时间配额 + 冷却窗口 + 同源信号去重</td><td>降本；防止以"高频求助"掩盖小脑规则缺失</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout quote"><span class="lbl">约束</span>限频参数属于 D1 级配置，调整须走门禁；"临时放宽限频"不得作为绕过预算的手段。</div>
+  <h3>超时与去重参数（默认区间）</h3>
+  <div class="tw"><table>
+    <thead><tr><th>参数</th><th>默认区间</th><th>判定纪律</th></tr></thead>
+    <tbody>
+      <tr><td>上行 <code>PENDING</code> 超时</td><td>按 D 级设定：D0 秒级 / D1 十秒级 / D2 分钟级 / D3 不设实时等待</td><td>超时一律走 <code>DEGRADED</code>（21.3b），不得记为"大脑拒绝"，更不得静默重试</td></tr>
+      <tr><td>同源信号合并窗口</td><td>默认取"同一错误码 + 同一环境画像 + 同一规则缺口"一致者合并</td><td>只压缩重复上行，不丢弃差异样本；窗口内首次样本必须留痕</td></tr>
+      <tr><td>单任务最大上行次数</td><td>探索模式按预算放宽；利用模式默认 1–3 次</td><td>超限强制打回小脑保守规则，判为"规则缺口"而非"大脑无能"，计入被打回率</td></tr>
+      <tr><td>冷却窗口</td><td>同一来源两次上行之间须隔离可配置窗口</td><td>防止以高频求助掩盖规则缺失（5.5 限频 / 12.2 反模式）</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout quote"><span class="lbl">参数纪律</span>取值属 E 层证据（可观测、可调），不写死在 N 层；但<b>参数缺失不得成为跳过超时判定的理由</b>——未配置时按区间保守端点执行。</div>
+  <h3>5.6 模型载体治理（Model Carrier Governance）</h3>
+  <div class="callout warn"><span class="lbl">根本前提</span>大脑是"泛化推理与模式重组引擎"，<b>具体模型只是物理载体</b>（5.3）。既然载体可替换，就必须像管理依赖一样管理它，否则"可替换"只是口号。</div>
+  <ul>
+    <li><b>载体不得成为架构依赖</b>：规范性条款、原语链与规则不得引用特定模型名称；替换载体不得改变 N 层条款。</li>
+    <li><b>选型六判据</b>（引入或替换须逐项留痕）：任务能力覆盖 · 延迟与吞吐 · 单位成本（<code>budget_hint</code>）· 可复现性 · 安全与数据边界 · 可退出性（替代载体与回滚路径）。</li>
+    <li><b>模型卡为强制产物</b>：记录版本、知识截止、已知偏差、适用与禁用场景、评测结果与责任人；随 AI-BOM（22.3）纳入版本控制，缺失即未通过接入门禁。</li>
+    <li><b>升级与退役走同一门禁</b>：新载体先经评测者纪律（29.3）与双轨验证（7.x），灰度替换；旧载体保留一个可回滚周期后退役，记录原因与替代关系。</li>
+    <li><b>载体差异可观测</b>：记录每次调用的载体标识、版本与置信度；跨载体结论不一致进入台账按 16.3 冲突处理，不得择一沉默采信。</li>
+  </ul>
+  <div class="callout quote"><span class="lbl">两面一体</span>载体治理管"谁来推"，提示词资产治理（18.4）管"怎么问"——二者共同决定大脑输出的可信度与成本。</div>
 </section>
 
 <!-- ================= CH6 ================= -->
@@ -456,18 +736,18 @@ stateDiagram-v2
     <div class="card teal"><div class="ic ic-teal">§</div><h4>统计轨</h4><p>全量回归、模糊测试、影子运行。回答："它在实际行为上正确吗？"失败→阻断并回滚。</p></div>
   </div>
   <p>两轨<strong>必须同时通过</strong>（逻辑与），任一失败即判定为污染。</p>
-  <div class="callout quote"><span class="lbl">门禁责任链</span>AI 候选方案 → 符号轨（等价性/一致性校验）→ 统计轨（回归/模糊）→ 人类授权（若触及 D0/D1 或生产环境）→ 允许合并/热加载 → 全程台账留痕（可追溯、可 replay）。</div>
+  <div class="callout quote"><span class="lbl">门禁责任链</span>AI 候选方案 → 符号轨（等价性/一致性校验）→ 统计轨（回归/模糊）→ 人类授权（若触及 D0/D1 或生产环境）→ 允许合并/在线加载 → 全程台账留痕（可追溯、可 replay）。</div>
 </section>
 
 <!-- ================= CH8 ================= -->
 <section id="ch8">
-  <h2 class="sec"><span class="num">第八章</span>自愈规范：中间表示层即时修复法则</h2>
-  <div class="clause"><span class="badge">第八条</span><p><strong>即时修复法则（Instant Repair）。</strong>软件生命体的底座必须包含统一中间表示层。当发生任何运行时异常、性能瓶颈或逻辑错乱时，中间表示层应具备跨越高层源码与底层指令的"全知视角"，随时在底层进行指令级重构、热补丁生成或优化，实现"无需重启、无需人工干预、随时就地修复"的自愈能力。</p></div>
+  <h2 class="sec"><span class="num">第八章</span>自愈规范：统一语义层即时修复法则</h2>
+  <div class="clause"><span class="badge">第八条</span><p><strong>即时修复法则（Instant Repair）。</strong>软件生命体的底座必须包含统一语义层。当发生任何运行时异常、性能瓶颈或逻辑错乱时，统一语义层应具备跨越高层设计与底层执行的"全知视角"，随时在底层进行底层执行逻辑重构、在线修复生成或优化，实现"无需重启、无需人工干预、随时就地修复"的自愈能力。</p></div>
   <div class="grid g2">
-    <div class="card amber"><h4>传统软件：死亡循环</h4><p>出错 → 崩溃 → 停机 → 人翻源码 → 改高级语言 → 重新编译 → 重新部署。周期极长，极其脆弱。</p></div>
-    <div class="card teal"><h4>中间表示驱动：随时自愈</h4><p>所有高层表示与机器指令最终流经统一中间表示层，拥有上帝视角，直接在中间表示层做"微创手术"，无需触碰杂乱源码。</p></div>
+    <div class="card amber"><h4>传统软件：死亡循环</h4><p>出错 → 崩溃 → 停机 → 人翻源码 → 改高级语言 → 重新构建 → 重新部署。周期极长，极其脆弱。</p></div>
+    <div class="card teal"><h4>语义层驱动：随时自愈</h4><p>所有高层表示与机器级执行代码最终流经统一语义层，拥有上帝视角，直接在统一语义层做"微创手术"，无需触碰杂乱源码。</p></div>
   </div>
-  <div class="callout warn"><span class="lbl">关键风险的正面回应 · 三重保险</span>AI 生成 + 运行时热修复 = 双重不确定性叠加，必须：① <b>可回滚</b>——热补丁前建检查点，失败自动 rollback；② <b>可证明</b>——补丁须通过符号轨等价验证；③ <b>可审计</b>——每次热修复写入台账与经验库，人类可事后复核。</div>
+  <div class="callout warn"><span class="lbl">关键风险的正面回应 · 三重保险</span>AI 生成 + 运行时热修复 = 双重不确定性叠加，必须：① <b>可回滚</b>——在线修复前建检查点，失败自动 rollback；② <b>可证明</b>——补丁须通过符号轨等价验证；③ <b>可审计</b>——每次热修复写入台账与经验库，人类可事后复核。</div>
   <div class="diagram">
     <div class="mermaid">
 flowchart TD
@@ -478,30 +758,30 @@ flowchart TD
     B --> V
     V -->|失败| RB["回滚 记录 上报"]
     V -->|通过| CP["建立检查点快照"]
-    CP --> HP["中间表示层微创热补丁 + 热加载"]
+    CP --> HP["统一语义层在线微创修复 + 在线加载"]
     HP --> W["写入经验库"]
     W --> OK["自愈完成 · 系统更强"]
     </div>
-    <div class="cap">图 4 · 中间表示层自愈决策控制流（含回滚与审计分支）</div>
+    <div class="cap">图 4 · 统一语义层自愈决策控制流（含回滚与审计分支）</div>
   </div>
-  <h3>8.5 硬件拓扑感知与自适应编译排优</h3>
-  <div class="callout quote"><span class="lbl">对应 2.3</span>同一份中间表示，在不同物理载体上的"最优"指令序列并不相同——脱离硬件谈修复，可能修好了逻辑却拖垮了性能。</div>
+  <h3>8.5 硬件拓扑感知与执行策略自适应优化</h3>
+  <div class="callout quote"><span class="lbl">对应 2.3</span>同一份语义层，在不同物理载体上的"最优"执行方案并不相同——脱离硬件谈修复，可能修好了逻辑却拖垮了性能。</div>
   <div class="grid g2">
-    <div class="card amber"><h4>强制要求</h4><p>微创补丁与编译排优必须结合当前运行环境的物理特征自适应决策：指令集与扩展能力、加速单元核数与类型、内存层级与带宽、互连与访存亲和性。禁止"一刀切"补丁。</p></div>
+    <div class="card amber"><h4>强制要求</h4><p>微创补丁与自适应优化必须结合当前运行环境的物理特征自适应决策：处理器能力、加速单元核数与类型、内存层级与带宽、互连与数据访问亲和性。禁止"一刀切"补丁。</p></div>
     <div class="card blue"><h4>画像获取</h4><p>启动时探测、变更时刷新，纳入可观测台账；画像缺失时降级为保守基线并告警（见第二十一章），不得臆测硬件能力。</p></div>
-    <div class="card teal"><h4>代价模型联动</h4><p>排优代价模型（见第四章小脑）须以硬件画像为输入，选择指令调度、算子融合与并行策略；同一补丁在不同画像下可产出不同变体，各变体均须独立通过双轨验证。</p></div>
-    <div class="card purple"><h4>可复现</h4><p>补丁变体须记录"画像指纹 → 选中的排优策略"，使同一环境下的修复可被复现与回放。</p></div>
+    <div class="card teal"><h4>确定性成本模型联动</h4><p>自适应优化确定性成本模型（见第四章小脑）须以硬件画像为输入，选择执行调度、操作合并与并行策略；同一补丁在不同画像下可产出不同变体，各变体均须独立通过双轨验证。</p></div>
+    <div class="card purple"><h4>可复现</h4><p>补丁变体须记录"画像指纹 → 选中的自适应优化策略"，使同一环境下的修复可被复现与回放。</p></div>
   </div>
   <div class="tw"><table>
-    <thead><tr><th>物理特征</th><th>排优影响</th><th>画像缺失时降级</th></tr></thead>
+    <thead><tr><th>物理特征</th><th>自适应优化影响</th><th>画像缺失时降级</th></tr></thead>
     <tbody>
-      <tr><td>指令集 / 扩展能力</td><td>指令选择、向量化路径</td><td>保守基线指令集</td></tr>
+      <tr><td>处理器能力 / 扩展能力</td><td>执行路径选择、向量化路径</td><td>保守基线处理器能力</td></tr>
       <tr><td>加速单元核数与类型</td><td>并行度、算子卸载决策</td><td>关闭卸载，主机路径</td></tr>
       <tr><td>内存层级与带宽</td><td>数据布局、缓存分块</td><td>默认分块参数</td></tr>
-      <tr><td>互连与访存亲和</td><td>线程绑定、数据放置</td><td>忽略亲和约束</td></tr>
+      <tr><td>互连与数据访问亲和</td><td>线程绑定、数据放置</td><td>忽略亲和约束</td></tr>
     </tbody>
   </table></div>
-  <div class="callout"><span class="lbl">通用性声明</span>本条只规定"必须感知并自适应硬件物理特征"这一范式要求，不绑定任何具体指令集、加速架构或编译器实现，适用于从边缘设备到数据中心的异构环境。</div>
+  <div class="callout"><span class="lbl">通用性声明</span>本条只规定"必须感知并自适应硬件物理特征"这一范式要求，不绑定任何具体处理器能力、加速架构或构建器实现，适用于从边缘设备到数据中心的异构环境。</div>
 </section>
 
 <!-- ================= CH9 ================= -->
@@ -509,7 +789,7 @@ flowchart TD
   <h2 class="sec"><span class="num">第九章</span>人机协同：人类主权与分级授权</h2>
   <p>人类不是被移除，而是被提升到"立法者 / 裁决者"的位置。</p>
   <div class="clause"><span class="badge">第九条</span><p><strong>一票否决权。</strong>禁止任何 AI 智能体在未经人类明确授权的情况下，直接修改主分支代码或向生产环境下发指令。人机分离，权责清晰。</p></div>
-  <div class="clause"><span class="badge">第十条</span><p><strong>全景白盒。</strong>所有底层指令映射、编译排优、图谱重构必须提供全局"上帝视角"台账。生命体不能存在黑盒。</p></div>
+  <div class="clause"><span class="badge">第十条</span><p><strong>全景白盒。</strong>所有底层操作映射、自适应优化、图谱重构必须提供全局"上帝视角"台账。生命体不能存在黑盒。</p></div>
   <div class="callout quote"><span class="lbl">编号修订说明</span>条款编号为公理七条 + 规范条款十条，连续无重复。</div>
   <h3>分级授权模型（破解"人类瓶颈"）</h3>
   <div class="tw"><table>
@@ -562,7 +842,7 @@ flowchart TB
     B --> C["③ 协同 Collaborate<br/>NTP 唤醒大脑 · 人类授权"]
     C --> D["④ 验证 Verify<br/>免疫双轨 · 防自欺"]
     D --> E["⑤ 沉淀 Consolidate<br/>经验写入记忆库"]
-    E --> F["⑥ 自愈 Repair<br/>中间表示层微创热补丁"]
+    E --> F["⑥ 自愈 Repair<br/>统一语义层在线微创修复"]
     F --> A
     style A fill:#EEEDFE,stroke:#534AB7,color:#26215C
     style B fill:#E6F1FB,stroke:#185FA5,color:#042C53
@@ -580,6 +860,35 @@ flowchart TB
     <div class="card teal"><div class="ic ic-teal">3</div><h4>安全复利</h4><p>门禁与经验互相强化 → 误报下降、漏报趋零 → 系统更可信。</p></div>
   </div>
   <div class="callout quote"><span class="lbl">开发即维护，维护即开发</span>传统是"建一栋楼，坏了再修"——割裂、decaying；ANE 像一棵树，一边生长一边自我修护，同频协同。<b>运行即感知，感知即维护，维护即开发，开发即进化。</b></div>
+
+  <h3>10.4 演进速度：五步算法（顺序不可颠倒）</h3>
+  <div class="callout warn"><span class="lbl">法则一</span>反馈循环的转速，决定生命体的生存权。速度不是效率指标，而是最高级的护城河——同样的洞察，谁先完成"感知→裁决→验证→沉淀"的闭环，谁就拿到下一轮的样本。</div>
+  <p>生命体在重构、优化或生成任何代码块时，<b>必须</b>遵守以下顺序。顺序本身就是规范的一部分：</p>
+  <div class="tw"><table>
+    <thead><tr><th>步</th><th>动作</th><th>具体做什么</th><th>完成判据（可验证）</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><b>删除 Delete</b></td><td>先删伪需求、死代码、为想象中未来预留的过度抽象</td><td>删除后构建与全量回归全绿，且净代码量为负</td></tr>
+      <tr><td>2</td><td><b>简化 Simplify</b></td><td>降低模块耦合、消除重复路径、收窄接口面</td><td>圈复杂度与跨模块依赖数不升；接口入参减少</td></tr>
+      <tr><td>3</td><td><b>优化 Optimize</b></td><td>在简化后的结构上做底层执行策略优化与确定性成本模型调参</td><td>正确性不变前提下指标改善，且结果可复现（8.5）</td></tr>
+      <tr><td>4</td><td><b>加速 Accelerate</b></td><td>提并发吞吐：批处理、流水线、缓存、按硬件拓扑分配</td><td>无新增竞态与共享状态；压测曲线可解释</td></tr>
+      <tr><td>5</td><td><b>自动化 Automate</b></td><td>最后才固化流水线、门禁与巡检</td><td>人工介入点可被逐条枚举</td></tr>
+    </tbody>
+  </table></div>
+  <div class="grid g3">
+    <div class="card amber"><h4>先自动化再删除</h4><p>等于把垃圾堆流水线化：产出越快，技术负债越厚，且负债被"绿色流水线"掩盖。</p></div>
+    <div class="card amber"><h4>先优化再简化</h4><p>在最复杂的结构上做微调：优化收益被复杂度吃掉，且难以证明等价。</p></div>
+    <div class="card amber"><h4>跳过加速直接自动化</h4><p>把串行瓶颈固化进流水线：之后每次提速都要拆流水线。</p></div>
+  </div>
+  <div class="callout quote"><span class="lbl">与公理的关系</span>五步算法是公理一（动静二元）在"演进动作"上的投影——删除与简化在收缩静态骨架，优化与加速在扩张动态能力，自动化只负责把已验证的路径固化，<b>不产生新的正确性</b>。</div>
+
+  <h3>10.5 执行纪律：结构化上报、当轮留痕、可灰度</h3>
+  <div class="grid g2">
+    <div class="card blue"><h4>一 · 结构化上报</h4><p>向上求助必须结构化陈述三要素：<b>问题是什么 · 已尝试过什么 · 下一步需要什么</b>。冗长铺陈、情绪化描述、无关上下文一律剔除——这既是 NTP 上行载荷的人类可读版本（5.4），也是组织层对信息熵的治理。</p></div>
+    <div class="card amber"><h4>二 · 异常当轮上报</h4><p>假绿勾、静默失败、违规变异、门禁绕过，必须在<b>发生当轮</b>上报台账。藏匿坏消息的系统，免疫系统应直接判定为<b>污染</b>并降级——未被记录的失败会以"经验"形式二次污染记忆库。</p></div>
+    <div class="card teal"><h4>三 · 高内聚融合</h4><p>能用高内聚模块在底层融合的调用链，不拆成冗长跨进程微服务链——每次跨边界调用都在支付序列化、网络与可观测性三重损耗。硬边界：<b>不得把 D0 骨架逻辑糊进业务模块</b>，不得为减少调用而牺牲可替换性。</p></div>
+    <div class="card purple"><h4>四 · 自动灰度模式</h4><p>确定性把握达 <b>99%</b> 即进入灰度，而不是等待 100%——等待完美等同于关闭反馈循环。灰度必须同时有：可回滚检查点、单向收紧的降级路径（21.3）、可观测的成功判据。</p></div>
+  </div>
+  <div class="callout warn"><span class="lbl">边界</span>门禁与灰度不是对立面：<b>门禁管"能不能发"，灰度管"发多少、发给谁"</b>。门禁未过者，灰度无意义。</div>
 </section>
 
 <!-- ================= CH11 ================= -->
@@ -593,7 +902,7 @@ flowchart TB
       <tr><td><strong>L1</strong></td><td>工具辅助</td><td>AI 补全/建议，人全量审</td><td>有辅助但无自动闭环</td></tr>
       <tr><td><strong>L2</strong></td><td>小脑就位</td><td>本地规则拦截高频决策，零 Token</td><td>常规决策不经大模型</td></tr>
       <tr><td><strong>L3</strong></td><td>记忆闭环</td><td>经验存储 + 检索增强生效</td><td>同类问题不重复问大脑</td></tr>
-      <tr><td><strong>L4</strong></td><td>自愈运行</td><td>中间表示层热补丁 + 飞轮转动</td><td>运行时可无需重启修复</td></tr>
+      <tr><td><strong>L4</strong></td><td>自愈运行</td><td>统一语义层在线修复 + 飞轮转动</td><td>运行时可无需重启修复</td></tr>
       <tr><td><strong>L5</strong></td><td>生命体</td><td>开发维护一体、受控自我迭代</td><td>变异—验证—沉淀全自动，人类仅战略授权</td></tr>
     </tbody>
   </table></div>
@@ -612,10 +921,15 @@ flowchart TB
       <tr><td>记忆命中率</td><td>检索增强命中经验 / 大脑唤醒次数</td><td>↑</td></tr>
       <tr><td>经验升格率</td><td>沉淀为小脑规则的经验占比</td><td>↑</td></tr>
       <tr><td>门禁首次通过率</td><td>首次即通过双轨的方案占比</td><td>↑</td></tr>
-      <tr><td>自愈成功率</td><td>热补丁成功 / 热补丁尝试</td><td>↑</td></tr>
+      <tr><td>自愈成功率</td><td>在线修复成功 / 在线修复尝试</td><td>↑</td></tr>
       <tr><td>回滚率</td><td>失败回滚 / 总变更</td><td>↓</td></tr>
       <tr><td>MTTR</td><td>平均修复时间</td><td>↓</td></tr>
       <tr><td>静默失败数</td><td>未上报即吞掉异常的次数</td><td>= 0（红线）</td></tr>
+      <tr><td>反馈闭环时长</td><td>从信号产生到经验沉淀完成的耗时</td><td>↓（速度法则核心指标）</td></tr>
+      <tr><td>净代码量变化</td><td>每轮演进中删除与新增的行数之差</td><td>应为负或接近零</td></tr>
+      <tr><td>配额耗尽率</td><td>预算耗尽被拒请求 / 全部上行请求</td><td>观察项；突升触发限频复核</td></tr>
+      <tr><td>被打回率</td><td>仲裁打回小脑保守规则的请求 / 全部上行请求</td><td>↓ 高值指向规则缺口，非大脑无能</td></tr>
+      <tr><td>D0/D1 抢占率</td><td>高优先级抢占低优先级次数 / 总仲裁次数</td><td>观察项；审计仲裁公平性（5.5）</td></tr>
     </tbody>
   </table></div>
   <h3>反模式清单（明确的"不要"）</h3>
@@ -627,9 +941,12 @@ flowchart TB
       <tr><td>静默失败 / 假绿勾</td><td>掩盖问题，系统腐化</td><td>立即报错、阻断、记录</td></tr>
       <tr><td>未验证经验入库</td><td>记忆污染，负向飞轮</td><td>免疫验证后写入</td></tr>
       <tr><td>无快照热更新</td><td>不可回滚，灾难风险</td><td>检查点 + 自动 rollback</td></tr>
-      <tr><td>万能大模型（无小脑）</td><td>卡死、烧钱、不可靠</td><td>小脑优先</td></tr>
+      <tr><td>万能大模型（无小脑）</td><td>卡死、成本失控、不可靠</td><td>小脑优先</td></tr>
       <tr><td>黑盒不可解释</td><td>不可控、不可信</td><td>全景白盒台账</td></tr>
       <tr><td>规则库无限膨胀</td><td>小脑退化为新巨石</td><td>经验升格 + 衰减归档</td></tr>
+      <tr><td>先自动化再简化</td><td>把技术负债流水线化</td><td>五步算法顺序（10.4）</td></tr>
+      <tr><td>以高频求助掩盖规则缺失</td><td>小脑空心化，成本随流量线性上升</td><td>限频 + 未命中率归因到规则缺口（5.5）</td></tr>
+      <tr><td>小脑强行推测（无规则也给答案）</td><td>幻觉直入主干，不可回溯</td><td>抛 <code>UnknownSignal</code>，禁止近似替代（4.4）</td></tr>
     </tbody>
   </table></div>
 </section>
@@ -674,7 +991,80 @@ flowchart TB
     <div class="card amber"><h4>两折不可合并</h4><p>折一只呈现与解释、不得触发副作用；折二只承载人的确定性意志、不得由 AI 自动生成授权。绕过折二的自动落地视为违反公理五。</p></div>
     <div class="card teal"><h4>摘要必带依据 + 绑定须精确</h4><p>认知摘要须同时给出依据链（经验/证据/验证结果），不得只给结论；意图绑定须精确指向具体候选动作（动作 ID + 参数 + 目标环境），防止"批准 A、执行 B"。</p></div>
   </div>
+  <h4 style="font-size:14.5px;margin:22px 0 10px">认知摘要的机器可读绑定（与 5.4 对接）</h4>
+  <p>折一的认知摘要不能只是给人看的自然语言，它必须同时是一份可校验凭证。最小结构：</p>
+  <pre style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto;font-size:12.5px;color:var(--ink2)"><code>{
+  "summary_ref": "sum-9a1e",
+  "proposal_id": "p-7f3c",
+  "rationale_digest": "sha256:c3c4c8e4a969b52d457a33f82caf95781519c7433ad6be072d74a3c89d02cb0d",
+  "summary_text_canonical": "Local rules did not hit; apply the semantic-layer patch in the sandbox and decide after dual-track verification.",
+  "evidence_refs": ["exp_077", "run_2048"],
+  "risk_codes": ["D1_ENV_UNVERIFIED", "MEMORY_HIT_LOW"],
+  "binding_digest": "sha256:f535948ab4faff07fe8828a6dd2d99040fb0fdd55c06a9cfd7736448b0f38c76",
+  "translation_of": null
+}</code></pre>
+  <div class="callout warn"><span class="lbl">绑定纪律</span><b>【必须】</b> <code>binding_digest</code> 按 5.4 的 ANS-1 规则，对 <code>algorithm + proposal_id + rationale_digest + summary_ref + summary_text_canonical</code> 重算；验证者用台账中的下行载荷重算，不一致即拒绝展示。<b>【必须】</b> <code>proposal_id</code> 与 <code>rationale_digest</code> 必须与下行载荷逐字相同；摘要正文不得脱离绑定被单独修改。<b>【可选】</b> 中文等非英文摘要以 <code>translation_of: "sum-9a1e"</code> 声明译文身份，不参与绑定计算。</div>
+  <p>这样"看得懂"与"没被掉包"由同一个凭证保证——人看到的那段文字，就是机器签过的那段文字。</p>
   <div class="callout"><span class="lbl">全程留痕</span>两折交互的每一次展开、摘要、绑定、否决均写入台账并生成 attest 凭证，供回放审计。该模式是"全景白盒"（公理六）与"人类主权"（公理五）在交互层的合流：折一保证人<b>看得懂</b>，折二保证人<b>说了算</b>。</div>
+  <h3>13.5 交互追溯：日志形式与回放</h3>
+  <div class="callout warn"><span class="lbl">要不要 log？要</span>但不是把聊天记录全存下来，而是<b>结构化交互事件日志</b>——只记录足以还原责任与决策的最小事实：既能回放，又不泄露隐私、零 Token 开销。</div>
+  <h4 style="font-size:14.5px;margin:16px 0 8px">三层日志（职责不同，不可混用）</h4>
+  <div class="tw"><table>
+    <thead><tr><th>层</th><th>记录什么</th><th>保存策略</th><th>谁看</th></tr></thead>
+    <tbody>
+      <tr><td><b>L1 审计日志</b></td><td>谁、何时、依据、请求哪个原语、谁授权、结果如何、依据哪条规范</td><td>不可篡改、保证送达、长期留存</td><td>审计者、治理委员会、监管</td></tr>
+      <tr><td><b>L2 运行日志</b></td><td>延迟、命中率、Token/成本、失败与重试、环境画像</td><td>可采样、短期留存</td><td>开发者、运维</td></tr>
+      <tr><td><b>L3 决策摘要</b></td><td>一句人话："发生了什么、为什么、谁批准、如何撤销"</td><td>与 L1 同生命周期</td><td>人类操作者、业务方</td></tr>
+    </tbody>
+  </table></div>
+  <h4 style="font-size:14.5px;margin:16px 0 8px">L1 最小字段（每条事件一条）</h4>
+  <div class="tw"><table>
+    <thead><tr><th>字段</th><th>白话含义</th><th>为什么必须有</th></tr></thead>
+    <tbody>
+      <tr><td><code>trace-id</code></td><td>这次交互的独一无二编号</td><td>把散落记录串成完整故事（22.1）</td></tr>
+      <tr><td><code>seq</code> / <code>ts</code></td><td>原语链序号 / 带时区的时间</td><td>还原先后、对齐故障时间线</td></tr>
+      <tr><td><code>actor</code></td><td>谁发起：人类 / 器官 / 智能体（稳定 ID）</td><td>明确责任主体</td></tr>
+      <tr><td><code>primitive</code></td><td>调用了哪个原语（14.2）</td><td>知道做了什么动作</td></tr>
+      <tr><td><code>payload_digest</code></td><td>载荷摘要/哈希，不存原文</td><td>可校验、不泄露、不占空间</td></tr>
+      <tr><td><code>evidence_ref</code></td><td>依据的经验/规则/条款编号</td><td><b>回答"凭什么"</b>——追溯核心</td></tr>
+      <tr><td><code>authorization</code></td><td>折二的意图绑定凭证</td><td>证明副作用被显式批准</td></tr>
+      <tr><td><code>result</code></td><td>成功/失败/回滚/降级 + 原因码</td><td>坏消息必须留痕（10.5）</td></tr>
+      <tr><td><code>prev_hash</code></td><td>上一条记录哈希</td><td>串成链，篡改即断链</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout warn"><span class="lbl">追溯四纪律</span>① <b>不可全量</b>：原文/源码/整份日志不入审计日志，只存摘要与引用；② <b>必须带出处</b>：无 <code>evidence_ref</code> 视为无依据决策，按污染处理；③ <b>一键回放</b>：给定 <code>trace-id</code> 还原 observe→attest 全链；④ <b>日志不是门禁</b>：写日志不等于做对了，验证仍由免疫系统执行（第七章）。</div>
+  <div class="callout quote"><span class="lbl">日志即证据</span>L1 可直接用于合规举证（20.2）、事故复盘（21.5）与升格审计（24.3）。<b>没有日志的交互，等于没有发生过的证据。</b></div>
+  <h3>13.6 可视化阶段清单：哪些过程必须看得见</h3>
+  <div class="callout warn"><span class="lbl">原则</span>凡是影响"人要不要批准、事后能不能追问"的阶段，都必须可视化；凡是可视化的，都必须能下钻到 <code>trace-id</code>。</div>
+  <div class="tw"><table>
+    <thead><tr><th>阶段</th><th>给谁看</th><th>必须展示什么</th><th>为什么</th><th>出处</th></tr></thead>
+    <tbody>
+      <tr><td>① 感知 Observe</td><td>运维/开发者</td><td>状态摘要、异常信号、影响范围</td><td>早发现，避免静默失败</td><td>14.2 · 28.1</td></tr>
+      <tr><td>② 判定与摘要</td><td>人类操作者</td><td>认知摘要（折一）：意图/候选/依据/结论/风险</td><td>看得懂才谈得上批准</td><td>13.4 · 5.4</td></tr>
+      <tr><td>③ 授权 Authorize</td><td>人类主权</td><td>意图绑定（折二）：动作 ID/参数/目标/影响/撤销入口</td><td>防止批准 A 执行 B</td><td>9.3 · 13.4</td></tr>
+      <tr><td>④ 大脑求助 Uplink</td><td>人类/成本负责人</td><td>为何求助、已试规则、预算、画像摘要</td><td>成本透明，识别高频求助</td><td>5.4 · 5.5 · 18.1</td></tr>
+      <tr><td>⑤ 验证 Verify</td><td>开发者/审计者</td><td>双轨逐项结果、门禁通过失败原因、证据链</td><td>信任来自证据</td><td>第七章 · 26.3</td></tr>
+      <tr><td>⑥ 变更与回滚</td><td>运维</td><td>变更前后差异、回滚点、生效版本</td><td>副作用可撤销</td><td>第八章 · 21.1</td></tr>
+      <tr><td>⑦ 自愈与复盘</td><td>全体相关方</td><td>事件时间线、根因、修复动作、复审日期</td><td>事故变经验</td><td>21.5</td></tr>
+      <tr><td>⑧ 记忆升格</td><td>治理委员会</td><td>经验来源、N 次复现、背书人、相关性检验</td><td>防投毒与近亲繁殖</td><td>24.3</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout warn"><span class="lbl">可视化三硬约束</span>① 结论与依据同屏，只给结论不给依据违反公理六；② 每项可下钻到摘要、证据 ID 与 <code>trace-id</code>，不能下钻的只算宣传图；③ 无障碍：不得只靠颜色或声音传达关键信息（23.2 精神延伸）。</div>
+  <h3>13.7 交互友好性准则</h3>
+  <div class="callout quote"><span class="lbl">友好不是好看</span>而是<b>人能在不猜的情况下安全使用</b>。本规范把友好性写成可检查条款，而非审美偏好。</div>
+  <div class="tw"><table>
+    <thead><tr><th>准则</th><th>具体要求</th><th>可检查证据</th></tr></thead>
+    <tbody>
+      <tr><td>看得懂</td><td>术语首次出现给白话解释；界面不裸奔内部代号；附录 A 可查</td><td>术语速查覆盖率 100%</td></tr>
+      <tr><td>可预测</td><td>执行前声明将发生什么、影响范围、是否需授权</td><td>折一认知摘要（13.4）</td></tr>
+      <tr><td>可撤销</td><td>每个副作用有回滚点与人可触发的撤销入口</td><td>L1 回滚点字段（13.5）</td></tr>
+      <tr><td>反馈及时</td><td>状态可见：等待/验证/已生效/已回滚；超时主动告知</td><td>通信状态机（5.5）</td></tr>
+      <tr><td>认知不过载</td><td>一次只呈现 3–5 个关键项，细节按需下钻；告警分级</td><td>23.2 告警治理</td></tr>
+      <tr><td>无障碍</td><td>不依赖单一感官；文字替代；键盘可达；可放大</td><td>13.6 可视化硬约束</td></tr>
+      <tr><td>措辞准确</td><td>禁止"AI 已决定"；统一用"AI 建议，你批准/否决"</td><td>公理五人类主权</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout quote"><span class="lbl">小白可用的定义</span>一个界面若同时满足上述七条，就不需要额外培训即可安全操作——这正是 ANE 对"友好"的定义。</div>
 </section>
 
 <!-- ================= CH14 ================= -->
@@ -703,7 +1093,7 @@ flowchart TB
       <tr><td>裁决</td><td><code>plan</code></td><td>生成多步行动计划</td><td>D3</td></tr>
       <tr><td>执行</td><td><code>invoke</code></td><td>调用外部工具（MCP 契约）</td><td>D2</td></tr>
       <tr><td>执行</td><td><code>generate</code></td><td>生成代码/文本/补丁草稿</td><td>D3</td></tr>
-      <tr><td>执行</td><td><code>patch</code></td><td>中间表示层落地微创修改</td><td>D1</td></tr>
+      <tr><td>执行</td><td><code>patch</code></td><td>统一语义层落地微创修改</td><td>D1</td></tr>
       <tr><td>验证</td><td><code>prove</code></td><td>符号轨等价性证明</td><td>D0</td></tr>
       <tr><td>验证</td><td><code>regress</code></td><td>统计轨回归验证</td><td>D0</td></tr>
       <tr><td>验证</td><td><code>attest</code></td><td>生成审计凭证写台账</td><td>D0</td></tr>
@@ -781,7 +1171,7 @@ flowchart TB
     <div class="card amber"><h4>交互时态</h4><p>快速同步、长任务流式订阅、完全异步通知三种并存。</p></div>
   </div>
   <p><strong>不透明执行</strong>：协作方无需暴露内部思考、计划与工具，仅交换上下文、状态、指令与数据——保护实现隐私，但任务元数据须可审计。</p>
-  <div class="callout warn"><span class="lbl">协同纪律</span>① 职责单一可替换；② 所有智能体间消息经过可观测总线；③ 跨智能体委派不得绕过分级授权，涉 D0/D1 或生产须回到人类裁决；④ 结论冲突以门禁验证结果与人类判定为仲裁，不以"多数票"替代真理。</div>
+  <div class="callout warn"><span class="lbl">协同纪律</span>① 职责单一可替换；② 所有智能体间消息经过可观测总线；③ 跨智能体委派不得绕过分级授权，涉 D0/D1 或生产须回到人类裁决；④ 结论冲突以门禁验证结果与人类判定为仲裁，不以"多数票"替代真理；⑤ 共享同一大脑配额时须经统一调度单元仲裁（紧急度 + 预算），禁止各自直连远端、绕过配额（5.5）。</div>
 </section>
 
 <!-- ================= CH17 ================= -->
@@ -839,6 +1229,15 @@ flowchart TB
     <div class="card purple"><h4>经验升格</h4><p>高频结论固化进小脑，永久脱离大模型。</p></div>
   </div>
   <div class="callout quote"><span class="lbl">成本可观测</span>每次决策记录 Token、延迟、成本、是否命中记忆；以"小脑拦截率/记忆命中率/Token 决策比"为一级指标；拒绝服务式消耗与钱包攻击纳入告警熔断。</div>
+  <h3>18.4 提示词资产治理（Prompt Asset Governance）</h3>
+  <div class="callout warn"><span class="lbl">前提</span>提示词是大脑的"操作界面"，也是注入攻击的主要入口。它必须与代码同等对待：<b>有版本、有所有者、有评测、有回滚</b>。</div>
+  <ul>
+    <li><b>提示词即制品</b>：模板纳入版本控制，含稳定 ID、版本号、所有者、适用场景、期望输出格式与禁用项；禁止运行时以字符串拼接生成关键提示词。</li>
+    <li><b>分层与冻结</b>：系统提示、任务模板、上下文片段分层管理；事实性前缀引用冻结术语表（35.3）与已验证小脑规则，<b>不得由模型自由改写</b>。</li>
+    <li><b>注入防护</b>：外部文档、工具返回、记忆检索内容一律标记"不可信数据"，只作数据载荷，不得提升为指令；发现越权指令立即拒绝并记录（17.2）。</li>
+    <li><b>变更评测</b>：模板变更须经双轨验证与回归抽样；变更前后输出差异入台账，出现安全/成本回退即回滚。</li>
+    <li><b>与成本联动</b>：模板 token 占用计入预算闸门（18.1）；冗余前缀走缓存，重复结论优先升格为小脑规则（18.2）。</li>
+  </ul>
 </section>
 
 <!-- ================= CH19 ================= -->
@@ -900,6 +1299,20 @@ flowchart TB
     </tbody>
   </table></div>
   <div class="callout quote"><span class="lbl">为何"人类主权 + 防自欺"满足国内监管硬性要求</span>国内对生成式 AI 的核心诉求是"可追溯、可控"。<b>公理五（人类主权）</b>保证任何动态变异都必须经人类显式授权、可一票否决、可全局熔断——对应"可控"；<b>公理六（防自欺）</b>保证全过程白盒留痕、静默失败为零、结论可回放——对应"可追溯"。二者不是上线后补的文档，而是内建于原语链与门禁的执行纪律，使监管举证成为系统的自然产出。</div>
+  <h3>ISO/IEC 42001 人工智能管理体系对齐</h3>
+  <div class="tw"><table>
+    <thead><tr><th>管理体系要素</th><th>ANE 的对应机制</th><th>举证材料</th></tr></thead>
+    <tbody>
+      <tr><td>AI 政策与目标</td><td>公理体系 + 一页纸目标 + 成熟度 L0–L5</td><td>章程、目标台账、成熟度评估表</td></tr>
+      <tr><td>AI 风险与影响评估</td><td>20.4 风险登记册 + 20.2 分级对齐 + FMEA（21.2）</td><td>风险登记册、FMEA 表、分级台账</td></tr>
+      <tr><td>AI 生命周期过程控制</td><td>飞轮六阶段（10.1）+ 五步算法（10.4）+ 门禁 G1–G7</td><td>原语链 trace、门禁记录、投影一致性报告</td></tr>
+      <tr><td>数据与模型供应链管理</td><td>载体治理（5.6）+ AI-BOM（22.3）+ 升格审计（24.3）</td><td>模型卡、AI-BOM、升格签名背书</td></tr>
+      <tr><td>监视、测量与评价</td><td>度量体系（12.1）+ 可观测性（28.x）+ 符合性评估（26.x）</td><td>KPI 看板、事件台账、ANE-CONF 评估记录</td></tr>
+      <tr><td>管理评审与持续改进</td><td>元规范飞轮（25.2）+ 设计评审记录 + 演进规划</td><td>评审记录、审计结论、迭代留痕</td></tr>
+      <tr><td>事件与不符合项处置</td><td>事件响应与无责复盘（21.5）+ 全局熔断（21.1）</td><td>事件报告、复盘记录、熔断演练记录</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout quote"><span class="lbl">对齐的实质</span>ISO 42001 要求"有体系、能举证、可改进"。ANE 把体系写进原语链与门禁，把举证做成投影的自然产物，把改进交给飞轮——对齐不是补一份手册，而是系统本来的运行方式。</div>
   <div class="callout warn"><span class="lbl">时序事实（2026-08 Digital Omnibus 修订版）</span>GPAI 义务 2025-08 起；Art.14 人工监督与透明度 2026-08 起；Annex III 高风险 2027-12 起、Annex I 2028-08 起。<b>ANE 将这些义务前置为工程内建能力，而非上线后补文档。</b></div>
   <h3>20.3 责任矩阵（RACI）</h3>
   <div class="tw"><table>
@@ -932,7 +1345,7 @@ flowchart TB
       <tr><td>大脑</td><td>幻觉/超时/不可用</td><td>错误候选</td><td>门禁通过率骤降</td><td>拒绝输出，退回本地</td></tr>
       <tr><td>海马体</td><td>记忆污染/检索失效</td><td>负向飞轮</td><td>命中率异常</td><td>冻结写入，空记忆模式</td></tr>
       <tr><td>免疫</td><td>门禁绕过/漏检</td><td>污染入主干</td><td>台账断点</td><td>拒绝变更，进入只读</td></tr>
-      <tr><td>自愈</td><td>热补丁失败</td><td>运行时损坏</td><td>回滚率上升</td><td>自动 rollback + 停止自愈</td></tr>
+      <tr><td>自愈</td><td>在线修复失败</td><td>运行时损坏</td><td>回滚率上升</td><td>自动 rollback + 停止自愈</td></tr>
       <tr><td>主权</td><td>授权链失效</td><td>越权变更</td><td>无凭证副作用</td><td>拒绝副作用，人工接管</td></tr>
     </tbody>
   </table></div>
@@ -950,6 +1363,25 @@ flowchart TB
     <div class="cap">图：优雅降级阶梯——单向收紧、自动触发、人类可加速</div>
   </div>
   <div class="callout warn"><span class="lbl">铁律</span>降级单向收紧、自动触发、人类可手动加速；升级回高等级必须重走免疫验证与授权，不得自动回升。熔断必须定期演练，从未演练过的熔断视为不存在。</div>
+  <h3>21.3b 双脑极限态的两种标准动作</h3>
+  <div class="tw"><table>
+    <thead><tr><th>极限态</th><th>判定信号</th><th>强制动作</th><th>仍须保证</th></tr></thead>
+    <tbody>
+      <tr><td><b>大脑不可达</b>（断网 / 超时 / 配额枯竭）</td><td>上行连续超时、健康探针失败</td><td>切断全部 escalate 路径，退入 L2「纯小脑 + 静态骨架」，拒绝一切突变类变更</td><td>核心业务不死；常规事务 ≥80% 可用（4.4）</td></tr>
+      <tr><td><b>记忆库污染</b>（投毒 / lineage 断裂 / 检索异常）</td><td>命中率异常、来源校验失败、升格审计不通过</td><td>冻结全部<b>经验升格</b>写入，退化为"无记忆状态"，只走本地硬规则</td><td>只读可用；已升格规则须回查来源，可疑者降级</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout quote"><span class="lbl">为什么</span>两种极限态都不允许"带病求助"——大脑不可达时仍反复上行，只会把延迟拖成雪崩；记忆污染时仍读记忆，只会把污染扩散到判定层。</div>
+  <h3>21.5 事件响应与无责复盘（Incident Response &amp; Blameless Postmortem）</h3>
+  <div class="callout warn"><span class="lbl">承接 10.5</span>"异常当轮上报"讲上报纪律；本节讲上报之后怎么把一次事故变成一次进化。<b>没有复盘的诚实上报，只会制造台账噪音。</b></div>
+  <ul>
+    <li><b>事件分级与时钟</b>：按 D0–D3 与业务影响定级；每级定义检测、确认、遏制、恢复时限，超时自动升级通知人类主权，不因"还在查"而静默延期。</li>
+    <li><b>响应五步（顺序不可颠倒）</b>：检测（可观测告警）→ 遏制（熔断/降级，先止血后查因）→ 根因（原语链 trace 回放，不靠猜测）→ 恢复（最近已验证稳态）→ 复盘（无责、有时限、有产出物）。</li>
+    <li><b>无责原则</b>：复盘针对机制而非个人；及时上报且留痕完整不追责。<b>隐瞒、延迟上报、篡改台账才是红线</b>（10.5 判为"污染"）。</li>
+    <li><b>强制产出</b>：时间线、根因、为何门禁未拦住、修正动作、责任人、复审日期。修正动作必须落到新规则（升格）/ 新门禁 / 新参数三者之一，禁止"加强注意"这类不可验证空话。</li>
+    <li><b>接入飞轮</b>：复盘记录进经验库（第六章）并触发升格审计（24.3）；同一根因二次出现视为飞轮失效，强制复审升格阈值与门禁有效性。</li>
+    <li><b>演练关联</b>：熔断演练（21.4）至少每季度产出一份符合上述格式的复盘报告；未产出的演练视为未完成。</li>
+  </ul>
 </section>
 
 <!-- ================= CH22 ================= -->
@@ -990,7 +1422,7 @@ flowchart TB
     <thead><tr><th>反模式</th><th>后果</th><th>ANE 约束</th></tr></thead>
     <tbody>
       <tr><td>告警洪流</td><td>告警疲劳</td><td>分级聚合，L0 自动项不打扰人类</td></tr>
-      <tr><td>每次都弹窗</td><td>授权疲劳，闭眼点同意</td><td>批处理，仅 L2 显式确认</td></tr>
+      <tr><td>每次都弹窗</td><td>授权疲劳，未经核对即点同意</td><td>批处理，仅 L2 显式确认</td></tr>
       <tr><td>只报喜不报忧</td><td>自动化偏见</td><td>强制展示置信度、失败案例、备选项</td></tr>
       <tr><td>不可解释的催促</td><td>无法负责任判断</td><td>关键裁决必须可暂停，不得倒计时逼迫</td></tr>
     </tbody>
@@ -1093,7 +1525,7 @@ flowchart LR
     <thead><tr><th>反模式</th><th>后果</th><th>正确做法</th></tr></thead>
     <tbody>
       <tr><td>上来就上全自动</td><td>幻觉入主干、成本爆炸</td><td>先固化底座+小脑</td></tr>
-      <tr><td>无底座做自愈</td><td>无回滚热补丁=灾难</td><td>先做②③⑤再开⑥</td></tr>
+      <tr><td>无底座做自愈</td><td>无回滚在线修复=灾难</td><td>先做②③⑤再开⑥</td></tr>
       <tr><td>经验库先污染后治理</td><td>负向飞轮</td><td>验证后写入</td></tr>
       <tr><td>一次性全量迁移</td><td>风险面失控</td><td>影子+金丝雀灰度</td></tr>
       <tr><td>当工具采购</td><td>买平台≠落地</td><td>组织治理同步</td></tr>
@@ -1387,15 +1819,1095 @@ flowchart LR
   <p>G6 不应靠人眼检查，而应由投影/校验脚本自动执行（<code>ane_release_projector.py</code> 与配套 G1–G6 检查器）。<b>"防自欺"的终极形态是：规范的结构正确性由机器证明，而非由人声称。</b>这与第三十四章"规范即制品"、第二十五章"用 ANE 管 ANE"一脉相承。</p>
 </section>
 
+<section id="ch38">
+<h2 class="sec"><span class="num">第三十八章</span>生命体间通信协议（IOP）</h2>
+<div class="callout quote">对应公理三、公理六、公理七。<b>【本文原创】</b> IOP = Inter-Organism Protocol（生命体间通信协议）。本章把 ANE 从"单个生命体"扩展到"生命体生态"。</div>
+<h3>38.1 从单体到生态：为什么 NTP 不够</h3>
+<p>NTP（第五章）解决的是<b>一个生命体内部</b>小脑与大脑之间的求救与建议；IOP 解决的是<b>两个独立生命体之间</b>的识别、委托与验证。二者不可互相替代。</p>
+<div class="tw"><table><thead><tr>
+<th>维度</th>
+<th>NTP（第五章）</th>
+<th>IOP（本章）</th>
+</tr></thead><tbody>
+<tr>
+<td>通信双方</td>
+<td>同一生命体内：小脑 ↔ 大脑</td>
+<td>不同生命体之间</td>
+</tr>
+<tr>
+<td>信任前提</td>
+<td>同一主权域，共享台账</td>
+<td>不同主权域，默认互不信任</td>
+</tr>
+<tr>
+<td>传递内容</td>
+<td>压缩特征 + 错误码 + 预算</td>
+<td>能力声明 + 任务摘要 + 凭证</td>
+</tr>
+<tr>
+<td>记忆</td>
+<td>共享同一海马体</td>
+<td><b>默认不共享</b>（38.5）</td>
+</tr>
+<tr>
+<td>权威归属</td>
+<td>大脑只出 Proposal</td>
+<td>能力可借用，授权仍归各自人类</td>
+</tr>
+<tr>
+<td>失败处理</td>
+<td>走 <code>DEGRADED</code> 降级</td>
+<td>拒绝协作，各自独立运行</td>
+</tr>
+</tbody></table></div>
+<div class="callout quote"><b>【必须】</b> 任何跨生命体调用都必须走 IOP；禁止用 NTP 直接连接外部生命体的大脑——那等于把内部稀缺通道暴露成公共入口。</div>
+<h3>38.2 IOP 四层模型</h3>
+<div class="tw"><table><thead><tr>
+<th>层</th>
+<th>名称</th>
+<th>解决什么</th>
+<th>核心制品</th>
+<th>等级</th>
+</tr></thead><tbody>
+<tr>
+<td>L1</td>
+<td>身份层 Identity</td>
+<td>"你是谁、谁为你负责"</td>
+<td>生命体名片 Organism Card</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td>L2</td>
+<td>能力层 Capability</td>
+<td>"你能做什么、做到哪一档"</td>
+<td>能力声明 Capability Set</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td>L3</td>
+<td>消息层 Messaging</td>
+<td>"这次请求是什么、证据在哪"</td>
+<td>消息信封 Envelope</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td>L4</td>
+<td>信任层 Trust</td>
+<td>"我凭什么信你、出事谁担责"</td>
+<td>授权凭证 + 台账引用</td>
+<td>【必须】</td>
+</tr>
+</tbody></table></div>
+<div class="callout quote">四层不可跳跃：没有身份就谈能力是无的放矢；没有能力声明就接受任务是越界；没有信任凭证就执行是失控。这条约束回溯到公理七（稳态第一）——生态的稳态来自边界清晰，而非来自互相信任。</div>
+<h3>38.3 生命体名片（Organism Card）</h3>
+<p><b>【本文原创】</b> 生命体名片是生命体对外自我介绍的最小、稳定、可校验结构。它不描述内部实现，只声明稳定身份与能力边界。</p>
+<p>合法 JSON 示例（<code>card_digest</code> 可对去除该字段后的对象按 ANS-1 重算，工具见 <code>tools/validate_ntp.py canonicalize</code>）：</p>
+<pre style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto;font-size:12.5px;color:var(--ink2)"><code>{
+  "organism_id": "org-7a31",
+  "card_version": "1.0",
+  "capabilities": ["classify", "digest"],
+  "determinacy": "D1",
+  "owner": "human:finlei",
+  "card_digest": "sha256:309c06e49be85fc3b26eb8c6f2d1b355678aedef027c5521dba6a8e3b5932821"
+}</code></pre>
+<div class="tw"><table><thead><tr>
+<th>字段</th>
+<th>类型</th>
+<th>白话解释</th>
+<th>为什么需要</th>
+<th>等级</th>
+</tr></thead><tbody>
+<tr>
+<td><code>organism_id</code></td>
+<td>字符串</td>
+<td>这个生命体的稳定身份证</td>
+<td>跨会话、跨版本识别同一个对象</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><code>card_version</code></td>
+<td>字符串</td>
+<td>名片格式版本</td>
+<td>能力会变，名片需可演进</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><code>capabilities</code></td>
+<td>字符串数组</td>
+<td>对外承诺的能力名</td>
+<td>没有声明的能力不得被调用</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><code>determinacy</code></td>
+<td>枚举 <code>D0</code>–<code>D3</code></td>
+<td>该生命体能承接的最高确定性档</td>
+<td>防止把 D0 事务委托给只能做 D2 的对象</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><code>owner</code></td>
+<td>字符串</td>
+<td>最终责任人标识</td>
+<td>回溯到公理五：责任必须落在能承担后果的主体</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><code>card_digest</code></td>
+<td>字符串</td>
+<td>名片内容指纹</td>
+<td>防篡改；握手时校验</td>
+<td>【必须】</td>
+</tr>
+</tbody></table></div>
+<div class="callout quote"><b>【必须】</b> 名片不得包含内部实现细节、模型供应商或密钥；<b>【必须】</b> 名片变更必须换发 <code>card_version</code> 并重算摘要，禁止就地改写。</div>
+<h3>38.4 消息信封（Envelope）</h3>
+<p><b>【本文原创】</b> 信封只承载"谁给谁、什么事、证据在哪"，<b>载荷正文不内联</b>，以摘要引用代替——与 5.4 的 <code>candidate.digest</code> 同一纪律。</p>
+<pre style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto;font-size:12.5px;color:var(--ink2)"><code>{
+  "iop_version": "1.0",
+  "msg_id": "m-4c81",
+  "from": "org-7a31",
+  "to": "org-9b42",
+  "type": "TASK_DELEGATE",
+  "payload_ref": "sha256:74490ea0feecf6e8246f97cc81c12544f136f596eb596cbd4ccbeed2c7ec6cbe",
+  "payload_format": "ANS-1",
+  "traceparent": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+  "auth_ref": "cred-9d02",
+  "ts": "2026-11-21T04:00:00Z",
+  "ttl_ms": 30000,
+  "determinacy_ceiling": "D1"
+}</code></pre>
+<div class="tw"><table><thead><tr>
+<th>字段</th>
+<th>类型</th>
+<th>白话解释</th>
+<th>为什么需要</th>
+<th>等级</th>
+</tr></thead><tbody>
+<tr>
+<td><code>iop_version</code></td>
+<td>字符串</td>
+<td>协议版本</td>
+<td>双方解析规则须一致</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><code>msg_id</code></td>
+<td>字符串</td>
+<td>本条消息唯一编号</td>
+<td>去重、追踪、回放</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><code>from</code> / <code>to</code></td>
+<td>字符串</td>
+<td>收发双方 ID</td>
+<td>防冒充，配合名片校验</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><code>type</code></td>
+<td>枚举</td>
+<td>消息类型：<code>CAPABILITY_QUERY</code> / <code>CAPABILITY_ADVERTISE</code> / <code>TASK_DELEGATE</code> / <code>RESULT_REPORT</code> / <code>VETO</code></td>
+<td>接收方据此分派处理流程</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><code>payload_ref</code></td>
+<td>字符串</td>
+<td>载荷摘要而非载荷正文</td>
+<td>防注入、防超长、可校验</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><code>payload_format</code></td>
+<td>枚举</td>
+<td>载荷序列化格式，固定 <code>ANS-1</code></td>
+<td>保证摘要可重算</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><code>traceparent</code></td>
+<td>字符串</td>
+<td>分布式追踪标识（<b>引用</b> W3C Trace Context）</td>
+<td>跨生命体串联同一条因果链</td>
+<td>【应当】</td>
+</tr>
+<tr>
+<td><code>auth_ref</code></td>
+<td>字符串</td>
+<td>授权凭证引用</td>
+<td>没有凭证的请求一律拒绝</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><code>ts</code></td>
+<td>字符串</td>
+<td>发送时间（UTC）</td>
+<td>时序与时效判断</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><code>ttl_ms</code></td>
+<td>整数</td>
+<td>有效期（毫秒）</td>
+<td>过期消息必须丢弃，防重放</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><code>determinacy_ceiling</code></td>
+<td>枚举 <code>D0</code>–<code>D3</code></td>
+<td>本消息允许的最高确定性</td>
+<td>防止借低档通道办高档事</td>
+<td>【必须】</td>
+</tr>
+</tbody></table></div>
+<div class="callout quote"><b>【必须】</b> 接收方必须先校验名片摘要、授权凭证与 <code>ttl_ms</code>，任一失败即丢弃并写审计日志；<b>【可选】</b> 高并发场景可启用批量信封，但每封仍须独立携带 <code>auth_ref</code>。</div>
+<h3>38.5 信任边界：记忆不共享、能力不继承</h3>
+<div class="tw"><table><thead><tr>
+<th>原则</th>
+<th>含义</th>
+<th>违反后果</th>
+<th>等级</th>
+</tr></thead><tbody>
+<tr>
+<td><b>记忆不共享</b></td>
+<td>一个生命体的海马体不因协作而向对方开放；只传经 <code>digest</code> 压缩的证据摘要</td>
+<td>记忆投毒跨生态扩散，护城河被污染</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><b>能力不继承</b></td>
+<td>调用对方能力不等于获得对方权限；凭证不随消息转发</td>
+<td>权限在链条上逐级放大，最终失控</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><b>责任不转移</b></td>
+<td>委托方仍对结果负责，不能以"是对方做的"免责</td>
+<td>出事后无人承担，违反公理五</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><b>否决权保留</b></td>
+<td>任一方可随时发 <code>VETO</code> 终止协作，无需对方同意</td>
+<td>生态锁定，无法脱身</td>
+<td>【必须】</td>
+</tr>
+</tbody></table></div>
+<h3>38.6 本章必选/可选清单</h3>
+<div class="tw"><table><thead><tr>
+<th>条目</th>
+<th>等级</th>
+<th>理由</th>
+</tr></thead><tbody>
+<tr>
+<td>名片身份与摘要</td>
+<td>【必须】</td>
+<td>无身份则无法追责</td>
+</tr>
+<tr>
+<td>能力与确定性档声明</td>
+<td>【必须】</td>
+<td>防止越档委托</td>
+</tr>
+<tr>
+<td>信封六必填字段</td>
+<td>【必须】</td>
+<td>构成最小可验证请求</td>
+</tr>
+<tr>
+<td>载荷摘要引用、不内联</td>
+<td>【必须】</td>
+<td>与 5.4 同一防注入纪律</td>
+</tr>
+<tr>
+<td>授权凭证与有效期</td>
+<td>【必须】</td>
+<td>防重放、防越权</td>
+</tr>
+<tr>
+<td>分布式追踪 <code>traceparent</code></td>
+<td>【应当】</td>
+<td>排障需要，但单生命体可暂缺</td>
+</tr>
+<tr>
+<td>批量信封</td>
+<td>【可选】</td>
+<td>性能优化，非合规前提</td>
+</tr>
+</tbody></table></div>
+</section>
+<section id="ch39">
+<h2 class="sec"><span class="num">第三十九章</span>生命体套件与组合（Suite Composition）</h2>
+<div class="callout quote"><b>【本文原创】</b> 生命体套件 = 多个独立生命体按声明式契约临时组合出的更强能力单元。组合不等于融合：成员仍保留各自生命周期、主权人与记忆边界。</div>
+<h3>39.1 组合的本质：声明式契约，而非隐式融合</h3>
+<div class="tw"><table><thead><tr>
+<th>组合方式</th>
+<th>做法</th>
+<th>风险</th>
+<th>等级</th>
+</tr></thead><tbody>
+<tr>
+<td><b>声明式契约</b>（推荐）</td>
+<td>用套件清单显式声明成员、角色、边界，运行时按契约校验</td>
+<td>配置复杂</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td>隐式共享内存</td>
+<td>成员直接读写彼此状态</td>
+<td>记忆污染、责任不清</td>
+<td>【禁止】</td>
+</tr>
+<tr>
+<td>硬编码调用链</td>
+<td>把对方写死进代码</td>
+<td>一方升级即全链断裂</td>
+<td>【禁止】</td>
+</tr>
+</tbody></table></div>
+<h3>39.2 套件清单（Suite Manifest）</h3>
+<p>合法 JSON 示例（<code>suite_digest</code> 可对去除该字段后的对象按 ANS-1 重算）：</p>
+<pre style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto;font-size:12.5px;color:var(--ink2)"><code>{
+  "suite_id": "suite-1f2e",
+  "members": ["org-7a31", "org-9b42"],
+  "binding": "declarative",
+  "suite_digest": "sha256:41cc1149e9108d1d286063a04c38143bee03aefdce7148ade900ef3c400065a5"
+}</code></pre>
+<div class="tw"><table><thead><tr>
+<th>字段</th>
+<th>类型</th>
+<th>白话解释</th>
+<th>为什么需要</th>
+<th>等级</th>
+</tr></thead><tbody>
+<tr>
+<td><code>suite_id</code></td>
+<td>字符串</td>
+<td>套件稳定编号</td>
+<td>审计与版本追踪</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><code>members</code></td>
+<td>字符串数组</td>
+<td>成员生命体 ID 列表</td>
+<td>明确组合边界</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><code>binding</code></td>
+<td>枚举</td>
+<td>绑定方式，固定 <code>declarative</code></td>
+<td>从协议层禁止隐式融合</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><code>suite_digest</code></td>
+<td>字符串</td>
+<td>清单指纹</td>
+<td>防清单被篡改后偷偷换成员</td>
+<td>【必须】</td>
+</tr>
+</tbody></table></div>
+<div class="callout quote"><b>【必须】</b> 套件不得降低任一成员的确定性下限；<b>【必须】</b> 套件整体不得获得超过成员中最高 <code>determinacy</code> 的权限。</div>
+<h3>39.3 三种组合模式</h3>
+<div class="tw"><table><thead><tr>
+<th>模式</th>
+<th>结构</th>
+<th>适用场景</th>
+<th>关键纪律</th>
+<th>等级</th>
+</tr></thead><tbody>
+<tr>
+<td><b>并行</b></td>
+<td>多成员同时处理同一任务，结果交叉验证</td>
+<td>高可靠判定</td>
+<td>必须双轨一致才采信</td>
+<td>【应当】</td>
+</tr>
+<tr>
+<td><b>流水线</b></td>
+<td>A 的输出经摘要传给 B</td>
+<td>分阶段处理</td>
+<td>每跳都验摘要与授权</td>
+<td>【应当】</td>
+</tr>
+<tr>
+<td><b>联邦</b></td>
+<td>各成员独立运行，仅汇总结论</td>
+<td>隐私敏感、跨域协作</td>
+<td>只汇总结论，不汇记忆</td>
+<td>【可选】</td>
+</tr>
+</tbody></table></div>
+<h3>39.4 最弱环节防护</h3>
+<p>一个套件的安全性取决于最弱成员，因此：</p>
+<ul><li><b>【必须】</b> 加入套件前须校验每个成员的名片摘要与升格审计记录（24.3）；</li><li><b>【必须】</b> 任一成员触发熔断（21.4），套件整体进入降级，不允许"带病拼装"；</li><li><b>【必须】</b> D0 事务不得委托给套件中的任何成员，只能由人类在主权层完成（公理五）；</li><li><b>【可选】</b> 高价值套件可设"成员替换演练"，验证单点失效不导致整体崩溃。</li></ul>
+<h3>39.5 套件的退役与重组</h3>
+<p>套件是临时能力单元，不是永久组织。<b>【必须】</b> 任务结束或成员变更时，套件清单作废并重算 <code>suite_digest</code>；<b>【必须】</b> 套件产生的所有证据与台账条目保留，供事后回放——组合可以解散，责任不能解散。</p>
+<h3>39.6 本章必选/可选清单</h3>
+<div class="tw"><table><thead><tr>
+<th>条目</th>
+<th>等级</th>
+<th>理由</th>
+</tr></thead><tbody>
+<tr>
+<td>声明式套件清单 + 摘要</td>
+<td>【必须】</td>
+<td>无清单即无边界</td>
+</tr>
+<tr>
+<td>成员准入校验</td>
+<td>【必须】</td>
+<td>防最弱环节投毒</td>
+</tr>
+<tr>
+<td>D0 不可委托</td>
+<td>【必须】</td>
+<td>宪法性红线</td>
+</tr>
+<tr>
+<td>熔断联动降级</td>
+<td>【必须】</td>
+<td>避免带病拼装</td>
+</tr>
+<tr>
+<td>并行 / 流水线模式</td>
+<td>【应当】</td>
+<td>大部分收益来自这两种</td>
+</tr>
+<tr>
+<td>联邦模式</td>
+<td>【可选】</td>
+<td>仅在跨域隐私场景需要</td>
+</tr>
+<tr>
+<td>成员替换演练</td>
+<td>【可选】</td>
+<td>韧性增强，非合规前提</td>
+</tr>
+</tbody></table></div>
+</section>
+<section id="ch40">
+<h2 class="sec"><span class="num">第四十章</span>向 AGI 生命体的演进（Evolution Ladder）</h2>
+<div class="callout quote"><b>【本文原创】</b> 本章不预测 AGI 何时到来，只定义"一个软件生命体在能力边界上如何分级演进，且演进过程中主权不衰减"。回溯到 0.6 的三层约束（接口层 / 权限层 / 改进层）。</div>
+<h3>40.1 演进是能力边界的扩展，不是权限的自发膨胀</h3>
+<div class="tw"><table><thead><tr>
+<th>误区</th>
+<th>正确理解</th>
+<th>等级</th>
+</tr></thead><tbody>
+<tr>
+<td>"AGI 到来后自然拥有更高权限"</td>
+<td>权限只能由人类显式授予，能力再强也不自动升权</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td>"自我改进可以无限递归"</td>
+<td>递归必须有界，且每一步留下可验证凭证</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td>"更强的智能可以替代主权"</td>
+<td>主权不可让渡，这是宪法性红线（25.5）</td>
+<td>【必须】</td>
+</tr>
+</tbody></table></div>
+<h3>40.2 五级能力阶梯 A0–A4</h3>
+<div class="tw"><table><thead><tr>
+<th>级别</th>
+<th>名称</th>
+<th>能力边界</th>
+<th>典型行为</th>
+<th>授权要求</th>
+<th>等级</th>
+</tr></thead><tbody>
+<tr>
+<td><b>A0</b></td>
+<td>反射体</td>
+<td>仅确定性规则</td>
+<td>命中规则即执行，未命中抛 <code>UnknownSignal</code></td>
+<td>无需逐次授权</td>
+<td>【必须】起点</td>
+</tr>
+<tr>
+<td><b>A1</b></td>
+<td>记忆体</td>
+<td>规则 + 已升格经验</td>
+<td>检索经验辅助判定，经验须经升格审计</td>
+<td>经验升格需人类背书</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><b>A2</b></td>
+<td>协同体</td>
+<td>A1 + 外部能力调用</td>
+<td>通过 MCP / IOP 借用工具与他生命体能力</td>
+<td>工具接入须过门禁（15.6）</td>
+<td>【应当】</td>
+</tr>
+<tr>
+<td><b>A3</b></td>
+<td>推理体</td>
+<td>A2 + 大脑泛化推理</td>
+<td>对未知组合产出 Proposal，经双轨验证后才可能采纳</td>
+<td>每次采纳须过免疫与人审</td>
+<td>【应当】</td>
+</tr>
+<tr>
+<td><b>A4</b></td>
+<td>演进体</td>
+<td>A3 + 受控自我改进</td>
+<td>可提出对自身规则/提示词的改进，但只能以 Proposal 形式</td>
+<td>改进须经完整升格审计 + 人类签名</td>
+<td>【可选】</td>
+</tr>
+</tbody></table></div>
+<div class="callout quote"><b>【必须】</b> A4 及以上不得获得 D0 权限；<b>【必须】</b> 任何级别都不得绕过公理五直接从 A3 跳到 A4 的执行权。</div>
+<h3>40.3 权限不衰减与递归有界</h3>
+<div class="tw"><table><thead><tr>
+<th>约束</th>
+<th>含义</th>
+<th>违反后果</th>
+<th>等级</th>
+</tr></thead><tbody>
+<tr>
+<td><b>权限不衰减</b></td>
+<td>生命体变强时，人类的否决权、熔断权、审计权一点不少</td>
+<td>能力越强越难管，最终失控</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><b>递归有界</b></td>
+<td>自我改进深度设上限，超出必须回到人类审批</td>
+<td>无限自我引用导致不可验证</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><b>能力可降级</b></td>
+<td>任何 A 级都可回退到低档运行，且回退路径已演练</td>
+<td>只能进不能退，形成锁定</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><b>凭证随级</b></td>
+<td>每次升级都产生可验证凭证，写入台账</td>
+<td>升级无据可查</td>
+<td>【必须】</td>
+</tr>
+</tbody></table></div>
+<h3>40.3b A4 启用前的准入检查表</h3>
+<div class="callout warn">A4【可选】不等于"随时可开"。下表是启用 A4 的<b>前置门禁</b>，逐项均为【必须】，任一项不通过即维持 A3 运行，禁止以"先开再说"绕过。</div>
+<div class="tw"><table><tbody><tr><td>#</td><td>准入条件</td><td>可验证判据（拿什么证明）</td><td>等级</td></tr><tr><td>1</td><td>人类主权层书面授权</td><td>签名 + 范围 + 有效期 + 恢复计划四要素齐全（42.5）</td><td>【必须】</td></tr><tr><td>2</td><td>升格审计已通过</td><td>经验升格审计记录（24.3）含 N 次独立复现与反近亲繁殖校验</td><td>【必须】</td></tr><tr><td>3</td><td>无 D0 权限</td><td>权限清单中 A4 对 D0 事务为显式拒绝，非"未配置"</td><td>【必须】</td></tr><tr><td>4</td><td>递归深度上限已设</td><td>配置中 <code>max_recursion_depth</code> 为有限整数，超限回到人类审批</td><td>【必须】</td></tr><tr><td>5</td><td>双轨验证通过</td><td>改进 Proposal 经确定性验证与智能验证双轨一致后才可采纳（7 章）</td><td>【必须】</td></tr><tr><td>6</td><td>熔断演练已执行</td><td>人类熔断可在限定时间内切断 A4 的改进能力，演练记录入台账</td><td>【必须】</td></tr><tr><td>7</td><td>回退路径已演练</td><td>从 A4 回退到 A3 的步骤、数据与凭证保留均验证过（40.3）</td><td>【必须】</td></tr><tr><td>8</td><td>全链可回放</td><td>改进提案、证据、签名、采纳决定可通过台账完整回放</td><td>【必须】</td></tr><tr><td>9</td><td>有效期与自动复核</td><td>A4 授权设自动复核日，到期未续即降级（42.5）</td><td>【应当】</td></tr><tr><td>10</td><td>独立第三方审计</td><td>高监管场景下由外部审计确认上述判据</td><td>【可选】</td></tr></tbody></table></div>
+<div class="callout warn"><b>【必须】</b> 准入结论写入演进凭证（40.4）的 <code>evidence_refs</code>，与 <code>attestation_digest</code> 绑定；<b>【必须】</b> 准入过期或任一条件失效时自动回退 A3，不得人工"临时豁免"（42.5）。</div>
+<h3>40.4 演进凭证（Evolution Attestation）</h3>
+<p>合法 JSON 示例（<code>attestation_digest</code> 可对去除该字段后的对象按 ANS-1 重算）：</p>
+<pre style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto;font-size:12.5px;color:var(--ink2)"><code>{
+  "organism_id": "org-7a31",
+  "level": "A3",
+  "evidence_refs": ["exp_077", "run_2048"],
+  "attestation_digest": "sha256:7326a58cd20787f5dd97e8cb551354360aff2abe48e351c01ce14c1d28068f58"
+}</code></pre>
+<div class="tw"><table><thead><tr>
+<th>字段</th>
+<th>类型</th>
+<th>白话解释</th>
+<th>为什么需要</th>
+<th>等级</th>
+</tr></thead><tbody>
+<tr>
+<td><code>organism_id</code></td>
+<td>字符串</td>
+<td>哪个生命体升级了</td>
+<td>绑定主体</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><code>level</code></td>
+<td>枚举 <code>A0</code>–<code>A4</code></td>
+<td>升到哪一级</td>
+<td>明确能力边界</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><code>evidence_refs</code></td>
+<td>字符串数组</td>
+<td>支撑这次升级的证据 ID</td>
+<td>升级必须靠证据，不靠声称</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><code>attestation_digest</code></td>
+<td>字符串</td>
+<td>凭证指纹</td>
+<td>防伪造、可回放</td>
+<td>【必须】</td>
+</tr>
+</tbody></table></div>
+<h3>40.5 与 RSI 的兼容底线</h3>
+<p><b>【引用】</b> RSI（递归自我改进）在此只作为能力边界的上界参照，不作为承诺。<b>【必须】</b> 本规范对任何 RSI 形态都保留三条底线：人类可熔断、决策可回放、责任可追溯。<b>【可选】</b> 前瞻性实现可为 A4 预留接口，但预留不等于启用。</p>
+<h3>40.6 本章必选/可选清单</h3>
+<div class="tw"><table><thead><tr>
+<th>条目</th>
+<th>等级</th>
+<th>理由</th>
+</tr></thead><tbody>
+<tr>
+<td>A0 起点、A1 记忆边界</td>
+<td>【必须】</td>
+<td>安全基线</td>
+</tr>
+<tr>
+<td>权限不衰减、递归有界、可降级</td>
+<td>【必须】</td>
+<td>防止能力反噬主权</td>
+</tr>
+<tr>
+<td>升级凭证 + 证据链</td>
+<td>【必须】</td>
+<td>可审计</td>
+</tr>
+<tr>
+<td>A2/A3 能力</td>
+<td>【应当】</td>
+<td>大部分采纳者目标</td>
+</tr>
+<tr>
+<td>A4 演进体</td>
+<td>【可选】</td>
+<td>高风险，需额外门禁</td>
+</tr>
+<tr>
+<td>RSI 接口预留</td>
+<td>【可选】</td>
+<td>前瞻兼容，不等于启用</td>
+</tr>
+</tbody></table></div>
+</section>
+<section id="ch41">
+<h2 class="sec"><span class="num">第四十一章</span>沟通数据格式、存储与联网策略</h2>
+<div class="callout quote"><b>【本文原创】</b> 本章把前四章涉及的"数据怎么存、要不要上网"落成可审计的分级策略。回溯到公理二（动中有静）与公理七（稳态第一）。</div>
+<h3>41.1 数据温度分级</h3>
+<div class="tw"><table><thead><tr>
+<th>层</th>
+<th>名称</th>
+<th>存什么</th>
+<th>访问频率</th>
+<th>留存</th>
+<th>等级</th>
+</tr></thead><tbody>
+<tr>
+<td><b>热</b></td>
+<td>Hot</td>
+<td>规则库、状态机、当前任务上下文</td>
+<td>微秒～毫秒</td>
+<td>进程生命周期</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><b>温</b></td>
+<td>Warm</td>
+<td>经验记录、升格审计、近期台账</td>
+<td>秒～天</td>
+<td>可迁移、可重建</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><b>冷</b></td>
+<td>Cold</td>
+<td>审计日志、证据包、合规留档</td>
+<td>天～年</td>
+<td>只追加、可检索</td>
+<td>【应当】</td>
+</tr>
+<tr>
+<td><b>冻结</b></td>
+<td>Frozen</td>
+<td>法定留存、责任凭证</td>
+<td>极少</td>
+<td>一次写入不可改</td>
+<td>【可选】</td>
+</tr>
+</tbody></table></div>
+<div class="callout quote"><b>【必须】</b> 热层数据不得持久化到外部服务；<b>【必须】</b> 温层跨生命体迁移时只迁经验摘要，不迁原始记忆（38.5）。</div>
+<h3>41.2 沟通数据的三类格式</h3>
+<div class="tw"><table><thead><tr>
+<th>类别</th>
+<th>格式</th>
+<th>摘要要求</th>
+<th>禁止项</th>
+<th>等级</th>
+</tr></thead><tbody>
+<tr>
+<td>信封</td>
+<td>ANS-1 规范化 JSON（38.4）</td>
+<td>载荷只传 <code>payload_ref</code></td>
+<td>内联正文、中文括注</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td>摘要</td>
+<td><code>sha256:&lt;64 位小写十六进制&gt;</code></td>
+<td>生成前经 ANS-1（5.4）</td>
+<td>截断哈希、非十六进制</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td>凭据</td>
+<td>不可伪造的签名或令牌引用</td>
+<td>绑定 <code>msg_id</code> 与 <code>ttl_ms</code></td>
+<td>明文口令、可转发复用</td>
+<td>【必须】</td>
+</tr>
+</tbody></table></div>
+<h3>41.3 存储架构：本地优先、分层可迁移</h3>
+<ul><li><b>【必须】</b> 本地优先：常规事务不依赖远端存储；网络断开时仍满足 4.4 的离网可用要求。</li><li><b>【必须】</b> 可重建：温层数据可从台账与证据包重建，避免单点丢失导致"失忆即失控"。</li><li><b>【应当】</b> 分层解耦：热/温/冷使用不同存储后端，避免一层故障拖垮全部。</li><li><b>【可选】</b> 跨设备迁移：迁移时保留 <code>organism_id</code> 与经验 lineage，确保责任链不断。</li></ul>
+<h3>41.4 联网三态策略</h3>
+<div class="tw"><table><thead><tr>
+<th>状态</th>
+<th>名称</th>
+<th>触发条件</th>
+<th>允许的操作</th>
+<th>等级</th>
+</tr></thead><tbody>
+<tr>
+<td><b>OFFLINE_FIRST</b></td>
+<td>离线优先（默认）</td>
+<td>常态</td>
+<td>本地规则 + 已升格记忆处理全部常规事务</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td><b>ON_DEMAND</b></td>
+<td>按需联网</td>
+<td>本地未命中且获授权</td>
+<td>发 IOP 请求或调用大脑，遵守 <code>budget_hint</code></td>
+<td>【应当】</td>
+</tr>
+<tr>
+<td><b>DEGRADED</b></td>
+<td>联网降级</td>
+<td>超时 / 不可达 / 预算耗尽</td>
+<td>退回 L2 纯小脑（21.3b），禁止猜测</td>
+<td>【必须】</td>
+</tr>
+</tbody></table></div>
+<div class="callout quote"><b>要不要联网？结论是"可以不联网，但不能只会联网"。</b> 联网是能力增强项（【应当】），离线可用是生存底线（【必须】）。任何把核心判定放在远端的设计，都在违反公理七的稳态要求。</div>
+<div class="tw"><table><thead><tr>
+<th>联网风险</th>
+<th>对策</th>
+<th>等级</th>
+</tr></thead><tbody>
+<tr>
+<td>数据外泄</td>
+<td>只传摘要与特征，不传原文（5.2 / 38.4）</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td>供应链攻击</td>
+<td>模型载体与工具均过门禁（5.6 / 15.6）</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td>可用性依赖</td>
+<td>超时即降级，不允许无限等待</td>
+<td>【必须】</td>
+</tr>
+<tr>
+<td>跨主权数据流动</td>
+<td>按 20.2 合规对齐，必要时禁止出境</td>
+<td>【必须】</td>
+</tr>
+</tbody></table></div>
+<h3>41.5 隐私与遗忘权跨生命体延伸</h3>
+<p><b>【必须】</b> 一个生命体执行遗忘（24.4）时，必须向其协作过的生命体发出 <code>VETO</code> 类通知，要求删除对应证据摘要；<b>【必须】</b> 冻结层若含个人信息，须有法定留存依据，不得仅因"方便审计"而无限留存；<b>【可选】</b> 可提供隐私预算账本，量化累计外发数据量。</p>
+<h3>41.6 本章必选/可选清单</h3>
+<div class="tw"><table><thead><tr>
+<th>条目</th>
+<th>等级</th>
+<th>理由</th>
+</tr></thead><tbody>
+<tr>
+<td>热层不外联、温层只迁摘要</td>
+<td>【必须】</td>
+<td>记忆护城河与隐私底线</td>
+</tr>
+<tr>
+<td>摘要生成经 ANS-1</td>
+<td>【必须】</td>
+<td>保证可重算、可审计</td>
+</tr>
+<tr>
+<td>离线优先 + 联网降级</td>
+<td>【必须】</td>
+<td>稳态第一</td>
+</tr>
+<tr>
+<td>按需联网</td>
+<td>【应当】</td>
+<td>能力增强，非生存前提</td>
+</tr>
+<tr>
+<td>冷层 / 冻结层</td>
+<td>【应当】/【可选】</td>
+<td>按合规要求取舍</td>
+</tr>
+<tr>
+<td>隐私预算账本</td>
+<td>【可选】</td>
+<td>高级治理能力</td>
+</tr>
+</tbody></table></div>
+</section>
+<section id="ch42">
+<h2 class="sec"><span class="num">第四十二章</span>规范性等级与必选清单</h2>
+<div class="callout quote"><b>【引用】</b> 本章的 MUST / SHOULD / MAY 映射借鉴 RFC 2119 与 RFC 8174 的规范性等级惯例（<b>引用</b>），并结合 ANE 的公理体系做了中文表达适配。</div>
+<h3>42.1 三级标注定义</h3>
+<div class="tw"><table><thead><tr>
+<th>标注</th>
+<th>英文</th>
+<th>含义</th>
+<th>不满足的后果</th>
+</tr></thead><tbody>
+<tr>
+<td><b>【必须】</b></td>
+<td>MUST / REQUIRED</td>
+<td>强制要求，无例外即不合规</td>
+<td>符合性评估（ANE-CONF）直接判不通过</td>
+</tr>
+<tr>
+<td><b>【应当】</b></td>
+<td>SHOULD / RECOMMENDED</td>
+<td>默认应满足，偏离须书面说明理由</td>
+<td>可合规，但须在评估中说明偏离理由</td>
+</tr>
+<tr>
+<td><b>【可选】</b></td>
+<td>MAY / OPTIONAL</td>
+<td>按场景取舍，不影响合规</td>
+<td>无影响</td>
+</tr>
+<tr>
+<td><b>【禁止】</b></td>
+<td>MUST NOT</td>
+<td>绝对不允许</td>
+<td>违反宪法性红线（25.5）</td>
+</tr>
+</tbody></table></div>
+<h3>42.2 标注语法与适用范围</h3>
+<ul><li><b>【必须】</b> 每条规范性条款必须带且只带一个等级标注；</li><li><b>【必须】</b> 等级标注靠近条款主体，不集中堆在章节末尾；</li><li><b>【应当】</b> 同一条款内并存不同等级要求时，逐项分别标注；</li><li><b>【可选】</b> 开发视图可增加"【本文原创】/【引用】"等来源标注，正式版保留规范性等级、可省略过程性来源标注。</li></ul>
+<h3>42.3 全规范必选项速查</h3>
+<div class="tw"><table><thead><tr>
+<th>章</th>
+<th>必选项（摘要）</th>
+</tr></thead><tbody>
+<tr>
+<td>0–3</td>
+<td>七公理 · 七器官模型 · D0–D3 分级</td>
+</tr>
+<tr>
+<td>4</td>
+<td>小脑三条硬边界（离网 / 可生长 / 零推测）</td>
+</tr>
+<tr>
+<td>5</td>
+<td>大脑只出 Proposal · NTP 四大铁律 · ANS-1 摘要 · 绑定凭证</td>
+</tr>
+<tr>
+<td>6</td>
+<td>经验升格审计 · 反近亲繁殖</td>
+</tr>
+<tr>
+<td>7</td>
+<td>双轨验证 · 未证实即污染</td>
+</tr>
+<tr>
+<td>8</td>
+<td>自愈前置校验 · 可回滚</td>
+</tr>
+<tr>
+<td>9</td>
+<td>人类主权 · 分级授权 · 双折叠不可合并</td>
+</tr>
+<tr>
+<td>10–12</td>
+<td>飞轮闭环 · 五步算法顺序 · 不可破红线</td>
+</tr>
+<tr>
+<td>13–15</td>
+<td>交互追溯日志 · 可视化阶段 · MCP 标准协议</td>
+</tr>
+<tr>
+<td>16–18</td>
+<td>多智能体协同纪律 · 信任边界 · 预算三闸门</td>
+</tr>
+<tr>
+<td>19–21</td>
+<td>扬弃原则 · 合规对齐 · 失效安全与熔断</td>
+</tr>
+<tr>
+<td>22–24</td>
+<td>稳定标识 · AI-BOM · 记忆隔离与遗忘权</td>
+</tr>
+<tr>
+<td>25–31</td>
+<td>元治理 · ANE-CONF · 迁移路径 · 可观测 · 演化测试</td>
+</tr>
+<tr>
+<td>32–37</td>
+<td>单一真源 · 确定性投影 · 本地化保真 · 结构完整性</td>
+</tr>
+<tr>
+<td>38</td>
+<td>名片 · 能力声明 · 信封六必填 · 授权凭证 · 记忆不共享</td>
+</tr>
+<tr>
+<td>39</td>
+<td>声明式套件清单 · 成员准入 · D0 不可委托 · 熔断联动</td>
+</tr>
+<tr>
+<td>40</td>
+<td>权限不衰减 · 递归有界 · 可降级 · 升级凭证 · A4 十项准入检查（40.3b）</td>
+</tr>
+<tr>
+<td>41</td>
+<td>本地优先 · ANS-1 摘要 · 离线优先与联网降级</td>
+</tr>
+</tbody></table></div>
+<h3>42.4 符合性判定</h3>
+<p><b>【必须】</b> ANE-CONF 评估（26 章）按以下规则判定：全部【必须】项通过 + 无【禁止】项违反 = 合规；【应当】项偏离须有书面理由；【可选】项不计入。<b>【必须】</b> 评估结论必须写明偏离项及理由，禁止只给"通过/不通过"的裸结论。</p>
+<h3>42.5 例外处理</h3>
+<p><b>【必须】</b> 任何对【必须】项的例外，只能由人类主权层书面批准，且须记录理由、范围、有效期与恢复计划；<b>【必须】</b> 例外不得触及宪法性红线（25.5）；<b>【可选】</b> 例外可设自动到期机制，到期未续即恢复合规。</p>
+<h3>42.6 本章必选/可选清单</h3>
+<div class="tw"><table><thead><tr>
+<th>条目</th>
+<th>等级</th>
+<th>理由</th>
+</tr></thead><tbody>
+<tr>
+<td>四级标注定义</td>
+<td>【必须】</td>
+<td>无等级则无法判定合规</td>
+</tr>
+<tr>
+<td>逐条标注、不堆末尾</td>
+<td>【必须】</td>
+<td>保证可机读、可审计</td>
+</tr>
+<tr>
+<td>必选项速查表</td>
+<td>【应当】</td>
+<td>降低采纳评估成本</td>
+</tr>
+<tr>
+<td>例外书面批准</td>
+<td>【必须】</td>
+<td>防止"例外"变成后门</td>
+</tr>
+<tr>
+<td>例外自动到期</td>
+<td>【可选】</td>
+<td>治理增强</td>
+</tr>
+</tbody></table></div>
+</section>
+
+<section id="ch43">
+<h2 class="sec"><span class="num">第四十三章</span>传统软件向软件生命体的转换</h2>
+<p>## 第四十三章　传统软件向软件生命体的转换</p>
+<div class="callout warn"><b>【本文原创】</b> 本章回答一个现实问题：<b>已经跑起来的传统软件，怎么一步步变成遵守本规范的软件生命体？</b> 第二十七章给的是组织级"采纳六步"（宏观路径），本章给的是单个系统的"改造手术"（微观战术）。两者互补：27 章决定要不要走、走到哪；43 章决定具体怎么开刀。</div>
+<p>### 43.1 转换的基本立场：不重写，渐进置换</p>
+<div class="callout warn">回溯公理三（可证明的交静态）与采纳三原则（27.1）。转换不是推倒重来，而是在运行的系统上<b>逐块替换、全程可回滚</b>。</div>
+<div class="tw"><table><tbody><tr><td>立场</td><td>含义</td><td>违反后果</td><td>等级</td></tr><tr><td><b>不整体重写</b></td><td>以局部高价值模块为切口，禁止一次性全系统重构</td><td>风险面失控、回滚无门</td><td>【必须】</td></tr><tr><td><b>先观测后改造</b></td><td>未建立交互追溯日志（13.5）前不得改动判定逻辑</td><td>改了不知对错，无法回放</td><td>【必须】</td></tr><tr><td><b>静态优先</b></td><td>先固化确定性底座（类型/状态机/不变式），再叠加智能</td><td>在流沙上盖楼</td><td>【必须】</td></tr><tr><td><b>双轨可回滚</b></td><td>每阶段新旧并存，验证通过才切换</td><td>切换即事故</td><td>【必须】</td></tr></tbody></table></div>
+<p>### 43.2 存量系统适配性分级</p>
+<p><b>【本文原创】</b> 不是所有系统都适合同等程度改造。改造前先分级，避免"一刀切"。</p>
+<div class="tw"><table><tbody><tr><td>级别</td><td>存量特征</td><td>转换策略</td><td>目标档</td><td>等级</td></tr><tr><td><b>T1 易改造</b></td><td>已有清晰状态机、规则可枚举、边界明确</td><td>直接套用 43.3 五阶段手术</td><td>L4–L5</td><td>【应当】</td></tr><tr><td><b>T2 需隔离</b></td><td>逻辑混杂、无状态机、但有稳定接口</td><td>先加防腐层与观测，再逐模块绞杀替换</td><td>L2–L4</td><td>【应当】</td></tr><tr><td><b>T3 宜封装</b></td><td>老旧闭源/不可改核心（如遗留主机系统）</td><td>作为外部能力经 IOP（38 章）接入，内部不改造</td><td>保持原状</td><td>【可选】</td></tr><tr><td><b>T4 不建议</b></td><td>强实时硬约束、法定不可变流程</td><td>仅在周边加观测与主权层，核心不动</td><td>L0–L1</td><td>【必须】保持</td></tr></tbody></table></div>
+<div class="callout warn"><b>【必须】</b> T3/T4 成分不得被伪装成已改造生命体对外声明；<b>【必须】</b> 分级结论写入转换台账，作为后续符合性评估（ANE-CONF）的输入。</div>
+<p>### 43.3 五阶段改造手术</p>
+<div class="tw"><table><tbody><tr><td>阶段</td><td>动作（对应七器官）</td><td>进入条件</td><td>退出验证</td><td>等级</td></tr><tr><td>① 观测植入（免疫前置）</td><td>加 L1/L2/L3 追溯日志与 trace-id（13.5），只记录不干预</td><td>系统可灰度部署</td><td>关键路径全留痕、可回放</td><td>【必须】</td></tr><tr><td>② 底座固化（骨架）</td><td>抽出 D0 不可变核心，补类型/状态机/不变式与契约测试</td><td>观测就位</td><td>底座可证明、有回滚点</td><td>【必须】</td></tr><tr><td>③ 小脑植入（小脑）</td><td>把高频 if-else 规则下沉为本地确定性裁决层，未命中抛 <code>UnknownSignal</code></td><td>底座稳固</td><td>本地规则拦截率达标</td><td>【必须】</td></tr><tr><td>④ 记忆闭环（海马体）</td><td>接经验记录，先只读检索、验证后再写入（6 章升格）</td><td>小脑就位</td><td>同类问题不再求大脑</td><td>【应当】</td></tr><tr><td>⑤ 主权与免疫接入（人类主权+免疫）</td><td>加双折叠授权（13.4）、双轨验证（7 章）、熔断（21.4）</td><td>记忆生效</td><td>熔断演练通过、人审可切断</td><td>【必须】</td></tr><tr><td>⑥ 自愈与飞轮（自愈）</td><td>开自动修复与感知→沉淀飞轮（8/11 章）</td><td>免疫成熟</td><td>自愈成功率达标</td><td>【可选】</td></tr></tbody></table></div>
+<div class="callout warn">阶段 ⑥ 与第 27 章第⑥步一致，为高风险可选项；<b>【必须】</b> 未通过 ⑤ 前禁止开启 ⑥。</div>
+<p>### 43.4 绞杀者式替换与双轨运行</p>
+<p><b>【引用】</b> 绞杀者模式（Strangler Fig Pattern）为业界渐进替换成熟实践（<b>引用</b>），此处适配到生命体转换。</p>
+<p>B --> C["新旧双轨<br/>只记录不生效"]</p>
+<p>C --> D["小比例灰度<br/>1%→5%→25%"]</p>
+<p>D --> E["新生命体<br/>全量承接"]</p>
+<p>E --> F["旧系统退役<br/>证据归档"]</p>
+<p>```</p>
+<div class="tw"><table><tbody><tr><td>机制</td><td>做法</td><td>关键纪律</td><td>等级</td></tr><tr><td>影子模式</td><td>新旧并行处理同一输入，新系统只产出不生效</td><td>比对差异，不产生副作用</td><td>【必须】</td></tr><tr><td>双轨一致性</td><td>新旧输出按摘要比对，差异超阈即停止放量</td><td>差异可见才可放量</td><td>【必须】</td></tr><tr><td>小比例灰度</td><td>按 1%→5%→25%→100% 逐级放量，每级设 SLO</td><td>越界自动回滚（27.4）</td><td>【必须】</td></tr><tr><td>前置路由</td><td>用稳定入口分流，避免改调用方</td><td>路由本身可观测、可回切</td><td>【应当】</td></tr><tr><td>旧系统退役</td><td>全量稳定后下线，证据与台账归档保留</td><td>可退役但责任不可删（39.5）</td><td>【必须】</td></tr></tbody></table></div>
+<p>### 43.5 状态与数据迁移</p>
+<div class="tw"><table><tbody><tr><td>数据层</td><td>迁移策略（对应 41.1 温度分级）</td><td>禁止项</td><td>等级</td></tr><tr><td>热（规则/状态/上下文）</td><td>由新小脑重建，不直接从旧系统拷贝运行时内存</td><td>直接迁移内存态</td><td>【必须】</td></tr><tr><td>温（经验/审计/近期台账）</td><td>只迁经升格的经验摘要与证据引用，验证后写入</td><td>迁原始未验证经验</td><td>【必须】</td></tr><tr><td>冷（审计日志/证据包）</td><td>原样归档、保持只追加与可检索</td><td>转换期清空历史</td><td>【必须】</td></tr><tr><td>冻结（法定留存）</td><td>不迁移、不改写，仅在新系统登记引用</td><td>重写法定凭证</td><td>【必须】</td></tr></tbody></table></div>
+<div class="callout warn"><b>【必须】</b> 转换期保持 <code>organism_id</code> 与经验 lineage 连续，确保责任链不断（41.3）；<b>【必须】</b> 跨主权数据迁移遵守 20.2 合规对齐。</div>
+<p>### 43.6 不可转换成分与失败模式</p>
+<div class="tw"><table><tbody><tr><td>成分/失败模式</td><td>处置</td><td>等级</td></tr><tr><td>强实时硬截止逻辑</td><td>保留在确定性层，不交智能（P1）</td><td>【必须】</td></tr><tr><td>法定不可变流程</td><td>维持原状，仅加主权观测</td><td>【必须】</td></tr><tr><td>闭源不可改核心</td><td>经 IOP 作外部能力接入（T3）</td><td>【可选】</td></tr><tr><td>转换中"两套真相"长期并存</td><td>设转换时限，超时强制收敛或回退</td><td>【必须】</td></tr><tr><td>经验库先污染后治理</td><td>坚持验证后写入（公理四）</td><td>【必须】</td></tr><tr><td>跳过观测直接上自愈</td><td>禁止（43.1）</td><td>【禁止】</td></tr></tbody></table></div>
+<p>### 43.7 转换完成判据</p>
+<p><b>【必须】</b> 满足以下条件才可宣布转换完成：① 目标模块全部通过本规范对应等级的符合性检查（26 章）；② 旧系统已退役或按 T3/T4 明确标注为外部能力/不可变核心；③ 转换期台账、证据与回退记录完整归档；④ 人类主权层书面确认。<b>【应当】</b> 转换完成后运行一个完整观察周期无重大降级再关闭转换台账。<b>【可选】</b> 输出对外可查的转换报告，供生态协作方核对能力边界（38 章）。</p>
+<p>### 43.8 本章必选/可选清单</p>
+<div class="tw"><table><tbody><tr><td>条目</td><td>等级</td><td>理由</td></tr><tr><td>不整体重写、先观测后改造</td><td>【必须】</td><td>控制风险面</td></tr><tr><td>存量适配分级（T1–T4）</td><td>【必须】</td><td>避免一刀切</td></tr><tr><td>五阶段手术 ①–⑤</td><td>【必须】</td><td>生命体骨架与主权底线</td></tr><tr><td>绞杀双轨 + 灰度 + 回滚</td><td>【必须】</td><td>切换安全</td></tr><tr><td>状态分层迁移、责任链连续</td><td>【必须】</td><td>记忆护城河与合规</td></tr><tr><td>自愈飞轮阶段 ⑥</td><td>【可选】</td><td>高风险，需免疫成熟</td></tr><tr><td>闭源核心经 IOP 接入</td><td>【可选】</td><td>视存量结构取舍</td></tr><tr><td>对外转换报告</td><td>【可选】</td><td>生态协作增强</td></tr></tbody></table></div>
+</section>
+
 <!-- ================= APPENDIX A ================= -->
 <section id="appa">
   <h2 class="sec"><span class="num">附录 A</span>术语表</h2>
+  <div class="callout quote"><span class="lbl">本附录分三节</span><b>A.0 核心术语速查（白话版）</b>给第一次读的人；<b>A.1 数值与阈值释义</b>解释文中每一个数字；下表为<b>完整词条索引</b>。每条都标注来源类型——"本文原创"指术语或定义由本规范首次提出，"引用"指沿用业界已有概念。</div>
+  <h3>A.0 核心术语速查（白话版）</h3>
+  <div class="tw"><table>
+    <thead><tr><th>术语</th><th>一句白话</th><th>来源类型</th><th>权威定义 / 首见出处</th><th>英文</th></tr></thead>
+    <tbody>
+      <tr><td>ANE</td><td>AI 原生软件工程：让软件像生命体一样边运行边进化</td><td>本文原创（缩写）</td><td>执行摘要 · 0.2</td><td>AI Native Engineering</td></tr>
+      <tr><td>生命体</td><td>能感知、裁决、记忆、自愈、且受人类约束的软件系统</td><td>本文原创（范式定义）</td><td>序言 · 0.4</td><td>Living Software System</td></tr>
+      <tr><td>骨架</td><td>系统里"不能乱动"的地基与硬规则</td><td>本文原创（工程角色）</td><td>2.2 · 公理一</td><td>Skeleton</td></tr>
+      <tr><td>小脑</td><td>本地快速反射：查规则、立刻决定、不问大模型</td><td>本文原创（角色，借生物隐喻）</td><td>4.1 · 4.4 · 公理三</td><td>Cerebellum</td></tr>
+      <tr><td>大脑</td><td>遇到没见过的问题才叫醒的推理引擎；只给建议不动手</td><td>本文原创（角色，借生物隐喻）</td><td>5.1 · 5.3 · 公理三</td><td>Main Brain</td></tr>
+      <tr><td>海马体</td><td>记忆库：把成功失败记下来，下次不重犯</td><td>本文原创（角色，借生物隐喻）</td><td>6.1 · 6.2</td><td>Hippocampus</td></tr>
+      <tr><td>免疫</td><td>门禁与验证：没证据的生成一律不放行</td><td>本文原创（角色，借生物隐喻）</td><td>7.1 · 公理六</td><td>Immune System</td></tr>
+      <tr><td>自愈</td><td>运行中发现毛病就地修，并留下可回滚记录</td><td>本文原创（工程角色）</td><td>8.1 · 8.3</td><td>Self-Repair</td></tr>
+      <tr><td>主权</td><td>人类说了算：可授权、可否决、可一键停飞</td><td>本文原创（工程角色）</td><td>9.1 · 公理五</td><td>Human Sovereignty</td></tr>
+      <tr><td>统一语义层</td><td>连接高层设计与底层执行的确定性中间层，也是修复落点</td><td>本文原创（通用化术语）</td><td>2.3 · 8.2</td><td>Unified Semantic Layer</td></tr>
+      <tr><td>D0–D3</td><td>从"绝对不能碰"到"可以生成"的四级权限光谱</td><td>本文原创（分级定义）</td><td>第三章 · A.1</td><td>Determinism Tiers</td></tr>
+      <tr><td>NTP</td><td>小脑与大脑之间的结构化求救包/建议包，不是聊天</td><td>本文原创（协议命名）</td><td>5.2 · 5.4</td><td>Neurotransmitter Protocol</td></tr>
+      <tr><td>交互原语</td><td>把交互拆成最小动作：观察、判定、调用、验证等</td><td>本文原创（原语集合）</td><td>14.2</td><td>Interaction Primitive</td></tr>
+      <tr><td>经验升格</td><td>把成功经验固化成本地规则，以后不用再问大模型</td><td>本文原创（机制）</td><td>6.3 · 24.3</td><td>Experience Promotion</td></tr>
+      <tr><td>双折叠协同</td><td>折一给人看依据，折二由人授权，两步不能合成一步</td><td>本文原创（交互范式）</td><td>13.4</td><td>Dual-Fold Collaboration</td></tr>
+      <tr><td>飞轮</td><td>感知—裁决—协同—验证—沉淀—自愈闭环</td><td>本文原创（机制）</td><td>10.1</td><td>Flywheel</td></tr>
+      <tr><td>审计台账</td><td>谁、何时、凭什么、做了什么的结构化记录链</td><td>引用（审计日志思想）+ 本文定义</td><td>13.5 · 28.1 · 公理六</td><td>Audit Ledger</td></tr>
+      <tr><td>trace-id</td><td>一次交互的全局唯一编号，一键串起全部记录</td><td>引用（分布式追踪）+ 本文命名</td><td>22.1 · 13.5</td><td>Trace Identifier</td></tr>
+      <tr><td>RAG</td><td>按需取回过往经验，而非把全部资料塞进提示</td><td>引用</td><td>0.3 · 6.1</td><td>Retrieval-Augmented Generation</td></tr>
+      <tr><td>MCP / A2A</td><td>工具与智能体之间的标准接入协议</td><td>引用（业界协议）</td><td>15.1 · 16.1</td><td>Model Context Protocol / Agent-to-Agent</td></tr>
+      <tr><td>NIST RMF / EU AI Act / ISO 42001</td><td>外部治理与合规框架，ANE 将其内建为工程机制</td><td>引用（标准法规）</td><td>20.1 · 20.2</td><td>NIST AI RMF / EU AI Act / ISO/IEC 42001</td></tr>
+      <tr><td>FMEA / RACI</td><td>失效模式分析与责任矩阵，ANE 直接沿用</td><td>引用（工程方法）</td><td>21.2 · 20.3</td><td>FMEA / RACI</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout quote"><span class="lbl">来源纪律</span>"本文原创"术语定义以本规范为准，引用时请注明 ANE；"引用"术语保留业界原义，本规范只规定其在生命体中的角色。</div>
+  <h3>A.1 数值与阈值释义（每一个数字都有出处与理由）</h3>
+  <div class="tw"><table>
+    <thead><tr><th>数值</th><th>详尽解释</th><th>为什么是它</th><th>来源</th><th>出处</th><th>如何调整</th></tr></thead>
+    <tbody>
+      <tr><td><b>7 公理 / 7 器官</b></td><td>范式最高法七条；七个工程角色（骨架/小脑/大脑/海马体/免疫/自愈/主权）</td><td>覆盖结构、决策、记忆、主权、可审计、安全六维并用第七条约束变异；角色与公理一一映射</td><td>本文原创</td><td>第一章 · 2.2 · 25.5</td><td>须走元规范修订，不可合并</td></tr>
+      <tr><td><b>D0–D3（4 级）</b></td><td>不可变 / 可证可变 / 可审可变 / 可生成四种治理姿态</td><td>再细分会让授权成本超过收益</td><td>本文原创</td><td>第三章</td><td>可在级内细化，不得减少级数</td></tr>
+      <tr><td><b>L0–L5（6 级）</b></td><td>失控/可见/小脑/记忆/自愈/生命体六级成熟度</td><td>每级有唯一新增门禁证据，适合渐进采纳</td><td>本文原创</td><td>第十一章</td><td>评估口径见 26.2，不得跳级</td></tr>
+      <tr><td><b>G1–G7（7 门禁）</b></td><td>前五道守发布纯净，第六道守结构，第七道守译本</td><td>三类检查对象互不替代</td><td>本文原创（思想引用）</td><td>33.3 · 37.2 · 35.5</td><td>可增子项，编号不可断</td></tr>
+      <tr><td><b>≥80% 拦截率 / 离网可用</b></td><td>八成常规决策本地完成；断网仍维持八成事务</td><td>省 Token、低延迟、离线可用三者的交点；低于此值说明规则库没长起来</td><td>本文原创</td><td>4.4 · 12.1 · 21.3b</td><td>按 SLO 调整并记录理由</td></tr>
+      <tr><td><b>N ≥ 3 复现</b></td><td>升格前至少三次独立复现</td><td>一次偶然、两次同源巧合、三次才排除近亲繁殖</td><td>本文原创</td><td>24.3 · 13.6⑧</td><td>按风险上调，不得下调到 1</td></tr>
+      <tr><td><b>99% 即灰度</b></td><td>把握达 99% 就小流量发布</td><td>100% 意味着反馈循环停止；灰度换真实反馈</td><td>本文原创</td><td>10.5 · 27.4</td><td>D0 永不灰度</td></tr>
+      <tr><td><b>1–3 次上行</b></td><td>利用模式单任务最多唤醒大脑 1–3 次</td><td>容忍一次失败重试，但不足以掩盖规则缺失</td><td>本文原创</td><td>5.5 参数表</td><td>D1 配置，调整走门禁</td></tr>
+      <tr><td><b>D0 秒级 / D1 十秒级 / D2 分钟级</b></td><td>按风险等级设大脑等待上限</td><td>越高风险越不能等；文档生成可等分钟级</td><td>本文原创</td><td>5.5 参数表</td><td>未配置取保守端点</td></tr>
+      <tr><td><b>2 分钟/轮 · 60 分钟周期</b></td><td>一轮只改一主题，三十轮为可审查演进周期</td><td>一轮两分钟迫使人聚焦；三十轮形成完整验收周期</td><td>本文原创</td><td>附录 C–H</td><td>节奏可变，闭环不可省</td></tr>
+      <tr><td><b>每 10 轮递进次版本</b></td><td>每十轮升次版本，周期末发布正式版</td><td>十轮一个可验收阶段，避免版本碎片化</td><td>本文原创（语义化版本引用）</td><td>附录 C–H · 22.2</td><td>遵循语义化版本纪律</td></tr>
+      <tr><td><b>五步 / 六阶段 / 四铁律</b></td><td>删除→简化→优化→加速→自动化；飞轮六段；NTP 四铁律</td><td>分别覆盖减负全链条、进化闭环、四种双脑失败</td><td>本文原创</td><td>10.4 · 10.1 · 5.4</td><td>顺序与条数不可变</td></tr>
+      <tr><td><b>两折 / 三层日志 / 八阶段可视化 / 七友好准则</b></td><td>折一判定折二授权；L1/L2/L3；八个必可视化阶段；七条友好准则</td><td>分别对应"看懂与批准"、三种读者、所有影响批准与追问的节点、认知/信任/安全/反馈/负荷/包容/权责七维</td><td>本文原创</td><td>13.4 · 13.5 · 13.6 · 13.7</td><td>可增不可删</td></tr>
+      <tr><td><b>一次 3–5 个关键项</b></td><td>界面单次展示要点上限</td><td>超出工作记忆容量会漏读，细节改由下钻提供</td><td>引用（认知负荷理论）+ 本文取值</td><td>13.7 · 23.2</td><td>按用户研究调整</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout warn"><span class="lbl">数值纪律</span>所有阈值都是"默认值 + 可审计调整"，不是物理常数。调整必须记录新值、理由、批准人、复审日期与 D 级配置（22.4）。<b>没有出处的数字不得进入规范性条款。</b></div>
+  <h3>术语与释义（完整词条索引）</h3>
   <div class="tw"><table>
     <thead><tr><th>术语</th><th>释义</th></tr></thead>
     <tbody>
       <tr><td>ANE</td><td>AI Native Engineering，AI 原生软件工程</td></tr>
-      <tr><td>统一中间表示层</td><td>连接高层语义与底层指令的确定性底座，兼具编译枢纽与自愈载体</td></tr>
-      <tr><td>小脑 Cerebellum</td><td>本地确定性高频裁决层，规则库 + 状态机 + 代价模型</td></tr>
+      <tr><td>统一语义层</td><td>连接高层语义与底层执行的确定性底座，兼具语义转换枢纽与自愈载体</td></tr>
+      <tr><td>小脑 Cerebellum</td><td>本地确定性高频裁决层，规则库 + 状态机 + 确定性成本模型</td></tr>
       <tr><td>大脑 Main Brain</td><td>按需唤醒的大模型智能体，处理未知复杂问题</td></tr>
       <tr><td>NTP</td><td>神经递质协议，小脑→大脑的结构化压缩上下文格式</td></tr>
       <tr><td>海马体 Hippocampus</td><td>经验向量存储 + 检索增强机制</td></tr>
@@ -1437,7 +2949,7 @@ flowchart LR
       <tr><td>种子规则 Seed Rules</td><td>冷启动期由人类专家灌入、经免疫验证的初始黄金规则集</td></tr>
       <tr><td>探索 / 利用模式</td><td>Explore（高频唤大脑采样）/ Exploit（本地优先省 Token）两种记忆使用模式，按覆盖阈值切换</td></tr>
       <tr><td>知识冷淬火</td><td>种子规则与探索期样本经免疫验证后淬火为稳定规则的过程</td></tr>
-      <tr><td>硬件拓扑感知</td><td>中间表示层依运行环境物理特征（指令集/加速核/内存带宽/互连亲和）自适应编译排优</td></tr>
+      <tr><td>硬件拓扑感知</td><td>统一语义层依运行环境物理特征（处理器能力/加速单元/内存与存储特性/互连亲和）自适应优化</td></tr>
       <tr><td>双折叠协同 Dual-Fold Collaboration</td><td>折一判定层（认知摘要）+ 折二授权层（意图绑定）的人机协同强制范式</td></tr>
       <tr><td>认知摘要 Cognitive Summary</td><td>折一输出：AI 的意图、候选、依据、验证结论与风险提示，不可直接执行</td></tr>
       <tr><td>意图绑定 Intent Binding</td><td>折二输出：人把批准精确绑定到具体候选动作的确定性授权凭证</td></tr>
@@ -1445,13 +2957,29 @@ flowchart LR
       <tr><td>近亲繁殖</td><td>升格依据高度依赖同源/自引用样本导致的规则腐化，须检验并驳回</td></tr>
       <tr><td>附录重编号 R5</td><td>投影删除 P 层附录后，对保留的 N 层附录连续重编号并同步锚点</td></tr>
       <tr><td>形态后缀契约</td><td>正式版无后缀、开发视图带 <code><开发形态标识></code> 后缀的命名规则</td></tr>
+      <tr><td>五步算法 Five-Step Algorithm</td><td>删除→简化→优化→加速→自动化的强制演进顺序，禁止越级</td></tr>
+      <tr><td>反馈闭环时长</td><td>从信号产生到经验沉淀完成的耗时，速度法则的核心度量</td></tr>
+      <tr><td>高内聚融合</td><td>用高内聚模块在底层融合长调用链，减少跨边界通信损耗</td></tr>
+      <tr><td>零推测 No Speculation</td><td>小脑规则未命中时必须抛 <code>UnknownSignal</code>，禁止猜测或近似替代</td></tr>
+      <tr><td>离网可用 Offline Capability</td><td>大脑不可达时小脑仍能维持 ≥80% 常规事务的能力要求</td></tr>
+      <tr><td>上行 Uplink</td><td>小脑→大脑的求救载荷：特征向量、错误码、已试规则、环境画像、预算</td></tr>
+      <tr><td>下行 Downlink</td><td>大脑→小脑的建议载荷：候选补丁、置信度、推理摘要，状态恒为待验证</td></tr>
+      <tr><td>通信状态机</td><td>Pending→Proposal→Verifying→Applied/Rollback→Ledger 的双脑链路状态序列</td></tr>
+      <tr><td>信道仲裁</td><td>多请求争抢大脑配额时按紧急度与预算统一排队的机制</td></tr>
+      <tr><td>模型载体 Model Carrier</td><td>大脑的物理实现，经统一能力接口可替换，不得成为架构依赖</td></tr>
+      <tr><td>模型卡 Model Card</td><td>载体随附的版本、边界、偏差、评测与责任人记录，纳入 AI-BOM</td></tr>
+      <tr><td>提示词资产 Prompt Asset</td><td>纳入版本控制、有稳定 ID/所有者/评测/回滚的操作界面制品</td></tr>
+      <tr><td>注入防护 Injection Guard</td><td>外部内容只作数据载荷、不得提升为指令的强制边界</td></tr>
+      <tr><td>无责复盘 Blameless Postmortem</td><td>针对机制而非个人的事件复盘；隐瞒与篡改台账才是红线</td></tr>
+      <tr><td>仲裁可观测</td><td>配额耗尽率 / 被打回率 / D0-D1 抢占率三项审计指标</td></tr>
+      <tr><td>超时判定 Timeout Disposition</td><td>上行超时一律走 DEGRADED，不得记为"大脑拒绝"或静默重试</td></tr>
     </tbody>
   </table></div>
   <div class="callout quote" style="margin-top:24px"><span class="lbl">结语</span>当一个组织还在做"加法"——堆算力、堆模型、堆 Token——ANE 在做"减法与乘法"：给小脑定规则，给大脑画边界，给记忆筑护城河，给进化装免疫系统。<b>连这份规范自身也遵守它定下的规则——从单一真源投影出干净正式版，用门禁证明自己的纯粹。能管好自己的规范，才有资格治理生命体。</b></div>
 </section>
 
 <footer>
-  <div>《ANE 规范：AI 原生软件生命体工程范式》v0.5.0 · 创建人 冯磊 · 正式发布版</div>
+  <div>《ANE 规范：AI 原生软件生命体工程范式》v0.9.0 · 创建人 冯磊 · 正式发布版</div>
   <div style="margin-top:8px">ANE = AI Native Engineering · MD 与 HTML 双版本内容一致</div>
 </footer>
 </main>
