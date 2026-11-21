@@ -77,11 +77,19 @@ C_HARNESS = r"""#include <stdio.h>
 #include "mlc.h"
 #include "mlc_ops.h"
 
+/* **必须填 strides**（R1083）：mlc_array 有 data/dtype/ndim/shape/strides/
+ * owns_data 六个字段，而 row-major 的 strides 以**元素**为单位。
+ * 我第一版漏了 strides（全 0），于是多元素数组的第 1..n-1 个元素
+ * 完全没有被写到——表现就是"C 侧只输出第一个值，其余是初值 0"。
+ * 这个 bug 在双轨里暴露得很快，因为它让 C 轨的结果**明显不合常理**。 */
 static void fill(mlc_array *a, const double *v, long n)
 {
     a->data = (void *)v; a->dtype = MLC_F64;
     a->ndim = 1; a->shape[0] = n;
     for (int i = 1; i < MLC_MAX_DIMS; ++i) a->shape[i] = 0;
+    /* 1-D 行主序：strides[0] = 1；其余维为 0 */
+    a->strides[0] = 1;
+    for (int i = 1; i < MLC_MAX_DIMS; ++i) a->strides[i] = 0;
     a->owns_data = 0;
 }
 
