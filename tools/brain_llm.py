@@ -161,19 +161,50 @@ def escalate(query, extra_signals=None, problems=None, entries=None, kinds=None)
     # S1 无先例
     s1 = top < MIN_SCORE
 
-    # S2 复发：同名问题在 problems.jsonl 里出现多次
+    # S2 复发：**与当前 query 相关**的问题是否反复出现（R1060 修）
+    #
+    # 原实现是 `worst = max(rep.values())` —— 取的是**全库最大值**，与当前
+    # query 毫无关系。只要历史上任一标题出现过 3 次，此后**每一个** query
+    # 都会被判"复发"，于是小脑永不生效（实测 60/60 全上行）。
+    # 正确语义是"同名问题复发"：先找出与 query 最相似的那条，看它记了几次。
     rep = {}
     for p in (problems if problems is not None else _problems()):
         t = (p.get("title") or "").strip()
         if t:
             rep[t] = rep.get(t, 0) + 1
-    worst = max(rep.values()) if rep else 0
+    # 取相似度最高的历史标题（hits 已按分数降序）
+    worst = 0
+    for _score, e in hits:
+        t = (e.get("title") or "").strip() if isinstance(e, dict) else ""
+        if t and t in rep:
+            worst = rep[t]
+            break
+    if not worst and rep:
+        # 回退：hits 命不中（例如自证注入的 problems 不在知识库里）时，
+        # 用 query 的实词去匹配 title —— 这才叫"同名"。
+        words = [w for w in re.split(r"[^\w\u4e00-\u9fff]+", query) if len(w) > 1]
+        if words:
+            best_t, best_n = "", 0
+            for t, n in rep.items():
+                overlap = sum(1 for w in words if w in t)
+                if overlap > best_n:
+                    best_t, best_n = t, overlap
+            if best_n:
+                worst = rep[best_t]
     s2 = worst >= REPEAT_MIN
 
-    # S3 无见证可挂：库里存在"想记却记不住"的信号 —— 用 open 条目近似
+    # S3 无见证可挂：**与当前 query 相关**的 open 条目（R1060 修）
+    #
+    # 原实现 `s3 = len(open_items) > 0` 是全局判定：库里只要有一条 open，
+    # 所有 query 都升级。改为只看本次检索命中的那些条目。
     if entries is None:
         entries = brain.load()["entries"]
-    open_items = [e for e in entries if e.get("status") == "open"]
+    hit_ids = set()
+    for _score, e in hits:
+        if isinstance(e, dict) and e.get("id"):
+            hit_ids.add(e["id"])
+    open_items = [e for e in entries
+                  if e.get("status") == "open" and e.get("id") in hit_ids]
     s3 = len(open_items) > 0
 
     # S4 未归类：最近一次未映射统计里出现已知集合之外的 kind
