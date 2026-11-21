@@ -167,8 +167,14 @@ def main(argv=None):
     name = os.path.basename(ns.profile)
     io.open(out, "w", encoding="utf-8", newline="\n").write(
         render(pairs, name, conflict))
+    # 输出可能在仓库外（如临时目录），relpath 在跨盘符时会抛 ValueError；
+    # 打印不该因为"显示路径"而让工具失败。
+    try:
+        shown = os.path.relpath(out, ROOT)
+    except ValueError:
+        shown = out
     print("[symbols] %s -> %s ｜ 重映射 %d 条%s"
-          % (name, os.path.relpath(out, ROOT), len(pairs),
+          % (name, shown, len(pairs),
              "，**冲突 %d 条**" % len(conflict) if conflict else ""))
     for base, sel, op, why in pairs[:8]:
         print("  %-12s %-22s -> %s" % (op, base, sel))
