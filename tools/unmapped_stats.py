@@ -39,14 +39,36 @@ sys.path.insert(0, os.path.join(ROOT, "translate"))
 import mir as M  # noqa: E402
 
 
-def scan(src):
+def _collect_m_files(src, recursive=True):
+    """**递归**收集 .m 文件（R1105）。
+
+    原来用 `os.listdir(src)` 只扫顶层 —— yalmip 这类把 .m 放在子目录的
+    工程只被扫到 3 个文件，"大规模测试"实际只测了目录列表。
+
+    R1104 曾试图用正则替换来加递归，失败了（只替换循环头，循环体里
+    还有别处依赖变量 f）。这次**整段替换**，并且先跑小工程再跑大工程。
+    """
+    out = []
+    if not recursive:
+        for fn in sorted(os.listdir(src)):
+            if fn.endswith(".m"):
+                out.append(os.path.join(src, fn))
+        return out
+    for base, dirs, files in os.walk(src):
+        dirs[:] = sorted(d for d in dirs
+                         if d not in {".git", "target", "__pycache__", ".m2c"})
+        for fn in sorted(files):
+            if fn.endswith(".m"):
+                out.append(os.path.join(base, fn))
+    return out
+
+
+def scan(src, recursive=True):
     kinds = collections.Counter()
     per_file = []
     total = 0
-    for f in sorted(os.listdir(src)):
-        if not f.endswith(".m"):
-            continue
-        p = os.path.join(src, f)
+    for p in _collect_m_files(src, recursive):
+        f = os.path.basename(p)
         try:
             code = io.open(p, encoding="utf-8", errors="replace").read()
             _t, st = M.to_mir(code)
