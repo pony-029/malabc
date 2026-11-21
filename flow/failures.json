@@ -521,6 +521,127 @@
       "witness": "tools/check_all.py",
       "status": "fixed",
       "commit": "R1004"
+    },
+    {
+      "id": "F053",
+      "title": "用正则改结构化代码，连续四次失败",
+      "symptom": "改 unmapped_stats / check_dual_track 的循环与模板，四次改动都导致运行时异常，三次需要 git 回滚",
+      "root_cause": "正则只能匹配文本，看不见结构：变量作用域、循环体依赖、缩进层级。每次失败后我只是换更精确的正则，没换方法",
+      "rule": "改代码用整段读写（读完整函数 -> 整段替换 -> assert 首末行 -> 先跑小样例再跑大样例）；正则只用于查找，不用于改写",
+      "witness": "tools/unmapped_stats.py",
+      "status": "fixed",
+      "commit": "",
+      "note": "R1063/R1087/R1090/R1104"
+    },
+    {
+      "id": "F054",
+      "title": "「真源」的形态会随系统健康状态变化",
+      "symptom": "true_count 三次取到不同的数：49、48、49；而正确值只在门报错时才出现在输出里",
+      "root_cause": "我把「某个时刻的报错文本」当成真源。门一旦全绿，那句报错就不存在，于是工具退回常量并改错",
+      "rule": "需要当前值时读**总在打印**的汇总行（如 check_all 的「N 个护栏」），并在取不到时中止，绝不拿常量顶替",
+      "witness": "tools/sync_gate_count.py",
+      "status": "fixed",
+      "commit": "",
+      "note": "R1094/R1095/R1112/R1113"
+    },
+    {
+      "id": "F055",
+      "title": "只改 2 个字符的工具改动了 10144 行",
+      "symptom": "sync_gate_count --apply 后 git diff 显示 10144 行变更，而实际只应改 10 处数字",
+      "root_cause": "写文件用 newline=''，Python 把 CRLF 读成 \\n、写回成 LF，整份文件的行尾被静默改写；而工具自己报的仍是「改了 10 处」",
+      "rule": "改写文件的工具必须让自己报的数字与 git diff --stat 一致；行尾归一只调 fix_eol，不在第二处判断",
+      "witness": "tools/fix_eol.py",
+      "status": "fixed",
+      "commit": "",
+      "note": "R1093/R1094"
+    },
+    {
+      "id": "F056",
+      "title": "样本从 3 涨到 1682，降级率从 72.1% 降到 16.2%",
+      "symptom": "yalmip 只扫到顶层 3 个文件时报 72.1% 降级；改成递归后 扫到 1682 个文件，报 16.2%",
+      "root_cause": "工具用 os.listdir 只扫顶层，而真实项目的 .m 都在子目录。那 3 个恰好是最糟的几个，样本偏差极大",
+      "rule": "报「扫了 N 个文件」之前先确认扫描器会递归；顶层通常只有几个入口文件",
+      "witness": "tools/unmapped_stats.py",
+      "status": "fixed",
+      "commit": "",
+      "note": "R1103/R1105/R1106"
+    },
+    {
+      "id": "F057",
+      "title": "按报错改的迭代成本是 O(n²)",
+      "symptom": "加一道门触发 8 项失败，之后六轮都在还债；check_help_contract 一次只报两条，改完又冒两条",
+      "root_cause": "登记点分散在 7 处（GUARD_CONTRACT/两侧 README/GATES/散文门数/ASCII 树），而门一次只报一部分",
+      "rule": "需要登记多处的改动，先把全部登记点找齐写下来，再一次改完；不要拿报错当清单",
+      "witness": "tools/check_help_contract.py",
+      "status": "fixed",
+      "commit": "",
+      "note": "R1072–R1078"
+    },
+    {
+      "id": "F058",
+      "title": "正则改结构化代码连续四次失败",
+      "symptom": "改循环与模板四次都导致运行时异常，三次需 git 回滚",
+      "root_cause": "正则只能匹配文本看不见结构：作用域/循环依赖/缩进",
+      "rule": "整段读写 + assert 首末行 + 先小样例后大样例；正则只查不改",
+      "witness": "tools/unmapped_stats.py",
+      "status": "fixed",
+      "commit": "",
+      "note": "R1063/R1087/R1090/R1104"
+    },
+    {
+      "id": "F059",
+      "title": "真源形态随系统健康状态变化",
+      "symptom": "true_count 三次取到 49/48/49，正确值只在门报错时出现",
+      "root_cause": "把某时刻的报错文本当真源；门全绿后它就不存在",
+      "rule": "读总在打印的汇总行；取不到就中止，不拿常量顶替",
+      "witness": "tools/sync_gate_count.py",
+      "status": "fixed",
+      "commit": "",
+      "note": "R1094/R1095/R1112/R1113"
+    },
+    {
+      "id": "F060",
+      "title": "只改2字符的工具改动了10144行",
+      "symptom": "apply 后 diff 10144 行，而实际只应改 10 处数字",
+      "root_cause": "newline='' 让 CRLF 读成 LF、写回也 LF，整份行尾被改写",
+      "rule": "工具报的改动数必须与 git diff --stat 一致；行尾归一只调 fix_eol",
+      "witness": "tools/fix_eol.py",
+      "status": "fixed",
+      "commit": "",
+      "note": "R1093/R1094"
+    },
+    {
+      "id": "F061",
+      "title": "样本从3涨到1682降级率从72.1%降到16.2%",
+      "symptom": "yalmip 只扫顶层 3 文件报 72.1%；递归后 1682 文件报 16.2%",
+      "root_cause": "os.listdir 只扫顶层，真实项目的 .m 都在子目录",
+      "rule": "报「扫了 N 个文件」前先确认扫描器会递归",
+      "witness": "tools/unmapped_stats.py",
+      "status": "fixed",
+      "commit": "",
+      "note": "R1103/R1105/R1106"
+    },
+    {
+      "id": "F062",
+      "title": "按报错改的迭代成本是 O(n^2)",
+      "symptom": "加一道门触发 8 项失败，之后六轮都在还债",
+      "root_cause": "登记点分散在 7 处，而门一次只报一部分",
+      "rule": "先把全部登记点找齐写下来再一次改完；不要拿报错当清单",
+      "witness": "tools/check_help_contract.py",
+      "status": "fixed",
+      "commit": "",
+      "note": "R1072-R1078"
+    },
+    {
+      "id": "F063",
+      "title": "自证绿了不等于行为对了",
+      "symptom": "S5 自证 5/5 但标定集仍 60%；gen_symbol_map 自证 3/3 但重映射 0 条",
+      "root_cause": "自证测实现符合样本，样本由同一作者写可以一起错",
+      "rule": "改完看它想影响的指标变没变；生成器必须配消费方验证",
+      "witness": "flow/cerebellum-calibration.json",
+      "status": "fixed",
+      "commit": "",
+      "note": "R1044/R1063/R1069"
     }
   ]
 }
