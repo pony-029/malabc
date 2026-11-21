@@ -1217,6 +1217,7 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 - `tools/sample_numeric.py` —— **只抽可翻译目标**：排除算子重载桩（`varargout` 分派 / `CreateBasicOperator` / `switch class(`），并把排除理由与条数全部打印（不静默过滤）
 - `tools/gap_attrib.py` —— **缺口归因**：把未映射语句按"缺口性质"分类（string-switch / cell / type-predicate / builtin-call / index-assign / flatten / numeric-switch / other），每类标**攻关成本**（语法低 / 需运行时高）。`unmapped_stats` 说"降级率多少"，这个说"**剩下的能不能修**"
 - `tools/op_backends.py` —— **算子实现变体选择**：按 profile 的 `isa.order` 依次找 `mlc_op_<name>_<isa>`，命中即选，全未命中退回标量 `c`（**标量是兜底，不参与优先级**——排在序列首位会让 simd/accel 永远选不上，而输出表看起来完全正常）；支持 `--op-map` 外部覆盖，覆盖后仍走变体选择，陈旧覆盖与缺 `why` 都判错
+- `tools/mem_callchain.py` —— **调用链峰值**：修掉 `mem_sections` 的低估方向。`peak(A) = own(A) + Σ peak(callee)` —— A 调 B 时两者数组同时活着，按「每函数各自」算会低估。递归一律**不给数字**（静态无法展开栈深度，假值比没有更糟），并列出环示例
 - `tools/mem_sections.py` —— **分段预算校验**：段个数/段名/每段容量/单数组上限全部由 profile 决定，按声明顺序 first-fit 分流（缺 `max_array_bytes` 的段视为能装任何大小）；口径是**逐函数求和再取函数间最大值**，并在返回值标 `scope: per-function`——它不是全局峰值，跨调用链仍会低估
 - `tools/hw_brain.py` —— **硬件映射的小脑与大脑**：小脑跑确定性推导（段用量/算子数/形状未知数），大脑只在四信号触发时升级，每项都带一个**可回答的问题**而非一句「请检查」。四信号（无先例/复发/无见证/未归类）只有一处定义，是 `brain_llm.escalate` 在本领域的适配器
 - `tools/gen_symbol_map.py` —— **符号重映射头生成器**：从 profile + op-map 生成 `m2c_symbols.h`（`#define mlc_op_sum hw_dsp_sum`），让 `emit.rs` 零改动就能按配置产出不同的 C 工程。左值取 operators 的**原始 c**、右值取最终选中项
