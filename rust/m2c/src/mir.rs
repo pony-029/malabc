@@ -691,21 +691,32 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
     //     numel ≈ const 行数 / f64 入参个数
     // 补一个形状。**这是启发式，不是真正的形状推断**：
     // 多入参且元素数不同时会算错；但比"一律 4"更接近真实。
+    // **按 owner 前缀分桶补算入参 shape**（R1172）。
+    //
+    // 演进：
+    //   R1169 用 `per = n_const / n_arr`（总数平均）——
+    //         多入参元素数不同时（a=4、b=9）两个都填 6，仍错一个。
+    //   R1171 让前端把 owner 写进 const 名：`m2c_a_k1` / `m2c_b_k11`。
+    //   本轮 后端按前缀分组，算出**每个入参各自的元素数**。
+    //
+    // 仍局限：只处理"字面量整体赋给入参"这一种形态；
+    // 若入参来自计算而非字面量，shape 仍为空（此时保持空，不瞎猜）。
     for f in funcs.iter_mut() {
-        let n_const = f
-            .body
-            .iter()
-            .filter(|s| matches!(s, Stmt::Const { .. }))
-            .count() as i64;
-        let n_arr = f.args.iter().filter(|a| a.dtype == "f64").count() as i64;
-        if n_const > 0 && n_arr > 0 {
-            let per = n_const / n_arr;
-            if per > 0 {
-                for a in f.args.iter_mut() {
-                    if a.dtype == "f64" && a.shape.is_empty() {
-                        a.shape = vec![per];
-                    }
-                }
+        for a in f.args.iter_mut() {
+            if a.dtype != "f64" || !a.shape.is_empty() {
+                continue;
+            }
+            let prefix = format!("m2c_{}_k", a.name);
+            let n = f
+                .body
+                .iter()
+                .filter(|st| match st {
+                    Stmt::Const { name, .. } => name.starts_with(prefix.as_str()),
+                    _ => false,
+                })
+                .count() as i64;
+            if n > 0 {
+                a.shape = vec![n];
             }
         }
     }
