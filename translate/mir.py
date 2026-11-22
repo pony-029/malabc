@@ -1698,7 +1698,9 @@ def _lower_vcat(out, code, idx_counter):
         row = []
         for x in nums:
             idx_counter[0] += 1
-            nm = "m2c_k%d" % idx_counter[0]
+            # **const 名带 owner 前缀**（R1171）：后端要按名字分组
+            # 算出每个入参各自的元素数，匿名名做不到。
+            nm = "m2c_%s_k%d" % (lhs, idx_counter[0])
             out.append("const:%s:%s" % (nm, x))
             row.append(nm)
         cur_row = row[0]
@@ -1739,7 +1741,7 @@ def _lower_hcat(out, code, idx_counter):
     for p in parts:
         if re.match(r"^-?\d+(\.\d+)?$", p):
             idx_counter[0] += 1
-            t = "m2c_k%d" % idx_counter[0]
+            t = "m2c_%s_k%d" % (lhs, idx_counter[0])
             out.append("const:%s:%s" % (t, p))
             toks.append(t)
         elif re.match(r"^[A-Za-z_]\w*$", p):
