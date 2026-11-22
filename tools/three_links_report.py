@@ -26,6 +26,7 @@ import io
 import os
 import shutil
 import subprocess
+import threading
 import sys
 import tempfile
 
@@ -348,11 +349,30 @@ def main():
     base = WORK if os.path.isdir(WORK) else None
     d = tempfile.mkdtemp(prefix="m2c_3l_rpt_", dir=base)
 
-    recs = []
-    for i, f in enumerate(files, 1):
-        sys.stdout.write("\r[%d/%d] %s   " % (i, len(files), os.path.basename(f)))
-        sys.stdout.flush()
-        recs.append(analyze_one(f, d))
+    # **并发执行**（R1165）：analyze_one 为每个文件用 `d/<stem>.mir`
+    # 与 `d/g_<stem>`，stem 各不相同，多线程写同一父目录不会互相覆盖；
+    # 内部全是 subprocess（m2c / gcc / 可执行文件），无共享可变状态。
+    # 串行时实测 0.06 个/秒（R1164），并发是为了把墙钟压下来，
+    # **不是为了改判定口径**——每个文件的判据完全不变。
+    recs = [None] * len(files)
+    workers = max(1, int(os.environ.get("M2C_JOBS", "4")))
+    done = [0]
+    lock = threading.Lock()
+    import concurrent.futures as _cf
+
+    def _one(idx_f):
+        idx, f = idx_f
+        r = analyze_one(f, d)
+        with lock:
+            done[0] += 1
+            sys.stdout.write("\r[%d/%d] %s   "
+                             % (done[0], len(files), os.path.basename(f)))
+            sys.stdout.flush()
+        return idx, r
+
+    with _cf.ThreadPoolExecutor(max_workers=workers) as ex:
+        for idx, r in ex.map(_one, list(enumerate(files))):
+            recs[idx] = r
     sys.stdout.write("\n")
 
     # 失败原因的**类型聚合**：报告要能回答"卡在哪"，而不只是"过了几个"。
