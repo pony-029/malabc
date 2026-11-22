@@ -1686,8 +1686,28 @@ def _lower_vcat(out, code, idx_counter):
     for p in parts:
         if re.match(r"^[A-Za-z_]\w*$", p):
             toks.append(p)
-        else:
-            return False                 # 数字/调用/切片：不猜
+            continue
+        # **数字行**（R1145）：`[1 2; 3 4]` 的每段是 "1 2" 这种数字序列。
+        # 原来这里直接 return False，于是整个矩阵字面量降级成 unmapped。
+        # 改法：先把这一行的数字降成 const + OP-HCAT 链，拿到一个临时名，
+        # 之后照常参与 VCAT。
+        nums = p.split()
+        if len(nums) < 1 or not all(
+                re.match(r"^[-+]?\d+(?:\.\d+)?$", x) for x in nums):
+            return False                 # 调用/切片/混合：仍然不猜
+        row = []
+        for x in nums:
+            idx_counter[0] += 1
+            nm = "m2c_k%d" % idx_counter[0]
+            out.append("const:%s:%s" % (nm, x))
+            row.append(nm)
+        cur_row = row[0]
+        for x in row[1:]:
+            idx_counter[0] += 1
+            dst = "m2c_t%d" % idx_counter[0]
+            out.append("op:OP-HCAT:%s:%s:%s" % (dst, cur_row, x))
+            cur_row = dst
+        toks.append(cur_row)
     if lhs in toks:
         return False                     # `x = [x; v]` 自累积：需 realloc，拒绝
     cur = toks[0]
@@ -1697,7 +1717,8 @@ def _lower_vcat(out, code, idx_counter):
             dst = lhs
         else:
             idx_counter[0] += 1
-            dst = "__v%d" % idx_counter[0]
+            # `__v%d` 与 `__k%d` 同类风险（双下划线是保留区），换普通前缀
+            dst = "m2c_v%d" % idx_counter[0]
         out.append("op:OP-VCAT:%s:%s:%s" % (dst, cur, t))
         cur = dst
     return True
