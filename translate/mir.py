@@ -1056,7 +1056,7 @@ def _lower_reduce_elementwise(out, code, counter, unmapped_kinds, op_ids):
     for side in (a, b):
         if re.match(r"^-?\d+(\.\d+)?$", side):
             counter[0] += 1
-            k = "__k%d" % counter[0]
+            k = "m2c_k%d" % counter[0]
             out.append("const:%s:%s" % (k, side))
             args.append(k)
         else:
@@ -1534,7 +1534,7 @@ def _pre_lower(code, out, counter):
     m = _LIT_COND.match(code)
     if m:
         counter[0] += 1
-        t = "__k%d" % counter[0]
+        t = "m2c_k%d" % counter[0]
         out.append("const:%s:%s" % (t, m.group(2)))
         return "%s %s %s %s" % (m.group(1), t, m.group(3), m.group(4))
 
@@ -1550,14 +1550,14 @@ def _pre_lower(code, out, counter):
     m = _CONST_LEFT_BIN.match(code)
     if m:
         counter[0] += 1
-        t = "__k%d" % counter[0]
+        t = "m2c_k%d" % counter[0]
         out.append("const:%s:%s" % (t, m.group(2)))
         return "%s = %s %s %s;" % (m.group(1), t, m.group(3), m.group(4))
 
     m = _CONST_RIGHT_BIN.match(code)
     if m:
         counter[0] += 1
-        t = "__k%d" % counter[0]
+        t = "m2c_k%d" % counter[0]
         out.append("const:%s:%s" % (t, m.group(4)))
         return "%s = %s %s %s;" % (m.group(1), m.group(2), m.group(3), t)
     return None
@@ -1718,7 +1718,7 @@ def _lower_hcat(out, code, idx_counter):
     for p in parts:
         if re.match(r"^-?\d+(\.\d+)?$", p):
             idx_counter[0] += 1
-            t = "__k%d" % idx_counter[0]
+            t = "m2c_k%d" % idx_counter[0]
             out.append("const:%s:%s" % (t, p))
             toks.append(t)
         elif re.match(r"^[A-Za-z_]\w*$", p):
