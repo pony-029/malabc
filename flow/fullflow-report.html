@@ -58,33 +58,34 @@ font-size:12.5px;color:var(--ink3)}
 </style></head><body><div class="wrap">
 <div class="cover"><div class="kicker">Full-flow Test Report</div>
 <h1>MATLAB → C 全流程测试报告</h1>
-<p class="sub">合成用例池（修复 __k8 保留名冲突 + 去掉 y=zeros(1) 之后），抽 120 个跑完整三段</p></div>
+<p class="sub">合成用例池 600 个（tools/gen_cases.py 生成；已修 __k8 保留名与矩阵字面量两处）—— 完整三段：解析 → 生成 C → gcc 编译 + 运行</p></div>
 <div class="board">
-<div class="kpi"><div class="v">120</div><div class="k">样本文件数</div></div>
-<div class="kpi ok"><div class="v">96</div><div class="k">① 解析进 MIR</div></div>
-<div class="kpi ok"><div class="v">96</div><div class="k">③ 三段全通</div></div>
-<div class="kpi ok"><div class="v">80.0%</div><div class="k">全通率</div></div>
+<div class="kpi"><div class="v">600</div><div class="k">样本文件数</div></div>
+<div class="kpi ok"><div class="v">600</div><div class="k">① 解析进 MIR</div></div>
+<div class="kpi ok"><div class="v">447</div><div class="k">③ 三段全通</div></div>
+<div class="kpi ok"><div class="v">74.5%</div><div class="k">全通率</div></div>
 </div>
 <h2><span class="num">01</span>三段漏斗</h2>
 <div class="funnel">
-<div class="fstep"><div class="lab">① 解析成 MIR</div><div class="bar"><i style="width:80.0%"></i><span>96 / 120</span></div><div class="pct">80.0%</div></div>
-<div class="fstep"><div class="lab">② 生成 C（rust m2c）</div><div class="bar"><i style="width:80.0%"></i><span>96 / 120</span></div><div class="pct">80.0%</div></div>
-<div class="fstep"><div class="lab">③ gcc 编译 + 运行</div><div class="bar"><i style="width:80.0%"></i><span>96 / 120</span></div><div class="pct">80.0%</div></div>
+<div class="fstep"><div class="lab">① 解析成 MIR（零未映射）</div><div class="bar"><i style="width:100.0%"></i><span>600 / 600</span></div><div class="pct">100.0%</div></div>
+<div class="fstep"><div class="lab">② 生成 C（rust m2c）</div><div class="bar"><i style="width:94.0%"></i><span>564 / 600</span></div><div class="pct">94.0%</div></div>
+<div class="fstep"><div class="lab">③ gcc 编译 + 运行</div><div class="bar"><i style="width:74.5%"></i><span>447 / 600</span></div><div class="pct">74.5%</div></div>
 </div>
 <h2><span class="num">02</span>逐段数据</h2>
 <table><tr><th>阶段</th><th>通过</th><th>总数</th><th>通过率</th><th>相对上一段</th></tr>
-<tr><td>① 解析成 MIR</td><td class=n>96</td><td class=n>120</td><td class=n>80.0%</td><td class=n>—</td></tr>
-<tr><td>② 生成 C（rust m2c）</td><td class=n>96</td><td class=n>120</td><td class=n>80.0%</td><td class=n>+0</td></tr>
-<tr><td>③ gcc 编译 + 运行</td><td class=n>96</td><td class=n>120</td><td class=n>80.0%</td><td class=n>+0</td></tr>
+<tr><td>① 解析成 MIR（零未映射）</td><td class=n>600</td><td class=n>600</td><td class=n>100.0%</td><td class=n>—</td></tr>
+<tr><td>② 生成 C（rust m2c）</td><td class=n>564</td><td class=n>600</td><td class=n>94.0%</td><td class=n>-36</td></tr>
+<tr><td>③ gcc 编译 + 运行</td><td class=n>447</td><td class=n>600</td><td class=n>74.5%</td><td class=n>-117</td></tr>
 </table>
+<div class="callout warn"><p><b>瓶颈在②：解析成功但生成 C 失败 36 个。</b>而 ②→③ 几乎不掉——说明<b>生成出来的 C 基本都能编译跑对</b>，问题集中在「从 MIR 到 C」这一步。</p></div>
 <h2><span class="num">03</span>关键发现</h2><ul>
-<li><b>修复前：① 96 / ② 32 / ③ 32</b>，全通 26.7%。</li>
-<li><b>修复后：① 96 / ② 96 / ③ 96</b>，全通 <b>80.0%</b>。</li>
-<li>修复只有一个：<code>translate/mir.py</code> 里给常量分配临时名用了 <code>__k%d</code>，而 GCC 在 x86-64 上把 <code>__k8</code> 及以后当作 AVX-512 mask 寄存器名保留（<code>__k1..7</code> 恰好可用）。多元素字面量必然产生 8 个以上常量，于是 vec8/vec16 全部编译失败。</li>
-<li>改成 <code>m2c_k%d</code> 后，② 从 32 直接升到 96 —— <b>②→③ 依然零损失</b>，说明生成出来的 C 全部能编能跑。</li>
-<li>现在<b>唯一的损失点在 ①</b>：120 个里 24 个没进 MIR（80% 解析率）。</li>
+<li>① <b>600/600 = 100%</b>：所有合成用例都能<b>零未映射</b>地解析。这验证了前一轮对矩阵字面量 <code>[1 2; 3 4]</code> 的修复（修复前该形态整行降级成 unmapped）。</li>
+<li>② <b>564/600 = 94.0%</b>：36 个在「MIR → C」失败。</li>
+<li>③ <b>447/600 = 74.5%</b>：从 ② 出发有 <b>117 个</b>在 gcc 编译或运行比对时失败——<b>这是本轮新暴露的一段损失</b>。</li>
+<li><b>链路形状变了</b>：修复前是 80% → 100% → 100%（损失全在解析）；现在是 100% → 94% → 74.5%（损失在生成与编译运行）。</li>
+<li><b>为什么之前的 120 个样本没看到</b>：那 120 个只覆盖文件名 <code>000000_*</code>~<code>000119_*</code>，按生成顺序几乎全是 add/sub/mul 的 scalar/vec3/vec8；matmul / concat / index / vec16 排在后面，它们的编译问题直到 600 个才被覆盖。</li>
 </ul>
 <h2><span class="num">04</span>诚实边界</h2>
-<div class="callout bad"><p>这是 120 个合成用例的结果。333 万 × 3 = 1000 万次是<b>用例池容量</b>，不是已执行次数；全跑按每文件约 1 秒估算是十余天量级。合成用例只覆盖 13 个算子，不代表真实工程语料（真实语料上 yalmip 全量降级率 16.2%、matpower 三段全通 0/120）。</p></div>
+<div class="callout bad"><p>这是 <b>600 个合成用例</b>的结果，不是 333 万全跑。3333334 × 3 = <b>10,000,002 次</b>是用例池<b>容量</b>，不是已执行次数；全跑按每文件约 0.6 秒估算约需 <b>23 天</b>。合成用例只覆盖 13 个算子，<b>不代表真实工程语料</b>——真实语料对照：yalmip 全量降级率 16.2%、matpower 三段全通 0/120。另注：<b>600 个是按顺序取的前 600</b>，所以仍偏向简单算子；真实分布下 ③ 的比例可能更低。</p></div>
 <footer><p>数据来源：flow/fullflow.json。由 <code>tools/fullflow_report.py</code> 生成。</p></footer>
 </div></body></html>
