@@ -680,5 +680,35 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
     if funcs.is_empty() {
         return Err("没有任何 func".to_string());
     }
+    // **补算入参 shape**（R1169）。
+    //
+    // 为什么在这里：MIR 文本里没有 `shape:` 行，而 `project.rs` 的 `assumed`
+    // 分支拿不到原始行（R1153 已确认），一律把入参当一维 [4]。
+    // 结果是二维用例（6 或 16 个元素）只被分配 4 个 —— R1168 的统计证据显示
+    // 3000 个用例里 ③ 的 582 个真失败 **100% 是二维**，非矩阵一个都不失败。
+    //
+    // 这一层能看到全部 `const:` 行，所以在这里按
+    //     numel ≈ const 行数 / f64 入参个数
+    // 补一个形状。**这是启发式，不是真正的形状推断**：
+    // 多入参且元素数不同时会算错；但比"一律 4"更接近真实。
+    for f in funcs.iter_mut() {
+        let n_const = f
+            .body
+            .iter()
+            .filter(|s| matches!(s, Stmt::Const { .. }))
+            .count() as i64;
+        let n_arr = f.args.iter().filter(|a| a.dtype == "f64").count() as i64;
+        if n_const > 0 && n_arr > 0 {
+            let per = n_const / n_arr;
+            if per > 0 {
+                for a in f.args.iter_mut() {
+                    if a.dtype == "f64" && a.shape.is_empty() {
+                        a.shape = vec![per];
+                    }
+                }
+            }
+        }
+    }
+
     Ok(funcs)
 }
