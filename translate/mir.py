@@ -1722,6 +1722,10 @@ def _lower_vcat(out, code, idx_counter):
             # `__v%d` 与 `__k%d` 同类风险（双下划线是保留区），换普通前缀
             dst = "m2c_v%d" % idx_counter[0]
         out.append("op:OP-VCAT:%s:%s:%s" % (dst, cur, t))
+        # **`cur = dst` 不能丢**（R1180）：R1175 插入 shape 输出时把这一行
+        # 吞掉了，于是 VCAT 链的每一步都用同一个 `cur`，
+        # 多段拼接（4x4 = 4 段）会生成一条错链——② 从 200 掉到 176 就是它。
+        cur = dst
     # **输出真形状**（R1175）：`parts` 是按 `;` 切的段，
     # 所以行数 = len(parts)、列数 = 每段的数。
     # 这一行是 numel 无法提供的信息——`[16]` 既可能是 16 个数，
