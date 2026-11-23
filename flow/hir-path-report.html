@@ -1,0 +1,104 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>三段链路大规模测试</title><style>
+:root{--bg:#f5f7fb;--card:#fff;--fg:#0f172a;--mut:#64748b;--bd:#e2e8f0;
+ --ok:#059669;--okbg:#ecfdf5;--fail:#dc2626;--failbg:#fef2f2;
+ --skip:#94a3b8;--skipbg:#f1f5f9;--accent:#2563eb}
+[data-theme="dark"]{--bg:#0b1120;--card:#111827;--fg:#e5e7eb;--mut:#94a3b8;
+ --bd:#1f2937;--ok:#34d399;--okbg:#052e2b;--fail:#f87171;--failbg:#3f1212;
+ --skip:#64748b;--skipbg:#1e293b;--accent:#60a5fa}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+ font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}
+header{padding:26px 30px 16px;background:var(--card);border-bottom:1px solid var(--bd)}
+h1{margin:0 0 6px;font-size:19px;font-weight:680;letter-spacing:.2px}
+.sub{color:var(--mut);font-size:12.5px}
+.wrap{padding:20px 30px 70px;max-width:1240px;margin:0 auto}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+ gap:12px;margin:6px 0 22px}
+.kpi{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px 16px}
+.kpi .v{font:660 26px/1.15 ui-monospace,Consolas,monospace}
+.kpi .k{color:var(--mut);font-size:11.5px;margin-top:4px;letter-spacing:.03em}
+.bar{height:8px;border-radius:999px;background:color-mix(in srgb,var(--fg) 8%,transparent);
+ overflow:hidden;display:flex;margin-top:9px}
+.bar i{display:block;height:100%}
+h2{font-size:14.5px;margin:26px 0 8px;font-weight:660}
+table{width:100%;border-collapse:collapse;background:var(--card);
+ border:1px solid var(--bd);border-radius:14px;overflow:hidden}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--bd);font-size:13px}
+th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);font-weight:640}
+tr:last-child td{border-bottom:none}
+.mono{font-family:ui-monospace,Consolas,monospace}
+.b{display:inline-block;min-width:52px;text-align:center;font-size:11.5px;
+ font-weight:660;padding:2px 8px;border-radius:999px}
+.b.ok{color:var(--ok);background:var(--okbg)}
+.b.fail{color:var(--fail);background:var(--failbg)}
+.b.skip{color:var(--skip);background:var(--skipbg)}
+a{color:var(--accent);text-decoration:none;font-weight:600}
+a:hover{text-decoration:underline}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+button{background:var(--card);color:var(--fg);border:1px solid var(--bd);
+ border-radius:9px;padding:7px 13px;cursor:pointer;font-size:12.5px}
+button.on{border-color:var(--accent);color:var(--accent)}
+pre{background:var(--card);border:1px solid var(--bd);border-radius:12px;
+ padding:12px 14px;overflow:auto;font:12px/1.6 ui-monospace,Consolas,monospace;
+ max-height:420px;white-space:pre-wrap;word-break:break-word}
+.note{color:var(--mut);font-size:12px}
+</style></head><body>
+<header>
+  <h1>三段链路大规模测试：MATLAB → MIR → C → MIR</h1>
+  <div class="sub">25 个函数 ｜ 每段的通过都有客观依据（未映射计数 / gcc 退出码 / 算子多重集）</div>
+</header>
+<div class="wrap">
+  <div class="kpis"><div class="kpi"><div class="v">25</div><div class="k">函数总数</div></div><div class="kpi"><div class="v" style="color:var(--ok)">25 <span class='note'>(100%)</span></div><div class="k">① MATLAB → MIR 通过</div></div><div class="kpi"><div class="v" style="color:var(--ok)">25 <span class='note'>(100%)</span></div><div class="k">② MIR → C 编译并跑出数</div></div><div class="kpi"><div class="v" style="color:var(--ok)">25 <span class='note'>(100%)</span></div><div class="k">③ C → MIR 算子守恒</div></div><div class="kpi"><div class="v" style="color:var(--accent)">25 <span class='note'>(100%)</span></div><div class="k">三段全通</div></div></div>
+  <div class="bar"><i style="width:100.0%;background:var(--ok)"></i><i style="width:100.0%;background:var(--accent)"></i><i style="width:0.0%;background:var(--fail)"></i></div>
+  
+  <h2>逐函数结果</h2>
+  <div class="filters">
+    <button data-f onclick="filt('all',this)" class="on">全部</button>
+    <button data-f onclick="filt('ok',this)">三段全通</button>
+    <button data-f onclick="filt('fail',this)">含失败</button>
+    <button onclick="setTheme()">明暗切换</button>
+  </div>
+  <table>
+    <tr><th>函数</th><th>未映射</th><th>算子</th>
+        <th>① MIR</th><th>② C</th><th>③ 反推</th><th>说明</th><th></th></tr>
+    <tr data-s="ok ok ok"><td><b>000000_nest_add_mul_scalar_v0</b></td><td class="mono">0</td><td class="mono">3</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000000_nest_add_mul_scalar_v0.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000001_nest_add_mul_scalar_v1</b></td><td class="mono">0</td><td class="mono">3</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000001_nest_add_mul_scalar_v1.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000002_nest_add_mul_scalar_v2</b></td><td class="mono">0</td><td class="mono">3</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000002_nest_add_mul_scalar_v2.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000003_nest_add_mul_scalar_v3</b></td><td class="mono">0</td><td class="mono">3</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000003_nest_add_mul_scalar_v3.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000004_nest_add_mul_scalar_v4</b></td><td class="mono">0</td><td class="mono">3</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000004_nest_add_mul_scalar_v4.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000005_nest_add_mul_scalar_v5</b></td><td class="mono">0</td><td class="mono">3</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000005_nest_add_mul_scalar_v5.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000006_nest_add_mul_vec3_v0</b></td><td class="mono">0</td><td class="mono">7</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000006_nest_add_mul_vec3_v0.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000007_nest_add_mul_vec3_v1</b></td><td class="mono">0</td><td class="mono">7</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000007_nest_add_mul_vec3_v1.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000008_nest_add_mul_vec3_v2</b></td><td class="mono">0</td><td class="mono">7</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000008_nest_add_mul_vec3_v2.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000009_nest_add_mul_vec3_v3</b></td><td class="mono">0</td><td class="mono">7</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000009_nest_add_mul_vec3_v3.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000010_nest_add_mul_vec3_v4</b></td><td class="mono">0</td><td class="mono">7</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000010_nest_add_mul_vec3_v4.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000011_nest_add_mul_vec3_v5</b></td><td class="mono">0</td><td class="mono">7</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000011_nest_add_mul_vec3_v5.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000012_nest_add_mul_vec8_v0</b></td><td class="mono">0</td><td class="mono">17</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000012_nest_add_mul_vec8_v0.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000013_nest_add_mul_vec8_v1</b></td><td class="mono">0</td><td class="mono">17</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000013_nest_add_mul_vec8_v1.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000014_nest_add_mul_vec8_v2</b></td><td class="mono">0</td><td class="mono">17</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000014_nest_add_mul_vec8_v2.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000015_nest_add_mul_vec8_v3</b></td><td class="mono">0</td><td class="mono">17</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000015_nest_add_mul_vec8_v3.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000016_nest_add_mul_vec8_v4</b></td><td class="mono">0</td><td class="mono">17</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000016_nest_add_mul_vec8_v4.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000017_nest_add_mul_vec8_v5</b></td><td class="mono">0</td><td class="mono">17</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000017_nest_add_mul_vec8_v5.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000018_nest_three_scalar_v0</b></td><td class="mono">0</td><td class="mono">4</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000018_nest_three_scalar_v0.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000019_nest_three_scalar_v1</b></td><td class="mono">0</td><td class="mono">4</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000019_nest_three_scalar_v1.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000020_nest_three_scalar_v2</b></td><td class="mono">0</td><td class="mono">4</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000020_nest_three_scalar_v2.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000021_nest_three_scalar_v3</b></td><td class="mono">0</td><td class="mono">4</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000021_nest_three_scalar_v3.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000022_nest_three_scalar_v4</b></td><td class="mono">0</td><td class="mono">4</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000022_nest_three_scalar_v4.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000023_nest_three_scalar_v5</b></td><td class="mono">0</td><td class="mono">4</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000023_nest_three_scalar_v5.html">详情 →</a></td></tr>
+<tr data-s="ok ok ok"><td><b>000024_nest_three_vec3_v0</b></td><td class="mono">0</td><td class="mono">8</td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td><span class="b ok">通过</span></td><td class="note"></td><td><a href="detail/000024_nest_three_vec3_v0.html">详情 →</a></td></tr>
+  </table>
+  <p class="note" style="margin-top:16px">
+  ②「通过」= m2c 构建成功 + gcc 编译通过 + 生成的 exe 真的跑出输出（不只是"能生成"）。<br>
+  ③「通过」= 从生成的 C 反推出的算子 id 多重集与源 MIR 相等。
+  </p>
+</div>
+<script>
+function setTheme(){var r=document.documentElement;
+ r.dataset.theme=r.dataset.theme==='dark'?'':'dark';}
+function filt(k,btn){document.querySelectorAll('button[data-f]').forEach(function(b){
+ b.classList.toggle('on', b===btn);});
+ document.querySelectorAll('tr[data-s]').forEach(function(tr){
+ tr.style.display=(k==='all'||tr.dataset.s.indexOf(k)>=0)?'':'none';});}
+</script></body></html>
