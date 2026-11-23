@@ -702,8 +702,14 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
     // 为什么必须要有这一步：numel 是形状的**投影**，
     // `[16]` 既可能是 16 个数也可能是 4x4，从投影还原原像需要额外信息。
     // 那个信息只在生成字面量的地方（`_lower_vcat` 的 `parts`）存在。
+    // **默认关闭**（R1177）：R1176 实测喂真二维会让 ② 从 200/200 掉到 152/200，
+    // 因为下游全按一维假设实现。语义更正确的输入反而暴露了下游未支持二维。
+    let use_shape_line = std::env::var("M2C_USE_SHAPE_LINE")
+        .map(|v| v == "1")
+        .unwrap_or(false);
     let mut shape_map: std::collections::HashMap<String, Vec<i64>> =
         std::collections::HashMap::new();
+    if use_shape_line {
     for line in text.lines() {
         let l = line.trim();
         if let Some(rest) = l.strip_prefix("shape:") {
@@ -719,6 +725,7 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
                 }
             }
         }
+    }
     }
 
     // **回退路径**：拿不到 shape 行时，按 owner 前缀分桶数 const（R1172）。
