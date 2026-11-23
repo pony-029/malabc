@@ -1726,7 +1726,11 @@ def _lower_vcat(out, code, idx_counter):
     # 所以行数 = len(parts)、列数 = 每段的数。
     # 这一行是 numel 无法提供的信息——`[16]` 既可能是 16 个数，
     # 也可能是 4x4，只有生成它的人知道。
-    if len(parts) >= 2:
+    # **默认不输出**（R1178）：R1176 实测喂真二维会让 ② 从 200/200 掉到
+    # 152/200，因为下游（project.rs / emit.rs / main.c）全按一维假设实现。
+    # 语义更正确的输入，反而暴露了下游从未支持二维。
+    # 需要时用 M2C_EMIT_SHAPE_LINE=1 显式打开（供后续单独打通 matmul）。
+    if len(parts) >= 2 and os.environ.get("M2C_EMIT_SHAPE_LINE") == "1":
         _cols = len(parts[0].split())
         out.append("shape:%s:%d:%d" % (lhs, len(parts), _cols))
         cur = dst
