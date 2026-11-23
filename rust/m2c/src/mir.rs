@@ -691,7 +691,38 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
     //     numel ≈ const 行数 / f64 入参个数
     // 补一个形状。**这是启发式，不是真正的形状推断**：
     // 多入参且元素数不同时会算错；但比"一律 4"更接近真实。
-    // **按 owner 前缀分桶补算入参 shape**（R1172）。
+    // **优先用前端输出的 `shape:` 行填形状**（R1176）。
+    //
+    // 演进：
+    //   R1169 一律 `[4]`        -> ③ 73.4%
+    //   R1169 总数平均          -> ③ 80.6%
+    //   R1172 按 owner 分桶     -> ③ 83.2%（② 到 100%）
+    //   R1175 前端输出 shape 行 -> 本轮后端读它
+    //
+    // 为什么必须要有这一步：numel 是形状的**投影**，
+    // `[16]` 既可能是 16 个数也可能是 4x4，从投影还原原像需要额外信息。
+    // 那个信息只在生成字面量的地方（`_lower_vcat` 的 `parts`）存在。
+    let mut shape_map: std::collections::HashMap<String, Vec<i64>> =
+        std::collections::HashMap::new();
+    for line in text.lines() {
+        let l = line.trim();
+        if let Some(rest) = l.strip_prefix("shape:") {
+            let parts: Vec<&str> = rest.split(':').collect();
+            if parts.len() >= 2 {
+                let name = parts[0].to_string();
+                let dims: Vec<i64> = parts[1..]
+                    .iter()
+                    .filter_map(|x| x.parse::<i64>().ok())
+                    .collect();
+                if !dims.is_empty() {
+                    shape_map.insert(name, dims);
+                }
+            }
+        }
+    }
+
+    // **回退路径**：拿不到 shape 行时，按 owner 前缀分桶数 const（R1172）。
+
     //
     // 演进：
     //   R1169 用 `per = n_const / n_arr`（总数平均）——
@@ -704,6 +735,10 @@ pub fn parse(text: &str) -> Result<Vec<Func>, String> {
     for f in funcs.iter_mut() {
         for a in f.args.iter_mut() {
             if a.dtype != "f64" || !a.shape.is_empty() {
+                continue;
+            }
+            if let Some(d) = shape_map.get(&a.name) {
+                a.shape = d.clone();
                 continue;
             }
             let prefix = format!("m2c_{}_k", a.name);

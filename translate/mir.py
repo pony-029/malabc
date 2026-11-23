@@ -1722,6 +1722,13 @@ def _lower_vcat(out, code, idx_counter):
             # `__v%d` 与 `__k%d` 同类风险（双下划线是保留区），换普通前缀
             dst = "m2c_v%d" % idx_counter[0]
         out.append("op:OP-VCAT:%s:%s:%s" % (dst, cur, t))
+    # **输出真形状**（R1175）：`parts` 是按 `;` 切的段，
+    # 所以行数 = len(parts)、列数 = 每段的数。
+    # 这一行是 numel 无法提供的信息——`[16]` 既可能是 16 个数，
+    # 也可能是 4x4，只有生成它的人知道。
+    if len(parts) >= 2:
+        _cols = len(parts[0].split())
+        out.append("shape:%s:%d:%d" % (lhs, len(parts), _cols))
         cur = dst
     return True
 
