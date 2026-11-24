@@ -1039,6 +1039,50 @@ _BIN_OP_OF = {".*": "OP-MUL", "*": "OP-MUL", "./": "OP-DIV",
 _OP_OF = {"sum": "OP-SUM", "mean": "OP-MEAN", "max": "OP-MAX", "min": "OP-MIN"}
 
 
+#: `<op>((X binop Y))` —— 一层括号（R1192）。
+#:
+#: 与 `_REDUCE_ELEMWISE` 的区别：那个要求操作数是**扁平**的变量名/数字；
+#: 这个允许整体被一对括号包住，于是 `sum((a+b)*(a-b))` 能被接住。
+#: **只覆盖一层**：`sqrt(abs(...))` 这种两层仍不匹配（留给通用拆解）。
+_WRAP_BINOP = re.compile(
+    r"^([A-Za-z_]\w*)\s*=\s*(sum|mean|max|min|abs|sqrt)\s*\(\s*"
+    r"\(\s*([A-Za-z_]\w*|-?\d+(?:\.\d+)?)\s*"
+    r"(\.\*|\./|\+|-|\*)\s*"
+    r"([A-Za-z_]\w*|-?\d+(?:\.\d+)?)\s*\)\s*"
+    r"\)\s*;?\s*$")
+
+#: 单目归约/一元算子的 OP id（`sum` 等是归约，`abs`/`sqrt` 是逐元素单目）
+_UNARY_OP = {"abs": "OP-ABS", "sqrt": "OP-SQRT"}
+
+
+def _lower_op_wrapped_binop(out, code, counter, op_ids):
+    """`y = sum((a+b)*(a-b))` -> 两条语句；成功返回 True。"""
+    m = _WRAP_BINOP.match(code)
+    if not m:
+        return False
+    lhs, fn = m.group(1), m.group(2)
+    x, bop, y = m.group(3), m.group(4), m.group(5)
+    op = _OP_OF.get(fn) or _UNARY_OP.get(fn)
+    bop_id = _BIN_OP_OF.get(bop)
+    if op is None or bop_id is None or op not in op_ids or bop_id not in op_ids:
+        return False
+    # 立即数先转成数组（算子只认 mlc_array）——与 _REDUCE_ELEMWISE 同一做法
+    args = []
+    for side in (x, y):
+        if re.match(r"^-?\d+(\.\d+)?$", side):
+            counter[0] += 1
+            k = "m2c_k%d" % counter[0]
+            out.append("const:%s:%s" % (k, side))
+            args.append(k)
+        else:
+            args.append(side)
+    counter[0] += 1
+    tmp = "m2c_e%d" % counter[0]
+    out.append("op:%s:%s:%s:%s" % (bop_id, tmp, args[0], args[1]))
+    out.append("op:%s:%s:%s" % (op, lhs, tmp))
+    return True
+
+
 def _lower_reduce_elementwise(out, code, counter, unmapped_kinds, op_ids):
     """`sum(a.*b)` -> 两条语句；成功返回 True。"""
     m = _REDUCE_ELEMWISE.match(code)
@@ -2318,6 +2362,13 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
                 out.append("call:%s:%s:%s"
                            % (_d, _vm.group(1), ":".join(_args)))
                 n_calls[0] += 1
+                continue
+            # **一层括号的复合参数**（R1192）：`sum((a+b)*(a-b))`。
+            # 必须排在 `_lower_reduce_elementwise` 之前——
+            # 后者只接受扁平的 `sum(a .* b)`，对带括号的情况直接 return False，
+            # 于是整行会落到 unmapped。R1189 统计：这类共 54 个
+            # （nest_sum/nest_abs/nest_sqrt 各 18）。
+            if _lower_op_wrapped_binop(out, code, idx_counter, known_ops):
                 continue
             if _lower_reduce_elementwise(out, code, idx_counter,
                                          unmapped_kinds, known_ops):
