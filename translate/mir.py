@@ -1066,8 +1066,10 @@ def _peel_inner_parens(out, code, counter, op_ids):
     #
     # 判据：外层必须是 reduce（sum/mean/max/min）或一元（abs/sqrt）。
     # 那些能直接降级的形态保持原样，交给下面的专用降级器。
-    if not re.match(r"^\s*[A-Za-z_]\w*\s*=\s*(sum|mean|max|min|abs|sqrt)\s*\(",
-                    code):
+    # 判据从"整行以 <op>( 开头"放宽为"**行内出现** <op>("（R1199）。
+    # 因为 `y = abs((a+b)*(a-b)) + a;` 后面还挂着 `+ a`，
+    # 用 ^...\( 匹配会漏掉 —— 而那正是 nest_abs 那 18 个的形态。
+    if not re.search(r"\b(sum|mean|max|min|abs|sqrt)\s*\(", code):
         return None
 
     changed = False
@@ -1102,6 +1104,43 @@ def _peel_inner_parens(out, code, counter, op_ids):
         counter[0] += 1
         tmp = "m2c_e%d" % counter[0]
         out.append("op:%s:%s:%s:%s" % (bop_id, tmp, args[0], args[1]))
+        code = code[:m.start()] + tmp + code[m.end():]
+        changed = True
+    return code if changed else None
+
+
+#: `<unary>(<flat>)` —— 一元算子包一个扁平参数（R1199）
+_UNARY_CALL = re.compile(
+    r"\b(abs|sqrt)\s*\(\s*([A-Za-z_]\w*)\s*\)")
+
+#: 一元算子 -> OP id
+_UNARY_CALL_OP = {"abs": "OP-ABS", "sqrt": "OP-SQRT"}
+
+
+def _peel_unary_calls(out, code, counter, op_ids):
+    """把 `<unary>(<flat>)` 降成临时量；返回改写后的 code（无改动返回 None）。
+
+    这是 R1199 为剩余 36 个用例加的：剥完括号后 `abs(m2c_e1 * m2c_e2)`
+    仍是"函数调用包二元式"，没有降级器认它；而只要把内层二元式先降成
+    临时量，`abs(<tmp>)` 就变成"一元算子包扁平参数"，可以被本函数接住。
+    """
+    changed = False
+    for _round in range(8):
+        m = None
+        for cand in _UNARY_CALL.finditer(code):
+            op = _UNARY_CALL_OP.get(cand.group(1))
+            if op is None or op not in op_ids:
+                continue
+            # 只处理"参数是纯名字"的；`abs(a + b)` 这种交给剥括号那条路
+            m = cand
+            break
+        if m is None:
+            break
+        op = _UNARY_CALL_OP[m.group(1)]
+        arg = m.group(2)
+        counter[0] += 1
+        tmp = "m2c_u%d" % counter[0]
+        out.append("op:%s:%s:%s" % (op, tmp, arg))
         code = code[:m.start()] + tmp + code[m.end():]
         changed = True
     return code if changed else None
@@ -2443,6 +2482,12 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             _peeled = _peel_inner_parens(out, code, idx_counter, known_ops)
             if _peeled is not None and _peeled != code:
                 code = _peeled
+            # **再剥一元算子**（R1199）：`abs(m2c_e1 * m2c_e2)` 剥完括号后
+            # 仍是"函数调用包二元式"，没有降级器认它；先把 `abs(<tmp>)`
+            # 降成 `op:OP-ABS:m2c_uN:<tmp>`，余下的 `tmp + a` 交给原有链。
+            _peeled2 = _peel_unary_calls(out, code, idx_counter, known_ops)
+            if _peeled2 is not None and _peeled2 != code:
+                code = _peeled2
             if _lower_op_wrapped_binop(out, code, idx_counter, known_ops):
                 continue
             if _lower_reduce_elementwise(out, code, idx_counter,
