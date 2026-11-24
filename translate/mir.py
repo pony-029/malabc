@@ -2665,18 +2665,22 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             if oid == "OP-MUL" and len(args) == 2 and ".*" not in code:
                 sa = (f.get("shapes") or {}).get(args[0])
                 sb = (f.get("shapes") or {}).get(args[1])
-                # 打点（R1197）：R1196 推断 t1/t2 的 shape 应为 None、不该升级，
-                # 但实测升级了 —— 打印实际值看第三个来源在哪。
-                if os.environ.get("M2C_TRACE_UPG") == "1":
-                    print("[UPG?] code=%r args=%r sa=%r sb=%r 全部shapes=%r"
-                          % (code[:50], args, sa, sb,
-                             sorted((f.get("shapes") or {}).keys())[:8]))
                 if sa and sb and len(sa) == 2 and len(sb) == 2 \
                         and sa[1] == sb[0]:
                     oid = "OP-MATMUL"
-            # `*` 文本层即 MATMUL；有一侧是标量时必须是元素级（MATLAB 语义）
+            # `*` 文本层即 MATMUL（`operators.parse_line` 的初值）；
+            # 但在**知道形状之后**必须纠正（R1198）：
+            #   * 有一侧是标量 -> 元素级（MATLAB 语义）；
+            #   * **两个操作数都不足 2 维** -> 也是元素级。
+            # 第二条是 R1197 查明的 90 个用例的根因：
+            # `t1 = a + b` 的 t1 是算子产物、不在 scalar_names 里，
+            # 于是 `t1 * t2` 一直保持 MATMUL，emit 直接返回 MLC_UNIMPLEMENTED。
+            # 现在只有"拿到两个操作数都是 2-D 的证据"时才保留 MATMUL。
             if oid == "OP-MATMUL" and len(args) == 2:
-                if any(a in scalar_names for a in args):
+                _sa = (f.get("shapes") or {}).get(args[0])
+                _sb = (f.get("shapes") or {}).get(args[1])
+                _both_2d = (_sa and _sb and len(_sa) == 2 and len(_sb) == 2)
+                if any(a in scalar_names for a in args) or not _both_2d:
                     oid = "OP-MUL"
             out.append("op:%s:%s:%s" % (oid, use["lhs"], ":".join(args)))
             n_ops += 1
