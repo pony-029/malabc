@@ -1058,6 +1058,18 @@ def _peel_inner_parens(out, code, counter, op_ids):
     为什么必须"反复剥"：`sum((a+b)*(a-b))` 有三层括号，
     剥一层后仍是两层，只有循环才能降到底。
     """
+    # **只对"被归约/一元算子包住"的语句生效**（R1194）。
+    #
+    # R1193 第一版对所有语句都剥，结果 `y = (a+b)*(a-b);` 这种
+    # **本来能直接降级**的行也被拆成三条临时量，而临时量在 C 侧
+    # 没有正确持有 -> nest_add_mul / nest_deep / multi_mix 共 54 个反而失败。
+    #
+    # 判据：外层必须是 reduce（sum/mean/max/min）或一元（abs/sqrt）。
+    # 那些能直接降级的形态保持原样，交给下面的专用降级器。
+    if not re.match(r"^\s*[A-Za-z_]\w*\s*=\s*(sum|mean|max|min|abs|sqrt)\s*\(",
+                    code):
+        return None
+
     changed = False
     for _round in range(10):          # 最大 10 层，防畸形输入死循环
         m = None
