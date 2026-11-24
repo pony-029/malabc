@@ -1,5 +1,5 @@
 {
-  "ts": "2026-11-21 22:16:50",
+  "ts": "2026-11-24 23:35:08",
   "rows": [
     {
       "clause": "第四条",
@@ -17,13 +17,13 @@
       "clause": "第六条",
       "title": "记忆护城河（结构化 + 见证校验）",
       "ok": true,
-      "detail": "AN3 52 条经验，无见证 0 条"
+      "detail": "AN3 63 条经验，无见证 0 条"
     },
     {
       "clause": "第七条",
       "title": "绝对防御（杜绝静默失败）",
-      "ok": true,
-      "detail": "AN4 except:pass 184 处（基线 184）；最多：matlabc.py(44)、gui.py(28)"
+      "ok": false,
+      "detail": "AN4 except:pass 185 处（基线 184）；最多：matlabc.py(44)、gui.py(28)"
     },
     {
       "clause": "第九条",
@@ -38,7 +38,9 @@
       "detail": "AN6 full_report.html 有 ｜ progress.py 有"
     }
   ],
-  "gaps": [],
+  "gaps": [
+    "AN4 第七条：except:pass 185 处（基线 184）；最多：matlabc.py(44)、gui.py(28) —— 静默失败在增加"
+  ],
   "uncovered": [
     "第八条（自愈深度无法用存在性判据）",
     "第三章 D0–D3 分级（需人工评级）",
