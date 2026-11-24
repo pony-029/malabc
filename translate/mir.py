@@ -1116,6 +1116,12 @@ _UNARY_CALL = re.compile(
 #: 一元算子 -> OP id
 _UNARY_CALL_OP = {"abs": "OP-ABS", "sqrt": "OP-SQRT"}
 
+#: 整行右值：`LHS = <unary>(<flat>);`（R1202）
+#: 这种形态不该引临时量——它要的正是把结果写进 LHS。
+_WHOLE_RHS = re.compile(
+    r"^\s*([A-Za-z_]\w*)\s*=\s*(abs|sqrt)\s*\(\s*"
+    r"([A-Za-z_]\w*)\s*\)\s*;?\s*$")
+
 
 def _peel_unary_calls(out, code, counter, op_ids):
     """把 `<unary>(<flat>)` 降成临时量；返回改写后的 code（无改动返回 None）。
@@ -1124,6 +1130,14 @@ def _peel_unary_calls(out, code, counter, op_ids):
     仍是"函数调用包二元式"，没有降级器认它；而只要把内层二元式先降成
     临时量，`abs(<tmp>)` 就变成"一元算子包扁平参数"，可以被本函数接住。
     """
+    # **整行右值优先**（R1202）：`t2 = abs(t1);` 直接写 t2，
+    # 不要临时量——否则 t2 从未被赋值，后续引用会 gcc 'undeclared'。
+    wm = _WHOLE_RHS.match(code)
+    if wm:
+        op = _UNARY_CALL_OP.get(wm.group(2))
+        if op is not None and op in op_ids:
+            out.append("op:%s:%s:%s" % (op, wm.group(1), wm.group(3)))
+            return "<WHOLE>"          # 特殊标记：整行已消费
     changed = False
     for _round in range(8):
         m = None
@@ -2531,6 +2545,10 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             # 仍是"函数调用包二元式"，没有降级器认它；先把 `abs(<tmp>)`
             # 降成 `op:OP-ABS:m2c_uN:<tmp>`，余下的 `tmp + a` 交给原有链。
             _peeled2 = _peel_unary_calls(out, code, idx_counter, known_ops)
+            # `<WHOLE>` = 整行右值已被消费（`t2 = abs(t1);` -> `op:OP-ABS:t2:t1`）
+            if _peeled2 == "<WHOLE>":
+                n_ops_delta[0] += 1
+                continue
             if _peeled2 is not None and _peeled2 != code:
                 code = _peeled2
             # **第三条规则**（R1200）：`abs(<含运算符>)`。
