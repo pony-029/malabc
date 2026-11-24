@@ -31,6 +31,7 @@
     2 = 缺输入（规范文件或核心产物缺失）
 """
 import argparse
+import ast
 import io
 import json
 import os
@@ -49,6 +50,24 @@ SKIP_DIRS = (".git", "target", "releases", "node_modules", "__pycache__",
              "aistandard")
 
 
+def _count_silent_ast(src):
+    """统计"except 体内只有 pass"的处数（AST 口径）。
+
+    与正则版的区别：能区分代码与注释/字符串，单行多行都能算对。
+    """
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return 0
+    n = 0
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ExceptHandler):
+            continue
+        if len(node.body) == 1 and isinstance(node.body[0], ast.Pass):
+            n += 1
+    return n
+
+
 def count_silent():
     n = 0
     worst = []
@@ -62,7 +81,9 @@ def count_silent():
                 s = io.open(p, encoding="utf-8", errors="replace").read()
             except (IOError, OSError):
                 continue
-            c = len(SILENT.findall(s))
+            # **AST 统计**（R1211）：正则无法区分"代码里的 except: pass"
+            # 与"注释/字符串里的同样文本"，放宽会多算、收紧会漏算。
+            c = _count_silent_ast(s)
             if c:
                 n += c
                 worst.append((c, os.path.relpath(p, ROOT)))
