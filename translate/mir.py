@@ -2665,6 +2665,12 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             if oid == "OP-MUL" and len(args) == 2 and ".*" not in code:
                 sa = (f.get("shapes") or {}).get(args[0])
                 sb = (f.get("shapes") or {}).get(args[1])
+                # 打点（R1197）：R1196 推断 t1/t2 的 shape 应为 None、不该升级，
+                # 但实测升级了 —— 打印实际值看第三个来源在哪。
+                if os.environ.get("M2C_TRACE_UPG") == "1":
+                    print("[UPG?] code=%r args=%r sa=%r sb=%r 全部shapes=%r"
+                          % (code[:50], args, sa, sb,
+                             sorted((f.get("shapes") or {}).keys())[:8]))
                 if sa and sb and len(sa) == 2 and len(sb) == 2 \
                         and sa[1] == sb[0]:
                     oid = "OP-MATMUL"
