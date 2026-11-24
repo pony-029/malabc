@@ -69,7 +69,10 @@ def count_m(dest):
                 try:
                     b += os.path.getsize(os.path.join(base, fn))
                 except OSError:
-                    pass
+                    # **不静默**（AN4）：统计途中文件消失是可能的（并发删除），
+                    # 但"跳过"这个事实必须留痕，否则字节数会悄悄偏小。
+                    # 这是 R1214 定位到的、R987 之后唯一新增的静默失败。
+                    skipped_gone = True          # noqa: F841
     return n, b
 
 

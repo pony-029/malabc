@@ -1,5 +1,5 @@
 {
-  "ts": "2026-11-24 23:54:19",
+  "ts": "2026-11-25 00:11:33",
   "rows": [
     {
       "clause": "第四条",
@@ -23,7 +23,7 @@
       "clause": "第七条",
       "title": "绝对防御（杜绝静默失败）",
       "ok": false,
-      "detail": "AN4 except:pass 187 处（基线 184）；最多：matlabc.py(44)、gui.py(28)"
+      "detail": "AN4 except:pass 186 处（基线 184）；最多：matlabc.py(44)、gui.py(28)"
     },
     {
       "clause": "第九条",
@@ -39,7 +39,7 @@
     }
   ],
   "gaps": [
-    "AN4 第七条：except:pass 187 处（基线 184）；最多：matlabc.py(44)、gui.py(28) —— 静默失败在增加"
+    "AN4 第七条：except:pass 186 处（基线 184）；最多：matlabc.py(44)、gui.py(28) —— 静默失败在增加"
   ],
   "uncovered": [
     "第八条（自愈深度无法用存在性判据）",
