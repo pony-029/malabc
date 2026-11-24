@@ -1039,6 +1039,62 @@ _BIN_OP_OF = {".*": "OP-MUL", "*": "OP-MUL", "./": "OP-DIV",
 _OP_OF = {"sum": "OP-SUM", "mean": "OP-MEAN", "max": "OP-MAX", "min": "OP-MIN"}
 
 
+#: 最内层括号：里面不含括号（R1193）
+_INNER_PAREN = re.compile(r"\(([^()]*)\)")
+
+#: 括号里是"扁平二元式"（两侧都是变量名或数字）
+_BIN_TERM = re.compile(
+    r"^\s*([A-Za-z_]\w*|-?\d+(?:\.\d+)?)\s*"
+    r"(\.\*|\./|\+|-|\*)\s*"
+    r"([A-Za-z_]\w*|-?\d+(?:\.\d+)?)\s*$")
+
+
+def _peel_inner_parens(out, code, counter, op_ids):
+    """把最内层括号的二元式降成临时量并替换回 code。
+
+    返回**改写后的 code**（可能等于原文，表示什么都没剥）；
+    无法剥时返回 None，让调用方继续走原有降级链。
+
+    为什么必须"反复剥"：`sum((a+b)*(a-b))` 有三层括号，
+    剥一层后仍是两层，只有循环才能降到底。
+    """
+    changed = False
+    for _round in range(10):          # 最大 10 层，防畸形输入死循环
+        m = None
+        for cand in _INNER_PAREN.finditer(code):
+            # **函数调用的括号不能剥**（R1193）。
+            # `abs(...)` / `sum(...)` 的 `(` 前面是标识符：若把它当普通括号剥掉，
+            # 会得到 `absm2c_e3` 这种把函数名和临时量粘在一起的畸形名。
+            if cand.start() > 0 and (code[cand.start() - 1].isalnum()
+                                     or code[cand.start() - 1] == "_"):
+                continue
+            if _BIN_TERM.match(cand.group(1)):
+                m = cand
+                break
+        if m is None:
+            break
+        bm = _BIN_TERM.match(m.group(1))
+        x, bop, y = bm.group(1), bm.group(2), bm.group(3)
+        bop_id = _BIN_OP_OF.get(bop)
+        if bop_id is None or bop_id not in op_ids:
+            break
+        args = []
+        for side in (x, y):
+            if re.match(r"^-?\d+(\.\d+)?$", side):
+                counter[0] += 1
+                k = "m2c_k%d" % counter[0]
+                out.append("const:%s:%s" % (k, side))
+                args.append(k)
+            else:
+                args.append(side)
+        counter[0] += 1
+        tmp = "m2c_e%d" % counter[0]
+        out.append("op:%s:%s:%s:%s" % (bop_id, tmp, args[0], args[1]))
+        code = code[:m.start()] + tmp + code[m.end():]
+        changed = True
+    return code if changed else None
+
+
 #: `<op>((X binop Y))` —— 一层括号（R1192）。
 #:
 #: 与 `_REDUCE_ELEMWISE` 的区别：那个要求操作数是**扁平**的变量名/数字；
@@ -2368,6 +2424,13 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             # 后者只接受扁平的 `sum(a .* b)`，对带括号的情况直接 return False，
             # 于是整行会落到 unmapped。R1189 统计：这类共 54 个
             # （nest_sum/nest_abs/nest_sqrt 各 18）。
+            # **通用拆解**（R1193）：把最内层括号的二元式降成临时量。
+            # 必须排在这里——`sum((a+b)*(a-b))` 有三层括号，
+            # 任何"一层括号"的正则都接不住；剥到只剩 `sum(X * Y)` 之后，
+            # 下面的 `_lower_reduce_elementwise` 才能匹配。
+            _peeled = _peel_inner_parens(out, code, idx_counter, known_ops)
+            if _peeled is not None and _peeled != code:
+                code = _peeled
             if _lower_op_wrapped_binop(out, code, idx_counter, known_ops):
                 continue
             if _lower_reduce_elementwise(out, code, idx_counter,
