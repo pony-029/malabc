@@ -1,13 +1,11 @@
 {
-  "ts": "2026-11-24 23:38:55",
+  "ts": "2026-11-25 00:16:24",
   "total": 47,
   "failed": [
-    "check_ane.py",
-    "check_failures.py",
-    "check_lsp_doc_parity.py",
-    "check_tool_discoverability.py"
+    "check_cerebellum.py",
+    "check_lsp_doc_parity.py"
   ],
-  "passed": 43,
+  "passed": 45,
   "skipped": [
     "check_generated_compiles"
   ]
