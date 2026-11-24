@@ -332,7 +332,9 @@ def main():
     ap = argparse.ArgumentParser(description="三段链路大规模测试 → HTML 报告")
     ap.add_argument("paths", nargs="+")
     ap.add_argument("-o", "--out", required=True)
-    ap.add_argument("--limit", type=int, default=25)
+    ap.add_argument("--limit", type=int, default=0,
+                    help="最多跑几个（0 = 全部）。默认 0——"
+                         "R1187 前这里是 25，导致'抽查 200 个'实际只跑 25 个")
     a = ap.parse_args()
 
     if not os.path.isfile(M2C):
@@ -346,6 +348,10 @@ def main():
     if not files:
         print("没有找到 .m")
         return 2
+    # **明写样本数**（R1188）：报告只写 N 行，而 N 可能是被 --limit 截断的，
+    # 不打印这一行，读者会把"25/25 全通"误读成"全部通过"。
+    print("[样本] 收集 %d 个 ｜ --limit %s ｜ 本次将跑 %d 个"
+          % (len(files), (a.limit if a.limit else "0(全部)"), len(files)))
     base = WORK if os.path.isdir(WORK) else None
     d = tempfile.mkdtemp(prefix="m2c_3l_rpt_", dir=base)
 
