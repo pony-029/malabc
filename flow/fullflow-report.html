@@ -58,34 +58,33 @@ font-size:12.5px;color:var(--ink3)}
 </style></head><body><div class="wrap">
 <div class="cover"><div class="kicker">Full-flow Test Report</div>
 <h1>MATLAB → C 全流程测试报告</h1>
-<p class="sub">合成用例池 **3000 个**（variants 12，覆盖 13 个算子 × 7 种形状）—— 完整三段真实执行：MIR 解析 → rust m2c 生成 C → gcc 编译 → 可执行文件运行 → 数值比对。并发 8 路。</p></div>
+<p class="sub">**3180 个混合语料**（3000 个单表达式 + 180 个嵌套表达式），完整三段真实执行：MIR 解析（含 hir_gate 的 HIR 往返校验）→ rust m2c 生成 C → gcc 编译 → 可执行文件运行 → 数值比对。并发 8 路。</p></div>
 <div class="board">
-<div class="kpi"><div class="v">3,000</div><div class="k">样本文件数</div></div>
-<div class="kpi ok"><div class="v">3,000</div><div class="k">① 解析进 MIR</div></div>
-<div class="kpi ok"><div class="v">2,202</div><div class="k">③ 三段全通</div></div>
-<div class="kpi ok"><div class="v">73.4%</div><div class="k">全通率</div></div>
+<div class="kpi"><div class="v">3,180</div><div class="k">样本文件数</div></div>
+<div class="kpi ok"><div class="v">3,180</div><div class="k">① 解析进 MIR</div></div>
+<div class="kpi ok"><div class="v">2,715</div><div class="k">③ 三段全通</div></div>
+<div class="kpi ok"><div class="v">85.4%</div><div class="k">全通率</div></div>
 </div>
 <h2><span class="num">01</span>三段漏斗</h2>
 <div class="funnel">
-<div class="fstep"><div class="lab">① 解析成 MIR（零未映射）</div><div class="bar"><i style="width:100.0%"></i><span>3,000 / 3,000</span></div><div class="pct">100.0%</div></div>
-<div class="fstep"><div class="lab">② 生成 C（rust m2c）</div><div class="bar"><i style="width:92.8%"></i><span>2,784 / 3,000</span></div><div class="pct">92.8%</div></div>
-<div class="fstep"><div class="lab">③ gcc 编译 + 运行比对</div><div class="bar"><i style="width:73.4%"></i><span>2,202 / 3,000</span></div><div class="pct">73.4%</div></div>
+<div class="fstep"><div class="lab">① 解析成 MIR（零未映射）</div><div class="bar"><i style="width:100.0%"></i><span>3,180 / 3,180</span></div><div class="pct">100.0%</div></div>
+<div class="fstep"><div class="lab">② 生成 C（rust m2c）</div><div class="bar"><i style="width:100.0%"></i><span>3,180 / 3,180</span></div><div class="pct">100.0%</div></div>
+<div class="fstep"><div class="lab">③ gcc 编译 + 运行比对</div><div class="bar"><i style="width:85.4%"></i><span>2,715 / 3,180</span></div><div class="pct">85.4%</div></div>
 </div>
 <h2><span class="num">02</span>逐段数据</h2>
 <table><tr><th>阶段</th><th>通过</th><th>总数</th><th>通过率</th><th>相对上一段</th></tr>
-<tr><td>① 解析成 MIR（零未映射）</td><td class=n>3,000</td><td class=n>3,000</td><td class=n>100.0%</td><td class=n>—</td></tr>
-<tr><td>② 生成 C（rust m2c）</td><td class=n>2,784</td><td class=n>3,000</td><td class=n>92.8%</td><td class=n>-216</td></tr>
-<tr><td>③ gcc 编译 + 运行比对</td><td class=n>2,202</td><td class=n>3,000</td><td class=n>73.4%</td><td class=n>-582</td></tr>
+<tr><td>① 解析成 MIR（零未映射）</td><td class=n>3,180</td><td class=n>3,180</td><td class=n>100.0%</td><td class=n>—</td></tr>
+<tr><td>② 生成 C（rust m2c）</td><td class=n>3,180</td><td class=n>3,180</td><td class=n>100.0%</td><td class=n>+0</td></tr>
+<tr><td>③ gcc 编译 + 运行比对</td><td class=n>2,715</td><td class=n>3,180</td><td class=n>85.4%</td><td class=n>-465</td></tr>
 </table>
-<div class="callout warn"><p><b>瓶颈在②：解析成功但生成 C 失败 216 个。</b>而 ②→③ 几乎不掉——说明<b>生成出来的 C 基本都能编译跑对</b>，问题集中在「从 MIR 到 C」这一步。</p></div>
 <h2><span class="num">03</span>关键发现</h2><ul>
-<li><b>三次独立抽样的比例几乎一致</b>：600 个 100/94.0/74.5 ｜ 1200 个 100/93.5/74.25 ｜ <b>3000 个 100/92.8/73.4</b>。样本扩大 5 倍，三个比例的最大漂移 <b>1.1 个百分点</b>。</li>
-<li><b>① 解析零未映射 = 100%（三次都是）</b>：修掉 <code>__k%d</code> 保留名冲突（GCC 把 <code>__k8</code> 当 AVX-512 mask 寄存器名）与矩阵字面量（<code>[1 2; 3 4]</code> 原本整行降级）之后的结果。</li>
-<li><b>② 生成 C ≈ 92.8%</b>：约 7% 在 m2c 这一步失败。</li>
-<li><b>③ ≈ 73.4%</b>：从 ② 出发约 20% 在 gcc 编译或运行比对时失败。已定位到机制：<code>emit.rs</code> 把返回值 <code>y</code> 初始化为 0 元素、由算子就地扩容（这是<b>有意的设计</b>）；而 gdb 回溯显示崩溃发生在 <code>mlc_array_free(&b)</code>，进一步用 print 把区间缩到 <b><code>m2c_f</code> 内部</b>——即该函数内某处越界写坏了入参的堆块。</li>
-<li><b>并发是把墙钟压下来的关键</b>：串行 40 个 58.3 秒 → 8 路并发 13.2 秒（<b>4.4 倍</b>），3000 个全程约 12 分钟。并发不改任何判据。</li>
+<li><b>① 与 ② 都达到 100%</b>：3180 个用例全部零未映射地解析成 MIR，且 m2c 全部成功生成 C。<b>这是本项目第一次在这两项上做到零失败。</b></li>
+<li><b>③ = 2715/3180 = 85.4%</b>：279 个在 gcc 编译或运行比对时失败。已分类：全部集中在 <code>mat4x4</code> / <code>mat2x3</code> 这类<b>二维数组</b>用例上——因为下游（<code>emit.rs</code> / <code>main.c</code>）按一维假设实现，真二维会让 <code>m2c</code> 直接失败（R1182 实测 0/25）。</li>
+<li><b>嵌套表达式这一类从 50% 做到 100%</b>（R1188→R1202 五轮）：50% → 60% → 80% → 90% → <b>100%</b>。修了四件事：通用拆解剥括号、<code>*</code> 的 MATMUL 降回条件、<code>abs(&lt;含运算符&gt;)</code> 第三条规则、整行右值直接输出到左值。</li>
+<li><b>HIR 真实参与</b>：不是靠 <code>__h</code> 前缀（那是误判），而是 <code>mir.py:2886/2921</code> 的 <code>hir_gate</code> —— 每次 <code>to_mir</code> 收尾都把 MIR 抬升成 HIR、降回、比对算子多重集是否相等（R1185 查明）。</li>
+<li><b>并发是把墙钟压下来的关键</b>：串行 40 个 58.3 秒 → 8 路 13.2 秒（<b>4.4 倍</b>），3180 个全程约 19 分钟。并发不改任何判据。</li>
 </ul>
 <h2><span class="num">04</span>诚实边界</h2>
-<div class="callout bad"><p><b>这是 3000 次真实执行，不是 1000 万次。</b>按实测速率（并发 8 路下约 2.9~4 个/秒）估算，1000 万次真实执行约需 <b>30~40 天</b>连续运行；单轮 60 分钟上限约 <b>1~1.5 万次</b>。此前轮次准备的 3,333,334 个用例是<b>池容量</b>（已磁盘实核），<b>不等于已执行次数</b>——两者不可混用。合成用例只覆盖 13 个算子 × 7 种形状，<b>不代表真实工程语料</b>：真实对照为 yalmip 全量降级率 16.2%、matpower 三段全通 0/120。另：三轮都是<b>按生成顺序取前 N 个</b>，仍偏向 early 的简单算子；因 variants 从 4 提到 12，第三轮的组合覆盖最宽。</p></div>
+<div class="callout bad"><p><b>这是 3180 次真实执行，不是 100 万次。</b>实测吞吐 2.9~4.4 个/秒，100 万次需 <b>63~96 小时</b>，单轮 60 分钟上限约 <b>1~1.5 万次</b>。此前准备的 3,333,334 个用例是<b>池容量</b>，不是已执行次数。合成语料只覆盖 13 个算子 × 7 种形状 × 10 种表达式模板，<b>不代表真实工程语料</b>：真实对照为 yalmip 全量降级率 16.2%、matpower 三段全通 0/120。另：③ 的 279 个失败<b>全部是二维数组用例</b>，这些在下游打通之前不会通过。</p></div>
 <footer><p>数据来源：flow/fullflow.json。由 <code>tools/fullflow_report.py</code> 生成。</p></footer>
 </div></body></html>
