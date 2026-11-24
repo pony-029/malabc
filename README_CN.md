@@ -1238,6 +1238,14 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
   形状必须传 `src`（MIR 不输出 `shape:`）；自证里专测「传 src 与不传必须判出不同结果」。
 - `tools/fullflow_report.py` —— **全流程测试报告**：把一次三段链路实测（解析 → 生成 C → 编译运行）渲染成 HTML。
   四节：三段漏斗（带条形图）/ 逐段数据（含相对上一段的增减）/ 关键发现 / **诚实边界**。漏斗会自动判断并点名「瓶颈在哪一段」。
+- `tools/gen_cases.py` —— **合成用例生成器**：补齐真实语料里缺失的形态（向量/标量/各类形状组合）。
+  合成语料只能证明"这类形态能转"，**不能代替真实工程**——报告里必须和 yalmip/matpower 的真实数字并列写。
+- `tools/pick_cases.py` —— **用例筛选器**：从大批 `.m` 里挑出"适合转换测试"的那批，七条拒收规则（classdef/gui/io/plot/print/eval/spmd/script_only/no_ops）。
+  被拒的要能说出**为什么拒**——否则"筛掉了"会变成"没测过"。
+- `tools/bulk_clone.py` —— **批量拉取 MATLAB 语料**（读 repos.txt 逐仓克隆）。
+  拉完必须核**真实文件数**：git clone 成功不等于里面有 `.m`。
+- `tools/scenario_coverage.py` —— **场景覆盖统计**：把一批 case 按八类场景（binary/reduce/unary/matmul/concat/index/other）分类计数。
+  某一类恒为 0 时先看它上一条分支吃了什么——分类器顺序错误比缺样本更常见。
 - `tools/ntp.py` —— **神经调度协议 NTP**（ANE v0.9.0 第五章 5.2）：小脑→大脑的上行报文。`build()` 产出规范要求的完整结构（`tried_rules` / `memory_hits` / `constraints` / `budget_hint`），`compact()` 产出 ANE5 极简单行，两者**信息一致**由 `validate()` 交叉校验。强制「无推测」：`signal_type` 只能是 UNKNOWN/S1..S4，`tried_rules` 不能为空——一条都没试过就升级，等于小脑被绕过
 - `tools/hw_brain.py` —— **硬件映射的小脑与大脑**：小脑跑确定性推导（段用量/算子数/形状未知数），大脑只在四信号触发时升级，每项都带一个**可回答的问题**而非一句「请检查」。四信号（无先例/复发/无见证/未归类）只有一处定义，是 `brain_llm.escalate` 在本领域的适配器
 - `tools/verify_symbol_map.py` —— **宏重映射端到端验证**：生成 C 工程 → 出映射头 → gcc 编译 → `nm` 看符号是否真的换掉。判据是「只剩目标符号、无残留内置符号」——生成器的自证只能证明文本渲染对，证明不了编译器接受它，所以必须有消费方验证。缺 gcc/nm/m2c 时跳过并说明，不假装通过
