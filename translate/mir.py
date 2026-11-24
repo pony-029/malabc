@@ -1146,6 +1146,51 @@ def _peel_unary_calls(out, code, counter, op_ids):
     return code if changed else None
 
 
+#: `<unary>(<含运算符、但内层无括号>)` —— 第三条规则（R1200）
+_UNARY_EXPR = re.compile(
+    r"\b(abs|sqrt)\s*\(\s*"
+    r"([A-Za-z_]\w*|-?\d+(?:\.\d+)?)\s*"
+    r"(\.\*|\./|\+|-|\*)\s*"
+    r"([A-Za-z_]\w*|-?\d+(?:\.\d+)?)\s*\)")
+
+
+def _lower_unary_expr_arg(out, code, counter, op_ids):
+    """`abs(X binop Y)` -> 两条语句并整段替换成临时量；无改动返回 None。
+
+    这是 R1199 剩下的那 36 个用例缺的第三条规则：
+    `_peel_inner_parens` 把它当调用实参跳过，
+    `_peel_unary_calls` 又只收纯名字参数 —— 两条都不管它。
+    """
+    changed = False
+    for _round in range(8):
+        m = _UNARY_EXPR.search(code)
+        if m is None:
+            break
+        op = _UNARY_CALL_OP.get(m.group(1))
+        bop_id = _BIN_OP_OF.get(m.group(3))
+        if op is None or op not in op_ids or bop_id is None \
+                or bop_id not in op_ids:
+            break
+        args = []
+        for side in (m.group(2), m.group(4)):
+            if re.match(r"^-?\d+(\.\d+)?$", side):
+                counter[0] += 1
+                k = "m2c_k%d" % counter[0]
+                out.append("const:%s:%s" % (k, side))
+                args.append(k)
+            else:
+                args.append(side)
+        counter[0] += 1
+        inner_tmp = "m2c_e%d" % counter[0]
+        out.append("op:%s:%s:%s:%s" % (bop_id, inner_tmp, args[0], args[1]))
+        counter[0] += 1
+        outer_tmp = "m2c_u%d" % counter[0]
+        out.append("op:%s:%s:%s" % (op, outer_tmp, inner_tmp))
+        code = code[:m.start()] + outer_tmp + code[m.end():]
+        changed = True
+    return code if changed else None
+
+
 #: `<op>((X binop Y))` —— 一层括号（R1192）。
 #:
 #: 与 `_REDUCE_ELEMWISE` 的区别：那个要求操作数是**扁平**的变量名/数字；
@@ -2488,6 +2533,12 @@ def to_mir(source, extra_names=None, header=True, skip_names=None,
             _peeled2 = _peel_unary_calls(out, code, idx_counter, known_ops)
             if _peeled2 is not None and _peeled2 != code:
                 code = _peeled2
+            # **第三条规则**（R1200）：`abs(<含运算符>)`。
+            # 前两条都不管它：剥括号那条把它当调用实参跳过，
+            # `_peel_unary_calls` 又只收纯名字参数。
+            _peeled3 = _lower_unary_expr_arg(out, code, idx_counter, known_ops)
+            if _peeled3 is not None and _peeled3 != code:
+                code = _peeled3
             if _lower_op_wrapped_binop(out, code, idx_counter, known_ops):
                 continue
             if _lower_reduce_elementwise(out, code, idx_counter,
