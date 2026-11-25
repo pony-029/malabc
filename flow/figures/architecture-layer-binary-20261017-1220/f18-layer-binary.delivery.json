@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "896962d9-5863-4b65-9c41-255e7281b69b",
+  "receiptId": "96de686c-0436-4a79-92c6-7d134a0e1474",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
-  "input": "C:\\Users\\ponyp\\AppData\\Local\\Temp\\fig_zb8pj9vl\\candidate.json",
-  "output": "C:\\Users\\ponyp\\AppData\\Local\\Temp\\fig_zb8pj9vl\\out.html",
+  "input": "C:\\Users\\ponyp\\AppData\\Local\\Temp\\fig_tvitecbz\\candidate.json",
+  "output": "C:\\Users\\ponyp\\AppData\\Local\\Temp\\fig_tvitecbz\\out.html",
   "specification": {
-    "sha256": "8271d9d6a93a02ac421eb3daeffb948d1cb6e7bf68e7491742708c7deb1f657e",
+    "sha256": "fbf3d9a4e8bf007ce8a72fe036fd4c9033cc96570b92167b4de738704b659432",
     "bytes": 3711
   },
   "artifact": {
-    "sha256": "b649b8d3772eab231a0ddc37658af9be43754c5dcf46ddbe872d48bcf514b2ad",
+    "sha256": "1b469bf7d6078bcbf4a9fabf05a6b5c6718ecca338317fd6b7b0d0c2797e06c7",
     "bytes": 839028
   }
 }
