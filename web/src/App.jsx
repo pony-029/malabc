@@ -274,7 +274,7 @@ export default function App() {
   const head = useMemo(
     () => (
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, padding: '10px 16px', flexWrap: 'wrap' }}>
-        <strong style={{ fontSize: 15 }}>Aethera 全流程控制台</strong>
+        <strong style={{ fontSize: 15 }}>Matlabc 全流程控制台</strong>
         <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
           Astryx · Neutral 主题 · 数据每 15s 从 /api/state 现算
         </span>

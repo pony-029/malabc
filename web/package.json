@@ -1,9 +1,9 @@
 {
-  "name": "aethera-flow-console",
+  "name": "matlabc-flow-console",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Aethera 全流程模块联动控制台（Astryx 设计系统 + 真实数据 API）",
+  "description": "Matlabc 全流程模块联动控制台（Astryx 设计系统 + 真实数据 API）",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5178",
     "build": "vite build",
