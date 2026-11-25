@@ -37,6 +37,134 @@ function readJson(name, fallback) {
   }
 }
 
+function buildPipeline(ff, ane, cb, fl, st, stageRows) {
+  const stages = ff.stages || [];
+  const entries = fl.entries || [];
+  const nFixed = entries.filter((e) => e.status === 'fixed').length;
+  const by = (id) => stageRows.find((r) => r.id === id) || {};
+
+  const steps = [
+    {
+      seq: 1,
+      id: 'parse',
+      name: '解析 .m → MIR',
+      module: 'translate/mir.py',
+      input: '.m 源文件（合成语料 / 真实工程）',
+      output: 'MIR 行：const / op / shape / unmapped',
+      metric: stages[0] ? `${stages[0].pass} / ${stages[0].total}` : '—',
+      detail: [
+        '判据：unmapped 条数为 0 才算通过（不是"能进 MIR"）',
+        '降级形态：算子链、表达式树临时量、字面量 HCAT/VCAT',
+        stages[0]
+          ? `本轮零未映射 ${stages[0].pass} 个，失败 ${stages[0].total - stages[0].pass} 个`
+          : '无数据',
+      ],
+      ok: stages[0] ? stages[0].pass === stages[0].total : null,
+      source: 'flow/fullflow.json · stages[0]',
+    },
+    {
+      seq: 2,
+      id: 'hir',
+      name: 'HIR 契约校验（hir_gate）',
+      module: 'translate/hir.py · translate/mir.py',
+      input: '刚生成的 MIR 文本',
+      output: '抬升成 HIR → 降回 MIR → 比对算子多重集',
+      metric: '每次 to_mir 收尾都走一遍',
+      detail: [
+        '不通过就报错：谁改坏了可降级性，谁在本地立刻红',
+        '注意：HIR 的痕迹**不在** MIR 文本里（它是校验，不替换产物）',
+        cb.ok === false ? '小脑契约有缺口' : '小脑契约 CB1–CB4 全绿',
+      ],
+      ok: cb.ok !== false,
+      source: 'flow/cerebellum.json',
+    },
+    {
+      seq: 3,
+      id: 'emit',
+      name: 'MIR → gen.c + main.c',
+      module: 'rust/m2c/src/emit.rs · project.rs',
+      input: 'MIR 文本',
+      output: 'gen.c（函数体）+ main.c（驱动与比对）',
+      metric: stages[1] ? `${stages[1].pass} / ${stages[1].total}` : '—',
+      detail: [
+        'main.c 负责：分配入参、填值、调函数、打印结果',
+        '已知约束：入参无 shape 注解时按一维 [4] 假设（会打印 assumed shape [4]）',
+        '`*` 默认 OP-MATMUL，仅当两侧都是 2-D 证据时才保留',
+      ],
+      ok: stages[1] ? stages[1].pass === stages[1].total : null,
+      source: 'flow/fullflow.json · stages[1]',
+    },
+    {
+      seq: 4,
+      id: 'gcc',
+      name: 'gcc 编译',
+      module: 'D:\project\MinGW-w64\bin\gcc.EXE',
+      input: 'gen.c + main.c + mlc_runtime.c + mlc_ops.c',
+      output: '可执行文件（或编译错误）',
+      metric: '与⑤合并统计',
+      detail: [
+        '参数：-std=c99 -O1 -I <gen>/include -I c_runtime/include ... -lm',
+        '历史坑：`__k8` 撞 AVX-512 mask 寄存器名，已改 m2c_k*',
+      ],
+      ok: null,
+      source: 'flow/fullflow.json（②的判据含编译）',
+    },
+    {
+      seq: 5,
+      id: 'run',
+      name: '运行 + 数值比对',
+      module: '生成的 exe · m2c_rt_run_all',
+      input: '可执行文件 + 测试数据',
+      output: '逐元素数值与期望比对',
+      metric: stages[2] ? `${stages[2].pass} / ${stages[2].total}` : '—',
+      detail: [
+        '失败集中在二维数组用例（mat4x4 / mat2x3）',
+        '机制：下游按一维假设实现，真二维会让 m2c 直接失败',
+      ],
+      ok: stages[2] ? stages[2].pass === stages[2].total : null,
+      source: 'flow/fullflow.json · stages[2]',
+    },
+    {
+      seq: 6,
+      id: 'gate',
+      name: '门禁收口（48 道）',
+      module: 'tools/check_*.py · check_all.py',
+      input: '仓库全量',
+      output: '每道门自证 + 汇总',
+      metric: ane.ok ? 'ANE 6 条全立' : 'ANE 有缺口',
+      detail: [
+        'GX2 = check_generated_compiles 的第二个契约（第 48 道）',
+        'check_all 会提示"分批模式"与"图漂移"——这两条也要读',
+      ],
+      ok: !!ane.ok,
+      source: 'flow/ane.json · flow/status.json',
+    },
+    {
+      seq: 7,
+      id: 'ledger',
+      name: '错误台账',
+      module: 'flow/failures.json',
+      input: '历轮真实犯过的错',
+      output: '每条带 witness（能拦住它的判据）',
+      metric: `已修 ${nFixed} / 未闭 ${entries.length - nFixed}`,
+      detail: [
+        '没有 witness 的错误只算故事，不算机制',
+        'R1208 把 53 条"标了 fixed 但无 commit"改回 open',
+      ],
+      ok: null,
+      source: 'flow/failures.json',
+    },
+  ];
+
+  return {
+    steps,
+    // 让前端能画一个"总进度"：通过步数 / 总步数
+    okCount: steps.filter((x) => x.ok === true).length,
+    failCount: steps.filter((x) => x.ok === false).length,
+    total: steps.length,
+  };
+}
+
 function buildState() {
   const ff = readJson('fullflow.json', {});
   const ane = readJson('ane.json', {});
@@ -119,6 +247,12 @@ function buildState() {
       fail2: stages[1] ? stages[1].total - stages[1].pass : 0,
       fail3: s3 ? s3.total - s3.pass : 0,
     },
+
+    // **pipeline**：把"每一步做了什么"全部暴露（用户要求：流程要全展示）
+    //
+    // 设计原则：**流程骨架固定，数字全部来自 flow/*.json** ——
+    // 这样"后续只更新测试数据"就能自动反映到页面。
+    pipeline: buildPipeline(ff, ane, cb, fl, st, stageRows),
 
     // **modules**：五个模块各自的 ok/n 与源文件
     modules: Object.fromEntries(
