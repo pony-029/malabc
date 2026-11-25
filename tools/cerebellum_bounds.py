@@ -102,12 +102,50 @@ def feature_distribution(mir_path):
             "s5_uses": "ge2"}
 
 
+#: 找所有历史 MIR（用于取 `# why:` 的取值并集）
+_MIR_GLOBS = ("E:/temp/matlabc",)
+
+
+def _kinds_from_mirs():
+    """扫所有历史 MIR，取 `# why:` 的取值并集（R1220）。
+
+    这是**与样本不同源**的清单：样本只取 `_find_mir()` 那一个文件，
+    而清单取全部文件 —— 否则就是拿答案考自己，自决率必然 100%。
+    """
+    kinds = set()
+    seen = 0
+    for base in _MIR_GLOBS:
+        if not os.path.isdir(base):
+            continue
+        for name in sorted(os.listdir(base)):
+            p = os.path.join(base, name, ".m2c", "project.mir")
+            if not os.path.isfile(p):
+                continue
+            try:
+                txt = io.open(p, encoding="utf-8", errors="replace").read()
+            except (IOError, OSError):
+                continue
+            seen += 1
+            for ln in txt.splitlines():
+                if ln.startswith("# why:"):
+                    v = ln[6:].strip()
+                    if v:
+                        kinds.add(v)
+    return kinds, seen
+
+
 def _real_kinds():
     """**产出方全集**：解析器实际会产出的未映射类别。
 
     不从文档抄，而是问产出方 —— `mir.py` 的 `_emit_unmapped` 里出现的字面量。
     抄清单必漏，这是本项目反复踩过的坑。
     """
+    # **优先：从历史 MIR 的 `# why:` 取并集**（R1220）。
+    from_mir, n_mir = _kinds_from_mirs()
+    if from_mir:
+        return sorted(from_mir)
+
+    # 兜底：原正则方式（只在找不到任何 MIR 时用）
     p = os.path.join(ROOT, "translate", "mir.py")
     s = io.open(p, encoding="utf-8", errors="replace").read()
     import re
