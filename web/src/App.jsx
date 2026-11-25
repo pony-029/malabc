@@ -25,6 +25,88 @@ function Kpi({ label, value, hint, variant }) {
   );
 }
 
+/**
+ * 全流程 7 步（R1239）。
+ *
+ * 数据来自 `/api/state` 的 `pipeline.steps`：流程骨架由后端给出，
+ * 数字全部来自仓库 `flow/*.json` —— 所以"后续只更新测试数据"就能自动反映。
+ *
+ * 交互：点一行展开 input / output / detail / source；再次点击收起。
+ */
+function PipelineSteps({ pipeline }) {
+  const [openId, setOpenId] = useState(null);
+  const steps = (pipeline && pipeline.steps) || [];
+  if (!steps.length) return null;
+
+  return (
+    <Card padding={2} style={{ marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10,
+                    marginBottom: 10, flexWrap: 'wrap' }}>
+        <strong style={{ fontSize: 14 }}>全流程 7 步</strong>
+        <Badge
+          label={`通过 ${pipeline.okCount} / 失败 ${pipeline.failCount} / 共 ${pipeline.total}`}
+          variant={pipeline.failCount ? 'yellow' : 'green'}
+        />
+        <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
+          点任意一步展开：它吃什么、产出什么、数字来自哪个文件
+        </span>
+      </div>
+
+      {steps.map((st) => {
+        const open = openId === st.id;
+        return (
+          <div key={st.id}
+               style={{ borderTop: '1px solid var(--color-border)', padding: '8px 0' }}>
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => setOpenId(open ? null : st.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ')
+                  setOpenId(open ? null : st.id);
+              }}
+              style={{ display: 'flex', alignItems: 'center', gap: 10,
+                       cursor: 'pointer' }}
+            >
+              <span style={{ fontFamily: 'var(--font-family-code)', fontSize: 11,
+                             width: 20, color: 'var(--color-text-secondary)' }}>
+                {st.seq}
+              </span>
+              <span style={{ width: 8, height: 8, borderRadius: '50%',
+                background: st.ok === true ? 'var(--color-text-success)'
+                  : st.ok === false ? 'var(--color-text-error)'
+                  : 'var(--color-text-secondary)' }} />
+              <strong style={{ fontSize: 13 }}>{st.name}</strong>
+              <span style={{ fontFamily: 'var(--font-family-code)', fontSize: 11,
+                             color: 'var(--color-text-secondary)' }}>
+                {st.module}
+              </span>
+              <span style={{ flex: 1 }} />
+              <span style={{ fontFamily: 'var(--font-family-code)', fontSize: 12,
+                             fontWeight: 600 }}>{st.metric}</span>
+              <Badge label={open ? '收起' : '展开'} variant="default" />
+            </div>
+
+            {open ? (
+              <div style={{ marginTop: 8, marginLeft: 30, fontSize: 12,
+                            lineHeight: 1.75,
+                            color: 'var(--color-text-secondary)' }}>
+                <div><b>输入</b>：{st.input}</div>
+                <div><b>产出</b>：{st.output}</div>
+                {(st.detail || []).map((d, i) => <div key={i}>· {d}</div>)}
+                <div style={{ fontFamily: 'var(--font-family-code)', fontSize: 10.5,
+                              marginTop: 4, opacity: 0.8 }}>
+                  来源：{st.source}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </Card>
+  );
+}
+
 function StageCard({ s, active, onSelect }) {
   const sem = s.semantic;
   const semPct = sem && sem.n ? (100 * sem.ok) / sem.n : null;
@@ -213,6 +295,8 @@ export default function App() {
           <div style={{ fontSize: 13 }}>{err}</div>
         </Card>
       ) : null}
+
+      <PipelineSteps pipeline={state?.pipeline} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 10, marginBottom: 16 }}>
         <Kpi label="实跑总量" value={fmt(run.executed)} hint={`目标 ${fmt(run.target)}`} />
