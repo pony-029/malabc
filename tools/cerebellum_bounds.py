@@ -221,15 +221,22 @@ def measure_offline(mir_path=None, limit=60):
         except Exception as e:                 # noqa: BLE001
             escalate.append((kind, "escalate 抛错：%s" % type(e).__name__))
             continue
-        # **不能只看 escalate 字段**（R1059）：brain_llm.escalate 目前返回的
-        # `escalate` 是 None（不是布尔），而 `reasons` 里可能已经明确写着
-        # "复发：同名问题已记 7 次"。用 bool(None)=False 判"自决"会把
-        # **该升级的当成不需要升级**——那会让离线率虚高到 100%。
-        # 所以：任一条成立就算需要上行。
+        # **只认与这条问题本身相关的原因**（R1221）。
+        #
+        # R1059 当时写的是 `bool(escalate) or bool(reasons)`，因为那时
+        # `reasons` 里写的是"复发：同名问题已记 7 次"这种**单条问题**的理由。
+        # 但后来 `brain_llm.escalate` 改成把**全局台账状态**也塞进 reasons：
+        #     ['有 5 条未闭合条目 —— 想登记却挂不上见证']
+        # 那条原因与问的是什么**完全无关**，于是每个查询都非空 ->
+        # 全判"需要上行" -> 自决率恒为 0.0%（R1219~R1220 查了四轮）。
+        #
+        # 现在：`escalate` 明确为真才上行；`reasons` 只在提到"复发/同名"时才算。
         if not isinstance(dec, dict):
             need = True
         else:
-            need = bool(dec.get("escalate")) or bool(dec.get("reasons"))
+            rs = dec.get("reasons") or []
+            _local = any(("复发" in str(r)) or ("同名" in str(r)) for r in rs)
+            need = bool(dec.get("escalate")) or _local
         (escalate if need else decidable).append(
             (kind, (dec.get("why") or "；".join(dec.get("reasons") or []))
              if need else desc))
