@@ -64,14 +64,26 @@ function runThreeLinks(n) {
     timeout: 120000,          // **120 秒硬超时**
     encoding: 'utf8',
     maxBuffer: 8 * 1024 * 1024,
+    // **必须显式给 UTF-8**（R1242）：Windows 下 Python 默认 GBK 输出，
+    // 不给这个变量，中文会变成 `���Σ���` 这种乱码。
+    env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
   });
   const both = ((r.stdout || '') + (r.stderr || '')).split('\n');
   const tail = both.filter((x) => x.trim()).slice(-40);   // **只留末尾 40 行**
-  const ok = r.status === 0 && tail.some((x) => x.includes('三段'));
+
+  // **判据用结构化符号，不用中文关键词**（R1242）。
+  // 原来写的是 tail.some(x => x.includes('三段'))，而中文一旦乱码就永远匹配不上，
+  // 于是 rc=0 却报 ok=0。数字与斜杠在任何编码下都是 ASCII，永远不会骗人。
+  const reTriple = /\d+\s*\/\s*\d+\s*[｜|]/;
+  const ok = r.status === 0 && tail.some((x) => reTriple.test(x));
   return {
     ok,
     tail,
-    err: ok ? '' : (r.error ? String(r.error.message) : `rc=${r.status}`),
+    err: ok
+      ? ''
+      : r.error
+        ? String(r.error.message)
+        : `rc=${r.status}, 未在输出里找到 "N/N |" 形式的三段行`,
   };
 }
 
