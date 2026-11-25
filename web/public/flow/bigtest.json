@@ -1,0 +1,61 @@
+{
+ "files": 64474,
+ "parsed_ok": 64474,
+ "parse_fail": 0,
+ "parse_rate": 1.0,
+ "bytes": 25253870,
+ "lines_est": 631346,
+ "total_ops": 78161,
+ "total_unmapped": 128273,
+ "kinds": {
+  "struct": 33191,
+  "other": 21969,
+  "call2": 18224,
+  "strlit": 17366,
+  "cell": 15217,
+  "cond": 12629,
+  "nested": 4777,
+  "control": 1524,
+  "blockmarker": 379,
+  "idx2": 347,
+  "sideeffect": 65
+ },
+ "fail_samples": [],
+ "seconds": 168.1,
+ "fullflow": {
+  "corpus": "MATPOWER/matpower (GitHub, 1780 .m)",
+  "sampled": 120,
+  "stage1_parse": 0,
+  "stage2_emit_c": 0,
+  "stage3_compile_run": 0,
+  "all_three": 0,
+  "note": "三段全通 0/120。语料是库代码（classdef/struct/cell 密集），落在全量统计的最大缺口里。",
+  "stages": [
+   {
+    "name": "① 解析成 MIR",
+    "pass": 0,
+    "total": 120
+   },
+   {
+    "name": "② 生成 C（rust m2c）",
+    "pass": 0,
+    "total": 120
+   },
+   {
+    "name": "③ gcc 编译 + 运行比对",
+    "pass": 0,
+    "total": 120
+   }
+  ]
+ },
+ "scale_math": {
+  "cases": 46192,
+  "ops": 72252,
+  "lines": 631346,
+  "stage_calls_by_case": 138576,
+  "stage_calls_by_op": 216756,
+  "stage_calls_by_line": 1894038,
+  "target": 10000000,
+  "note": "按「case×阶段」= 13.9 万次；按「算子×阶段」= 21.7 万次；按「语句×阶段」= 189.4 万次。**三种口径都不到 1000 万**。要到 1000 万，需要把语料扩到约 5.3 倍（按语句口径）。"
+ }
+}

@@ -1,0 +1,36 @@
+{
+  "ts": "2026-11-20 00:56:43",
+  "scope": "harness 分组复查（不是全部 42 门）",
+  "groups": [
+    {
+      "name": "失败登记",
+      "ok": false
+    },
+    {
+      "name": "升级策略",
+      "ok": true
+    },
+    {
+      "name": "ANE 规范",
+      "ok": false
+    },
+    {
+      "name": "解析切分",
+      "ok": true
+    },
+    {
+      "name": "编码约定",
+      "ok": false
+    },
+    {
+      "name": "工具发现性",
+      "ok": true
+    },
+    {
+      "name": "大脑成长",
+      "ok": true
+    }
+  ],
+  "passed": 4,
+  "total": 7
+}

@@ -1,0 +1,268 @@
+{
+  "phases": [
+    {
+      "id": "P0",
+      "title": "打通调用（跨文件 call）",
+      "status": "done",
+      "evidence": [
+        "tests/test_project_level.py"
+      ],
+      "missing": [],
+      "not_gated": []
+    },
+    {
+      "id": "P1",
+      "title": "配置唯一生效点",
+      "status": "done",
+      "evidence": [
+        "tests/test_config_effective.py"
+      ],
+      "missing": [],
+      "not_gated": []
+    },
+    {
+      "id": "P2",
+      "title": "预算模型（budget.json）",
+      "status": "done",
+      "evidence": [
+        "tests/test_budget.py"
+      ],
+      "missing": [],
+      "not_gated": []
+    },
+    {
+      "id": "P3",
+      "title": "契约桩（m2c_ext_*）",
+      "status": "done",
+      "evidence": [
+        "tests/test_contract_stub.py",
+        "tests/test_config_external_calls.py"
+      ],
+      "missing": [],
+      "not_gated": []
+    },
+    {
+      "id": "P4",
+      "title": "图谱接配置（该配什么）",
+      "status": "done",
+      "evidence": [
+        "tests/test_config_suggest.py"
+      ],
+      "missing": [],
+      "not_gated": []
+    },
+    {
+      "id": "P5",
+      "title": "HIR 接管",
+      "status": "done",
+      "evidence": [
+        "tests/test_hir_parity.py",
+        "tests/test_hir_srcline.py"
+      ],
+      "missing": [],
+      "not_gated": []
+    },
+    {
+      "id": "P6",
+      "title": "多路对账（无 Octave）",
+      "status": "done",
+      "evidence": [
+        "tests/test_four_way_no_octave.py"
+      ],
+      "missing": [],
+      "not_gated": []
+    }
+  ],
+  "modules": [
+    {
+      "path": "./",
+      "duty": "仓根脚本（入口 / 流水线 / 分析组件）",
+      "status": "ok",
+      "files": 23,
+      "gx2_tests": 120,
+      "group": "入口与流水线"
+    },
+    {
+      "path": "translate/",
+      "duty": "MATLAB → MIR / HIR / C（转换侧主体）",
+      "status": "ok",
+      "files": 162,
+      "gx2_tests": 120,
+      "group": "转换侧"
+    },
+    {
+      "path": "rust/m2c/",
+      "duty": "MIR → C 工程（发射器与装配）",
+      "status": "ok",
+      "files": 19,
+      "gx2_tests": 120,
+      "group": "转换侧"
+    },
+    {
+      "path": "c_runtime/",
+      "duty": "C 运行时（mlc_array / 算子实现）",
+      "status": "ok",
+      "files": 4,
+      "gx2_tests": 120,
+      "group": "运行时"
+    },
+    {
+      "path": "malabc-rt/",
+      "duty": "Rust 运行时 crate",
+      "status": "ok",
+      "files": 92,
+      "gx2_tests": 120,
+      "group": "运行时"
+    },
+    {
+      "path": "frontends/",
+      "duty": "多语言前端（候选站点 / IR）",
+      "status": "ok",
+      "files": 6,
+      "gx2_tests": 120,
+      "group": "转换侧"
+    },
+    {
+      "path": "analyzer/",
+      "duty": "分析侧（索引与关系）",
+      "status": "ok",
+      "files": 6,
+      "gx2_tests": 120,
+      "group": "分析侧"
+    },
+    {
+      "path": "binfmt/",
+      "duty": "二进制与构建系统的格式解析",
+      "status": "ok",
+      "files": 22,
+      "gx2_tests": 120,
+      "group": "分析侧"
+    },
+    {
+      "path": "renderers/",
+      "duty": "渲染层（资产 / 调用图）",
+      "status": "ok",
+      "files": 47,
+      "gx2_tests": 120,
+      "group": "分析侧"
+    },
+    {
+      "path": "tools/",
+      "duty": "门禁、状态、追踪、预算等工具",
+      "status": "ok",
+      "files": 164,
+      "gx2_tests": 120,
+      "group": "工具与门禁"
+    },
+    {
+      "path": "harness/",
+      "duty": "图与候选的生成辅助",
+      "status": "ok",
+      "files": 6,
+      "gx2_tests": 120,
+      "group": "工具与门禁"
+    },
+    {
+      "path": "ci-examples/",
+      "duty": "CI 配置样例",
+      "status": "ok",
+      "files": 9,
+      "gx2_tests": 120,
+      "group": "工具与门禁"
+    },
+    {
+      "path": "flow/",
+      "duty": "流程图与目录页",
+      "status": "ok",
+      "files": 236,
+      "gx2_tests": 120,
+      "group": "图与文档"
+    },
+    {
+      "path": "m2c-site/",
+      "duty": "静态展示站",
+      "status": "ok",
+      "files": 3,
+      "gx2_tests": 120,
+      "group": "图与文档"
+    },
+    {
+      "path": "docs/",
+      "duty": "设计文档",
+      "status": "ok",
+      "files": 274,
+      "gx2_tests": 120,
+      "group": "图与文档"
+    },
+    {
+      "path": "tests/",
+      "duty": "判据（含 GX2 的全部用例）",
+      "status": "ok",
+      "files": 283,
+      "gx2_tests": 120,
+      "group": "判据"
+    },
+    {
+      "path": "vscode/",
+      "duty": "编辑器插件",
+      "status": "ok",
+      "files": 14,
+      "gx2_tests": 120,
+      "group": "编辑器"
+    }
+  ],
+  "figures": {
+    "current": 16,
+    "recent": 0,
+    "stale": 0,
+    "unknown": 0,
+    "historical": 4,
+    "count": 20,
+    "max_lag": 0
+  },
+  "domain_tests": {
+    "工具与门禁": 588,
+    "分析侧": 571,
+    "图与文档": 566,
+    "判据": 567,
+    "转换侧": 705,
+    "入口与流水线": 609,
+    "编辑器": 65,
+    "运行时": 65
+  },
+  "domain_files": {
+    "工具与门禁": 21,
+    "分析侧": 17,
+    "图与文档": 13,
+    "判据": 9,
+    "转换侧": 63,
+    "入口与流水线": 23,
+    "编辑器": 4,
+    "运行时": 30
+  },
+  "gx2_tests": 120,
+  "head": "99782e0fc801",
+  "scale": {
+    "total": 165,
+    "full": 165,
+    "rate": 100.0,
+    "bad": 0,
+    "numeric": {
+      "common": 165,
+      "identical": 149,
+      "fmt_only": 16,
+      "mismatch": 0,
+      "c_error": 0,
+      "empty_both": 4,
+      "mismatch_names": [],
+      "c_error_names": [],
+      "only_vm": 0,
+      "only_c": 0,
+      "only_vm_names": [],
+      "only_c_names": [],
+      "rate": 100.0
+    },
+    "head": "0dac0664cfcc",
+    "ts": "2026-11-18 23:06:30"
+  }
+}

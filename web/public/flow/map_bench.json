@@ -1,0 +1,1133 @@
+[
+  {
+    "id": "multi_fn",
+    "name": "multi_fn（一文件多函数）",
+    "path": "E:\\matlabc\\malabc\\translate\\examples\\multi_fn",
+    "note": "4 个 .m / 11 个函数：5+3+2+1 分布，验证「多个 MATLAB 函数 → 一个 C 文件」",
+    "status": "ok",
+    "error": "",
+    "elapsed": 0.6,
+    "m_files": 4,
+    "m_funcs": 11,
+    "c_files": 4,
+    "c_funcs": 11,
+    "compile_ok": 4,
+    "compile_total": 4,
+    "compile_err": "",
+    "rows": [
+      {
+        "m": "scores.m",
+        "m_funcs": 5,
+        "c": "scores_m.c",
+        "c_funcs": 5,
+        "names": [
+          "m2c_scores",
+          "m2c_normalize",
+          "m2c_scale",
+          "m2c_shift",
+          "m2c_clamp"
+        ],
+        "stub": true
+      },
+      {
+        "m": "pair.m",
+        "m_funcs": 3,
+        "c": "pair_m.c",
+        "c_funcs": 3,
+        "names": [
+          "m2c_pair",
+          "m2c_twice",
+          "m2c_dot2"
+        ],
+        "stub": true
+      },
+      {
+        "m": "orphan.m",
+        "m_funcs": 2,
+        "c": "orphan_m.c",
+        "c_funcs": 2,
+        "names": [
+          "m2c_orphan_use",
+          "m2c_orphan_inner"
+        ],
+        "stub": false
+      },
+      {
+        "m": "solo.m",
+        "m_funcs": 1,
+        "c": "solo_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_solo"
+        ],
+        "stub": false
+      }
+    ]
+  },
+  {
+    "id": "kern",
+    "name": "kern（真实风格数值库）",
+    "path": "E:\\matlabc\\malabc\\translate\\examples\\kern",
+    "note": "10 个 .m / 10 个函数：一进一出的对照组",
+    "status": "ok",
+    "error": "",
+    "elapsed": 0.5,
+    "m_files": 10,
+    "m_funcs": 10,
+    "c_files": 10,
+    "c_funcs": 10,
+    "compile_ok": 10,
+    "compile_total": 10,
+    "compile_err": "",
+    "rows": [
+      {
+        "m": "clip.m",
+        "m_funcs": 1,
+        "c": "clip_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_clip"
+        ],
+        "stub": false
+      },
+      {
+        "m": "dot_norm.m",
+        "m_funcs": 1,
+        "c": "dot_norm_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_dot_norm"
+        ],
+        "stub": false
+      },
+      {
+        "m": "energy.m",
+        "m_funcs": 1,
+        "c": "energy_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_energy"
+        ],
+        "stub": false
+      },
+      {
+        "m": "grade.m",
+        "m_funcs": 1,
+        "c": "grade_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_grade"
+        ],
+        "stub": false
+      },
+      {
+        "m": "lerp.m",
+        "m_funcs": 1,
+        "c": "lerp_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_lerp"
+        ],
+        "stub": false
+      },
+      {
+        "m": "moving_avg.m",
+        "m_funcs": 1,
+        "c": "moving_avg_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_moving_avg"
+        ],
+        "stub": true
+      },
+      {
+        "m": "pipeline.m",
+        "m_funcs": 1,
+        "c": "pipeline_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_pipeline"
+        ],
+        "stub": false
+      },
+      {
+        "m": "relu.m",
+        "m_funcs": 1,
+        "c": "relu_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_relu"
+        ],
+        "stub": false
+      },
+      {
+        "m": "saturate.m",
+        "m_funcs": 1,
+        "c": "saturate_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_saturate"
+        ],
+        "stub": false
+      },
+      {
+        "m": "spread.m",
+        "m_funcs": 1,
+        "c": "spread_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_spread"
+        ],
+        "stub": false
+      }
+    ]
+  },
+  {
+    "id": "annot3",
+    "name": "annot3（真实工程）",
+    "path": "E:\\temp\\matlabc\\annot3",
+    "note": "93 个 .m 的外部工程，函数分布不均匀",
+    "status": "ok",
+    "error": "",
+    "elapsed": 0.6,
+    "m_files": 93,
+    "m_funcs": 93,
+    "c_files": 93,
+    "c_funcs": 93,
+    "compile_ok": 93,
+    "compile_total": 93,
+    "compile_err": "",
+    "rows": [
+      {
+        "m": "addEquality.m",
+        "m_funcs": 1,
+        "c": "addequality_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_addEquality"
+        ],
+        "stub": true
+      },
+      {
+        "m": "addTrivialActivationCuts.m",
+        "m_funcs": 1,
+        "c": "addtrivialactivationcuts_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_addTrivialActivationCuts"
+        ],
+        "stub": true
+      },
+      {
+        "m": "adjustMaxTime.m",
+        "m_funcs": 1,
+        "c": "adjustmaxtime_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_adjustMaxTime"
+        ],
+        "stub": true
+      },
+      {
+        "m": "any.m",
+        "m_funcs": 1,
+        "c": "any_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_any"
+        ],
+        "stub": true
+      },
+      {
+        "m": "binary.m",
+        "m_funcs": 1,
+        "c": "binary_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_binary"
+        ],
+        "stub": true
+      },
+      {
+        "m": "brutepersp.m",
+        "m_funcs": 1,
+        "c": "brutepersp_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_brutepersp"
+        ],
+        "stub": true
+      },
+      {
+        "m": "callnone.m",
+        "m_funcs": 1,
+        "c": "callnone_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_callnone"
+        ],
+        "stub": true
+      },
+      {
+        "m": "cfg_use.m",
+        "m_funcs": 1,
+        "c": "cfg_use_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_cfg_use"
+        ],
+        "stub": true
+      },
+      {
+        "m": "classifyrows.m",
+        "m_funcs": 1,
+        "c": "classifyrows_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_classifyrows"
+        ],
+        "stub": true
+      },
+      {
+        "m": "clean_bounds.m",
+        "m_funcs": 1,
+        "c": "clean_bounds_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_clean_bounds"
+        ],
+        "stub": true
+      },
+      {
+        "m": "clearconic.m",
+        "m_funcs": 1,
+        "c": "clearconic_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_clearconic"
+        ],
+        "stub": false
+      },
+      {
+        "m": "clearconicinfo.m",
+        "m_funcs": 1,
+        "c": "clearconicinfo_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_clearconicinfo"
+        ],
+        "stub": false
+      },
+      {
+        "m": "clearcreationtime.m",
+        "m_funcs": 1,
+        "c": "clearcreationtime_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_clearcreationtime"
+        ],
+        "stub": true
+      },
+      {
+        "m": "cleardual.m",
+        "m_funcs": 1,
+        "c": "cleardual_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_cleardual"
+        ],
+        "stub": true
+      },
+      {
+        "m": "clear_poly_dep.m",
+        "m_funcs": 1,
+        "c": "clear_poly_dep_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_clear_poly_dep"
+        ],
+        "stub": true
+      },
+      {
+        "m": "conj.m",
+        "m_funcs": 1,
+        "c": "conj_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_conj"
+        ],
+        "stub": true
+      },
+      {
+        "m": "createOutputStructure.m",
+        "m_funcs": 1,
+        "c": "createoutputstructure_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_createOutputStructure"
+        ],
+        "stub": true
+      },
+      {
+        "m": "detect_negated_binary.m",
+        "m_funcs": 1,
+        "c": "detect_negated_binary_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_detect_negated_binary"
+        ],
+        "stub": true
+      },
+      {
+        "m": "detect_special_objectives.m",
+        "m_funcs": 1,
+        "c": "detect_special_objectives_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_detect_special_objectives"
+        ],
+        "stub": true
+      },
+      {
+        "m": "endOfLPCone.m",
+        "m_funcs": 1,
+        "c": "endoflpcone_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_endOfLPCone"
+        ],
+        "stub": false
+      },
+      {
+        "m": "expanded.m",
+        "m_funcs": 1,
+        "c": "expanded_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_expanded"
+        ],
+        "stub": true
+      },
+      {
+        "m": "extractBounds.m",
+        "m_funcs": 1,
+        "c": "extractbounds_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_extractBounds"
+        ],
+        "stub": true
+      },
+      {
+        "m": "findelements.m",
+        "m_funcs": 1,
+        "c": "findelements_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_findelements"
+        ],
+        "stub": true
+      },
+      {
+        "m": "fixedInfeasibleEquality.m",
+        "m_funcs": 1,
+        "c": "fixedinfeasibleequality_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_fixedInfeasibleEquality"
+        ],
+        "stub": true
+      },
+      {
+        "m": "fliplr.m",
+        "m_funcs": 1,
+        "c": "fliplr_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_fliplr"
+        ],
+        "stub": true
+      },
+      {
+        "m": "flipud.m",
+        "m_funcs": 1,
+        "c": "flipud_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_flipud"
+        ],
+        "stub": true
+      },
+      {
+        "m": "fmincon_con_liftlayer.m",
+        "m_funcs": 1,
+        "c": "fmincon_con_liftlayer_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_fmincon_con_liftlayer"
+        ],
+        "stub": true
+      },
+      {
+        "m": "fmincon_fungp.m",
+        "m_funcs": 1,
+        "c": "fmincon_fungp_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_fmincon_fungp"
+        ],
+        "stub": true
+      },
+      {
+        "m": "getbase.m",
+        "m_funcs": 1,
+        "c": "getbase_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_getbase"
+        ],
+        "stub": false
+      },
+      {
+        "m": "getbasematrix.m",
+        "m_funcs": 1,
+        "c": "getbasematrix_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_getbasematrix"
+        ],
+        "stub": true
+      },
+      {
+        "m": "getbasevectorwithoutcheck.m",
+        "m_funcs": 1,
+        "c": "getbasevectorwithoutcheck_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_getbasevectorwithoutcheck"
+        ],
+        "stub": true
+      },
+      {
+        "m": "getcx.m",
+        "m_funcs": 1,
+        "c": "getcx_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_getcx"
+        ],
+        "stub": false
+      },
+      {
+        "m": "getgain.m",
+        "m_funcs": 1,
+        "c": "getgain_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_getgain"
+        ],
+        "stub": false
+      },
+      {
+        "m": "gethackflag.m",
+        "m_funcs": 1,
+        "c": "gethackflag_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_gethackflag"
+        ],
+        "stub": false
+      },
+      {
+        "m": "getlmiid.m",
+        "m_funcs": 1,
+        "c": "getlmiid_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_getlmiid"
+        ],
+        "stub": false
+      },
+      {
+        "m": "getP.m",
+        "m_funcs": 1,
+        "c": "getp_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_getP"
+        ],
+        "stub": false
+      },
+      {
+        "m": "integer.m",
+        "m_funcs": 1,
+        "c": "integer_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_integer"
+        ],
+        "stub": true
+      },
+      {
+        "m": "integer_relax.m",
+        "m_funcs": 1,
+        "c": "integer_relax_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_integer_relax"
+        ],
+        "stub": false
+      },
+      {
+        "m": "isinterval.m",
+        "m_funcs": 1,
+        "c": "isinterval_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_isinterval"
+        ],
+        "stub": true
+      },
+      {
+        "m": "mergeNumericalModels.m",
+        "m_funcs": 1,
+        "c": "mergenumericalmodels_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_mergeNumericalModels"
+        ],
+        "stub": true
+      },
+      {
+        "m": "mid.m",
+        "m_funcs": 1,
+        "c": "mid_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_mid"
+        ],
+        "stub": true
+      },
+      {
+        "m": "mpt2pop.m",
+        "m_funcs": 1,
+        "c": "mpt2pop_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_mpt2pop"
+        ],
+        "stub": true
+      },
+      {
+        "m": "mpt_collect_equalities.m",
+        "m_funcs": 1,
+        "c": "mpt_collect_equalities_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_mpt_collect_equalities"
+        ],
+        "stub": true
+      },
+      {
+        "m": "mpt_detect_and_improve_bounds.m",
+        "m_funcs": 1,
+        "c": "mpt_detect_and_improve_bounds_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_mpt_detect_and_improve_bounds"
+        ],
+        "stub": true
+      },
+      {
+        "m": "mpt_remove_equalities.m",
+        "m_funcs": 1,
+        "c": "mpt_remove_equalities_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_mpt_remove_equalities"
+        ],
+        "stub": true
+      },
+      {
+        "m": "parametric.m",
+        "m_funcs": 1,
+        "c": "parametric_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_parametric"
+        ],
+        "stub": true
+      },
+      {
+        "m": "pcone.m",
+        "m_funcs": 1,
+        "c": "pcone_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_pcone"
+        ],
+        "stub": true
+      },
+      {
+        "m": "permute.m",
+        "m_funcs": 1,
+        "c": "permute_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_permute"
+        ],
+        "stub": true
+      },
+      {
+        "m": "powcone.m",
+        "m_funcs": 1,
+        "c": "powcone_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_powcone"
+        ],
+        "stub": true
+      },
+      {
+        "m": "presolve_binaryinteger.m",
+        "m_funcs": 1,
+        "c": "presolve_binaryinteger_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_presolve_binaryinteger"
+        ],
+        "stub": true
+      },
+      {
+        "m": "presolve_bounds_from_modelbounds.m",
+        "m_funcs": 1,
+        "c": "presolve_bounds_from_modelbounds_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_presolve_bounds_from_modelbounds"
+        ],
+        "stub": true
+      },
+      {
+        "m": "presolve_empty_rows.m",
+        "m_funcs": 1,
+        "c": "presolve_empty_rows_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_presolve_empty_rows"
+        ],
+        "stub": true
+      },
+      {
+        "m": "presolve_implied_integer.m",
+        "m_funcs": 1,
+        "c": "presolve_implied_integer_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_presolve_implied_integer"
+        ],
+        "stub": true
+      },
+      {
+        "m": "presolve_linearize_fractions.m",
+        "m_funcs": 1,
+        "c": "presolve_linearize_fractions_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_presolve_linearize_fractions"
+        ],
+        "stub": true
+      },
+      {
+        "m": "propagate_bounds_from_complementary.m",
+        "m_funcs": 1,
+        "c": "propagate_bounds_from_complementary_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_propagate_bounds_from_complementary"
+        ],
+        "stub": true
+      },
+      {
+        "m": "propagate_bounds_from_convex_quadratic_ball.m",
+        "m_funcs": 1,
+        "c": "propagate_bounds_from_convex_quadratic_ball_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_propagate_bounds_from_convex_quadratic_ball"
+        ],
+        "stub": true
+      },
+      {
+        "m": "propagate_bounds_from_evaluations.m",
+        "m_funcs": 1,
+        "c": "propagate_bounds_from_evaluations_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_propagate_bounds_from_evaluations"
+        ],
+        "stub": true
+      },
+      {
+        "m": "quickrecover.m",
+        "m_funcs": 1,
+        "c": "quickrecover_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_quickrecover"
+        ],
+        "stub": true
+      },
+      {
+        "m": "rad.m",
+        "m_funcs": 1,
+        "c": "rad_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_rad"
+        ],
+        "stub": true
+      },
+      {
+        "m": "RecoverNonlinearSolverSolution.m",
+        "m_funcs": 1,
+        "c": "recovernonlinearsolversolution_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_RecoverNonlinearSolverSolution"
+        ],
+        "stub": true
+      },
+      {
+        "m": "registerjacobian.m",
+        "m_funcs": 1,
+        "c": "registerjacobian_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_registerjacobian"
+        ],
+        "stub": true
+      },
+      {
+        "m": "removeCuts.m",
+        "m_funcs": 1,
+        "c": "removecuts_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_removeCuts"
+        ],
+        "stub": true
+      },
+      {
+        "m": "removeEmptyLPRows.m",
+        "m_funcs": 1,
+        "c": "removeemptylprows_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_removeEmptyLPRows"
+        ],
+        "stub": true
+      },
+      {
+        "m": "removeExplorationConstraints.m",
+        "m_funcs": 1,
+        "c": "removeexplorationconstraints_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_removeExplorationConstraints"
+        ],
+        "stub": true
+      },
+      {
+        "m": "removenonlinearity.m",
+        "m_funcs": 1,
+        "c": "removenonlinearity_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_removenonlinearity"
+        ],
+        "stub": true
+      },
+      {
+        "m": "remove_objective.m",
+        "m_funcs": 1,
+        "c": "remove_objective_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_remove_objective"
+        ],
+        "stub": false
+      },
+      {
+        "m": "remove_redundant.m",
+        "m_funcs": 1,
+        "c": "remove_redundant_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_remove_redundant"
+        ],
+        "stub": true
+      },
+      {
+        "m": "robustify.m",
+        "m_funcs": 1,
+        "c": "robustify_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_robustify"
+        ],
+        "stub": true
+      },
+      {
+        "m": "rot90.m",
+        "m_funcs": 1,
+        "c": "rot90_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_rot90"
+        ],
+        "stub": true
+      },
+      {
+        "m": "round_solution.m",
+        "m_funcs": 1,
+        "c": "round_solution_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_round_solution"
+        ],
+        "stub": true
+      },
+      {
+        "m": "sdpcone.m",
+        "m_funcs": 1,
+        "c": "sdpcone_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_sdpcone"
+        ],
+        "stub": true
+      },
+      {
+        "m": "semicont.m",
+        "m_funcs": 1,
+        "c": "semicont_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_semicont"
+        ],
+        "stub": true
+      },
+      {
+        "m": "setdualize.m",
+        "m_funcs": 1,
+        "c": "setdualize_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_setdualize"
+        ],
+        "stub": false
+      },
+      {
+        "m": "sethackflag.m",
+        "m_funcs": 1,
+        "c": "sethackflag_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_sethackflag"
+        ],
+        "stub": false
+      },
+      {
+        "m": "setoperatorname.m",
+        "m_funcs": 1,
+        "c": "setoperatorname_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_setoperatorname"
+        ],
+        "stub": true
+      },
+      {
+        "m": "smashQPOjective.m",
+        "m_funcs": 1,
+        "c": "smashqpojective_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_smashQPOjective"
+        ],
+        "stub": true
+      },
+      {
+        "m": "solvemp.m",
+        "m_funcs": 1,
+        "c": "solvemp_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_solvemp"
+        ],
+        "stub": true
+      },
+      {
+        "m": "sos1.m",
+        "m_funcs": 1,
+        "c": "sos1_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_sos1"
+        ],
+        "stub": true
+      },
+      {
+        "m": "squeeze.m",
+        "m_funcs": 1,
+        "c": "squeeze_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_squeeze"
+        ],
+        "stub": true
+      },
+      {
+        "m": "startofEXPCone.m",
+        "m_funcs": 1,
+        "c": "startofexpcone_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_startofEXPCone"
+        ],
+        "stub": true
+      },
+      {
+        "m": "startofLPCone.m",
+        "m_funcs": 1,
+        "c": "startoflpcone_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_startofLPCone"
+        ],
+        "stub": false
+      },
+      {
+        "m": "startofPOWCone.m",
+        "m_funcs": 1,
+        "c": "startofpowcone_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_startofPOWCone"
+        ],
+        "stub": true
+      },
+      {
+        "m": "startofSDPCone.m",
+        "m_funcs": 1,
+        "c": "startofsdpcone_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_startofSDPCone"
+        ],
+        "stub": true
+      },
+      {
+        "m": "startofSOCPCone.m",
+        "m_funcs": 1,
+        "c": "startofsocpcone_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_startofSOCPCone"
+        ],
+        "stub": false
+      },
+      {
+        "m": "struct_other.m",
+        "m_funcs": 1,
+        "c": "struct_other_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_struct_other"
+        ],
+        "stub": true
+      },
+      {
+        "m": "sumsum.m",
+        "m_funcs": 1,
+        "c": "sumsum_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_sumsum"
+        ],
+        "stub": true
+      },
+      {
+        "m": "unique.m",
+        "m_funcs": 1,
+        "c": "unique_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_unique"
+        ],
+        "stub": true
+      },
+      {
+        "m": "updatemodel.m",
+        "m_funcs": 1,
+        "c": "updatemodel_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_updatemodel"
+        ],
+        "stub": false
+      },
+      {
+        "m": "update_integer_bounds.m",
+        "m_funcs": 1,
+        "c": "update_integer_bounds_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_update_integer_bounds"
+        ],
+        "stub": true
+      },
+      {
+        "m": "update_semicont_bounds.m",
+        "m_funcs": 1,
+        "c": "update_semicont_bounds_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_update_semicont_bounds"
+        ],
+        "stub": true
+      },
+      {
+        "m": "upper_from_sdpextension.m",
+        "m_funcs": 1,
+        "c": "upper_from_sdpextension_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_upper_from_sdpextension"
+        ],
+        "stub": true
+      },
+      {
+        "m": "vec.m",
+        "m_funcs": 1,
+        "c": "vec_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_vec"
+        ],
+        "stub": true
+      },
+      {
+        "m": "yalmip2powersolver.m",
+        "m_funcs": 1,
+        "c": "yalmip2powersolver_m.c",
+        "c_funcs": 1,
+        "names": [
+          "m2c_yalmip2powersolver"
+        ],
+        "stub": true
+      }
+    ]
+  }
+]

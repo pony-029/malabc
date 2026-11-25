@@ -1,0 +1,27 @@
+{
+  "total": 168,
+  "full": 168,
+  "rate": 100.0,
+  "bad": 0,
+  "numeric": {
+    "common": 168,
+    "identical": 149,
+    "fmt_only": 16,
+    "mismatch": 3,
+    "c_error": 0,
+    "empty_both": 4,
+    "mismatch_names": [
+      "op_range_1_0",
+      "op_range_3_1",
+      "op_range_7_2"
+    ],
+    "c_error_names": [],
+    "only_vm": 0,
+    "only_c": 0,
+    "only_vm_names": [],
+    "only_c_names": [],
+    "rate": 98.2
+  },
+  "head": "3213696d2e1e",
+  "ts": "2026-11-20 00:43:46"
+}

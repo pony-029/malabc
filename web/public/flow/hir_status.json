@@ -1,0 +1,14 @@
+{
+  "via_hir_rc": 0,
+  "mapped": 59,
+  "total": 59,
+  "identical": 59,
+  "participation": 100.0,
+  "identical_rate": 100.0,
+  "emitted": 60,
+  "passthrough": 0,
+  "hir_emit_rc": 0,
+  "src_base": 167,
+  "src_hir_emit": 167,
+  "src_parity": 100.0
+}

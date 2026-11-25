@@ -1,0 +1,23 @@
+{
+ "source": "E:\\temp\\matlabc\\bigmat",
+ "files": 2,
+ "total_unmapped": 0,
+ "kinds": {},
+ "avg_rate": 1.0,
+ "files_over_90": 2,
+ "files_zero": 2,
+ "per_file": [
+  {
+   "file": "big_mmul.m",
+   "unmapped": 0,
+   "ops": 1,
+   "rate": 1.0
+  },
+  {
+   "file": "big_sum.m",
+   "unmapped": 0,
+   "ops": 1,
+   "rate": 1.0
+  }
+ ]
+}

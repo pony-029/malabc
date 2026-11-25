@@ -1,0 +1,44 @@
+{
+ "signature": "CB1–CB4",
+ "ok": true,
+ "rows": [
+  {
+   "prefix": "CB1 ",
+   "verdict": "OK",
+   "note": "真实语料自决率 94.0%（>=80%，12 条上行）"
+  },
+  {
+   "prefix": "CB2 ",
+   "verdict": "OK",
+   "note": "规则集合只增不减（新增 0 条）"
+  },
+  {
+   "prefix": "CB3 ",
+   "verdict": "OK",
+   "note": "报文字段齐全，ANE5 与 NTP 一致（44 字节）"
+  },
+  {
+   "prefix": "CB4 ",
+   "verdict": "OK",
+   "note": "空 tried_rules 与非法 signal_type 均被拒绝"
+  }
+ ],
+ "detail": {
+  "offline": {
+   "mir": "E:/temp/matlabc/octgen/.m2c/project.mir",
+   "rate": 94.0,
+   "total": 200,
+   "up": 12
+  },
+  "growable": {
+   "ok": true,
+   "shrunk": [],
+   "added": 0
+  },
+  "ntp": {
+   "errors": [],
+   "warnings": [],
+   "compact_bytes": 44
+  }
+ }
+}
