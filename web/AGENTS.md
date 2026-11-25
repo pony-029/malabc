@@ -1,3 +1,15 @@
+# web/ —— Matlabc 前端控制台
+
+**这是本项目的模块，不是 Astryx 的示例工程。**
+它用 Astryx 的设计 token 与 React 组件，展示 Matlabc 的五个阶段（MIR 前端 /
+HIR 契约 / Rust 发射器 / C 运行时 / 门禁台账），数据来自 /api/state
+（由 \ite.config.js\ 的中间件现读 \../flow/*.json\）。
+
+启动：pm run dev\（127.0.0.1:5178）。
+下面 ASTRYX 区块是 Astryx CLI 自动生成的，保留以便查组件 API。
+
+---
+
 # AGENTS.md
 
 Project-specific guidance for AI coding agents.
