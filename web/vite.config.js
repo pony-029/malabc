@@ -296,6 +296,16 @@ function buildState() {
       s3: s3 ? s3.pass : 0,
       fail2: stages[1] ? stages[1].total - stages[1].pass : 0,
       fail3: s3 ? s3.total - s3.pass : 0,
+
+      // ---- 以下为 App.jsx 的 KPI 需要、而此前缺失的字段（R1248）----
+      executed: ff.total || 0,                  // 真实执行用例数
+      target: ff.total || 0,                    // 本轮"目标"与实跑同源
+      errors: s3 ? s3.total - s3.pass : 0,      // 运行段失败数
+      mismatches: s3 ? s3.total - s3.pass : 0,  // 数值不符即运行失败
+      parts: '单机',                             // 本轮确实是单机
+      // **没有真实数据就保持 null，前端显示 —**（不编造）
+      wall_s: null,
+      instruction_coverage_pct: null,
     },
 
     // **pipeline**：把"每一步做了什么"全部暴露（用户要求：流程要全展示）
