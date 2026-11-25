@@ -79,3 +79,4 @@ translate/examples/.m2c/
 # 大脑上行请求的中间快照（R1056）——每次 ask 生成一个 req-*.txt，
 # 属运行产物；SYSTEM.md 是协议配置，仍入库。
 flow/llm-io/req-*.txt
+.playwright-cli/
