@@ -1317,6 +1317,23 @@ Three-link regression report: `python tools/three_links_report.py <dirs> -o <out
   Always verify the real `.m` count afterwards: a successful clone does not imply the repo contains any `.m`.
 - `tools/scenario_coverage.py` — **scenario coverage count**: buckets a case set into eight scenario classes (binary/reduce/unary/matmul/concat/index/other).
   When one bucket is always 0, look at which earlier branch swallowed it — classifier ordering is a more common cause than missing samples.
+- `flow/pipeline.html` — **full-pipeline visualisation (static)**: single file,
+  zero dependencies, double-click to open. Five-stage pipeline + three-stage
+  funnel + multi-run comparison + cerebellum + failure ledger.
+  **Every number is read from `flow/*.json`**, none are illustrative; design
+  tokens come from Astryx (`flow/astryx/theme.css`, 199 semantic variables) and
+  the footer documents the `@scope` requirement
+  (`<body data-astryx-theme="neutral">`).
+
+- `web/` (Matlabc front-end console) — **React 19 + Astryx components**.
+  `npm run dev` serves it at `127.0.0.1:5178`. `/api/state` is a Vite middleware
+  that aggregates `../flow/*.json` on the fly; `/api/run?stage=&n=` **really
+  runs one three-stage pass** (`three_links_report.py`, 120 s timeout, keeps
+  only the last 40 lines) but is **off by default** — requires
+  `M2C_ALLOW_RUN=1` and `1<=n<=50` so a stray click cannot launch thousands.
+  Interaction: each of the 7 steps expands to show input/output/details/source,
+  stage cards are linked, and it auto-refreshes every 15 s.
+
 - `tools/ntp.py` — **Neural Transport Protocol** (ANE v0.9.0 §5.2): the uplink message from cerebellum to main brain. `build()` produces the full structure the spec requires (`tried_rules` / `memory_hits` / `constraints` / `budget_hint`), `compact()` produces the ANE5 one-liner, and `validate()` cross-checks that both carry the same information. Enforces "no speculation": `signal_type` is limited to UNKNOWN/S1..S4 and `tried_rules` may not be empty — escalating without trying anything means the cerebellum was bypassed
 - `tools/hw_brain.py` — **cerebellum + cerebrum for hardware mapping**: the cerebellum runs deterministic derivations (section usage, op counts, unknown-shape counts); the cerebrum escalates only on the four signals, and every escalation carries a **question that can be answered** rather than a vague "please check". The four signals (no-precedent / recurring / no-witness / unclassified) are defined in exactly one place — this is an adapter for `brain_llm.escalate`, not a second rulebook
 - `tools/verify_symbol_map.py` — **end-to-end check for the symbol remap**: build a real C project, emit the remap header, compile it, then read `nm` to see whether the symbols actually changed. The criterion is "only the target symbols remain, no builtin leftovers" — a generator's selftest can only prove the rendered text is right, never that a compiler accepts it, so a consumer-side check is mandatory. Skips with a clear message when gcc/nm/m2c are absent, never pretending to pass

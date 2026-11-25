@@ -1246,6 +1246,20 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
   拉完必须核**真实文件数**：git clone 成功不等于里面有 `.m`。
 - `tools/scenario_coverage.py` —— **场景覆盖统计**：把一批 case 按八类场景（binary/reduce/unary/matmul/concat/index/other）分类计数。
   某一类恒为 0 时先看它上一条分支吃了什么——分类器顺序错误比缺样本更常见。
+- `flow/pipeline.html` —— **全流程可视化（静态版）**：单文件、零依赖、双击即看。
+  五段流水线 + 三段漏斗 + 多轮对照 + 小脑自决 + 错误台账。
+  **数字全部读 `flow/*.json`，不是示意值**；设计 token 取自 Astryx
+  （`flow/astryx/theme.css`，199 个语义变量），页脚写明用法约束
+  （`@scope` 要求 `<body data-astryx-theme="neutral">`）。
+
+- `web/`（Aethera→**Matlabc** 前端控制台）—— **React 19 + Astryx 组件版**。
+  `npm run dev` 起在 `127.0.0.1:5178`。
+  `/api/state` 由 `vite.config.js` 的中间件现读 `../flow/*.json` 聚合；
+  `/api/run?stage=&n=` 会**真的跑一次三段**（`three_links_report.py`，
+  120s 超时、只留 40 行尾巴），但**默认关闭**：必须 `M2C_ALLOW_RUN=1`
+  且 `1<=n<=50`，避免误点跑几千个。
+  交互：7 步可点开看「输入/产出/明细/来源」、阶段卡片联动、15s 自动刷新。
+
 - `tools/ntp.py` —— **神经调度协议 NTP**（ANE v0.9.0 第五章 5.2）：小脑→大脑的上行报文。`build()` 产出规范要求的完整结构（`tried_rules` / `memory_hits` / `constraints` / `budget_hint`），`compact()` 产出 ANE5 极简单行，两者**信息一致**由 `validate()` 交叉校验。强制「无推测」：`signal_type` 只能是 UNKNOWN/S1..S4，`tried_rules` 不能为空——一条都没试过就升级，等于小脑被绕过
 - `tools/hw_brain.py` —— **硬件映射的小脑与大脑**：小脑跑确定性推导（段用量/算子数/形状未知数），大脑只在四信号触发时升级，每项都带一个**可回答的问题**而非一句「请检查」。四信号（无先例/复发/无见证/未归类）只有一处定义，是 `brain_llm.escalate` 在本领域的适配器
 - `tools/verify_symbol_map.py` —— **宏重映射端到端验证**：生成 C 工程 → 出映射头 → gcc 编译 → `nm` 看符号是否真的换掉。判据是「只剩目标符号、无残留内置符号」——生成器的自证只能证明文本渲染对，证明不了编译器接受它，所以必须有消费方验证。缺 gcc/nm/m2c 时跳过并说明，不假装通过
