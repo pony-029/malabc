@@ -234,8 +234,17 @@ def measure_offline(mir_path=None, limit=60):
         if not isinstance(dec, dict):
             need = True
         else:
-            rs = dec.get("reasons") or []
-            _local = any(("复发" in str(r)) or ("同名" in str(r)) for r in rs)
+            rs = [str(r) for r in (dec.get("reasons") or [])]
+            # **排除全局噪声，保留本地理由**（R1222）。
+            #
+            # `escalate` 的 `reasons` 里混着两类：
+            #   全局：'有 5 条未闭合条目 —— 想登记却挂不上见证'
+            #         （与问什么无关，只反映 flow/failures.json 的状态）
+            #   本地：'无先例：知识库最高分 1.15 < 1.20'、'复发：同名问题已记 7 次'
+            #
+            # 上一版我只认"复发/同名"，把"无先例"漏了 —— 而它恰是最主要的上行理由。
+            # 现在：只要存在**不是**"未闭合条目"的理由，就算需要上行。
+            _local = any("未闭合条目" not in r for r in rs)
             need = bool(dec.get("escalate")) or _local
         (escalate if need else decidable).append(
             (kind, (dec.get("why") or "；".join(dec.get("reasons") or []))
