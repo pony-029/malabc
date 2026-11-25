@@ -1,11 +1,8 @@
 {
-  "ts": "2026-11-25 00:17:08",
+  "ts": "2026-11-25 21:05:25",
   "total": 47,
-  "failed": [
-    "check_cerebellum.py",
-    "check_lsp_doc_parity.py"
-  ],
-  "passed": 45,
+  "failed": [],
+  "passed": 47,
   "skipped": [
     "check_generated_compiles"
   ]
