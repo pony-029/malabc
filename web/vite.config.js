@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import fs from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
 /**
@@ -35,6 +36,43 @@ function readJson(name, fallback) {
   } catch {
     return fallback;
   }
+}
+
+/**
+ * 真的跑一次三段（R1240）。
+ *
+ * 用 `spawnSync` 而不是 `execSync`：前者能设 `timeout` 且不会把几十 MB
+ * 输出全缓冲在内存里（我们只要尾巴）。
+ */
+function runThreeLinks(n) {
+  const py = process.env.M2C_PYTHON || 'python';
+  const script = path.join(ROOT, 'tools', 'three_links_report.py');
+  const corpus = process.env.M2C_CORPUS || path.join(ROOT, '..', 'temp', 'gen_mixed');
+  const outDir = path.join(ROOT, '..', 'temp', 'matlabc', 'UI_RUN_' + Date.now());
+
+  if (!fs.existsSync(script)) return { ok: false, tail: [], err: '找不到 ' + script };
+  if (!fs.existsSync(corpus)) {
+    return {
+      ok: false,
+      tail: [],
+      err: '语料目录不存在：' + corpus + '（可用 M2C_CORPUS 指定）',
+    };
+  }
+
+  const r = spawnSync(py, [script, '-o', outDir, '--limit', String(n), corpus], {
+    cwd: ROOT,
+    timeout: 120000,          // **120 秒硬超时**
+    encoding: 'utf8',
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  const both = ((r.stdout || '') + (r.stderr || '')).split('\n');
+  const tail = both.filter((x) => x.trim()).slice(-40);   // **只留末尾 40 行**
+  const ok = r.status === 0 && tail.some((x) => x.includes('三段'));
+  return {
+    ok,
+    tail,
+    err: ok ? '' : (r.error ? String(r.error.message) : `rc=${r.status}`),
+  };
 }
 
 function buildPipeline(ff, ane, cb, fl, st, stageRows) {
@@ -326,17 +364,34 @@ export default defineConfig({
           const stage = u.searchParams.get('stage') || 'unknown';
           const n = Number(u.searchParams.get('n') || 0);
           res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          // **限幅**：一次误点不该跑 3000 个（50 个约 20 秒）
+          if (!(n >= 1 && n <= 50)) {
+            res.end(
+              JSON.stringify({
+                ok: 0,
+                errors: 1,
+                n,
+                elapsed_ms: 0,
+                ops_per_s: 0,
+                first_error: 'n 必须在 1..50 之间（当前 ' + n + '）',
+              })
+            );
+            return;
+          }
+          const t0 = Date.now();
+          const r = runThreeLinks(n);
           res.end(
             JSON.stringify({
-              ok: 0,
-              errors: 1,
+              ok: r.ok ? 1 : 0,
+              errors: r.ok ? 0 : 1,
               n,
-              elapsed_ms: 0,
-              ops_per_s: 0,
-              first_error:
-                '执行器尚未接上：stage=' + stage + ' n=' + n +
-                '（下一步用 child_process 调 three_links_report.py，' +
-                '带超时与输出截断）',
+              stage,
+              elapsed_ms: Date.now() - t0,
+              ops_per_s: r.ok
+                ? Number((n / Math.max(0.001, (Date.now() - t0) / 1000)).toFixed(2))
+                : 0,
+              tail: r.tail,
+              first_error: r.ok ? '' : r.err,
             })
           );
         });
