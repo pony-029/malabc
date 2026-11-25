@@ -51,7 +51,7 @@ function buildState() {
   // 把仓库里的五个模块映射成前端需要的"阶段"形状
   const stageRows = [
     {
-      id: 'mir',
+      id: 'mir', stage: 'mir',
       name: 'MIR 前端',
       path: 'translate/mir.py',
       desc: '把 .m 降级成 MIR 行（const / op / shape / unmapped）',
@@ -61,7 +61,7 @@ function buildState() {
         : null,
     },
     {
-      id: 'hir',
+      id: 'hir', stage: 'hir',
       name: 'HIR 契约',
       path: 'translate/hir.py · mir.py:hir_gate',
       desc: '每次 to_mir 收尾把 MIR 抬升成 HIR、降回、比对算子多重集',
@@ -69,7 +69,7 @@ function buildState() {
       semantic: stages[1] ? { ok: stages[1].pass, n: stages[1].total } : null,
     },
     {
-      id: 'emit',
+      id: 'emit', stage: 'emit',
       name: 'Rust 发射器',
       path: 'rust/m2c/src/emit.rs',
       desc: 'MIR → gen.c + main.c（assumed shape、MATMUL 降回）',
@@ -77,7 +77,7 @@ function buildState() {
       semantic: stages[2] ? { ok: stages[2].pass, n: stages[2].total } : null,
     },
     {
-      id: 'rt',
+      id: 'rt', stage: 'rt',
       name: 'C 运行时',
       path: 'c_runtime/src/mlc_ops.c',
       desc: 'mlc_array + 算子族，gcc 编译后逐个运行比对',
@@ -90,7 +90,7 @@ function buildState() {
         : null,
     },
     {
-      id: 'gates',
+      id: 'gates', stage: 'gates',
       name: '门禁与台账',
       path: 'tools/check_*.py（48 道）',
       desc: '每道门自证 + check_all 汇总；GX2 是第 48 道',
@@ -99,9 +99,40 @@ function buildState() {
     },
   ];
 
+  const now = new Date().toISOString();
+  const s3 = stages[2] || null;
+
   return {
-    generatedAt: new Date().toISOString(),
+    // App.jsx 读的是下划线版；两种都给，免得再猜一次
+    generated_at: now,
+    generatedAt: now,
     flowRoot: FLOW,
+
+    // **run**：App.jsx 用 run.stages_participated / run.stages_total
+    run: {
+      stages_participated: stages.filter((x) => x.pass > 0).length,
+      stages_total: stages.length,
+      sample: ff.total || 0,
+      s1: stages[0] ? stages[0].pass : 0,
+      s2: stages[1] ? stages[1].pass : 0,
+      s3: s3 ? s3.pass : 0,
+      fail2: stages[1] ? stages[1].total - stages[1].pass : 0,
+      fail3: s3 ? s3.total - s3.pass : 0,
+    },
+
+    // **modules**：五个模块各自的 ok/n 与源文件
+    modules: Object.fromEntries(
+      stageRows.map((r) => [
+        r.id,
+        {
+          name: r.name,
+          path: r.path,
+          source: r.source,
+          ok: r.semantic ? r.semantic.ok : null,
+          n: r.semantic ? r.semantic.n : null,
+        },
+      ])
+    ),
     kpi: {
       total: ff.total || 0,
       stages: stages.map((s) => ({ name: s.name, pass: s.pass, total: s.total })),
@@ -156,13 +187,22 @@ export default defineConfig({
             );
             return;
           }
+          // App.jsx 传的是 `?stage=xxx&n=20`（query，不是 body）
+          const u = new URL(req.url, 'http://127.0.0.1');
+          const stage = u.searchParams.get('stage') || 'unknown';
+          const n = Number(u.searchParams.get('n') || 0);
           res.setHeader('Content-Type', 'application/json; charset=utf-8');
           res.end(
             JSON.stringify({
-              ok: false,
-              reason:
-                'M2C_ALLOW_RUN=1 已开启，但执行器需在下一轮接上 ' +
-                '（子进程 + 超时 + 输出截断）。',
+              ok: 0,
+              errors: 1,
+              n,
+              elapsed_ms: 0,
+              ops_per_s: 0,
+              first_error:
+                '执行器尚未接上：stage=' + stage + ' n=' + n +
+                '（下一步用 child_process 调 three_links_report.py，' +
+                '带超时与输出截断）',
             })
           );
         });
