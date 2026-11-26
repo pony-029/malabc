@@ -1214,6 +1214,13 @@ node <archify>/bin/archify.mjs render <type> <dir>/candidate.json <dir>/<name>.h
 - `tools/config_suggest.py` —— P4：对配置里的每个模块/源文件给出**该配什么**（注解或配置键）以及能消掉几处卡点；`--selftest` 自证映射
 - `tools/project_status.py` —— **算出来的**项目整体状态：计划阶段 P0–P6（证据文件必须存在**且**已接入 GX2）、子模块规模、流程图新鲜度分布
 - `tools/harness.py` —— **自改进 harness**：跑分组检查 → 把失败入库（`flow/problems.jsonl`）→ 用向量库反查历史同类错 → 按「重复次数 + 有无历史解法」排出下一步。它**不自动改代码**，只做发现/归因/排序
+- `tools/brain.py` 的 `advise_unmapped()` —— **小脑二级检索**：在 **43,428 条真实未映射语句**
+  （`flow/unmapped-corpus.jsonl`）里找同类写法，每条带 `at:[{file,line}]`，
+  **所以结论能被打开文件核对**。
+  与 `advise()` 分工：`advise()` 答"这个错我们总结过什么"，它答"同类语句在真实工程里长什么样"。
+  性能：优先读精简语料 `unmapped-corpus-top.jsonl`（5,000 条 / 1.30 MB，覆盖 39.1% 出现次数），
+  **首查 34 ms、次查 3 ms**；`M2C_UNMAPPED_FULL=1` 可回退全量。
+
 - `tools/brain_db.py` —— **问题记录向量库**：哈希特征向量（md5 定维、256 维、L2 归一、余弦检索），离线确定、可解释；换真 embedder 只需替换 `embed()`（存储里带 `model/dim`，混用会被拒）。CLI：`build` / `add` / `query` / `stats`
 - `tools/check_mir_split.py` —— **解析/切分判据库**（MS1–MS5）：无 `end` 切分、嵌套边界、`version` 头、账本闭合、块收束
 - `tools/unmapped_stats.py` —— **降级率统计**：按文件算 `1 - 未映射/(未映射+算子数)`，给 `avg_rate`、`≥90%` 个数与逐文件榜；三段链路的 ① 是二值判据（真实代码永远有边角），这个给出**可读的分布**

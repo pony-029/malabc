@@ -1285,6 +1285,14 @@ Three-link regression report: `python tools/three_links_report.py <dirs> -o <out
 - `tools/config_suggest.py` — P4: for every module/source in the project config, report **what to configure** (annotation / config key) and how many stalls it would clear; `--selftest` proves the mapping
 - `tools/project_status.py` — whole-project status **computed** from the repo: plan phases P0–P6 (evidence file must exist **and** be wired into GX2), module sizes, and figure freshness distribution
 - `tools/harness.py` — **self-improving harness**: runs grouped checks → ingests failures into `flow/problems.jsonl` → queries the vector store for similar past issues → ranks next actions by "repeat count + availability of a historical fix". It never edits code automatically; it only discovers, attributes, and ranks
+- `tools/brain.py`'s `advise_unmapped()` — **cerebellum second-tier retrieval**: searches
+  **43,428 real unmapped statements** (`flow/unmapped-corpus.jsonl`) for similar shapes; each hit
+  carries `at:[{file,line}]`, **so every claim can be checked by opening the file**.
+  Division of labour with `advise()`: `advise()` answers "what have we already learned about this
+  error", this one answers "what do similar statements look like in real projects".
+  Performance: reads the trimmed corpus `unmapped-corpus-top.jsonl` (5,000 rows / 1.30 MB, covering
+  39.1% of occurrences) — **34 ms first call, 3 ms after**; `M2C_UNMAPPED_FULL=1` falls back to full.
+
 - `tools/brain_db.py` — **problem-record vector store**: hashed feature vectors (md5-bucketed, 256-dim, L2-normalized, cosine search) — offline, deterministic, explainable; swapping in a real embedder only replaces `embed()` (store records `model/dim` and refuses mixed indexes). CLI: `build` / `add` / `query` / `stats`
 - `tools/check_mir_split.py` — **parse/split criteria library** (MS1–MS5): missing-`end` splitting, nested-block boundaries, `version` header, ledger closure, block termination
 - `tools/unmapped_stats.py` — **lowering-rate stats**: per file `1 - unmapped/(unmapped+ops)`, with `avg_rate`, count over 90% and a per-file ranking; the three-link ① is binary (real code always has corners), this gives a **readable distribution**
