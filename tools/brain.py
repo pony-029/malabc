@@ -556,21 +556,33 @@ if __name__ == "__main__":
 # ────────────────────────────────────────────────────────────────
 
 _UNMAPPED_TOK = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|[^\sA-Za-z0-9_]")
-_UNMAPPED_CACHE = {"items": None, "mtime": None}
+_UNMAPPED_CACHE = {"items": None, "mtime": None, "target": None}
 
+#: **精简语料优先**（R1274）：5,000 条 / 1.30 MB，覆盖 39.1% 的原始出现次数。
+#: 全量 43,428 条 / 11.6 MB 的加载要 2.6 秒，对命令行工具太重；
+#: 设 `M2C_UNMAPPED_FULL=1` 可强制用全量（查长尾时用）。
+UNMAPPED_CORPUS_TOP = os.path.join(ROOT, "flow", "unmapped-corpus-top.jsonl")
 UNMAPPED_CORPUS = os.path.join(ROOT, "flow", "unmapped-corpus.jsonl")
 
 
 def _load_unmapped():
     """懒加载 + mtime 失效；加载时**预分词**（frozenset），只做一次。"""
-    if not os.path.isfile(UNMAPPED_CORPUS):
+    if os.environ.get("M2C_UNMAPPED_FULL") == "1":
+        target = UNMAPPED_CORPUS
+    elif os.path.isfile(UNMAPPED_CORPUS_TOP):
+        target = UNMAPPED_CORPUS_TOP
+    else:
+        target = UNMAPPED_CORPUS
+    if not os.path.isfile(target):
         return []
-    mt = os.path.getmtime(UNMAPPED_CORPUS)
-    if _UNMAPPED_CACHE["items"] is not None and _UNMAPPED_CACHE["mtime"] == mt:
+    mt = os.path.getmtime(target)
+    if (_UNMAPPED_CACHE["items"] is not None
+            and _UNMAPPED_CACHE["mtime"] == mt
+            and _UNMAPPED_CACHE["target"] == target):
         return _UNMAPPED_CACHE["items"]
     items = []
     try:
-        with io.open(UNMAPPED_CORPUS, encoding="utf-8") as f:
+        with io.open(target, encoding="utf-8") as f:
             for ln in f:
                 ln = ln.strip()
                 if not ln:
@@ -582,6 +594,7 @@ def _load_unmapped():
         return []
     _UNMAPPED_CACHE["items"] = items
     _UNMAPPED_CACHE["mtime"] = mt
+    _UNMAPPED_CACHE["target"] = target
     return items
 
 
