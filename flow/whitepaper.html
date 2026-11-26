@@ -199,7 +199,8 @@ footer{margin-top:70px;padding-top:22px;border-top:1px solid var(--line);font-si
     <li><a href="#s9">缺口看板</a></li>
     <li><a href="#s10">工具速查</a></li>
     <li><a href="#s11">设计原则</a></li>
-  </ol>
+  <li><a href="#s12">前端展示（两个入口）</a></li>
+</ol>
 </nav>
 
 <!-- 0 -->
@@ -501,6 +502,38 @@ footer{margin-top:70px;padding-top:22px;border-top:1px solid var(--line);font-si
   <div class="card"><h4>跨项目接口只交付纯数据</h4><p>合并前后都不用改的接口，只能是不含策略的数据。</p></div>
 </div>
 
+
+<h2 class="sec" id="s12"><span class="num">12</span>前端展示：把五段流程摊开给人看</h2>
+<p>项目有<b>两个</b>前端入口，<b>展示的是同一份真实数据</b>（<code>flow/*.json</code>）。
+两个入口的所有数字都从这些 JSON 现读，<b>没有一个是写死的</b> ——
+所以更新测试数据后刷新即可，不用改前端代码。</p>
+
+<p><b>静态版 <code>flow/pipeline.html</code></b>：单文件、零依赖、双击即看。
+五段流水线 + 三段漏斗 + 多轮语料对照 + 小脑自决 + 错误台账。
+设计 token 来自 Astryx（<code>flow/astryx/theme.css</code>，199 个语义变量），
+页脚写明了用法约束：整份 CSS 包在
+<code>@scope ([data-astryx-theme="neutral"])</code> 里，
+所以 <code>&lt;body&gt;</code> 必须带该属性。<b>只用 token 与排版层，不用 React 组件</b>
+—— 那是 150+ 个 <code>@astryxdesign/core</code> 组件，需要 React 19 运行时。</p>
+
+<p><b>React 版 <code>web/</code></b>：<code>npm run dev</code> 起在
+<code>127.0.0.1:5178</code>。数据来自 <code>vite.config.js</code> 的中间件：
+<code>GET /api/state</code> 现读 <code>../flow/*.json</code> 聚合成前端形状；
+<code>POST /api/run?stage=&amp;n=</code> 会<b>真的跑一次三段</b>
+（<code>three_links_report.py</code>，120 秒超时、只留末尾 40 行）。</p>
+
+<p><b>这两道闸是刻意加的</b>：<code>/api/run</code> 必须
+<code>M2C_ALLOW_RUN=1</code> 才执行，且 <code>n</code> 必须落在 1..50 ——
+<b>一次误点不该跑三千个</b>。交互上，7 步流程每一行都可点开，
+看它「吃什么、产出什么、数字来自哪个文件」；阶段卡片可点选后现场实跑。</p>
+
+<p><b>一条约定</b>：某个 KPI 显示 <code>—</code> 时，它的含义是
+<b>「这项本轮没有采集」</b>，不是"采集失败"。例如墙钟
+（<code>wall_s</code>）与逐指令覆盖（<code>instruction_coverage_pct</code>）
+目前刻意留 <code>null</code> —— <b>不编造比填满更好看但更诚实</b>。</p>
+
+<p>两个入口的完整用法见 <code>docs/FRONTEND.md</code>，
+实际截图见 <code>flow/ui-screenshot.png</code>。</p>
 <footer>
   <p><b>Matlabc 硬件映射白皮书 v1.1</b> · 2026-11-21 · 对应代码 R1048<br>
   所有数字来自本仓实跑；图由 <code>archify</code> 渲染并通过四项校验。未做人工目视复核的图已单独标注。</p>
