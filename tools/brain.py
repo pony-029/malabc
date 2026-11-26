@@ -542,3 +542,75 @@ def main(argv=None):
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+# ────────────────────────────────────────────────────────────────
+# 二级检索：在 unmapped 语料里找"同类语句长什么样"（R1272）
+#
+# 为什么需要它：`advise()` 检索的是 63 条**人工总结的经验**，
+# 它们回答"这个错我们怎么处理的"；但当某类错误**从未被总结过**时，
+# 需要退一步看"同类语句在真实工程里怎么写的、之前为什么降级失败"。
+#
+# 语料来源：`flow/unmapped-corpus.jsonl`（43,428 条，去重后，
+# 每条带 `at:[{file,line}]` —— 这是它能被复核的唯一原因）。
+# ────────────────────────────────────────────────────────────────
+
+_UNMAPPED_TOK = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|[^\sA-Za-z0-9_]")
+_UNMAPPED_CACHE = {"items": None, "mtime": None}
+
+UNMAPPED_CORPUS = os.path.join(ROOT, "flow", "unmapped-corpus.jsonl")
+
+
+def _load_unmapped():
+    """懒加载 + mtime 失效；加载时**预分词**（frozenset），只做一次。"""
+    if not os.path.isfile(UNMAPPED_CORPUS):
+        return []
+    mt = os.path.getmtime(UNMAPPED_CORPUS)
+    if _UNMAPPED_CACHE["items"] is not None and _UNMAPPED_CACHE["mtime"] == mt:
+        return _UNMAPPED_CACHE["items"]
+    items = []
+    try:
+        with io.open(UNMAPPED_CORPUS, encoding="utf-8") as f:
+            for ln in f:
+                ln = ln.strip()
+                if not ln:
+                    continue
+                it = json.loads(ln)
+                it["_tok"] = frozenset(_UNMAPPED_TOK.findall(it["src"].lower()))
+                items.append(it)
+    except (IOError, OSError, ValueError):
+        return []
+    _UNMAPPED_CACHE["items"] = items
+    _UNMAPPED_CACHE["mtime"] = mt
+    return items
+
+
+def advise_unmapped(text, k=5):
+    """在真实工程的未映射语句里找最相似的 k 条（**带 file:line，可复核**）。
+
+    与 `advise()` 的分工：
+      * `advise()`     -> "这个错我们总结过什么经验"（63 条，人工）
+      * `advise_unmapped()` -> "同类语句在真实工程里长什么样、为什么降级"
+    两者可以串起来用；返回里每条都带 `at`，所以结论能被打开文件核对。
+    """
+    import heapq
+    items = _load_unmapped()
+    if not items:
+        return []
+    qt = frozenset(_UNMAPPED_TOK.findall(text.lower()))
+    if not qt:
+        return []
+
+    def sc(it):
+        return sum(1 for t in qt if t in it["_tok"])
+
+    top = heapq.nlargest(k, ((sc(it), i) for i, it in enumerate(items)),
+                         key=lambda x: x[0])
+    out = []
+    for sc_v, idx in top:
+        if sc_v <= 0:
+            break
+        it = items[idx]
+        out.append({"score": sc_v, "src": it["src"], "why": it.get("why", ""),
+                    "n": it.get("n", 0), "at": it.get("at", [])})
+    return out
