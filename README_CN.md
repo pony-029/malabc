@@ -428,6 +428,7 @@ malabc/
 │  └─ assets/          # 内联 CSS 资源（离线优先，无 CDN）
 ├─ tests/              # 测试与样例（test_matlabc.py / eval_ai_fix / sample_m/*.m）
 ├─ docs/               # 完整文档（用法 / 功能 / JSON Schema / 交付报告 ...）
+│  └─ FRONTEND.md      # 前端两个入口（静态 pipeline.html / React web）怎么跑、数据从哪来
 ├─ ci-examples/        # GitHub / GitLab CI 模板样例
 ├─ LICENSE             # MIT 许可证（英文正本，唯一具法律效力的文本）
 └─ LICENSE_CN          # MIT 许可证中文译本（仅供参考）

@@ -455,7 +455,8 @@ malabc/
 ├─ renderers/          # Report and visualization renderers (report/callgraph/hotspot/sarif/snapshot...)
 │  └─ assets/          # Inlined CSS assets (offline-first, no CDN)
 ├─ tests/              # Tests and samples (test_matlabc.py / eval_ai_fix / sample_m/*.m)
-├─ docs/               # Full documentation (usage / features / JSON Schema / delivery report ...)
+├─ docs/               # Full documentation (usage / features / JSON Schema / delivery
+│  └─ FRONTEND.md      # the two front-ends (static pipeline.html / React web) report ...)
 ├─ ci-examples/        # GitHub / GitLab CI template examples
 ├─ LICENSE             # MIT License (English original, the sole legally binding text)
 └─ LICENSE_CN          # MIT License Chinese translation (for reference only)
