@@ -293,8 +293,22 @@ def escalate(query, extra_signals=None, problems=None, entries=None, kinds=None)
                 "title": "", "symptom": "", "root_cause": "",
                 "rule": "", "witness": "", "severity": "high|medium|low"}]},
         }
+    # **只有"无先例"时才去查同类语句**（R1277）：
+    #   * `advise_unmapped` 首查 34ms / 次查 3ms，不该每次 escalate 都付；
+    #   * 语义上也只在"没有先例"时才需要"退一步看同类写法长什么样"。
+    # 注意：`similar` **不参与 need 判定**（need 只看 reasons），
+    # 所以 CB1 的 94.0% 不会因此变化。
+    similar = []
+    if s1:
+        try:
+            import brain as _B
+            similar = _B.advise_unmapped(query, k=3)
+        except Exception:                      # noqa: BLE001
+            # 故意忽略：查不到同类语句不应让"该不该上行"的判定失败
+            similar = []
+
     return {"need": bool(reasons), "reasons": reasons, "signals": sig,
-            "payload": payload}
+            "payload": payload, "similar": similar}
 
 
 #: **ANE 第五条要求的极简协议**（R996）。
